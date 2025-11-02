@@ -134,9 +134,11 @@ func (operation *BranchMigrationOperation) Execute(executionContext context.Cont
 		if remoteAvailable {
 			identifier, identifierError := resolveRepositoryIdentifier(repositoryState)
 			if identifierError != nil {
-				return identifierError
+				remoteAvailable = false
+				remoteDefaultBranch = ""
+			} else {
+				repositoryIdentifier = identifier
 			}
-			repositoryIdentifier = identifier
 		}
 
 		sourceBranchValue := strings.TrimSpace(target.SourceBranch)
@@ -193,8 +195,8 @@ func (operation *BranchMigrationOperation) Execute(executionContext context.Cont
 			WorkflowsDirectory:   defaultMigrationWorkflowsDirectoryConstant,
 			SourceBranch:         sourceBranch,
 			TargetBranch:         targetBranch,
-			PushUpdates:          target.PushToRemote,
-			DeleteSourceBranch:   target.DeleteSourceBranch,
+			PushUpdates:          target.PushToRemote && remoteAvailable,
+			DeleteSourceBranch:   target.DeleteSourceBranch && remoteAvailable,
 		}
 
 		if environment.DryRun {

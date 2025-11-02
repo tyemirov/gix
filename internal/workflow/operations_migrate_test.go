@@ -310,3 +310,59 @@ func TestEnsureRemoteBranchPushesWhenMissing(testInstance *testing.T) {
 	}
 	require.True(testInstance, recordedPush)
 }
+
+func TestBranchMigrationOperationFallsBackWhenIdentifierMissing(testInstance *testing.T) {
+	executor := newScriptedExecutor()
+	executor.gitHandlers["remote"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
+		return execshell.ExecutionResult{StandardOutput: "origin\n"}, nil
+	}
+	executor.gitHandlers["show-ref --verify --quiet refs/heads/master"] = branchMissing
+
+	repositoryManager, managerError := gitrepo.NewRepositoryManager(executor)
+	require.NoError(testInstance, managerError)
+
+	githubClient, clientError := githubcli.NewClient(executor)
+	require.NoError(testInstance, clientError)
+
+	operation := &BranchMigrationOperation{Targets: []BranchMigrationTarget{
+		{RemoteName: "origin", TargetBranch: "master", PushToRemote: true},
+	}}
+
+	outputBuffer := &bytes.Buffer{}
+
+	state := &State{
+		Repositories: []*RepositoryState{
+			{
+				Path: "/repository",
+				Inspection: audit.RepositoryInspection{
+					LocalBranch:         "main",
+					RemoteDefaultBranch: "main",
+				},
+			},
+		},
+	}
+
+	environment := &Environment{
+		RepositoryManager: repositoryManager,
+		GitExecutor:       executor,
+		GitHubClient:      githubClient,
+		Output:            outputBuffer,
+	}
+
+	executionError := operation.Execute(context.Background(), environment, state)
+
+	require.NoError(testInstance, executionError)
+	require.Empty(testInstance, executor.githubCommands)
+
+	foundBranchCreation := false
+	for _, commandDetails := range executor.gitCommands {
+		if strings.Join(commandDetails.Arguments, " ") == "branch master main" {
+			foundBranchCreation = true
+		}
+		if strings.HasPrefix(strings.Join(commandDetails.Arguments, " "), "push ") {
+			testInstance.Fatalf("unexpected push command recorded: %s", strings.Join(commandDetails.Arguments, " "))
+		}
+	}
+	require.True(testInstance, foundBranchCreation)
+	require.Contains(testInstance, outputBuffer.String(), "WORKFLOW-DEFAULT: /repository (main → master) safe_to_delete=false")
+}
