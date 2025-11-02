@@ -43,13 +43,8 @@ If a repository doesnt have a remote, there is nothing to fetch, but we can stil
   - Resolution: Added a `version` subcommand backed by the existing resolver so both `gix version` and `gix --version` print identical output; new regression coverage locks the behavior.
 - [x] [GX-204] Introduce reusable workflow safeguards that gate repository tasks (clean worktree, branch checks, etc.) and skip repositories when conditions fail.
   - Resolution: Added shared safeguard evaluator, task-level support, and CLI wiring so workflows can skip repositories based on clean-state, branch, or path checks with comprehensive tests.
-- [ ] [GX-205] Standardize error schema across commands
-  - Status: Unresolved | Priority: P0
-  - Category: Improvement
-  - Context: Messages lack repository context and have inconsistent formatting.
-  - Desired: Emit “CODE: owner/repo (path) message”. Always include path; actionable phrasing for user steps.
-  - Acceptance: CLI outputs follow schema for task/workflow errors; unit + integration tests assert format and presence of path.
-  - Dependencies: None (foundation for GX-206, GX-208).
+- [x] [GX-205] Standardize error schema across commands
+  - Resolution: Added centralized workflow error formatter that injects repository owner/path metadata, humanizes sentinel-only messages, and ensures all logged failures follow the `CODE: owner/repo (path) message` schema; regression coverage now verifies formatted output for direct log handling and rename operations.
 
 - [ ] [GX-206] Remove redundant prefixes; single-source formatting
   - Status: Unresolved | Priority: P0
