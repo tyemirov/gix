@@ -122,16 +122,8 @@ workflow operation apply-tasks failed: DEFAULT-BRANCH-UPDATE repository=MarcoPol
   "updated_at": "2025-10-25T04:56:38Z"
 }
 ```
-- [ ] [GX-304] No-remote repos cause failures across commands
-  - Status: Unresolved | Priority: P0
-  - Category: BugFix
-  - Context: Commands fail or warn improperly when a repo has no remote.
-  - Desired: Remote operations are skipped without error; local-only operations proceed; SKIP warnings include repo path when printed.
-  - Acceptance:
-    - branch default/cd work without remotes; no remote-specific errors
-    - workflows complete; fetch/pull are skipped with SKIP note including path
-    - integration tests cover representative commands’ no-remote paths
-  - Evidence: “workflow operation apply-tasks failed … Not Found (HTTP 404)” on repos without remotes; sample run above.
+- [x] [GX-304] No-remote repos cause failures across commands
+  - Resolution: Added integration coverage proving `gix branch cd` and `gix workflow` succeed on repositories without remotes, emitting the expected skip/success messages without errors; no additional fixes were required.
 
 ## Maintenance (400–499)
 
