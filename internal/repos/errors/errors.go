@@ -17,6 +17,8 @@ const (
 	OperationRenameDirectories Operation = "repo.folder.rename"
 	// OperationHistoryPurge denotes history rewrite executors.
 	OperationHistoryPurge Operation = "repo.history.purge"
+	// OperationNamespaceRewrite denotes namespace rewrite executors.
+	OperationNamespaceRewrite Operation = "repo.namespace.rewrite"
 )
 
 // Sentinel describes a stable error code shared across executors.
@@ -168,4 +170,8 @@ var (
 	ErrHistoryGitIgnoreUpdateFailed Sentinel = "history_gitignore_update_failed"
 	// ErrHistoryInspectionFailed indicates repository history inspection failed prior to rewrite.
 	ErrHistoryInspectionFailed Sentinel = "history_inspection_failed"
+	// ErrGitRepositoryMissing indicates required git metadata was not found.
+	ErrGitRepositoryMissing Sentinel = "git_repository_missing"
+	// ErrNamespaceRewriteFailed indicates namespace rewrite failed.
+	ErrNamespaceRewriteFailed Sentinel = "namespace_rewrite_failed"
 )

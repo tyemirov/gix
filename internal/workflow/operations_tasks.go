@@ -25,6 +25,7 @@ const (
 	optionTaskCommitMessageKeyConstant = "commit_message"
 	optionTaskPullRequestKeyConstant   = "pull_request"
 	optionTaskActionsKeyConstant       = "actions"
+	optionTaskSafeguardsKeyConstant    = "safeguards"
 
 	optionTaskBranchNameKeyConstant       = "name"
 	optionTaskBranchStartPointKeyConstant = "start_point"
@@ -87,6 +88,7 @@ type TaskDefinition struct {
 	Actions     []TaskActionDefinition
 	Commit      TaskCommitDefinition
 	PullRequest *TaskPullRequestDefinition
+	Safeguards  map[string]any
 }
 
 // TaskBranchDefinition describes branch behavior for a task.
@@ -168,6 +170,23 @@ func (operation *TaskOperation) Execute(executionContext context.Context, enviro
 }
 
 func (operation *TaskOperation) executeTask(executionContext context.Context, environment *Environment, repository *RepositoryState, task TaskDefinition) error {
+	if len(task.Safeguards) > 0 {
+		pass, reason, evalError := EvaluateSafeguards(executionContext, environment, repository, task.Safeguards)
+		if evalError != nil {
+			return evalError
+		}
+		if !pass {
+			if environment != nil && environment.Output != nil {
+				trimmedReason := strings.TrimSpace(reason)
+				if len(trimmedReason) == 0 {
+					trimmedReason = "safeguard failed"
+				}
+				fmt.Fprintf(environment.Output, "%s: %s %s %s\n", taskLogPrefixSkip, task.Name, repository.Path, trimmedReason)
+			}
+			return nil
+		}
+	}
+
 	templateData := buildTaskTemplateData(repository, task)
 
 	planner := newTaskPlanner(task, templateData)
@@ -262,6 +281,11 @@ func buildTaskDefinition(raw map[string]any) (TaskDefinition, error) {
 		return TaskDefinition{}, pullRequestError
 	}
 
+	safeguards, _, safeguardsError := reader.mapValue(optionTaskSafeguardsKeyConstant)
+	if safeguardsError != nil {
+		return TaskDefinition{}, safeguardsError
+	}
+
 	return TaskDefinition{
 		Name:        name,
 		EnsureClean: ensureClean,
@@ -270,6 +294,7 @@ func buildTaskDefinition(raw map[string]any) (TaskDefinition, error) {
 		Actions:     actions,
 		Commit:      commitDefinition,
 		PullRequest: pullRequestDefinition,
+		Safeguards:  safeguards,
 	}, nil
 }
 

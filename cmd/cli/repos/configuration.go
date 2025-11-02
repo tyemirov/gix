@@ -9,11 +9,12 @@ import (
 
 // ToolsConfiguration captures repository command configuration sections.
 type ToolsConfiguration struct {
-	Remotes  RemotesConfiguration  `mapstructure:"remotes"`
-	Protocol ProtocolConfiguration `mapstructure:"protocol"`
-	Rename   RenameConfiguration   `mapstructure:"rename"`
-	Remove   RemoveConfiguration   `mapstructure:"remove"`
-	Replace  ReplaceConfiguration  `mapstructure:"replace"`
+	Remotes   RemotesConfiguration   `mapstructure:"remotes"`
+	Protocol  ProtocolConfiguration  `mapstructure:"protocol"`
+	Rename    RenameConfiguration    `mapstructure:"rename"`
+	Remove    RemoveConfiguration    `mapstructure:"remove"`
+	Replace   ReplaceConfiguration   `mapstructure:"replace"`
+	Namespace NamespaceConfiguration `mapstructure:"namespace"`
 }
 
 // RemotesConfiguration describes configuration values for repo-remote-update.
@@ -67,6 +68,20 @@ type ReplaceConfiguration struct {
 	RequirePaths    []string `mapstructure:"paths"`
 }
 
+// NamespaceConfiguration describes configuration values for namespace rewrite.
+type NamespaceConfiguration struct {
+	DryRun          bool           `mapstructure:"dry_run"`
+	AssumeYes       bool           `mapstructure:"assume_yes"`
+	RepositoryRoots []string       `mapstructure:"roots"`
+	OldPrefix       string         `mapstructure:"old"`
+	NewPrefix       string         `mapstructure:"new"`
+	Push            bool           `mapstructure:"push"`
+	Remote          string         `mapstructure:"remote"`
+	BranchPrefix    string         `mapstructure:"branch_prefix"`
+	CommitMessage   string         `mapstructure:"commit_message"`
+	Safeguards      map[string]any `mapstructure:"safeguards"`
+}
+
 // DefaultToolsConfiguration returns baseline configuration values for repository commands.
 func DefaultToolsConfiguration() ToolsConfiguration {
 	return ToolsConfiguration{
@@ -110,6 +125,18 @@ func DefaultToolsConfiguration() ToolsConfiguration {
 			RequireClean:    false,
 			Branch:          "",
 			RequirePaths:    nil,
+		},
+		Namespace: NamespaceConfiguration{
+			DryRun:          false,
+			AssumeYes:       false,
+			RepositoryRoots: nil,
+			OldPrefix:       "",
+			NewPrefix:       "",
+			Push:            true,
+			Remote:          "origin",
+			BranchPrefix:    "namespace-rewrite",
+			CommitMessage:   "",
+			Safeguards:      nil,
 		},
 	}
 }
@@ -166,6 +193,31 @@ func (configuration ReplaceConfiguration) sanitize() ReplaceConfiguration {
 
 // Sanitize normalizes replace configuration values.
 func (configuration ReplaceConfiguration) Sanitize() ReplaceConfiguration {
+	return configuration.sanitize()
+}
+
+// sanitize normalizes namespace configuration values.
+func (configuration NamespaceConfiguration) sanitize() NamespaceConfiguration {
+	sanitized := configuration
+	sanitized.RepositoryRoots = rootutils.SanitizeConfigured(configuration.RepositoryRoots)
+	sanitized.OldPrefix = strings.TrimSpace(configuration.OldPrefix)
+	sanitized.NewPrefix = strings.TrimSpace(configuration.NewPrefix)
+	sanitized.Remote = strings.TrimSpace(configuration.Remote)
+	sanitized.BranchPrefix = strings.TrimSpace(configuration.BranchPrefix)
+	sanitized.CommitMessage = strings.TrimSpace(configuration.CommitMessage)
+	if len(configuration.Safeguards) > 0 {
+		sanitized.Safeguards = make(map[string]any, len(configuration.Safeguards))
+		for key, value := range configuration.Safeguards {
+			sanitized.Safeguards[key] = value
+		}
+	} else {
+		sanitized.Safeguards = nil
+	}
+	return sanitized
+}
+
+// Sanitize normalizes namespace configuration values.
+func (configuration NamespaceConfiguration) Sanitize() NamespaceConfiguration {
 	return configuration.sanitize()
 }
 

@@ -21,10 +21,6 @@ const (
 	fileReplaceCommandOptionKey    = "command"
 	fileReplaceSafeguardsOptionKey = "safeguards"
 
-	fileReplaceRequireCleanKey  = "require_clean"
-	fileReplaceRequireBranchKey = "branch"
-	fileReplaceRequirePathsKey  = "paths"
-
 	fileReplacePlanMessageTemplate    = "REPLACE-PLAN: %s file=%s replacements=%d\n"
 	fileReplaceApplyMessageTemplate   = "REPLACE-APPLY: %s file=%s replacements=%d\n"
 	fileReplaceSkipMessageTemplate    = "REPLACE-SKIP: %s reason=%s\n"
@@ -83,7 +79,7 @@ func handleFileReplaceAction(ctx context.Context, environment *Environment, repo
 		return safeguardsError
 	}
 
-	pass, reason, evaluationError := evaluateReplacementSafeguards(ctx, environment, repository.Path, safeguardMap)
+	pass, reason, evaluationError := EvaluateSafeguards(ctx, environment, repository, safeguardMap)
 	if evaluationError != nil {
 		return evaluationError
 	}
@@ -249,91 +245,6 @@ func sanitizeCommandArguments(arguments []string) []string {
 	}
 	if len(sanitized) == 0 {
 		return nil
-	}
-	return sanitized
-}
-
-func evaluateReplacementSafeguards(ctx context.Context, environment *Environment, repositoryPath string, raw map[string]any) (bool, string, error) {
-	if len(raw) == 0 {
-		return true, "", nil
-	}
-
-	reader := newOptionReader(raw)
-
-	requireClean, requireCleanExists, requireCleanError := reader.boolValue(fileReplaceRequireCleanKey)
-	if requireCleanError != nil {
-		return false, "", requireCleanError
-	}
-	if requireCleanExists && requireClean {
-		clean, cleanError := environment.RepositoryManager.CheckCleanWorktree(ctx, repositoryPath)
-		if cleanError != nil {
-			return false, "", cleanError
-		}
-		if !clean {
-			return false, "repository not clean", nil
-		}
-	}
-
-	requiredBranch, branchExists, branchError := reader.stringValue(fileReplaceRequireBranchKey)
-	if branchError != nil {
-		return false, "", branchError
-	}
-	if branchExists && len(requiredBranch) > 0 {
-		currentBranch, branchReadError := environment.RepositoryManager.GetCurrentBranch(ctx, repositoryPath)
-		if branchReadError != nil {
-			return false, "", branchReadError
-		}
-		if strings.TrimSpace(currentBranch) != requiredBranch {
-			return false, fmt.Sprintf("requires branch %s", requiredBranch), nil
-		}
-	}
-
-	for _, relativePath := range parseRequiredPaths(raw[fileReplaceRequirePathsKey]) {
-		absolutePath := filepath.Join(repositoryPath, relativePath)
-		if _, statError := environment.FileSystem.Stat(absolutePath); statError != nil {
-			if errors.Is(statError, fs.ErrNotExist) {
-				return false, fmt.Sprintf("missing required path %s", relativePath), nil
-			}
-			return false, "", statError
-		}
-	}
-
-	return true, "", nil
-}
-
-func parseRequiredPaths(raw any) []string {
-	switch typed := raw.(type) {
-	case []string:
-		return sanitizePathSlice(typed)
-	case []any:
-		paths := make([]string, 0, len(typed))
-		for _, entry := range typed {
-			value, ok := entry.(string)
-			if !ok {
-				continue
-			}
-			paths = append(paths, value)
-		}
-		return sanitizePathSlice(paths)
-	case string:
-		return sanitizePathSlice([]string{typed})
-	default:
-		return nil
-	}
-}
-
-func sanitizePathSlice(paths []string) []string {
-	sanitized := make([]string, 0, len(paths))
-	for _, pathValue := range paths {
-		trimmed := strings.TrimSpace(pathValue)
-		if len(trimmed) == 0 {
-			continue
-		}
-		cleaned := strings.TrimPrefix(trimmed, "./")
-		if len(cleaned) == 0 {
-			continue
-		}
-		sanitized = append(sanitized, filepath.Clean(cleaned))
 	}
 	return sanitized
 }

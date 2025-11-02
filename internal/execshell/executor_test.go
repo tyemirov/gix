@@ -279,6 +279,9 @@ func TestShellExecutorPreservesExplicitGitHubToken(testInstance *testing.T) {
 }
 
 func TestShellExecutorFailsWithoutTokenForCriticalGitHubCommand(testInstance *testing.T) {
+	testInstance.Setenv(githubauth.EnvGitHubCLIToken, "")
+	testInstance.Setenv(githubauth.EnvGitHubToken, "")
+	testInstance.Setenv(githubauth.EnvGitHubAPIToken, "")
 	observerCore, _ := observer.New(zap.DebugLevel)
 	logger := zap.New(observerCore)
 
@@ -297,6 +300,9 @@ func TestShellExecutorFailsWithoutTokenForCriticalGitHubCommand(testInstance *te
 }
 
 func TestShellExecutorWarnsButRunsWithoutTokenForOptionalGitHubCommand(testInstance *testing.T) {
+	testInstance.Setenv(githubauth.EnvGitHubCLIToken, "")
+	testInstance.Setenv(githubauth.EnvGitHubToken, "")
+	testInstance.Setenv(githubauth.EnvGitHubAPIToken, "")
 	observerCore, logs := observer.New(zap.DebugLevel)
 	logger := zap.New(observerCore)
 

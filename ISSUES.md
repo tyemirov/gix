@@ -4,7 +4,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
 ## Features (100–199)
 
-- [ ] [GX-100] Implement rewriting namespace. The prototype is under @tools/ns-rewrite. Use worklfow / task interface and lean on the already built ability to change file content
+- [x] [GX-100] Implement rewriting namespace. The prototype is under @tools/ns-rewrite. Use worklfow / task interface and lean on the already built ability to change file content
+  - Resolution: Added namespace rewrite service, workflow action, and `gix repo namespace rewrite` command with tests and configuration defaults.
 
 ## Improvements (200–299)
 
@@ -26,6 +27,8 @@ If a repository doesnt have a remote, there is nothing to fetch, but we can stil
 - Resolution: `branch cd` now logs `FETCH-SKIP`/`PULL-SKIP` warnings when network operations fail and continues switching branches, so repositories without remotes (or offline) still migrate.
 - [x] [GX-203] make gix version and gix --version work the same and display its version
   - Resolution: Added a `version` subcommand backed by the existing resolver so both `gix version` and `gix --version` print identical output; new regression coverage locks the behavior.
+- [x] [GX-204] Introduce reusable workflow safeguards that gate repository tasks (clean worktree, branch checks, etc.) and skip repositories when conditions fail.
+  - Resolution: Added shared safeguard evaluator, task-level support, and CLI wiring so workflows can skip repositories based on clean-state, branch, or path checks with comprehensive tests.
 
 ## BugFixes (300–399)
 

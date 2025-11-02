@@ -427,6 +427,39 @@ func TestTaskExecutorAppliesChanges(testInstance *testing.T) {
 	require.Equal(testInstance, expectedCommands, collected)
 }
 
+func TestTaskExecutorSkipsWhenSafeguardFails(testInstance *testing.T) {
+	gitExecutor := &recordingGitExecutor{
+		worktreeClean: true,
+		currentBranch: "feature/demo",
+	}
+	fileSystem := newFakeFileSystem(nil)
+
+	repositoryManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(testInstance, managerError)
+
+	repository := NewRepositoryState(audit.RepositoryInspection{Path: "/repositories/sample"})
+
+	environment := &Environment{
+		GitExecutor:       gitExecutor,
+		RepositoryManager: repositoryManager,
+		FileSystem:        fileSystem,
+		Output:            &bytes.Buffer{},
+	}
+
+	task := TaskDefinition{
+		Name:       "Guarded Task",
+		Safeguards: map[string]any{"branch": "main"},
+		Actions: []TaskActionDefinition{
+			{Type: taskActionFileReplace, Options: map[string]any{"pattern": "*.md", "find": "foo", "replace": "bar"}},
+		},
+	}
+
+	executionError := (&TaskOperation{tasks: []TaskDefinition{task}}).executeTask(context.Background(), environment, repository, task)
+	require.NoError(testInstance, executionError)
+	require.Contains(testInstance, environment.Output.(*bytes.Buffer).String(), "TASK-SKIP")
+	require.Contains(testInstance, environment.Output.(*bytes.Buffer).String(), "requires branch main")
+}
+
 type fakeFileSystem struct {
 	files map[string][]byte
 }

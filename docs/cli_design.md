@@ -211,6 +211,8 @@ CLI commands, workflow operations, and dependency resolvers are responsible for 
 3. Executors accept the domain structs and focus on orchestration (calls to Git, filesystem, confirmation prompts).
 4. Tests cover both constructor success paths and error scenarios so new validation rules cannot regress silently.
 
+Safeguards act as boolean gates evaluated before a task mutates a repository. A task (or command wrapper) may include a `safeguards` map with keys such as `require_clean: true`, `branch: master`, or `paths: ["go.mod"]`. The shared evaluator runs these checks using the injected collaborators (`RepositoryManager`, `FileSystem`, etc.); when a condition fails the repository is logged with a `*-SKIP` banner and the workflow advances to the next target without running the task body. Extending safeguard coverage only requires adding a handler to the evaluator, keeping individual operations free of bespoke guard logic.
+
 ### 8.3 Contextual error catalog
 `internal/repos/errors` defines sentinel codes (for example `origin_owner_missing`, `remote_update_failed`, `history_rewrite_failed`) and wraps them in `OperationError`. Executors use `errors.Wrap`/`errors.WrapMessage` to attach:
 
