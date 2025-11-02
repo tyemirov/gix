@@ -105,9 +105,7 @@ func NewExecutor(operations []Operation, dependencies Dependencies) *Executor {
 // NewExecutorFromNodes constructs an Executor using pre-built operation nodes.
 func NewExecutorFromNodes(nodes []*OperationNode, dependencies Dependencies) *Executor {
 	cloned := make([]*OperationNode, len(nodes))
-	for nodeIndex := range nodes {
-		cloned[nodeIndex] = nodes[nodeIndex]
-	}
+	copy(cloned, nodes)
 	return &Executor{nodes: cloned, dependencies: dependencies}
 }
 

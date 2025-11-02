@@ -99,9 +99,12 @@ func resolveRepositoryOwnerAndPath(environment *Environment, subject string) (st
 		}
 
 		if normalizedSubject == repositoryPath {
-			selectedRepository = repository
-			longestMatch = len(repositoryPath)
-			break
+			resolvedOwner := selectOwnerRepository(repository)
+			resolvedPath := repositoryPath
+			if len(resolvedPath) == 0 {
+				resolvedPath = filepath.Clean(repository.Path)
+			}
+			return resolvedOwner, resolvedPath
 		}
 
 		pathWithSeparator := repositoryPath + string(filepath.Separator)
