@@ -46,6 +46,8 @@ type workflowStepWrapper struct {
 
 // StepConfiguration associates an operation type with declarative options.
 type StepConfiguration struct {
+	Name      string         `yaml:"name" json:"name"`
+	After     []string       `yaml:"after" json:"after"`
 	Operation OperationType  `yaml:"operation" json:"operation"`
 	Options   map[string]any `yaml:"with" json:"with"`
 }
@@ -86,6 +88,7 @@ func LoadConfiguration(filePath string) (Configuration, error) {
 			return Configuration{}, errors.New(configurationOperationMissingMessageConstant)
 		}
 		configuration.Steps[stepIndex].Operation = OperationType(trimmedOperation)
+		configuration.Steps[stepIndex].Name = strings.TrimSpace(configuration.Steps[stepIndex].Name)
 	}
 
 	return configuration, nil

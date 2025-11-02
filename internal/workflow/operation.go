@@ -41,9 +41,12 @@ type OperationDefaults struct {
 }
 
 // ApplyDefaults configures operations with shared fallback options when not explicitly set.
-func ApplyDefaults(operations []Operation, defaults OperationDefaults) {
-	for operationIndex := range operations {
-		renameOperation, isRename := operations[operationIndex].(*RenameOperation)
+func ApplyDefaults(nodes []*OperationNode, defaults OperationDefaults) {
+	for nodeIndex := range nodes {
+		if nodes[nodeIndex] == nil || nodes[nodeIndex].Operation == nil {
+			continue
+		}
+		renameOperation, isRename := nodes[nodeIndex].Operation.(*RenameOperation)
 		if !isRename {
 			continue
 		}

@@ -44,7 +44,7 @@ func TestBuildOperations(testInstance *testing.T) {
 		name                  string
 		configuration         workflow.Configuration
 		expectedOperationType workflow.OperationType
-		assertFunc            func(*testing.T, workflow.Operation)
+		assertFunc            func(*testing.T, *workflow.OperationNode)
 	}{
 		{
 			name: "builds protocol conversion operation",
@@ -60,8 +60,9 @@ func TestBuildOperations(testInstance *testing.T) {
 				},
 			},
 			expectedOperationType: workflow.OperationTypeProtocolConversion,
-			assertFunc: func(testingInstance *testing.T, operation workflow.Operation) {
-				protocolConversionOperation, castSucceeded := operation.(*workflow.ProtocolConversionOperation)
+			assertFunc: func(testingInstance *testing.T, node *workflow.OperationNode) {
+				require.NotNil(testingInstance, node)
+				protocolConversionOperation, castSucceeded := node.Operation.(*workflow.ProtocolConversionOperation)
 				require.True(testingInstance, castSucceeded)
 				require.Equal(testingInstance, shared.RemoteProtocolHTTPS, protocolConversionOperation.FromProtocol)
 				require.Equal(testingInstance, shared.RemoteProtocolSSH, protocolConversionOperation.ToProtocol)
@@ -80,8 +81,9 @@ func TestBuildOperations(testInstance *testing.T) {
 				},
 			},
 			expectedOperationType: workflow.OperationTypeCanonicalRemote,
-			assertFunc: func(testingInstance *testing.T, operation workflow.Operation) {
-				canonicalOperation, castSucceeded := operation.(*workflow.CanonicalRemoteOperation)
+			assertFunc: func(testingInstance *testing.T, node *workflow.OperationNode) {
+				require.NotNil(testingInstance, node)
+				canonicalOperation, castSucceeded := node.Operation.(*workflow.CanonicalRemoteOperation)
 				require.True(testingInstance, castSucceeded)
 				require.Equal(testingInstance, "canonical", canonicalOperation.OwnerConstraint)
 			},
@@ -94,8 +96,9 @@ func TestBuildOperations(testInstance *testing.T) {
 				},
 			},
 			expectedOperationType: workflow.OperationTypeRenameDirectories,
-			assertFunc: func(testingInstance *testing.T, operation workflow.Operation) {
-				renameOperation, castSucceeded := operation.(*workflow.RenameOperation)
+			assertFunc: func(testingInstance *testing.T, node *workflow.OperationNode) {
+				require.NotNil(testingInstance, node)
+				renameOperation, castSucceeded := node.Operation.(*workflow.RenameOperation)
 				require.True(testingInstance, castSucceeded)
 				require.False(testingInstance, renameOperation.RequireCleanWorktree)
 				require.False(testingInstance, renameOperation.IncludeOwner)
@@ -115,8 +118,9 @@ func TestBuildOperations(testInstance *testing.T) {
 				},
 			},
 			expectedOperationType: workflow.OperationTypeRenameDirectories,
-			assertFunc: func(testingInstance *testing.T, operation workflow.Operation) {
-				renameOperation, castSucceeded := operation.(*workflow.RenameOperation)
+			assertFunc: func(testingInstance *testing.T, node *workflow.OperationNode) {
+				require.NotNil(testingInstance, node)
+				renameOperation, castSucceeded := node.Operation.(*workflow.RenameOperation)
 				require.True(testingInstance, castSucceeded)
 				require.True(testingInstance, renameOperation.RequireCleanWorktree)
 				require.True(testingInstance, renameOperation.IncludeOwner)
@@ -145,8 +149,9 @@ func TestBuildOperations(testInstance *testing.T) {
 				},
 			},
 			expectedOperationType: workflow.OperationTypeApplyTasks,
-			assertFunc: func(testingInstance *testing.T, operation workflow.Operation) {
-				require.IsType(testingInstance, &workflow.TaskOperation{}, operation)
+			assertFunc: func(testingInstance *testing.T, node *workflow.OperationNode) {
+				require.NotNil(testingInstance, node)
+				require.IsType(testingInstance, &workflow.TaskOperation{}, node.Operation)
 			},
 		},
 	}
@@ -154,10 +159,11 @@ func TestBuildOperations(testInstance *testing.T) {
 	for testCaseIndex := range testCases {
 		testCase := testCases[testCaseIndex]
 		testInstance.Run(testCase.name, func(testingInstance *testing.T) {
-			operations, buildError := workflow.BuildOperations(testCase.configuration)
+			nodes, buildError := workflow.BuildOperations(testCase.configuration)
 			require.NoError(testingInstance, buildError)
-			require.Len(testingInstance, operations, 1)
-			testCase.assertFunc(testingInstance, operations[0])
+			require.Len(testingInstance, nodes, 1)
+			require.Equal(testingInstance, string(testCase.expectedOperationType), nodes[0].Operation.Name())
+			testCase.assertFunc(testingInstance, nodes[0])
 		})
 	}
 }

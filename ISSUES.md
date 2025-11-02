@@ -52,13 +52,8 @@ If a repository doesnt have a remote, there is nothing to fetch, but we can stil
 - [x] [GX-208] Remote/metadata semantics and skip policy
   - Resolution: Remote workflow operations now emit standardized `remote_missing` SKIP messages when the origin remote is absent and `origin_owner_missing` warnings when metadata cannot be resolved, exercised via new workflow unit tests that cover both scenarios for canonical remote updates.
 
-- [ ] [GX-207] DAG-based workflow execution
-  - Status: Unresolved | Priority: P2
-  - Category: Improvement
-  - Context: Workflows need conditional paths with proper gating and parallel layers.
-  - Desired: Topologically ordered DAG with gatekeeper tasks and concurrency control; respects skip policies; integrates with standardized error schema.
-  - Acceptance: Workflow tests demonstrate conditional branching and concurrency; skip semantics preserved; messages conform to GX-205.
-  - Dependencies: GX-205, GX-206, GX-208
+- [x] [GX-207] DAG-based workflow execution
+  - Resolution: Added workflow step metadata (`name`/`after`), introduced DAG planners that build topological stages, and taught the executor to run independent operations in parallel with shared error handling; new unit tests cover branching layers and cycle detection while maintaining sequential defaults for legacy configs.
 
 
 ## BugFixes (300–399)

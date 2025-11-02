@@ -8,18 +8,22 @@ import (
 
 func TestApplyDefaultsSetsRequireCleanWhenMissing(t *testing.T) {
 	operation := &RenameOperation{}
-	operations := []Operation{operation}
+	nodes := []*OperationNode{
+		{Name: "rename-1", Operation: operation},
+	}
 
-	ApplyDefaults(operations, OperationDefaults{RequireClean: true})
+	ApplyDefaults(nodes, OperationDefaults{RequireClean: true})
 
 	require.True(t, operation.RequireCleanWorktree)
 }
 
 func TestApplyDefaultsRespectsExplicitRequireClean(t *testing.T) {
 	operation := &RenameOperation{RequireCleanWorktree: false, requireCleanExplicit: true}
-	operations := []Operation{operation}
+	nodes := []*OperationNode{
+		{Name: "rename-1", Operation: operation},
+	}
 
-	ApplyDefaults(operations, OperationDefaults{RequireClean: true})
+	ApplyDefaults(nodes, OperationDefaults{RequireClean: true})
 
 	require.False(t, operation.RequireCleanWorktree)
 }
