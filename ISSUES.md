@@ -29,6 +29,41 @@ If a repository doesnt have a remote, there is nothing to fetch, but we can stil
   - Resolution: Added a `version` subcommand backed by the existing resolver so both `gix version` and `gix --version` print identical output; new regression coverage locks the behavior.
 - [x] [GX-204] Introduce reusable workflow safeguards that gate repository tasks (clean worktree, branch checks, etc.) and skip repositories when conditions fail.
   - Resolution: Added shared safeguard evaluator, task-level support, and CLI wiring so workflows can skip repositories based on clean-state, branch, or path checks with comprehensive tests.
+- [ ] [GX-205] Generalize error generation so that we always includ the path. I got this error which means nothing to the user, doesnt tell what and where has happened. So each error must must be structured:
+
+  WORKFLOW-DEFAULT-WARNING
+  WORKFLOW-DEFAULT-ERROR
+  TASK-DEFAULT-WARNING
+  TASK-DEFAULT-ERROR
+
+  Explanation:
+
+  /tmp/repos/allergy_wheel already defaults to master
+  <repo (folder)> <human readeable message>
+  tyemirov/gix (tmp/repos/gix) already defaults to master
+
+  workflow operation apply-tasks failed: default branch remote metadata unavailable: remote metadata unavailable: repository metadata
+  search yielded no canonical match
+  exit status 1
+
+  should become
+  WORKFLOW-DEFAULT-ERROR: <repo (folder)> description of the failed operation, and actions for user to take. This logic is across the
+  all -- genealize the pricincipl;es of error logging, and write a code that all commands use to report
+
+- [ ] Logging messages  I got this error: 
+```
+workflow operation apply-tasks failed: WORKFLOW-DEFAULT-ERROR: integration-org/ns-rewrite (/tmp/repos/gix/tools/ns-rewrite) remote metadata unavailable: remote metadata unavailable: repository metadata search yielded no canonical match
+ exit status 1.
+``` 
+ The first part shouldnt have been printed -- the message should have started with WORKFLOW-DEFAULT-ERROR and "workflow
+ operation apply-tasks failed:" is not needed to be printed anywhere. Or maybe it should have been a task level failure
+ 
+- [ ] [GX-206] Use a Direct Acyclic Graph for the conditional execution of the workflows. Gonum: gonum.org/v1/gonum/graph (+ topo for topological order). Mature, fast, battle-tested. You model the DAG and run tasks in topo layers with errgroup and a semaphore for parallelism.
+- All workflows use DAG
+- We use specialized tasks as gatekeepers to ensure some branch of the DAG are not executed (e.g. there is no remote counterpart of a git repo)
+
+- [ ] [GX-207] 1. If there is a remote then there must be a metadata 2. If there is no remote then all remote operations must be skipped
+
 
 ## BugFixes (300–399)
 
@@ -96,17 +131,32 @@ workflow operation apply-tasks failed: DEFAULT-BRANCH-UPDATE repository=MarcoPol
   "updated_at": "2025-10-25T04:56:38Z"
 }
 ```
-- [ ] [GX-304] Fix the worflow associated with `b default <destination branch>` command
+- [ ] [GX-304] Fix all commands not to fail or consider working with remote when there is no remote
+```
+01:38:39 tyemirov@computercat:~/Development/gix [master] $ go run ./... b default master --roots /tmp/repos/
+  WORKFLOW-DEFAULT-SKIP: /tmp/repos/RSVP already defaults to master
+  WORKFLOW-DEFAULT-SKIP: /tmp/repos/allergy_wheel already defaults to master
+  WORKFLOW-DEFAULT-SKIP: /tmp/repos/gix already defaults to master
+  WORKFLOW-DEFAULT-SKIP: /tmp/repos/gix/tools/git_retag already defaults to master
+  WORKFLOW-DEFAULT-SKIP: /tmp/repos/gix/tools/licenser already defaults to master
+  WORKFLOW-DEFAULT-SKIP: /tmp/repos/gix/tools/llm-tasks already defaults to master
+  workflow operation apply-tasks failed: DEFAULT-BRANCH-UPDATE repository=integration-org/ns-rewrite path=/tmp/repos/gix/tools/ns-
+  rewrite source=master target=master: gh: Not Found (HTTP 404)
+  exit status 1
+```  
+but there is nothing wrong with not having a remote, and we should have tests for such cases
+1. Write tests for all commands that ensure that there is no error or warning of a git repo doesnt have a remote and that the workflows work properly, skipping the remote part
+Here is an example flow for `branch default` subcommand
+Fix the worflow associated with `b default <destination branch>` command
 1. Find the default branch
-1. Find the remote
-1. If there is no remote branch then only work on local copy, no warnings
-1. If there is a remote then find the default remote branch
-1. If the value of the destination branch equals both the value of a default remote branch and a local default branch, then log the skip message
-1. If the value of the destination branch does not equals either the default remote or defaul local or both then 
-1a. create a destination default branch wherever it's missing (local and/or remote)
-1b. Use the default branch as a source for creating a destination branch
-1c. Make the newly created branch a default branch both locally and remote
-
+2. Find the remote
+3. If there is no remote branch then only work on local copy, no warnings
+4. If there is a remote then find the default remote branch
+5. If the value of the destination branch equals both the value of a default remote branch and a local default branch, then log the skip message
+6. If the value of the destination branch does not equals either the default remote or defaul local or both then 
+7a. create a destination default branch wherever it's missing (local and/or remote)
+7b. Use the default branch as a source for creating a destination branch
+7c. Make the newly created branch a default branch both locally and remote
 
 ## Maintenance (400–499)
 
