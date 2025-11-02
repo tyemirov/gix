@@ -50,7 +50,7 @@ If a repository doesnt have a remote, there is nothing to fetch, but we can stil
   WORKFLOW-DEFAULT-ERROR: <repo (folder)> description of the failed operation, and actions for user to take. This logic is across the
   all -- genealize the pricincipl;es of error logging, and write a code that all commands use to report
 
-- [ ] Logging messages  I got this error: 
+- [ ] [GX-206] Logging messages  I got this error: 
 ```
 workflow operation apply-tasks failed: WORKFLOW-DEFAULT-ERROR: integration-org/ns-rewrite (/tmp/repos/gix/tools/ns-rewrite) remote metadata unavailable: remote metadata unavailable: repository metadata search yielded no canonical match
  exit status 1.
@@ -58,11 +58,11 @@ workflow operation apply-tasks failed: WORKFLOW-DEFAULT-ERROR: integration-org/n
  The first part shouldnt have been printed -- the message should have started with WORKFLOW-DEFAULT-ERROR and "workflow
  operation apply-tasks failed:" is not needed to be printed anywhere. Or maybe it should have been a task level failure
  
-- [ ] [GX-206] Use a Direct Acyclic Graph for the conditional execution of the workflows. Gonum: gonum.org/v1/gonum/graph (+ topo for topological order). Mature, fast, battle-tested. You model the DAG and run tasks in topo layers with errgroup and a semaphore for parallelism.
+- [ ] [GX-207] Use a Direct Acyclic Graph for the conditional execution of the workflows. Gonum: gonum.org/v1/gonum/graph (+ topo for topological order). Mature, fast, battle-tested. You model the DAG and run tasks in topo layers with errgroup and a semaphore for parallelism.
 - All workflows use DAG
 - We use specialized tasks as gatekeepers to ensure some branch of the DAG are not executed (e.g. there is no remote counterpart of a git repo)
 
-- [ ] [GX-207] 1. If there is a remote then there must be a metadata 2. If there is no remote then all remote operations must be skipped
+- [ ] [GX-208] 1. If there is a remote then there must be a metadata (we cant reliably gurantee a completion of an operation that requires changes or data from the remote when a remoet is present but inaccessable) 2. If there is no remote then all remote operations must be skipped
 
 
 ## BugFixes (300–399)
