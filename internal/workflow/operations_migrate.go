@@ -27,6 +27,7 @@ const (
 	migrationMetadataResolutionErrorTemplateConstant   = "default branch metadata resolution failed: %w"
 	migrationMetadataMissingMessageConstant            = "repository metadata missing default branch for update"
 	migrationSkipMessageTemplateConstant               = "WORKFLOW-DEFAULT-SKIP: %s already defaults to %s\n"
+	migrationRemoteUnavailableSkipTemplateConstant     = "WORKFLOW-DEFAULT-SKIP: %s remote unavailable; skipping remote promotion\n"
 	localBranchVerificationErrorTemplateConstant       = "default branch local verification failed: %w"
 	localBranchCreationErrorTemplateConstant           = "default branch local creation failed: %w"
 	localCheckoutErrorTemplateConstant                 = "default branch checkout failed: %w"
@@ -223,6 +224,7 @@ func (operation *BranchMigrationOperation) Execute(executionContext context.Cont
 
 		if !remoteAvailable {
 			if environment.Output != nil {
+				fmt.Fprintf(environment.Output, migrationRemoteUnavailableSkipTemplateConstant, repositoryState.Path)
 				fmt.Fprintf(environment.Output, migrationSuccessMessageTemplateConstant, repositoryState.Path, sourceBranchValue, targetBranchValue, false)
 			}
 			continue
@@ -238,6 +240,13 @@ func (operation *BranchMigrationOperation) Execute(executionContext context.Cont
 		if executionError != nil {
 			var updateError migrate.DefaultBranchUpdateError
 			if errors.As(executionError, &updateError) {
+				if shouldIgnoreDefaultBranchUpdateError(updateError) {
+					if environment.Output != nil {
+						fmt.Fprintf(environment.Output, migrationRemoteUnavailableSkipTemplateConstant, repositoryState.Path)
+						fmt.Fprintf(environment.Output, migrationSuccessMessageTemplateConstant, repositoryState.Path, sourceBranchValue, targetBranchValue, false)
+					}
+					continue
+				}
 				return executionError
 			}
 			return fmt.Errorf(migrationExecutionErrorTemplateConstant, executionError)
@@ -389,6 +398,26 @@ func shouldIgnoreRemotePushError(err error) bool {
 		if strings.Contains(normalized, "not a git repository") {
 			return true
 		}
+	}
+	return false
+}
+
+func shouldIgnoreDefaultBranchUpdateError(updateError migrate.DefaultBranchUpdateError) bool {
+	if updateError.Cause == nil {
+		return false
+	}
+	lowered := strings.ToLower(updateError.Cause.Error())
+	if strings.Contains(lowered, "http 404") {
+		return true
+	}
+	if strings.Contains(lowered, "repository not found") {
+		return true
+	}
+	if strings.Contains(lowered, "could not resolve to a repository") {
+		return true
+	}
+	if strings.Contains(lowered, "could not read from remote repository") {
+		return true
 	}
 	return false
 }

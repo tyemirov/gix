@@ -3,6 +3,7 @@ package workflow
 import (
 	"bytes"
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -463,7 +464,8 @@ func TestBranchMigrationOperationSkipsRemotePushWhenUnavailable(testInstance *te
 	executionError := operation.Execute(context.Background(), environment, state)
 
 	require.NoError(testInstance, executionError)
-	require.Contains(testInstance, outputBuffer.String(), "WORKFLOW-DEFAULT: /repository (main → master)")
+	outputText := outputBuffer.String()
+	require.Contains(testInstance, outputText, "WORKFLOW-DEFAULT: /repository (main → master)")
 
 	foundPushAttempt := false
 	for _, commandDetails := range executor.gitCommands {
@@ -472,6 +474,71 @@ func TestBranchMigrationOperationSkipsRemotePushWhenUnavailable(testInstance *te
 		}
 	}
 	require.True(testInstance, foundPushAttempt)
+}
+
+func TestBranchMigrationOperationSkipsWhenDefaultBranchUpdateNotFound(testInstance *testing.T) {
+	testInstance.Setenv(githubauth.EnvGitHubToken, "test-token")
+	testInstance.Setenv(githubauth.EnvGitHubCLIToken, "test-token")
+	executor := newScriptedExecutor()
+	executor.gitHandlers["remote"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
+		return execshell.ExecutionResult{StandardOutput: "origin\n"}, nil
+	}
+	executor.gitHandlers["remote get-url origin"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
+		return execshell.ExecutionResult{StandardOutput: "git@github.com:owner/example.git\n"}, nil
+	}
+	executor.gitHandlers["show-ref --verify --quiet refs/heads/master"] = branchMissing
+	executor.gitHandlers["ls-remote --heads origin master"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
+		return execshell.ExecutionResult{StandardOutput: ""}, nil
+	}
+	executor.githubHandlers["repo view owner/example --json defaultBranchRef,nameWithOwner,description,isInOrganization"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
+		return execshell.ExecutionResult{}, githubcli.OperationError{Operation: githubcli.OperationName("ResolveRepoMetadata"), Cause: errors.New("gh: Not Found (HTTP 404)")}
+	}
+
+	repositoryManager, managerError := gitrepo.NewRepositoryManager(executor)
+	require.NoError(testInstance, managerError)
+
+	githubClient, clientError := githubcli.NewClient(executor)
+	require.NoError(testInstance, clientError)
+
+	operation := &BranchMigrationOperation{Targets: []BranchMigrationTarget{
+		{RemoteName: "origin", SourceBranch: "main", TargetBranch: "master", PushToRemote: true},
+	}}
+
+	outputBuffer := &bytes.Buffer{}
+
+	state := &State{
+		Repositories: []*RepositoryState{
+			{
+				Path: "/repository",
+				Inspection: audit.RepositoryInspection{
+					FinalOwnerRepo:      "owner/example",
+					RemoteDefaultBranch: "main",
+					LocalBranch:         "main",
+				},
+			},
+		},
+	}
+
+	environment := &Environment{
+		RepositoryManager: repositoryManager,
+		GitExecutor:       executor,
+		GitHubClient:      githubClient,
+		Output:            outputBuffer,
+	}
+
+	executionError := operation.Execute(context.Background(), environment, state)
+
+	require.NoError(testInstance, executionError)
+	outputText := outputBuffer.String()
+	require.Contains(testInstance, outputText, "remote unavailable; skipping remote promotion")
+	require.Contains(testInstance, outputText, "WORKFLOW-DEFAULT: /repository (main → master)")
+
+	for _, commandDetails := range executor.githubCommands {
+		joined := strings.Join(commandDetails.Arguments, " ")
+		if strings.Contains(joined, "default_branch=") {
+			testInstance.Fatalf("unexpected default branch update attempted: %s", joined)
+		}
+	}
 }
 
 func TestBranchMigrationOperationFallsBackWhenIdentifierMissing(testInstance *testing.T) {
