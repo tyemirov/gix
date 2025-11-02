@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	repoerrors "github.com/temirov/gix/internal/repos/errors"
 	"github.com/temirov/gix/internal/repos/identity"
 	"github.com/temirov/gix/internal/repos/remotes"
 	"github.com/temirov/gix/internal/repos/shared"
@@ -62,6 +63,30 @@ func (operation *CanonicalRemoteOperation) Execute(executionContext context.Cont
 		)
 		if remoteResolutionError != nil {
 			return fmt.Errorf("canonical remote update: %w", remoteResolutionError)
+		}
+
+		if !remoteResolution.RemoteDetected {
+			skipMessage := fmt.Sprintf("SKIP: remote '%s' not configured", shared.OriginRemoteNameConstant)
+			skipError := repoerrors.WrapMessage(
+				repoerrors.OperationCanonicalRemote,
+				repository.Path,
+				repoerrors.ErrRemoteMissing,
+				skipMessage,
+			)
+			logRepositoryOperationError(environment, skipError)
+			continue
+		}
+
+		if remoteResolution.OwnerRepository == nil {
+			skipMessage := fmt.Sprintf("SKIP: remote metadata unavailable for remote '%s'", shared.OriginRemoteNameConstant)
+			metadataError := repoerrors.WrapMessage(
+				repoerrors.OperationCanonicalRemote,
+				repository.Path,
+				repoerrors.ErrOriginOwnerMissing,
+				skipMessage,
+			)
+			logRepositoryOperationError(environment, metadataError)
+			continue
 		}
 
 		if canonicalOwnerRepository == nil && remoteResolution.OwnerRepository != nil {
