@@ -96,6 +96,17 @@ workflow operation apply-tasks failed: DEFAULT-BRANCH-UPDATE repository=MarcoPol
   "updated_at": "2025-10-25T04:56:38Z"
 }
 ```
+- [ ] [GX-304] Fix the worflow associated with `b default <destination branch>` command
+1. Find the default branch
+1. Find the remote
+1. If there is no remote branch then only work on local copy, no warnings
+1. If there is a remote then find the default remote branch
+1. If the value of the destination branch equals both the value of a default remote branch and a local default branch, then log the skip message
+1. If the value of the destination branch does not equals either the default remote or defaul local or both then 
+1a. create a destination default branch wherever it's missing (local and/or remote)
+1b. Use the default branch as a source for creating a destination branch
+1c. Make the newly created branch a default branch both locally and remote
+
 
 ## Maintenance (400–499)
 

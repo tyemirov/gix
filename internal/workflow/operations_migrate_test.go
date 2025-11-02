@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"bytes"
 	"context"
 	"strings"
 	"testing"
@@ -15,49 +16,78 @@ import (
 	migrate "github.com/temirov/gix/internal/migrate"
 )
 
-type fakeGitExecutor struct{}
-
-func (fakeGitExecutor) ExecuteGit(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
-	return execshell.ExecutionResult{}, nil
+type scriptedExecutor struct {
+	gitHandlers          map[string]func(execshell.CommandDetails) (execshell.ExecutionResult, error)
+	githubHandlers       map[string]func(execshell.CommandDetails) (execshell.ExecutionResult, error)
+	gitCommands          []execshell.CommandDetails
+	githubCommands       []execshell.CommandDetails
+	defaultBranchFailure *execshell.CommandFailedError
 }
 
-func (fakeGitExecutor) ExecuteGitHubCLI(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
-	return execshell.ExecutionResult{}, nil
-}
-
-type defaultBranchFailureExecutor struct {
-	failure execshell.CommandFailedError
-}
-
-func newDefaultBranchFailureExecutor(message string) defaultBranchFailureExecutor {
-	return defaultBranchFailureExecutor{
-		failure: execshell.CommandFailedError{
-			Command: execshell.ShellCommand{Name: execshell.CommandGitHub},
-			Result: execshell.ExecutionResult{
-				ExitCode:      1,
-				StandardError: message,
-			},
-		},
+func newScriptedExecutor() *scriptedExecutor {
+	return &scriptedExecutor{
+		gitHandlers:    map[string]func(execshell.CommandDetails) (execshell.ExecutionResult, error){},
+		githubHandlers: map[string]func(execshell.CommandDetails) (execshell.ExecutionResult, error){},
 	}
 }
 
-func (executor defaultBranchFailureExecutor) ExecuteGit(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
+func (executor *scriptedExecutor) ExecuteGit(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
+	executor.gitCommands = append(executor.gitCommands, details)
+	key := strings.Join(details.Arguments, " ")
+	if handler, exists := executor.gitHandlers[key]; exists {
+		return handler(details)
+	}
 	return execshell.ExecutionResult{}, nil
 }
 
-func (executor defaultBranchFailureExecutor) ExecuteGitHubCLI(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
-	if len(details.Arguments) >= 2 && details.Arguments[0] == "api" {
+func (executor *scriptedExecutor) ExecuteGitHubCLI(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
+	executor.githubCommands = append(executor.githubCommands, details)
+	key := strings.Join(details.Arguments, " ")
+	if handler, exists := executor.githubHandlers[key]; exists {
+		return handler(details)
+	}
+	if executor.defaultBranchFailure != nil {
 		for _, argument := range details.Arguments {
 			if strings.Contains(argument, "default_branch=") {
-				return execshell.ExecutionResult{}, executor.failure
+				failure := *executor.defaultBranchFailure
+				failure.Command = execshell.ShellCommand{Name: execshell.CommandGitHub, Details: details}
+				return execshell.ExecutionResult{}, failure
 			}
 		}
 	}
-	return execshell.ExecutionResult{StandardOutput: ""}, nil
+	if len(details.Arguments) > 0 {
+		switch details.Arguments[0] {
+		case "pr":
+			return execshell.ExecutionResult{StandardOutput: "[]\n"}, nil
+		case "api":
+			joined := strings.Join(details.Arguments, " ")
+			if strings.Contains(joined, "/pages") && strings.Contains(joined, "GET") {
+				return execshell.ExecutionResult{StandardOutput: `{"build_type":"legacy","source":{"branch":"main","path":"/docs"}}`}, nil
+			}
+			if strings.Contains(joined, "/branches/") && strings.Contains(joined, "/protection") {
+				failure := execshell.CommandFailedError{
+					Command: execshell.ShellCommand{Name: execshell.CommandGitHub, Details: details},
+					Result:  execshell.ExecutionResult{ExitCode: 1, StandardError: "404"},
+				}
+				return execshell.ExecutionResult{}, failure
+			}
+		}
+	}
+	return execshell.ExecutionResult{}, nil
+}
+
+func branchMissing(details execshell.CommandDetails) (execshell.ExecutionResult, error) {
+	return execshell.ExecutionResult{}, execshell.CommandFailedError{
+		Command: execshell.ShellCommand{Name: execshell.CommandGit, Details: details},
+		Result:  execshell.ExecutionResult{ExitCode: 1, StandardError: "not found"},
+	}
 }
 
 func TestBranchMigrationOperationRequiresSingleTarget(testInstance *testing.T) {
-	executor := fakeGitExecutor{}
+	executor := newScriptedExecutor()
+	executor.gitHandlers["remote"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
+		return execshell.ExecutionResult{StandardOutput: "origin\n"}, nil
+	}
 
 	repositoryManager, managerError := gitrepo.NewRepositoryManager(executor)
 	require.NoError(testInstance, managerError)
@@ -66,7 +96,7 @@ func TestBranchMigrationOperationRequiresSingleTarget(testInstance *testing.T) {
 	require.NoError(testInstance, clientError)
 
 	operation := &BranchMigrationOperation{Targets: []BranchMigrationTarget{
-		{RemoteName: "origin", SourceBranch: "main", TargetBranch: "master"},
+		{RemoteName: "origin", SourceBranch: "main", TargetBranch: "master", PushToRemote: true},
 		{RemoteName: "upstream", SourceBranch: "develop", TargetBranch: "main"},
 	}}
 
@@ -81,7 +111,16 @@ func TestBranchMigrationOperationRequiresSingleTarget(testInstance *testing.T) {
 func TestBranchMigrationOperationReturnsActionableDefaultBranchError(testInstance *testing.T) {
 	testInstance.Setenv(githubauth.EnvGitHubCLIToken, "test-token")
 	testInstance.Setenv(githubauth.EnvGitHubToken, "test-token")
-	executor := newDefaultBranchFailureExecutor("GraphQL: branch not found")
+	executor := newScriptedExecutor()
+	executor.gitHandlers["remote"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
+		return execshell.ExecutionResult{StandardOutput: "origin\n"}, nil
+	}
+	executor.defaultBranchFailure = &execshell.CommandFailedError{
+		Result: execshell.ExecutionResult{
+			ExitCode:      1,
+			StandardError: "GraphQL: branch not found",
+		},
+	}
 
 	repositoryManager, managerError := gitrepo.NewRepositoryManager(executor)
 	require.NoError(testInstance, managerError)
@@ -90,7 +129,7 @@ func TestBranchMigrationOperationReturnsActionableDefaultBranchError(testInstanc
 	require.NoError(testInstance, clientError)
 
 	operation := &BranchMigrationOperation{Targets: []BranchMigrationTarget{
-		{RemoteName: "origin", SourceBranch: "main", TargetBranch: "master"},
+		{RemoteName: "origin", SourceBranch: "main", TargetBranch: "master", PushToRemote: true},
 	}}
 
 	repositoryPath := testInstance.TempDir()
@@ -100,7 +139,9 @@ func TestBranchMigrationOperationReturnsActionableDefaultBranchError(testInstanc
 			{
 				Path: repositoryPath,
 				Inspection: audit.RepositoryInspection{
-					CanonicalOwnerRepo: "owner/example",
+					CanonicalOwnerRepo:  "owner/example",
+					LocalBranch:         "main",
+					RemoteDefaultBranch: "main",
 				},
 			},
 		},
@@ -126,4 +167,146 @@ func TestBranchMigrationOperationReturnsActionableDefaultBranchError(testInstanc
 	require.Contains(testInstance, errorMessage, "target=master")
 	require.Contains(testInstance, errorMessage, "GraphQL: branch not found")
 	require.NotContains(testInstance, errorMessage, "default branch update failed")
+}
+
+func TestBranchMigrationOperationCreatesLocalBranchWithoutRemote(testInstance *testing.T) {
+	executor := newScriptedExecutor()
+	executor.gitHandlers["remote"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
+		return execshell.ExecutionResult{StandardOutput: ""}, nil
+	}
+	executor.gitHandlers["show-ref --verify --quiet refs/heads/master"] = branchMissing
+
+	repositoryManager, managerError := gitrepo.NewRepositoryManager(executor)
+	require.NoError(testInstance, managerError)
+
+	githubClient, clientError := githubcli.NewClient(executor)
+	require.NoError(testInstance, clientError)
+
+	operation := &BranchMigrationOperation{Targets: []BranchMigrationTarget{
+		{RemoteName: "origin", TargetBranch: "master"},
+	}}
+
+	outputBuffer := &bytes.Buffer{}
+
+	state := &State{
+		Repositories: []*RepositoryState{
+			{
+				Path: "/repository",
+				Inspection: audit.RepositoryInspection{
+					LocalBranch: "main",
+				},
+			},
+		},
+	}
+
+	environment := &Environment{
+		RepositoryManager: repositoryManager,
+		GitExecutor:       executor,
+		GitHubClient:      githubClient,
+		Output:            outputBuffer,
+	}
+
+	executionError := operation.Execute(context.Background(), environment, state)
+
+	require.NoError(testInstance, executionError)
+
+	foundBranchCreation := false
+	foundCheckout := false
+	for _, commandDetails := range executor.gitCommands {
+		joined := strings.Join(commandDetails.Arguments, " ")
+		if joined == "branch master main" {
+			foundBranchCreation = true
+		}
+		if joined == "checkout master" {
+			foundCheckout = true
+		}
+		if strings.HasPrefix(joined, "push ") {
+			testInstance.Fatalf("unexpected push command recorded: %s", joined)
+		}
+	}
+	require.True(testInstance, foundBranchCreation)
+	require.True(testInstance, foundCheckout)
+	require.Contains(testInstance, outputBuffer.String(), "WORKFLOW-DEFAULT: /repository (main → master) safe_to_delete=false")
+}
+
+func TestBranchMigrationOperationCreatesRemoteBranchWhenMissing(testInstance *testing.T) {
+	testInstance.Setenv(githubauth.EnvGitHubToken, "test-token")
+	testInstance.Setenv(githubauth.EnvGitHubCLIToken, "test-token")
+	executor := newScriptedExecutor()
+	executor.gitHandlers["remote"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
+		return execshell.ExecutionResult{StandardOutput: "origin\n"}, nil
+	}
+	executor.gitHandlers["show-ref --verify --quiet refs/heads/master"] = branchMissing
+	executor.gitHandlers["ls-remote --heads origin master"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
+		return execshell.ExecutionResult{StandardOutput: ""}, nil
+	}
+
+	repositoryManager, managerError := gitrepo.NewRepositoryManager(executor)
+	require.NoError(testInstance, managerError)
+
+	githubClient, clientError := githubcli.NewClient(executor)
+	require.NoError(testInstance, clientError)
+
+	operation := &BranchMigrationOperation{Targets: []BranchMigrationTarget{
+		{RemoteName: "origin", SourceBranch: "main", TargetBranch: "master"},
+	}}
+
+	outputBuffer := &bytes.Buffer{}
+
+	state := &State{
+		Repositories: []*RepositoryState{
+			{
+				Path: "/repository",
+				Inspection: audit.RepositoryInspection{
+					CanonicalOwnerRepo:  "owner/example",
+					LocalBranch:         "main",
+					RemoteDefaultBranch: "main",
+				},
+			},
+		},
+	}
+
+	environment := &Environment{
+		RepositoryManager: repositoryManager,
+		GitExecutor:       executor,
+		GitHubClient:      githubClient,
+		Output:            outputBuffer,
+	}
+
+	executionError := operation.Execute(context.Background(), environment, state)
+
+	require.NoError(testInstance, executionError)
+
+	foundBranchCreation := false
+	for _, commandDetails := range executor.gitCommands {
+		joined := strings.Join(commandDetails.Arguments, " ")
+		if joined == "branch master main" {
+			foundBranchCreation = true
+		}
+	}
+	require.True(testInstance, foundBranchCreation)
+	require.Contains(testInstance, outputBuffer.String(), "WORKFLOW-DEFAULT: /repository (main → master)")
+}
+
+func TestEnsureRemoteBranchPushesWhenMissing(testInstance *testing.T) {
+	executor := newScriptedExecutor()
+	executor.gitHandlers["ls-remote --heads origin master"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
+		return execshell.ExecutionResult{StandardOutput: ""}, nil
+	}
+	executor.gitHandlers["push origin master:master"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
+		return execshell.ExecutionResult{}, nil
+	}
+
+	executionError := ensureRemoteBranch(context.Background(), executor, "/repository", "origin", "master")
+
+	require.NoError(testInstance, executionError)
+
+	recordedPush := false
+	for _, commandDetails := range executor.gitCommands {
+		if strings.Join(commandDetails.Arguments, " ") == "push origin master:master" {
+			recordedPush = true
+			break
+		}
+	}
+	require.True(testInstance, recordedPush)
 }
