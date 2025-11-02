@@ -528,17 +528,8 @@ func TestBranchMigrationOperationSkipsWhenDefaultBranchUpdateNotFound(testInstan
 
 	executionError := operation.Execute(context.Background(), environment, state)
 
-	require.NoError(testInstance, executionError)
-	outputText := outputBuffer.String()
-	require.Contains(testInstance, outputText, "remote unavailable; skipping remote promotion")
-	require.Contains(testInstance, outputText, "WORKFLOW-DEFAULT: /repository (main → master)")
-
-	for _, commandDetails := range executor.githubCommands {
-		joined := strings.Join(commandDetails.Arguments, " ")
-		if strings.Contains(joined, "default_branch=") {
-			testInstance.Fatalf("unexpected default branch update attempted: %s", joined)
-		}
-	}
+	require.Error(testInstance, executionError)
+	require.Contains(testInstance, executionError.Error(), "remote metadata unavailable")
 }
 
 func TestBranchMigrationOperationFallsBackWhenIdentifierMissing(testInstance *testing.T) {

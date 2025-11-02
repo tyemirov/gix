@@ -28,6 +28,7 @@ const (
 	migrationMetadataMissingMessageConstant            = "repository metadata missing default branch for update"
 	migrationSkipMessageTemplateConstant               = "WORKFLOW-DEFAULT-SKIP: %s already defaults to %s\n"
 	migrationRemoteUnavailableSkipTemplateConstant     = "WORKFLOW-DEFAULT-SKIP: %s remote unavailable; skipping remote promotion\n"
+	migrationRemoteMetadataUnavailableTemplateConstant = "default branch remote metadata unavailable: %w"
 	localBranchVerificationErrorTemplateConstant       = "default branch local verification failed: %w"
 	localBranchCreationErrorTemplateConstant           = "default branch local creation failed: %w"
 	localCheckoutErrorTemplateConstant                 = "default branch checkout failed: %w"
@@ -137,6 +138,9 @@ func (operation *BranchMigrationOperation) Execute(executionContext context.Cont
 			},
 		)
 		if remoteResolutionError != nil {
+			if errors.Is(remoteResolutionError, identity.ErrRemoteMetadataUnavailable) {
+				return fmt.Errorf(migrationRemoteMetadataUnavailableTemplateConstant, remoteResolutionError)
+			}
 			return fmt.Errorf(remotePresenceResolutionErrorTemplateConstant, remoteResolutionError)
 		}
 

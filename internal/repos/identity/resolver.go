@@ -23,6 +23,10 @@ const (
 	searchRepositoryQueryTemplate  = "query($term:String!){search(query:$term,type:REPOSITORY,first:10){nodes{... on Repository{name nameWithOwner defaultBranchRef{name}}}}}"
 )
 
+var (
+	ErrRemoteMetadataUnavailable = errors.New("remote metadata unavailable")
+)
+
 // RemoteResolutionDependencies provide collaborators required for remote introspection.
 type RemoteResolutionDependencies struct {
 	RepositoryManager shared.GitRepositoryManager
@@ -85,11 +89,7 @@ func ResolveRemoteIdentity(
 				ownerRepositoryCandidate.Repository().String(),
 			)
 			if metadataError != nil {
-				return RemoteResolutionResult{
-					RemoteDetected:  false,
-					OwnerRepository: nil,
-					DefaultBranch:   defaultBranchCandidate,
-				}, nil
+				return RemoteResolutionResult{}, fmt.Errorf("%w: %s", ErrRemoteMetadataUnavailable, metadataError)
 			}
 		}
 
