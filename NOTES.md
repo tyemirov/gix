@@ -83,7 +83,7 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
 1. Update `PLAN.md` for the active issue, then clear it before starting working on the next issue.
 2. Ensure the issue entry in `ISSUES.md` is marked `[x]` and includes an appended resolution note.
 3. Run tests, whether `go test ./...` or `npm test` or the relevant suite and resolve all failures.
-4. Commit only the intended changes and push the branch to origin. Esnure that the local branch is tracking the remote.
+4. Commit only the intended changes and push the branch to origin. Ensure that the local branch is tracking the remote.
 5. Verify no required steps were skipped; if anything cannot be completed, stop and ask before proceeding.
 
 ## Issue Tracking

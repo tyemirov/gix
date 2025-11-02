@@ -52,13 +52,8 @@ If a repository doesnt have a remote, there is nothing to fetch, but we can stil
 - [x] [GX-208] Remote/metadata semantics and skip policy
   - Resolution: Remote workflow operations now emit standardized `remote_missing` SKIP messages when the origin remote is absent and `origin_owner_missing` warnings when metadata cannot be resolved, exercised via new workflow unit tests that cover both scenarios for canonical remote updates.
 
-- [ ] [GX-207] DAG-based workflow execution
-  - Status: Unresolved | Priority: P2
-  - Category: Improvement
-  - Context: Workflows need conditional paths with proper gating and parallel layers.
-  - Desired: Topologically ordered DAG with gatekeeper tasks and concurrency control; respects skip policies; integrates with standardized error schema.
-  - Acceptance: Workflow tests demonstrate conditional branching and concurrency; skip semantics preserved; messages conform to GX-205.
-  - Dependencies: GX-205, GX-206, GX-208
+- [x] [GX-207] DAG-based workflow execution
+  - Resolution: Added workflow step metadata (`name`/`after`), introduced DAG planners that build topological stages, and taught the executor to run independent operations in parallel with shared error handling; new unit tests cover branching layers and cycle detection while maintaining sequential defaults for legacy configs.
 
 
 ## BugFixes (300–399)
@@ -127,16 +122,8 @@ workflow operation apply-tasks failed: DEFAULT-BRANCH-UPDATE repository=MarcoPol
   "updated_at": "2025-10-25T04:56:38Z"
 }
 ```
-- [ ] [GX-304] No-remote repos cause failures across commands
-  - Status: Unresolved | Priority: P0
-  - Category: BugFix
-  - Context: Commands fail or warn improperly when a repo has no remote.
-  - Desired: Remote operations are skipped without error; local-only operations proceed; SKIP warnings include repo path when printed.
-  - Acceptance:
-    - branch default/cd work without remotes; no remote-specific errors
-    - workflows complete; fetch/pull are skipped with SKIP note including path
-    - integration tests cover representative commands’ no-remote paths
-  - Evidence: “workflow operation apply-tasks failed … Not Found (HTTP 404)” on repos without remotes; sample run above.
+- [x] [GX-304] No-remote repos cause failures across commands
+  - Resolution: Added integration coverage proving `gix branch cd` and `gix workflow` succeed on repositories without remotes, emitting the expected skip/success messages without errors; no additional fixes were required.
 
 ## Maintenance (400–499)
 

@@ -17,12 +17,17 @@ const (
 	defaultMigrationTargetFallback = "master"
 )
 
-func buildWorkflowTasks(operations []workflowpkg.Operation) ([]workflowpkg.TaskDefinition, workflowpkg.RuntimeOptions, error) {
+func buildWorkflowTasks(nodes []*workflowpkg.OperationNode) ([]workflowpkg.TaskDefinition, workflowpkg.RuntimeOptions, error) {
 	taskDefinitions := make([]workflowpkg.TaskDefinition, 0)
 	accumulatedRuntime := workflowpkg.RuntimeOptions{}
 
-	for operationIndex := range operations {
-		operation := operations[operationIndex]
+	for nodeIndex := range nodes {
+		node := nodes[nodeIndex]
+		if node == nil {
+			continue
+		}
+
+		operation := node.Operation
 		if operation == nil {
 			continue
 		}
