@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -18,11 +19,16 @@ const (
 )
 
 func buildWorkflowTasks(nodes []*workflowpkg.OperationNode) ([]workflowpkg.TaskDefinition, workflowpkg.RuntimeOptions, error) {
+	orderedNodes, orderError := orderOperationNodes(nodes)
+	if orderError != nil {
+		return nil, workflowpkg.RuntimeOptions{}, orderError
+	}
+
 	taskDefinitions := make([]workflowpkg.TaskDefinition, 0)
 	accumulatedRuntime := workflowpkg.RuntimeOptions{}
 
-	for nodeIndex := range nodes {
-		node := nodes[nodeIndex]
+	for nodeIndex := range orderedNodes {
+		node := orderedNodes[nodeIndex]
 		if node == nil {
 			continue
 		}
@@ -143,4 +149,111 @@ func buildWorkflowTasks(nodes []*workflowpkg.OperationNode) ([]workflowpkg.TaskD
 	}
 
 	return taskDefinitions, accumulatedRuntime, nil
+}
+
+func orderOperationNodes(nodes []*workflowpkg.OperationNode) ([]*workflowpkg.OperationNode, error) {
+	if len(nodes) == 0 {
+		return nil, nil
+	}
+
+	sanitizedNames := make(map[*workflowpkg.OperationNode]string, len(nodes))
+	nameToNode := make(map[string]*workflowpkg.OperationNode, len(nodes))
+	inDegree := make(map[string]int, len(nodes))
+	adjacency := make(map[string][]string, len(nodes))
+
+	for _, node := range nodes {
+		if node == nil || node.Operation == nil {
+			continue
+		}
+
+		name := strings.TrimSpace(node.Name)
+		if len(name) == 0 {
+			name = strings.TrimSpace(node.Operation.Name())
+		}
+		if len(name) == 0 {
+			return nil, errors.New("workflow operation missing name")
+		}
+		if _, exists := nameToNode[name]; exists {
+			return nil, fmt.Errorf("workflow operation %q defined multiple times", name)
+		}
+
+		sanitizedNames[node] = name
+		nameToNode[name] = node
+		inDegree[name] = 0
+		adjacency[name] = make([]string, 0)
+	}
+
+	for _, node := range nodes {
+		if node == nil || node.Operation == nil {
+			continue
+		}
+
+		nodeName := sanitizedNames[node]
+		for _, dependency := range node.Dependencies {
+			dependencyName := strings.TrimSpace(dependency)
+			if len(dependencyName) == 0 {
+				continue
+			}
+			if _, exists := nameToNode[dependencyName]; !exists {
+				return nil, fmt.Errorf("workflow step %q depends on unknown step %q", node.Name, dependencyName)
+			}
+
+			adjacency[dependencyName] = append(adjacency[dependencyName], nodeName)
+			inDegree[nodeName]++
+		}
+	}
+
+	ready := make(map[string]struct{}, len(nameToNode))
+	for _, node := range nodes {
+		if node == nil || node.Operation == nil {
+			continue
+		}
+
+		name := sanitizedNames[node]
+		if inDegree[name] == 0 {
+			ready[name] = struct{}{}
+		}
+	}
+
+	ordered := make([]*workflowpkg.OperationNode, 0, len(nameToNode))
+	processed := 0
+
+	for len(ready) > 0 {
+		nextName := nextReadyNodeName(ready, nodes, sanitizedNames)
+		if len(nextName) == 0 {
+			break
+		}
+
+		delete(ready, nextName)
+		ordered = append(ordered, nameToNode[nextName])
+		processed++
+
+		for _, dependent := range adjacency[nextName] {
+			inDegree[dependent]--
+			if inDegree[dependent] == 0 {
+				ready[dependent] = struct{}{}
+			}
+		}
+	}
+
+	if processed != len(nameToNode) {
+		return nil, errors.New("workflow operations contain cycle")
+	}
+
+	return ordered, nil
+}
+
+func nextReadyNodeName(ready map[string]struct{}, nodes []*workflowpkg.OperationNode, names map[*workflowpkg.OperationNode]string) string {
+	for _, node := range nodes {
+		if node == nil || node.Operation == nil {
+			continue
+		}
+
+		name := names[node]
+		if _, exists := ready[name]; exists {
+			return name
+		}
+	}
+
+	return ""
 }
