@@ -323,11 +323,17 @@ func TestBranchMigrationOperationInfersIdentifierFromRemote(testInstance *testin
 		return execshell.ExecutionResult{StandardOutput: "origin\n"}, nil
 	}
 	executor.gitHandlers["remote get-url origin"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
-		return execshell.ExecutionResult{StandardOutput: "git@github.com:owner/example.git\n"}, nil
+		return execshell.ExecutionResult{StandardOutput: "git@github.com:temirov/loopaware.git\n"}, nil
 	}
 	executor.gitHandlers["show-ref --verify --quiet refs/heads/master"] = branchMissing
 	executor.gitHandlers["ls-remote --heads origin master"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
 		return execshell.ExecutionResult{StandardOutput: ""}, nil
+	}
+	executor.githubHandlers["repo view temirov/loopaware --json defaultBranchRef,nameWithOwner,description,isInOrganization"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
+		return execshell.ExecutionResult{StandardOutput: `{"defaultBranchRef":{"name":"master"},"nameWithOwner":"tyemirov/loopaware","description":"","isInOrganization":false}`}, nil
+	}
+	executor.githubHandlers["repo view tyemirov/loopaware --json defaultBranchRef,nameWithOwner,description,isInOrganization"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
+		return execshell.ExecutionResult{StandardOutput: `{"defaultBranchRef":{"name":"master"},"nameWithOwner":"tyemirov/loopaware","description":"","isInOrganization":false}`}, nil
 	}
 
 	repositoryManager, managerError := gitrepo.NewRepositoryManager(executor)
@@ -367,13 +373,18 @@ func TestBranchMigrationOperationInfersIdentifierFromRemote(testInstance *testin
 	require.NotEmpty(testInstance, executor.githubCommands)
 
 	foundDefaultBranchUpdate := false
+	foundCanonicalIdentifier := false
 	for _, commandDetails := range executor.githubCommands {
 		joined := strings.Join(commandDetails.Arguments, " ")
 		if strings.Contains(joined, "default_branch=") {
 			foundDefaultBranchUpdate = true
+			if strings.Contains(joined, "repos/tyemirov/loopaware") {
+				foundCanonicalIdentifier = true
+			}
 		}
 	}
 	require.True(testInstance, foundDefaultBranchUpdate)
+	require.True(testInstance, foundCanonicalIdentifier)
 	require.Contains(testInstance, outputBuffer.String(), "WORKFLOW-DEFAULT: /repository (main → master)")
 }
 

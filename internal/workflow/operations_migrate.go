@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/temirov/gix/internal/execshell"
+	"github.com/temirov/gix/internal/githubcli"
 	"github.com/temirov/gix/internal/gitrepo"
 	migrate "github.com/temirov/gix/internal/migrate"
 	"github.com/temirov/gix/internal/repos/shared"
@@ -132,18 +133,39 @@ func (operation *BranchMigrationOperation) Execute(executionContext context.Cont
 		}
 
 		repositoryIdentifier := ""
+		identifierResolved := false
 		if remoteAvailable {
 			identifier, identifierError := resolveRepositoryIdentifier(repositoryState)
-			if identifierError != nil || len(strings.TrimSpace(identifier)) == 0 {
+			if identifierError == nil && len(strings.TrimSpace(identifier)) > 0 {
+				repositoryIdentifier = identifier
+				identifierResolved = true
+			} else {
 				inferredIdentifier, inferred := inferRepositoryIdentifier(executionContext, environment.RepositoryManager, repositoryPath, remoteName)
 				if inferred {
 					repositoryIdentifier = inferredIdentifier
+					identifierResolved = true
 				} else {
 					remoteAvailable = false
 					remoteDefaultBranch = ""
 				}
-			} else {
-				repositoryIdentifier = identifier
+			}
+		}
+
+		repositoryMetadata := githubcli.RepositoryMetadata{}
+		metadataResolved := false
+		if remoteAvailable && identifierResolved {
+			metadata, metadataError := environment.GitHubClient.ResolveRepoMetadata(executionContext, repositoryIdentifier)
+			if metadataError != nil {
+				return fmt.Errorf(migrationMetadataResolutionErrorTemplateConstant, metadataError)
+			}
+			repositoryMetadata = metadata
+			metadataResolved = true
+			canonicalIdentifier := strings.TrimSpace(metadata.NameWithOwner)
+			if len(canonicalIdentifier) > 0 {
+				repositoryIdentifier = canonicalIdentifier
+			}
+			if len(remoteDefaultBranch) == 0 {
+				remoteDefaultBranch = strings.TrimSpace(metadata.DefaultBranch)
 			}
 		}
 
@@ -151,6 +173,8 @@ func (operation *BranchMigrationOperation) Execute(executionContext context.Cont
 		if len(sourceBranchValue) == 0 {
 			if remoteAvailable && len(remoteDefaultBranch) > 0 {
 				sourceBranchValue = remoteDefaultBranch
+			} else if remoteAvailable && metadataResolved {
+				sourceBranchValue = strings.TrimSpace(repositoryMetadata.DefaultBranch)
 			} else if len(localDefaultBranch) > 0 {
 				sourceBranchValue = localDefaultBranch
 			}
@@ -161,6 +185,8 @@ func (operation *BranchMigrationOperation) Execute(executionContext context.Cont
 			if metadataError != nil {
 				return fmt.Errorf(migrationMetadataResolutionErrorTemplateConstant, metadataError)
 			}
+			repositoryMetadata = metadata
+			metadataResolved = true
 			remoteDefaultBranch = strings.TrimSpace(metadata.DefaultBranch)
 			if len(remoteDefaultBranch) == 0 {
 				return errors.New(migrationMetadataMissingMessageConstant)
