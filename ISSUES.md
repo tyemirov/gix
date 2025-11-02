@@ -7,6 +7,20 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 - [x] [GX-100] Implement rewriting namespace. The prototype is under @tools/ns-rewrite. Use worklfow / task interface and lean on the already built ability to change file content
   - Resolution: Added namespace rewrite service, workflow action, and `gix repo namespace rewrite` command with tests and configuration defaults.
 
+- [ ] [GX-22] License injection (prototype under tools/licenser)
+  - Status: Unresolved (Not ready)
+  - Category: Feature
+  - Context: Prototype exists; not yet slated.
+  - Desired: Keep as backlog; no plan in ISSUES.md. Use PLAN.md when ready.
+  - Notes: Formerly under “Planning”.
+
+- [ ] [GX-23] Git retag (prototype under tools/git_retag)
+  - Status: Unresolved (Not ready)
+  - Category: Feature
+  - Context: Prototype exists; not yet slated.
+  - Desired: Keep as backlog; no plan in ISSUES.md. Use PLAN.md when ready.
+  - Notes: Formerly under “Planning”.
+
 ## Improvements (200–299)
 
 - [x] [GX-200] Remove `--to` flag from default command and accept the new branch as an argument, e.g. `gix b default master`
@@ -63,6 +77,37 @@ workflow operation apply-tasks failed: WORKFLOW-DEFAULT-ERROR: integration-org/n
 - We use specialized tasks as gatekeepers to ensure some branch of the DAG are not executed (e.g. there is no remote counterpart of a git repo)
 
 - [ ] [GX-208] 1. If there is a remote then there must be a metadata (we cant reliably gurantee a completion of an operation that requires changes or data from the remote when a remoet is present but inaccessable) 2. If there is no remote then all remote operations must be skipped
+
+- [ ] [GX-205]
+  - Status: Unresolved | Priority: P1
+  - Category: Improvement
+  - Context: Messages lack repository context and mix formatting.
+  - Desired: Errors use schema “CODE: owner/repo (path) message”; always include path; actionable phrasing.
+  - Dependencies: None (foundation for GX-206, GX-208).
+  - Evidence: “default branch remote metadata unavailable” without repo path.
+
+- [ ] [GX-206]
+  - Status: Unresolved | Priority: P1
+  - Category: Improvement
+  - Context: Output repeats workflow prefixes (e.g., “workflow operation apply-tasks failed: … WORKFLOW-DEFAULT-ERROR …”).
+  - Desired: Single source prints the final, structured message; no redundant prefixes; consistent levels for task vs workflow failures.
+  - Dependencies: GX-205.
+  - Evidence: Sample showing duplicated “workflow operation apply-tasks failed”.
+
+- [ ] [GX-208]
+  - Status: Unresolved | Priority: P1
+  - Category: Improvement
+  - Context: Inconsistent behavior when remote exists but metadata is unavailable, or remote is absent.
+  - Desired: If remote exists → require metadata or produce structured WARNING/ERROR with repo path; if no remote → skip all remote ops silently or with SKIP, never ERROR.
+  - Dependencies: GX-205 (format), aligns with GX-304 (bug).
+  - Evidence: Failing remote operations on no-remote repos, 404s/422s.
+
+- [ ] [GX-207]
+  - Status: Unresolved | Priority: P2 (after messaging/semantics)
+  - Category: Improvement
+  - Context: Workflows need conditional paths with proper gating and parallel layers.
+  - Desired: Topologically ordered DAG with gatekeeper tasks and concurrency control; respects skip policies; integrates with standardized error schema.
+  - Dependencies: GX-205, GX-206, GX-208 (so DAG ships with consistent messaging and skip semantics).
 
 
 ## BugFixes (300–399)
@@ -158,6 +203,13 @@ Fix the worflow associated with `b default <destination branch>` command
 7b. Use the default branch as a source for creating a destination branch
 7c. Make the newly created branch a default branch both locally and remote
 
+- [ ] [GX-304] No-remote repos cause failures across commands
+  - Status: Unresolved | Priority: P0 (first)
+  - Category: BugFix
+  - Context: Commands fail or warn improperly when a repo has no remote.
+  - Desired: Remote operations are skipped without error; workflows complete; tests cover no-remote paths for representative commands.
+  - Evidence: “workflow operation apply-tasks failed … Not Found (HTTP 404)” on repos without remotes.
+
 ## Maintenance (400–499)
 
 - [x] [GX-400] Update the documentation @README.md and focus on the usefullness to the user. Move the technical details to @ARCHITECTURE.md
@@ -184,6 +236,3 @@ Fix the worflow associated with `b default <destination branch>` command
 
 ## Planning 
 do not work on the issues below, not ready
-
-    - [ ] [GX-22] Implement adding licenses to repos. The prototype is under tools/licenser
-    - [ ] [GX-23] Implement git retag, which allows to alter git history and straigtens up the git tags based on the timeline. The prototype is under tools/git_retag
