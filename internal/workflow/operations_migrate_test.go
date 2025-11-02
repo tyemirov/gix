@@ -59,6 +59,10 @@ func (executor *scriptedExecutor) ExecuteGitHubCLI(_ context.Context, details ex
 		switch details.Arguments[0] {
 		case "pr":
 			return execshell.ExecutionResult{StandardOutput: "[]\n"}, nil
+		case "repo":
+			if len(details.Arguments) >= 3 && details.Arguments[1] == "view" {
+				return execshell.ExecutionResult{StandardOutput: `{"defaultBranchRef":{"name":"main"},"nameWithOwner":"owner/example","description":"","isInOrganization":false}`}, nil
+			}
 		case "api":
 			joined := strings.Join(details.Arguments, " ")
 			if strings.Contains(joined, "/pages") && strings.Contains(joined, "GET") {
