@@ -49,13 +49,8 @@ If a repository doesnt have a remote, there is nothing to fetch, but we can stil
 - [x] [GX-206] Remove redundant prefixes; single-source formatting
   - Resolution: Updated the workflow executor to wrap failures in a structured error instead of `workflow operation … failed`, trimming newline duplicates and reusing the GX-205 formatter; regression coverage now asserts that only the standardized `CODE: owner/repo (path) message` text is surfaced.
 
-- [ ] [GX-208] Remote/metadata semantics and skip policy
-  - Status: Unresolved | Priority: P1
-  - Category: Improvement
-  - Context: Inconsistent behavior when remote exists but metadata is unavailable, or remote is absent.
-  - Desired: If remote exists → require metadata or emit structured WARNING/ERROR with repo path; if no remote → skip remote ops with SKIP (not ERROR).
-  - Acceptance: Representative commands show correct skip vs error behavior in tests (no-remote and remote-without-metadata cases).
-  - Dependencies: GX-205 (format), aligns with GX-304 (bug).
+- [x] [GX-208] Remote/metadata semantics and skip policy
+  - Resolution: Remote workflow operations now emit standardized `remote_missing` SKIP messages when the origin remote is absent and `origin_owner_missing` warnings when metadata cannot be resolved, exercised via new workflow unit tests that cover both scenarios for canonical remote updates.
 
 - [ ] [GX-207] DAG-based workflow execution
   - Status: Unresolved | Priority: P2
