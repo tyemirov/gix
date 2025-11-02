@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/temirov/gix/internal/repos/identity"
 	"github.com/temirov/gix/internal/repos/remotes"
 	"github.com/temirov/gix/internal/repos/shared"
 )
@@ -43,6 +44,31 @@ func (operation *CanonicalRemoteOperation) Execute(executionContext context.Cont
 		canonicalOwnerRepository, canonicalOwnerError := shared.ParseOwnerRepositoryOptional(repository.Inspection.CanonicalOwnerRepo)
 		if canonicalOwnerError != nil {
 			return fmt.Errorf("canonical remote update: %w", canonicalOwnerError)
+		}
+
+		remoteResolution, remoteResolutionError := identity.ResolveRemoteIdentity(
+			executionContext,
+			identity.RemoteResolutionDependencies{
+				RepositoryManager: environment.RepositoryManager,
+				GitExecutor:       environment.GitExecutor,
+				MetadataResolver:  environment.GitHubClient,
+			},
+			identity.RemoteResolutionOptions{
+				RepositoryPath:            repository.Path,
+				RemoteName:                shared.OriginRemoteNameConstant,
+				ReportedOwnerRepository:   repository.Inspection.FinalOwnerRepo,
+				ReportedDefaultBranchName: repository.Inspection.RemoteDefaultBranch,
+			},
+		)
+		if remoteResolutionError != nil {
+			return fmt.Errorf("canonical remote update: %w", remoteResolutionError)
+		}
+
+		if canonicalOwnerRepository == nil && remoteResolution.OwnerRepository != nil {
+			canonicalOwnerRepository = remoteResolution.OwnerRepository
+		}
+		if originOwnerRepository == nil && remoteResolution.OwnerRepository != nil {
+			originOwnerRepository = remoteResolution.OwnerRepository
 		}
 		if originOwnerRepository == nil && canonicalOwnerRepository == nil {
 			continue

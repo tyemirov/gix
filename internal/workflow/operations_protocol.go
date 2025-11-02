@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/temirov/gix/internal/repos/identity"
 	conversion "github.com/temirov/gix/internal/repos/protocol"
 	"github.com/temirov/gix/internal/repos/shared"
 )
@@ -65,6 +66,31 @@ func (operation *ProtocolConversionOperation) Execute(executionContext context.C
 		canonicalOwnerRepository, canonicalOwnerError := shared.ParseOwnerRepositoryOptional(repository.Inspection.CanonicalOwnerRepo)
 		if canonicalOwnerError != nil {
 			return fmt.Errorf("protocol conversion: %w", canonicalOwnerError)
+		}
+
+		remoteResolution, remoteResolutionError := identity.ResolveRemoteIdentity(
+			executionContext,
+			identity.RemoteResolutionDependencies{
+				RepositoryManager: environment.RepositoryManager,
+				GitExecutor:       environment.GitExecutor,
+				MetadataResolver:  environment.GitHubClient,
+			},
+			identity.RemoteResolutionOptions{
+				RepositoryPath:            repository.Path,
+				RemoteName:                shared.OriginRemoteNameConstant,
+				ReportedOwnerRepository:   repository.Inspection.FinalOwnerRepo,
+				ReportedDefaultBranchName: repository.Inspection.RemoteDefaultBranch,
+			},
+		)
+		if remoteResolutionError != nil {
+			return fmt.Errorf("protocol conversion: %w", remoteResolutionError)
+		}
+
+		if canonicalOwnerRepository == nil && remoteResolution.OwnerRepository != nil {
+			canonicalOwnerRepository = remoteResolution.OwnerRepository
+		}
+		if originOwnerRepository == nil && remoteResolution.OwnerRepository != nil {
+			originOwnerRepository = remoteResolution.OwnerRepository
 		}
 
 		options := conversion.Options{

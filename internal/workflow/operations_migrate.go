@@ -4,13 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/url"
 	"strings"
 
 	"github.com/temirov/gix/internal/execshell"
-	"github.com/temirov/gix/internal/githubcli"
 	"github.com/temirov/gix/internal/gitrepo"
 	migrate "github.com/temirov/gix/internal/migrate"
+	"github.com/temirov/gix/internal/repos/identity"
 	"github.com/temirov/gix/internal/repos/shared"
 )
 
@@ -122,76 +121,52 @@ func (operation *BranchMigrationOperation) Execute(executionContext context.Cont
 			return fmt.Errorf(localDefaultResolutionErrorTemplateConstant, localDefaultError)
 		}
 
-		remoteAvailable, remoteResolutionError := remoteExists(executionContext, environment.GitExecutor, repositoryPath, remoteName)
+		remoteResolution, remoteResolutionError := identity.ResolveRemoteIdentity(
+			executionContext,
+			identity.RemoteResolutionDependencies{
+				RepositoryManager: environment.RepositoryManager,
+				GitExecutor:       environment.GitExecutor,
+				MetadataResolver:  environment.GitHubClient,
+			},
+			identity.RemoteResolutionOptions{
+				RepositoryPath:            repositoryPath,
+				RemoteName:                remoteName,
+				ReportedOwnerRepository:   repositoryState.Inspection.FinalOwnerRepo,
+				ReportedDefaultBranchName: repositoryState.Inspection.RemoteDefaultBranch,
+			},
+		)
 		if remoteResolutionError != nil {
 			return fmt.Errorf(remotePresenceResolutionErrorTemplateConstant, remoteResolutionError)
 		}
 
-		remoteDefaultBranch := ""
-		if remoteAvailable {
-			remoteDefaultBranch = strings.TrimSpace(repositoryState.Inspection.RemoteDefaultBranch)
-		}
-
+		remoteAvailable := remoteResolution.RemoteDetected && remoteResolution.OwnerRepository != nil
 		repositoryIdentifier := ""
-		identifierResolved := false
-		if remoteAvailable {
-			identifier, identifierError := resolveRepositoryIdentifier(repositoryState)
-			if identifierError == nil && len(strings.TrimSpace(identifier)) > 0 {
-				repositoryIdentifier = identifier
-				identifierResolved = true
-			} else {
-				inferredIdentifier, inferred := inferRepositoryIdentifier(executionContext, environment.RepositoryManager, repositoryPath, remoteName)
-				if inferred {
-					repositoryIdentifier = inferredIdentifier
-					identifierResolved = true
-				} else {
-					remoteAvailable = false
-					remoteDefaultBranch = ""
-				}
-			}
+		if remoteResolution.OwnerRepository != nil {
+			repositoryIdentifier = remoteResolution.OwnerRepository.String()
 		}
 
-		repositoryMetadata := githubcli.RepositoryMetadata{}
-		metadataResolved := false
-		if remoteAvailable && identifierResolved {
-			metadata, metadataError := environment.GitHubClient.ResolveRepoMetadata(executionContext, repositoryIdentifier)
-			if metadataError != nil {
-				return fmt.Errorf(migrationMetadataResolutionErrorTemplateConstant, metadataError)
-			}
-			repositoryMetadata = metadata
-			metadataResolved = true
-			canonicalIdentifier := strings.TrimSpace(metadata.NameWithOwner)
-			if len(canonicalIdentifier) > 0 {
-				repositoryIdentifier = canonicalIdentifier
-			}
-			if len(remoteDefaultBranch) == 0 {
-				remoteDefaultBranch = strings.TrimSpace(metadata.DefaultBranch)
-			}
+		remoteDefaultBranch := ""
+		if remoteResolution.DefaultBranch != nil {
+			remoteDefaultBranch = remoteResolution.DefaultBranch.String()
+		}
+		if !remoteAvailable {
+			remoteDefaultBranch = ""
 		}
 
 		sourceBranchValue := strings.TrimSpace(target.SourceBranch)
 		if len(sourceBranchValue) == 0 {
 			if remoteAvailable && len(remoteDefaultBranch) > 0 {
 				sourceBranchValue = remoteDefaultBranch
-			} else if remoteAvailable && metadataResolved {
-				sourceBranchValue = strings.TrimSpace(repositoryMetadata.DefaultBranch)
 			} else if len(localDefaultBranch) > 0 {
 				sourceBranchValue = localDefaultBranch
 			}
 		}
 
 		if remoteAvailable && len(sourceBranchValue) == 0 {
-			metadata, metadataError := environment.GitHubClient.ResolveRepoMetadata(executionContext, repositoryIdentifier)
-			if metadataError != nil {
-				return fmt.Errorf(migrationMetadataResolutionErrorTemplateConstant, metadataError)
+			if remoteResolution.DefaultBranch == nil {
+				return errors.New(sourceBranchMissingMessageConstant)
 			}
-			repositoryMetadata = metadata
-			metadataResolved = true
-			remoteDefaultBranch = strings.TrimSpace(metadata.DefaultBranch)
-			if len(remoteDefaultBranch) == 0 {
-				return errors.New(migrationMetadataMissingMessageConstant)
-			}
-			sourceBranchValue = remoteDefaultBranch
+			sourceBranchValue = remoteResolution.DefaultBranch.String()
 		}
 
 		if len(sourceBranchValue) == 0 {
@@ -305,25 +280,6 @@ func resolveLocalDefaultBranch(executionContext context.Context, manager *gitrep
 	return strings.TrimSpace(branchName), nil
 }
 
-func remoteExists(executionContext context.Context, executor shared.GitExecutor, repositoryPath string, remoteName string) (bool, error) {
-	if executor == nil {
-		return false, errors.New(gitExecutorMissingMessageConstant)
-	}
-	result, executionError := executor.ExecuteGit(executionContext, execshell.CommandDetails{
-		Arguments:        []string{gitRemoteSubcommandConstant},
-		WorkingDirectory: repositoryPath,
-	})
-	if executionError != nil {
-		return false, executionError
-	}
-	for _, candidate := range strings.Split(result.StandardOutput, "\n") {
-		if strings.TrimSpace(candidate) == remoteName {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
 func ensureLocalBranch(executionContext context.Context, manager *gitrepo.RepositoryManager, executor shared.GitExecutor, repositoryPath string, branchName string, sourceBranch string) error {
 	exists, existsError := localBranchExists(executionContext, executor, repositoryPath, branchName)
 	if existsError != nil {
@@ -389,75 +345,4 @@ func remoteBranchExists(executionContext context.Context, executor shared.GitExe
 		return false, executionError
 	}
 	return strings.TrimSpace(result.StandardOutput) != "", nil
-}
-
-func inferRepositoryIdentifier(executionContext context.Context, manager *gitrepo.RepositoryManager, repositoryPath string, remoteName string) (string, bool) {
-	if manager == nil {
-		return "", false
-	}
-	remoteURL, remoteURLError := manager.GetRemoteURL(executionContext, repositoryPath, remoteName)
-	if remoteURLError != nil {
-		return "", false
-	}
-	identifier, ok := ownerRepoFromRemoteURL(remoteURL)
-	if !ok {
-		return "", false
-	}
-	return identifier, true
-}
-
-func ownerRepoFromRemoteURL(raw string) (string, bool) {
-	trimmed := strings.TrimSpace(raw)
-	if len(trimmed) == 0 {
-		return "", false
-	}
-	trimmed = strings.TrimSuffix(trimmed, ".git")
-	if strings.Contains(trimmed, "://") {
-		parsed, parseError := url.Parse(trimmed)
-		if parseError != nil {
-			return "", false
-		}
-		path := strings.TrimPrefix(parsed.Path, "/")
-		return ownerRepoFromPath(path)
-	}
-	colonIndex := strings.Index(trimmed, ":")
-	if colonIndex >= 0 {
-		trimmed = trimmed[colonIndex+1:]
-	}
-	trimmed = strings.TrimPrefix(trimmed, "/")
-	return ownerRepoFromPath(trimmed)
-}
-
-func ownerRepoFromPath(path string) (string, bool) {
-	segments := strings.Split(path, "/")
-	if len(segments) < 2 {
-		return "", false
-	}
-	owner := strings.TrimSpace(segments[len(segments)-2])
-	repository := strings.TrimSpace(segments[len(segments)-1])
-	if len(owner) == 0 || len(repository) == 0 {
-		return "", false
-	}
-	return fmt.Sprintf("%s/%s", owner, repository), true
-}
-
-func resolveRepositoryIdentifier(repositoryState *RepositoryState) (string, error) {
-	if repositoryState == nil {
-		return "", errors.New(migrationIdentifierMissingMessageConstant)
-	}
-
-	identifierCandidates := []string{
-		repositoryState.Inspection.CanonicalOwnerRepo,
-		repositoryState.Inspection.FinalOwnerRepo,
-		repositoryState.Inspection.OriginOwnerRepo,
-	}
-
-	for _, candidate := range identifierCandidates {
-		trimmed := strings.TrimSpace(candidate)
-		if len(trimmed) > 0 {
-			return trimmed, nil
-		}
-	}
-
-	return "", errors.New(migrationIdentifierMissingMessageConstant)
 }
