@@ -393,7 +393,46 @@ func (service *Service) goModContainsPrefix(goModPath string, oldPrefix ModulePr
 	if readErr != nil {
 		return false, readErr
 	}
-	return bytes.Contains(data, []byte(oldPrefix.String()+"/")), nil
+
+	file, parseErr := modfile.Parse(goModPath, data, nil)
+	if parseErr != nil {
+		return false, parseErr
+	}
+
+	replacer := namespaceReplacer{old: oldPrefix.String(), new: oldPrefix.String()}
+
+	if file.Module != nil && replacer.hasPrefix(file.Module.Mod.Path) {
+		return true, nil
+	}
+
+	for _, require := range file.Require {
+		if require == nil {
+			continue
+		}
+		if replacer.hasPrefix(require.Mod.Path) {
+			return true, nil
+		}
+	}
+
+	for _, replace := range file.Replace {
+		if replace == nil {
+			continue
+		}
+		if replacer.hasPrefix(replace.Old.Path) || replacer.hasPrefix(replace.New.Path) {
+			return true, nil
+		}
+	}
+
+	for _, exclude := range file.Exclude {
+		if exclude == nil {
+			continue
+		}
+		if replacer.hasPrefix(exclude.Mod.Path) {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 func (service *Service) goFileImportsPrefix(fileSet *token.FileSet, absolutePath string, prefix ModulePrefix) (bool, error) {
@@ -589,6 +628,16 @@ func (replacer namespaceReplacer) replace(path string) (string, bool) {
 		return replacer.new + path[len(replacer.old):], true
 	}
 	return path, false
+}
+
+func (replacer namespaceReplacer) hasPrefix(path string) bool {
+	if path == "" {
+		return false
+	}
+	if path == replacer.old {
+		return true
+	}
+	return strings.HasPrefix(path, replacer.old+"/")
 }
 
 func (service *Service) rewriteGoFile(absolutePath string, oldPrefix ModulePrefix, newPrefix ModulePrefix) error {
