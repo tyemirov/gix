@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/temirov/gix/internal/execshell"
@@ -133,10 +134,17 @@ func (operation *BranchMigrationOperation) Execute(executionContext context.Cont
 		repositoryIdentifier := ""
 		if remoteAvailable {
 			identifier, identifierError := resolveRepositoryIdentifier(repositoryState)
-			if identifierError != nil {
-				return identifierError
+			if identifierError != nil || len(strings.TrimSpace(identifier)) == 0 {
+				inferredIdentifier, inferred := inferRepositoryIdentifier(executionContext, environment.RepositoryManager, repositoryPath, remoteName)
+				if inferred {
+					repositoryIdentifier = inferredIdentifier
+				} else {
+					remoteAvailable = false
+					remoteDefaultBranch = ""
+				}
+			} else {
+				repositoryIdentifier = identifier
 			}
-			repositoryIdentifier = identifier
 		}
 
 		sourceBranchValue := strings.TrimSpace(target.SourceBranch)
@@ -193,8 +201,8 @@ func (operation *BranchMigrationOperation) Execute(executionContext context.Cont
 			WorkflowsDirectory:   defaultMigrationWorkflowsDirectoryConstant,
 			SourceBranch:         sourceBranch,
 			TargetBranch:         targetBranch,
-			PushUpdates:          target.PushToRemote,
-			DeleteSourceBranch:   target.DeleteSourceBranch,
+			PushUpdates:          target.PushToRemote && remoteAvailable,
+			DeleteSourceBranch:   target.DeleteSourceBranch && remoteAvailable,
 		}
 
 		if environment.DryRun {
@@ -355,6 +363,56 @@ func remoteBranchExists(executionContext context.Context, executor shared.GitExe
 		return false, executionError
 	}
 	return strings.TrimSpace(result.StandardOutput) != "", nil
+}
+
+func inferRepositoryIdentifier(executionContext context.Context, manager *gitrepo.RepositoryManager, repositoryPath string, remoteName string) (string, bool) {
+	if manager == nil {
+		return "", false
+	}
+	remoteURL, remoteURLError := manager.GetRemoteURL(executionContext, repositoryPath, remoteName)
+	if remoteURLError != nil {
+		return "", false
+	}
+	identifier, ok := ownerRepoFromRemoteURL(remoteURL)
+	if !ok {
+		return "", false
+	}
+	return identifier, true
+}
+
+func ownerRepoFromRemoteURL(raw string) (string, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if len(trimmed) == 0 {
+		return "", false
+	}
+	trimmed = strings.TrimSuffix(trimmed, ".git")
+	if strings.Contains(trimmed, "://") {
+		parsed, parseError := url.Parse(trimmed)
+		if parseError != nil {
+			return "", false
+		}
+		path := strings.TrimPrefix(parsed.Path, "/")
+		return ownerRepoFromPath(path)
+	}
+	colonIndex := strings.Index(trimmed, ":")
+	if colonIndex >= 0 {
+		trimmed = trimmed[colonIndex+1:]
+	}
+	trimmed = strings.TrimPrefix(trimmed, "/")
+	return ownerRepoFromPath(trimmed)
+}
+
+func ownerRepoFromPath(path string) (string, bool) {
+	segments := strings.Split(path, "/")
+	if len(segments) < 2 {
+		return "", false
+	}
+	owner := strings.TrimSpace(segments[len(segments)-2])
+	repository := strings.TrimSpace(segments[len(segments)-1])
+	if len(owner) == 0 || len(repository) == 0 {
+		return "", false
+	}
+	return fmt.Sprintf("%s/%s", owner, repository), true
 }
 
 func resolveRepositoryIdentifier(repositoryState *RepositoryState) (string, error) {
