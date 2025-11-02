@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"go.uber.org/zap"
 
@@ -15,15 +16,15 @@ import (
 	"github.com/temirov/gix/internal/execshell"
 	"github.com/temirov/gix/internal/githubcli"
 	"github.com/temirov/gix/internal/gitrepo"
+	repoerrors "github.com/temirov/gix/internal/repos/errors"
 	"github.com/temirov/gix/internal/repos/shared"
 	pathutils "github.com/temirov/gix/internal/utils/path"
 )
 
 const (
-	workflowExecutionErrorTemplateConstant = "workflow operation %s failed: %w"
-	workflowExecutorDependenciesMessage    = "workflow executor requires repository discovery, git, and GitHub dependencies"
-	workflowExecutorMissingRootsMessage    = "workflow executor requires at least one repository root"
-	workflowRepositoryLoadErrorTemplate    = "failed to inspect repositories: %w"
+	workflowExecutorDependenciesMessage = "workflow executor requires repository discovery, git, and GitHub dependencies"
+	workflowExecutorMissingRootsMessage = "workflow executor requires at least one repository root"
+	workflowRepositoryLoadErrorTemplate = "failed to inspect repositories: %w"
 )
 
 // Dependencies configures shared collaborators for workflow execution.
@@ -52,13 +53,60 @@ type RuntimeOptions struct {
 
 // Executor coordinates workflow operation execution.
 type Executor struct {
-	operations   []Operation
+	nodes        []*OperationNode
 	dependencies Dependencies
 }
 
-// NewExecutor constructs an Executor instance.
+type operationFailureError struct {
+	message string
+	cause   error
+}
+
+func (failure operationFailureError) Error() string {
+	return failure.message
+}
+
+func (failure operationFailureError) Unwrap() error {
+	return failure.cause
+}
+
+// NewExecutor constructs an Executor instance from the provided operations, preserving sequential execution semantics.
 func NewExecutor(operations []Operation, dependencies Dependencies) *Executor {
-	return &Executor{operations: append([]Operation{}, operations...), dependencies: dependencies}
+	nodes := make([]*OperationNode, 0, len(operations))
+	var previousName string
+
+	for operationIndex := range operations {
+		operation := operations[operationIndex]
+		if operation == nil {
+			continue
+		}
+
+		baseName := strings.TrimSpace(operation.Name())
+		if len(baseName) == 0 {
+			baseName = "step"
+		}
+		stepName := fmt.Sprintf("%s-%d", baseName, operationIndex+1)
+
+		node := &OperationNode{
+			Name:      stepName,
+			Operation: operation,
+		}
+		if len(previousName) > 0 {
+			node.Dependencies = []string{previousName}
+		}
+
+		nodes = append(nodes, node)
+		previousName = stepName
+	}
+
+	return NewExecutorFromNodes(nodes, dependencies)
+}
+
+// NewExecutorFromNodes constructs an Executor using pre-built operation nodes.
+func NewExecutorFromNodes(nodes []*OperationNode, dependencies Dependencies) *Executor {
+	cloned := make([]*OperationNode, len(nodes))
+	copy(cloned, nodes)
+	return &Executor{nodes: cloned, dependencies: dependencies}
 }
 
 // Execute orchestrates workflow operations across discovered repositories.
@@ -156,17 +204,56 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 	}
 	environment.State = state
 
-	for operationIndex := range executor.operations {
-		operation := executor.operations[operationIndex]
-		if operation == nil {
+	stages, planError := planOperationStages(executor.nodes)
+	if planError != nil {
+		return planError
+	}
+
+	for stageIndex := range stages {
+		stage := stages[stageIndex]
+		if len(stage.Operations) == 0 {
 			continue
 		}
-		if executeError := operation.Execute(executionContext, environment, state); executeError != nil {
-			return fmt.Errorf(workflowExecutionErrorTemplateConstant, operation.Name(), executeError)
+
+		stageContext, cancelStage := context.WithCancel(executionContext)
+		var stageError error
+		var failedOperation Operation
+		var once sync.Once
+		var waitGroup sync.WaitGroup
+
+		for _, node := range stage.Operations {
+			if node == nil || node.Operation == nil {
+				continue
+			}
+
+			waitGroup.Add(1)
+			go func(operation Operation) {
+				defer waitGroup.Done()
+				if executeError := operation.Execute(stageContext, environment, state); executeError != nil {
+					once.Do(func() {
+						stageError = executeError
+						failedOperation = operation
+						cancelStage()
+					})
+				}
+			}(node.Operation)
+		}
+
+		waitGroup.Wait()
+		cancelStage()
+
+		if stageError != nil {
+			operationName := ""
+			if failedOperation != nil {
+				operationName = failedOperation.Name()
+			}
+			failureMessage := formatOperationFailure(environment, stageError, operationName)
+			return operationFailureError{message: failureMessage, cause: stageError}
 		}
 	}
 
 	return nil
+
 }
 
 func repositoryPathDepth(path string) int {
@@ -220,4 +307,31 @@ func captureInitialCleanStatuses(executionContext context.Context, manager *gitr
 		}
 		repository.InitialCleanWorktree = clean
 	}
+}
+
+func formatOperationFailure(environment *Environment, err error, operationName string) string {
+	var operationError repoerrors.OperationError
+	if errors.As(err, &operationError) {
+		formatted := formatRepositoryOperationError(environment, operationError)
+		return strings.TrimSuffix(formatted, "\n")
+	}
+
+	message := strings.TrimSpace(err.Error())
+	if len(message) == 0 {
+		if len(operationName) == 0 {
+			return "operation failed"
+		}
+		return fmt.Sprintf("%s failed", operationName)
+	}
+	if len(operationName) == 0 {
+		return message
+	}
+
+	lowerMessage := strings.ToLower(message)
+	lowerOperation := strings.ToLower(operationName)
+	if strings.HasPrefix(lowerMessage, lowerOperation) {
+		return message
+	}
+
+	return fmt.Sprintf("%s: %s", operationName, message)
 }

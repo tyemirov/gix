@@ -15,18 +15,69 @@ const (
 	branchMigrationTargetsRequiredMessageConstant = "default-branch step requires at least one target"
 )
 
-// BuildOperations converts the declarative configuration into executable operations.
-func BuildOperations(configuration Configuration) ([]Operation, error) {
-	operations := make([]Operation, 0, len(configuration.Steps))
+// BuildOperations converts the declarative configuration into executable operations with dependency metadata.
+func BuildOperations(configuration Configuration) ([]*OperationNode, error) {
+	nodes := make([]*OperationNode, 0, len(configuration.Steps))
+	stepNames := make(map[string]struct{}, len(configuration.Steps))
+	stepOrder := make([]string, 0, len(configuration.Steps))
+
 	for stepIndex := range configuration.Steps {
 		step := configuration.Steps[stepIndex]
 		operation, buildError := buildOperationFromStep(step)
 		if buildError != nil {
 			return nil, buildError
 		}
-		operations = append(operations, operation)
+
+		stepName := strings.TrimSpace(step.Name)
+		if len(stepName) == 0 {
+			stepName = fmt.Sprintf("%s-%d", step.Operation, stepIndex+1)
+		}
+		if _, exists := stepNames[stepName]; exists {
+			return nil, fmt.Errorf("workflow step name %q defined multiple times", stepName)
+		}
+
+		dependencies := make([]string, 0)
+		if step.After != nil {
+			seenDependencies := make(map[string]struct{})
+			for _, dependencyName := range step.After {
+				trimmedDependency := strings.TrimSpace(dependencyName)
+				if len(trimmedDependency) == 0 {
+					continue
+				}
+				if trimmedDependency == stepName {
+					return nil, fmt.Errorf("workflow step %q cannot depend on itself", stepName)
+				}
+				if _, alreadyIncluded := seenDependencies[trimmedDependency]; alreadyIncluded {
+					continue
+				}
+				seenDependencies[trimmedDependency] = struct{}{}
+				dependencies = append(dependencies, trimmedDependency)
+			}
+		} else if len(stepOrder) > 0 {
+			dependencies = append(dependencies, stepOrder[len(stepOrder)-1])
+		}
+
+		node := &OperationNode{
+			Name:         stepName,
+			Operation:    operation,
+			Dependencies: dependencies,
+		}
+
+		nodes = append(nodes, node)
+		stepNames[stepName] = struct{}{}
+		stepOrder = append(stepOrder, stepName)
 	}
-	return operations, nil
+
+	for nodeIndex := range nodes {
+		node := nodes[nodeIndex]
+		for _, dependencyName := range node.Dependencies {
+			if _, exists := stepNames[dependencyName]; !exists {
+				return nil, fmt.Errorf("workflow step %q depends on unknown step %q", node.Name, dependencyName)
+			}
+		}
+	}
+
+	return nodes, nil
 }
 
 func buildOperationFromStep(step StepConfiguration) (Operation, error) {
