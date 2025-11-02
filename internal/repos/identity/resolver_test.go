@@ -111,3 +111,16 @@ func TestResolveRemoteIdentityHandlesMissingRemote(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, result.RemoteDetected)
 }
+
+func TestResolveRemoteIdentityReturnsErrorWhenMetadataUnavailable(t *testing.T) {
+	manager := &stubRepositoryManager{remoteURL: "git@github.com:owner/example.git"}
+	resolver := stubMetadataResolver{err: errors.New("gh: Not Found (HTTP 404)")}
+
+	_, err := ResolveRemoteIdentity(context.Background(), RemoteResolutionDependencies{
+		RepositoryManager: manager,
+		MetadataResolver:  resolver,
+	}, RemoteResolutionOptions{RepositoryPath: "/repo", RemoteName: shared.OriginRemoteNameConstant})
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrRemoteMetadataUnavailable)
+}

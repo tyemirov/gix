@@ -181,12 +181,12 @@ func TestBranchMigrationOperationReturnsActionableDefaultBranchError(testInstanc
 	require.ErrorAs(testInstance, executionError, &updateError)
 
 	errorMessage := executionError.Error()
+	require.Contains(testInstance, errorMessage, "WORKFLOW-DEFAULT-ERROR:")
 	require.Contains(testInstance, errorMessage, repositoryPath)
 	require.Contains(testInstance, errorMessage, "owner/example")
 	require.Contains(testInstance, errorMessage, "source=main")
 	require.Contains(testInstance, errorMessage, "target=master")
 	require.Contains(testInstance, errorMessage, "GraphQL: branch not found")
-	require.NotContains(testInstance, errorMessage, "default branch update failed")
 }
 
 func TestBranchMigrationOperationCreatesLocalBranchWithoutRemote(testInstance *testing.T) {
@@ -465,7 +465,10 @@ func TestBranchMigrationOperationSkipsRemotePushWhenUnavailable(testInstance *te
 
 	require.NoError(testInstance, executionError)
 	outputText := outputBuffer.String()
-	require.Contains(testInstance, outputText, "WORKFLOW-DEFAULT: /repository (main → master)")
+	require.Contains(testInstance, outputText, "WORKFLOW-DEFAULT-WARNING:")
+	require.Contains(testInstance, outputText, "remote unavailable; skipping remote promotion")
+	require.Contains(testInstance, outputText, "WORKFLOW-DEFAULT:")
+	require.Contains(testInstance, outputText, "main → master")
 
 	foundPushAttempt := false
 	for _, commandDetails := range executor.gitCommands {
@@ -529,7 +532,9 @@ func TestBranchMigrationOperationSkipsWhenDefaultBranchUpdateNotFound(testInstan
 	executionError := operation.Execute(context.Background(), environment, state)
 
 	require.Error(testInstance, executionError)
-	require.Contains(testInstance, executionError.Error(), "remote metadata unavailable")
+	errorMessage := executionError.Error()
+	require.Contains(testInstance, errorMessage, "WORKFLOW-DEFAULT-ERROR:")
+	require.Contains(testInstance, errorMessage, "remote metadata unavailable")
 }
 
 func TestBranchMigrationOperationFallsBackWhenIdentifierMissing(testInstance *testing.T) {

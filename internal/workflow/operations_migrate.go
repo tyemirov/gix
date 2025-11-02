@@ -26,9 +26,6 @@ const (
 	migrationMultipleTargetsUnsupportedMessageConstant = "default branch update requires exactly one target configuration"
 	migrationMetadataResolutionErrorTemplateConstant   = "default branch metadata resolution failed: %w"
 	migrationMetadataMissingMessageConstant            = "repository metadata missing default branch for update"
-	migrationSkipMessageTemplateConstant               = "WORKFLOW-DEFAULT-SKIP: %s already defaults to %s\n"
-	migrationRemoteUnavailableSkipTemplateConstant     = "WORKFLOW-DEFAULT-SKIP: %s remote unavailable; skipping remote promotion\n"
-	migrationRemoteMetadataUnavailableTemplateConstant = "default branch remote metadata unavailable: %w"
 	localBranchVerificationErrorTemplateConstant       = "default branch local verification failed: %w"
 	localBranchCreationErrorTemplateConstant           = "default branch local creation failed: %w"
 	localCheckoutErrorTemplateConstant                 = "default branch checkout failed: %w"
@@ -48,6 +45,12 @@ const (
 	gitHeadsFlagConstant                               = "--heads"
 	gitTerminalPromptEnvironmentNameConstant           = "GIT_TERMINAL_PROMPT"
 	gitTerminalPromptDisableValueConstant              = "0"
+)
+
+const (
+	defaultInfoPrefix    = "WORKFLOW-DEFAULT"
+	defaultWarningPrefix = "WORKFLOW-DEFAULT-WARNING"
+	defaultErrorPrefix   = "WORKFLOW-DEFAULT-ERROR"
 )
 
 // BranchMigrationTarget describes branch migration behavior for discovered repositories.
@@ -112,6 +115,7 @@ func (operation *BranchMigrationOperation) Execute(executionContext context.Cont
 		if len(repositoryPath) == 0 {
 			continue
 		}
+		reportedOwnerRepo := strings.TrimSpace(repositoryState.Inspection.FinalOwnerRepo)
 
 		remoteName := strings.TrimSpace(target.RemoteName)
 		if len(remoteName) == 0 {
@@ -120,29 +124,29 @@ func (operation *BranchMigrationOperation) Execute(executionContext context.Cont
 
 		localDefaultBranch, localDefaultError := resolveLocalDefaultBranch(executionContext, environment.RepositoryManager, repositoryState)
 		if localDefaultError != nil {
-			return fmt.Errorf(localDefaultResolutionErrorTemplateConstant, localDefaultError)
+			return newDefaultError(reportedOwnerRepo, repositoryPath, "unable to determine local default branch", localDefaultError)
 		}
 
-		remoteResolution, remoteResolutionError := identity.ResolveRemoteIdentity(
-			executionContext,
-			identity.RemoteResolutionDependencies{
-				RepositoryManager: environment.RepositoryManager,
-				GitExecutor:       environment.GitExecutor,
-				MetadataResolver:  environment.GitHubClient,
-			},
-			identity.RemoteResolutionOptions{
-				RepositoryPath:            repositoryPath,
-				RemoteName:                remoteName,
-				ReportedOwnerRepository:   repositoryState.Inspection.FinalOwnerRepo,
-				ReportedDefaultBranchName: repositoryState.Inspection.RemoteDefaultBranch,
-			},
-		)
-		if remoteResolutionError != nil {
-			if errors.Is(remoteResolutionError, identity.ErrRemoteMetadataUnavailable) {
-				return fmt.Errorf(migrationRemoteMetadataUnavailableTemplateConstant, remoteResolutionError)
-			}
-			return fmt.Errorf(remotePresenceResolutionErrorTemplateConstant, remoteResolutionError)
+	remoteResolution, remoteResolutionError := identity.ResolveRemoteIdentity(
+		executionContext,
+		identity.RemoteResolutionDependencies{
+			RepositoryManager: environment.RepositoryManager,
+			GitExecutor:       environment.GitExecutor,
+			MetadataResolver:  environment.GitHubClient,
+		},
+		identity.RemoteResolutionOptions{
+			RepositoryPath:            repositoryPath,
+			RemoteName:                remoteName,
+			ReportedOwnerRepository:   repositoryState.Inspection.FinalOwnerRepo,
+			ReportedDefaultBranchName: repositoryState.Inspection.RemoteDefaultBranch,
+		},
+	)
+	if remoteResolutionError != nil {
+		if errors.Is(remoteResolutionError, identity.ErrRemoteMetadataUnavailable) {
+			return newDefaultError(reportedOwnerRepo, repositoryPath, "remote metadata unavailable", remoteResolutionError)
 		}
+		return newDefaultError(reportedOwnerRepo, repositoryPath, "unable to resolve remote", remoteResolutionError)
+	}
 
 		remoteAvailable := remoteResolution.RemoteDetected && remoteResolution.OwnerRepository != nil
 		repositoryIdentifier := ""
@@ -158,6 +162,11 @@ func (operation *BranchMigrationOperation) Execute(executionContext context.Cont
 			remoteDefaultBranch = ""
 		}
 
+		effectiveOwner := repositoryIdentifier
+		if len(strings.TrimSpace(effectiveOwner)) == 0 {
+			effectiveOwner = reportedOwnerRepo
+		}
+
 		sourceBranchValue := strings.TrimSpace(target.SourceBranch)
 		if len(sourceBranchValue) == 0 {
 			if remoteAvailable && len(remoteDefaultBranch) > 0 {
@@ -169,13 +178,13 @@ func (operation *BranchMigrationOperation) Execute(executionContext context.Cont
 
 		if remoteAvailable && len(sourceBranchValue) == 0 {
 			if remoteResolution.DefaultBranch == nil {
-				return errors.New(sourceBranchMissingMessageConstant)
+				return newDefaultError(effectiveOwner, repositoryPath, "default branch source not detected", nil)
 			}
 			sourceBranchValue = remoteResolution.DefaultBranch.String()
 		}
 
 		if len(sourceBranchValue) == 0 {
-			return errors.New(sourceBranchMissingMessageConstant)
+			return newDefaultError(effectiveOwner, repositoryPath, "default branch source not detected", nil)
 		}
 
 		targetBranchValue := strings.TrimSpace(target.TargetBranch)
@@ -195,7 +204,7 @@ func (operation *BranchMigrationOperation) Execute(executionContext context.Cont
 
 		if skipMigration {
 			if environment.Output != nil {
-				fmt.Fprintf(environment.Output, migrationSkipMessageTemplateConstant, repositoryState.Path, targetBranchValue)
+				fmt.Fprint(environment.Output, formatDefaultWarning(effectiveOwner, repositoryState.Path, fmt.Sprintf("already defaults to %s", targetBranchValue)))
 			}
 			continue
 		}
@@ -219,45 +228,34 @@ func (operation *BranchMigrationOperation) Execute(executionContext context.Cont
 		}
 
 		if ensureLocalError := ensureLocalBranch(executionContext, environment.RepositoryManager, environment.GitExecutor, repositoryPath, targetBranchValue, sourceBranchValue); ensureLocalError != nil {
-			return ensureLocalError
+			return newDefaultError(effectiveOwner, repositoryPath, fmt.Sprintf("unable to ensure local branch %s", targetBranchValue), ensureLocalError)
 		}
 
 		if checkoutError := environment.RepositoryManager.CheckoutBranch(executionContext, repositoryPath, targetBranchValue); checkoutError != nil {
-			return fmt.Errorf(localCheckoutErrorTemplateConstant, checkoutError)
+			return newDefaultError(effectiveOwner, repositoryPath, fmt.Sprintf("failed to switch worktree to %s", targetBranchValue), checkoutError)
 		}
 
 		if !remoteAvailable {
 			if environment.Output != nil {
-				fmt.Fprintf(environment.Output, migrationRemoteUnavailableSkipTemplateConstant, repositoryState.Path)
-				fmt.Fprintf(environment.Output, migrationSuccessMessageTemplateConstant, repositoryState.Path, sourceBranchValue, targetBranchValue, false)
+				fmt.Fprint(environment.Output, formatDefaultWarning(effectiveOwner, repositoryState.Path, "remote unavailable; skipping remote promotion"))
+				fmt.Fprint(environment.Output, formatDefaultInfo(effectiveOwner, repositoryState.Path, "%s → %s safe_to_delete=%t", sourceBranchValue, targetBranchValue, false))
 			}
 			continue
 		}
 
 		if target.PushToRemote {
 			if ensureRemoteError := ensureRemoteBranch(executionContext, environment.GitExecutor, repositoryPath, remoteName, targetBranchValue); ensureRemoteError != nil {
-				return ensureRemoteError
+				return newDefaultError(effectiveOwner, repositoryPath, fmt.Sprintf("unable to ensure remote branch %s on %s", targetBranchValue, remoteName), ensureRemoteError)
 			}
 		}
 
 		result, executionError := migrationService.Execute(executionContext, options)
 		if executionError != nil {
-			var updateError migrate.DefaultBranchUpdateError
-			if errors.As(executionError, &updateError) {
-				if shouldIgnoreDefaultBranchUpdateError(updateError) {
-					if environment.Output != nil {
-						fmt.Fprintf(environment.Output, migrationRemoteUnavailableSkipTemplateConstant, repositoryState.Path)
-						fmt.Fprintf(environment.Output, migrationSuccessMessageTemplateConstant, repositoryState.Path, sourceBranchValue, targetBranchValue, false)
-					}
-					continue
-				}
-				return executionError
-			}
-			return fmt.Errorf(migrationExecutionErrorTemplateConstant, executionError)
+			return newDefaultError(effectiveOwner, repositoryPath, "default branch promotion failed", executionError)
 		}
 
 		if environment.Output != nil {
-			fmt.Fprintf(environment.Output, migrationSuccessMessageTemplateConstant, repositoryState.Path, sourceBranchValue, targetBranchValue, result.SafetyStatus.SafeToDelete)
+			fmt.Fprint(environment.Output, formatDefaultInfo(effectiveOwner, repositoryState.Path, "%s → %s safe_to_delete=%t", sourceBranchValue, targetBranchValue, result.SafetyStatus.SafeToDelete))
 			for _, warning := range result.Warnings {
 				fmt.Fprintln(environment.Output, warning)
 			}
@@ -265,12 +263,44 @@ func (operation *BranchMigrationOperation) Execute(executionContext context.Cont
 
 		if environment.AuditService != nil {
 			if refreshError := repositoryState.Refresh(executionContext, environment.AuditService); refreshError != nil {
-				return fmt.Errorf(migrationRefreshErrorTemplateConstant, refreshError)
+				return newDefaultError(effectiveOwner, repositoryPath, "failed to refresh repository metadata", refreshError)
 			}
 		}
 	}
 
 	return nil
+}
+
+func formatDefaultDescriptor(ownerRepo string, repositoryPath string) string {
+	trimmedOwner := strings.TrimSpace(ownerRepo)
+	trimmedPath := strings.TrimSpace(repositoryPath)
+	switch {
+	case len(trimmedOwner) > 0 && len(trimmedPath) > 0:
+		return fmt.Sprintf("%s (%s)", trimmedOwner, trimmedPath)
+	case len(trimmedOwner) > 0:
+		return trimmedOwner
+	case len(trimmedPath) > 0:
+		return trimmedPath
+	default:
+		return "<unknown repository>"
+	}
+}
+
+func formatDefaultWarning(ownerRepo string, repositoryPath string, message string) string {
+	return fmt.Sprintf("%s: %s %s\n", defaultWarningPrefix, formatDefaultDescriptor(ownerRepo, repositoryPath), message)
+}
+
+func formatDefaultInfo(ownerRepo string, repositoryPath string, format string, arguments ...any) string {
+	descriptor := formatDefaultDescriptor(ownerRepo, repositoryPath)
+	return fmt.Sprintf("%s: %s %s\n", defaultInfoPrefix, descriptor, fmt.Sprintf(format, arguments...))
+}
+
+func newDefaultError(ownerRepo string, repositoryPath string, message string, cause error) error {
+	descriptor := formatDefaultDescriptor(ownerRepo, repositoryPath)
+	if cause == nil {
+		return fmt.Errorf("%s: %s %s", defaultErrorPrefix, descriptor, message)
+	}
+	return fmt.Errorf("%s: %s %s: %w", defaultErrorPrefix, descriptor, message, cause)
 }
 
 func resolveLocalDefaultBranch(executionContext context.Context, manager *gitrepo.RepositoryManager, repositoryState *RepositoryState) (string, error) {
