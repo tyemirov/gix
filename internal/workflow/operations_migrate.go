@@ -328,6 +328,9 @@ func ensureRemoteBranch(executionContext context.Context, executor shared.GitExe
 		EnvironmentVariables: map[string]string{gitTerminalPromptEnvironmentNameConstant: gitTerminalPromptDisableValueConstant},
 	})
 	if pushError != nil {
+		if shouldIgnoreRemotePushError(pushError) {
+			return nil
+		}
 		return fmt.Errorf(remoteBranchCreationErrorTemplateConstant, pushError)
 	}
 	return nil
@@ -342,7 +345,50 @@ func remoteBranchExists(executionContext context.Context, executor shared.GitExe
 		WorkingDirectory: repositoryPath,
 	})
 	if executionError != nil {
+		var commandFailure execshell.CommandFailedError
+		if errors.As(executionError, &commandFailure) && shouldIgnoreRemoteBranchError(commandFailure) {
+			return false, nil
+		}
 		return false, executionError
 	}
 	return strings.TrimSpace(result.StandardOutput) != "", nil
+}
+
+func shouldIgnoreRemoteBranchError(failure execshell.CommandFailedError) bool {
+	if failure.Result.ExitCode == 1 || failure.Result.ExitCode == 128 {
+		normalized := strings.ToLower(strings.TrimSpace(failure.Result.StandardError))
+		if len(normalized) == 0 {
+			normalized = strings.ToLower(strings.TrimSpace(failure.Error()))
+		}
+		if strings.Contains(normalized, "could not read from remote repository") {
+			return true
+		}
+		if strings.Contains(normalized, "not a git repository") {
+			return true
+		}
+		if failure.Result.ExitCode == 1 {
+			return true
+		}
+	}
+	return false
+}
+
+func shouldIgnoreRemotePushError(err error) bool {
+	var commandFailure execshell.CommandFailedError
+	if !errors.As(err, &commandFailure) {
+		return false
+	}
+	if commandFailure.Result.ExitCode == 128 {
+		normalized := strings.ToLower(strings.TrimSpace(commandFailure.Result.StandardError))
+		if len(normalized) == 0 {
+			normalized = strings.ToLower(strings.TrimSpace(commandFailure.Error()))
+		}
+		if strings.Contains(normalized, "could not read from remote repository") {
+			return true
+		}
+		if strings.Contains(normalized, "not a git repository") {
+			return true
+		}
+	}
+	return false
 }

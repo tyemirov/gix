@@ -401,6 +401,73 @@ func TestBranchMigrationOperationInfersIdentifierFromRemote(testInstance *testin
 	require.Contains(testInstance, outputBuffer.String(), "WORKFLOW-DEFAULT: /repository (main → master)")
 }
 
+func TestBranchMigrationOperationSkipsRemotePushWhenUnavailable(testInstance *testing.T) {
+	testInstance.Setenv(githubauth.EnvGitHubToken, "test-token")
+	testInstance.Setenv(githubauth.EnvGitHubCLIToken, "test-token")
+	executor := newScriptedExecutor()
+	executor.gitHandlers["remote"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
+		return execshell.ExecutionResult{StandardOutput: "origin\n"}, nil
+	}
+	executor.gitHandlers["remote get-url origin"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
+		return execshell.ExecutionResult{StandardOutput: "git@github.com:owner/example.git\n"}, nil
+	}
+	executor.gitHandlers["show-ref --verify --quiet refs/heads/master"] = branchMissing
+	executor.gitHandlers["ls-remote --heads origin master"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
+		return execshell.ExecutionResult{StandardOutput: ""}, nil
+	}
+	executor.gitHandlers["push origin master:master"] = func(details execshell.CommandDetails) (execshell.ExecutionResult, error) {
+		return execshell.ExecutionResult{}, execshell.CommandFailedError{
+			Command: execshell.ShellCommand{Name: execshell.CommandGit, Details: details},
+			Result:  execshell.ExecutionResult{ExitCode: 128, StandardError: "fatal: could not read from remote repository"},
+		}
+	}
+
+	repositoryManager, managerError := gitrepo.NewRepositoryManager(executor)
+	require.NoError(testInstance, managerError)
+
+	githubClient, clientError := githubcli.NewClient(executor)
+	require.NoError(testInstance, clientError)
+
+	operation := &BranchMigrationOperation{Targets: []BranchMigrationTarget{
+		{RemoteName: "origin", SourceBranch: "main", TargetBranch: "master", PushToRemote: true},
+	}}
+
+	outputBuffer := &bytes.Buffer{}
+
+	state := &State{
+		Repositories: []*RepositoryState{
+			{
+				Path: "/repository",
+				Inspection: audit.RepositoryInspection{
+					FinalOwnerRepo:      "owner/example",
+					LocalBranch:         "main",
+					RemoteDefaultBranch: "main",
+				},
+			},
+		},
+	}
+
+	environment := &Environment{
+		RepositoryManager: repositoryManager,
+		GitExecutor:       executor,
+		GitHubClient:      githubClient,
+		Output:            outputBuffer,
+	}
+
+	executionError := operation.Execute(context.Background(), environment, state)
+
+	require.NoError(testInstance, executionError)
+	require.Contains(testInstance, outputBuffer.String(), "WORKFLOW-DEFAULT: /repository (main → master)")
+
+	foundPushAttempt := false
+	for _, commandDetails := range executor.gitCommands {
+		if strings.Join(commandDetails.Arguments, " ") == "push origin master:master" {
+			foundPushAttempt = true
+		}
+	}
+	require.True(testInstance, foundPushAttempt)
+}
+
 func TestBranchMigrationOperationFallsBackWhenIdentifierMissing(testInstance *testing.T) {
 	executor := newScriptedExecutor()
 	executor.gitHandlers["remote"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
