@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	repoerrors "github.com/temirov/gix/internal/repos/errors"
 	"github.com/temirov/gix/internal/repos/identity"
 	conversion "github.com/temirov/gix/internal/repos/protocol"
 	"github.com/temirov/gix/internal/repos/shared"
@@ -84,6 +85,30 @@ func (operation *ProtocolConversionOperation) Execute(executionContext context.C
 		)
 		if remoteResolutionError != nil {
 			return fmt.Errorf("protocol conversion: %w", remoteResolutionError)
+		}
+
+		if !remoteResolution.RemoteDetected {
+			skipMessage := fmt.Sprintf("SKIP: remote '%s' not configured", shared.OriginRemoteNameConstant)
+			skipError := repoerrors.WrapMessage(
+				repoerrors.OperationProtocolConvert,
+				repository.Path,
+				repoerrors.ErrRemoteMissing,
+				skipMessage,
+			)
+			logRepositoryOperationError(environment, skipError)
+			continue
+		}
+
+		if remoteResolution.OwnerRepository == nil {
+			skipMessage := fmt.Sprintf("SKIP: remote metadata unavailable for remote '%s'", shared.OriginRemoteNameConstant)
+			metadataError := repoerrors.WrapMessage(
+				repoerrors.OperationProtocolConvert,
+				repository.Path,
+				repoerrors.ErrOriginOwnerMissing,
+				skipMessage,
+			)
+			logRepositoryOperationError(environment, metadataError)
+			continue
 		}
 
 		if canonicalOwnerRepository == nil && remoteResolution.OwnerRepository != nil {

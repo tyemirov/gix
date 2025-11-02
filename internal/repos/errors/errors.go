@@ -132,6 +132,8 @@ var (
 	ErrRemoteUpdateFailed Sentinel = "remote_update_failed"
 	// ErrRemoteEnumerationFailed indicates failure enumerating repository remotes.
 	ErrRemoteEnumerationFailed Sentinel = "remote_enumeration_failed"
+	// ErrRemoteMissing indicates that the requested remote was not present.
+	ErrRemoteMissing Sentinel = "remote_missing"
 	// ErrFetchFailed indicates a git fetch step failed.
 	ErrFetchFailed Sentinel = "fetch_failed"
 	// ErrPullFailed indicates a git pull step failed.

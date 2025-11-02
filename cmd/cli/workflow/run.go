@@ -90,7 +90,7 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 		return fmt.Errorf(loadConfigurationErrorTemplateConstant, configurationError)
 	}
 
-	operations, operationsError := workflow.BuildOperations(workflowConfiguration)
+	nodes, operationsError := workflow.BuildOperations(workflowConfiguration)
 	if operationsError != nil {
 		return fmt.Errorf(buildOperationsErrorTemplateConstant, operationsError)
 	}
@@ -108,9 +108,9 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 		}
 	}
 
-	workflow.ApplyDefaults(operations, workflow.OperationDefaults{RequireClean: requireCleanDefault})
+	workflow.ApplyDefaults(nodes, workflow.OperationDefaults{RequireClean: requireCleanDefault})
 
-	taskDefinitions, taskRuntimeOptions, taskBuildError := buildWorkflowTasks(operations)
+	taskDefinitions, taskRuntimeOptions, taskBuildError := buildWorkflowTasks(nodes)
 	if taskBuildError != nil {
 		return fmt.Errorf(buildTasksErrorTemplateConstant, taskBuildError)
 	}
