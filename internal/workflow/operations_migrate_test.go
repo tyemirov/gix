@@ -128,6 +128,9 @@ func TestBranchMigrationOperationReturnsActionableDefaultBranchError(testInstanc
 			StandardError: "GraphQL: branch not found",
 		},
 	}
+	executor.githubHandlers["repo view owner/example --json defaultBranchRef,nameWithOwner,description,isInOrganization"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
+		return execshell.ExecutionResult{StandardOutput: `{"defaultBranchRef":{"name":"main"},"nameWithOwner":"owner/example","description":"","isInOrganization":false}`}, nil
+	}
 	executor.githubHandlers["api repos/owner/example -X PATCH -f default_branch=master -H Accept: application/vnd.github+json"] = func(details execshell.CommandDetails) (execshell.ExecutionResult, error) {
 		failure := execshell.CommandFailedError{
 			Command: execshell.ShellCommand{Name: execshell.CommandGitHub, Details: details},
@@ -420,6 +423,9 @@ func TestBranchMigrationOperationSkipsRemotePushWhenUnavailable(testInstance *te
 			Command: execshell.ShellCommand{Name: execshell.CommandGit, Details: details},
 			Result:  execshell.ExecutionResult{ExitCode: 128, StandardError: "fatal: could not read from remote repository"},
 		}
+	}
+	executor.githubHandlers["repo view owner/example --json defaultBranchRef,nameWithOwner,description,isInOrganization"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
+		return execshell.ExecutionResult{StandardOutput: `{"defaultBranchRef":{"name":"main"},"nameWithOwner":"owner/example","description":"","isInOrganization":false}`}, nil
 	}
 
 	repositoryManager, managerError := gitrepo.NewRepositoryManager(executor)

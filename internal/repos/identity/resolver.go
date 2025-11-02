@@ -86,8 +86,8 @@ func ResolveRemoteIdentity(
 			)
 			if metadataError != nil {
 				return RemoteResolutionResult{
-					RemoteDetected:  true,
-					OwnerRepository: ownerRepositoryCandidate,
+					RemoteDetected:  false,
+					OwnerRepository: nil,
 					DefaultBranch:   defaultBranchCandidate,
 				}, nil
 			}
@@ -106,7 +106,7 @@ func ResolveRemoteIdentity(
 	}
 
 	if !ownerRepositoryAvailable {
-		return RemoteResolutionResult{RemoteDetected: true}, nil
+		return RemoteResolutionResult{RemoteDetected: false}, nil
 	}
 
 	result := RemoteResolutionResult{
