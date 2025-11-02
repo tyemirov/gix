@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -60,7 +59,7 @@ func TestWorkflowDefaultBranchHandlesRepositoriesWithoutRemotes(testInstance *te
 	initializeRepositoryWithoutRemote(testInstance, repositoryPath)
 
 	configPath := filepath.Join(testInstance.TempDir(), "workflow-no-remote.yaml")
-	configContents := fmt.Sprintf(`workflow:
+	configContents := `workflow:
   - step:
       name: promote-master
       operation: default-branch
@@ -70,7 +69,7 @@ func TestWorkflowDefaultBranchHandlesRepositoriesWithoutRemotes(testInstance *te
             target_branch: master
             push_to_remote: false
             delete_source_branch: false
-`)
+`
 	require.NoError(testInstance, os.WriteFile(configPath, []byte(configContents), 0o644))
 
 	repositoryRoot := integrationRepositoryRoot(testInstance)
