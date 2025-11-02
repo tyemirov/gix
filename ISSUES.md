@@ -46,13 +46,8 @@ If a repository doesnt have a remote, there is nothing to fetch, but we can stil
 - [x] [GX-205] Standardize error schema across commands
   - Resolution: Added centralized workflow error formatter that injects repository owner/path metadata, humanizes sentinel-only messages, and ensures all logged failures follow the `CODE: owner/repo (path) message` schema; regression coverage now verifies formatted output for direct log handling and rename operations.
 
-- [ ] [GX-206] Remove redundant prefixes; single-source formatting
-  - Status: Unresolved | Priority: P0
-  - Category: Improvement
-  - Context: Output repeats workflow prefixes (e.g., “workflow operation apply-tasks failed: … WORKFLOW-DEFAULT-ERROR …”).
-  - Desired: Only the standardized message prints; proper levels for task vs workflow failures.
-  - Acceptance: No leading “workflow operation … failed:” when the message already conforms to GX-205; tests assert single, structured line.
-  - Dependencies: GX-205
+- [x] [GX-206] Remove redundant prefixes; single-source formatting
+  - Resolution: Updated the workflow executor to wrap failures in a structured error instead of `workflow operation … failed`, trimming newline duplicates and reusing the GX-205 formatter; regression coverage now asserts that only the standardized `CODE: owner/repo (path) message` text is surfaced.
 
 - [ ] [GX-208] Remote/metadata semantics and skip policy
   - Status: Unresolved | Priority: P1

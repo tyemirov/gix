@@ -15,15 +15,15 @@ import (
 	"github.com/temirov/gix/internal/execshell"
 	"github.com/temirov/gix/internal/githubcli"
 	"github.com/temirov/gix/internal/gitrepo"
+	repoerrors "github.com/temirov/gix/internal/repos/errors"
 	"github.com/temirov/gix/internal/repos/shared"
 	pathutils "github.com/temirov/gix/internal/utils/path"
 )
 
 const (
-	workflowExecutionErrorTemplateConstant = "workflow operation %s failed: %w"
-	workflowExecutorDependenciesMessage    = "workflow executor requires repository discovery, git, and GitHub dependencies"
-	workflowExecutorMissingRootsMessage    = "workflow executor requires at least one repository root"
-	workflowRepositoryLoadErrorTemplate    = "failed to inspect repositories: %w"
+	workflowExecutorDependenciesMessage = "workflow executor requires repository discovery, git, and GitHub dependencies"
+	workflowExecutorMissingRootsMessage = "workflow executor requires at least one repository root"
+	workflowRepositoryLoadErrorTemplate = "failed to inspect repositories: %w"
 )
 
 // Dependencies configures shared collaborators for workflow execution.
@@ -54,6 +54,19 @@ type RuntimeOptions struct {
 type Executor struct {
 	operations   []Operation
 	dependencies Dependencies
+}
+
+type operationFailureError struct {
+	message string
+	cause   error
+}
+
+func (failure operationFailureError) Error() string {
+	return failure.message
+}
+
+func (failure operationFailureError) Unwrap() error {
+	return failure.cause
 }
 
 // NewExecutor constructs an Executor instance.
@@ -162,7 +175,8 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 			continue
 		}
 		if executeError := operation.Execute(executionContext, environment, state); executeError != nil {
-			return fmt.Errorf(workflowExecutionErrorTemplateConstant, operation.Name(), executeError)
+			failureMessage := formatOperationFailure(environment, executeError, operation.Name())
+			return operationFailureError{message: failureMessage, cause: executeError}
 		}
 	}
 
@@ -220,4 +234,31 @@ func captureInitialCleanStatuses(executionContext context.Context, manager *gitr
 		}
 		repository.InitialCleanWorktree = clean
 	}
+}
+
+func formatOperationFailure(environment *Environment, err error, operationName string) string {
+	var operationError repoerrors.OperationError
+	if errors.As(err, &operationError) {
+		formatted := formatRepositoryOperationError(environment, operationError)
+		return strings.TrimSuffix(formatted, "\n")
+	}
+
+	message := strings.TrimSpace(err.Error())
+	if len(message) == 0 {
+		if len(operationName) == 0 {
+			return "operation failed"
+		}
+		return fmt.Sprintf("%s failed", operationName)
+	}
+	if len(operationName) == 0 {
+		return message
+	}
+
+	lowerMessage := strings.ToLower(message)
+	lowerOperation := strings.ToLower(operationName)
+	if strings.HasPrefix(lowerMessage, lowerOperation) {
+		return message
+	}
+
+	return fmt.Sprintf("%s: %s", operationName, message)
 }
