@@ -107,6 +107,34 @@ workflow operation apply-tasks failed: DEFAULT-BRANCH-UPDATE repository=MarcoPol
 1b. Use the default branch as a source for creating a destination branch
 1c. Make the newly created branch a default branch both locally and remote
 
+Generalize error generation so that we always includ the path. I got this error which means nothing to the user, doesnt tell what and where has happened. So each error must must be structured:
+
+WORKFLOW-DEFAULT-WARNING
+WORKFLOW-DEFAULT-ERROR
+
+Explanation: 
+
+/tmp/repos/allergy_wheel already defaults to master
+<repo (folder)> <human readeable message> 
+tyemirov/gix (tmp/repos/gix) already defaults to master
+
+workflow operation apply-tasks failed: default branch remote metadata unavailable: remote metadata unavailable: repository metadata search yielded no canonical match
+exit status 1
+
+should become
+WORKFLOW-DEFAULT-ERROR: <repo (folder)> description of the failed operation, and actions for user to take. This logic is across the all -- genealize the pricincipl;es of error logging, and write a code that all commands use to report
+
+
+01:48:57 tyemirov@computercat:~/Development/gix [bugfix/GX-304-branch-default-workflow] $ go run ./... b default master --roots /tmp/repos/
+WORKFLOW-DEFAULT-SKIP: /tmp/repos/RSVP already defaults to master
+WORKFLOW-DEFAULT-SKIP: /tmp/repos/allergy_wheel already defaults to master
+WORKFLOW-DEFAULT-SKIP: /tmp/repos/gix already defaults to master
+WORKFLOW-DEFAULT-SKIP: /tmp/repos/gix/tools/git_retag already defaults to master
+WORKFLOW-DEFAULT-SKIP: /tmp/repos/gix/tools/licenser already defaults to master
+WORKFLOW-DEFAULT-SKIP: /tmp/repos/gix/tools/llm-tasks already defaults to master
+workflow operation apply-tasks failed: default branch remote metadata unavailable: remote metadata unavailable: repository metadata search yielded no canonical match
+exit status 1
+
 
 ## Maintenance (400–499)
 
