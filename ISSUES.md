@@ -70,6 +70,54 @@ If a repository doesnt have a remote, there is nothing to fetch, but we can stil
   - Context: `apply-tasks` supports `commit.message.generate` and `changelog.message.generate` actions, but they require a programmatic client and there is no way to pass their outputs into subsequent steps (e.g., as a `commit_message` for namespace rewrite).
   - Desired: Allow configuring an LLM client in workflow YAML (model, base-url, api-key env, timeout) and introduce workflow variables so action outputs can be referenced as inputs by later steps.
 
+- [ ] [GX-211] On a protocol updated the message says: `UPDATE-REMOTE-DONE: /tmp/repos/loopaware origin now ssh://git@github.com/tyemirov/loopaware.git`. But that's incorrect as the new protocol is not `ssh://git@github.com/tyemirov/loopaware.git` but `git@github.com/tyemirov/loopaware.git`. Change logging to display the new procol as what `git remote -v will display`
+
+- [ ] [GX-212] Change logging to a new format: 
+
+Single line per event, with two parts:
+
+Human part (left): aligned columns, easy to scan.
+
+### Examples (your lines → refactored)
+
+**Switch**
+
+```
+06:22:11 INFO  REPO_SWITCHED     MarcoPoloResearchLab/mpr-ui         → master                                   | event=REPO_SWITCHED repo=MarcoPoloResearchLab/mpr-ui branch=master path=/tmp/repos/loopaware/tools/MarcoPoloResearchLab/mpr-ui
+```
+
+**Namespace skip (missing go.mod)**
+
+```
+06:22:12 WARN  NAMESPACE_SKIP    MarcoPoloResearchLab/mpr-ui         missing go.mod                             | event=NAMESPACE_SKIP repo=MarcoPoloResearchLab/mpr-ui has_go_mod=false reason=missing_go_mod
+```
+
+**Remote missing (still not an error)**
+
+```
+06:22:01 WARN  REMOTE_MISSING    integration-org/ns-rewrite          no remote                                  | event=REMOTE_MISSING repo=integration-org/ns-rewrite path=/tmp/repos/gix/tools/integration-org/ns-rewrite
+```
+
+**Namespace apply with push**
+
+```
+06:22:53 INFO  NAMESPACE_APPLY   tyemirov/loopaware                  files=7, pushed                            | event=NAMESPACE_APPLY repo=tyemirov/loopaware files_changed=7 push=true branch=chore/ns-rename/20251103-062253Z
+```
+
+**Error example (only this goes to stderr)**
+
+```
+06:23:04 ERROR REPO_DIRTY        tyemirov/gix                        working tree not clean                     | event=REPO_DIRTY repo=tyemirov/gix path=/tmp/repos/tyemirov/gix
+```
+
+- [ ] [GX-213] When logging the events Print a thin repo header once, then events; the first token stays parseable so grep still works:
+```
+── repo: MarcoPoloResearchLab/RSVP ─────────────────────────────────────────────────────────
+06:22:11 INFO  REPO_SWITCHED     MarcoPoloResearchLab/RSVP           → master                                   | event=REPO_SWITCHED repo=MarcoPoloResearchLab/RSVP branch=master path=/tmp/repos/MarcoPoloResearchLab/RSVP
+06:22:21 INFO  NAMESPACE_APPLY   MarcoPoloResearchLab/RSVP           files=31, pushed  
+```
+- [ ] [GX-214] Have a final summary for the whole run, smth like (just an example) Summary: total.repos=12 REPO_SWITCHED=7 NAMESPACE_APPLY=3 NAMESPACE_SKIP=3 REMOTE_UPDATE=2 WARN=1 ERROR=0 duration_ms=5312
+
 ## BugFixes (300–399)
 
 - [x] [GX-300] `gix b default` aborts for repositories without remotes; it treats the `git fetch` failure as fatal instead of warning and skipping the fetch, so the branch switch never executes.
@@ -155,7 +203,6 @@ workflow operation apply-tasks failed: DEFAULT-BRANCH-UPDATE repository=MarcoPol
   - Desired: Update namespace task templates (`namespaceNoopMessageTemplate`, `namespaceApplyMessageTemplate`, etc.) to use actual newlines and ensure all workflow log helpers emit newline-separated entries without escape sequences.
   - Notes: Observed during the owner-renaming workflow run on `/tmp/repos`.
   - Resolution: Namespace workflow templates now emit actual newline characters, regression tests enforce the absence of literal `\n`, and push/skip outputs render as separate lines.
-
 
 ## Maintenance (400–499)
 
