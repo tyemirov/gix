@@ -158,6 +158,66 @@ Run with: `gix workflow path/to/file.yaml --roots ~/Development [--dry-run] [-y]
 - `apply-tasks`
   - with: `tasks: [...]` (see below) for fine-grained file changes, commits, PRs, and built-in actions.
 
+### Example: Canonicalize after owner rename
+
+This example updates remotes to canonical, renames folders to include owners, switches branch to `master` only when the worktree is clean, and rewrites Go module namespaces from `github.com/temirov` to `github.com/tyemirov`, creating a branch and pushing changes.
+
+```yaml
+workflow:
+  - step:
+      name: remotes
+      operation: update-canonical-remote
+
+  - step:
+      name: folders
+      after: ["remotes"]
+      operation: rename-directories
+      with:
+        include_owner: true
+        require_clean: true
+
+  - step:
+      name: switch-branch
+      after: ["folders"]
+      operation: apply-tasks
+      with:
+        tasks:
+          - name: "Switch to master if clean"
+            actions:
+              - type: branch.change
+                options:
+                  branch: master
+                  remote: origin
+                  create_if_missing: false
+            safeguards:
+              require_clean: true
+
+  - step:
+      name: rewrite-go-namespace
+      after: ["switch-branch"]
+      operation: apply-tasks
+      with:
+        tasks:
+          - name: "Rewrite module namespace"
+            actions:
+              - type: repo.namespace.rewrite
+                options:
+                  old: github.com/temirov
+                  new: github.com/tyemirov
+                  branch_prefix: chore/ns-rename
+                  push: true
+                  remote: origin
+                  commit_message: "refactor: rewrite module namespace after owner rename"
+            safeguards:
+              branch_in: [ master ]
+              paths: [ go.mod ]
+```
+
+Notes:
+
+- The namespace rewrite step commits and pushes changes when `push: true` is set.
+- Generating the commit message via LLM inside a workflow is not yet supported. You can either supply a static `commit_message` (as above) or generate one per repository using `gix branch commit message` before running the workflow. See ISSUES.md for the improvement request to support LLM in workflows and piping outputs between steps.
+
 ### Apply tasks (custom sequences)
 
 The `apply-tasks` operation lets you define repository-local tasks with optional templating and safeguards.
