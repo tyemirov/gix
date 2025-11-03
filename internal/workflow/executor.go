@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -143,11 +144,12 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 		state := NewRepositoryState(inspections[inspectionIndex])
 		state.PathDepth = repositoryPathDepth(state.Path)
 		repositoryStates = append(repositoryStates, state)
-		existingRepositories[state.Path] = struct{}{}
+		existingRepositories[canonicalRepositoryIdentifier(state.Path)] = struct{}{}
 	}
 
 	for _, sanitizedRoot := range sanitizedRoots {
-		if _, alreadyPresent := existingRepositories[sanitizedRoot]; alreadyPresent {
+		canonicalRoot := canonicalRepositoryIdentifier(sanitizedRoot)
+		if _, alreadyPresent := existingRepositories[canonicalRoot]; alreadyPresent {
 			continue
 		}
 		if executor.dependencies.GitExecutor != nil {
@@ -164,6 +166,7 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 		state := NewRepositoryState(inspection)
 		state.PathDepth = repositoryPathDepth(state.Path)
 		repositoryStates = append(repositoryStates, state)
+		existingRepositories[canonicalRoot] = struct{}{}
 	}
 
 	if runtimeOptions.IncludeNestedRepositories {
@@ -264,6 +267,17 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 
 	return nil
 
+}
+
+func canonicalRepositoryIdentifier(path string) string {
+	cleaned := filepath.Clean(path)
+	if abs, err := filepath.Abs(cleaned); err == nil {
+		cleaned = filepath.Clean(abs)
+	}
+	if runtime.GOOS == "windows" {
+		cleaned = strings.ToLower(cleaned)
+	}
+	return cleaned
 }
 
 func repositoryPathDepth(path string) int {

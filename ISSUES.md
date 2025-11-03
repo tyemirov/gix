@@ -231,7 +231,8 @@ apply-tasks: failed to switch to branch "master": fatal: invalid reference: mast
 ```
   - Resolution: Workflow task execution now verifies the start point branch before checkout, logs a warning when missing, and falls back to the current HEAD so namespace workflows continue on repositories without a `master` branch.
 
-- [ ] [GX-316] The stats and logs show switching repo twice. There is only one repo to switch. Fix the bug and ensure we don't have duplicate logic of identifying repos.
+- [x] [GX-316] The stats and logs show switching repo twice. There is only one repo to switch. Fix the bug and ensure we don't have duplicate logic of identifying repos.
+  - Resolution: Workflow executor now canonicalizes repository paths from roots so relative entries (like `.`) cannot duplicate the same repository, and branch logs emit a single `REPO_SWITCHED` per repo.
 ```
 14:32:50 tyemirov@computercat:~/Development/Research/TAuth/tools/mpr-ui [improvement/TA-208-nonce-cdn] $ gix b cd master
 -- repo: MarcoPoloResearchLab/mpr-ui -------------------------------------------

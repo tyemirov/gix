@@ -15,6 +15,7 @@ import (
 	"github.com/temirov/gix/internal/githubcli"
 	"github.com/temirov/gix/internal/gitrepo"
 	repoerrors "github.com/temirov/gix/internal/repos/errors"
+	"github.com/temirov/gix/internal/repos/shared"
 )
 
 func TestExecutorReturnsStructuredErrorMessage(testInstance *testing.T) {
@@ -55,6 +56,51 @@ func TestExecutorReturnsStructuredErrorMessage(testInstance *testing.T) {
 		repositoryPath,
 	)
 	require.EqualError(testInstance, executionError, expectedMessage)
+}
+
+func TestExecutorDeduplicatesRelativeRoots(testInstance *testing.T) {
+	tempDirectory := testInstance.TempDir()
+	repositoryPath := filepath.Join(tempDirectory, "sample")
+	require.NoError(testInstance, os.Mkdir(repositoryPath, 0o755))
+
+	gitExecutor := newStubWorkflowGitExecutor()
+	repositoryManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(testInstance, managerError)
+
+	githubClient, clientError := githubcli.NewClient(gitExecutor)
+	require.NoError(testInstance, clientError)
+
+	outputBuffer := &bytes.Buffer{}
+	errorBuffer := &bytes.Buffer{}
+
+	dependencies := Dependencies{
+		RepositoryDiscoverer: executorStubRepositoryDiscoverer{repositories: []string{repositoryPath}},
+		GitExecutor:          gitExecutor,
+		RepositoryManager:    repositoryManager,
+		GitHubClient:         githubClient,
+		Output:               outputBuffer,
+		Errors:               errorBuffer,
+	}
+
+	executor := NewExecutor([]Operation{repoSwitchOperation{}}, dependencies)
+
+	workingDirectory, workingDirectoryError := os.Getwd()
+	require.NoError(testInstance, workingDirectoryError)
+	require.NoError(testInstance, os.Chdir(repositoryPath))
+	testInstance.Cleanup(func() { _ = os.Chdir(workingDirectory) })
+
+    executionError := executor.Execute(
+        context.Background(),
+        []string{"."},
+        RuntimeOptions{SkipRepositoryMetadata: true},
+    )
+    require.NoError(testInstance, executionError)
+
+    occurrences := strings.Count(outputBuffer.String(), "event="+shared.EventCodeRepoSwitched)
+    if occurrences != 1 {
+        testInstance.Logf("executor output:\n%s", outputBuffer.String())
+    }
+    require.Equal(testInstance, 1, occurrences)
 }
 
 type executorStubRepositoryDiscoverer struct {
@@ -105,6 +151,31 @@ type failingOperation struct{}
 
 func (operation failingOperation) Name() string {
 	return "apply-tasks"
+}
+
+type repoSwitchOperation struct{}
+
+func (operation repoSwitchOperation) Name() string {
+	return "apply-tasks"
+}
+
+func (operation repoSwitchOperation) Execute(ctx context.Context, environment *Environment, state *State) error {
+	if environment == nil || state == nil {
+		return nil
+	}
+	for _, repository := range state.Repositories {
+		if repository == nil {
+			continue
+		}
+		environment.ReportRepositoryEvent(
+			repository,
+			shared.EventLevelInfo,
+			shared.EventCodeRepoSwitched,
+			"→ master",
+			map[string]string{"branch": "master"},
+		)
+	}
+	return nil
 }
 
 func (operation failingOperation) Execute(ctx context.Context, environment *Environment, state *State) error {
