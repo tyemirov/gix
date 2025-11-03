@@ -146,6 +146,7 @@ workflow operation apply-tasks failed: DEFAULT-BRANCH-UPDATE repository=MarcoPol
   - Desired: Capture and display the git stderr for namespace rewrite failures, and degrade push/authentication failures into actionable SKIP messages (or allow `push: true` to fall back to no push) so the workflow can continue.
   - Notes: Repro via `gix workflow configs/cleanup.yaml --roots /tmp/repos --yes` as seen in the provided run log.
   - Resolution: Namespace rewrite now wraps push failures with `namespace_push_failed`, returns partial results, and the workflow handler logs the formatted error while continuing with `push=false` output and a skip reason; regression tests cover service and workflow behavior.
+  - Resolution: Additional safeguards skip pushes when `remote.<name>.url` is missing or when the remote branch already matches `HEAD`, emitting structured skip logs instead of surfacing opaque git errors.
 
 - [x] [GX-311] Fix namespace task log formatting emitting literal `\n`
   - Status: Resolved
