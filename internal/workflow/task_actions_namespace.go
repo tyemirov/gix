@@ -167,8 +167,11 @@ func handleNamespaceRewriteAction(ctx context.Context, environment *Environment,
 	result, rewriteErr := service.Rewrite(ctx, options)
 	if rewriteErr != nil {
 		var operationError repoerrors.OperationError
-		if errors.As(rewriteErr, &operationError) && (operationError.Code() == string(repoerrors.ErrNamespacePushFailed) || operationError.Code() == string(repoerrors.ErrRemoteMissing)) {
+		if errors.As(rewriteErr, &operationError) {
 			logRepositoryOperationError(environment, rewriteErr)
+			if operationError.Code() != string(repoerrors.ErrNamespacePushFailed) && operationError.Code() != string(repoerrors.ErrRemoteMissing) {
+				return rewriteErr
+			}
 		} else {
 			return rewriteErr
 		}
