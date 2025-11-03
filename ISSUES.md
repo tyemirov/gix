@@ -205,6 +205,8 @@ workflow operation apply-tasks failed: DEFAULT-BRANCH-UPDATE repository=MarcoPol
   - Notes: Observed during the owner-renaming workflow run on `/tmp/repos`.
   - Resolution: Namespace workflow templates now emit actual newline characters, regression tests enforce the absence of literal `\n`, and push/skip outputs render as separate lines.
 
+- [ ] [GX-312] When replacing the namespace, include tests. E.g. The dependency has been switched to `github.com/tyemirov/GAuss`, but the test suites still import `github.com/temirov/GAuss` (see `cmd/server/auth_redirect_test.go`, `internal/httpapi/auth_test.go`, `internal/httpapi/dashboard_integration_test.go`). Once the upstream module renames its `module` path, these imports will no longer resolve and `go test ./...` fails at compile time with “cannot find module providing github.com/temirov/GAuss/...”. The tests need their imports rewritten to the new namespace to keep the build green.
+
 ## Maintenance (400–499)
 
 - [x] [GX-400] Update the documentation @README.md and focus on the usefullness to the user. Move the technical details to @ARCHITECTURE.md
