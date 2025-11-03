@@ -8,12 +8,12 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
-	"github.com/temirov/gix/internal/githubcli"
-	"github.com/temirov/gix/internal/gitrepo"
-	"github.com/temirov/gix/internal/repos/dependencies"
-	"github.com/temirov/gix/internal/repos/shared"
-	rootutils "github.com/temirov/gix/internal/utils/roots"
-	"github.com/temirov/gix/internal/workflow"
+	"github.com/tyemirov/gix/internal/githubcli"
+	"github.com/tyemirov/gix/internal/gitrepo"
+	"github.com/tyemirov/gix/internal/repos/dependencies"
+	"github.com/tyemirov/gix/internal/repos/shared"
+	rootutils "github.com/tyemirov/gix/internal/utils/roots"
+	"github.com/tyemirov/gix/internal/workflow"
 )
 
 const (

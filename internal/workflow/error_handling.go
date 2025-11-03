@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	repoerrors "github.com/temirov/gix/internal/repos/errors"
+	repoerrors "github.com/tyemirov/gix/internal/repos/errors"
 )
 
 const (

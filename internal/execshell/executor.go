@@ -8,7 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/temirov/gix/internal/githubauth"
+	"github.com/tyemirov/gix/internal/githubauth"
 )
 
 const (
