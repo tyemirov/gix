@@ -35,6 +35,18 @@ func main() { dep.Do() }
 `
 	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "main.go"), []byte(source), 0o644))
 
+	testSource := `package main
+import (
+	"testing"
+	"github.com/old/account/dep"
+)
+
+func TestDo(t *testing.T) {
+	dep.Do()
+}
+`
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "main_test.go"), []byte(testSource), 0o644))
+
 	oldPrefix, err := namespace.NewModulePrefix("github.com/old/account")
 	require.NoError(t, err)
 	newPrefix, err := namespace.NewModulePrefix("github.com/new/account")
@@ -67,6 +79,7 @@ func main() { dep.Do() }
 	require.False(t, result.Skipped)
 	require.True(t, result.GoModChanged)
 	require.Contains(t, result.ChangedFiles, "main.go")
+	require.Contains(t, result.ChangedFiles, "main_test.go")
 	require.NotEmpty(t, result.BranchName)
 	require.Contains(t, result.BranchName, "namespace-rewrite")
 }
@@ -85,6 +98,18 @@ import "github.com/old/account/dep"
 func main() { dep.Do() }
 `
 	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "main.go"), []byte(source), 0o644))
+
+	testSource := `package main
+import (
+	"testing"
+	"github.com/old/account/dep"
+)
+
+func TestDo(t *testing.T) {
+	dep.Do()
+}
+`
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "main_test.go"), []byte(testSource), 0o644))
 
 	oldPrefix, err := namespace.NewModulePrefix("github.com/old/account")
 	require.NoError(t, err)
@@ -127,6 +152,8 @@ func main() { dep.Do() }
 	require.Equal(t, "ns-update/20241124-120000Z", result.BranchName)
 	require.True(t, result.CommitCreated)
 	require.True(t, result.PushPerformed)
+	require.Contains(t, result.ChangedFiles, "main.go")
+	require.Contains(t, result.ChangedFiles, "main_test.go")
 
 	updatedGoMod, readModErr := os.ReadFile(filepath.Join(tempDir, "go.mod"))
 	require.NoError(t, readModErr)
@@ -138,9 +165,15 @@ func main() { dep.Do() }
 	require.False(t, strings.Contains(string(updatedSource), "github.com/old/account"))
 	require.True(t, strings.Contains(string(updatedSource), "github.com/new/account"))
 
+	updatedTestSource, readTestErr := os.ReadFile(filepath.Join(tempDir, "main_test.go"))
+	require.NoError(t, readTestErr)
+	require.False(t, strings.Contains(string(updatedTestSource), "github.com/old/account"))
+	require.True(t, strings.Contains(string(updatedTestSource), "github.com/new/account"))
+
 	require.Contains(t, executor.recordedCommands(), "checkout -b ns-update/20241124-120000Z")
 	require.Contains(t, executor.recordedCommands(), "add go.mod")
 	require.Contains(t, executor.recordedCommands(), "add main.go")
+	require.Contains(t, executor.recordedCommands(), "add main_test.go")
 	require.Contains(t, executor.recordedCommands(), "commit -m chore: rewrite namespace")
 	require.Contains(t, executor.recordedCommands(), "push --set-upstream origin ns-update/20241124-120000Z")
 }

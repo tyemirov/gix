@@ -25,7 +25,6 @@ const (
 	defaultBranchPrefix          = "namespace-rewrite"
 	defaultCommitMessageTemplate = "chore(namespace): rewrite %s -> %s"
 	goFileExtension              = ".go"
-	goTestFileSuffix             = "_test.go"
 	gitDirectoryName             = ".git"
 	vendorDirectoryName          = "vendor"
 	gitIgnoredSkipReason         = "namespace rewrite skipped: files ignored by git"
@@ -404,10 +403,6 @@ func (service *Service) buildChangePlan(repositoryPath string, oldPrefix ModuleP
 		if !strings.HasSuffix(entry.Name(), goFileExtension) {
 			return nil
 		}
-		if strings.HasSuffix(entry.Name(), goTestFileSuffix) {
-			return nil
-		}
-
 		contains, detectErr := service.goFileImportsPrefix(fileSet, path, oldPrefix)
 		if detectErr != nil {
 			return detectErr
