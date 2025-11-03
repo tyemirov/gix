@@ -3,6 +3,8 @@ package changelog
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -10,6 +12,7 @@ import (
 
 	changeloggen "github.com/temirov/gix/internal/changelog"
 	"github.com/temirov/gix/internal/execshell"
+	"github.com/temirov/gix/internal/gitrepo"
 	"github.com/temirov/gix/internal/utils"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
 	"github.com/temirov/gix/internal/workflow"
@@ -191,11 +194,13 @@ type fakeChatClient struct {
 	response string
 	err      error
 	request  *llm.ChatRequest
+	calls    int
 }
 
 func (client *fakeChatClient) Chat(ctx context.Context, request llm.ChatRequest) (string, error) {
 	clientCopy := request
 	client.request = &clientCopy
+	client.calls++
 	if client.err != nil {
 		return "", client.err
 	}
@@ -222,4 +227,65 @@ type mockDiscoverer struct {
 
 func (discoverer mockDiscoverer) DiscoverRepositories([]string) ([]string, error) {
 	return append([]string{}, discoverer.roots...), nil
+}
+
+func TestMessageCommandOutputsChangelogOnce(t *testing.T) {
+	tempDir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(tempDir, ".git"), 0o755))
+
+	apiKeyEnv := "TEST_LLM_MESSAGE_KEY"
+	t.Setenv(apiKeyEnv, "mock-api-key")
+
+	executor := &fakeGitExecutor{
+		responses: map[string]string{
+			"rev-parse --is-inside-work-tree": "true\n",
+			"remote get-url origin":           "",
+			"rev-parse --abbrev-ref HEAD":     "main\n",
+			"describe --tags --abbrev=0":      "v0.9.0\n",
+			"log --no-merges --date=short --pretty=format:%h %ad %an %s --max-count=200 v0.9.0..HEAD": "abc123 2025-10-07 Alice Add feature\n",
+			"diff --stat v0.9.0..HEAD":      " internal/app.go | 5 ++++-\n",
+			"diff --unified=3 v0.9.0..HEAD": "diff --git a/internal/app.go b/internal/app.go\n",
+		},
+	}
+
+	manager, err := gitrepo.NewRepositoryManager(executor)
+	require.NoError(t, err)
+
+	client := &fakeChatClient{response: "## [v1.0.0]\n\n### Features ✨\n- Highlight\n"}
+
+	builder := MessageCommandBuilder{
+		GitExecutor: executor,
+		GitManager:  manager,
+		Discoverer:  mockDiscoverer{roots: []string{tempDir}},
+		ConfigurationProvider: func() MessageConfiguration {
+			return MessageConfiguration{
+				Roots:          []string{tempDir},
+				APIKeyEnv:      apiKeyEnv,
+				Model:          "mock-model",
+				Version:        "v1.0.0",
+				SinceReference: "",
+			}.Sanitize()
+		},
+		ClientFactory: func(config llm.Config) (changeloggen.ChatClient, error) {
+			client.config = config
+			return client, nil
+		},
+	}
+
+	command, err := builder.Build()
+	require.NoError(t, err)
+
+	flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Name: flagutils.DefaultRootFlagName, Usage: flagutils.DefaultRootFlagUsage, Enabled: true})
+
+	var output bytes.Buffer
+	command.SetOut(&output)
+	command.SetErr(&output)
+	command.SetContext(context.Background())
+
+	err = command.Execute()
+	require.NoError(t, err)
+
+	out := output.String()
+	require.Equal(t, 1, strings.Count(out, "## [v1.0.0]"), "expected changelog heading once, output: %q", out)
+	require.Equal(t, 1, client.calls, "chat client should be invoked exactly once")
 }

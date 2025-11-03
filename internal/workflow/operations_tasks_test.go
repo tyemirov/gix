@@ -17,6 +17,7 @@ import (
 	"github.com/temirov/gix/internal/execshell"
 	"github.com/temirov/gix/internal/githubcli"
 	"github.com/temirov/gix/internal/gitrepo"
+	"github.com/temirov/gix/pkg/llm"
 )
 
 func TestTaskPlannerBuildPlanRendersTemplates(testInstance *testing.T) {
@@ -67,6 +68,46 @@ func TestTaskPlannerBuildPlanRendersTemplates(testInstance *testing.T) {
 	require.Equal(testInstance, []byte("Repository: octocat/sample"), fileChange.content)
 	require.Equal(testInstance, defaultTaskFilePermissions, fileChange.permissions)
 	require.Nil(testInstance, plan.pullRequest)
+}
+
+func TestTaskOperationSkipsDuplicateRepositories(t *testing.T) {
+	t.Parallel()
+
+	executor := &stubLLMGitExecutor{responses: map[string]string{
+		"describe --tags --abbrev=0": "v0.9.0\n",
+		"log --no-merges --date=short --pretty=format:%h %ad %an %s --max-count=200 v0.9.0..HEAD": "abc123 2025-10-07 Alice Add feature\n",
+		"diff --stat v0.9.0..HEAD":      " internal/app.go | 5 ++++-\n",
+		"diff --unified=3 v0.9.0..HEAD": "diff --git a/internal/app.go b/internal/app.go\n",
+	}}
+
+	client := &stubChangelogChatClient{response: "## [v1.0.0]\n\n### Features ✨\n- Highlight"}
+
+	environment := &Environment{
+		GitExecutor: executor,
+		Output:      &bytes.Buffer{},
+	}
+
+	task := TaskDefinition{
+		Name:        "Generate changelog section",
+		EnsureClean: false,
+		Actions: []TaskActionDefinition{
+			{
+				Type: taskActionChangelog,
+				Options: map[string]any{
+					changelogOptionClient:  client,
+					changelogOptionVersion: "v1.0.0",
+				},
+			},
+		},
+	}
+
+	repository := &RepositoryState{Path: "/repositories/sample"}
+	duplicate := &RepositoryState{Path: "/repositories/sample"}
+	state := &State{Repositories: []*RepositoryState{repository, duplicate}}
+
+	executionError := (&TaskOperation{tasks: []TaskDefinition{task}}).Execute(context.Background(), environment, state)
+	require.NoError(t, executionError)
+	require.Equal(t, 1, client.calls)
 }
 
 func TestTaskPlannerBuildPlanSupportsActions(testInstance *testing.T) {
@@ -458,6 +499,32 @@ func TestTaskExecutorSkipsWhenSafeguardFails(testInstance *testing.T) {
 	require.NoError(testInstance, executionError)
 	require.Contains(testInstance, environment.Output.(*bytes.Buffer).String(), "TASK-SKIP")
 	require.Contains(testInstance, environment.Output.(*bytes.Buffer).String(), "requires branch main")
+}
+
+type stubLLMGitExecutor struct {
+	responses map[string]string
+}
+
+func (executor *stubLLMGitExecutor) ExecuteGit(ctx context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
+	key := strings.Join(details.Arguments, " ")
+	if output, ok := executor.responses[key]; ok {
+		return execshell.ExecutionResult{StandardOutput: output}, nil
+	}
+	return execshell.ExecutionResult{}, nil
+}
+
+func (executor *stubLLMGitExecutor) ExecuteGitHubCLI(ctx context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
+	return execshell.ExecutionResult{}, nil
+}
+
+type stubChangelogChatClient struct {
+	response string
+	calls    int
+}
+
+func (client *stubChangelogChatClient) Chat(ctx context.Context, request llm.ChatRequest) (string, error) {
+	client.calls++
+	return client.response, nil
 }
 
 type fakeFileSystem struct {

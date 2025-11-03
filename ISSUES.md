@@ -219,7 +219,8 @@ workflow operation apply-tasks failed: DEFAULT-BRANCH-UPDATE repository=MarcoPol
   - Desired: Leverage `git check-ignore` to filter out ignored nested repositories before executing operations across commands and workflows.
   - Resolution: Added shared gitignore helpers, wired audit discovery to remove gitignored children, updated namespace rewrite to reuse the helper, and refreshed unit/integration coverage so workflows skip ignored repositories.
 
-- [ ] [GX-314] The changelog command generates the message twice
+- [x] [GX-314] The changelog command generates the message twice
+  - Resolution: Added workflow-level repository deduplication so changelog actions run once per path and added regression coverage preventing duplicate CLI output.
 
 - [ ] [GX-315] Invesigate the bug and write a plan for fixing it:
 ```

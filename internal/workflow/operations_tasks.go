@@ -155,9 +155,18 @@ func (operation *TaskOperation) Execute(executionContext context.Context, enviro
 		return nil
 	}
 
+	seen := make(map[string]struct{}, len(state.Repositories))
+
 	for _, repository := range state.Repositories {
 		if repository == nil {
 			continue
+		}
+		pathKey := strings.TrimSpace(repository.Path)
+		if len(pathKey) > 0 {
+			if _, exists := seen[pathKey]; exists {
+				continue
+			}
+			seen[pathKey] = struct{}{}
 		}
 		for _, task := range operation.tasks {
 			if err := operation.executeTask(executionContext, environment, repository, task); err != nil {

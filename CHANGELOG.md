@@ -21,6 +21,7 @@
 ### Bug Fixes 🐛
 - Fixed skipping of gitignored nested repositories and files during namespace rewrite.
 - Fixed namespace rewrite to update Go test files, ensuring `_test.go` imports follow the new module prefix.
+- Fixed workflow apply-tasks to skip duplicate repositories so changelog actions emit a single section per path.
 - Fixed namespace task log formatting to emit actual newlines instead of escaped `\n`.
 - Fixed namespace push failures by capturing git stderr and degrading push/auth errors into actionable skip messages.
 - Fixed branch default command to fail fast with clear error when GitHub token is missing.
