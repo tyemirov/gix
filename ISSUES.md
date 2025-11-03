@@ -150,7 +150,8 @@ workflow operation apply-tasks failed: DEFAULT-BRANCH-UPDATE repository=MarcoPol
   - Update developer docs describing prompt/output handling after GX-405 cleanup.
   - Extend CI to run `staticcheck` and `ineffassign` alongside the existing `go test ./...` gate.
   - Resolution: Added domain model section and prompt guidance to `docs/cli_design.md`, cross-linked from `POLICY.md`, refreshed README developer notes, wired `staticcheck`/`ineffassign` into `make ci`, and resolved all new lint findings.
-- [ ] [GX-408] Update the @README.md with the full list of the commands that gix supports, their syntax and modifiers
+- [x] [GX-408] Update the @README.md with the full list of the commands that gix supports, their syntax and modifiers
+  - Resolution: Added a comprehensive Command Reference to README with all namespaces, subcommands, aliases, and flags; corrected examples (use `gix branch commit message --roots .` and documented shared `--remote`, `--version`, and `--init` flags).
 
 ## Planning 
 do not work on the issues below, not ready

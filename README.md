@@ -71,7 +71,7 @@ Capture metadata (default branches, owners, remotes, protocol mismatches) for ev
 ### Draft commit messages and changelog entries
 
 ```shell
-gix commit message --repository .
+gix branch commit message --roots .
 gix repo changelog message --since-tag v1.2.0 --version v1.3.0
 ```
 
@@ -94,6 +94,59 @@ Workflows reuse repository discovery, confirmation prompts, and logging so you c
 - `--yes` (`-y`) — accept confirmations when you are ready to apply the plan.
 - `--config path/to/config.yaml` — load persisted defaults for flags such as roots, owners, or log level.
 - `--log-level`, `--log-format` — control Zap logging output (structured JSON or console).
+
+Additional shared flags:
+
+- `--remote <name>` — override the remote name used by commands that push or fetch (default `origin`).
+- `--version` — print the gix version (works at the root or with any command).
+- `--init [local|user] [--force]` — write an embedded default config (to `./config.yaml` or `$XDG_CONFIG_HOME/gix/config.yaml`), overwriting when `--force` is provided.
+
+## Command Reference
+
+Top-level commands and their subcommands. Aliases are shown in parentheses.
+
+- `gix version`
+  - Prints the current release. Also available as `gix --version`.
+
+- `gix audit [--roots <dir>...] [--all] [--dry-run] [-y]` (alias `a`)
+  - Flags: `--roots` (repeatable), `--all` to include non-git folders in output.
+
+- `gix workflow <configuration> [--roots <dir>...] [--require-clean] [--dry-run] [-y]` (alias `w`)
+  - Runs tasks from a YAML/JSON workflow file.
+  - Flags: `--require-clean` sets the default safeguard for operations that support it.
+
+- `gix repo` (alias `r`)
+  - `gix repo folder rename [--owner] [--require-clean] [--roots <dir>...] [--dry-run] [-y]`
+    - Renames repository directories to canonical GitHub names.
+    - Flags: `--owner` include the owner in directory path; `--require-clean` enforce clean worktrees.
+  - `gix repo remote update-to-canonical [--owner <slug>] [--roots <dir>...] [--dry-run] [-y]` (alias `canonical`)
+    - Updates `origin` URLs to the canonical GitHub repository; optional `--owner` constraint.
+  - `gix repo remote update-protocol --from <git|ssh|https> --to <git|ssh|https> [--roots <dir>...] [--dry-run] [-y]` (alias `convert`)
+    - Converts remote protocols in bulk.
+  - `gix repo prs delete [--limit <N>] [--remote <name>] [--roots <dir>...] [--dry-run] [-y]` (alias `purge`)
+    - Deletes branches whose pull requests are closed. Flags: `--limit`, `--remote`.
+  - `gix repo packages delete [--package <name>] [--roots <dir>...] [--dry-run] [-y]` (alias `prune`)
+    - Removes untagged GHCR versions. Flag: `--package` for the container name.
+  - `gix repo files replace --find <string> [--replace <string>] [--pattern <glob>...] [--command "<shell>"] [--require-clean] [--branch <name>] [--require-path <rel>...] [--roots <dir>...] [--dry-run] [-y]` (alias `sub`)
+    - Performs text substitutions across matched files. Safeguards via `--require-clean`, `--branch`, `--require-path`.
+  - `gix repo namespace rewrite --old <module/prefix> --new <module/prefix> [--branch-prefix <prefix>] [--remote <name>] [--push] [--commit-message <text>] [--roots <dir>...] [--dry-run] [-y]` (alias `ns`)
+    - Rewrites Go module namespaces and imports.
+  - `gix repo rm <path>... [--remote <name>] [--push] [--restore] [--push-missing] [--roots <dir>...] [--dry-run] [-y]` (alias `purge`)
+    - Purges paths from history using git-filter-repo and optionally force-pushes updates.
+  - `gix repo release <tag> [--message <text>] [--remote <name>] [--roots <dir>...] [--dry-run] [-y]` (alias `rel`)
+    - Creates and pushes an annotated tag for each repository root.
+  - `gix repo changelog message [--version <v>] [--release-date YYYY-MM-DD] [--since-tag <ref>] [--since-date <ts>] [--max-tokens <N>] [--temperature <0-2>] [--model <id>] [--base-url <url>] [--api-key-env <NAME>] [--timeout-seconds <N>] [--roots <dir>...]` (aliases `section`, `msg`)
+    - Generates a changelog section from git history using the configured LLM.
+
+- `gix branch` (alias `b`)
+  - `gix branch default <target-branch> [--roots <dir>...] [--dry-run] [-y]`
+    - Promotes the default branch across repositories.
+  - `gix branch cd <branch> [--remote <name>] [--roots <dir>...] [--dry-run]` (alias `switch`)
+    - Switches repositories to the selected branch, creating it if missing and rebasing onto the remote.
+  - `gix branch refresh --branch <name> [--stash | --commit] [--roots <dir>...]`
+    - Fetches, checks out, and pulls a branch; optionally stashes or commits local changes.
+  - `gix branch commit message [--diff-source staged|worktree] [--max-tokens <N>] [--temperature <0-2>] [--model <id>] [--base-url <url>] [--api-key-env <NAME>] [--timeout-seconds <N>] [--roots <dir>...]` (alias `msg`)
+    - Drafts a Conventional Commit subject and optional bullets using the configured LLM.
 
 ## Configuration essentials
 
