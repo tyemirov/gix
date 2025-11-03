@@ -74,6 +74,13 @@ func (service *Service) DiscoverInspections(executionContext context.Context, ro
 		return nil, normalizationError
 	}
 
+	filteredRepositories, filterError := shared.FilterIgnoredRepositories(executionContext, service.gitExecutor, normalizedRepositories)
+	if filterError != nil {
+		return nil, filterError
+	}
+
+	normalizedRepositories = filteredRepositories
+
 	if debug {
 		fmt.Fprintf(service.errorWriter, debugDiscoveredTemplate, len(repositories), strings.Join(roots, " "))
 	}
