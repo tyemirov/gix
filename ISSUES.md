@@ -152,7 +152,8 @@ workflow operation apply-tasks failed: DEFAULT-BRANCH-UPDATE repository=MarcoPol
   - Resolution: Added domain model section and prompt guidance to `docs/cli_design.md`, cross-linked from `POLICY.md`, refreshed README developer notes, wired `staticcheck`/`ineffassign` into `make ci`, and resolved all new lint findings.
 - [x] [GX-408] Update the @README.md with the full list of the commands that gix supports, their syntax and modifiers
   - Resolution: Added a comprehensive Command Reference to README with all namespaces, subcommands, aliases, and flags; corrected examples (use `gix branch commit message --roots .` and documented shared `--remote`, `--version`, and `--init` flags).
-- [ ] [GX-409] Describe workflow syntax and how workflows can be build for custom operations and sequence in the @README.md
+- [x] [GX-409] Describe workflow syntax and how workflows can be build for custom operations and sequences in the @README.md
+  - Resolution: Expanded README “Automate sequences with workflows” to document YAML schema (`workflow: [ { step: { name, after, operation, with } } ]`), DAG semantics, built-in operations and their `with` options, `apply-tasks` schema with templating and supported actions, safeguards (`require_clean`, `branch`, `branch_in`, `paths`), and execution defaults (`--dry-run`, `--require-clean`).
 
 ## Planning 
 do not work on the issues below, not ready

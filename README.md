@@ -87,6 +87,134 @@ gix workflow maintenance.yml --roots ~/Development --yes
 
 Workflows reuse repository discovery, confirmation prompts, and logging so you can hand teammates a repeatable playbook.
 
+### Workflow syntax
+
+Workflows are YAML or JSON files with a top-level `workflow` sequence. Each entry wraps a `step` describing one operation, optional dependencies, and operation-specific options.
+
+```yaml
+workflow:
+  - step:
+      name: rename
+      operation: rename-directories
+      with:
+        require_clean: true
+        include_owner: false
+
+  - step:
+      name: remotes
+      after: ["rename"]
+      operation: update-canonical-remote
+      with:
+        owner: temirov
+
+  - step:
+      name: protocols
+      after: ["remotes"]
+      operation: convert-protocol
+      with:
+        from: https
+        to: ssh
+
+  - step:
+      name: default-branch
+      operation: default-branch
+      with:
+        targets:
+          - remote_name: origin
+            # if omitted, source_branch is discovered from remote or local
+            target_branch: master
+            push_to_remote: true
+            delete_source_branch: false
+
+  - step:
+      name: audit
+      after: ["default-branch"]
+      operation: audit-report
+      with:
+        output: ./reports/audit.csv
+```
+
+- `name` is optional; if omitted a stable name is generated (e.g., `convert-protocol-1`).
+- `after` lists step names this step depends on. If omitted, each step depends on the previous step, preserving sequential order.
+- `operation` selects a built-in operation (see below).
+- `with` carries operation-specific options.
+
+Run with: `gix workflow path/to/file.yaml --roots ~/Development [--dry-run] [-y] [--require-clean]`.
+
+### Built-in operations
+
+- `convert-protocol`
+  - with: `from: <git|ssh|https>`, `to: <git|ssh|https>` (required, must differ)
+- `update-canonical-remote`
+  - with: `owner: <slug>` (optional owner constraint)
+- `rename-directories`
+  - with: `require_clean: <bool>`, `include_owner: <bool>`
+  - CLI `--require-clean` provides a default when not specified.
+- `default-branch`
+  - with: `targets: [{ remote_name, source_branch, target_branch, push_to_remote, delete_source_branch }]`
+  - Defaults: `remote_name: origin`, `target_branch: master`, `push_to_remote: true`, `delete_source_branch: false`; `source_branch` auto-detected from remote/local if omitted.
+- `audit-report`
+  - with: `output: <path>` (optional). When provided, writes a CSV file; otherwise prints to stdout (respects `--dry-run`).
+- `apply-tasks`
+  - with: `tasks: [...]` (see below) for fine-grained file changes, commits, PRs, and built-in actions.
+
+### Apply tasks (custom sequences)
+
+The `apply-tasks` operation lets you define repository-local tasks with optional templating and safeguards.
+
+Schema highlights:
+
+- Task: `{ name, ensure_clean, branch, files[], actions[], commit, pull_request, safeguards }`
+- Branch: `{ name, start_point, push_remote }` where `name`/`start_point` are Go text/templates rendered with repository data; default `push_remote: origin`.
+- Files: `{ path, content, mode: overwrite|skip-if-exists, permissions }` with templated `path`/`content`.
+- Actions: `{ type, options }` where `type` is one of:
+  - `repo.remote.update`, `repo.remote.convert-protocol`, `repo.folder.rename`, `branch.default`, `repo.release.tag`, `audit.report`, `repo.history.purge`, `repo.files.replace`, `repo.namespace.rewrite`
+- Commit: `{ message }` (templated). Defaults to `Apply task <name>` when empty.
+- Pull request: `{ title, body, base, draft }` (templated; optional).
+- Safeguards: map of conditions that skip the task when unmet; see below.
+
+Example task-only workflow step:
+
+```yaml
+- step:
+    name: apply-task
+    operation: apply-tasks
+    with:
+      tasks:
+        - name: "Bump license header"
+          ensure_clean: true
+          branch:
+            name: "chore/{{ .Repository.Name }}/license"
+          files:
+            - path: "LICENSE"
+              content: "Copyright (c) {{ .Repository.Owner }}"
+              mode: overwrite
+          commit:
+            message: "chore: update license"
+          safeguards:
+            require_clean: true
+            branch_in: [ main, master ]
+            paths: [ ".git" ]
+```
+
+Templating supports Go text/template with `.Task.*` and `.Repository.*` fields. Available repository fields include: `Path`, `Owner`, `Name`, `FullName`, `DefaultBranch`, `PathDepth`, `InitialClean`, `HasNestedRepositories`.
+
+### Safeguards
+
+Safeguards gate tasks (and are also used internally by some actions). Supported keys:
+
+- `require_clean: <bool>` — skip when the worktree is dirty.
+- `branch: <name>` — require current branch to match exactly.
+- `branch_in: [<name>...]` — require current branch to be one of the listed values.
+- `paths: [<relative/path>...]` — require listed paths to exist in the repository.
+
+### Execution model and defaults
+
+- Steps form a DAG: `after` defines dependencies; independent steps run in parallel stages; omitted `after` implies sequential chaining.
+- `--dry-run` prints plans and skips mutations; confirmations respect `--yes`.
+- `--require-clean` sets the default `require_clean` for rename operations when not specified in `with`.
+- Repository discovery honors `--roots` and ignores nested repositories by default; certain operations may enable nested processing when appropriate.
+
 ## Shared command options
 
 - `--roots <path>` — target one or more directories; nested repositories are ignored automatically.
