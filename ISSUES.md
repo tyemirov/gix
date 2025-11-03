@@ -154,6 +154,16 @@ workflow operation apply-tasks failed: DEFAULT-BRANCH-UPDATE repository=MarcoPol
   - Resolution: Added a comprehensive Command Reference to README with all namespaces, subcommands, aliases, and flags; corrected examples (use `gix branch commit message --roots .` and documented shared `--remote`, `--version`, and `--init` flags).
 - [x] [GX-409] Describe workflow syntax and how workflows can be build for custom operations and sequences in the @README.md
   - Resolution: Expanded README “Automate sequences with workflows” to document YAML schema (`workflow: [ { step: { name, after, operation, with } } ]`), DAG semantics, built-in operations and their `with` options, `apply-tasks` schema with templating and supported actions, safeguards (`require_clean`, `branch`, `branch_in`, `paths`), and execution defaults (`--dry-run`, `--require-clean`).
+- [ ] [GX-410] let's add an example of a workflow that:
+  1. Changes all repos' remotes to canonical
+  2. Changes all folders to canonical names with owners
+  3. Switch the active branch to master if the git tree is clean
+  4. Updates the Go namespaces to match the new canonical (FYI I have changed the name of my account, so I now need to rename the go modules from github.com/
+  temirov to github.com/tyemirov)
+  5. Have a commit message for the rename through LLM
+  6. Commit and push the changes
+  If some of the steps are not possible, let's document them as new features or improvements
+
 
 ## Planning 
 do not work on the issues below, not ready
