@@ -21,6 +21,15 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - Desired: Keep as backlog; no plan in ISSUES.md. Use PLAN.md when ready.
   - Notes: Formerly under “Planning”.
 
+- [ ] [GX-104] Add convenience CLI: `gix repo files add` mapping to apply-tasks
+  - Status: Unresolved
+  - Category: Feature
+  - Context: Frequently need to drop a standard file (e.g., POLICY.md) into many repos without crafting a workflow file.
+  - Desired: Introduce `gix repo files add --path <relative> [--content-file <path>|--content <text>] [--mode skip-if-exists|overwrite] [--permissions <octal>] [--branch <name>] [--push] [--roots <dir>...]`.
+    - Maps to an `apply-tasks` task that writes the file, commits with a configurable message (default `docs: add <path>`), and optionally pushes/opens a PR.
+    - Honors `--dry-run`, `-y/--yes`, shared `--remote`, and root discovery flags consistent with other repo commands.
+  - Notes: Lives under existing `repo files` namespace alongside `replace`.
+
 ## Improvements (200–299)
 
 - [x] [GX-200] Remove `--to` flag from default command and accept the new branch as an argument, e.g. `gix b default master`
@@ -55,6 +64,11 @@ If a repository doesnt have a remote, there is nothing to fetch, but we can stil
 - [x] [GX-207] DAG-based workflow execution
   - Resolution: Added workflow step metadata (`name`/`after`), introduced DAG planners that build topological stages, and taught the executor to run independent operations in parallel with shared error handling; new unit tests cover branching layers and cycle detection while maintaining sequential defaults for legacy configs.
 
+- [ ] [GX-210] Enable LLM actions in workflows and output piping between steps
+  - Status: Unresolved
+  - Category: Improvement
+  - Context: `apply-tasks` supports `commit.message.generate` and `changelog.message.generate` actions, but they require a programmatic client and there is no way to pass their outputs into subsequent steps (e.g., as a `commit_message` for namespace rewrite).
+  - Desired: Allow configuring an LLM client in workflow YAML (model, base-url, api-key env, timeout) and introduce workflow variables so action outputs can be referenced as inputs by later steps.
 
 ## BugFixes (300–399)
 
@@ -125,8 +139,6 @@ workflow operation apply-tasks failed: DEFAULT-BRANCH-UPDATE repository=MarcoPol
 - [x] [GX-304] No-remote repos cause failures across commands
   - Resolution: Added integration coverage proving `gix branch cd` and `gix workflow` succeed on repositories without remotes, emitting the expected skip/success messages without errors; no additional fixes were required.
 
-- [ ] [GX-305] There shall be no attempts to perform remote-releated operations for the repos with no remote. Write a test that confirms that if a repo has no remote counterpart that the operations related to remote, such as gh are never invoked. Fix the cases where the test fails. COver all git-related commands
-
 ## Maintenance (400–499)
 
 - [x] [GX-400] Update the documentation @README.md and focus on the usefullness to the user. Move the technical details to @ARCHITECTURE.md
@@ -154,7 +166,7 @@ workflow operation apply-tasks failed: DEFAULT-BRANCH-UPDATE repository=MarcoPol
   - Resolution: Added a comprehensive Command Reference to README with all namespaces, subcommands, aliases, and flags; corrected examples (use `gix branch commit message --roots .` and documented shared `--remote`, `--version`, and `--init` flags).
 - [x] [GX-409] Describe workflow syntax and how workflows can be build for custom operations and sequences in the @README.md
   - Resolution: Expanded README “Automate sequences with workflows” to document YAML schema (`workflow: [ { step: { name, after, operation, with } } ]`), DAG semantics, built-in operations and their `with` options, `apply-tasks` schema with templating and supported actions, safeguards (`require_clean`, `branch`, `branch_in`, `paths`), and execution defaults (`--dry-run`, `--require-clean`).
-- [ ] [GX-410] let's add an example of a workflow that:
+- [x] [GX-410] let's add an example of a workflow that:
   1. Changes all repos' remotes to canonical
   2. Changes all folders to canonical names with owners
   3. Switch the active branch to master if the git tree is clean
@@ -163,7 +175,7 @@ workflow operation apply-tasks failed: DEFAULT-BRANCH-UPDATE repository=MarcoPol
   5. Have a commit message for the rename through LLM
   6. Commit and push the changes
   If some of the steps are not possible, let's document them as new features or improvements
-
+  - Resolution: Added a complete YAML workflow example to README under “Example: Canonicalize after owner rename”, implementing canonical remote updates, folder renames with owners, conditional branch switch (via safeguards), and namespace rewrite with commit/push. Documented the current limitation around LLM-generated commit messages inside workflows and referenced new improvement items.
 
 ## Planning 
 do not work on the issues below, not ready
