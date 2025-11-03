@@ -221,7 +221,7 @@ func Do() { dep.Do() }
 	require.NoError(t, ignoredReadErr)
 	require.Contains(t, string(ignoredContent), "github.com/old/account")
 
-	require.Contains(t, commands, "check-ignore --quiet ignored/ignored.go")
+	require.Contains(t, commands, "check-ignore --stdin")
 }
 
 func TestRewriteUpdatesGoModDependencyBlocks(t *testing.T) {
@@ -584,16 +584,46 @@ func (executor *recordingGitExecutor) ExecuteGit(_ context.Context, details exec
 	}
 	executor.commands = append(executor.commands, details)
 
-	if len(details.Arguments) == 0 {
+	args := details.Arguments
+	if len(args) == 0 {
 		return execshell.ExecutionResult{}, nil
 	}
 
-	switch details.Arguments[0] {
+	switch args[0] {
 	case "status":
 		return execshell.ExecutionResult{StandardOutput: ""}, nil
 	case "checkout":
 		return execshell.ExecutionResult{}, nil
 	case "check-ignore":
+		if len(args) >= 2 && args[1] == "--stdin" {
+			input := strings.TrimSpace(string(details.StandardInput))
+			if len(input) == 0 {
+				return execshell.ExecutionResult{}, execshell.CommandFailedError{
+					Command: execshell.ShellCommand{Name: execshell.CommandGit, Details: details},
+					Result:  execshell.ExecutionResult{ExitCode: 1},
+				}
+			}
+			lines := strings.Split(input, "\n")
+			matches := make([]string, 0, len(lines))
+			for _, line := range lines {
+				path := strings.TrimSpace(line)
+				if len(path) == 0 {
+					continue
+				}
+				if executor.ignoredPaths != nil {
+					if _, exists := executor.ignoredPaths[path]; exists {
+						matches = append(matches, path)
+					}
+				}
+			}
+			if len(matches) == 0 {
+				return execshell.ExecutionResult{}, execshell.CommandFailedError{
+					Command: execshell.ShellCommand{Name: execshell.CommandGit, Details: details},
+					Result:  execshell.ExecutionResult{ExitCode: 1},
+				}
+			}
+			return execshell.ExecutionResult{StandardOutput: strings.Join(matches, "\n") + "\n"}, nil
+		}
 		pathIndex := len(details.Arguments) - 1
 		if pathIndex >= 1 {
 			pathArg := details.Arguments[pathIndex]

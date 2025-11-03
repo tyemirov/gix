@@ -339,6 +339,9 @@ func (executor *namespaceTestGitExecutor) ExecuteGit(_ context.Context, details 
 	case "checkout":
 		return execshell.ExecutionResult{}, nil
 	case "check-ignore":
+		if len(args) >= 2 && args[1] == "--stdin" {
+			return execshell.ExecutionResult{}, execshell.CommandFailedError{Result: execshell.ExecutionResult{ExitCode: 1}}
+		}
 		return execshell.ExecutionResult{}, execshell.CommandFailedError{Result: execshell.ExecutionResult{ExitCode: 1}}
 	case "add":
 		if len(args) > 1 {

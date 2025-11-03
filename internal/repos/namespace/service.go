@@ -195,24 +195,39 @@ func (plan changePlan) relativeGoFiles() []string {
 }
 
 func (service *Service) excludeIgnoredPlanEntries(ctx context.Context, repositoryPath string, plan changePlan) (changePlan, error) {
-	filtered := newChangePlan()
+	candidates := make([]string, 0, len(plan.goFilePaths)+1)
+	seen := make(map[string]struct{}, len(plan.goFilePaths)+1)
 
 	if plan.goMod {
-		ignored, ignoreErr := service.isPathIgnored(ctx, repositoryPath, "go.mod")
-		if ignoreErr != nil {
-			return changePlan{}, ignoreErr
-		}
-		filtered.goMod = !ignored
+		candidates = append(candidates, "go.mod")
+		seen["go.mod"] = struct{}{}
 	}
 
 	for relativePath := range plan.goFilePaths {
-		ignored, ignoreErr := service.isPathIgnored(ctx, repositoryPath, relativePath)
-		if ignoreErr != nil {
-			return changePlan{}, ignoreErr
+		if _, already := seen[relativePath]; already {
+			continue
 		}
-		if !ignored {
-			filtered.goFilePaths[relativePath] = struct{}{}
+		seen[relativePath] = struct{}{}
+		candidates = append(candidates, relativePath)
+	}
+
+	ignoredSet, ignoreErr := service.collectIgnoredPaths(ctx, repositoryPath, candidates)
+	if ignoreErr != nil {
+		return changePlan{}, ignoreErr
+	}
+
+	filtered := newChangePlan()
+	if plan.goMod {
+		if _, ignored := ignoredSet["go.mod"]; !ignored {
+			filtered.goMod = true
 		}
+	}
+
+	for relativePath := range plan.goFilePaths {
+		if _, ignored := ignoredSet[relativePath]; ignored {
+			continue
+		}
+		filtered.goFilePaths[relativePath] = struct{}{}
 	}
 
 	return filtered, nil
@@ -242,8 +257,12 @@ func (service *Service) planRewrite(repositoryPath string, options Options) (Res
 	if planError != nil {
 		return Result{}, planError
 	}
+	plan, planError = service.excludeIgnoredPlanEntries(context.Background(), repositoryPath, plan)
+	if planError != nil {
+		return Result{}, planError
+	}
 	if !plan.requiresRewrite() {
-		return Result{Skipped: true, SkipReason: "namespace already up to date"}, nil
+		return Result{Skipped: true, SkipReason: gitIgnoredSkipReason}, nil
 	}
 
 	result := Result{
@@ -766,21 +785,36 @@ func (service *Service) gitAdd(ctx context.Context, repositoryPath string, relat
 	return nil
 }
 
-func (service *Service) isPathIgnored(ctx context.Context, repositoryPath string, relativePath string) (bool, error) {
-	details := execshell.CommandDetails{
-		Arguments:        []string{"check-ignore", "--quiet", relativePath},
-		WorkingDirectory: repositoryPath,
-	}
-	_, err := service.gitExecutor.ExecuteGit(ctx, details)
-	if err == nil {
-		return true, nil
+func (service *Service) collectIgnoredPaths(ctx context.Context, repositoryPath string, paths []string) (map[string]struct{}, error) {
+	ignored := make(map[string]struct{})
+	if len(paths) == 0 {
+		return ignored, nil
 	}
 
-	var commandError execshell.CommandFailedError
-	if errors.As(err, &commandError) && commandError.Result.ExitCode == 1 {
-		return false, nil
+	details := execshell.CommandDetails{
+		Arguments:        []string{"check-ignore", "--stdin"},
+		WorkingDirectory: repositoryPath,
+		StandardInput:    []byte(strings.Join(paths, "\n")),
 	}
-	return false, repoerrors.Wrap(repoerrors.OperationNamespaceRewrite, repositoryPath, repoerrors.ErrNamespaceRewriteFailed, err)
+
+	result, err := service.gitExecutor.ExecuteGit(ctx, details)
+	if err != nil {
+		var commandError execshell.CommandFailedError
+		if errors.As(err, &commandError) && commandError.Result.ExitCode == 1 {
+			return ignored, nil
+		}
+		return nil, repoerrors.Wrap(repoerrors.OperationNamespaceRewrite, repositoryPath, repoerrors.ErrNamespaceRewriteFailed, err)
+	}
+
+	for _, line := range strings.Split(result.StandardOutput, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if len(trimmed) == 0 {
+			continue
+		}
+		ignored[trimmed] = struct{}{}
+	}
+
+	return ignored, nil
 }
 
 func (service *Service) hasStagedChanges(ctx context.Context, repositoryPath string) (bool, error) {
