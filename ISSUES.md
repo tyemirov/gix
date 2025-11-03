@@ -250,6 +250,39 @@ drwxrwxr-x 8 tyemirov tyemirov 4.0K Nov  3 14:33 .git/
 14:33:42 tyemirov@computercat:~/Development/Research/TAuth/tools/mpr-ui [master] $ 
 ```
 
+- [ ] [GX-316] `git b cd` command must pull down the latest version of the code after switching to the sepcified branch
+```
+14:36:12 tyemirov@computercat:~/Development/Research/TAuth [improvement/TA-208-nonce-validation] $ gix b cd master
+-- repo: tyemirov/TAuth --------------------------------------------------------
+14:36:18 INFO  REPO_SWITCHED      tyemirov/TAuth                     → master                                 | branch=master created=false event=REPO_SWITCHED path=/home/tyemirov/Development/Research/TAuth repo=tyemirov/TAuth
+14:36:21 INFO  REPO_SWITCHED                                         → master                                 | branch=master created=false event=REPO_SWITCHED path=.
+Summary: total.repos=1 REPO_SWITCHED=2 WARN=0 ERROR=0 duration_ms=5687
+14:36:21 tyemirov@computercat:~/Development/Research/TAuth [master] $ 
+14:40:47 tyemirov@computercat:~/Development/Research/TAuth [master] $ git pull
+Updating cd6d70a..c430e78
+Fast-forward
+ ARCHITECTURE.md                             |   6 ++-
+ CHANGELOG.md                                |   2 +
+ ISSUES.md                                   |   5 +-
+ README.md                                   |  44 +++++++++++++++-
+ cmd/server/main.go                          |  12 ++++-
+ internal/authkit/config.go                  |   1 +
+ internal/authkit/nonce_store.go             |  92 +++++++++++++++++++++++++++++++++
+ internal/authkit/nonce_store_test.go        |  48 +++++++++++++++++
+ internal/authkit/routes.go                  |  48 +++++++++++++++--
+ internal/authkit/routes_http_test.go        |  69 +++++++++++++++++++------
+ internal/authkit/routes_integration_test.go | 303 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++---------------------------------
+ tests/mpr-auth-header.test.js               | 165 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++---
+ tests/mpr-footer.test.js                    |  74 +++++++++++++++++++++++++++
+ web/demo.html                               | 168 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++--
+ web/mpr-ui.js                               | 296 ---------------------------------------------------------------------------------------------------------
+ 15 files changed, 908 insertions(+), 425 deletions(-)
+ create mode 100644 internal/authkit/nonce_store.go
+ create mode 100644 internal/authkit/nonce_store_test.go
+ create mode 100644 tests/mpr-footer.test.js
+ delete mode 100644 web/mpr-ui.js
+```
+
 ## Maintenance (400–499)
 
 - [x] [GX-400] Update the documentation @README.md and focus on the usefullness to the user. Move the technical details to @ARCHITECTURE.md
