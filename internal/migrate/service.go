@@ -254,66 +254,95 @@ func (service *Service) Execute(executionContext context.Context, options Migrat
 		}
 	}
 
-	pagesUpdated, pagesError := service.pagesManager.EnsureLegacyBranch(executionContext, PagesUpdateConfig{
-		RepositoryIdentifier: options.RepositoryIdentifier,
-		SourceBranch:         options.SourceBranch,
-		TargetBranch:         options.TargetBranch,
-	})
-	if pagesError != nil {
-		if isNonCriticalPagesError(pagesError) {
-			service.logger.Warn(
-				pagesUpdateWarningMessageConstant,
-				zap.String(repositoryPathFieldNameConstant, options.RepositoryPath),
-				zap.String(repositoryIdentifierFieldNameConstant, options.RepositoryIdentifier),
-				zap.Error(pagesError),
-			)
-			warning := fmt.Sprintf(pagesUpdateWarningTemplateConstant, options.RepositoryIdentifier, summarizeCommandError(pagesError))
-			service.warnings = append(service.warnings, warning)
-			pagesUpdated = false
-		} else {
-			return MigrationResult{}, fmt.Errorf(pagesUpdateErrorTemplateConstant, pagesError)
-		}
-	}
-
-	if err := service.gitHubClient.SetDefaultBranch(executionContext, options.RepositoryIdentifier, string(options.TargetBranch)); err != nil {
-		return MigrationResult{}, DefaultBranchUpdateError{
-			RepositoryPath:       options.RepositoryPath,
+	remoteOperationsEnabled := len(strings.TrimSpace(options.RepositoryIdentifier)) > 0
+	pagesUpdated := false
+	if remoteOperationsEnabled {
+		var pagesError error
+		pagesUpdated, pagesError = service.pagesManager.EnsureLegacyBranch(executionContext, PagesUpdateConfig{
 			RepositoryIdentifier: options.RepositoryIdentifier,
 			SourceBranch:         options.SourceBranch,
 			TargetBranch:         options.TargetBranch,
-			Cause:                err,
+		})
+		if pagesError != nil {
+			if isNonCriticalPagesError(pagesError) {
+				service.logger.Warn(
+					pagesUpdateWarningMessageConstant,
+					zap.String(repositoryPathFieldNameConstant, options.RepositoryPath),
+					zap.String(repositoryIdentifierFieldNameConstant, options.RepositoryIdentifier),
+					zap.Error(pagesError),
+				)
+				warning := fmt.Sprintf(pagesUpdateWarningTemplateConstant, options.RepositoryIdentifier, summarizeCommandError(pagesError))
+				service.warnings = append(service.warnings, warning)
+				pagesUpdated = false
+			} else {
+				return MigrationResult{}, fmt.Errorf(pagesUpdateErrorTemplateConstant, pagesError)
+			}
 		}
 	}
 
-	pullRequests, listError := service.gitHubClient.ListPullRequests(executionContext, options.RepositoryIdentifier, githubcli.PullRequestListOptions{
-		State:       githubcli.PullRequestStateOpen,
-		BaseBranch:  string(options.SourceBranch),
-		ResultLimit: defaultPullRequestQueryLimit,
-	})
-	if listError != nil {
-		service.logger.Warn(
-			"Pull request listing failed",
-			zap.String(repositoryIdentifierFieldNameConstant, options.RepositoryIdentifier),
-			zap.Error(listError),
-		)
-		warning := fmt.Sprintf(pullRequestListWarningTemplateConstant, options.RepositoryIdentifier, summarizeCommandError(listError))
-		service.warnings = append(service.warnings, warning)
-		pullRequests = []githubcli.PullRequest{}
+	defaultBranchUpdated := false
+	if remoteOperationsEnabled {
+		if err := service.gitHubClient.SetDefaultBranch(executionContext, options.RepositoryIdentifier, string(options.TargetBranch)); err != nil {
+			if isMissingRemoteRepositoryError(err) {
+				remoteOperationsEnabled = false
+			} else {
+				return MigrationResult{}, DefaultBranchUpdateError{
+					RepositoryPath:       options.RepositoryPath,
+					RepositoryIdentifier: options.RepositoryIdentifier,
+					SourceBranch:         options.SourceBranch,
+					TargetBranch:         options.TargetBranch,
+					Cause:                err,
+				}
+			}
+		} else {
+			defaultBranchUpdated = true
+		}
 	}
 
-	retargeted, retargetWarnings := service.retargetPullRequests(executionContext, options, pullRequests)
-	service.warnings = append(service.warnings, retargetWarnings...)
+	pullRequests := []githubcli.PullRequest{}
+	if remoteOperationsEnabled {
+		var listError error
+		pullRequests, listError = service.gitHubClient.ListPullRequests(executionContext, options.RepositoryIdentifier, githubcli.PullRequestListOptions{
+			State:       githubcli.PullRequestStateOpen,
+			BaseBranch:  string(options.SourceBranch),
+			ResultLimit: defaultPullRequestQueryLimit,
+		})
+		if listError != nil {
+			service.logger.Warn(
+				"Pull request listing failed",
+				zap.String(repositoryIdentifierFieldNameConstant, options.RepositoryIdentifier),
+				zap.Error(listError),
+			)
+			warning := fmt.Sprintf(pullRequestListWarningTemplateConstant, options.RepositoryIdentifier, summarizeCommandError(listError))
+			service.warnings = append(service.warnings, warning)
+			pullRequests = []githubcli.PullRequest{}
+			if isMissingRemoteRepositoryError(listError) {
+				remoteOperationsEnabled = false
+			}
+		}
+	}
 
-	branchProtected, protectionError := service.gitHubClient.CheckBranchProtection(executionContext, options.RepositoryIdentifier, string(options.SourceBranch))
-	if protectionError != nil {
-		service.logger.Warn(
-			"Branch protection check failed",
-			zap.String(repositoryIdentifierFieldNameConstant, options.RepositoryIdentifier),
-			zap.Error(protectionError),
-		)
-		warning := fmt.Sprintf(branchProtectionWarningTemplateConstant, summarizeCommandError(protectionError))
-		service.warnings = append(service.warnings, warning)
-		branchProtected = true
+	retargeted := make([]int, 0)
+	if remoteOperationsEnabled {
+		var retargetWarnings []string
+		retargeted, retargetWarnings = service.retargetPullRequests(executionContext, options, pullRequests)
+		service.warnings = append(service.warnings, retargetWarnings...)
+	}
+
+	branchProtected := true
+	if remoteOperationsEnabled {
+		var protectionError error
+		branchProtected, protectionError = service.gitHubClient.CheckBranchProtection(executionContext, options.RepositoryIdentifier, string(options.SourceBranch))
+		if protectionError != nil {
+			service.logger.Warn(
+				"Branch protection check failed",
+				zap.String(repositoryIdentifierFieldNameConstant, options.RepositoryIdentifier),
+				zap.Error(protectionError),
+			)
+			warning := fmt.Sprintf(branchProtectionWarningTemplateConstant, summarizeCommandError(protectionError))
+			service.warnings = append(service.warnings, warning)
+			branchProtected = true
+		}
 	}
 
 	safetyStatus := service.safetyEvaluator.Evaluate(SafetyInputs{
@@ -325,7 +354,7 @@ func (service *Service) Execute(executionContext context.Context, options Migrat
 	result := MigrationResult{
 		WorkflowOutcome:           workflowOutcome,
 		PagesConfigurationUpdated: pagesUpdated,
-		DefaultBranchUpdated:      true,
+		DefaultBranchUpdated:      defaultBranchUpdated,
 		RetargetedPullRequests:    retargeted,
 		SafetyStatus:              safetyStatus,
 		Warnings:                  append([]string(nil), service.warnings...),
@@ -373,9 +402,6 @@ func (service *Service) validateOptions(options MigrationOptions) error {
 	}
 	if len(strings.TrimSpace(options.RepositoryRemoteName)) == 0 {
 		return InvalidInputError{FieldName: remoteNameFieldNameConstant, Message: requiredValueMessageConstant}
-	}
-	if len(strings.TrimSpace(options.RepositoryIdentifier)) == 0 {
-		return InvalidInputError{FieldName: repositoryIdentifierFieldNameConstant, Message: requiredValueMessageConstant}
 	}
 	if len(strings.TrimSpace(options.WorkflowsDirectory)) == 0 {
 		return InvalidInputError{FieldName: workflowsDirectoryFieldNameConstant, Message: requiredValueMessageConstant}
@@ -485,6 +511,31 @@ func summarizeCommandError(err error) string {
 		return commandFailure.Error()
 	}
 	return strings.TrimSpace(err.Error())
+}
+
+func isMissingRemoteRepositoryError(err error) bool {
+	var operationError githubcli.OperationError
+	if errors.As(err, &operationError) && operationError.Cause != nil {
+		err = operationError.Cause
+	}
+	var commandFailure execshell.CommandFailedError
+	if !errors.As(err, &commandFailure) {
+		return false
+	}
+	normalized := strings.ToLower(strings.TrimSpace(commandFailure.Result.StandardError))
+	if len(normalized) == 0 {
+		normalized = strings.ToLower(strings.TrimSpace(commandFailure.Error()))
+	}
+	if len(normalized) == 0 {
+		return false
+	}
+	if strings.Contains(normalized, "http 404") {
+		return true
+	}
+	if strings.Contains(normalized, "repository") && strings.Contains(normalized, "not found") {
+		return true
+	}
+	return false
 }
 
 const defaultPullRequestQueryLimit = 100

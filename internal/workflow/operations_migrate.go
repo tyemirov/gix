@@ -221,14 +221,7 @@ func (operation *BranchMigrationOperation) Execute(executionContext context.Cont
 			return fmt.Errorf(localCheckoutErrorTemplateConstant, checkoutError)
 		}
 
-		if !remoteAvailable {
-			if environment.Output != nil {
-				fmt.Fprintf(environment.Output, migrationSuccessMessageTemplateConstant, repositoryState.Path, sourceBranchValue, targetBranchValue, false)
-			}
-			continue
-		}
-
-		if target.PushToRemote {
+		if remoteAvailable && target.PushToRemote {
 			if ensureRemoteError := ensureRemoteBranch(executionContext, environment.GitExecutor, repositoryPath, remoteName, targetBranchValue); ensureRemoteError != nil {
 				return ensureRemoteError
 			}
@@ -250,7 +243,7 @@ func (operation *BranchMigrationOperation) Execute(executionContext context.Cont
 			}
 		}
 
-		if environment.AuditService != nil {
+		if environment.AuditService != nil && remoteAvailable && result.DefaultBranchUpdated {
 			if refreshError := repositoryState.Refresh(executionContext, environment.AuditService); refreshError != nil {
 				return fmt.Errorf(migrationRefreshErrorTemplateConstant, refreshError)
 			}
