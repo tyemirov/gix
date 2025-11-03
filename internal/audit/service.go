@@ -116,10 +116,6 @@ func (service *Service) DiscoverInspections(executionContext context.Context, ro
 			continue
 		}
 
-		if inspection.IsGitRepository && len(inspection.OriginOwnerRepo) == 0 && len(inspection.CanonicalOwnerRepo) == 0 {
-			continue
-		}
-
 		inspection.FolderName = folderName
 		inspections = append(inspections, inspection)
 	}
@@ -215,8 +211,30 @@ func (service *Service) inspectRepository(executionContext context.Context, repo
 	folderName := filepath.Base(repositoryPath)
 
 	originURL, originError := service.gitManager.GetRemoteURL(executionContext, repositoryPath, shared.OriginRemoteNameConstant)
-	if originError != nil {
-		return RepositoryInspection{}, originError
+	if originError != nil || len(strings.TrimSpace(originURL)) == 0 {
+		localBranch := ""
+		if inspectionDepth == InspectionDepthFull {
+			branchName, localBranchError := service.gitManager.GetCurrentBranch(executionContext, repositoryPath)
+			if localBranchError == nil {
+				localBranch = sanitizeBranchName(branchName)
+			}
+		}
+
+		return RepositoryInspection{
+			Path:                   repositoryPath,
+			FolderName:             folderName,
+			OriginURL:              "",
+			OriginOwnerRepo:        "",
+			CanonicalOwnerRepo:     "",
+			FinalOwnerRepo:         "",
+			DesiredFolderName:      folderName,
+			RemoteProtocol:         RemoteProtocolOther,
+			RemoteDefaultBranch:    "",
+			LocalBranch:            localBranch,
+			InSyncStatus:           TernaryValueNotApplicable,
+			OriginMatchesCanonical: TernaryValueNotApplicable,
+			IsGitRepository:        true,
+		}, nil
 	}
 
 	if !strings.Contains(strings.ToLower(originURL), githubHostConstant) {
