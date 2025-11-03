@@ -230,6 +230,25 @@ workflow operation apply-tasks failed: DEFAULT-BRANCH-UPDATE repository=MarcoPol
 apply-tasks: failed to switch to branch "master": fatal: invalid reference: master: git command exited with code 128
 ```
 
+- [ ] [GX-316] The stats and logs show switching repo twice. There is only one repo to switch. Fix the bug and ensure we don't have duplicate logic of identifying repos.
+```
+14:32:50 tyemirov@computercat:~/Development/Research/TAuth/tools/mpr-ui [improvement/TA-208-nonce-cdn] $ gix b cd master
+-- repo: MarcoPoloResearchLab/mpr-ui -------------------------------------------
+14:33:16 INFO  REPO_SWITCHED      MarcoPoloResearchLab/mpr-ui        → master                                 | branch=master created=false event=REPO_SWITCHED path=/home/tyemirov/Development/Research/TAuth/tools/mpr-ui repo=MarcoPoloResearchLab/mpr-ui
+14:33:19 INFO  REPO_SWITCHED                                         → master                                 | branch=master created=false event=REPO_SWITCHED path=.
+Summary: total.repos=1 REPO_SWITCHED=2 WARN=0 ERROR=0 duration_ms=5792
+14:33:19 tyemirov@computercat:~/Development/Research/TAuth/tools/mpr-ui [master] $ ll
+total 72K
+drwxrwxr-x 3 tyemirov tyemirov 4.0K Nov  3 14:33 ./
+drwxrwxr-x 3 tyemirov tyemirov 4.0K Nov  3 10:34 ../
+-rw-rw-r-- 1 tyemirov tyemirov  17K Nov  3 10:43 footer.js
+drwxrwxr-x 8 tyemirov tyemirov 4.0K Nov  3 14:33 .git/
+-rw-rw-r-- 1 tyemirov tyemirov 2.2K Nov  2 12:27 .gitignore
+-rw-rw-r-- 1 tyemirov tyemirov  21K Nov  3 14:33 mpr-ui.js
+-rw-rw-r-- 1 tyemirov tyemirov  12K Nov  3 10:44 README.md
+14:33:42 tyemirov@computercat:~/Development/Research/TAuth/tools/mpr-ui [master] $ 
+```
+
 ## Maintenance (400–499)
 
 - [x] [GX-400] Update the documentation @README.md and focus on the usefullness to the user. Move the technical details to @ARCHITECTURE.md
