@@ -22,10 +22,6 @@ const (
 	namespacePushOptionKey          = "push"
 	namespaceRemoteOptionKey        = "remote"
 	namespaceSafeguardsOptionKey    = "safeguards"
-	namespacePlanMessageTemplate    = "NAMESPACE-PLAN: %s branch=%s files=%d push=%t\n"
-	namespaceApplyMessageTemplate   = "NAMESPACE-APPLY: %s branch=%s files=%d push=%t\n"
-	namespaceNoopMessageTemplate    = "NAMESPACE-NOOP: %s reason=%s\n"
-	namespaceSkipMessageTemplate    = "NAMESPACE-SKIP: %s reason=%s\n"
 	namespacePromptTemplate         = "Rewrite namespace %s -> %s in %s? [a/N/y] "
 )
 
@@ -129,7 +125,7 @@ func handleNamespaceRewriteAction(ctx context.Context, environment *Environment,
 			return evalErr
 		}
 		if !pass {
-			writeNamespaceReason(environment, namespaceSkipMessageTemplate, repository.Path, reason)
+			logNamespaceReason(environment, repository, shared.EventCodeNamespaceSkip, shared.EventLevelWarn, reason)
 			return nil
 		}
 	}
@@ -162,7 +158,7 @@ func handleNamespaceRewriteAction(ctx context.Context, environment *Environment,
 				return confirmErr
 			}
 			if !confirmation.Confirmed {
-				writeNamespaceReason(environment, namespaceSkipMessageTemplate, repository.Path, "user declined")
+				logNamespaceReason(environment, repository, shared.EventCodeNamespaceSkip, shared.EventLevelWarn, "user declined")
 				return nil
 			}
 		}
@@ -171,8 +167,11 @@ func handleNamespaceRewriteAction(ctx context.Context, environment *Environment,
 	result, rewriteErr := service.Rewrite(ctx, options)
 	if rewriteErr != nil {
 		var operationError repoerrors.OperationError
-		if errors.As(rewriteErr, &operationError) && (operationError.Code() == string(repoerrors.ErrNamespacePushFailed) || operationError.Code() == string(repoerrors.ErrRemoteMissing)) {
+		if errors.As(rewriteErr, &operationError) {
 			logRepositoryOperationError(environment, rewriteErr)
+			if operationError.Code() != string(repoerrors.ErrNamespacePushFailed) && operationError.Code() != string(repoerrors.ErrRemoteMissing) {
+				return rewriteErr
+			}
 		} else {
 			return rewriteErr
 		}
@@ -184,19 +183,19 @@ func handleNamespaceRewriteAction(ctx context.Context, environment *Environment,
 	}
 
 	if environment.DryRun {
-		writeNamespaceApply(environment, namespacePlanMessageTemplate, repository.Path, result.BranchName, filesChanged, options.Push)
+		logNamespaceApply(environment, repository, result.BranchName, filesChanged, options.Push, true)
 		return nil
 	}
 
 	if result.Skipped {
-		writeNamespaceReason(environment, namespaceNoopMessageTemplate, repository.Path, result.SkipReason)
+		logNamespaceReason(environment, repository, shared.EventCodeNamespaceNoop, shared.EventLevelInfo, result.SkipReason)
 		return nil
 	}
 
-	writeNamespaceApply(environment, namespaceApplyMessageTemplate, repository.Path, result.BranchName, filesChanged, result.PushPerformed)
+	logNamespaceApply(environment, repository, result.BranchName, filesChanged, result.PushPerformed, false)
 
 	if len(strings.TrimSpace(result.PushSkippedReason)) > 0 {
-		writeNamespaceReason(environment, namespaceSkipMessageTemplate, repository.Path, result.PushSkippedReason)
+		logNamespaceReason(environment, repository, shared.EventCodeNamespaceSkip, shared.EventLevelWarn, result.PushSkippedReason)
 	}
 
 	if environment.AuditService != nil {
@@ -208,16 +207,44 @@ func handleNamespaceRewriteAction(ctx context.Context, environment *Environment,
 	return nil
 }
 
-func writeNamespaceApply(environment *Environment, template string, repositoryPath string, branch string, files int, pushed bool) {
-	if environment == nil || environment.Output == nil {
-		return
+func logNamespaceApply(environment *Environment, repository *RepositoryState, branch string, files int, pushed bool, plan bool) {
+	message := fmt.Sprintf("files=%d", files)
+	if pushed {
+		if plan {
+			message = fmt.Sprintf("files=%d, push scheduled", files)
+		} else {
+			message = fmt.Sprintf("files=%d, pushed", files)
+		}
 	}
-	fmt.Fprintf(environment.Output, template, repositoryPath, branch, files, pushed)
+
+	code := shared.EventCodeNamespaceApply
+	if plan {
+		code = shared.EventCodeNamespacePlan
+	}
+
+	environment.ReportRepositoryEvent(
+		repository,
+		shared.EventLevelInfo,
+		code,
+		message,
+		map[string]string{
+			"branch":        branch,
+			"files_changed": fmt.Sprintf("%d", files),
+			"push":          fmt.Sprintf("%t", pushed),
+		},
+	)
 }
 
-func writeNamespaceReason(environment *Environment, template string, repositoryPath string, reason string) {
-	if environment == nil || environment.Output == nil {
-		return
-	}
-	fmt.Fprintf(environment.Output, template, repositoryPath, reason)
+func logNamespaceReason(environment *Environment, repository *RepositoryState, code string, level shared.EventLevel, reason string) {
+	environment.ReportRepositoryEvent(
+		repository,
+		level,
+		code,
+		strings.TrimSpace(reason),
+		map[string]string{"reason": sanitizeReason(reason)},
+	)
+}
+
+func sanitizeReason(reason string) string {
+	return strings.ReplaceAll(strings.TrimSpace(reason), " ", "_")
 }

@@ -33,7 +33,7 @@ func (operation *CanonicalRemoteOperation) Execute(executionContext context.Cont
 	dependencies := remotes.Dependencies{
 		GitManager: environment.RepositoryManager,
 		Prompter:   environment.Prompter,
-		Reporter:   shared.NewWriterReporter(environment.Output),
+		Reporter:   environment.Reporter,
 	}
 
 	for repositoryIndex := range state.Repositories {

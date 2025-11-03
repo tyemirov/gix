@@ -189,6 +189,11 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 	dispatchingPrompter := newPromptDispatcher(executor.dependencies.Prompter, promptState)
 
 	state := &State{Roots: sanitizedRoots, Repositories: repositoryStates}
+	reporter := shared.NewStructuredReporter(
+		executor.dependencies.Output,
+		executor.dependencies.Errors,
+		shared.WithRepositoryHeaders(true),
+	)
 	environment := &Environment{
 		AuditService:      auditService,
 		GitExecutor:       executor.dependencies.GitExecutor,
@@ -199,6 +204,7 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 		PromptState:       promptState,
 		Output:            executor.dependencies.Output,
 		Errors:            executor.dependencies.Errors,
+		Reporter:          reporter,
 		Logger:            executor.dependencies.Logger,
 		DryRun:            runtimeOptions.DryRun,
 	}
@@ -250,6 +256,10 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 			failureMessage := formatOperationFailure(environment, stageError, operationName)
 			return operationFailureError{message: failureMessage, cause: stageError}
 		}
+	}
+
+	if reporter != nil {
+		reporter.PrintSummary()
 	}
 
 	return nil

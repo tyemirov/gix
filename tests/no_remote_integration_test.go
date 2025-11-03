@@ -47,8 +47,8 @@ func TestBranchCommandsHandleRepositoriesWithoutRemotes(testInstance *testing.T)
 	)
 	testInstance.Logf("branch cd output:\n%s", output)
 
-	require.Contains(testInstance, output, "SWITCHED:")
-	require.Contains(testInstance, output, "-> master")
+	require.Contains(testInstance, output, "event=REPO_SWITCHED")
+	require.Contains(testInstance, output, "branch=master")
 	require.NotContains(testInstance, strings.ToLower(output), "failed")
 }
 
@@ -93,9 +93,9 @@ func TestWorkflowDefaultBranchHandlesRepositoriesWithoutRemotes(testInstance *te
 		commandArguments,
 	)
 	testInstance.Logf("workflow output:\n%s", output)
-
-	require.Contains(testInstance, output, "WORKFLOW-DEFAULT:")
-	require.Contains(testInstance, output, "(main → master)")
+	filtered := filterStructuredOutput(output)
+	require.Contains(testInstance, filtered, "WORKFLOW-DEFAULT:")
+	require.Contains(testInstance, filtered, "(main → master)")
 	require.NotContains(testInstance, strings.ToLower(output), "failed")
 }
 

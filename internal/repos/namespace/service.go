@@ -28,6 +28,7 @@ const (
 	goTestFileSuffix             = "_test.go"
 	gitDirectoryName             = ".git"
 	vendorDirectoryName          = "vendor"
+	gitIgnoredSkipReason         = "namespace rewrite skipped: files ignored by git"
 )
 
 var (
@@ -193,6 +194,45 @@ func (plan changePlan) relativeGoFiles() []string {
 	return paths
 }
 
+func (service *Service) excludeIgnoredPlanEntries(ctx context.Context, repositoryPath string, plan changePlan) (changePlan, error) {
+	candidates := make([]string, 0, len(plan.goFilePaths)+1)
+	seen := make(map[string]struct{}, len(plan.goFilePaths)+1)
+
+	if plan.goMod {
+		candidates = append(candidates, "go.mod")
+		seen["go.mod"] = struct{}{}
+	}
+
+	for relativePath := range plan.goFilePaths {
+		if _, already := seen[relativePath]; already {
+			continue
+		}
+		seen[relativePath] = struct{}{}
+		candidates = append(candidates, relativePath)
+	}
+
+	ignoredSet, ignoreErr := shared.CheckIgnoredPaths(ctx, service.gitExecutor, repositoryPath, candidates)
+	if ignoreErr != nil {
+		return changePlan{}, ignoreErr
+	}
+
+	filtered := newChangePlan()
+	if plan.goMod {
+		if _, ignored := ignoredSet["go.mod"]; !ignored {
+			filtered.goMod = true
+		}
+	}
+
+	for relativePath := range plan.goFilePaths {
+		if _, ignored := ignoredSet[relativePath]; ignored {
+			continue
+		}
+		filtered.goFilePaths[relativePath] = struct{}{}
+	}
+
+	return filtered, nil
+}
+
 // Rewrite applies namespace updates across go.mod and Go source files.
 func (service *Service) Rewrite(ctx context.Context, options Options) (Result, error) {
 	if service == nil {
@@ -217,8 +257,12 @@ func (service *Service) planRewrite(repositoryPath string, options Options) (Res
 	if planError != nil {
 		return Result{}, planError
 	}
+	plan, planError = service.excludeIgnoredPlanEntries(context.Background(), repositoryPath, plan)
+	if planError != nil {
+		return Result{}, planError
+	}
 	if !plan.requiresRewrite() {
-		return Result{Skipped: true, SkipReason: "namespace already up to date"}, nil
+		return Result{Skipped: true, SkipReason: gitIgnoredSkipReason}, nil
 	}
 
 	result := Result{
@@ -235,8 +279,12 @@ func (service *Service) applyRewrite(ctx context.Context, repositoryPath string,
 	if planError != nil {
 		return Result{}, planError
 	}
+	plan, planError = service.excludeIgnoredPlanEntries(ctx, repositoryPath, plan)
+	if planError != nil {
+		return Result{}, planError
+	}
 	if !plan.requiresRewrite() {
-		return Result{Skipped: true, SkipReason: "namespace already up to date"}, nil
+		return Result{Skipped: true, SkipReason: gitIgnoredSkipReason}, nil
 	}
 
 	if err := service.ensureGitRepository(repositoryPath); err != nil {

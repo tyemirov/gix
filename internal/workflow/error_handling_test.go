@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/temirov/gix/internal/audit"
 	repoerrors "github.com/temirov/gix/internal/repos/errors"
+	"github.com/temirov/gix/internal/repos/shared"
 )
 
 func TestLogRepositoryOperationErrorFormatsStructuredMessage(testInstance *testing.T) {
@@ -26,9 +28,12 @@ func TestLogRepositoryOperationErrorFormatsStructuredMessage(testInstance *testi
 		},
 	}
 
+	reporter := shared.NewStructuredReporter(io.Discard, errorBuffer, shared.WithRepositoryHeaders(false))
 	environment := &Environment{
-		Errors: errorBuffer,
-		State:  state,
+		Output:   io.Discard,
+		Errors:   errorBuffer,
+		State:    state,
+		Reporter: reporter,
 	}
 
 	repositoryError := repoerrors.WrapMessage(
@@ -39,11 +44,11 @@ func TestLogRepositoryOperationErrorFormatsStructuredMessage(testInstance *testi
 	)
 
 	require.True(testInstance, logRepositoryOperationError(environment, repositoryError))
-	require.Equal(
-		testInstance,
-		"origin_owner_missing: canonical/example (/repositories/sample) UPDATE-REMOTE-SKIP: /repositories/sample (error: could not parse origin owner/repo)\n",
-		errorBuffer.String(),
-	)
+	events := parseStructuredEvents(errorBuffer.String())
+	require.Len(testInstance, events, 1)
+	event := requireEventByCode(testInstance, events, strings.ToUpper(string(repoerrors.ErrOriginOwnerMissing)))
+	require.Equal(testInstance, "/repositories/sample", event["path"])
+	require.Equal(testInstance, "canonical/example", event["repo"])
 }
 
 func TestRenameOperationLogsStructuredErrors(testInstance *testing.T) {
@@ -62,10 +67,12 @@ func TestRenameOperationLogsStructuredErrors(testInstance *testing.T) {
 		},
 	}
 
+	reporter := shared.NewStructuredReporter(io.Discard, errorBuffer, shared.WithRepositoryHeaders(false))
 	environment := &Environment{
-		Output: io.Discard,
-		Errors: errorBuffer,
-		State:  state,
+		Output:   io.Discard,
+		Errors:   errorBuffer,
+		State:    state,
+		Reporter: reporter,
 	}
 
 	operation := &RenameOperation{}
@@ -73,9 +80,9 @@ func TestRenameOperationLogsStructuredErrors(testInstance *testing.T) {
 	executionError := operation.Execute(context.Background(), environment, state)
 	require.NoError(testInstance, executionError)
 
-	require.Equal(
-		testInstance,
-		"filesystem_unavailable: canonical/example (/repositories/legacy) filesystem unavailable\n",
-		errorBuffer.String(),
-	)
+	events := parseStructuredEvents(errorBuffer.String())
+	require.Len(testInstance, events, 1)
+	event := requireEventByCode(testInstance, events, strings.ToUpper(string(repoerrors.ErrFilesystemUnavailable)))
+	require.Equal(testInstance, "/repositories/legacy", event["path"])
+	require.Equal(testInstance, "canonical/example", event["repo"])
 }

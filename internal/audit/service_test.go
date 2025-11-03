@@ -210,6 +210,31 @@ func TestServiceRunBehaviors(testInstance *testing.T) {
 			expectedOutput: "folder_name,final_github_repo,name_matches,remote_default_branch,local_branch,in_sync,remote_protocol,origin_matches_canonical\nexample,origin/example,yes,main,,n/a,https,n/a\n",
 			expectedError:  "",
 		},
+		{
+			name: "ignored_nested_repositories_removed",
+			options: audit.CommandOptions{
+				Roots:           []string{"/tmp/example"},
+				InspectionDepth: audit.InspectionDepthMinimal,
+			},
+			discoverer: stubDiscoverer{repositories: []string{"/tmp/example", "/tmp/example/tools/licenser"}},
+			executorOutputs: map[string]execshell.ExecutionResult{
+				"check-ignore --stdin":            {StandardOutput: "tools/licenser\n"},
+				"rev-parse --is-inside-work-tree": {StandardOutput: "true"},
+			},
+			gitManager: stubGitManager{
+				cleanWorktree: true,
+				branchName:    "main",
+				remoteURL:     "https://github.com/origin/example.git",
+			},
+			githubResolver: stubGitHubResolver{
+				metadata: githubcli.RepositoryMetadata{
+					NameWithOwner: "canonical/example",
+					DefaultBranch: "main",
+				},
+			},
+			expectedOutput: "folder_name,final_github_repo,name_matches,remote_default_branch,local_branch,in_sync,remote_protocol,origin_matches_canonical\nexample,canonical/example,yes,main,,n/a,https,no\n",
+			expectedError:  "",
+		},
 	}
 
 	for testCaseIndex, testCase := range testCases {

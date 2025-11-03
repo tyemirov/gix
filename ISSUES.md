@@ -70,9 +70,11 @@ If a repository doesnt have a remote, there is nothing to fetch, but we can stil
   - Context: `apply-tasks` supports `commit.message.generate` and `changelog.message.generate` actions, but they require a programmatic client and there is no way to pass their outputs into subsequent steps (e.g., as a `commit_message` for namespace rewrite).
   - Desired: Allow configuring an LLM client in workflow YAML (model, base-url, api-key env, timeout) and introduce workflow variables so action outputs can be referenced as inputs by later steps.
 
-- [ ] [GX-211] On a protocol updated the message says: `UPDATE-REMOTE-DONE: /tmp/repos/loopaware origin now ssh://git@github.com/tyemirov/loopaware.git`. But that's incorrect as the new protocol is not `ssh://git@github.com/tyemirov/loopaware.git` but `git@github.com/tyemirov/loopaware.git`. Change logging to display the new procol as what `git remote -v will display`
+- [x] [GX-211] On a protocol updated the message says: `UPDATE-REMOTE-DONE: /tmp/repos/loopaware origin now ssh://git@github.com/tyemirov/loopaware.git`. But that's incorrect as the new protocol is not `ssh://git@github.com/tyemirov/loopaware.git` but `git@github.com/tyemirov/loopaware.git`. Change logging to display the new procol as what `git remote -v will display`
+  - Resolution: Protocol/remote executors now format SSH remotes as `git@github.com:owner/repo.git` in plan/done logs without altering underlying URLs; regression coverage added for plan/success messages, repo CLI, and workflow integration outputs.
 
-- [ ] [GX-212] Change logging to a new format: 
+- [x] [GX-212] Change logging to a new format: 
+- Resolution: Introduced a shared structured reporter that timestamps events, aligns human-readable columns, and emits machine-parseable key/value pairs for every executor log entry.
 
 Single line per event, with two parts:
 
@@ -110,13 +112,15 @@ Human part (left): aligned columns, easy to scan.
 06:23:04 ERROR REPO_DIRTY        tyemirov/gix                        working tree not clean                     | event=REPO_DIRTY repo=tyemirov/gix path=/tmp/repos/tyemirov/gix
 ```
 
-- [ ] [GX-213] When logging the events Print a thin repo header once, then events; the first token stays parseable so grep still works:
+- [x] [GX-213] When logging the events Print a thin repo header once, then events; the first token stays parseable so grep still works:
+- Resolution: Workflow runs now print scoped repo headers before grouped events via the structured reporter, keeping the first token parseable while adding readable alignment.
 ```
 ── repo: MarcoPoloResearchLab/RSVP ─────────────────────────────────────────────────────────
 06:22:11 INFO  REPO_SWITCHED     MarcoPoloResearchLab/RSVP           → master                                   | event=REPO_SWITCHED repo=MarcoPoloResearchLab/RSVP branch=master path=/tmp/repos/MarcoPoloResearchLab/RSVP
 06:22:21 INFO  NAMESPACE_APPLY   MarcoPoloResearchLab/RSVP           files=31, pushed  
 ```
-- [ ] [GX-214] Have a final summary for the whole run, smth like (just an example) Summary: total.repos=12 REPO_SWITCHED=7 NAMESPACE_APPLY=3 NAMESPACE_SKIP=3 REMOTE_UPDATE=2 WARN=1 ERROR=0 duration_ms=5312
+- [x] [GX-214] Have a final summary for the whole run, smth like (just an example) Summary: total.repos=12 REPO_SWITCHED=7 NAMESPACE_APPLY=3 NAMESPACE_SKIP=3 REMOTE_UPDATE=2 WARN=1 ERROR=0 duration_ms=5312
+- Resolution: Structured reporter tracks per-event counts and prints a workflow summary footer once execution completes, including duration and INFO/WARN/ERROR tallies.
 
 ## BugFixes (300–399)
 
@@ -203,6 +207,14 @@ workflow operation apply-tasks failed: DEFAULT-BRANCH-UPDATE repository=MarcoPol
   - Desired: Update namespace task templates (`namespaceNoopMessageTemplate`, `namespaceApplyMessageTemplate`, etc.) to use actual newlines and ensure all workflow log helpers emit newline-separated entries without escape sequences.
   - Notes: Observed during the owner-renaming workflow run on `/tmp/repos`.
   - Resolution: Namespace workflow templates now emit actual newline characters, regression tests enforce the absence of literal `\n`, and push/skip outputs render as separate lines.
+
+- [ ] [GX-312] When replacing the namespace, include tests. E.g. The dependency has been switched to `github.com/tyemirov/GAuss`, but the test suites still import `github.com/temirov/GAuss` (see `cmd/server/auth_redirect_test.go`, `internal/httpapi/auth_test.go`, `internal/httpapi/dashboard_integration_test.go`). Once the upstream module renames its `module` path, these imports will no longer resolve and `go test ./...` fails at compile time with “cannot find module providing github.com/temirov/GAuss/...”. The tests need their imports rewritten to the new namespace to keep the build green.
+
+- [x] [GX-313] Repository discovery should skip nested repositories ignored by parent `.gitignore`
+  - Category: BugFix
+  - Context: Workflow runs still act on repositories located under ignored directories (e.g., `tools/licenser` inside `gix`), staging ignored files and slowing execution.
+  - Desired: Leverage `git check-ignore` to filter out ignored nested repositories before executing operations across commands and workflows.
+  - Resolution: Added shared gitignore helpers, wired audit discovery to remove gitignored children, updated namespace rewrite to reuse the helper, and refreshed unit/integration coverage so workflows skip ignored repositories.
 
 ## Maintenance (400–499)
 

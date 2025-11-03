@@ -11,13 +11,11 @@ import (
 )
 
 const (
-	ownerRepoErrorMessage = "ERROR: cannot derive owner/repo for protocol conversion in %s\n"
-	targetErrorMessage    = "ERROR: cannot build target URL for protocol '%s' in %s\n"
-	planMessage           = "PLAN-CONVERT: %s origin %s → %s\n"
+	ownerRepoErrorMessage = "cannot derive owner/repo for protocol conversion in %s"
+	targetErrorMessage    = "cannot build target URL for protocol '%s' in %s"
 	promptTemplate        = "Convert 'origin' in '%s' (%s → %s)? [a/N/y] "
-	declinedMessage       = "CONVERT-SKIP: user declined for %s\n"
-	successMessage        = "CONVERT-DONE: %s origin now %s\n"
-	failureMessage        = "ERROR: failed to set origin to %s in %s\n"
+	failureMessage        = "failed to set origin to %s in %s"
+	declinedReason        = "user declined"
 )
 
 // Options configures the protocol conversion workflow.
@@ -53,6 +51,8 @@ func (executor *Executor) Execute(executionContext context.Context, options Opti
 	repositoryPath := options.RepositoryPath.String()
 
 	if executor.dependencies.GitManager == nil {
+		reportDetails := map[string]string{"reason": "git_manager_unavailable"}
+		executor.report(shared.EventLevelError, shared.EventCodeProtocolSkip, repositoryPath, nil, "git manager unavailable", reportDetails)
 		return repoerrors.WrapMessage(
 			repoerrors.OperationProtocolConvert,
 			repositoryPath,
@@ -84,6 +84,14 @@ func (executor *Executor) Execute(executionContext context.Context, options Opti
 	}
 
 	if ownerRepository == nil {
+		executor.report(
+			shared.EventLevelWarn,
+			shared.EventCodeProtocolSkip,
+			repositoryPath,
+			nil,
+			"owner metadata missing",
+			map[string]string{"reason": "owner_missing"},
+		)
 		return repoerrors.WrapMessage(
 			repoerrors.OperationProtocolConvert,
 			repositoryPath,
@@ -96,6 +104,18 @@ func (executor *Executor) Execute(executionContext context.Context, options Opti
 
 	targetURL, targetError := remotes.BuildRemoteURL(options.TargetProtocol, ownerRepoString)
 	if targetError != nil {
+		executor.report(
+			shared.EventLevelWarn,
+			shared.EventCodeProtocolSkip,
+			repositoryPath,
+			ownerRepository,
+			"unknown protocol",
+			map[string]string{
+				"reason":           "unknown_protocol",
+				"target_protocol":  string(options.TargetProtocol),
+				"current_protocol": string(currentProtocol),
+			},
+		)
 		return repoerrors.WrapMessage(
 			repoerrors.OperationProtocolConvert,
 			repositoryPath,
@@ -105,7 +125,18 @@ func (executor *Executor) Execute(executionContext context.Context, options Opti
 	}
 
 	if options.DryRun {
-		executor.printfOutput(planMessage, repositoryPath, currentURL, targetURL)
+		executor.report(
+			shared.EventLevelInfo,
+			shared.EventCodeProtocolPlan,
+			repositoryPath,
+			ownerRepository,
+			fmt.Sprintf("%s → %s", remotes.FormatRemoteURLForDisplay(currentURL), remotes.FormatRemoteURLForDisplay(targetURL)),
+			map[string]string{
+				"current_protocol": string(currentProtocol),
+				"target_protocol":  string(options.TargetProtocol),
+				"target_url":       remotes.FormatRemoteURLForDisplay(targetURL),
+			},
+		)
 		return nil
 	}
 
@@ -113,6 +144,18 @@ func (executor *Executor) Execute(executionContext context.Context, options Opti
 		prompt := fmt.Sprintf(promptTemplate, repositoryPath, currentProtocol, options.TargetProtocol)
 		confirmationResult, promptError := executor.dependencies.Prompter.Confirm(prompt)
 		if promptError != nil {
+			executor.report(
+				shared.EventLevelWarn,
+				shared.EventCodeProtocolSkip,
+				repositoryPath,
+				ownerRepository,
+				"confirmation failed",
+				map[string]string{
+					"reason":           "confirmation_error",
+					"target_protocol":  string(options.TargetProtocol),
+					"current_protocol": string(currentProtocol),
+				},
+			)
 			return repoerrors.WrapMessage(
 				repoerrors.OperationProtocolConvert,
 				repositoryPath,
@@ -121,13 +164,36 @@ func (executor *Executor) Execute(executionContext context.Context, options Opti
 			)
 		}
 		if !confirmationResult.Confirmed {
-			executor.printfOutput(declinedMessage, repositoryPath)
+			executor.report(
+				shared.EventLevelWarn,
+				shared.EventCodeProtocolDeclined,
+				repositoryPath,
+				ownerRepository,
+				declinedReason,
+				map[string]string{
+					"reason":           "user_declined",
+					"target_protocol":  string(options.TargetProtocol),
+					"current_protocol": string(currentProtocol),
+				},
+			)
 			return nil
 		}
 	}
 
 	updateError := executor.dependencies.GitManager.SetRemoteURL(executionContext, repositoryPath, shared.OriginRemoteNameConstant, targetURL)
 	if updateError != nil {
+		executor.report(
+			shared.EventLevelWarn,
+			shared.EventCodeProtocolSkip,
+			repositoryPath,
+			ownerRepository,
+			"failed to update remote",
+			map[string]string{
+				"reason":           "update_failed",
+				"target_protocol":  string(options.TargetProtocol),
+				"current_protocol": string(currentProtocol),
+			},
+		)
 		return repoerrors.WrapMessage(
 			repoerrors.OperationProtocolConvert,
 			repositoryPath,
@@ -136,7 +202,18 @@ func (executor *Executor) Execute(executionContext context.Context, options Opti
 		)
 	}
 
-	executor.printfOutput(successMessage, repositoryPath, targetURL)
+	executor.report(
+		shared.EventLevelInfo,
+		shared.EventCodeProtocolUpdate,
+		repositoryPath,
+		ownerRepository,
+		fmt.Sprintf("origin now %s", remotes.FormatRemoteURLForDisplay(targetURL)),
+		map[string]string{
+			"current_protocol": string(currentProtocol),
+			"target_protocol":  string(options.TargetProtocol),
+			"target_url":       remotes.FormatRemoteURLForDisplay(targetURL),
+		},
+	)
 	return nil
 }
 
@@ -145,11 +222,28 @@ func Execute(executionContext context.Context, dependencies Dependencies, option
 	return NewExecutor(dependencies).Execute(executionContext, options)
 }
 
-func (executor *Executor) printfOutput(format string, arguments ...any) {
+func (executor *Executor) report(level shared.EventLevel, code string, repositoryPath string, ownerRepository *shared.OwnerRepository, message string, details map[string]string) {
 	if executor.dependencies.Reporter == nil {
 		return
 	}
-	executor.dependencies.Reporter.Printf(format, arguments...)
+	repositoryIdentifier := ""
+	if ownerRepository != nil {
+		repositoryIdentifier = ownerRepository.String()
+	}
+
+	metadata := make(map[string]string, len(details))
+	for key, value := range details {
+		metadata[key] = value
+	}
+
+	executor.dependencies.Reporter.Report(shared.Event{
+		Level:                level,
+		Code:                 code,
+		RepositoryIdentifier: repositoryIdentifier,
+		RepositoryPath:       repositoryPath,
+		Message:              message,
+		Details:              metadata,
+	})
 }
 
 func detectProtocol(remoteURL string) shared.RemoteProtocol {

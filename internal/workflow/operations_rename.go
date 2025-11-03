@@ -39,7 +39,7 @@ func (operation *RenameOperation) Execute(executionContext context.Context, envi
 		GitManager: environment.RepositoryManager,
 		Prompter:   environment.Prompter,
 		Clock:      shared.SystemClock{},
-		Reporter:   shared.NewWriterReporter(environment.Output),
+		Reporter:   environment.Reporter,
 	}
 
 	for repositoryIndex := range state.Repositories {

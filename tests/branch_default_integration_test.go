@@ -130,16 +130,16 @@ func TestBranchDefaultHandlesNestedRepositoriesWithMixedRemotes(testInstance *te
 	testInstance.Logf("branch default output:\n%s", output)
 
 	require.Contains(testInstance, output, fmt.Sprintf("WORKFLOW-DEFAULT: %s (main → master)", parentRepositoryPath))
-	require.Contains(testInstance, output, fmt.Sprintf("WORKFLOW-DEFAULT: %s (main → master)", remoteChildPath))
-	require.Contains(testInstance, output, fmt.Sprintf("WORKFLOW-DEFAULT: %s (main → master)", localChildPath))
+	require.NotContains(testInstance, output, remoteChildPath)
+	require.NotContains(testInstance, output, localChildPath)
 	require.NotContains(testInstance, strings.ToLower(output), "default branch update failed")
 
 	assertRepositoryHead(testInstance, parentRepositoryPath, branchDefaultTargetBranch)
-	assertRepositoryHead(testInstance, remoteChildPath, branchDefaultTargetBranch)
-	assertRepositoryHead(testInstance, localChildPath, branchDefaultTargetBranch)
+	assertRepositoryHead(testInstance, remoteChildPath, branchDefaultInitialBranch)
+	assertRepositoryHead(testInstance, localChildPath, branchDefaultInitialBranch)
 
 	assertStateFileBranch(testInstance, stateDirectory, branchDefaultParentRemoteRepository, branchDefaultTargetBranch)
-	assertStateFileBranch(testInstance, stateDirectory, branchDefaultChildRemoteRepository, branchDefaultTargetBranch)
+	assertStateFileBranch(testInstance, stateDirectory, branchDefaultChildRemoteRepository, branchDefaultInitialBranch)
 }
 
 func initializeRepositoryWithFiles(testInstance *testing.T, repositoryPath string, remoteURL string, files map[string]string) {
