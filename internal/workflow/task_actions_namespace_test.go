@@ -3,6 +3,7 @@ package workflow
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -57,6 +58,7 @@ func main() { dep.Do() }
 	require.NoError(t, err)
 	require.Contains(t, output.String(), "NAMESPACE-PLAN")
 	require.NotContains(t, output.String(), "\\n")
+	require.NotContains(t, output.String(), "\\n")
 
 	content, readErr := os.ReadFile(filepath.Join(tempDir, "main.go"))
 	require.NoError(t, readErr)
@@ -80,8 +82,9 @@ func main() { dep.Do() }
 
 	executor := &namespaceTestGitExecutor{
 		configValues: map[string]string{
-			"user.name":  "Test",
-			"user.email": "test@example.com",
+			"user.name":         "Test",
+			"user.email":        "test@example.com",
+			"remote.origin.url": "git@example.com:old/org.git",
 		},
 	}
 	manager, err := gitrepo.NewRepositoryManager(executor)
@@ -108,6 +111,7 @@ func main() { dep.Do() }
 	err = handleNamespaceRewriteAction(context.Background(), environment, repository, parameters)
 	require.NoError(t, err)
 	require.Contains(t, output.String(), "NAMESPACE-APPLY")
+	require.NotContains(t, output.String(), "\\n")
 	require.NotContains(t, output.String(), "\\n")
 
 	updatedSource, readErr := os.ReadFile(filepath.Join(tempDir, "main.go"))
@@ -151,8 +155,9 @@ func TestHandleNamespaceRewriteActionPushFailure(t *testing.T) {
 
 	executor := &namespaceTestGitExecutor{
 		configValues: map[string]string{
-			"user.name":  "Test",
-			"user.email": "test@example.com",
+			"user.name":         "Test",
+			"user.email":        "test@example.com",
+			"remote.origin.url": "git@example.com:old/org.git",
 		},
 		pushError: pushFailure,
 	}
@@ -189,6 +194,52 @@ func TestHandleNamespaceRewriteActionPushFailure(t *testing.T) {
 	require.NotContains(t, joinedOutput, "\\n")
 
 	require.Contains(t, errorOutput.String(), string(repoerrors.ErrNamespacePushFailed))
+}
+
+func TestHandleNamespaceRewriteActionSkipsWhenRemoteUpToDate(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(tempDir, ".git"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "go.mod"), []byte("module github.com/old/org/app\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "main.go"), []byte("package main\n"), 0o644))
+
+	executor := &namespaceTestGitExecutor{
+		configValues: map[string]string{
+			"remote.origin.url": "git@example.com:old/org.git",
+		},
+		headHash:     "abcdef1234567890",
+		mirrorRemote: true,
+	}
+	manager, err := gitrepo.NewRepositoryManager(executor)
+	require.NoError(t, err)
+
+	output := &bytes.Buffer{}
+	environment := &Environment{
+		FileSystem:        filesystem.OSFileSystem{},
+		GitExecutor:       executor,
+		RepositoryManager: manager,
+		Output:            output,
+		PromptState:       NewPromptState(true),
+	}
+
+	repository := &RepositoryState{Path: tempDir}
+	parameters := map[string]any{
+		"old":                          "github.com/old/org",
+		"new":                          "github.com/new/org",
+		"remote":                       "origin",
+		namespaceCommitMessageFlagName: namespaceTestCommitMessage,
+	}
+
+	err = handleNamespaceRewriteAction(context.Background(), environment, repository, parameters)
+	require.NoError(t, err)
+
+	logOutput := output.String()
+	require.Contains(t, logOutput, "NAMESPACE-APPLY")
+	require.Contains(t, logOutput, "push=false")
+	require.Contains(t, logOutput, "NAMESPACE-SKIP")
+	require.Contains(t, logOutput, "already up to date")
+	require.NotContains(t, logOutput, "\\n")
 }
 
 func TestHandleNamespaceRewriteActionRespectsSafeguards(t *testing.T) {
@@ -244,6 +295,9 @@ type namespaceTestGitExecutor struct {
 	configValues map[string]string
 	statusOutput string
 	pushError    error
+	remoteRefs   map[string]string
+	headHash     string
+	mirrorRemote bool
 }
 
 func (executor *namespaceTestGitExecutor) ExecuteGit(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
@@ -282,6 +336,31 @@ func (executor *namespaceTestGitExecutor) ExecuteGit(_ context.Context, details 
 			return execshell.ExecutionResult{}, executor.pushError
 		}
 		return execshell.ExecutionResult{}, nil
+	case "rev-parse":
+		hash := executor.headHash
+		if len(hash) == 0 {
+			hash = "HEADHASH"
+		}
+		return execshell.ExecutionResult{StandardOutput: hash + "\n"}, nil
+	case "ls-remote":
+		if len(details.Arguments) >= 4 {
+			if executor.mirrorRemote {
+				hash := executor.headHash
+				if len(hash) == 0 {
+					hash = "HEADHASH"
+				}
+				output := fmt.Sprintf("%s\trefs/heads/%s\n", hash, details.Arguments[3])
+				return execshell.ExecutionResult{StandardOutput: output}, nil
+			}
+			if executor.remoteRefs != nil {
+				key := fmt.Sprintf("%s:%s", details.Arguments[2], details.Arguments[3])
+				if hash, exists := executor.remoteRefs[key]; exists {
+					output := fmt.Sprintf("%s\trefs/heads/%s\n", hash, details.Arguments[3])
+					return execshell.ExecutionResult{StandardOutput: output}, nil
+				}
+			}
+		}
+		return execshell.ExecutionResult{StandardOutput: ""}, nil
 	default:
 		return execshell.ExecutionResult{}, nil
 	}
@@ -299,6 +378,12 @@ func (executor *namespaceTestGitExecutor) handleConfig(details execshell.Command
 	}
 	if len(args) >= 4 && args[1] == "--local" && args[2] == "--get" {
 		if value := executor.configValues[args[3]]; value != "" {
+			return execshell.ExecutionResult{StandardOutput: value + "\n"}, nil
+		}
+		return execshell.ExecutionResult{}, execshell.CommandFailedError{Result: execshell.ExecutionResult{ExitCode: 1}}
+	}
+	if len(args) >= 3 && args[1] == "--get" {
+		if value := executor.configValues[args[2]]; value != "" {
 			return execshell.ExecutionResult{StandardOutput: value + "\n"}, nil
 		}
 		return execshell.ExecutionResult{}, execshell.CommandFailedError{Result: execshell.ExecutionResult{ExitCode: 1}}
