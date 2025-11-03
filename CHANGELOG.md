@@ -1,4 +1,46 @@
 # Changelog
+
+## [v0.2.0-rc.3]
+
+### Features ✨
+- Added `repo namespace rewrite` command with a namespace rewrite service and workflow action to update Go module paths across repositories.
+- Added structured workflow logging with aligned human-readable columns and machine-parseable key/value pairs.
+- Added `branch default` command enhancements to create missing branches and accept target branch as a positional argument.
+- Added reusable workflow safeguards to declaratively skip repositories before mutating operations.
+
+### Improvements ⚙️
+- Introduced validated domain types for repository paths, remotes, and branch names, improving executor and workflow option consistency.
+- Standardized error schema across commands with centralized workflow error formatter and stable sentinel codes.
+- Enhanced workflow execution with DAG-based parallel execution of independent operations and improved error handling.
+- Remote workflow operations now emit standardized skip and warning messages for missing remotes and metadata.
+- Added support for workflow task-level reusable safeguards including clean worktree and branch checks.
+- Normalized GitHub token environment variables and improved CLI version command consistency.
+- Centralized remote identity normalization and improved branch-default handling for inaccessible remotes.
+- Updated CI and release workflows to use Go 1.25 with caching and latest version checks.
+
+### Bug Fixes 🐛
+- Fixed skipping of gitignored nested repositories and files during namespace rewrite.
+- Fixed namespace task log formatting to emit actual newlines instead of escaped `\n`.
+- Fixed namespace push failures by capturing git stderr and degrading push/auth errors into actionable skip messages.
+- Fixed branch default command to fail fast with clear error when GitHub token is missing.
+- Fixed workflow logs to render namespace logs with real newlines and handle namespace push failures gracefully.
+- Fixed `gix r prs delete --yes` hang by skipping GitHub metadata lookups when token is missing.
+- Fixed handling of repositories without remotes to avoid failures across commands.
+- Fixed detection of namespace root in `go.mod` and retention of namespace commit messages during merges.
+- Fixed acceptance of branch prefix hyphen option and rewriting of `go.mod` block entries.
+- Fixed bug causing workflow operation prefixes to be redundant and standardized repository error messaging.
+
+### Testing 🧪
+- Added extensive regression coverage for namespace rewrite service, workflow safeguards, error formatting, and push failure handling.
+- Added integration tests covering no-remote branch workflows and namespace safeguards.
+- Added tests for canonical assume-yes flag in namespace CLI and workflow DAG execution.
+- Added coverage for default branch updates on mixed nested repositories and branch default token validation.
+
+### Docs 📚
+- Updated README with full list of gix commands and workflow descriptions.
+- Added CLI design documentation and acknowledged no-remote handling coverage in issues.
+- Noted namespace push safeguards in issues log and documented workflow examples.
+
 ## [v0.2.0-rc.1]
 
 ### Features ✨
