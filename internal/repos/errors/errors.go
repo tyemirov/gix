@@ -91,7 +91,7 @@ func Wrap(operation Operation, subject string, sentinel Sentinel, detail error) 
 	}
 	baseError := error(sentinel)
 	if detail != nil {
-		baseError = fmt.Errorf("%w: %v", sentinel, detail)
+		baseError = stdErrors.Join(sentinel, detail)
 	}
 	return OperationError{operation: operation, subject: subject, err: baseError}
 }
