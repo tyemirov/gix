@@ -285,6 +285,92 @@ func TestServiceExecuteReturnsActionableDefaultBranchError(testInstance *testing
 	require.Contains(testInstance, errorMessage, "GraphQL: branch not found")
 }
 
+func TestServiceExecuteSkipsDefaultBranchWhenRepositoryMissing(testInstance *testing.T) {
+	testInstance.Setenv(githubauth.EnvGitHubCLIToken, testGitHubTokenValue)
+	testInstance.Setenv(githubauth.EnvGitHubToken, testGitHubTokenValue)
+
+	repositoryExecutor := stubGitCommandExecutor{}
+	repositoryManager, managerError := gitrepo.NewRepositoryManager(repositoryExecutor)
+	require.NoError(testInstance, managerError)
+
+	commandFailure := execshell.CommandFailedError{
+		Command: execshell.ShellCommand{Name: execshell.CommandGitHub},
+		Result: execshell.ExecutionResult{
+			ExitCode:      1,
+			StandardError: "gh: Not Found (HTTP 404)",
+		},
+	}
+
+	githubOperations := &recordingGitHubOperations{
+		defaultBranchError: githubcli.OperationError{
+			Operation: githubcli.OperationName("UpdateDefaultBranch"),
+			Cause:     commandFailure,
+		},
+	}
+
+	service, serviceError := NewService(ServiceDependencies{
+		Logger:            zap.NewNop(),
+		RepositoryManager: repositoryManager,
+		GitHubClient:      githubOperations,
+		GitExecutor:       stubCommandExecutor{},
+	})
+	require.NoError(testInstance, serviceError)
+
+	options := MigrationOptions{
+		RepositoryPath:       testInstance.TempDir(),
+		RepositoryRemoteName: "origin",
+		RepositoryIdentifier: "owner/example",
+		WorkflowsDirectory:   ".github/workflows",
+		SourceBranch:         BranchMain,
+		TargetBranch:         BranchMaster,
+		PushUpdates:          false,
+		DeleteSourceBranch:   false,
+	}
+
+	result, executionError := service.Execute(context.Background(), options)
+
+	require.NoError(testInstance, executionError)
+	require.False(testInstance, result.DefaultBranchUpdated)
+	require.False(testInstance, githubOperations.defaultBranchSet)
+	require.Empty(testInstance, result.Warnings)
+}
+
+func TestServiceExecuteSkipsRemoteOperationsWhenIdentifierMissing(testInstance *testing.T) {
+	repositoryExecutor := stubGitCommandExecutor{}
+	repositoryManager, managerError := gitrepo.NewRepositoryManager(repositoryExecutor)
+	require.NoError(testInstance, managerError)
+
+	githubOperations := &recordingGitHubOperations{}
+
+	service, serviceError := NewService(ServiceDependencies{
+		Logger:            zap.NewNop(),
+		RepositoryManager: repositoryManager,
+		GitHubClient:      githubOperations,
+		GitExecutor:       stubCommandExecutor{},
+	})
+	require.NoError(testInstance, serviceError)
+
+	repositoryPath := testInstance.TempDir()
+
+	options := MigrationOptions{
+		RepositoryPath:       repositoryPath,
+		RepositoryRemoteName: "origin",
+		RepositoryIdentifier: "",
+		WorkflowsDirectory:   ".github/workflows",
+		SourceBranch:         BranchMain,
+		TargetBranch:         BranchMaster,
+		PushUpdates:          false,
+		DeleteSourceBranch:   false,
+	}
+
+	result, executionError := service.Execute(context.Background(), options)
+
+	require.NoError(testInstance, executionError)
+	require.False(testInstance, result.DefaultBranchUpdated)
+	require.False(testInstance, githubOperations.defaultBranchSet)
+	require.Empty(testInstance, result.Warnings)
+}
+
 func TestServiceExecuteFailsWhenGitHubTokenMissing(testInstance *testing.T) {
 	testInstance.Setenv(githubauth.EnvGitHubCLIToken, "")
 	testInstance.Setenv(githubauth.EnvGitHubToken, "")
