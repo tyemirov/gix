@@ -105,7 +105,9 @@ func (executor *Executor) Execute(executionContext context.Context, options Opti
 	}
 
 	if options.DryRun {
-		executor.printfOutput(planMessage, repositoryPath, currentOriginURL, targetURL)
+		displayCurrent := FormatRemoteURLForDisplay(currentOriginURL)
+		displayTarget := FormatRemoteURLForDisplay(targetURL)
+		executor.printfOutput(planMessage, repositoryPath, displayCurrent, displayTarget)
 		return nil
 	}
 
@@ -148,7 +150,7 @@ func (executor *Executor) Execute(executionContext context.Context, options Opti
 		)
 	}
 
-	executor.printfOutput(successMessage, repositoryPath, targetURL)
+	executor.printfOutput(successMessage, repositoryPath, FormatRemoteURLForDisplay(targetURL))
 	return nil
 }
 
@@ -181,4 +183,17 @@ func BuildRemoteURL(protocol shared.RemoteProtocol, ownerRepo string) (string, e
 	default:
 		return "", fmt.Errorf(unknownProtocolErrorTemplate, protocol)
 	}
+}
+
+// FormatRemoteURLForDisplay normalizes remote URLs to the form presented by `git remote -v`.
+func FormatRemoteURLForDisplay(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if len(trimmed) == 0 {
+		return trimmed
+	}
+	if strings.HasPrefix(trimmed, shared.SSHProtocolURLPrefixConstant) {
+		suffix := strings.TrimPrefix(trimmed, shared.SSHProtocolURLPrefixConstant)
+		return shared.GitProtocolURLPrefixConstant + suffix
+	}
+	return trimmed
 }

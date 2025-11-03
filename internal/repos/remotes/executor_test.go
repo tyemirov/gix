@@ -57,14 +57,16 @@ func (prompter *stubPrompter) Confirm(prompt string) (shared.ConfirmationResult,
 }
 
 const (
-	remotesTestRepositoryPath        = "/tmp/project"
-	remotesTestCurrentOriginURL      = "https://github.com/origin/example.git"
-	remotesTestOriginOwnerRepository = "origin/example"
-	remotesTestCanonicalOwnerRepo    = "canonical/example"
-	remotesTestCanonicalURL          = "https://github.com/canonical/example.git"
-	remotesTestPlanMessage           = "PLAN-UPDATE-REMOTE: %s origin %s → %s\n"
-	remotesTestDeclinedMessage       = "UPDATE-REMOTE-SKIP: user declined for %s\n"
-	remotesTestSuccessMessage        = "UPDATE-REMOTE-DONE: %s origin now %s\n"
+	remotesTestRepositoryPath         = "/tmp/project"
+	remotesTestCurrentOriginURL       = "https://github.com/origin/example.git"
+	remotesTestOriginOwnerRepository  = "origin/example"
+	remotesTestCanonicalOwnerRepo     = "canonical/example"
+	remotesTestCanonicalURL           = "https://github.com/canonical/example.git"
+	remotesTestCanonicalSSHURL        = "ssh://git@github.com/canonical/example.git"
+	remotesTestCanonicalSSHDisplayURL = "git@github.com:canonical/example.git"
+	remotesTestPlanMessage            = "PLAN-UPDATE-REMOTE: %s origin %s → %s\n"
+	remotesTestDeclinedMessage        = "UPDATE-REMOTE-SKIP: user declined for %s\n"
+	remotesTestSuccessMessage         = "UPDATE-REMOTE-DONE: %s origin now %s\n"
 )
 
 func TestExecutorBehaviors(t *testing.T) {
@@ -88,6 +90,7 @@ func TestExecutorBehaviors(t *testing.T) {
 		expectedOutput   string
 		expectedError    repoerrors.Sentinel
 		expectedUpdates  int
+		expectedSetURL   string
 		expectPromptCall bool
 	}{
 		{
@@ -131,6 +134,24 @@ func TestExecutorBehaviors(t *testing.T) {
 				remotesTestRepositoryPath,
 				remotesTestCurrentOriginURL,
 				remotesTestCanonicalURL,
+			),
+		},
+		{
+			name: "dry_run_plan_ssh_formats_display",
+			options: remotes.Options{
+				RepositoryPath:           repositoryPath,
+				CurrentOriginURL:         cloneRemoteURL(currentOriginURL),
+				OriginOwnerRepository:    cloneOwnerRepository(originOwnerRepository),
+				CanonicalOwnerRepository: cloneOwnerRepository(canonicalOwnerRepository),
+				RemoteProtocol:           shared.RemoteProtocolSSH,
+				DryRun:                   true,
+			},
+			gitManager: &stubGitManager{},
+			expectedOutput: fmt.Sprintf(
+				remotesTestPlanMessage,
+				remotesTestRepositoryPath,
+				remotesTestCurrentOriginURL,
+				remotesTestCanonicalSSHDisplayURL,
 			),
 		},
 		{
@@ -207,6 +228,21 @@ func TestExecutorBehaviors(t *testing.T) {
 			expectedUpdates: 1,
 		},
 		{
+			name: "assume_yes_updates_ssh_formats_display",
+			options: remotes.Options{
+				RepositoryPath:           repositoryPath,
+				CurrentOriginURL:         cloneRemoteURL(currentOriginURL),
+				OriginOwnerRepository:    cloneOwnerRepository(originOwnerRepository),
+				CanonicalOwnerRepository: cloneOwnerRepository(canonicalOwnerRepository),
+				RemoteProtocol:           shared.RemoteProtocolSSH,
+				ConfirmationPolicy:       shared.ConfirmationAssumeYes,
+			},
+			gitManager:      &stubGitManager{},
+			expectedOutput:  fmt.Sprintf(remotesTestSuccessMessage, remotesTestRepositoryPath, remotesTestCanonicalSSHDisplayURL),
+			expectedUpdates: 1,
+			expectedSetURL:  remotesTestCanonicalSSHURL,
+		},
+		{
 			name: "remote_update_failure_returns_error",
 			options: remotes.Options{
 				RepositoryPath:           repositoryPath,
@@ -249,6 +285,9 @@ func TestExecutorBehaviors(t *testing.T) {
 
 			if testCase.gitManager != nil {
 				require.Len(testingInstance, testCase.gitManager.urlsSet, testCase.expectedUpdates)
+				if testCase.expectedSetURL != "" && testCase.expectedUpdates > 0 {
+					require.Equal(testingInstance, testCase.expectedSetURL, testCase.gitManager.urlsSet[0])
+				}
 			}
 
 			if prompter, ok := testCase.prompter.(*stubPrompter); ok {

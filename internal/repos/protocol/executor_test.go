@@ -62,16 +62,18 @@ func (prompter *stubPrompter) Confirm(prompt string) (shared.ConfirmationResult,
 }
 
 const (
-	protocolTestRepositoryPath     = "/tmp/project"
-	protocolTestOriginOwnerRepo    = "origin/example"
-	protocolTestCanonicalOwnerRepo = "canonical/example"
-	protocolTestOriginURL          = "https://github.com/origin/example.git"
-	protocolTestGitOriginURL       = "git@github.com:origin/example.git"
-	protocolTestTargetURL          = "ssh://git@github.com/canonical/example.git"
-	protocolTestOriginTargetURL    = "ssh://git@github.com/origin/example.git"
-	protocolTestPlanMessage        = "PLAN-CONVERT: %s origin %s → %s\n"
-	protocolTestDeclinedMessage    = "CONVERT-SKIP: user declined for %s\n"
-	protocolTestSuccessMessage     = "CONVERT-DONE: %s origin now %s\n"
+	protocolTestRepositoryPath         = "/tmp/project"
+	protocolTestOriginOwnerRepo        = "origin/example"
+	protocolTestCanonicalOwnerRepo     = "canonical/example"
+	protocolTestOriginURL              = "https://github.com/origin/example.git"
+	protocolTestGitOriginURL           = "git@github.com:origin/example.git"
+	protocolTestTargetURL              = "ssh://git@github.com/canonical/example.git"
+	protocolTestOriginTargetURL        = "ssh://git@github.com/origin/example.git"
+	protocolTestTargetDisplayURL       = "git@github.com:canonical/example.git"
+	protocolTestOriginTargetDisplayURL = "git@github.com:origin/example.git"
+	protocolTestPlanMessage            = "PLAN-CONVERT: %s origin %s → %s\n"
+	protocolTestDeclinedMessage        = "CONVERT-SKIP: user declined for %s\n"
+	protocolTestSuccessMessage         = "CONVERT-DONE: %s origin now %s\n"
 )
 
 func TestExecutorBehaviors(t *testing.T) {
@@ -133,7 +135,7 @@ func TestExecutorBehaviors(t *testing.T) {
 				protocolTestPlanMessage,
 				protocolTestRepositoryPath,
 				protocolTestOriginURL,
-				protocolTestTargetURL,
+				protocolTestTargetDisplayURL,
 			),
 		},
 		{
@@ -161,7 +163,7 @@ func TestExecutorBehaviors(t *testing.T) {
 			},
 			gitManager:        &stubGitManager{currentURL: protocolTestOriginURL},
 			prompter:          &stubPrompter{result: shared.ConfirmationResult{Confirmed: true}},
-			expectedOutput:    fmt.Sprintf(protocolTestSuccessMessage, protocolTestRepositoryPath, protocolTestTargetURL),
+			expectedOutput:    fmt.Sprintf(protocolTestSuccessMessage, protocolTestRepositoryPath, protocolTestTargetDisplayURL),
 			expectedUpdates:   1,
 			expectedTargetURL: protocolTestTargetURL,
 			expectPromptCall:  true,
@@ -177,7 +179,7 @@ func TestExecutorBehaviors(t *testing.T) {
 			},
 			gitManager:        &stubGitManager{currentURL: protocolTestOriginURL},
 			prompter:          &stubPrompter{result: shared.ConfirmationResult{Confirmed: true, ApplyToAll: true}},
-			expectedOutput:    fmt.Sprintf(protocolTestSuccessMessage, protocolTestRepositoryPath, protocolTestTargetURL),
+			expectedOutput:    fmt.Sprintf(protocolTestSuccessMessage, protocolTestRepositoryPath, protocolTestTargetDisplayURL),
 			expectedUpdates:   1,
 			expectedTargetURL: protocolTestTargetURL,
 			expectPromptCall:  true,
@@ -207,7 +209,7 @@ func TestExecutorBehaviors(t *testing.T) {
 				ConfirmationPolicy:       shared.ConfirmationAssumeYes,
 			},
 			gitManager:        &stubGitManager{currentURL: protocolTestOriginURL},
-			expectedOutput:    fmt.Sprintf(protocolTestSuccessMessage, protocolTestRepositoryPath, protocolTestTargetURL),
+			expectedOutput:    fmt.Sprintf(protocolTestSuccessMessage, protocolTestRepositoryPath, protocolTestTargetDisplayURL),
 			expectedUpdates:   1,
 			expectedTargetURL: protocolTestTargetURL,
 		},
@@ -222,7 +224,7 @@ func TestExecutorBehaviors(t *testing.T) {
 				ConfirmationPolicy:       shared.ConfirmationAssumeYes,
 			},
 			gitManager:        &stubGitManager{currentURL: protocolTestOriginURL},
-			expectedOutput:    fmt.Sprintf(protocolTestSuccessMessage, protocolTestRepositoryPath, protocolTestOriginTargetURL),
+			expectedOutput:    fmt.Sprintf(protocolTestSuccessMessage, protocolTestRepositoryPath, protocolTestOriginTargetDisplayURL),
 			expectedUpdates:   1,
 			expectedTargetURL: protocolTestOriginTargetURL,
 		},

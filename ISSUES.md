@@ -70,7 +70,8 @@ If a repository doesnt have a remote, there is nothing to fetch, but we can stil
   - Context: `apply-tasks` supports `commit.message.generate` and `changelog.message.generate` actions, but they require a programmatic client and there is no way to pass their outputs into subsequent steps (e.g., as a `commit_message` for namespace rewrite).
   - Desired: Allow configuring an LLM client in workflow YAML (model, base-url, api-key env, timeout) and introduce workflow variables so action outputs can be referenced as inputs by later steps.
 
-- [ ] [GX-211] On a protocol updated the message says: `UPDATE-REMOTE-DONE: /tmp/repos/loopaware origin now ssh://git@github.com/tyemirov/loopaware.git`. But that's incorrect as the new protocol is not `ssh://git@github.com/tyemirov/loopaware.git` but `git@github.com/tyemirov/loopaware.git`. Change logging to display the new procol as what `git remote -v will display`
+- [x] [GX-211] On a protocol updated the message says: `UPDATE-REMOTE-DONE: /tmp/repos/loopaware origin now ssh://git@github.com/tyemirov/loopaware.git`. But that's incorrect as the new protocol is not `ssh://git@github.com/tyemirov/loopaware.git` but `git@github.com/tyemirov/loopaware.git`. Change logging to display the new procol as what `git remote -v will display`
+  - Resolution: Protocol/remote executors now format SSH remotes as `git@github.com:owner/repo.git` in plan/done logs without altering underlying URLs; regression coverage added for plan/success messages, repo CLI, and workflow integration outputs.
 
 - [ ] [GX-212] Change logging to a new format: 
 

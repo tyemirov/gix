@@ -371,7 +371,7 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				reposIntegrationSSHProtocol,
 			},
 			expectedOutput: func(repositoryPath string) string {
-				return fmt.Sprintf("CONVERT-DONE: %s origin now ssh://git@github.com/canonical/example.git\n", repositoryPath)
+				return fmt.Sprintf("CONVERT-DONE: %s origin now git@github.com:canonical/example.git\n", repositoryPath)
 			},
 			verify: func(testInstance *testing.T, repositoryPath string) {
 				remoteCommand := exec.Command(reposIntegrationGitExecutable, "-C", repositoryPath, reposIntegrationRemoteSubcommand, reposIntegrationGetURLSubcommand, reposIntegrationOriginRemoteName)
@@ -396,7 +396,7 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				reposIntegrationUpdateProtocolAction,
 			},
 			expectedOutput: func(repositoryPath string) string {
-				return fmt.Sprintf("CONVERT-DONE: %s origin now ssh://git@github.com/canonical/example.git\n", repositoryPath)
+				return fmt.Sprintf("CONVERT-DONE: %s origin now git@github.com:canonical/example.git\n", repositoryPath)
 			},
 			verify: func(testInstance *testing.T, repositoryPath string) {
 				remoteCommand := exec.Command(reposIntegrationGitExecutable, "-C", repositoryPath, reposIntegrationRemoteSubcommand, reposIntegrationGetURLSubcommand, reposIntegrationOriginRemoteName)
@@ -431,7 +431,7 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				reposIntegrationDryRunFlag,
 			},
 			expectedOutput: func(repositoryPath string) string {
-				return fmt.Sprintf("PLAN-CONVERT: %s origin https://github.com/origin/example.git → ssh://git@github.com/canonical/example.git\n", repositoryPath)
+				return fmt.Sprintf("PLAN-CONVERT: %s origin https://github.com/origin/example.git → git@github.com:canonical/example.git\n", repositoryPath)
 			},
 			verify: func(testInstance *testing.T, repositoryPath string) {
 				remoteCommand := exec.Command(reposIntegrationGitExecutable, "-C", repositoryPath, reposIntegrationRemoteSubcommand, reposIntegrationGetURLSubcommand, reposIntegrationOriginRemoteName)

@@ -50,7 +50,7 @@ const (
 	workflowIntegrationAuditFileName              = "audit.csv"
 	workflowIntegrationBranchCommitMessage        = "CI: switch workflow branch filters to master"
 	workflowIntegrationRepoViewJSONTemplate       = "{\"nameWithOwner\":\"canonical/example\",\"defaultBranchRef\":{\"name\":\"%s\"},\"description\":\"\"}\n"
-	workflowIntegrationConvertExpectedTemplate    = "CONVERT-DONE: %s origin now ssh://git@github.com/canonical/example.git\n"
+	workflowIntegrationConvertExpectedTemplate    = "CONVERT-DONE: %s origin now git@github.com:canonical/example.git\n"
 	workflowIntegrationRemoteSkipExpectedTemplate = "UPDATE-REMOTE-SKIP: %s (already canonical)\n"
 	workflowIntegrationDefaultExpectedTemplate    = "WORKFLOW-DEFAULT: %s (main → master) safe_to_delete=true\n"
 	workflowIntegrationAuditExpectedTemplate      = "WORKFLOW-AUDIT: wrote report to %s\n"

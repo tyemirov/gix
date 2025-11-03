@@ -105,7 +105,12 @@ func (executor *Executor) Execute(executionContext context.Context, options Opti
 	}
 
 	if options.DryRun {
-		executor.printfOutput(planMessage, repositoryPath, currentURL, targetURL)
+		executor.printfOutput(
+			planMessage,
+			repositoryPath,
+			remotes.FormatRemoteURLForDisplay(currentURL),
+			remotes.FormatRemoteURLForDisplay(targetURL),
+		)
 		return nil
 	}
 
@@ -136,7 +141,7 @@ func (executor *Executor) Execute(executionContext context.Context, options Opti
 		)
 	}
 
-	executor.printfOutput(successMessage, repositoryPath, targetURL)
+	executor.printfOutput(successMessage, repositoryPath, remotes.FormatRemoteURLForDisplay(targetURL))
 	return nil
 }
 
