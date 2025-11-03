@@ -139,6 +139,21 @@ workflow operation apply-tasks failed: DEFAULT-BRANCH-UPDATE repository=MarcoPol
 - [x] [GX-304] No-remote repos cause failures across commands
   - Resolution: Added integration coverage proving `gix branch cd` and `gix workflow` succeed on repositories without remotes, emitting the expected skip/success messages without errors; no additional fixes were required.
 
+- [ ] [GX-310] Surface namespace rewrite git failures and handle push errors gracefully
+  - Status: Unresolved
+  - Category: BugFix
+  - Context: Running the owner-renaming workflow on `/tmp/repos/tyemirov/gix` aborted with `namespace_rewrite_failed: git command exited with code 1`, hiding the underlying `git push --set-upstream` failure (no credentials in test environment) and stopping the entire workflow.
+  - Desired: Capture and display the git stderr for namespace rewrite failures, and degrade push/authentication failures into actionable SKIP messages (or allow `push: true` to fall back to no push) so the workflow can continue.
+  - Notes: Repro via `gix workflow configs/cleanup.yaml --roots /tmp/repos --yes` as seen in the provided run log.
+
+- [ ] [GX-311] Fix namespace task log formatting emitting literal `\n`
+  - Status: Unresolved
+  - Category: BugFix
+  - Context: Workflow output shows lines like `NAMESPACE-NOOP: ... reason=namespace already up to date\nUPDATE-REMOTE-SKIP: ...`, indicating the namespace log templates use `\n` (escaped newline), so the literal `\n` leaks into output.
+  - Desired: Update namespace task templates (`namespaceNoopMessageTemplate`, `namespaceApplyMessageTemplate`, etc.) to use actual newlines and ensure all workflow log helpers emit newline-separated entries without escape sequences.
+  - Notes: Observed during the owner-renaming workflow run on `/tmp/repos`.
+
+
 ## Maintenance (400–499)
 
 - [x] [GX-400] Update the documentation @README.md and focus on the usefullness to the user. Move the technical details to @ARCHITECTURE.md
