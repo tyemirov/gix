@@ -176,4 +176,6 @@ var (
 	ErrGitRepositoryMissing Sentinel = "git_repository_missing"
 	// ErrNamespaceRewriteFailed indicates namespace rewrite failed.
 	ErrNamespaceRewriteFailed Sentinel = "namespace_rewrite_failed"
+	// ErrNamespacePushFailed indicates namespace rewrite push step failed.
+	ErrNamespacePushFailed Sentinel = "namespace_push_failed"
 )

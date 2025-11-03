@@ -2,6 +2,8 @@ package namespace_test
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/temirov/gix/internal/execshell"
 	"github.com/temirov/gix/internal/gitrepo"
+	repoerrors "github.com/temirov/gix/internal/repos/errors"
 	"github.com/temirov/gix/internal/repos/filesystem"
 	"github.com/temirov/gix/internal/repos/namespace"
 	"github.com/temirov/gix/internal/repos/shared"
@@ -90,8 +93,9 @@ func main() { dep.Do() }
 
 	executor := &recordingGitExecutor{
 		configValues: map[string]string{
-			"user.name":  "Test User",
-			"user.email": "test@example.com",
+			"user.name":         "Test User",
+			"user.email":        "test@example.com",
+			"remote.origin.url": "git@example.com:old/account.git",
 		},
 	}
 	manager, err := gitrepo.NewRepositoryManager(executor)
@@ -302,6 +306,173 @@ func TestRewriteUpdatesGoModRootModuleEntries(t *testing.T) {
 	require.Contains(t, goModString, "github.com/new/account/dep v1.4.1")
 }
 
+func TestRewriteHandlesPushFailure(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(tempDir, ".git"), 0o755))
+
+	goModContent := "module github.com/old/account\n\ngo 1.22\n"
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "go.mod"), []byte(goModContent), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "main.go"), []byte("package main\n"), 0o644))
+
+	oldPrefix, err := namespace.NewModulePrefix("github.com/old/account")
+	require.NoError(t, err)
+	newPrefix, err := namespace.NewModulePrefix("github.com/new/account")
+	require.NoError(t, err)
+
+	executionError := execshell.CommandFailedError{
+		Command: execshell.ShellCommand{Name: execshell.CommandGit},
+		Result:  execshell.ExecutionResult{ExitCode: 1, StandardError: "permission denied"},
+	}
+	executor := &recordingGitExecutor{
+		configValues: map[string]string{
+			"user.name":         "Test User",
+			"user.email":        "test@example.com",
+			"remote.origin.url": "git@example.com:old/account.git",
+		},
+		pushError: executionError,
+	}
+	manager, err := gitrepo.NewRepositoryManager(executor)
+	require.NoError(t, err)
+
+	service, err := namespace.NewService(namespace.Dependencies{
+		FileSystem:        filesystem.OSFileSystem{},
+		GitExecutor:       executor,
+		RepositoryManager: manager,
+		Clock:             fixedClock{instant: time.Date(2024, 11, 24, 12, 0, 0, 0, time.UTC)},
+	})
+	require.NoError(t, err)
+
+	repositoryPath, err := shared.NewRepositoryPath(tempDir)
+	require.NoError(t, err)
+
+	result, rewriteErr := service.Rewrite(context.Background(), namespace.Options{
+		RepositoryPath: repositoryPath,
+		OldPrefix:      oldPrefix,
+		NewPrefix:      newPrefix,
+		CommitMessage:  "chore: rewrite namespace",
+		Push:           true,
+		PushRemote:     "origin",
+	})
+	require.Error(t, rewriteErr)
+	var operationError repoerrors.OperationError
+	require.True(t, errors.As(rewriteErr, &operationError))
+	require.Equal(t, string(repoerrors.ErrNamespacePushFailed), operationError.Code())
+	require.True(t, result.CommitCreated)
+	require.False(t, result.PushPerformed)
+	require.Contains(t, result.PushSkippedReason, "push failed")
+
+	require.Contains(t, executor.recordedCommands(), "config --get remote.origin.url")
+}
+
+func TestRewriteSkipsPushWhenRemoteMissing(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(tempDir, ".git"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "go.mod"), []byte("module github.com/old/account\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "main.go"), []byte("package main\n"), 0o644))
+
+	oldPrefix, err := namespace.NewModulePrefix("github.com/old/account")
+	require.NoError(t, err)
+	newPrefix, err := namespace.NewModulePrefix("github.com/new/account")
+	require.NoError(t, err)
+
+	executor := &recordingGitExecutor{
+		configValues: map[string]string{
+			"user.name":  "Test User",
+			"user.email": "test@example.com",
+		},
+	}
+	manager, err := gitrepo.NewRepositoryManager(executor)
+	require.NoError(t, err)
+
+	service, err := namespace.NewService(namespace.Dependencies{
+		FileSystem:        filesystem.OSFileSystem{},
+		GitExecutor:       executor,
+		RepositoryManager: manager,
+		Clock:             fixedClock{instant: time.Date(2024, 11, 24, 12, 0, 0, 0, time.UTC)},
+	})
+	require.NoError(t, err)
+
+	repositoryPath, err := shared.NewRepositoryPath(tempDir)
+	require.NoError(t, err)
+
+	result, rewriteErr := service.Rewrite(context.Background(), namespace.Options{
+		RepositoryPath: repositoryPath,
+		OldPrefix:      oldPrefix,
+		NewPrefix:      newPrefix,
+		CommitMessage:  "chore: rewrite namespace",
+		Push:           true,
+		PushRemote:     "origin",
+	})
+	require.Error(t, rewriteErr)
+	var opErr repoerrors.OperationError
+	require.True(t, errors.As(rewriteErr, &opErr))
+	require.Equal(t, string(repoerrors.ErrRemoteMissing), opErr.Code())
+	require.Contains(t, result.PushSkippedReason, "remote origin not configured")
+	require.True(t, result.CommitCreated)
+	require.False(t, result.PushPerformed)
+}
+
+func TestRewriteSkipsPushWhenRemoteUpToDate(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(tempDir, ".git"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "go.mod"), []byte("module github.com/old/account\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "main.go"), []byte("package main\n"), 0o644))
+
+	oldPrefix, err := namespace.NewModulePrefix("github.com/old/account")
+	require.NoError(t, err)
+	newPrefix, err := namespace.NewModulePrefix("github.com/new/account")
+	require.NoError(t, err)
+
+	branchPrefix := "rewrite"
+	timestamp := "20241124-120000Z"
+	branchName := fmt.Sprintf("%s/%s", branchPrefix, timestamp)
+
+	executor := &recordingGitExecutor{
+		configValues: map[string]string{
+			"user.name":         "Test User",
+			"user.email":        "test@example.com",
+			"remote.origin.url": "git@example.com:old/account.git",
+		},
+		headHash:   "abcdef1234567890",
+		remoteRefs: map[string]string{"origin:" + branchName: "abcdef1234567890"},
+	}
+	manager, err := gitrepo.NewRepositoryManager(executor)
+	require.NoError(t, err)
+
+	service, err := namespace.NewService(namespace.Dependencies{
+		FileSystem:        filesystem.OSFileSystem{},
+		GitExecutor:       executor,
+		RepositoryManager: manager,
+		Clock:             fixedClock{instant: time.Date(2024, 11, 24, 12, 0, 0, 0, time.UTC)},
+	})
+	require.NoError(t, err)
+
+	repositoryPath, err := shared.NewRepositoryPath(tempDir)
+	require.NoError(t, err)
+
+	result, rewriteErr := service.Rewrite(context.Background(), namespace.Options{
+		RepositoryPath: repositoryPath,
+		OldPrefix:      oldPrefix,
+		NewPrefix:      newPrefix,
+		CommitMessage:  "chore: rewrite namespace",
+		Push:           true,
+		PushRemote:     "origin",
+		BranchPrefix:   branchPrefix,
+	})
+	require.NoError(t, rewriteErr)
+	require.False(t, result.PushPerformed)
+	require.Contains(t, result.PushSkippedReason, "already up to date")
+
+	commands := executor.recordedCommands()
+	require.Contains(t, commands, "ls-remote --heads origin "+branchName)
+}
+
 type noopGitExecutor struct{}
 
 func (noopGitExecutor) ExecuteGit(_ context.Context, _ execshell.CommandDetails) (execshell.ExecutionResult, error) {
@@ -316,6 +487,9 @@ type recordingGitExecutor struct {
 	commands     []execshell.CommandDetails
 	staged       map[string]struct{}
 	configValues map[string]string
+	pushError    error
+	headHash     string
+	remoteRefs   map[string]string
 }
 
 func (executor *recordingGitExecutor) ExecuteGit(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
@@ -352,7 +526,25 @@ func (executor *recordingGitExecutor) ExecuteGit(_ context.Context, details exec
 		executor.staged = map[string]struct{}{}
 		return execshell.ExecutionResult{}, nil
 	case "push":
+		if executor.pushError != nil {
+			return execshell.ExecutionResult{}, executor.pushError
+		}
 		return execshell.ExecutionResult{}, nil
+	case "rev-parse":
+		hash := executor.headHash
+		if len(hash) == 0 {
+			hash = "HEADHASH"
+		}
+		return execshell.ExecutionResult{StandardOutput: hash + "\n"}, nil
+	case "ls-remote":
+		if executor.remoteRefs != nil && len(details.Arguments) >= 4 {
+			key := fmt.Sprintf("%s:%s", details.Arguments[2], details.Arguments[3])
+			if hash, exists := executor.remoteRefs[key]; exists {
+				output := fmt.Sprintf("%s\trefs/heads/%s\n", hash, details.Arguments[3])
+				return execshell.ExecutionResult{StandardOutput: output}, nil
+			}
+		}
+		return execshell.ExecutionResult{StandardOutput: ""}, nil
 	default:
 		return execshell.ExecutionResult{}, nil
 	}
@@ -373,6 +565,16 @@ func (executor *recordingGitExecutor) handleConfig(details execshell.CommandDeta
 	}
 	if args[1] == "--local" && len(args) >= 4 && args[2] == "--get" {
 		value := executor.configValues[args[3]]
+		if value == "" {
+			return execshell.ExecutionResult{}, execshell.CommandFailedError{
+				Command: execshell.ShellCommand{Name: execshell.CommandGit, Details: details},
+				Result:  execshell.ExecutionResult{ExitCode: 1},
+			}
+		}
+		return execshell.ExecutionResult{StandardOutput: value + "\n"}, nil
+	}
+	if args[1] == "--get" && len(args) >= 3 {
+		value := executor.configValues[args[2]]
 		if value == "" {
 			return execshell.ExecutionResult{}, execshell.CommandFailedError{
 				Command: execshell.ShellCommand{Name: execshell.CommandGit, Details: details},

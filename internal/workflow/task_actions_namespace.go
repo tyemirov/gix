@@ -2,9 +2,11 @@ package workflow
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
+	repoerrors "github.com/temirov/gix/internal/repos/errors"
 	"github.com/temirov/gix/internal/repos/namespace"
 	"github.com/temirov/gix/internal/repos/shared"
 )
@@ -20,10 +22,10 @@ const (
 	namespacePushOptionKey          = "push"
 	namespaceRemoteOptionKey        = "remote"
 	namespaceSafeguardsOptionKey    = "safeguards"
-	namespacePlanMessageTemplate    = "NAMESPACE-PLAN: %s branch=%s files=%d push=%t\\n"
-	namespaceApplyMessageTemplate   = "NAMESPACE-APPLY: %s branch=%s files=%d push=%t\\n"
-	namespaceNoopMessageTemplate    = "NAMESPACE-NOOP: %s reason=%s\\n"
-	namespaceSkipMessageTemplate    = "NAMESPACE-SKIP: %s reason=%s\\n"
+	namespacePlanMessageTemplate    = "NAMESPACE-PLAN: %s branch=%s files=%d push=%t\n"
+	namespaceApplyMessageTemplate   = "NAMESPACE-APPLY: %s branch=%s files=%d push=%t\n"
+	namespaceNoopMessageTemplate    = "NAMESPACE-NOOP: %s reason=%s\n"
+	namespaceSkipMessageTemplate    = "NAMESPACE-SKIP: %s reason=%s\n"
 	namespacePromptTemplate         = "Rewrite namespace %s -> %s in %s? [a/N/y] "
 )
 
@@ -168,7 +170,12 @@ func handleNamespaceRewriteAction(ctx context.Context, environment *Environment,
 
 	result, rewriteErr := service.Rewrite(ctx, options)
 	if rewriteErr != nil {
-		return rewriteErr
+		var operationError repoerrors.OperationError
+		if errors.As(rewriteErr, &operationError) && (operationError.Code() == string(repoerrors.ErrNamespacePushFailed) || operationError.Code() == string(repoerrors.ErrRemoteMissing)) {
+			logRepositoryOperationError(environment, rewriteErr)
+		} else {
+			return rewriteErr
+		}
 	}
 
 	filesChanged := len(result.ChangedFiles)
@@ -187,6 +194,10 @@ func handleNamespaceRewriteAction(ctx context.Context, environment *Environment,
 	}
 
 	writeNamespaceApply(environment, namespaceApplyMessageTemplate, repository.Path, result.BranchName, filesChanged, result.PushPerformed)
+
+	if len(strings.TrimSpace(result.PushSkippedReason)) > 0 {
+		writeNamespaceReason(environment, namespaceSkipMessageTemplate, repository.Path, result.PushSkippedReason)
+	}
 
 	if environment.AuditService != nil {
 		if refreshErr := repository.Refresh(ctx, environment.AuditService); refreshErr != nil {
