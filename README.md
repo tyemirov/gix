@@ -174,11 +174,27 @@ workflow:
       operation: rename-directories
       with:
         include_owner: true
-        require_clean: true
+        require_clean: false
+  
+  - step:
+      name: protocol-to-git-https
+      after: ["folders"]
+      operation: convert-protocol
+      with:
+        from: https
+        to: git
+
+  - step:
+      name: protocol-to-git-ssh
+      after: ["folders"]
+      operation: convert-protocol
+      with:
+        from: ssh
+        to: git
 
   - step:
       name: switch-branch
-      after: ["folders"]
+      after: ["protocol-to-git-https", "protocol-to-git-ssh"]
       operation: apply-tasks
       with:
         tasks:
@@ -253,8 +269,8 @@ Example task-only workflow step:
             message: "chore: update license"
           safeguards:
             require_clean: true
-            branch_in: [ main, master ]
-            paths: [ ".git" ]
+            branch_in: [master]
+            paths: [".git"]
 ```
 
 Templating supports Go text/template with `.Task.*` and `.Repository.*` fields. Available repository fields include: `Path`, `Owner`, `Name`, `FullName`, `DefaultBranch`, `PathDepth`, `InitialClean`, `HasNestedRepositories`.
@@ -294,16 +310,20 @@ Additional shared flags:
 Top-level commands and their subcommands. Aliases are shown in parentheses.
 
 - `gix version`
+
   - Prints the current release. Also available as `gix --version`.
 
 - `gix audit [--roots <dir>...] [--all] [--dry-run] [-y]` (alias `a`)
+
   - Flags: `--roots` (repeatable), `--all` to include non-git folders in output.
 
 - `gix workflow <configuration> [--roots <dir>...] [--require-clean] [--dry-run] [-y]` (alias `w`)
+
   - Runs tasks from a YAML/JSON workflow file.
   - Flags: `--require-clean` sets the default safeguard for operations that support it.
 
 - `gix repo` (alias `r`)
+
   - `gix repo folder rename [--owner] [--require-clean] [--roots <dir>...] [--dry-run] [-y]`
     - Renames repository directories to canonical GitHub names.
     - Flags: `--owner` include the owner in directory path; `--require-clean` enforce clean worktrees.
