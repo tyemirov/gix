@@ -6,14 +6,14 @@ import (
 
 	"github.com/spf13/cobra"
 
-	repocli "github.com/temirov/gix/cmd/cli/repos"
-	"github.com/temirov/gix/internal/githubcli"
-	"github.com/temirov/gix/internal/gitrepo"
-	"github.com/temirov/gix/internal/repos/dependencies"
-	"github.com/temirov/gix/internal/repos/shared"
-	flagutils "github.com/temirov/gix/internal/utils/flags"
-	rootutils "github.com/temirov/gix/internal/utils/roots"
-	"github.com/temirov/gix/internal/workflow"
+	repocli "github.com/tyemirov/gix/cmd/cli/repos"
+	"github.com/tyemirov/gix/internal/githubcli"
+	"github.com/tyemirov/gix/internal/gitrepo"
+	"github.com/tyemirov/gix/internal/repos/dependencies"
+	"github.com/tyemirov/gix/internal/repos/shared"
+	flagutils "github.com/tyemirov/gix/internal/utils/flags"
+	rootutils "github.com/tyemirov/gix/internal/utils/roots"
+	"github.com/tyemirov/gix/internal/workflow"
 )
 
 const (

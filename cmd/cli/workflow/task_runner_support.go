@@ -3,7 +3,7 @@ package workflow
 import (
 	"context"
 
-	"github.com/temirov/gix/internal/workflow"
+	"github.com/tyemirov/gix/internal/workflow"
 )
 
 // TaskRunnerExecutor represents an executor capable of running workflow tasks.
