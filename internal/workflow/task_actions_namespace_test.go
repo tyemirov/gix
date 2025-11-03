@@ -338,6 +338,8 @@ func (executor *namespaceTestGitExecutor) ExecuteGit(_ context.Context, details 
 		return execshell.ExecutionResult{StandardOutput: executor.statusOutput}, nil
 	case "checkout":
 		return execshell.ExecutionResult{}, nil
+	case "check-ignore":
+		return execshell.ExecutionResult{}, execshell.CommandFailedError{Result: execshell.ExecutionResult{ExitCode: 1}}
 	case "add":
 		if len(args) > 1 {
 			executor.staged[args[1]] = struct{}{}

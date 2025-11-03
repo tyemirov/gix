@@ -28,6 +28,7 @@ const (
 	goTestFileSuffix             = "_test.go"
 	gitDirectoryName             = ".git"
 	vendorDirectoryName          = "vendor"
+	gitIgnoredSkipReason         = "namespace rewrite skipped: files ignored by git"
 )
 
 var (
@@ -193,6 +194,30 @@ func (plan changePlan) relativeGoFiles() []string {
 	return paths
 }
 
+func (service *Service) excludeIgnoredPlanEntries(ctx context.Context, repositoryPath string, plan changePlan) (changePlan, error) {
+	filtered := newChangePlan()
+
+	if plan.goMod {
+		ignored, ignoreErr := service.isPathIgnored(ctx, repositoryPath, "go.mod")
+		if ignoreErr != nil {
+			return changePlan{}, ignoreErr
+		}
+		filtered.goMod = !ignored
+	}
+
+	for relativePath := range plan.goFilePaths {
+		ignored, ignoreErr := service.isPathIgnored(ctx, repositoryPath, relativePath)
+		if ignoreErr != nil {
+			return changePlan{}, ignoreErr
+		}
+		if !ignored {
+			filtered.goFilePaths[relativePath] = struct{}{}
+		}
+	}
+
+	return filtered, nil
+}
+
 // Rewrite applies namespace updates across go.mod and Go source files.
 func (service *Service) Rewrite(ctx context.Context, options Options) (Result, error) {
 	if service == nil {
@@ -235,8 +260,12 @@ func (service *Service) applyRewrite(ctx context.Context, repositoryPath string,
 	if planError != nil {
 		return Result{}, planError
 	}
+	plan, planError = service.excludeIgnoredPlanEntries(ctx, repositoryPath, plan)
+	if planError != nil {
+		return Result{}, planError
+	}
 	if !plan.requiresRewrite() {
-		return Result{Skipped: true, SkipReason: "namespace already up to date"}, nil
+		return Result{Skipped: true, SkipReason: gitIgnoredSkipReason}, nil
 	}
 
 	if err := service.ensureGitRepository(repositoryPath); err != nil {
@@ -735,6 +764,23 @@ func (service *Service) gitAdd(ctx context.Context, repositoryPath string, relat
 		return repoerrors.Wrap(repoerrors.OperationNamespaceRewrite, repositoryPath, repoerrors.ErrNamespaceRewriteFailed, err)
 	}
 	return nil
+}
+
+func (service *Service) isPathIgnored(ctx context.Context, repositoryPath string, relativePath string) (bool, error) {
+	details := execshell.CommandDetails{
+		Arguments:        []string{"check-ignore", "--quiet", relativePath},
+		WorkingDirectory: repositoryPath,
+	}
+	_, err := service.gitExecutor.ExecuteGit(ctx, details)
+	if err == nil {
+		return true, nil
+	}
+
+	var commandError execshell.CommandFailedError
+	if errors.As(err, &commandError) && commandError.Result.ExitCode == 1 {
+		return false, nil
+	}
+	return false, repoerrors.Wrap(repoerrors.OperationNamespaceRewrite, repositoryPath, repoerrors.ErrNamespaceRewriteFailed, err)
 }
 
 func (service *Service) hasStagedChanges(ctx context.Context, repositoryPath string) (bool, error) {

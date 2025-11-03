@@ -145,6 +145,85 @@ func main() { dep.Do() }
 	require.Contains(t, executor.recordedCommands(), "push --set-upstream origin ns-update/20241124-120000Z")
 }
 
+func TestRewriteSkipsGitIgnoredPaths(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(tempDir, ".git"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, ".gitignore"), []byte("ignored/\n"), 0o644))
+
+	goModContent := "module github.com/old/account/app\n\ngo 1.22\nrequire github.com/old/account/dep v1.0.0\n"
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "go.mod"), []byte(goModContent), 0o644))
+
+	mainSource := `package main
+import "github.com/old/account/dep"
+func main() { dep.Do() }
+`
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "main.go"), []byte(mainSource), 0o644))
+
+	ignoredDir := filepath.Join(tempDir, "ignored")
+	require.NoError(t, os.MkdirAll(ignoredDir, 0o755))
+	ignoredSource := `package ignored
+import "github.com/old/account/dep"
+func Do() { dep.Do() }
+`
+	require.NoError(t, os.WriteFile(filepath.Join(ignoredDir, "ignored.go"), []byte(ignoredSource), 0o644))
+
+	oldPrefix, err := namespace.NewModulePrefix("github.com/old/account")
+	require.NoError(t, err)
+	newPrefix, err := namespace.NewModulePrefix("github.com/new/account")
+	require.NoError(t, err)
+
+	executor := &recordingGitExecutor{
+		configValues: map[string]string{
+			"user.name":  "Test User",
+			"user.email": "test@example.com",
+		},
+		ignoredPaths: map[string]struct{}{
+			"ignored/ignored.go": {},
+		},
+	}
+	manager, err := gitrepo.NewRepositoryManager(executor)
+	require.NoError(t, err)
+
+	service, err := namespace.NewService(namespace.Dependencies{
+		FileSystem:        filesystem.OSFileSystem{},
+		GitExecutor:       executor,
+		RepositoryManager: manager,
+		Clock:             fixedClock{instant: time.Date(2024, 11, 24, 12, 0, 0, 0, time.UTC)},
+	})
+	require.NoError(t, err)
+
+	repositoryPath, err := shared.NewRepositoryPath(tempDir)
+	require.NoError(t, err)
+
+	result, rewriteErr := service.Rewrite(context.Background(), namespace.Options{
+		RepositoryPath: repositoryPath,
+		OldPrefix:      oldPrefix,
+		NewPrefix:      newPrefix,
+		CommitMessage:  "chore: rewrite namespace",
+	})
+	require.NoError(t, rewriteErr)
+
+	require.False(t, result.Skipped)
+	require.True(t, result.CommitCreated)
+	commands := executor.recordedCommands()
+	for _, command := range commands {
+		require.NotEqual(t, "add ignored/ignored.go", command)
+	}
+
+	updatedMain, readErr := os.ReadFile(filepath.Join(tempDir, "main.go"))
+	require.NoError(t, readErr)
+	require.Contains(t, string(updatedMain), "github.com/new/account")
+	require.NotContains(t, string(updatedMain), "github.com/old/account")
+
+	ignoredContent, ignoredReadErr := os.ReadFile(filepath.Join(ignoredDir, "ignored.go"))
+	require.NoError(t, ignoredReadErr)
+	require.Contains(t, string(ignoredContent), "github.com/old/account")
+
+	require.Contains(t, commands, "check-ignore --quiet ignored/ignored.go")
+}
+
 func TestRewriteUpdatesGoModDependencyBlocks(t *testing.T) {
 	t.Parallel()
 
@@ -475,7 +554,13 @@ func TestRewriteSkipsPushWhenRemoteUpToDate(t *testing.T) {
 
 type noopGitExecutor struct{}
 
-func (noopGitExecutor) ExecuteGit(_ context.Context, _ execshell.CommandDetails) (execshell.ExecutionResult, error) {
+func (noopGitExecutor) ExecuteGit(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
+	if len(details.Arguments) > 0 && details.Arguments[0] == "check-ignore" {
+		return execshell.ExecutionResult{}, execshell.CommandFailedError{
+			Command: execshell.ShellCommand{Name: execshell.CommandGit, Details: details},
+			Result:  execshell.ExecutionResult{ExitCode: 1},
+		}
+	}
 	return execshell.ExecutionResult{}, nil
 }
 
@@ -490,6 +575,7 @@ type recordingGitExecutor struct {
 	pushError    error
 	headHash     string
 	remoteRefs   map[string]string
+	ignoredPaths map[string]struct{}
 }
 
 func (executor *recordingGitExecutor) ExecuteGit(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
@@ -507,6 +593,20 @@ func (executor *recordingGitExecutor) ExecuteGit(_ context.Context, details exec
 		return execshell.ExecutionResult{StandardOutput: ""}, nil
 	case "checkout":
 		return execshell.ExecutionResult{}, nil
+	case "check-ignore":
+		pathIndex := len(details.Arguments) - 1
+		if pathIndex >= 1 {
+			pathArg := details.Arguments[pathIndex]
+			if executor.ignoredPaths != nil {
+				if _, exists := executor.ignoredPaths[pathArg]; exists {
+					return execshell.ExecutionResult{StandardOutput: pathArg + "\n"}, nil
+				}
+			}
+		}
+		return execshell.ExecutionResult{}, execshell.CommandFailedError{
+			Command: execshell.ShellCommand{Name: execshell.CommandGit, Details: details},
+			Result:  execshell.ExecutionResult{ExitCode: 1},
+		}
 	case "add":
 		if len(details.Arguments) > 1 {
 			executor.staged[details.Arguments[1]] = struct{}{}
