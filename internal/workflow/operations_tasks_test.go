@@ -110,6 +110,66 @@ func TestTaskOperationSkipsDuplicateRepositories(t *testing.T) {
 	require.Equal(t, 1, client.calls)
 }
 
+func TestTaskOperationFallsBackWhenStartPointMissing(t *testing.T) {
+	t.Parallel()
+
+	gitExecutor := &recordingGitExecutor{
+		branchExists:  false,
+		worktreeClean: true,
+		currentBranch: "main",
+	}
+	fileSystem := newFakeFileSystem(nil)
+	repositoryManager, managerErr := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(t, managerErr)
+
+	repository := NewRepositoryState(audit.RepositoryInspection{
+		Path:                "/repositories/sample",
+		FinalOwnerRepo:      "octocat/sample",
+		RemoteDefaultBranch: "master",
+		LocalBranch:         "main",
+	})
+
+	task := TaskDefinition{
+		Name:        "Rewrite Namespace",
+		EnsureClean: false,
+		Files: []TaskFileDefinition{{
+			PathTemplate:    "README.md",
+			ContentTemplate: "updated",
+			Mode:            taskFileModeOverwrite,
+			Permissions:     defaultTaskFilePermissions,
+		}},
+	}
+
+	planner := newTaskPlanner(task, buildTaskTemplateData(repository, task))
+	environment := &Environment{
+		GitExecutor:       gitExecutor,
+		RepositoryManager: repositoryManager,
+		FileSystem:        fileSystem,
+		Output:            &bytes.Buffer{},
+	}
+
+	plan, planErr := planner.BuildPlan(environment, repository)
+	require.NoError(t, planErr)
+	require.Equal(t, "master", plan.startPoint)
+
+	gitExecutor.existingRefs = map[string]bool{
+		plan.branchName: false,
+		plan.startPoint: false,
+	}
+
+	executor := newTaskExecutor(environment, repository, plan)
+	executionErr := executor.Execute(context.Background())
+	require.NoError(t, executionErr)
+
+	output := environment.Output.(*bytes.Buffer).String()
+	require.Contains(t, output, "TASK-WARN")
+	require.Contains(t, output, "start point missing")
+
+	for _, details := range gitExecutor.commands {
+		require.NotEqual(t, []string{"checkout", "master"}, details.Arguments)
+	}
+}
+
 func TestTaskPlannerBuildPlanSupportsActions(testInstance *testing.T) {
 	fileSystem := newFakeFileSystem(nil)
 	environment := &Environment{FileSystem: fileSystem}
@@ -441,6 +501,11 @@ func TestTaskExecutorAppliesChanges(testInstance *testing.T) {
 	require.NoError(testInstance, planError)
 	require.False(testInstance, plan.skipped)
 
+	gitExecutor.existingRefs = map[string]bool{
+		plan.branchName: false,
+		plan.startPoint: true,
+	}
+
 	executor := newTaskExecutor(environment, repository, plan)
 
 	executionError := executor.Execute(context.Background())
@@ -453,6 +518,7 @@ func TestTaskExecutorAppliesChanges(testInstance *testing.T) {
 		{"status", "--porcelain"},
 		{"rev-parse", "--verify", "feature-sample-docs"},
 		{"rev-parse", "--abbrev-ref", "HEAD"},
+		{"rev-parse", "--verify", "main"},
 		{"checkout", "main"},
 		{"checkout", "-B", "feature-sample-docs", "main"},
 		{"add", "docs/sample.md"},
@@ -601,6 +667,7 @@ type recordingGitExecutor struct {
 	branchExists   bool
 	worktreeClean  bool
 	currentBranch  string
+	existingRefs   map[string]bool
 }
 
 func (executor *recordingGitExecutor) ExecuteGit(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
@@ -619,13 +686,28 @@ func (executor *recordingGitExecutor) ExecuteGit(_ context.Context, details exec
 		if len(details.Arguments) >= 2 {
 			switch details.Arguments[1] {
 			case "--verify":
-				if executor.branchExists {
-					return execshell.ExecutionResult{}, nil
-				}
-				return execshell.ExecutionResult{}, execshell.CommandFailedError{
-					Command: execshell.ShellCommand{Name: execshell.CommandGit, Details: details},
-					Result:  execshell.ExecutionResult{ExitCode: 1},
-				}
+					target := ""
+					if len(details.Arguments) >= 3 {
+						target = details.Arguments[2]
+					}
+					if executor.existingRefs != nil {
+						if exists, ok := executor.existingRefs[target]; ok {
+							if exists {
+								return execshell.ExecutionResult{}, nil
+							}
+							return execshell.ExecutionResult{}, execshell.CommandFailedError{
+								Command: execshell.ShellCommand{Name: execshell.CommandGit, Details: details},
+								Result:  execshell.ExecutionResult{ExitCode: 1},
+							}
+						}
+					}
+					if executor.branchExists {
+						return execshell.ExecutionResult{}, nil
+					}
+					return execshell.ExecutionResult{}, execshell.CommandFailedError{
+						Command: execshell.ShellCommand{Name: execshell.CommandGit, Details: details},
+						Result:  execshell.ExecutionResult{ExitCode: 1},
+					}
 			case "--abbrev-ref":
 				branch := executor.currentBranch
 				if len(branch) == 0 {

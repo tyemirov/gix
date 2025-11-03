@@ -50,6 +50,7 @@ const (
 	taskLogPrefixSkip   = "TASK-SKIP"
 	taskLogPrefixNoop   = "TASK-NOOP"
 	taskLogPrefixCancel = "TASK-CANCEL"
+	taskLogPrefixWarn   = "TASK-WARN"
 )
 
 const (
@@ -924,10 +925,21 @@ func (executor taskExecutor) Execute(executionContext context.Context) error {
 			_ = executor.checkoutBranch(executionContext, originalBranch)
 		}
 
-		if len(strings.TrimSpace(executor.plan.startPoint)) > 0 {
-			if err := executor.checkoutBranch(executionContext, executor.plan.startPoint); err != nil {
+		startPoint := strings.TrimSpace(executor.plan.startPoint)
+		if len(startPoint) > 0 {
+			exists, existsErr := executor.branchExists(executionContext, startPoint)
+			if existsErr != nil {
 				cleanup()
-				return err
+				return existsErr
+			}
+			if exists {
+				if err := executor.checkoutBranch(executionContext, startPoint); err != nil {
+					cleanup()
+					return err
+				}
+			} else {
+				executor.logf(taskLogPrefixWarn, "start point missing", map[string]any{"start_point": startPoint})
+				executor.plan.startPoint = ""
 			}
 		}
 
