@@ -22,10 +22,10 @@ const (
 	namespacePushOptionKey          = "push"
 	namespaceRemoteOptionKey        = "remote"
 	namespaceSafeguardsOptionKey    = "safeguards"
-	namespacePlanMessageTemplate    = "NAMESPACE-PLAN: %s branch=%s files=%d push=%t\\n"
-	namespaceApplyMessageTemplate   = "NAMESPACE-APPLY: %s branch=%s files=%d push=%t\\n"
-	namespaceNoopMessageTemplate    = "NAMESPACE-NOOP: %s reason=%s\\n"
-	namespaceSkipMessageTemplate    = "NAMESPACE-SKIP: %s reason=%s\\n"
+	namespacePlanMessageTemplate    = "NAMESPACE-PLAN: %s branch=%s files=%d push=%t\n"
+	namespaceApplyMessageTemplate   = "NAMESPACE-APPLY: %s branch=%s files=%d push=%t\n"
+	namespaceNoopMessageTemplate    = "NAMESPACE-NOOP: %s reason=%s\n"
+	namespaceSkipMessageTemplate    = "NAMESPACE-SKIP: %s reason=%s\n"
 	namespacePromptTemplate         = "Rewrite namespace %s -> %s in %s? [a/N/y] "
 )
 
@@ -169,11 +169,9 @@ func handleNamespaceRewriteAction(ctx context.Context, environment *Environment,
 	}
 
 	result, rewriteErr := service.Rewrite(ctx, options)
-	pushFailure := false
 	if rewriteErr != nil {
 		var operationError repoerrors.OperationError
-		if errors.As(rewriteErr, &operationError) && operationError.Code() == string(repoerrors.ErrNamespacePushFailed) {
-			pushFailure = true
+		if errors.As(rewriteErr, &operationError) && (operationError.Code() == string(repoerrors.ErrNamespacePushFailed) || operationError.Code() == string(repoerrors.ErrRemoteMissing)) {
 			logRepositoryOperationError(environment, rewriteErr)
 		} else {
 			return rewriteErr
@@ -197,8 +195,8 @@ func handleNamespaceRewriteAction(ctx context.Context, environment *Environment,
 
 	writeNamespaceApply(environment, namespaceApplyMessageTemplate, repository.Path, result.BranchName, filesChanged, result.PushPerformed)
 
-	if pushFailure {
-		writeNamespaceReason(environment, namespaceSkipMessageTemplate, repository.Path, "push failed; see error log")
+	if len(strings.TrimSpace(result.PushSkippedReason)) > 0 {
+		writeNamespaceReason(environment, namespaceSkipMessageTemplate, repository.Path, result.PushSkippedReason)
 	}
 
 	if environment.AuditService != nil {

@@ -155,13 +155,14 @@ func (options Options) sanitize(clock shared.Clock) (Options, error) {
 
 // Result reports namespace rewrite outcomes.
 type Result struct {
-	BranchName    string
-	GoModChanged  bool
-	ChangedFiles  []string
-	CommitCreated bool
-	PushPerformed bool
-	Skipped       bool
-	SkipReason    string
+	BranchName        string
+	GoModChanged      bool
+	ChangedFiles      []string
+	CommitCreated     bool
+	PushPerformed     bool
+	PushSkippedReason string
+	Skipped           bool
+	SkipReason        string
 }
 
 type changePlan struct {
@@ -289,10 +290,14 @@ func (service *Service) applyRewrite(ctx context.Context, repositoryPath string,
 	result.CommitCreated = true
 
 	if options.Push {
-		if err := service.pushBranch(ctx, repositoryPath, options.PushRemote, branchName); err != nil {
-			return result, err
+		performed, skipReason, pushErr := service.pushBranch(ctx, repositoryPath, options.PushRemote, branchName)
+		if len(strings.TrimSpace(skipReason)) > 0 {
+			result.PushSkippedReason = skipReason
 		}
-		result.PushPerformed = true
+		if pushErr != nil {
+			return result, pushErr
+		}
+		result.PushPerformed = performed
 	}
 
 	return result, nil
@@ -822,13 +827,47 @@ func (service *Service) commitChanges(ctx context.Context, repositoryPath string
 	return nil
 }
 
-func (service *Service) pushBranch(ctx context.Context, repositoryPath string, remote string, branch string) error {
-	details := execshell.CommandDetails{
+func (service *Service) pushBranch(ctx context.Context, repositoryPath string, remote string, branch string) (bool, string, error) {
+	remoteURLKey := fmt.Sprintf("remote.%s.url", remote)
+	remoteCheck := execshell.CommandDetails{
+		Arguments:        []string{"config", "--get", remoteURLKey},
+		WorkingDirectory: repositoryPath,
+	}
+	if _, err := service.gitExecutor.ExecuteGit(ctx, remoteCheck); err != nil {
+		reason := fmt.Sprintf("remote %s not configured", remote)
+		wrapped := repoerrors.WrapMessage(repoerrors.OperationNamespaceRewrite, repositoryPath, repoerrors.ErrRemoteMissing, reason)
+		return false, reason, wrapped
+	}
+
+	headResult, headErr := service.gitExecutor.ExecuteGit(ctx, execshell.CommandDetails{
+		Arguments:        []string{"rev-parse", "HEAD"},
+		WorkingDirectory: repositoryPath,
+	})
+	if headErr == nil {
+		remoteResult, remoteErr := service.gitExecutor.ExecuteGit(ctx, execshell.CommandDetails{
+			Arguments:        []string{"ls-remote", "--heads", remote, branch},
+			WorkingDirectory: repositoryPath,
+		})
+		if remoteErr == nil {
+			remoteOutput := strings.TrimSpace(remoteResult.StandardOutput)
+			localHash := strings.TrimSpace(headResult.StandardOutput)
+			if len(remoteOutput) > 0 && len(localHash) > 0 {
+				fields := strings.Fields(remoteOutput)
+				if len(fields) > 0 && fields[0] == localHash {
+					reason := fmt.Sprintf("branch %s already up to date on %s", branch, remote)
+					return false, reason, nil
+				}
+			}
+		}
+	}
+
+	pushDetails := execshell.CommandDetails{
 		Arguments:        []string{"push", "--set-upstream", remote, branch},
 		WorkingDirectory: repositoryPath,
 	}
-	if _, err := service.gitExecutor.ExecuteGit(ctx, details); err != nil {
-		return repoerrors.Wrap(repoerrors.OperationNamespaceRewrite, repositoryPath, repoerrors.ErrNamespacePushFailed, err)
+	if _, err := service.gitExecutor.ExecuteGit(ctx, pushDetails); err != nil {
+		reason := "push failed; see error log"
+		return false, reason, repoerrors.Wrap(repoerrors.OperationNamespaceRewrite, repositoryPath, repoerrors.ErrNamespacePushFailed, err)
 	}
-	return nil
+	return true, "", nil
 }
