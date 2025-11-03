@@ -22,10 +22,10 @@ const (
 	namespacePushOptionKey          = "push"
 	namespaceRemoteOptionKey        = "remote"
 	namespaceSafeguardsOptionKey    = "safeguards"
-	namespacePlanMessageTemplate    = "NAMESPACE-PLAN: %s branch=%s files=%d push=%t\\n"
-	namespaceApplyMessageTemplate   = "NAMESPACE-APPLY: %s branch=%s files=%d push=%t\\n"
-	namespaceNoopMessageTemplate    = "NAMESPACE-NOOP: %s reason=%s\\n"
-	namespaceSkipMessageTemplate    = "NAMESPACE-SKIP: %s reason=%s\\n"
+	namespacePlanMessageTemplate    = "NAMESPACE-PLAN: %s branch=%s files=%d push=%t\n"
+	namespaceApplyMessageTemplate   = "NAMESPACE-APPLY: %s branch=%s files=%d push=%t\n"
+	namespaceNoopMessageTemplate    = "NAMESPACE-NOOP: %s reason=%s\n"
+	namespaceSkipMessageTemplate    = "NAMESPACE-SKIP: %s reason=%s\n"
 	namespacePromptTemplate         = "Rewrite namespace %s -> %s in %s? [a/N/y] "
 )
 

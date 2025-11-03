@@ -56,6 +56,7 @@ func main() { dep.Do() }
 	err = handleNamespaceRewriteAction(context.Background(), environment, repository, parameters)
 	require.NoError(t, err)
 	require.Contains(t, output.String(), "NAMESPACE-PLAN")
+	require.NotContains(t, output.String(), "\\n")
 
 	content, readErr := os.ReadFile(filepath.Join(tempDir, "main.go"))
 	require.NoError(t, readErr)
@@ -107,6 +108,7 @@ func main() { dep.Do() }
 	err = handleNamespaceRewriteAction(context.Background(), environment, repository, parameters)
 	require.NoError(t, err)
 	require.Contains(t, output.String(), "NAMESPACE-APPLY")
+	require.NotContains(t, output.String(), "\\n")
 
 	updatedSource, readErr := os.ReadFile(filepath.Join(tempDir, "main.go"))
 	require.NoError(t, readErr)
@@ -184,6 +186,7 @@ func TestHandleNamespaceRewriteActionPushFailure(t *testing.T) {
 	require.Contains(t, joinedOutput, "NAMESPACE-APPLY")
 	require.Contains(t, joinedOutput, "push=false")
 	require.Contains(t, joinedOutput, "NAMESPACE-SKIP")
+	require.NotContains(t, joinedOutput, "\\n")
 
 	require.Contains(t, errorOutput.String(), string(repoerrors.ErrNamespacePushFailed))
 }
@@ -229,6 +232,7 @@ func main() { dep.Do() }
 	require.Contains(t, string(updatedSource), "github.com/old/org/dep")
 
 	require.Contains(t, output.String(), "NAMESPACE-SKIP")
+	require.NotContains(t, output.String(), "\\n")
 	recorded := executor.recorded()
 	require.GreaterOrEqual(t, len(recorded), 1)
 	require.Equal(t, "status --porcelain", recorded[0])
