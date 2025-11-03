@@ -125,6 +125,8 @@ workflow operation apply-tasks failed: DEFAULT-BRANCH-UPDATE repository=MarcoPol
 - [x] [GX-304] No-remote repos cause failures across commands
   - Resolution: Added integration coverage proving `gix branch cd` and `gix workflow` succeed on repositories without remotes, emitting the expected skip/success messages without errors; no additional fixes were required.
 
+- [ ] [GX-305] There shall be no attempts to perform remote-releated operations for the repos with no remote. Write a test that confirms that if a repo has no remote counterpart that the operations related to remote, such as gh are never invoked. Fix the cases where the test fails. COver all git-related commands
+
 ## Maintenance (400–499)
 
 - [x] [GX-400] Update the documentation @README.md and focus on the usefullness to the user. Move the technical details to @ARCHITECTURE.md
@@ -148,6 +150,7 @@ workflow operation apply-tasks failed: DEFAULT-BRANCH-UPDATE repository=MarcoPol
   - Update developer docs describing prompt/output handling after GX-405 cleanup.
   - Extend CI to run `staticcheck` and `ineffassign` alongside the existing `go test ./...` gate.
   - Resolution: Added domain model section and prompt guidance to `docs/cli_design.md`, cross-linked from `POLICY.md`, refreshed README developer notes, wired `staticcheck`/`ineffassign` into `make ci`, and resolved all new lint findings.
+- [ ] [GX-408] Update the @README.md with the full list of the commands that gix supports, their syntax and modifiers
 
 ## Planning 
 do not work on the issues below, not ready
