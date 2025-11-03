@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/temirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/execshell"
 )
 
 const (

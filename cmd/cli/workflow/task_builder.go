@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	workflowpkg "github.com/temirov/gix/internal/workflow"
+	workflowpkg "github.com/tyemirov/gix/internal/workflow"
 )
 
 const (

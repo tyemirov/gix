@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/temirov/gix/cmd/cli"
+	"github.com/tyemirov/gix/cmd/cli"
 )
 
 const (

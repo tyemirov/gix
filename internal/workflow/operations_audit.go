@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/temirov/gix/internal/audit"
+	"github.com/tyemirov/gix/internal/audit"
 )
 
 const (

@@ -3,7 +3,7 @@ package migrate
 import (
 	"strings"
 
-	pathutils "github.com/temirov/gix/internal/utils/path"
+	pathutils "github.com/tyemirov/gix/internal/utils/path"
 )
 
 var migrateConfigurationRepositoryPathSanitizer = pathutils.NewRepositoryPathSanitizerWithConfiguration(nil, pathutils.RepositoryPathSanitizerConfiguration{PruneNestedPaths: true})
