@@ -4,8 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 
+	"github.com/temirov/gix/internal/execshell"
 	repoerrors "github.com/temirov/gix/internal/repos/errors"
 	"github.com/temirov/gix/internal/repos/shared"
 )
@@ -45,6 +47,25 @@ func logRepositoryOperationError(environment *Environment, err error) bool {
 	subject := strings.TrimSpace(operationError.Subject())
 	if len(subject) > 0 {
 		details["subject"] = subject
+	}
+
+	var commandError execshell.CommandFailedError
+	if errors.As(operationError, &commandError) {
+		if commandError.Command.Name != "" {
+			details["command"] = string(commandError.Command.Name)
+		}
+		if commandError.Result.ExitCode != 0 {
+			details["exit_code"] = strconv.Itoa(commandError.Result.ExitCode)
+		}
+		stderr := sanitizeEventDetail(commandError.Result.StandardError)
+		if len(stderr) > 0 {
+			details["stderr"] = stderr
+			if len(message) == 0 {
+				message = stderr
+			} else if !strings.Contains(message, stderr) {
+				message = fmt.Sprintf("%s (%s)", message, stderr)
+			}
+		}
 	}
 
 	if environment.Reporter != nil {
@@ -101,6 +122,19 @@ func formatRepositoryOperationError(environment *Environment, operationError rep
 	}
 
 	return fmt.Sprintf("%s: %s (%s) %s\n", code, ownerRepository, repositoryPath, message)
+}
+
+func sanitizeEventDetail(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if len(trimmed) == 0 {
+		return ""
+	}
+	collapsed := strings.Join(strings.Fields(trimmed), " ")
+	const maxDetailLength = 200
+	if len(collapsed) > maxDetailLength {
+		return collapsed[:maxDetailLength]
+	}
+	return collapsed
 }
 
 func resolveRepositoryOwnerAndPath(environment *Environment, subject string) (string, string) {
