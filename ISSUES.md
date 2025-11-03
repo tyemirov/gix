@@ -220,6 +220,14 @@ workflow operation apply-tasks failed: DEFAULT-BRANCH-UPDATE repository=MarcoPol
 
 - [ ] [GX-314] The changelog command generates the message twice
 
+- [ ] [GX-315] Invesigate the bug and write a plan for fixing it:
+```
+-- repo: tyemirov/product_page_analysis.py -------------------------------------
+13:39:03 INFO  REMOTE_SKIP        tyemirov/product_page_analysis.py  already canonical                        | event=REMOTE_SKIP path=/tmp/repos/Poodle/product_page_analysis.py reason=already_canonical repo=tyemirov/product_page_analysis.py
+13:39:04 INFO  REPO_FOLDER_RENAME                                    /tmp/repos/Poodle/product_page_analysis.py → /tmp/repos/Poodle/tyemirov/product_page_analysis.py | event=REPO_FOLDER_RENAME new_path=/tmp/repos/Poodle/tyemirov/product_page_analysis.py old_path=/tmp/repos/Poodle/product_page_analysis.py path=/tmp/repos/Poodle/product_page_analysis.py
+apply-tasks: failed to switch to branch "master": fatal: invalid reference: master: git command exited with code 128
+```
+
 ## Maintenance (400–499)
 
 - [x] [GX-400] Update the documentation @README.md and focus on the usefullness to the user. Move the technical details to @ARCHITECTURE.md
