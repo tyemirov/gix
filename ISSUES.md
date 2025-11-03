@@ -122,6 +122,8 @@ Human part (left): aligned columns, easy to scan.
 - [x] [GX-214] Have a final summary for the whole run, smth like (just an example) Summary: total.repos=12 REPO_SWITCHED=7 NAMESPACE_APPLY=3 NAMESPACE_SKIP=3 REMOTE_UPDATE=2 WARN=1 ERROR=0 duration_ms=5312
 - Resolution: Structured reporter tracks per-event counts and prints a workflow summary footer once execution completes, including duration and INFO/WARN/ERROR tallies.
 
+- [ ] [GX-215] the changelog command produces a summary: "Summary: total.repos=0 duration_ms=0". It shall not produce a summary (and neither shall a commit message command)
+
 ## BugFixes (300–399)
 
 - [x] [GX-300] `gix b default` aborts for repositories without remotes; it treats the `git fetch` failure as fatal instead of warning and skipping the fetch, so the branch switch never executes.
@@ -215,6 +217,8 @@ workflow operation apply-tasks failed: DEFAULT-BRANCH-UPDATE repository=MarcoPol
   - Context: Workflow runs still act on repositories located under ignored directories (e.g., `tools/licenser` inside `gix`), staging ignored files and slowing execution.
   - Desired: Leverage `git check-ignore` to filter out ignored nested repositories before executing operations across commands and workflows.
   - Resolution: Added shared gitignore helpers, wired audit discovery to remove gitignored children, updated namespace rewrite to reuse the helper, and refreshed unit/integration coverage so workflows skip ignored repositories.
+
+- [ ] [GX-314] The changelog command generates the message twice
 
 ## Maintenance (400–499)
 
