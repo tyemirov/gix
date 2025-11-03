@@ -16,6 +16,7 @@ import (
 	"github.com/temirov/gix/internal/gitrepo"
 	repoerrors "github.com/temirov/gix/internal/repos/errors"
 	"github.com/temirov/gix/internal/repos/filesystem"
+	"github.com/temirov/gix/internal/repos/shared"
 )
 
 const namespaceTestCommitMessage = "chore: rewrite namespace"
@@ -45,6 +46,7 @@ func main() { dep.Do() }
 		GitExecutor:       executor,
 		RepositoryManager: manager,
 		Output:            output,
+		Reporter:          shared.NewStructuredReporter(output, output, shared.WithRepositoryHeaders(false)),
 		DryRun:            true,
 	}
 
@@ -56,9 +58,13 @@ func main() { dep.Do() }
 
 	err = handleNamespaceRewriteAction(context.Background(), environment, repository, parameters)
 	require.NoError(t, err)
-	require.Contains(t, output.String(), "NAMESPACE-PLAN")
-	require.NotContains(t, output.String(), "\\n")
-	require.NotContains(t, output.String(), "\\n")
+	events := parseStructuredEvents(output.String())
+	require.Len(t, events, 1)
+	planEvent := requireEventByCode(t, events, shared.EventCodeNamespacePlan)
+	require.Equal(t, repository.Path, planEvent["path"])
+	require.Equal(t, "true", planEvent["push"])
+	_, hasBranch := planEvent["branch"]
+	require.True(t, hasBranch)
 
 	content, readErr := os.ReadFile(filepath.Join(tempDir, "main.go"))
 	require.NoError(t, readErr)
@@ -96,6 +102,7 @@ func main() { dep.Do() }
 		GitExecutor:       executor,
 		RepositoryManager: manager,
 		Output:            output,
+		Reporter:          shared.NewStructuredReporter(output, output, shared.WithRepositoryHeaders(false)),
 		PromptState:       NewPromptState(true),
 	}
 
@@ -110,9 +117,13 @@ func main() { dep.Do() }
 
 	err = handleNamespaceRewriteAction(context.Background(), environment, repository, parameters)
 	require.NoError(t, err)
-	require.Contains(t, output.String(), "NAMESPACE-APPLY")
-	require.NotContains(t, output.String(), "\\n")
-	require.NotContains(t, output.String(), "\\n")
+	events := parseStructuredEvents(output.String())
+	require.Len(t, events, 1)
+	applyEvent := requireEventByCode(t, events, shared.EventCodeNamespaceApply)
+	require.Equal(t, repository.Path, applyEvent["path"])
+	require.Equal(t, "true", applyEvent["push"])
+	_, hasBranch := applyEvent["branch"]
+	require.True(t, hasBranch)
 
 	updatedSource, readErr := os.ReadFile(filepath.Join(tempDir, "main.go"))
 	require.NoError(t, readErr)
@@ -172,6 +183,7 @@ func TestHandleNamespaceRewriteActionPushFailure(t *testing.T) {
 		RepositoryManager: manager,
 		Output:            output,
 		Errors:            errorOutput,
+		Reporter:          shared.NewStructuredReporter(output, errorOutput, shared.WithRepositoryHeaders(false)),
 		PromptState:       NewPromptState(true),
 	}
 
@@ -187,12 +199,16 @@ func TestHandleNamespaceRewriteActionPushFailure(t *testing.T) {
 	err = handleNamespaceRewriteAction(context.Background(), environment, repository, parameters)
 	require.NoError(t, err)
 
-	joinedOutput := output.String()
-	require.Contains(t, joinedOutput, "NAMESPACE-APPLY")
-	require.Contains(t, joinedOutput, "push=false")
-	require.Contains(t, joinedOutput, "NAMESPACE-SKIP")
-	require.NotContains(t, joinedOutput, "\\n")
+	events := parseStructuredEvents(output.String())
+	require.Len(t, events, 2)
+	applyEvent := requireEventByCode(t, events, shared.EventCodeNamespaceApply)
+	require.Equal(t, repository.Path, applyEvent["path"])
+	require.Equal(t, "false", applyEvent["push"])
+	skipEvent := requireEventByCode(t, events, shared.EventCodeNamespaceSkip)
+	require.NotEmpty(t, skipEvent["reason"])
 
+	errorEvents := parseStructuredEvents(errorOutput.String())
+	require.NotEmpty(t, errorEvents)
 	require.Contains(t, errorOutput.String(), string(repoerrors.ErrNamespacePushFailed))
 }
 
@@ -220,6 +236,7 @@ func TestHandleNamespaceRewriteActionSkipsWhenRemoteUpToDate(t *testing.T) {
 		GitExecutor:       executor,
 		RepositoryManager: manager,
 		Output:            output,
+		Reporter:          shared.NewStructuredReporter(output, output, shared.WithRepositoryHeaders(false)),
 		PromptState:       NewPromptState(true),
 	}
 
@@ -234,12 +251,13 @@ func TestHandleNamespaceRewriteActionSkipsWhenRemoteUpToDate(t *testing.T) {
 	err = handleNamespaceRewriteAction(context.Background(), environment, repository, parameters)
 	require.NoError(t, err)
 
-	logOutput := output.String()
-	require.Contains(t, logOutput, "NAMESPACE-APPLY")
-	require.Contains(t, logOutput, "push=false")
-	require.Contains(t, logOutput, "NAMESPACE-SKIP")
-	require.Contains(t, logOutput, "already up to date")
-	require.NotContains(t, logOutput, "\\n")
+	events := parseStructuredEvents(output.String())
+	require.Len(t, events, 2)
+	applyEvent := requireEventByCode(t, events, shared.EventCodeNamespaceApply)
+	require.Equal(t, repository.Path, applyEvent["path"])
+	require.Equal(t, "false", applyEvent["push"])
+	skipEvent := requireEventByCode(t, events, shared.EventCodeNamespaceSkip)
+	require.Contains(t, skipEvent["reason"], "already")
 }
 
 func TestHandleNamespaceRewriteActionRespectsSafeguards(t *testing.T) {
@@ -266,6 +284,7 @@ func main() { dep.Do() }
 		GitExecutor:       executor,
 		RepositoryManager: manager,
 		Output:            output,
+		Reporter:          shared.NewStructuredReporter(output, output, shared.WithRepositoryHeaders(false)),
 	}
 
 	repository := &RepositoryState{Path: tempDir}
@@ -282,8 +301,11 @@ func main() { dep.Do() }
 	require.NoError(t, readErr)
 	require.Contains(t, string(updatedSource), "github.com/old/org/dep")
 
-	require.Contains(t, output.String(), "NAMESPACE-SKIP")
-	require.NotContains(t, output.String(), "\\n")
+	events := parseStructuredEvents(output.String())
+	require.Len(t, events, 1)
+	skipEvent := requireEventByCode(t, events, shared.EventCodeNamespaceSkip)
+	require.Equal(t, repository.Path, skipEvent["path"])
+	require.NotEmpty(t, skipEvent["reason"])
 	recorded := executor.recorded()
 	require.GreaterOrEqual(t, len(recorded), 1)
 	require.Equal(t, "status --porcelain", recorded[0])

@@ -29,6 +29,7 @@ type Environment struct {
 	PromptState         *PromptState
 	Output              io.Writer
 	Errors              io.Writer
+	Reporter            shared.SummaryReporter
 	Logger              *zap.Logger
 	DryRun              bool
 	State               *State

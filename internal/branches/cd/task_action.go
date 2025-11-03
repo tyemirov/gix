@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/temirov/gix/internal/repos/shared"
 	"github.com/temirov/gix/internal/workflow"
 )
 
@@ -64,19 +65,33 @@ func handleBranchChangeAction(ctx context.Context, environment *workflow.Environ
 		return changeError
 	}
 
-	if environment.Output != nil {
-		for _, warning := range result.Warnings {
-			fmt.Fprintln(environment.Output, warning)
-		}
+	for _, warning := range result.Warnings {
+		environment.ReportRepositoryEvent(
+			repository,
+			shared.EventLevelWarn,
+			shared.EventCodeTaskSkip,
+			warning,
+			map[string]string{"warning": strings.ReplaceAll(strings.TrimSpace(warning), " ", "_")},
+		)
 	}
 
-	if environment.Output != nil {
-		message := fmt.Sprintf(changeSuccessMessageTemplateConstant, result.RepositoryPath, result.BranchName)
-		if result.BranchCreated && !environment.DryRun {
-			message += changeCreatedSuffixConstant
-		}
-		fmt.Fprintln(environment.Output, message)
+	message := fmt.Sprintf("→ %s", result.BranchName)
+	details := map[string]string{
+		"branch": result.BranchName,
 	}
+	created := result.BranchCreated && !environment.DryRun
+	if created {
+		message += changeCreatedSuffixConstant
+	}
+	details["created"] = fmt.Sprintf("%t", created)
+
+	environment.ReportRepositoryEvent(
+		repository,
+		shared.EventLevelInfo,
+		shared.EventCodeRepoSwitched,
+		message,
+		details,
+	)
 
 	return nil
 }

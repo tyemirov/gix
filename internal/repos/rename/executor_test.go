@@ -1,12 +1,14 @@
 package rename_test
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io/fs"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -156,6 +158,11 @@ const (
 	renameTestOwnerDirectoryPath     = "/tmp/owner"
 )
 
+type eventExpectation struct {
+	code   string
+	assert func(*testing.T, map[string]string)
+}
+
 func TestExecutorBehaviors(testInstance *testing.T) {
 	legacyPath := mustRepositoryPath(testInstance, renameTestLegacyFolderPath)
 	projectPath := mustRepositoryPath(testInstance, renameTestProjectFolderPath)
@@ -165,10 +172,10 @@ func TestExecutorBehaviors(testInstance *testing.T) {
 		fileSystem                 *stubFileSystem
 		gitManager                 shared.GitRepositoryManager
 		prompter                   shared.ConfirmationPrompter
-		expectedOutput             string
 		expectedError              repoerrors.Sentinel
 		expectedRenames            int
 		expectedCreatedDirectories []string
+		expectedEvents             []eventExpectation
 	}{
 		{
 			name: "dry_run_plan_ready",
@@ -185,8 +192,16 @@ func TestExecutorBehaviors(testInstance *testing.T) {
 				},
 			},
 			gitManager:      stubGitManager{clean: true},
-			expectedOutput:  fmt.Sprintf("PLAN-OK: %s → %s\n", renameTestLegacyFolderPath, renameTestTargetFolderPath),
 			expectedRenames: 0,
+			expectedEvents: []eventExpectation{
+				{
+					code: shared.EventCodeFolderPlan,
+					assert: func(t *testing.T, event map[string]string) {
+						require.Equal(t, renameTestLegacyFolderPath, event["path"])
+						require.Equal(t, renameTestTargetFolderPath, event["new_path"])
+					},
+				},
+			},
 		},
 		{
 			name: "dry_run_missing_parent_without_creation",
@@ -203,8 +218,16 @@ func TestExecutorBehaviors(testInstance *testing.T) {
 				},
 			},
 			gitManager:      stubGitManager{clean: true},
-			expectedOutput:  fmt.Sprintf("PLAN-SKIP (target parent missing): %s\n", renameTestOwnerDirectoryPath),
 			expectedRenames: 0,
+			expectedEvents: []eventExpectation{
+				{
+					code: shared.EventCodeFolderPlan,
+					assert: func(t *testing.T, event map[string]string) {
+						require.Equal(t, renameTestOwnerDirectoryPath, event["path"])
+						require.Equal(t, "parent_missing", event["reason"])
+					},
+				},
+			},
 		},
 		{
 			name: "dry_run_missing_parent_with_creation",
@@ -221,8 +244,16 @@ func TestExecutorBehaviors(testInstance *testing.T) {
 				},
 			},
 			gitManager:      stubGitManager{clean: true},
-			expectedOutput:  fmt.Sprintf("PLAN-OK: %s → %s\n", renameTestLegacyFolderPath, filepath.Join(renameTestRootDirectory, renameTestOwnerDesiredFolderName)),
 			expectedRenames: 0,
+			expectedEvents: []eventExpectation{
+				{
+					code: shared.EventCodeFolderPlan,
+					assert: func(t *testing.T, event map[string]string) {
+						require.Equal(t, renameTestLegacyFolderPath, event["path"])
+						require.Equal(t, filepath.Join(renameTestRootDirectory, renameTestOwnerDesiredFolderName), event["new_path"])
+					},
+				},
+			},
 		},
 		{
 			name: "prompter_declines",
@@ -239,8 +270,16 @@ func TestExecutorBehaviors(testInstance *testing.T) {
 			},
 			gitManager:      stubGitManager{clean: true},
 			prompter:        &stubPrompter{result: shared.ConfirmationResult{Confirmed: false}},
-			expectedOutput:  fmt.Sprintf("SKIP: %s\n", renameTestProjectFolderPath),
 			expectedRenames: 0,
+			expectedEvents: []eventExpectation{
+				{
+					code: shared.EventCodeFolderSkip,
+					assert: func(t *testing.T, event map[string]string) {
+						require.Equal(t, renameTestProjectFolderPath, event["path"])
+						require.Equal(t, "user_declined", event["reason"])
+					},
+				},
+			},
 		},
 		{
 			name: "prompter_accepts_once",
@@ -256,8 +295,17 @@ func TestExecutorBehaviors(testInstance *testing.T) {
 			},
 			gitManager:      stubGitManager{clean: true},
 			prompter:        &stubPrompter{result: shared.ConfirmationResult{Confirmed: true}},
-			expectedOutput:  fmt.Sprintf("Renamed %s → %s\n", renameTestProjectFolderPath, renameTestTargetFolderPath),
 			expectedRenames: 1,
+			expectedEvents: []eventExpectation{
+				{
+					code: shared.EventCodeFolderRename,
+					assert: func(t *testing.T, event map[string]string) {
+						require.Equal(t, renameTestProjectFolderPath, event["path"])
+						require.Equal(t, renameTestProjectFolderPath, event["old_path"])
+						require.Equal(t, renameTestTargetFolderPath, event["new_path"])
+					},
+				},
+			},
 		},
 		{
 			name: "prompter_accepts_all",
@@ -273,8 +321,16 @@ func TestExecutorBehaviors(testInstance *testing.T) {
 			},
 			gitManager:      stubGitManager{clean: true},
 			prompter:        &stubPrompter{result: shared.ConfirmationResult{Confirmed: true, ApplyToAll: true}},
-			expectedOutput:  fmt.Sprintf("Renamed %s → %s\n", renameTestProjectFolderPath, renameTestTargetFolderPath),
 			expectedRenames: 1,
+			expectedEvents: []eventExpectation{
+				{
+					code: shared.EventCodeFolderRename,
+					assert: func(t *testing.T, event map[string]string) {
+						require.Equal(t, renameTestProjectFolderPath, event["path"])
+						require.Equal(t, renameTestTargetFolderPath, event["new_path"])
+					},
+				},
+			},
 		},
 		{
 			name: "prompter_error",
@@ -290,9 +346,17 @@ func TestExecutorBehaviors(testInstance *testing.T) {
 			},
 			gitManager:      stubGitManager{clean: true},
 			prompter:        &stubPrompter{callError: errors.New("read failure")},
-			expectedOutput:  fmt.Sprintf("ERROR: rename failed for %s → %s\n", renameTestProjectFolderPath, renameTestTargetFolderPath),
 			expectedError:   repoerrors.ErrUserConfirmationFailed,
 			expectedRenames: 0,
+			expectedEvents: []eventExpectation{
+				{
+					code: shared.EventCodeFolderError,
+					assert: func(t *testing.T, event map[string]string) {
+						require.Equal(t, renameTestProjectFolderPath, event["path"])
+						require.Equal(t, "rename_failed", event["reason"])
+					},
+				},
+			},
 		},
 		{
 			name: "assume_yes_skips_prompt",
@@ -308,8 +372,16 @@ func TestExecutorBehaviors(testInstance *testing.T) {
 				},
 			},
 			gitManager:      stubGitManager{clean: true},
-			expectedOutput:  fmt.Sprintf("Renamed %s → %s\n", renameTestProjectFolderPath, renameTestTargetFolderPath),
 			expectedRenames: 1,
+			expectedEvents: []eventExpectation{
+				{
+					code: shared.EventCodeFolderRename,
+					assert: func(t *testing.T, event map[string]string) {
+						require.Equal(t, renameTestProjectFolderPath, event["path"])
+						require.Equal(t, renameTestTargetFolderPath, event["new_path"])
+					},
+				},
+			},
 		},
 		{
 			name: "skip_dirty_worktree",
@@ -326,8 +398,16 @@ func TestExecutorBehaviors(testInstance *testing.T) {
 				},
 			},
 			gitManager:      stubGitManager{clean: false},
-			expectedOutput:  fmt.Sprintf("SKIP (dirty worktree): %s\n", renameTestProjectFolderPath),
 			expectedRenames: 0,
+			expectedEvents: []eventExpectation{
+				{
+					code: shared.EventCodeFolderSkip,
+					assert: func(t *testing.T, event map[string]string) {
+						require.Equal(t, renameTestProjectFolderPath, event["path"])
+						require.Equal(t, "dirty_worktree", event["reason"])
+					},
+				},
+			},
 		},
 		{
 			name: "already_normalized_skip",
@@ -343,8 +423,16 @@ func TestExecutorBehaviors(testInstance *testing.T) {
 				},
 			},
 			gitManager:      stubGitManager{clean: true},
-			expectedOutput:  fmt.Sprintf("SKIP (already normalized): %s\n", renameTestProjectFolderPath),
 			expectedRenames: 0,
+			expectedEvents: []eventExpectation{
+				{
+					code: shared.EventCodeFolderSkip,
+					assert: func(t *testing.T, event map[string]string) {
+						require.Equal(t, renameTestProjectFolderPath, event["path"])
+						require.Equal(t, "already_normalized", event["reason"])
+					},
+				},
+			},
 		},
 		{
 			name: "execute_missing_parent_without_creation",
@@ -361,9 +449,17 @@ func TestExecutorBehaviors(testInstance *testing.T) {
 				},
 			},
 			gitManager:      stubGitManager{clean: true},
-			expectedOutput:  fmt.Sprintf("ERROR: target parent missing: %s\n", renameTestOwnerDirectoryPath),
 			expectedError:   repoerrors.ErrParentMissing,
 			expectedRenames: 0,
+			expectedEvents: []eventExpectation{
+				{
+					code: shared.EventCodeFolderError,
+					assert: func(t *testing.T, event map[string]string) {
+						require.Equal(t, renameTestOwnerDirectoryPath, event["path"])
+						require.Equal(t, "parent_missing", event["reason"])
+					},
+				},
+			},
 		},
 		{
 			name: "execute_missing_parent_with_creation",
@@ -380,21 +476,34 @@ func TestExecutorBehaviors(testInstance *testing.T) {
 				},
 			},
 			gitManager:                 stubGitManager{clean: true},
-			expectedOutput:             fmt.Sprintf("Renamed %s → %s\n", renameTestProjectFolderPath, filepath.Join(renameTestRootDirectory, renameTestOwnerDesiredFolderName)),
 			expectedRenames:            1,
 			expectedCreatedDirectories: []string{renameTestOwnerDirectoryPath},
+			expectedEvents: []eventExpectation{
+				{
+					code: shared.EventCodeFolderRename,
+					assert: func(t *testing.T, event map[string]string) {
+						require.Equal(t, renameTestProjectFolderPath, event["path"])
+						require.Equal(t, filepath.Join(renameTestRootDirectory, renameTestOwnerDesiredFolderName), event["new_path"])
+					},
+				},
+			},
 		},
 	}
 
 	for _, testCase := range testCases {
 		testInstance.Run(testCase.name, func(testingInstance *testing.T) {
 			outputBuffer := &bytes.Buffer{}
+			reporter := shared.NewStructuredReporter(
+				outputBuffer,
+				outputBuffer,
+				shared.WithRepositoryHeaders(false),
+			)
 			executor := rename.NewExecutor(rename.Dependencies{
 				FileSystem: testCase.fileSystem,
 				GitManager: testCase.gitManager,
 				Prompter:   testCase.prompter,
 				Clock:      stubClock{},
-				Reporter:   shared.NewWriterReporter(outputBuffer),
+				Reporter:   reporter,
 			})
 
 			executionError := executor.Execute(context.Background(), testCase.options)
@@ -405,7 +514,15 @@ func TestExecutorBehaviors(testInstance *testing.T) {
 				require.NoError(testingInstance, executionError)
 			}
 
-			require.Equal(testingInstance, testCase.expectedOutput, outputBuffer.String())
+			events := parseStructuredEvents(outputBuffer.String())
+			require.Len(testingInstance, events, len(testCase.expectedEvents))
+			for _, expectation := range testCase.expectedEvents {
+				event := requireEventByCode(testingInstance, events, expectation.code)
+				if expectation.assert != nil {
+					expectation.assert(testingInstance, event)
+				}
+			}
+
 			require.Len(testingInstance, testCase.fileSystem.renamedPairs, testCase.expectedRenames)
 			require.Equal(testingInstance, testCase.expectedCreatedDirectories, testCase.fileSystem.createdDirectories)
 		})
@@ -423,13 +540,66 @@ func TestExecutorPromptsAdvertiseApplyAll(testInstance *testing.T) {
 		FileSystem: fileSystem,
 		GitManager: stubGitManager{clean: true},
 		Prompter:   commandPrompter,
-		Reporter:   shared.NewWriterReporter(&bytes.Buffer{}),
+		Reporter: shared.NewStructuredReporter(
+			&bytes.Buffer{},
+			&bytes.Buffer{},
+			shared.WithRepositoryHeaders(false),
+		),
 	}
 	projectPath := mustRepositoryPath(testInstance, renameTestProjectFolderPath)
 	renamer := rename.NewExecutor(dependencies)
 	executionError := renamer.Execute(context.Background(), rename.Options{RepositoryPath: projectPath, DesiredFolderName: renameTestDesiredFolderName})
 	require.NoError(testInstance, executionError)
 	require.Equal(testInstance, []string{fmt.Sprintf("Rename '%s' → '%s'? [a/N/y] ", renameTestProjectFolderPath, renameTestTargetFolderPath)}, commandPrompter.recordedPrompts)
+}
+
+func parseStructuredEvents(output string) []map[string]string {
+	scanner := bufio.NewScanner(strings.NewReader(output))
+	var events []map[string]string
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if len(line) == 0 {
+			continue
+		}
+		if strings.HasPrefix(line, "Summary:") {
+			continue
+		}
+		if strings.HasPrefix(line, "-- ") {
+			continue
+		}
+
+		parts := strings.Split(line, " | ")
+		machinePart := parts[len(parts)-1]
+		fields := strings.Fields(machinePart)
+		if len(fields) == 0 {
+			continue
+		}
+
+		event := make(map[string]string, len(fields))
+		for _, field := range fields {
+			keyValue := strings.SplitN(field, "=", 2)
+			if len(keyValue) != 2 {
+				continue
+			}
+			event[keyValue[0]] = keyValue[1]
+		}
+		if len(event) > 0 {
+			events = append(events, event)
+		}
+	}
+
+	return events
+}
+
+func requireEventByCode(t *testing.T, events []map[string]string, code string) map[string]string {
+	for _, event := range events {
+		if event["event"] == code {
+			return event
+		}
+	}
+	require.Failf(t, "event not found", "expected event code %s in %+v", code, events)
+	return nil
 }
 
 func mustRepositoryPath(testingInstance *testing.T, path string) shared.RepositoryPath {

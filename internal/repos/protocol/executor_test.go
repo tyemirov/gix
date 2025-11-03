@@ -1,10 +1,12 @@
 package protocol_test
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	stdErrors "errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -71,10 +73,12 @@ const (
 	protocolTestOriginTargetURL        = "ssh://git@github.com/origin/example.git"
 	protocolTestTargetDisplayURL       = "git@github.com:canonical/example.git"
 	protocolTestOriginTargetDisplayURL = "git@github.com:origin/example.git"
-	protocolTestPlanMessage            = "PLAN-CONVERT: %s origin %s → %s\n"
-	protocolTestDeclinedMessage        = "CONVERT-SKIP: user declined for %s\n"
-	protocolTestSuccessMessage         = "CONVERT-DONE: %s origin now %s\n"
 )
+
+type eventExpectation struct {
+	code   string
+	assert func(*testing.T, map[string]string)
+}
 
 func TestExecutorBehaviors(t *testing.T) {
 	repositoryPath, repositoryPathError := shared.NewRepositoryPath(protocolTestRepositoryPath)
@@ -91,11 +95,12 @@ func TestExecutorBehaviors(t *testing.T) {
 		options           protocol.Options
 		gitManager        *stubGitManager
 		prompter          shared.ConfirmationPrompter
-		expectedOutput    string
 		expectedError     repoerrors.Sentinel
 		expectedUpdates   int
 		expectedTargetURL string
 		expectPromptCall  bool
+		expectedEvents    []eventExpectation
+		expectNoEvents    bool
 	}{
 		{
 			name: "owner_repo_missing",
@@ -108,6 +113,15 @@ func TestExecutorBehaviors(t *testing.T) {
 			},
 			gitManager:    &stubGitManager{currentURL: protocolTestOriginURL},
 			expectedError: repoerrors.ErrOriginOwnerMissing,
+			expectedEvents: []eventExpectation{
+				{
+					code: shared.EventCodeProtocolSkip,
+					assert: func(t *testing.T, event map[string]string) {
+						require.Equal(t, "owner_missing", event["reason"])
+						require.Equal(t, protocolTestRepositoryPath, event["path"])
+					},
+				},
+			},
 		},
 		{
 			name: "current_protocol_mismatch_skips",
@@ -118,7 +132,8 @@ func TestExecutorBehaviors(t *testing.T) {
 				CurrentProtocol:          shared.RemoteProtocolHTTPS,
 				TargetProtocol:           shared.RemoteProtocolSSH,
 			},
-			gitManager: &stubGitManager{currentURL: protocolTestGitOriginURL},
+			gitManager:     &stubGitManager{currentURL: protocolTestGitOriginURL},
+			expectNoEvents: true,
 		},
 		{
 			name: "dry_run_plan",
@@ -131,12 +146,17 @@ func TestExecutorBehaviors(t *testing.T) {
 				DryRun:                   true,
 			},
 			gitManager: &stubGitManager{currentURL: protocolTestOriginURL},
-			expectedOutput: fmt.Sprintf(
-				protocolTestPlanMessage,
-				protocolTestRepositoryPath,
-				protocolTestOriginURL,
-				protocolTestTargetDisplayURL,
-			),
+			expectedEvents: []eventExpectation{
+				{
+					code: shared.EventCodeProtocolPlan,
+					assert: func(t *testing.T, event map[string]string) {
+						require.Equal(t, protocolTestRepositoryPath, event["path"])
+						require.Equal(t, protocolTestTargetDisplayURL, event["target_url"])
+						require.Equal(t, string(shared.RemoteProtocolHTTPS), event["current_protocol"])
+						require.Equal(t, string(shared.RemoteProtocolSSH), event["target_protocol"])
+					},
+				},
+			},
 		},
 		{
 			name: "prompter_declines",
@@ -149,8 +169,16 @@ func TestExecutorBehaviors(t *testing.T) {
 			},
 			gitManager:       &stubGitManager{currentURL: protocolTestOriginURL},
 			prompter:         &stubPrompter{result: shared.ConfirmationResult{Confirmed: false}},
-			expectedOutput:   fmt.Sprintf(protocolTestDeclinedMessage, protocolTestRepositoryPath),
 			expectPromptCall: true,
+			expectedEvents: []eventExpectation{
+				{
+					code: shared.EventCodeProtocolDeclined,
+					assert: func(t *testing.T, event map[string]string) {
+						require.Equal(t, protocolTestRepositoryPath, event["path"])
+						require.Equal(t, "user_declined", event["reason"])
+					},
+				},
+			},
 		},
 		{
 			name: "prompter_accepts_once",
@@ -163,10 +191,19 @@ func TestExecutorBehaviors(t *testing.T) {
 			},
 			gitManager:        &stubGitManager{currentURL: protocolTestOriginURL},
 			prompter:          &stubPrompter{result: shared.ConfirmationResult{Confirmed: true}},
-			expectedOutput:    fmt.Sprintf(protocolTestSuccessMessage, protocolTestRepositoryPath, protocolTestTargetDisplayURL),
 			expectedUpdates:   1,
 			expectedTargetURL: protocolTestTargetURL,
 			expectPromptCall:  true,
+			expectedEvents: []eventExpectation{
+				{
+					code: shared.EventCodeProtocolUpdate,
+					assert: func(t *testing.T, event map[string]string) {
+						require.Equal(t, protocolTestRepositoryPath, event["path"])
+						require.Equal(t, protocolTestTargetDisplayURL, event["target_url"])
+						require.Equal(t, string(shared.RemoteProtocolSSH), event["target_protocol"])
+					},
+				},
+			},
 		},
 		{
 			name: "prompter_accepts_all",
@@ -179,10 +216,18 @@ func TestExecutorBehaviors(t *testing.T) {
 			},
 			gitManager:        &stubGitManager{currentURL: protocolTestOriginURL},
 			prompter:          &stubPrompter{result: shared.ConfirmationResult{Confirmed: true, ApplyToAll: true}},
-			expectedOutput:    fmt.Sprintf(protocolTestSuccessMessage, protocolTestRepositoryPath, protocolTestTargetDisplayURL),
 			expectedUpdates:   1,
 			expectedTargetURL: protocolTestTargetURL,
 			expectPromptCall:  true,
+			expectedEvents: []eventExpectation{
+				{
+					code: shared.EventCodeProtocolUpdate,
+					assert: func(t *testing.T, event map[string]string) {
+						require.Equal(t, protocolTestRepositoryPath, event["path"])
+						require.Equal(t, protocolTestTargetDisplayURL, event["target_url"])
+					},
+				},
+			},
 		},
 		{
 			name: "prompter_error",
@@ -197,6 +242,15 @@ func TestExecutorBehaviors(t *testing.T) {
 			prompter:         &stubPrompter{callError: fmt.Errorf("prompt failure")},
 			expectedError:    repoerrors.ErrUserConfirmationFailed,
 			expectPromptCall: true,
+			expectedEvents: []eventExpectation{
+				{
+					code: shared.EventCodeProtocolSkip,
+					assert: func(t *testing.T, event map[string]string) {
+						require.Equal(t, "confirmation_error", event["reason"])
+						require.Equal(t, protocolTestRepositoryPath, event["path"])
+					},
+				},
+			},
 		},
 		{
 			name: "assume_yes_updates_without_prompt",
@@ -209,9 +263,17 @@ func TestExecutorBehaviors(t *testing.T) {
 				ConfirmationPolicy:       shared.ConfirmationAssumeYes,
 			},
 			gitManager:        &stubGitManager{currentURL: protocolTestOriginURL},
-			expectedOutput:    fmt.Sprintf(protocolTestSuccessMessage, protocolTestRepositoryPath, protocolTestTargetDisplayURL),
 			expectedUpdates:   1,
 			expectedTargetURL: protocolTestTargetURL,
+			expectedEvents: []eventExpectation{
+				{
+					code: shared.EventCodeProtocolUpdate,
+					assert: func(t *testing.T, event map[string]string) {
+						require.Equal(t, protocolTestRepositoryPath, event["path"])
+						require.Equal(t, protocolTestTargetDisplayURL, event["target_url"])
+					},
+				},
+			},
 		},
 		{
 			name: "origin_owner_fallback_when_canonical_missing",
@@ -224,9 +286,17 @@ func TestExecutorBehaviors(t *testing.T) {
 				ConfirmationPolicy:       shared.ConfirmationAssumeYes,
 			},
 			gitManager:        &stubGitManager{currentURL: protocolTestOriginURL},
-			expectedOutput:    fmt.Sprintf(protocolTestSuccessMessage, protocolTestRepositoryPath, protocolTestOriginTargetDisplayURL),
 			expectedUpdates:   1,
 			expectedTargetURL: protocolTestOriginTargetURL,
+			expectedEvents: []eventExpectation{
+				{
+					code: shared.EventCodeProtocolUpdate,
+					assert: func(t *testing.T, event map[string]string) {
+						require.Equal(t, protocolTestRepositoryPath, event["path"])
+						require.Equal(t, protocolTestOriginTargetDisplayURL, event["target_url"])
+					},
+				},
+			},
 		},
 		{
 			name: "unknown_target_protocol_errors",
@@ -240,17 +310,31 @@ func TestExecutorBehaviors(t *testing.T) {
 			},
 			gitManager:    &stubGitManager{currentURL: protocolTestOriginURL},
 			expectedError: repoerrors.ErrUnknownProtocol,
+			expectedEvents: []eventExpectation{
+				{
+					code: shared.EventCodeProtocolSkip,
+					assert: func(t *testing.T, event map[string]string) {
+						require.Equal(t, "unknown_protocol", event["reason"])
+						require.Equal(t, protocolTestRepositoryPath, event["path"])
+					},
+				},
+			},
 		},
 	}
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(testingInstance *testing.T) {
 			outputBuffer := &bytes.Buffer{}
+			reporter := shared.NewStructuredReporter(
+				outputBuffer,
+				outputBuffer,
+				shared.WithRepositoryHeaders(false),
+			)
 
 			executor := protocol.NewExecutor(protocol.Dependencies{
 				GitManager: testCase.gitManager,
 				Prompter:   testCase.prompter,
-				Reporter:   shared.NewWriterReporter(outputBuffer),
+				Reporter:   reporter,
 			})
 
 			executionError := executor.Execute(context.Background(), testCase.options)
@@ -267,7 +351,18 @@ func TestExecutorBehaviors(t *testing.T) {
 				require.NoError(testingInstance, executionError)
 			}
 
-			require.Equal(testingInstance, testCase.expectedOutput, outputBuffer.String())
+			events := parseStructuredEvents(outputBuffer.String())
+			if testCase.expectNoEvents {
+				require.Empty(testingInstance, events)
+			} else {
+				require.Len(testingInstance, events, len(testCase.expectedEvents))
+				for _, expectation := range testCase.expectedEvents {
+					event := requireEventByCode(testingInstance, events, expectation.code)
+					if expectation.assert != nil {
+						expectation.assert(testingInstance, event)
+					}
+				}
+			}
 
 			if testCase.gitManager != nil {
 				require.Len(testingInstance, testCase.gitManager.setURLs, testCase.expectedUpdates)
@@ -294,7 +389,11 @@ func TestExecutorPromptsAdvertiseApplyAll(t *testing.T) {
 	dependencies := protocol.Dependencies{
 		GitManager: gitManager,
 		Prompter:   commandPrompter,
-		Reporter:   shared.NewWriterReporter(outputBuffer),
+		Reporter: shared.NewStructuredReporter(
+			outputBuffer,
+			outputBuffer,
+			shared.WithRepositoryHeaders(false),
+		),
 	}
 	repositoryPath, repositoryPathError := shared.NewRepositoryPath(protocolTestRepositoryPath)
 	require.NoError(t, repositoryPathError)
@@ -319,7 +418,61 @@ func TestExecutorPromptsAdvertiseApplyAll(t *testing.T) {
 		[]string{fmt.Sprintf("Convert 'origin' in '%s' (%s → %s)? [a/N/y] ", protocolTestRepositoryPath, shared.RemoteProtocolHTTPS, shared.RemoteProtocolSSH)},
 		commandPrompter.recordedPrompts,
 	)
-	require.Equal(t, fmt.Sprintf(protocolTestDeclinedMessage, protocolTestRepositoryPath), outputBuffer.String())
+	events := parseStructuredEvents(outputBuffer.String())
+	require.Len(t, events, 1)
+	event := requireEventByCode(t, events, shared.EventCodeProtocolDeclined)
+	require.Equal(t, protocolTestRepositoryPath, event["path"])
+	require.Equal(t, "user_declined", event["reason"])
+}
+
+func parseStructuredEvents(output string) []map[string]string {
+	scanner := bufio.NewScanner(strings.NewReader(output))
+	var events []map[string]string
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if len(line) == 0 {
+			continue
+		}
+		if strings.HasPrefix(line, "Summary:") {
+			continue
+		}
+		if strings.HasPrefix(line, "-- ") {
+			continue
+		}
+
+		parts := strings.Split(line, " | ")
+		machinePart := parts[len(parts)-1]
+
+		fields := strings.Fields(machinePart)
+		if len(fields) == 0 {
+			continue
+		}
+
+		event := make(map[string]string, len(fields))
+		for _, field := range fields {
+			keyValue := strings.SplitN(field, "=", 2)
+			if len(keyValue) != 2 {
+				continue
+			}
+			event[keyValue[0]] = keyValue[1]
+		}
+		if len(event) > 0 {
+			events = append(events, event)
+		}
+	}
+
+	return events
+}
+
+func requireEventByCode(t *testing.T, events []map[string]string, code string) map[string]string {
+	for _, event := range events {
+		if event["event"] == code {
+			return event
+		}
+	}
+	require.Failf(t, "event not found", "expected event code %s in %+v", code, events)
+	return nil
 }
 
 func cloneOwnerRepository(value shared.OwnerRepository) *shared.OwnerRepository {

@@ -12,22 +12,22 @@ import (
 )
 
 const (
-	planSkipAlreadyMessage            = "PLAN-SKIP (already normalized): %s\n"
-	planSkipDirtyMessage              = "PLAN-SKIP (dirty worktree): %s\n"
-	planSkipParentMissingMessage      = "PLAN-SKIP (target parent missing): %s\n"
-	planSkipParentNotDirectoryMessage = "PLAN-SKIP (target parent not directory): %s\n"
-	planSkipExistsMessage             = "PLAN-SKIP (target exists): %s\n"
-	planCaseOnlyMessage               = "PLAN-CASE-ONLY: %s → %s (two-step move required)\n"
-	planReadyMessage                  = "PLAN-OK: %s → %s\n"
-	errorParentMissingMessage         = "ERROR: target parent missing: %s\n"
-	errorParentNotDirectoryMessage    = "ERROR: target parent is not a directory: %s\n"
-	errorTargetExistsMessage          = "ERROR: target exists: %s\n"
+	planSkipAlreadyMessage            = "PLAN-SKIP (already normalized): %s"
+	planSkipDirtyMessage              = "PLAN-SKIP (dirty worktree): %s"
+	planSkipParentMissingMessage      = "PLAN-SKIP (target parent missing): %s"
+	planSkipParentNotDirectoryMessage = "PLAN-SKIP (target parent not directory): %s"
+	planSkipExistsMessage             = "PLAN-SKIP (target exists): %s"
+	planCaseOnlyMessage               = "PLAN-CASE-ONLY: %s → %s (two-step move required)"
+	planReadyMessage                  = "PLAN-OK: %s → %s"
+	errorParentMissingMessage         = "ERROR: target parent missing: %s"
+	errorParentNotDirectoryMessage    = "ERROR: target parent is not a directory: %s"
+	errorTargetExistsMessage          = "ERROR: target exists: %s"
 	promptTemplate                    = "Rename '%s' → '%s'? [a/N/y] "
-	skipMessage                       = "SKIP: %s\n"
-	skipDirtyMessage                  = "SKIP (dirty worktree): %s\n"
-	skipAlreadyNormalizedMessage      = "SKIP (already normalized): %s\n"
-	successMessage                    = "Renamed %s → %s\n"
-	failureMessage                    = "ERROR: rename failed for %s → %s\n"
+	skipMessage                       = "SKIP: %s"
+	skipDirtyMessage                  = "SKIP (dirty worktree): %s"
+	skipAlreadyNormalizedMessage      = "SKIP (already normalized): %s"
+	successMessage                    = "Renamed %s → %s"
+	failureMessage                    = "ERROR: rename failed for %s → %s"
 	intermediateRenameTemplate        = "%s.rename.%d"
 	parentDirectoryPermissionConstant = fs.FileMode(0o755)
 )
@@ -361,7 +361,135 @@ func (executor *Executor) printfOutput(format string, arguments ...any) {
 	if executor.dependencies.Reporter == nil {
 		return
 	}
-	executor.dependencies.Reporter.Printf(format, arguments...)
+	message := fmt.Sprintf(format, arguments...)
+	trimmed := strings.TrimSpace(message)
+
+	event := shared.Event{
+		Level:   shared.EventLevelInfo,
+		Code:    shared.EventCodeFolderPlan,
+		Message: trimmed,
+		Details: map[string]string{},
+	}
+
+	switch format {
+	case successMessage:
+		oldPath := fmt.Sprintf("%v", arguments[0])
+		newPath := fmt.Sprintf("%v", arguments[1])
+		event.Code = shared.EventCodeFolderRename
+		event.Message = fmt.Sprintf("%s → %s", oldPath, newPath)
+		event.RepositoryPath = oldPath
+		event.Details["old_path"] = oldPath
+		event.Details["new_path"] = newPath
+	case failureMessage:
+		oldPath := fmt.Sprintf("%v", arguments[0])
+		newPath := fmt.Sprintf("%v", arguments[1])
+		event.Code = shared.EventCodeFolderError
+		event.Level = shared.EventLevelError
+		event.Message = trimmed
+		event.RepositoryPath = oldPath
+		event.Details["old_path"] = oldPath
+		event.Details["new_path"] = newPath
+		event.Details["reason"] = "rename_failed"
+	case skipMessage:
+		repositoryPath := fmt.Sprintf("%v", arguments[0])
+		event.Code = shared.EventCodeFolderSkip
+		event.Message = fmt.Sprintf("skipped %s", repositoryPath)
+		event.RepositoryPath = repositoryPath
+		event.Details["reason"] = "user_declined"
+	case skipDirtyMessage:
+		repositoryPath := fmt.Sprintf("%v", arguments[0])
+		event.Code = shared.EventCodeFolderSkip
+		event.Message = "skipped due to dirty worktree"
+		event.RepositoryPath = repositoryPath
+		event.Details["reason"] = "dirty_worktree"
+	case skipAlreadyNormalizedMessage:
+		repositoryPath := fmt.Sprintf("%v", arguments[0])
+		event.Code = shared.EventCodeFolderSkip
+		event.Message = "already normalized"
+		event.RepositoryPath = repositoryPath
+		event.Details["reason"] = "already_normalized"
+	case planSkipAlreadyMessage:
+		repositoryPath := fmt.Sprintf("%v", arguments[0])
+		event.Code = shared.EventCodeFolderPlan
+		event.Message = "already normalized"
+		event.RepositoryPath = repositoryPath
+		event.Details["reason"] = "already_normalized"
+	case planSkipDirtyMessage:
+		repositoryPath := fmt.Sprintf("%v", arguments[0])
+		event.Code = shared.EventCodeFolderPlan
+		event.Message = "skip: dirty worktree"
+		event.RepositoryPath = repositoryPath
+		event.Details["reason"] = "dirty_worktree"
+	case planSkipParentMissingMessage:
+		parentPath := fmt.Sprintf("%v", arguments[0])
+		event.Code = shared.EventCodeFolderPlan
+		event.Message = "skip: parent missing"
+		event.RepositoryPath = parentPath
+		event.Details["reason"] = "parent_missing"
+	case planSkipParentNotDirectoryMessage:
+		parentPath := fmt.Sprintf("%v", arguments[0])
+		event.Code = shared.EventCodeFolderPlan
+		event.Message = "skip: parent not directory"
+		event.RepositoryPath = parentPath
+		event.Details["reason"] = "parent_not_directory"
+	case planSkipExistsMessage:
+		targetPath := fmt.Sprintf("%v", arguments[0])
+		event.Code = shared.EventCodeFolderPlan
+		event.Message = "skip: target exists"
+		event.RepositoryPath = targetPath
+		event.Details["reason"] = "target_exists"
+	case planCaseOnlyMessage:
+		oldPath := fmt.Sprintf("%v", arguments[0])
+		newPath := fmt.Sprintf("%v", arguments[1])
+		event.Code = shared.EventCodeFolderPlan
+		event.Message = fmt.Sprintf("case-only rename %s → %s", oldPath, newPath)
+		event.RepositoryPath = oldPath
+		event.Details["reason"] = "case_only"
+		event.Details["new_path"] = newPath
+	case planReadyMessage:
+		oldPath := fmt.Sprintf("%v", arguments[0])
+		newPath := fmt.Sprintf("%v", arguments[1])
+		event.Code = shared.EventCodeFolderPlan
+		event.Message = fmt.Sprintf("ready %s → %s", oldPath, newPath)
+		event.RepositoryPath = oldPath
+		event.Details["new_path"] = newPath
+	case errorParentNotDirectoryMessage:
+		parentPath := fmt.Sprintf("%v", arguments[0])
+		event.Code = shared.EventCodeFolderError
+		event.Level = shared.EventLevelError
+		event.Message = "parent is not a directory"
+		event.RepositoryPath = parentPath
+		event.Details["reason"] = "parent_not_directory"
+	case errorParentMissingMessage:
+		parentPath := fmt.Sprintf("%v", arguments[0])
+		event.Code = shared.EventCodeFolderError
+		event.Level = shared.EventLevelError
+		event.Message = "parent missing"
+		event.RepositoryPath = parentPath
+		event.Details["reason"] = "parent_missing"
+	case errorTargetExistsMessage:
+		targetPath := fmt.Sprintf("%v", arguments[0])
+		event.Code = shared.EventCodeFolderError
+		event.Level = shared.EventLevelError
+		event.Message = "target exists"
+		event.RepositoryPath = targetPath
+		event.Details["reason"] = "target_exists"
+	default:
+		// Formats such as "%s" carry already formatted messages.
+		switch {
+		case strings.HasPrefix(trimmed, "ERROR:"):
+			event.Code = shared.EventCodeFolderError
+			event.Level = shared.EventLevelError
+		case strings.HasPrefix(trimmed, "SKIP"):
+			event.Code = shared.EventCodeFolderSkip
+		case strings.HasPrefix(trimmed, "Renamed"):
+			event.Code = shared.EventCodeFolderRename
+		default:
+			event.Code = shared.EventCodeFolderPlan
+		}
+	}
+
+	executor.dependencies.Reporter.Report(event)
 }
 
 func isCaseOnlyRename(oldPath string, newPath string) bool {

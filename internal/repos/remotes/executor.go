@@ -11,20 +11,13 @@ import (
 )
 
 const (
-	skipParseMessage                 = "UPDATE-REMOTE-SKIP: %s (error: could not parse origin owner/repo)\n"
-	skipCanonicalMessage             = "UPDATE-REMOTE-SKIP: %s (no upstream: no canonical redirect found)\n"
-	skipSameMessage                  = "UPDATE-REMOTE-SKIP: %s (already canonical)\n"
-	skipTargetMessage                = "UPDATE-REMOTE-SKIP: %s (error: could not construct target URL)\n"
-	planMessage                      = "PLAN-UPDATE-REMOTE: %s origin %s → %s\n"
 	promptTemplate                   = "Update 'origin' in '%s' to canonical (%s → %s)? [a/N/y] "
-	declinedMessage                  = "UPDATE-REMOTE-SKIP: user declined for %s\n"
-	successMessage                   = "UPDATE-REMOTE-DONE: %s origin now %s\n"
-	failureMessage                   = "UPDATE-REMOTE-SKIP: %s (error: failed to set origin URL)\n"
 	ownerRepoNotDetectedErrorMessage = "owner repository not detected"
 	unknownProtocolErrorTemplate     = "unknown protocol %s"
 	gitProtocolURLTemplate           = "git@github.com:%s.git"
 	sshProtocolURLTemplate           = "ssh://git@github.com/%s.git"
 	httpsProtocolURLTemplate         = "https://github.com/%s.git"
+	declinedReason                   = "user declined"
 )
 
 // Options configures the remote update workflow.
@@ -61,22 +54,22 @@ func (executor *Executor) Execute(executionContext context.Context, options Opti
 	repositoryPath := options.RepositoryPath.String()
 
 	if options.OriginOwnerRepository == nil {
-		executor.printfOutput(skipParseMessage, repositoryPath)
+		executor.report(shared.EventLevelWarn, shared.EventCodeRemoteSkip, repositoryPath, nil, "missing origin owner", map[string]string{"reason": "origin_owner_missing"})
 		return repoerrors.WrapMessage(
 			repoerrors.OperationCanonicalRemote,
 			repositoryPath,
 			repoerrors.ErrOriginOwnerMissing,
-			fmt.Sprintf(skipParseMessage, repositoryPath),
+			"missing origin owner repository",
 		)
 	}
 
 	if options.CanonicalOwnerRepository == nil {
-		executor.printfOutput(skipCanonicalMessage, repositoryPath)
+		executor.report(shared.EventLevelWarn, shared.EventCodeRemoteSkip, repositoryPath, options.OriginOwnerRepository, "canonical redirect unavailable", map[string]string{"reason": "canonical_missing"})
 		return repoerrors.WrapMessage(
 			repoerrors.OperationCanonicalRemote,
 			repositoryPath,
 			repoerrors.ErrCanonicalOwnerMissing,
-			fmt.Sprintf(skipCanonicalMessage, repositoryPath),
+			"canonical owner repository not provided",
 		)
 	}
 
@@ -84,18 +77,18 @@ func (executor *Executor) Execute(executionContext context.Context, options Opti
 	canonicalOwner := options.CanonicalOwnerRepository.String()
 
 	if strings.EqualFold(originOwner, canonicalOwner) {
-		executor.printfOutput(skipSameMessage, repositoryPath)
+		executor.report(shared.EventLevelInfo, shared.EventCodeRemoteSkip, repositoryPath, options.OriginOwnerRepository, "already canonical", map[string]string{"reason": "already_canonical"})
 		return nil
 	}
 
 	targetURL, targetError := BuildRemoteURL(options.RemoteProtocol, canonicalOwner)
 	if targetError != nil {
-		executor.printfOutput(skipTargetMessage, repositoryPath)
+		executor.report(shared.EventLevelWarn, shared.EventCodeRemoteSkip, repositoryPath, options.OriginOwnerRepository, "failed to build target URL", map[string]string{"reason": "target_url_unavailable", "protocol": string(options.RemoteProtocol)})
 		return repoerrors.WrapMessage(
 			repoerrors.OperationCanonicalRemote,
 			repositoryPath,
 			repoerrors.ErrRemoteURLBuildFailed,
-			fmt.Sprintf(skipTargetMessage, repositoryPath),
+			"failed to build target URL",
 		)
 	}
 
@@ -107,7 +100,11 @@ func (executor *Executor) Execute(executionContext context.Context, options Opti
 	if options.DryRun {
 		displayCurrent := FormatRemoteURLForDisplay(currentOriginURL)
 		displayTarget := FormatRemoteURLForDisplay(targetURL)
-		executor.printfOutput(planMessage, repositoryPath, displayCurrent, displayTarget)
+		executor.report(shared.EventLevelInfo, shared.EventCodeRemotePlan, repositoryPath, options.CanonicalOwnerRepository, fmt.Sprintf("%s → %s", displayCurrent, displayTarget), map[string]string{
+			"current_url": displayCurrent,
+			"target_url":  displayTarget,
+			"protocol":    string(options.RemoteProtocol),
+		})
 		return nil
 	}
 
@@ -115,42 +112,56 @@ func (executor *Executor) Execute(executionContext context.Context, options Opti
 		prompt := fmt.Sprintf(promptTemplate, repositoryPath, originOwner, canonicalOwner)
 		confirmationResult, promptError := executor.dependencies.Prompter.Confirm(prompt)
 		if promptError != nil {
-			executor.printfOutput(skipTargetMessage, repositoryPath)
+			executor.report(shared.EventLevelWarn, shared.EventCodeRemoteSkip, repositoryPath, options.CanonicalOwnerRepository, "confirmation failed", map[string]string{
+				"reason":  "confirmation_error",
+				"current": originOwner,
+				"target":  canonicalOwner,
+			})
 			return repoerrors.WrapMessage(
 				repoerrors.OperationCanonicalRemote,
 				repositoryPath,
 				repoerrors.ErrUserConfirmationFailed,
-				fmt.Sprintf(skipTargetMessage, repositoryPath),
+				"confirmation failed",
 			)
 		}
 		if !confirmationResult.Confirmed {
-			executor.printfOutput(declinedMessage, repositoryPath)
+			executor.report(shared.EventLevelWarn, shared.EventCodeRemoteDeclined, repositoryPath, options.CanonicalOwnerRepository, declinedReason, map[string]string{
+				"reason":  "user_declined",
+				"current": originOwner,
+				"target":  canonicalOwner,
+			})
 			return nil
 		}
 	}
 
 	if executor.dependencies.GitManager == nil {
-		executor.printfOutput(failureMessage, repositoryPath)
+		executor.report(shared.EventLevelWarn, shared.EventCodeRemoteSkip, repositoryPath, options.CanonicalOwnerRepository, "git manager unavailable", map[string]string{"reason": "git_manager_unavailable"})
 		return repoerrors.WrapMessage(
 			repoerrors.OperationCanonicalRemote,
 			repositoryPath,
 			repoerrors.ErrGitManagerUnavailable,
-			fmt.Sprintf(failureMessage, repositoryPath),
+			"git manager unavailable",
 		)
 	}
 
 	updateError := executor.dependencies.GitManager.SetRemoteURL(executionContext, repositoryPath, shared.OriginRemoteNameConstant, targetURL)
 	if updateError != nil {
-		executor.printfOutput(failureMessage, repositoryPath)
+		executor.report(shared.EventLevelWarn, shared.EventCodeRemoteSkip, repositoryPath, options.CanonicalOwnerRepository, "failed to update origin", map[string]string{
+			"reason":     "update_failed",
+			"target_url": FormatRemoteURLForDisplay(targetURL),
+		})
 		return repoerrors.WrapMessage(
 			repoerrors.OperationCanonicalRemote,
 			repositoryPath,
 			repoerrors.ErrRemoteUpdateFailed,
-			fmt.Sprintf(failureMessage, repositoryPath),
+			"failed to update origin URL",
 		)
 	}
 
-	executor.printfOutput(successMessage, repositoryPath, FormatRemoteURLForDisplay(targetURL))
+	executor.report(shared.EventLevelInfo, shared.EventCodeRemoteUpdate, repositoryPath, options.CanonicalOwnerRepository, fmt.Sprintf("origin now %s", FormatRemoteURLForDisplay(targetURL)), map[string]string{
+		"target_url": FormatRemoteURLForDisplay(targetURL),
+		"protocol":   string(options.RemoteProtocol),
+	})
 	return nil
 }
 
@@ -159,11 +170,38 @@ func Execute(executionContext context.Context, dependencies Dependencies, option
 	return NewExecutor(dependencies).Execute(executionContext, options)
 }
 
-func (executor *Executor) printfOutput(format string, arguments ...any) {
+func (executor *Executor) report(level shared.EventLevel, code string, repositoryPath string, ownerRepository *shared.OwnerRepository, message string, details map[string]string) {
 	if executor.dependencies.Reporter == nil {
 		return
 	}
-	executor.dependencies.Reporter.Printf(format, arguments...)
+	repositoryIdentifier := ""
+	if ownerRepository != nil {
+		repositoryIdentifier = ownerRepository.String()
+	}
+
+	metadata := make(map[string]string, len(details))
+	for key, value := range details {
+		metadata[key] = value
+	}
+
+	if _, exists := metadata["reason"]; !exists && code == shared.EventCodeRemoteSkip {
+		metadata["reason"] = "skip"
+	}
+
+	if code == shared.EventCodeRemotePlan {
+		if _, exists := metadata["reason"]; !exists {
+			metadata["reason"] = "plan"
+		}
+	}
+
+	executor.dependencies.Reporter.Report(shared.Event{
+		Level:                level,
+		Code:                 code,
+		RepositoryIdentifier: repositoryIdentifier,
+		RepositoryPath:       repositoryPath,
+		Message:              message,
+		Details:              metadata,
+	})
 }
 
 // BuildRemoteURL formats the canonical remote URL for the provided protocol and owner/repository tuple.

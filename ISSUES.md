@@ -73,7 +73,8 @@ If a repository doesnt have a remote, there is nothing to fetch, but we can stil
 - [x] [GX-211] On a protocol updated the message says: `UPDATE-REMOTE-DONE: /tmp/repos/loopaware origin now ssh://git@github.com/tyemirov/loopaware.git`. But that's incorrect as the new protocol is not `ssh://git@github.com/tyemirov/loopaware.git` but `git@github.com/tyemirov/loopaware.git`. Change logging to display the new procol as what `git remote -v will display`
   - Resolution: Protocol/remote executors now format SSH remotes as `git@github.com:owner/repo.git` in plan/done logs without altering underlying URLs; regression coverage added for plan/success messages, repo CLI, and workflow integration outputs.
 
-- [ ] [GX-212] Change logging to a new format: 
+- [x] [GX-212] Change logging to a new format: 
+- Resolution: Introduced a shared structured reporter that timestamps events, aligns human-readable columns, and emits machine-parseable key/value pairs for every executor log entry.
 
 Single line per event, with two parts:
 
@@ -111,13 +112,15 @@ Human part (left): aligned columns, easy to scan.
 06:23:04 ERROR REPO_DIRTY        tyemirov/gix                        working tree not clean                     | event=REPO_DIRTY repo=tyemirov/gix path=/tmp/repos/tyemirov/gix
 ```
 
-- [ ] [GX-213] When logging the events Print a thin repo header once, then events; the first token stays parseable so grep still works:
+- [x] [GX-213] When logging the events Print a thin repo header once, then events; the first token stays parseable so grep still works:
+- Resolution: Workflow runs now print scoped repo headers before grouped events via the structured reporter, keeping the first token parseable while adding readable alignment.
 ```
 ── repo: MarcoPoloResearchLab/RSVP ─────────────────────────────────────────────────────────
 06:22:11 INFO  REPO_SWITCHED     MarcoPoloResearchLab/RSVP           → master                                   | event=REPO_SWITCHED repo=MarcoPoloResearchLab/RSVP branch=master path=/tmp/repos/MarcoPoloResearchLab/RSVP
 06:22:21 INFO  NAMESPACE_APPLY   MarcoPoloResearchLab/RSVP           files=31, pushed  
 ```
-- [ ] [GX-214] Have a final summary for the whole run, smth like (just an example) Summary: total.repos=12 REPO_SWITCHED=7 NAMESPACE_APPLY=3 NAMESPACE_SKIP=3 REMOTE_UPDATE=2 WARN=1 ERROR=0 duration_ms=5312
+- [x] [GX-214] Have a final summary for the whole run, smth like (just an example) Summary: total.repos=12 REPO_SWITCHED=7 NAMESPACE_APPLY=3 NAMESPACE_SKIP=3 REMOTE_UPDATE=2 WARN=1 ERROR=0 duration_ms=5312
+- Resolution: Structured reporter tracks per-event counts and prints a workflow summary footer once execution completes, including duration and INFO/WARN/ERROR tallies.
 
 ## BugFixes (300–399)
 

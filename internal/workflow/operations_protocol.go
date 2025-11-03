@@ -34,7 +34,7 @@ func (operation *ProtocolConversionOperation) Execute(executionContext context.C
 	dependencies := conversion.Dependencies{
 		GitManager: environment.RepositoryManager,
 		Prompter:   environment.Prompter,
-		Reporter:   shared.NewWriterReporter(environment.Output),
+		Reporter:   environment.Reporter,
 	}
 
 	for repositoryIndex := range state.Repositories {

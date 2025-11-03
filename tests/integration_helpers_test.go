@@ -124,6 +124,9 @@ func filterStructuredOutput(rawOutput string) string {
 		if strings.HasPrefix(trimmed, "{") {
 			continue
 		}
+		if strings.HasPrefix(trimmed, "Summary:") {
+			continue
+		}
 		filtered = append(filtered, line)
 	}
 	if len(filtered) == 0 {

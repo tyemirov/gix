@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	repoerrors "github.com/temirov/gix/internal/repos/errors"
+	"github.com/temirov/gix/internal/repos/shared"
 )
 
 const (
@@ -22,6 +23,40 @@ func logRepositoryOperationError(environment *Environment, err error) bool {
 	var operationError repoerrors.OperationError
 	if !errors.As(err, &operationError) {
 		return false
+	}
+
+	ownerRepository, repositoryPath := resolveRepositoryOwnerAndPath(environment, operationError.Subject())
+	message := strings.TrimSpace(operationError.Message())
+	if len(message) == 0 {
+		message = deriveOperationErrorMessage(operationError)
+	}
+	if len(message) == 0 {
+		message = humanizeErrorCode(operationError.Code())
+	}
+
+	eventCode := operationError.Code()
+	if len(strings.TrimSpace(eventCode)) == 0 {
+		eventCode = string(operationError.Operation())
+	}
+
+	details := map[string]string{
+		"operation": string(operationError.Operation()),
+	}
+	subject := strings.TrimSpace(operationError.Subject())
+	if len(subject) > 0 {
+		details["subject"] = subject
+	}
+
+	if environment.Reporter != nil {
+		environment.Reporter.Report(shared.Event{
+			Level:                shared.EventLevelError,
+			Code:                 eventCode,
+			RepositoryIdentifier: ownerRepository,
+			RepositoryPath:       repositoryPath,
+			Message:              message,
+			Details:              details,
+		})
+		return true
 	}
 
 	if environment.Errors != nil {
