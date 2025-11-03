@@ -211,7 +211,7 @@ func (service *Service) excludeIgnoredPlanEntries(ctx context.Context, repositor
 		candidates = append(candidates, relativePath)
 	}
 
-	ignoredSet, ignoreErr := service.collectIgnoredPaths(ctx, repositoryPath, candidates)
+	ignoredSet, ignoreErr := shared.CheckIgnoredPaths(ctx, service.gitExecutor, repositoryPath, candidates)
 	if ignoreErr != nil {
 		return changePlan{}, ignoreErr
 	}
@@ -783,38 +783,6 @@ func (service *Service) gitAdd(ctx context.Context, repositoryPath string, relat
 		return repoerrors.Wrap(repoerrors.OperationNamespaceRewrite, repositoryPath, repoerrors.ErrNamespaceRewriteFailed, err)
 	}
 	return nil
-}
-
-func (service *Service) collectIgnoredPaths(ctx context.Context, repositoryPath string, paths []string) (map[string]struct{}, error) {
-	ignored := make(map[string]struct{})
-	if len(paths) == 0 {
-		return ignored, nil
-	}
-
-	details := execshell.CommandDetails{
-		Arguments:        []string{"check-ignore", "--stdin"},
-		WorkingDirectory: repositoryPath,
-		StandardInput:    []byte(strings.Join(paths, "\n")),
-	}
-
-	result, err := service.gitExecutor.ExecuteGit(ctx, details)
-	if err != nil {
-		var commandError execshell.CommandFailedError
-		if errors.As(err, &commandError) && commandError.Result.ExitCode == 1 {
-			return ignored, nil
-		}
-		return nil, repoerrors.Wrap(repoerrors.OperationNamespaceRewrite, repositoryPath, repoerrors.ErrNamespaceRewriteFailed, err)
-	}
-
-	for _, line := range strings.Split(result.StandardOutput, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if len(trimmed) == 0 {
-			continue
-		}
-		ignored[trimmed] = struct{}{}
-	}
-
-	return ignored, nil
 }
 
 func (service *Service) hasStagedChanges(ctx context.Context, repositoryPath string) (bool, error) {

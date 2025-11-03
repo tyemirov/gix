@@ -210,6 +210,12 @@ workflow operation apply-tasks failed: DEFAULT-BRANCH-UPDATE repository=MarcoPol
 
 - [ ] [GX-312] When replacing the namespace, include tests. E.g. The dependency has been switched to `github.com/tyemirov/GAuss`, but the test suites still import `github.com/temirov/GAuss` (see `cmd/server/auth_redirect_test.go`, `internal/httpapi/auth_test.go`, `internal/httpapi/dashboard_integration_test.go`). Once the upstream module renames its `module` path, these imports will no longer resolve and `go test ./...` fails at compile time with “cannot find module providing github.com/temirov/GAuss/...”. The tests need their imports rewritten to the new namespace to keep the build green.
 
+- [x] [GX-313] Repository discovery should skip nested repositories ignored by parent `.gitignore`
+  - Category: BugFix
+  - Context: Workflow runs still act on repositories located under ignored directories (e.g., `tools/licenser` inside `gix`), staging ignored files and slowing execution.
+  - Desired: Leverage `git check-ignore` to filter out ignored nested repositories before executing operations across commands and workflows.
+  - Resolution: Added shared gitignore helpers, wired audit discovery to remove gitignored children, updated namespace rewrite to reuse the helper, and refreshed unit/integration coverage so workflows skip ignored repositories.
+
 ## Maintenance (400–499)
 
 - [x] [GX-400] Update the documentation @README.md and focus on the usefullness to the user. Move the technical details to @ARCHITECTURE.md
