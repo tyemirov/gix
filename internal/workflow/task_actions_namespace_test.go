@@ -10,8 +10,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/temirov/gix/internal/audit"
 	"github.com/temirov/gix/internal/execshell"
 	"github.com/temirov/gix/internal/gitrepo"
+	repoerrors "github.com/temirov/gix/internal/repos/errors"
 	"github.com/temirov/gix/internal/repos/filesystem"
 )
 
@@ -130,6 +132,62 @@ func main() { dep.Do() }
 	require.True(t, commitCommandFound)
 }
 
+func TestHandleNamespaceRewriteActionPushFailure(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(tempDir, ".git"), 0o755))
+
+	goMod := "module github.com/old/org/app\n\ngo 1.22\nrequire github.com/old/org/dep v1.0.0\n"
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "go.mod"), []byte(goMod), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "main.go"), []byte("package main\n"), 0o644))
+
+	pushFailure := execshell.CommandFailedError{
+		Command: execshell.ShellCommand{Name: execshell.CommandGit},
+		Result:  execshell.ExecutionResult{ExitCode: 1, StandardError: "authentication required"},
+	}
+
+	executor := &namespaceTestGitExecutor{
+		configValues: map[string]string{
+			"user.name":  "Test",
+			"user.email": "test@example.com",
+		},
+		pushError: pushFailure,
+	}
+	manager, err := gitrepo.NewRepositoryManager(executor)
+	require.NoError(t, err)
+
+	output := &bytes.Buffer{}
+	errorOutput := &bytes.Buffer{}
+	environment := &Environment{
+		FileSystem:        filesystem.OSFileSystem{},
+		GitExecutor:       executor,
+		RepositoryManager: manager,
+		Output:            output,
+		Errors:            errorOutput,
+		PromptState:       NewPromptState(true),
+	}
+
+	repository := &RepositoryState{Path: tempDir, Inspection: audit.RepositoryInspection{FinalOwnerRepo: "owner/repo"}}
+	parameters := map[string]any{
+		"old":                          "github.com/old/org",
+		"new":                          "github.com/new/org",
+		"remote":                       "origin",
+		"branch_prefix":                "rewrite",
+		namespaceCommitMessageFlagName: namespaceTestCommitMessage,
+	}
+
+	err = handleNamespaceRewriteAction(context.Background(), environment, repository, parameters)
+	require.NoError(t, err)
+
+	joinedOutput := output.String()
+	require.Contains(t, joinedOutput, "NAMESPACE-APPLY")
+	require.Contains(t, joinedOutput, "push=false")
+	require.Contains(t, joinedOutput, "NAMESPACE-SKIP")
+
+	require.Contains(t, errorOutput.String(), string(repoerrors.ErrNamespacePushFailed))
+}
+
 func TestHandleNamespaceRewriteActionRespectsSafeguards(t *testing.T) {
 	t.Parallel()
 
@@ -181,6 +239,7 @@ type namespaceTestGitExecutor struct {
 	staged       map[string]struct{}
 	configValues map[string]string
 	statusOutput string
+	pushError    error
 }
 
 func (executor *namespaceTestGitExecutor) ExecuteGit(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
@@ -215,6 +274,9 @@ func (executor *namespaceTestGitExecutor) ExecuteGit(_ context.Context, details 
 		executor.staged = map[string]struct{}{}
 		return execshell.ExecutionResult{}, nil
 	case "push":
+		if executor.pushError != nil {
+			return execshell.ExecutionResult{}, executor.pushError
+		}
 		return execshell.ExecutionResult{}, nil
 	default:
 		return execshell.ExecutionResult{}, nil

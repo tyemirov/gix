@@ -2,6 +2,7 @@ package namespace_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/temirov/gix/internal/execshell"
 	"github.com/temirov/gix/internal/gitrepo"
+	repoerrors "github.com/temirov/gix/internal/repos/errors"
 	"github.com/temirov/gix/internal/repos/filesystem"
 	"github.com/temirov/gix/internal/repos/namespace"
 	"github.com/temirov/gix/internal/repos/shared"
@@ -302,6 +304,62 @@ func TestRewriteUpdatesGoModRootModuleEntries(t *testing.T) {
 	require.Contains(t, goModString, "github.com/new/account/dep v1.4.1")
 }
 
+func TestRewriteHandlesPushFailure(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(tempDir, ".git"), 0o755))
+
+	goModContent := "module github.com/old/account\n\ngo 1.22\n"
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "go.mod"), []byte(goModContent), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "main.go"), []byte("package main\n"), 0o644))
+
+	oldPrefix, err := namespace.NewModulePrefix("github.com/old/account")
+	require.NoError(t, err)
+	newPrefix, err := namespace.NewModulePrefix("github.com/new/account")
+	require.NoError(t, err)
+
+	executionError := execshell.CommandFailedError{
+		Command: execshell.ShellCommand{Name: execshell.CommandGit},
+		Result:  execshell.ExecutionResult{ExitCode: 1, StandardError: "permission denied"},
+	}
+	executor := &recordingGitExecutor{
+		configValues: map[string]string{
+			"user.name":  "Test User",
+			"user.email": "test@example.com",
+		},
+		pushError: executionError,
+	}
+	manager, err := gitrepo.NewRepositoryManager(executor)
+	require.NoError(t, err)
+
+	service, err := namespace.NewService(namespace.Dependencies{
+		FileSystem:        filesystem.OSFileSystem{},
+		GitExecutor:       executor,
+		RepositoryManager: manager,
+		Clock:             fixedClock{instant: time.Date(2024, 11, 24, 12, 0, 0, 0, time.UTC)},
+	})
+	require.NoError(t, err)
+
+	repositoryPath, err := shared.NewRepositoryPath(tempDir)
+	require.NoError(t, err)
+
+	result, rewriteErr := service.Rewrite(context.Background(), namespace.Options{
+		RepositoryPath: repositoryPath,
+		OldPrefix:      oldPrefix,
+		NewPrefix:      newPrefix,
+		CommitMessage:  "chore: rewrite namespace",
+		Push:           true,
+		PushRemote:     "origin",
+	})
+	require.Error(t, rewriteErr)
+	var operationError repoerrors.OperationError
+	require.True(t, errors.As(rewriteErr, &operationError))
+	require.Equal(t, string(repoerrors.ErrNamespacePushFailed), operationError.Code())
+	require.True(t, result.CommitCreated)
+	require.False(t, result.PushPerformed)
+}
+
 type noopGitExecutor struct{}
 
 func (noopGitExecutor) ExecuteGit(_ context.Context, _ execshell.CommandDetails) (execshell.ExecutionResult, error) {
@@ -316,6 +374,7 @@ type recordingGitExecutor struct {
 	commands     []execshell.CommandDetails
 	staged       map[string]struct{}
 	configValues map[string]string
+	pushError    error
 }
 
 func (executor *recordingGitExecutor) ExecuteGit(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
@@ -352,6 +411,9 @@ func (executor *recordingGitExecutor) ExecuteGit(_ context.Context, details exec
 		executor.staged = map[string]struct{}{}
 		return execshell.ExecutionResult{}, nil
 	case "push":
+		if executor.pushError != nil {
+			return execshell.ExecutionResult{}, executor.pushError
+		}
 		return execshell.ExecutionResult{}, nil
 	default:
 		return execshell.ExecutionResult{}, nil

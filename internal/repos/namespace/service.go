@@ -290,7 +290,7 @@ func (service *Service) applyRewrite(ctx context.Context, repositoryPath string,
 
 	if options.Push {
 		if err := service.pushBranch(ctx, repositoryPath, options.PushRemote, branchName); err != nil {
-			return Result{}, err
+			return result, err
 		}
 		result.PushPerformed = true
 	}
@@ -828,7 +828,7 @@ func (service *Service) pushBranch(ctx context.Context, repositoryPath string, r
 		WorkingDirectory: repositoryPath,
 	}
 	if _, err := service.gitExecutor.ExecuteGit(ctx, details); err != nil {
-		return repoerrors.Wrap(repoerrors.OperationNamespaceRewrite, repositoryPath, repoerrors.ErrNamespaceRewriteFailed, err)
+		return repoerrors.Wrap(repoerrors.OperationNamespaceRewrite, repositoryPath, repoerrors.ErrNamespacePushFailed, err)
 	}
 	return nil
 }

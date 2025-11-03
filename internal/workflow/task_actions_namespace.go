@@ -2,9 +2,11 @@ package workflow
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
+	repoerrors "github.com/temirov/gix/internal/repos/errors"
 	"github.com/temirov/gix/internal/repos/namespace"
 	"github.com/temirov/gix/internal/repos/shared"
 )
@@ -167,8 +169,15 @@ func handleNamespaceRewriteAction(ctx context.Context, environment *Environment,
 	}
 
 	result, rewriteErr := service.Rewrite(ctx, options)
+	pushFailure := false
 	if rewriteErr != nil {
-		return rewriteErr
+		var operationError repoerrors.OperationError
+		if errors.As(rewriteErr, &operationError) && operationError.Code() == string(repoerrors.ErrNamespacePushFailed) {
+			pushFailure = true
+			logRepositoryOperationError(environment, rewriteErr)
+		} else {
+			return rewriteErr
+		}
 	}
 
 	filesChanged := len(result.ChangedFiles)
@@ -187,6 +196,10 @@ func handleNamespaceRewriteAction(ctx context.Context, environment *Environment,
 	}
 
 	writeNamespaceApply(environment, namespaceApplyMessageTemplate, repository.Path, result.BranchName, filesChanged, result.PushPerformed)
+
+	if pushFailure {
+		writeNamespaceReason(environment, namespaceSkipMessageTemplate, repository.Path, "push failed; see error log")
+	}
 
 	if environment.AuditService != nil {
 		if refreshErr := repository.Refresh(ctx, environment.AuditService); refreshErr != nil {
