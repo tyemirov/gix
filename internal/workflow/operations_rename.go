@@ -22,9 +22,9 @@ type RenameOperation struct {
 	IncludeOwner         bool
 }
 
-// Name identifies the operation type.
+// Name identifies the workflow command handled by this operation.
 func (operation *RenameOperation) Name() string {
-	return string(OperationTypeRenameDirectories)
+	return commandRepoFolderRenameKey
 }
 
 // Execute applies rename operations for repositories with desired folder names.

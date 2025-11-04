@@ -14,21 +14,8 @@ const (
 	configurationParseErrorTemplateConstant      = "failed to parse workflow configuration: %w"
 	configurationPathRequiredMessageConstant     = "workflow configuration path must be provided"
 	configurationEmptyStepsMessageConstant       = "workflow configuration must define at least one step"
-	configurationOperationMissingMessageConstant = "workflow step missing operation name"
+	configurationCommandMissingMessageConstant   = "workflow step missing command path"
 	configurationWorkflowSequenceMessageConstant = "workflow block must be defined as a sequence of steps"
-)
-
-// OperationType identifies supported workflow operations.
-type OperationType string
-
-// Supported workflow operations.
-const (
-	OperationTypeProtocolConversion OperationType = OperationType("convert-protocol")
-	OperationTypeCanonicalRemote    OperationType = OperationType("update-canonical-remote")
-	OperationTypeRenameDirectories  OperationType = OperationType("rename-directories")
-	OperationTypeBranchDefault      OperationType = OperationType("default-branch")
-	OperationTypeAuditReport        OperationType = OperationType("audit-report")
-	OperationTypeApplyTasks         OperationType = OperationType("apply-tasks")
 )
 
 // Configuration describes the ordered workflow steps loaded from YAML or JSON.
@@ -44,12 +31,12 @@ type workflowStepWrapper struct {
 	Step StepConfiguration `yaml:"step" json:"step"`
 }
 
-// StepConfiguration associates an operation type with declarative options.
+// StepConfiguration associates a command path with declarative options.
 type StepConfiguration struct {
-	Name      string         `yaml:"name" json:"name"`
-	After     []string       `yaml:"after" json:"after"`
-	Operation OperationType  `yaml:"operation" json:"operation"`
-	Options   map[string]any `yaml:"with" json:"with"`
+	Name    string         `yaml:"name" json:"name"`
+	After   []string       `yaml:"after" json:"after"`
+	Command []string       `yaml:"command" json:"command"`
+	Options map[string]any `yaml:"with" json:"with"`
 }
 
 // LoadConfiguration reads the workflow definition from disk and performs basic validation.
@@ -83,12 +70,11 @@ func LoadConfiguration(filePath string) (Configuration, error) {
 	}
 
 	for stepIndex := range configuration.Steps {
-		trimmedOperation := strings.TrimSpace(string(configuration.Steps[stepIndex].Operation))
-		if len(trimmedOperation) == 0 {
-			return Configuration{}, errors.New(configurationOperationMissingMessageConstant)
-		}
-		configuration.Steps[stepIndex].Operation = OperationType(trimmedOperation)
 		configuration.Steps[stepIndex].Name = strings.TrimSpace(configuration.Steps[stepIndex].Name)
+		configuration.Steps[stepIndex].Command = normalizeCommandParts(configuration.Steps[stepIndex].Command)
+		if len(configuration.Steps[stepIndex].Command) == 0 {
+			return Configuration{}, errors.New(configurationCommandMissingMessageConstant)
+		}
 	}
 
 	return configuration, nil

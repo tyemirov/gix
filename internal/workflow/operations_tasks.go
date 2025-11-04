@@ -160,9 +160,9 @@ type TaskRepositoryTemplateData struct {
 	HasNestedRepositories bool
 }
 
-// Name identifies the operation type.
+// Name identifies the workflow command handled by this operation.
 func (operation *TaskOperation) Name() string {
-	return string(OperationTypeApplyTasks)
+	return commandRepoTasksApplyKey
 }
 
 // Execute runs the configured tasks across repositories.
@@ -245,7 +245,7 @@ func buildTaskOperation(options map[string]any) (Operation, error) {
 		return nil, err
 	}
 	if !exists || len(entries) == 0 {
-		return nil, errors.New("apply-tasks step requires at least one task entry")
+		return nil, errors.New("repo tasks apply step requires at least one task entry")
 	}
 
 	tasks := make([]TaskDefinition, 0, len(entries))

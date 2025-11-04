@@ -24,20 +24,20 @@ const (
 	missingHeaderMessageConstant        = "Architecture example missing config header marker"
 	missingStartFenceMessageConstant    = "Architecture example missing yaml fence start"
 	missingEndFenceMessageConstant      = "Architecture example missing yaml fence end"
-	unexpectedOperationMessageTemplate  = "unexpected operation %s"
-	duplicateOperationMessageTemplate   = "duplicate operation %s"
+	unexpectedOperationMessageTemplate  = "unexpected command %s"
+	duplicateOperationMessageTemplate   = "duplicate command %s"
 	defaultTempDirectoryRootConstant    = ""
 )
 
 var expectedCommandOperations = map[string]struct{}{
-	"audit":                 {},
-	"repo-packages-purge":   {},
-	"repo-prs-purge":        {},
-	"repo-remote-update":    {},
-	"repo-protocol-convert": {},
-	"repo-folders-rename":   {},
-	"workflow":              {},
-	"branch-default":        {},
+	"audit":                           {},
+	"repo packages delete":            {},
+	"repo prs delete":                 {},
+	"repo remote update-to-canonical": {},
+	"repo remote update-protocol":     {},
+	"repo folder rename":              {},
+	"workflow":                        {},
+	"branch default":                  {},
 }
 
 type readmeApplicationConfiguration struct {
@@ -45,8 +45,8 @@ type readmeApplicationConfiguration struct {
 }
 
 type readmeOperationConfiguration struct {
-	Operation string         `yaml:"operation"`
-	Options   map[string]any `yaml:"with"`
+	Command []string       `yaml:"command"`
+	Options map[string]any `yaml:"with"`
 }
 
 func TestArchitectureWorkflowConfigurationParses(testInstance *testing.T) {
@@ -105,7 +105,8 @@ func TestArchitectureWorkflowConfigurationParses(testInstance *testing.T) {
 
 			seenOperations := make(map[string]struct{}, len(applicationConfiguration.Operations))
 			for _, operationConfig := range applicationConfiguration.Operations {
-				normalizedName := strings.TrimSpace(strings.ToLower(operationConfig.Operation))
+				normalizedName := workflow.CommandPathKey(operationConfig.Command)
+				require.NotEmpty(subtest, normalizedName)
 				_, expected := expectedCommandOperations[normalizedName]
 				require.Truef(subtest, expected, unexpectedOperationMessageTemplate, normalizedName)
 
