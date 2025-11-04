@@ -337,6 +337,8 @@ What's interesting, teh command actually worked, and I can see the tag I wanted 
   6. Commit and push the changes
   If some of the steps are not possible, let's document them as new features or improvements
   - Resolution: Added a complete YAML workflow example to README under “Example: Canonicalize after owner rename”, implementing canonical remote updates, folder renames with owners, conditional branch switch (via safeguards), and namespace rewrite with commit/push. Documented the current limitation around LLM-generated commit messages inside workflows and referenced new improvement items.
+- [ ] [GX-4011] Review @POLICY.md and verify what code areas need improvements and refactoring. Prepare a detailed plan of refactoring. Check for bugs, missing tests, poor coding practices, uplication and slop. Ensure strong encapsulation and following the principles og @AGENTS.md and policies of @POLICY.md
+
 
 ## Planning 
 do not work on the issues below, not ready
