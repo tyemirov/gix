@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/temirov/gix/internal/repos/discovery"
+	"github.com/tyemirov/gix/internal/repos/discovery"
 )
 
 const (

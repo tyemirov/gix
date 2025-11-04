@@ -12,12 +12,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
-	"github.com/temirov/gix/internal/execshell"
-	"github.com/temirov/gix/internal/utils"
-	flagutils "github.com/temirov/gix/internal/utils/flags"
-	rootutils "github.com/temirov/gix/internal/utils/roots"
-	workflowpkg "github.com/temirov/gix/internal/workflow"
+	workflowcmd "github.com/tyemirov/gix/cmd/cli/workflow"
+	"github.com/tyemirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/utils"
+	flagutils "github.com/tyemirov/gix/internal/utils/flags"
+	rootutils "github.com/tyemirov/gix/internal/utils/roots"
+	workflowpkg "github.com/tyemirov/gix/internal/workflow"
 )
 
 const (

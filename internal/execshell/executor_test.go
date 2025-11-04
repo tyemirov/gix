@@ -10,8 +10,8 @@ import (
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
 
-	"github.com/temirov/gix/internal/execshell"
-	"github.com/temirov/gix/internal/githubauth"
+	"github.com/tyemirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/githubauth"
 )
 
 const (

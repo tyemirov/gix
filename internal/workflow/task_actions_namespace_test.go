@@ -11,12 +11,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/temirov/gix/internal/audit"
-	"github.com/temirov/gix/internal/execshell"
-	"github.com/temirov/gix/internal/gitrepo"
-	repoerrors "github.com/temirov/gix/internal/repos/errors"
-	"github.com/temirov/gix/internal/repos/filesystem"
-	"github.com/temirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/internal/audit"
+	"github.com/tyemirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/gitrepo"
+	repoerrors "github.com/tyemirov/gix/internal/repos/errors"
+	"github.com/tyemirov/gix/internal/repos/filesystem"
+	"github.com/tyemirov/gix/internal/repos/shared"
 )
 
 const namespaceTestCommitMessage = "chore: rewrite namespace"

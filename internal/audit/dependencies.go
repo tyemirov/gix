@@ -1,6 +1,6 @@
 package audit
 
-import "github.com/temirov/gix/internal/repos/shared"
+import "github.com/tyemirov/gix/internal/repos/shared"
 
 // RepositoryDiscoverer finds git repositories rooted under the provided paths.
 type RepositoryDiscoverer = shared.RepositoryDiscoverer

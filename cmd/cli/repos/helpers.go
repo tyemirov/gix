@@ -4,9 +4,9 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
-	"github.com/temirov/gix/internal/repos/prompt"
-	"github.com/temirov/gix/internal/repos/shared"
-	rootutils "github.com/temirov/gix/internal/utils/roots"
+	"github.com/tyemirov/gix/internal/repos/prompt"
+	"github.com/tyemirov/gix/internal/repos/shared"
+	rootutils "github.com/tyemirov/gix/internal/utils/roots"
 )
 
 // LoggerProvider yields a zap logger for command execution.

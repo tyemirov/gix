@@ -9,10 +9,10 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/temirov/gix/internal/execshell"
-	"github.com/temirov/gix/internal/githubauth"
-	"github.com/temirov/gix/internal/githubcli"
-	"github.com/temirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/githubauth"
+	"github.com/tyemirov/gix/internal/githubcli"
+	"github.com/tyemirov/gix/internal/repos/shared"
 )
 
 const (

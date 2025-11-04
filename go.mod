@@ -1,4 +1,4 @@
-module github.com/temirov/gix
+module github.com/tyemirov/gix
 
 go 1.25
 

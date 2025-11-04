@@ -9,8 +9,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 
-	"github.com/temirov/gix/internal/repos/shared"
-	flagutils "github.com/temirov/gix/internal/utils/flags"
+	"github.com/tyemirov/gix/internal/repos/shared"
+	flagutils "github.com/tyemirov/gix/internal/utils/flags"
 )
 
 func TestRequireRepositoryRoots(t *testing.T) {

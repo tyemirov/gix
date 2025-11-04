@@ -1,7 +1,7 @@
 package workflow
 
 import (
-	"github.com/temirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/internal/repos/shared"
 )
 
 // ReportRepositoryEvent emits a structured event for the provided repository context.

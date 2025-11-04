@@ -3,8 +3,8 @@ package workflow
 import (
 	"testing"
 
-	"github.com/temirov/gix/internal/repos/shared"
-	workflowpkg "github.com/temirov/gix/internal/workflow"
+	"github.com/tyemirov/gix/internal/repos/shared"
+	workflowpkg "github.com/tyemirov/gix/internal/workflow"
 )
 
 func TestBuildWorkflowTasksHonorsDependencies(t *testing.T) {
