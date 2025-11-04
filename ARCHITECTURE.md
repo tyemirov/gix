@@ -87,19 +87,19 @@ common:
   log_format: structured
 
 operations:
-  - operation: audit
+  - command: ["audit"]
     with: &audit_defaults
       roots:
         - ~/Development
       debug: false
 
-  - operation: repo-packages-purge
+  - command: ["repo", "packages", "delete"]
     with: &packages_purge_defaults
       # package: my-image  # Optional override; defaults to the repository name
       roots:
         - ~/Development
 
-  - operation: repo-prs-purge
+  - command: ["repo", "prs", "delete"]
     with: &branch_cleanup_defaults
       remote: origin
       limit: 100
@@ -107,7 +107,7 @@ operations:
       roots:
         - ~/Development
 
-  - operation: repo-remote-update
+  - command: ["repo", "remote", "update-to-canonical"]
     with: &repo_remotes_defaults
       dry_run: false
       assume_yes: true
@@ -115,7 +115,7 @@ operations:
       roots:
         - ~/Development
 
-  - operation: repo-protocol-convert
+  - command: ["repo", "remote", "update-protocol"]
     with: &repo_protocol_defaults
       dry_run: false
       assume_yes: true
@@ -124,7 +124,7 @@ operations:
       from: https
       to: git
 
-  - operation: repo-folders-rename
+  - command: ["repo", "folder", "rename"]
     with: &repo_rename_defaults
       dry_run: false
       assume_yes: true
@@ -133,14 +133,14 @@ operations:
       roots:
         - ~/Development
 
-  - operation: workflow
+  - command: ["workflow"]
     with: &workflow_command_defaults
       roots:
         - ~/Development
       dry_run: false
       assume_yes: false
 
-  - operation: branch-default
+  - command: ["branch", "default"]
     with: &branch_default_defaults
       debug: false
       roots:
@@ -149,25 +149,25 @@ operations:
 workflow:
   - step:
       order: 1
-      operation: convert-protocol
+      command: ["repo", "remote", "update-protocol"]
       with:
         <<: *repo_protocol_defaults
 
   - step:
       order: 2
-      operation: update-canonical-remote
+      command: ["repo", "remote", "update-to-canonical"]
       with:
         <<: *repo_remotes_defaults
 
   - step:
       order: 3
-      operation: rename-directories
+      command: ["repo", "folder", "rename"]
       with:
         <<: *repo_rename_defaults
 
   - step:
       order: 4
-      operation: default-branch
+      command: ["branch", "default"]
       with:
         <<: *branch_default_defaults
         targets:
@@ -178,7 +178,7 @@ workflow:
 
   - step:
       order: 5
-      operation: audit-report
+      command: ["audit", "report"]
       with:
         output: ./reports/audit-latest.csv
 ```

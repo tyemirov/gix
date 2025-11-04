@@ -13,8 +13,8 @@ import (
 
 const (
 	configurationTestFileName               = "workflow.yaml"
-	configurationAnchoredSequenceCaseName   = "sequence with anchored operation defaults"
-	configurationInlineSequenceCaseName     = "sequence with inline operation"
+	configurationAnchoredSequenceCaseName   = "sequence with anchored command defaults"
+	configurationInlineSequenceCaseName     = "sequence with inline command"
 	configurationInvalidWorkflowMappingCase = "workflow mapping is rejected"
 	configurationOptionFromKey              = "from"
 	configurationOptionToKey                = "to"
@@ -23,7 +23,7 @@ const (
 	configurationOptionOwnerKey             = "owner"
 	anchoredWorkflowConfigurationTemplate   = `operations:
   - &protocol_conversion_step
-    operation: convert-protocol
+    command: ["repo", "remote", "update-protocol"]
     with:
       from: https
       to: ssh
@@ -32,7 +32,7 @@ workflow:
 `
 	inlineWorkflowConfiguration = `workflow:
   - step:
-      operation: update-canonical-remote
+      command: ["repo", "remote", "update-to-canonical"]
 `
 	invalidWorkflowMappingConfiguration = `workflow:
   steps: []
@@ -41,17 +41,17 @@ workflow:
 
 func TestBuildOperations(testInstance *testing.T) {
 	testCases := []struct {
-		name                  string
-		configuration         workflow.Configuration
-		expectedOperationType workflow.OperationType
-		assertFunc            func(*testing.T, *workflow.OperationNode)
+		name            string
+		configuration   workflow.Configuration
+		expectedCommand []string
+		assertFunc      func(*testing.T, *workflow.OperationNode)
 	}{
 		{
 			name: "builds protocol conversion operation",
 			configuration: workflow.Configuration{
 				Steps: []workflow.StepConfiguration{
 					{
-						Operation: workflow.OperationTypeProtocolConversion,
+						Command: []string{"repo", "remote", "update-protocol"},
 						Options: map[string]any{
 							configurationOptionFromKey: string(shared.RemoteProtocolHTTPS),
 							configurationOptionToKey:   string(shared.RemoteProtocolSSH),
@@ -59,7 +59,7 @@ func TestBuildOperations(testInstance *testing.T) {
 					},
 				},
 			},
-			expectedOperationType: workflow.OperationTypeProtocolConversion,
+			expectedCommand: []string{"repo", "remote", "update-protocol"},
 			assertFunc: func(testingInstance *testing.T, node *workflow.OperationNode) {
 				require.NotNil(testingInstance, node)
 				protocolConversionOperation, castSucceeded := node.Operation.(*workflow.ProtocolConversionOperation)
@@ -73,14 +73,14 @@ func TestBuildOperations(testInstance *testing.T) {
 			configuration: workflow.Configuration{
 				Steps: []workflow.StepConfiguration{
 					{
-						Operation: workflow.OperationTypeCanonicalRemote,
+						Command: []string{"repo", "remote", "update-to-canonical"},
 						Options: map[string]any{
 							configurationOptionOwnerKey: "  canonical  ",
 						},
 					},
 				},
 			},
-			expectedOperationType: workflow.OperationTypeCanonicalRemote,
+			expectedCommand: []string{"repo", "remote", "update-to-canonical"},
 			assertFunc: func(testingInstance *testing.T, node *workflow.OperationNode) {
 				require.NotNil(testingInstance, node)
 				canonicalOperation, castSucceeded := node.Operation.(*workflow.CanonicalRemoteOperation)
@@ -92,10 +92,12 @@ func TestBuildOperations(testInstance *testing.T) {
 			name: "builds rename operation with defaults",
 			configuration: workflow.Configuration{
 				Steps: []workflow.StepConfiguration{
-					{Operation: workflow.OperationTypeRenameDirectories},
+					{
+						Command: []string{"repo", "folder", "rename"},
+					},
 				},
 			},
-			expectedOperationType: workflow.OperationTypeRenameDirectories,
+			expectedCommand: []string{"repo", "folder", "rename"},
 			assertFunc: func(testingInstance *testing.T, node *workflow.OperationNode) {
 				require.NotNil(testingInstance, node)
 				renameOperation, castSucceeded := node.Operation.(*workflow.RenameOperation)
@@ -109,7 +111,7 @@ func TestBuildOperations(testInstance *testing.T) {
 			configuration: workflow.Configuration{
 				Steps: []workflow.StepConfiguration{
 					{
-						Operation: workflow.OperationTypeRenameDirectories,
+						Command: []string{"repo", "folder", "rename"},
 						Options: map[string]any{
 							configurationOptionRequireClean:    true,
 							configurationOptionIncludeOwnerKey: true,
@@ -117,7 +119,7 @@ func TestBuildOperations(testInstance *testing.T) {
 					},
 				},
 			},
-			expectedOperationType: workflow.OperationTypeRenameDirectories,
+			expectedCommand: []string{"repo", "folder", "rename"},
 			assertFunc: func(testingInstance *testing.T, node *workflow.OperationNode) {
 				require.NotNil(testingInstance, node)
 				renameOperation, castSucceeded := node.Operation.(*workflow.RenameOperation)
@@ -131,7 +133,7 @@ func TestBuildOperations(testInstance *testing.T) {
 			configuration: workflow.Configuration{
 				Steps: []workflow.StepConfiguration{
 					{
-						Operation: workflow.OperationTypeApplyTasks,
+						Command: []string{"repo", "tasks", "apply"},
 						Options: map[string]any{
 							"tasks": []any{
 								map[string]any{
@@ -148,7 +150,7 @@ func TestBuildOperations(testInstance *testing.T) {
 					},
 				},
 			},
-			expectedOperationType: workflow.OperationTypeApplyTasks,
+			expectedCommand: []string{"repo", "tasks", "apply"},
 			assertFunc: func(testingInstance *testing.T, node *workflow.OperationNode) {
 				require.NotNil(testingInstance, node)
 				require.IsType(testingInstance, &workflow.TaskOperation{}, node.Operation)
@@ -162,58 +164,62 @@ func TestBuildOperations(testInstance *testing.T) {
 			nodes, buildError := workflow.BuildOperations(testCase.configuration)
 			require.NoError(testingInstance, buildError)
 			require.Len(testingInstance, nodes, 1)
-			require.Equal(testingInstance, string(testCase.expectedOperationType), nodes[0].Operation.Name())
+			require.Equal(
+				testingInstance,
+				workflow.CommandPathKey(testCase.expectedCommand),
+				nodes[0].Operation.Name(),
+			)
 			testCase.assertFunc(testingInstance, nodes[0])
 		})
 	}
 }
 
-func TestBuildOperationsMissingOperation(testInstance *testing.T) {
+func TestBuildOperationsMissingCommand(testInstance *testing.T) {
 	configuration := workflow.Configuration{
 		Steps: []workflow.StepConfiguration{{}},
 	}
 
 	_, buildError := workflow.BuildOperations(configuration)
 	require.Error(testInstance, buildError)
-	require.ErrorContains(testInstance, buildError, "workflow step missing operation name")
+	require.ErrorContains(testInstance, buildError, "workflow step missing command path")
 }
 
 func TestBuildOperationsApplyTasksValidation(testInstance *testing.T) {
 	configuration := workflow.Configuration{
 		Steps: []workflow.StepConfiguration{
-			{Operation: workflow.OperationTypeApplyTasks},
+			{Command: []string{"repo", "tasks", "apply"}},
 		},
 	}
 
 	_, buildError := workflow.BuildOperations(configuration)
 	require.Error(testInstance, buildError)
-	require.ErrorContains(testInstance, buildError, "apply-tasks step requires at least one task entry")
+	require.ErrorContains(testInstance, buildError, "repo tasks apply step requires at least one task entry")
 }
 
 func TestLoadConfiguration(testInstance *testing.T) {
 	testCases := []struct {
-		name              string
-		contents          string
-		expectError       bool
-		expectedOperation workflow.OperationType
-		expectedOptions   map[string]any
+		name            string
+		contents        string
+		expectError     bool
+		expectedCommand []string
+		expectedOptions map[string]any
 	}{
 		{
-			name:              configurationAnchoredSequenceCaseName,
-			contents:          anchoredWorkflowConfigurationTemplate,
-			expectError:       false,
-			expectedOperation: workflow.OperationTypeProtocolConversion,
+			name:            configurationAnchoredSequenceCaseName,
+			contents:        anchoredWorkflowConfigurationTemplate,
+			expectError:     false,
+			expectedCommand: []string{"repo", "remote", "update-protocol"},
 			expectedOptions: map[string]any{
 				configurationOptionFromKey: "https",
 				configurationOptionToKey:   "ssh",
 			},
 		},
 		{
-			name:              configurationInlineSequenceCaseName,
-			contents:          inlineWorkflowConfiguration,
-			expectError:       false,
-			expectedOperation: workflow.OperationTypeCanonicalRemote,
-			expectedOptions:   nil,
+			name:            configurationInlineSequenceCaseName,
+			contents:        inlineWorkflowConfiguration,
+			expectError:     false,
+			expectedCommand: []string{"repo", "remote", "update-to-canonical"},
+			expectedOptions: nil,
 		},
 		{
 			name:        configurationInvalidWorkflowMappingCase,
@@ -237,18 +243,18 @@ func TestLoadConfiguration(testInstance *testing.T) {
 
 			require.NoError(testingInstance, loadError)
 			require.Len(testingInstance, configuration.Steps, 1)
-			require.Equal(testingInstance, testCase.expectedOperation, configuration.Steps[0].Operation)
+			require.Equal(testingInstance, testCase.expectedCommand, configuration.Steps[0].Command)
 			require.Equal(testingInstance, testCase.expectedOptions, configuration.Steps[0].Options)
 		})
 	}
 }
 
-func TestLoadConfigurationMissingOperation(testInstance *testing.T) {
+func TestLoadConfigurationMissingCommand(testInstance *testing.T) {
 	tempDirectory := testInstance.TempDir()
 	configurationPath := filepath.Join(tempDirectory, configurationTestFileName)
 	require.NoError(testInstance, os.WriteFile(configurationPath, []byte("workflow:\n  - {}\n"), 0o644))
 
 	_, loadError := workflow.LoadConfiguration(configurationPath)
 	require.Error(testInstance, loadError)
-	require.ErrorContains(testInstance, loadError, "workflow step missing operation name")
+	require.ErrorContains(testInstance, loadError, "workflow step missing command path")
 }

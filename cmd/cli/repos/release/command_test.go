@@ -100,3 +100,64 @@ func TestCommandRunsAcrossRoots(t *testing.T) {
 	require.False(t, runner.runtimeOptions.DryRun)
 	require.False(t, runner.runtimeOptions.AssumeYes)
 }
+
+func TestRetagCommandRequiresMappings(t *testing.T) {
+	builder := RetagCommandBuilder{
+		LoggerProvider: func() *zap.Logger { return zap.NewNop() },
+		ConfigurationProvider: func() CommandConfiguration {
+			return CommandConfiguration{}
+		},
+		GitExecutor: &stubGitExecutor{},
+	}
+	command, err := builder.Build()
+	require.NoError(t, err)
+	flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Enabled: true})
+	require.Error(t, command.RunE(command, nil))
+}
+
+func TestRetagCommandBuildsMappings(t *testing.T) {
+	root := t.TempDir()
+	runner := &recordingTaskRunner{}
+	builder := RetagCommandBuilder{
+		LoggerProvider: func() *zap.Logger { return zap.NewNop() },
+		ConfigurationProvider: func() CommandConfiguration {
+			return CommandConfiguration{RepositoryRoots: []string{root}, RemoteName: "origin", Message: "Retag {{tag}} -> {{target}}"}
+		},
+		GitExecutor: &stubGitExecutor{},
+		TaskRunnerFactory: func(workflow.Dependencies) repocli.TaskRunnerExecutor {
+			return runner
+		},
+	}
+	command, err := builder.Build()
+	require.NoError(t, err)
+	flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Enabled: true})
+	flagutils.BindExecutionFlags(command, flagutils.ExecutionDefaults{}, flagutils.ExecutionFlagDefinitions{
+		DryRun:    flagutils.ExecutionFlagDefinition{Name: flagutils.DryRunFlagName, Usage: flagutils.DryRunFlagUsage, Enabled: true},
+		AssumeYes: flagutils.ExecutionFlagDefinition{Name: flagutils.AssumeYesFlagName, Usage: flagutils.AssumeYesFlagUsage, Shorthand: flagutils.AssumeYesFlagShorthand, Enabled: true},
+	})
+
+	args := []string{
+		"--" + retagMappingFlagName, "v1.0.0=main",
+		"--" + retagMappingFlagName, "v1.1.0=feature",
+	}
+	command.SetArgs(args)
+	command.SetContext(context.Background())
+	require.NoError(t, command.Execute())
+
+	require.Equal(t, []string{root}, runner.roots)
+	require.Len(t, runner.definitions, 1)
+	actionDefinitions := runner.definitions[0].Actions
+	require.Len(t, actionDefinitions, 1)
+	action := actionDefinitions[0]
+	require.Equal(t, "repo.release.retag", action.Type)
+
+	mappingValue, ok := action.Options["mappings"].([]any)
+	require.True(t, ok)
+	require.Len(t, mappingValue, 2)
+	firstMapping, ok := mappingValue[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "v1.0.0", firstMapping["tag"])
+	require.Equal(t, "main", firstMapping["target"])
+	require.Equal(t, "Retag v1.0.0 -> main", firstMapping["message"])
+	require.Equal(t, "origin", action.Options["remote"])
+}

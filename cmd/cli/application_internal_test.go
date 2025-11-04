@@ -17,13 +17,13 @@ import (
 func TestApplicationCommonDefaultsApplied(t *testing.T) {
 	operations, buildError := newOperationConfigurations([]ApplicationOperationConfiguration{
 		{
-			Name: reposRenameOperationNameConstant,
+			Command: []string{"repo", "folder", "rename"},
 			Options: map[string]any{
 				"roots": []string{"/tmp/rename"},
 			},
 		},
 		{
-			Name: workflowCommandOperationNameConstant,
+			Command: []string{"workflow"},
 			Options: map[string]any{
 				"roots": []string{"/tmp/workflow"},
 			},
@@ -58,7 +58,7 @@ func TestApplicationCommonDefaultsApplied(t *testing.T) {
 func TestApplicationOperationOverridesTakePriority(t *testing.T) {
 	operations, buildError := newOperationConfigurations([]ApplicationOperationConfiguration{
 		{
-			Name: reposRenameOperationNameConstant,
+			Command: []string{"repo", "folder", "rename"},
 			Options: map[string]any{
 				"dry_run":       false,
 				"assume_yes":    false,
@@ -68,7 +68,7 @@ func TestApplicationOperationOverridesTakePriority(t *testing.T) {
 			},
 		},
 		{
-			Name: workflowCommandOperationNameConstant,
+			Command: []string{"workflow"},
 			Options: map[string]any{
 				"dry_run":       false,
 				"assume_yes":    false,
@@ -382,7 +382,7 @@ func TestInitializeConfigurationMergesEmbeddedRepoReleaseDefaults(t *testing.T) 
   log_level: info
   log_format: console
 operations:
-  - operation: repo-folders-rename
+  - command: ["repo", "folder", "rename"]
     with:
       roots:
         - ./custom

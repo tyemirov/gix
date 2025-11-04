@@ -14,13 +14,14 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - Desired: Implement a repo level workflow that would allow distribution of licensing using built in capabilities
   - Resolution: Added `gix repo license apply` to distribute license files via workflow tasks with configuration defaults, README docs, and regression coverage.
 
-- [ ] [GX-23] Git retag (prototype under tools/git_retag)
-  - Status: Unresolved (Not ready)
+- [x] [GX-23] Git retag (prototype under tools/git_retag)
+  - Status: Resolved
   - Category: Feature
   - Context: Prototype exists; not yet slated.
   - Desired: Implement a repo level workflow that would allow fixing incorrect tagging, including history, into proper sequence
+  - Resolution: Added `gix repo release retag` and `repo.release.retag` workflow action to remap tags to new commits with force-push, including regression coverage and documentation.
 
-- [ ] [GX-104] Add convenience CLI: `gix repo files add` mapping to apply-tasks
+- [x] [GX-104] Add convenience CLI: `gix repo files add` mapping to apply-tasks
   - Status: Resolved
   - Category: Feature
   - Context: Frequently need to drop a standard file (e.g., POLICY.md) into many repos without crafting a workflow file.
@@ -28,8 +29,10 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
     - Maps to an `apply-tasks` task that writes the file, commits with a configurable message (default `docs: add <path>`), and optionally pushes/opens a PR.
     - Honors `--dry-run`, `-y/--yes`, shared `--remote`, and root discovery flags consistent with other repo commands.
   - Notes: Lives under existing `repo files` namespace alongside `replace`.
+  - Resolution: Added `gix repo files add` command and workflow support to seed files with configurable content, permissions, branch/push settings, plus docs and regression tests.
 
-- [ ] [GX-105] Refactor the DSL for the workflow and make use of commands and subcommands DSL instead of `operation: rename-directories`. Document the changes.
+- [x] [GX-105] Refactor the DSL for the workflow and make use of commands and subcommands DSL instead of `operation: rename-directories`. Document the changes.
+  - Resolution: Swapped workflow and configuration schemas to `command` path arrays, updated CLI defaults, docs, and integration/unit tests to the new command-based registry, and introduced shared command key helpers.
 
 ## Improvements (200–299)
 
@@ -301,7 +304,8 @@ apply-tasks: failed to create tag "v0.2.0-rc.4": git command exited with code 12
 What's interesting, teh command actually worked, and I can see the tag I wanted both locally and remotely. So the error is especially infuriating as it's a complete bogus.
 - Resolution: Release tag creation/push failures now emit repository-scoped operation errors that include the git command, exit code, and sanitized stderr, with regression tests covering annotate and push scenarios.
 
-- [ ] [GX-318] The message "namespace rewrite skipped: files ignored by git" doesnt make much sense. Must be a bug. Investigate the real reason the operation hasn't been performed.
+- [x] [GX-318] The message "namespace rewrite skipped: files ignored by git" doesnt make much sense. Must be a bug. Investigate the real reason the operation hasn't been performed.
+  - Resolution: Namespace rewrite now distinguishes between "no references" and "all matches ignored"; skips without matches report `namespace rewrite skipped: no references to <prefix>` while gitignored-only matches keep the git warning. Updated unit tests cover both skip paths.
 ```
 -- repo: tyemirov/ctx ----------------------------------------------------------
 22:34:53 INFO  REMOTE_SKIP        tyemirov/ctx                       already canonical                        | event=REMOTE_SKIP path=/tmp/repos/ctx reason=already_canonical repo=tyemirov/ctx
@@ -309,6 +313,41 @@ What's interesting, teh command actually worked, and I can see the tag I wanted 
 22:35:01 INFO  REPO_SWITCHED      tyemirov/ctx                       → master                                 | branch=master created=false event=REPO_SWITCHED path=/tmp/repos/tyemirov/ctx repo=tyemirov/ctx
 22:35:01 INFO  NAMESPACE_NOOP     tyemirov/ctx                       namespace rewrite skipped: files ignored by git | event=NAMESPACE_NOOP path=/tmp/repos/tyemirov/ctx reason=namespace_rewrite_skipped:_files_ignored_by_git repo=tyemirov/ctx
 ```
+- [x] [GX-319] `gix  repo prs delete --yes yes` results in panic. Find the cause of the bug and fix it
+```
+12:27:03 tyemirov@Vadyms-MacBook-Pro:~/Development/MarcoPoloResearchLab/mpr-ui - [master] $ gix  repo prs delete --yes yes
+panic: runtime error: invalid memory address or nil pointer dereference
+[signal SIGSEGV: segmentation violation code=0x1 addr=0x0 pc=0x10355eb6]
+
+goroutine 1 [running]:
+github.com/temirov/gix/internal/githubcli.(*Client).ResolveRepoMetadata(0x0, {0x10866d78, 0xc0002eacf0}, {0xc000396000?, 0x2?})
+        /Users/tyemirov/go/pkg/mod/github.com/temirov/gix@v0.2.0-rc.5/internal/githubcli/client.go:244 +0x156
+github.com/temirov/gix/internal/audit.(*Service).inspectRepository(0xc00013aae0, {0x10866d78, 0xc0002eacf0}, {0xc0001334c0, 0x37}, {_, _})
+        /Users/tyemirov/go/pkg/mod/github.com/temirov/gix@v0.2.0-rc.5/internal/audit/service.go:261 +0x3df
+github.com/temirov/gix/internal/audit.(*Service).DiscoverInspections(0xc00013aae0, {0x10866d78, 0xc0002eacf0}, {0xc0002e7950, 0x1, 0x1}, 0x0, 0x0, {0x105aeb2a, 0x4})
+        /Users/tyemirov/go/pkg/mod/github.com/temirov/gix@v0.2.0-rc.5/internal/audit/service.go:121 +0x837
+github.com/temirov/gix/internal/workflow.(*Executor).Execute(0xc000222e10, {0x10866d78, 0xc0002eacf0}, {0xc0002e78f0, 0x1, 0x1}, {0x0, 0x1, 0x0, 0x0, ...})
+        /Users/tyemirov/go/pkg/mod/github.com/temirov/gix@v0.2.0-rc.5/internal/workflow/executor.go:136 +0x2fe
+github.com/temirov/gix/internal/workflow.TaskRunner.Run({{0xc00027f180, {0x10860180, 0x10d9eb80}, {0x108628d0, 0xc0002dea20}, 0xc0002e7900, 0x0, {0x10869758, 0x10d9eb80}, {0x1085f2e0, ...}, ...}}, ...)
+        /Users/tyemirov/go/pkg/mod/github.com/temirov/gix@v0.2.0-rc.5/internal/workflow/task_runner.go:26 +0x179
+github.com/temirov/gix/internal/branches.taskRunnerAdapter.Run(...)
+        /Users/tyemirov/go/pkg/mod/github.com/temirov/gix@v0.2.0-rc.5/internal/branches/command.go:63
+github.com/temirov/gix/internal/branches.(*CommandBuilder).run(0xc000254460, 0xc0002c0608, {0xc0002c24f0?, 0x0?, 0x0?})
+        /Users/tyemirov/go/pkg/mod/github.com/temirov/gix@v0.2.0-rc.5/internal/branches/command.go:149 +0x8d1
+github.com/spf13/cobra.(*Command).execute(0xc0002c0608, {0xc0002c24d0, 0x1, 0x1})
+        /Users/tyemirov/go/pkg/mod/github.com/spf13/cobra@v1.10.1/command.go:1015 +0xb02
+github.com/spf13/cobra.(*Command).ExecuteC(0xc000181508)
+        /Users/tyemirov/go/pkg/mod/github.com/spf13/cobra@v1.10.1/command.go:1148 +0x465
+github.com/spf13/cobra.(*Command).Execute(...)
+        /Users/tyemirov/go/pkg/mod/github.com/spf13/cobra@v1.10.1/command.go:1071
+github.com/temirov/gix/cmd/cli.(*Application).Execute(0xc000182690)
+        /Users/tyemirov/go/pkg/mod/github.com/temirov/gix@v0.2.0-rc.5/cmd/cli/application.go:814 +0x9f
+github.com/temirov/gix/cmd/cli.Execute()
+        /Users/tyemirov/go/pkg/mod/github.com/temirov/gix@v0.2.0-rc.5/cmd/cli/application.go:823 +0x18
+main.main()
+        /Users/tyemirov/go/pkg/mod/github.com/temirov/gix@v0.2.0-rc.5/main.go:16 +0x13
+```
+  - Resolution: Workflow executor now skips GitHub metadata lookups when disabled, avoiding nil-client panics, and new CLI tests prove `--yes yes` yields the expected positional-roots error without crashing.
 
 ## Maintenance (400–499)
 

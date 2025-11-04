@@ -6,30 +6,30 @@ common:
   require_clean: false
 
 operations:
-  - operation: audit
+  - command: ["audit"]
     with:
       roots:
         - .
-  - operation: repo-packages-purge
+  - command: ["repo", "packages", "delete"]
     with:
       roots:
         - .
-  - operation: repo-prs-purge
+  - command: ["repo", "prs", "delete"]
     with:
       remote: origin
       limit: 100
       roots:
         - .
-  - operation: repo-remote-update
+  - command: ["repo", "remote", "update-to-canonical"]
     with:
       roots:
         - .
       owner: ""
-  - operation: repo-protocol-convert
+  - command: ["repo", "remote", "update-protocol"]
     with:
       roots:
         - .
-  - operation: repo-history-remove
+  - command: ["repo", "rm"]
     with:
       roots:
         - .
@@ -37,35 +37,35 @@ operations:
       push: true
       restore: true
       push_missing: false
-  - operation: repo-folders-rename
+  - command: ["repo", "folder", "rename"]
     with:
       roots:
         - .
       include_owner: false
-  - operation: repo-release
+  - command: ["repo", "release"]
     with:
       roots:
         - .
       remote: origin
-  - operation: workflow
+  - command: ["workflow"]
     with:
       roots:
         - .
-  - operation: branch-refresh
+  - command: ["branch", "refresh"]
     with:
       roots:
         - .
-  - operation: branch-default
+  - command: ["branch", "default"]
     with:
       roots:
         - .
-  - operation: branch-cd
+  - command: ["branch", "cd"]
     with:
       roots:
         - .
       remote: origin
       branch: master
-  - operation: commit-message
+  - command: ["branch", "commit", "message"]
     with:
       roots:
         - .
@@ -75,7 +75,7 @@ operations:
       max_completion_tokens: 256
       temperature: 0.2
       timeout_seconds: 60
-  - operation: changelog-message
+  - command: ["repo", "changelog", "message"]
     with:
       roots:
         - .

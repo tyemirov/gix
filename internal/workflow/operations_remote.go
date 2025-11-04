@@ -19,9 +19,9 @@ type CanonicalRemoteOperation struct {
 	OwnerConstraint string
 }
 
-// Name identifies the operation type.
+// Name identifies the workflow command handled by this operation.
 func (operation *CanonicalRemoteOperation) Name() string {
-	return string(OperationTypeCanonicalRemote)
+	return commandRepoRemoteCanonicalKey
 }
 
 // Execute applies canonical remote updates using inspection metadata.

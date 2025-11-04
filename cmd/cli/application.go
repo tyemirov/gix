@@ -34,6 +34,7 @@ import (
 	"github.com/temirov/gix/internal/utils"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
 	"github.com/temirov/gix/internal/version"
+	workflowpkg "github.com/temirov/gix/internal/workflow"
 )
 
 const (
@@ -96,22 +97,23 @@ const (
 	userConfigurationDirectoryNameConstant                           = ".gix"
 	configurationSearchPathEnvironmentVariableConstant               = "GIX_CONFIG_SEARCH_PATH"
 	auditOperationNameConstant                                       = "audit"
-	packagesPurgeOperationNameConstant                               = "repo-packages-purge"
-	branchCleanupOperationNameConstant                               = "repo-prs-purge"
-	reposRenameOperationNameConstant                                 = "repo-folders-rename"
-	reposRemotesOperationNameConstant                                = "repo-remote-update"
-	reposProtocolOperationNameConstant                               = "repo-protocol-convert"
-	repoReleaseOperationNameConstant                                 = "repo-release"
-	repoHistoryOperationNameConstant                                 = "repo-history-remove"
-	repoFilesReplaceOperationNameConstant                            = "repo-files-replace"
-	repoLicenseOperationNameConstant                                 = "repo-license-apply"
-	repoNamespaceRewriteOperationNameConstant                        = "repo-namespace-rewrite"
+	packagesPurgeOperationNameConstant                               = "repo packages delete"
+	branchCleanupOperationNameConstant                               = "repo prs delete"
+	reposRenameOperationNameConstant                                 = "repo folder rename"
+	reposRemotesOperationNameConstant                                = "repo remote update-to-canonical"
+	reposProtocolOperationNameConstant                               = "repo remote update-protocol"
+	repoReleaseOperationNameConstant                                 = "repo release"
+	repoHistoryOperationNameConstant                                 = "repo rm"
+	repoFilesReplaceOperationNameConstant                            = "repo files replace"
+	repoFilesAddOperationNameConstant                                = "repo files add"
+	repoLicenseOperationNameConstant                                 = "repo license apply"
+	repoNamespaceRewriteOperationNameConstant                        = "repo namespace rewrite"
 	workflowCommandOperationNameConstant                             = "workflow"
-	branchRefreshOperationNameConstant                               = "branch-refresh"
-	branchDefaultOperationNameConstant                               = "branch-default"
-	branchChangeOperationNameConstant                                = "branch-cd"
-	commitMessageOperationNameConstant                               = "commit-message"
-	changelogMessageOperationNameConstant                            = "changelog-message"
+	branchRefreshOperationNameConstant                               = "branch refresh"
+	branchDefaultOperationNameConstant                               = "branch default"
+	branchChangeOperationNameConstant                                = "branch cd"
+	commitMessageOperationNameConstant                               = "branch commit message"
+	changelogMessageOperationNameConstant                            = "repo changelog message"
 	auditCommandAliasConstant                                        = "a"
 	workflowCommandAliasConstant                                     = "w"
 	repoNamespaceUseNameConstant                                     = "repo"
@@ -140,6 +142,9 @@ const (
 	repoFilesNamespaceShortDescriptionConstant                       = "Repository file commands"
 	repoLicenseNamespaceUseNameConstant                              = "license"
 	repoLicenseNamespaceShortDescriptionConstant                     = "License distribution commands"
+	filesAddCommandUseNameConstant                                   = "add"
+	filesAddCommandAliasConstant                                     = "seed"
+	filesAddCommandLongDescriptionConstant                           = "repo files add writes or seeds files across repositories."
 	repoNamespaceRewriteNamespaceUseNameConstant                     = "namespace"
 	repoNamespaceRewriteNamespaceShortDescriptionConstant            = "Namespace rewrite commands"
 	namespaceRewriteCommandUseNameConstant                           = "rewrite"
@@ -155,6 +160,9 @@ const (
 	repoReleaseCommandUsageTemplateConstant                          = repoReleaseCommandUseNameConstant + " <tag>"
 	repoReleaseCommandAliasConstant                                  = "rel"
 	repoReleaseCommandLongDescriptionConstant                        = "repo release annotates the provided tag (default message 'Release <tag>') and pushes it to the configured remote. Provide the tag as the first argument before any optional repository roots or flags."
+	releaseRetagCommandUseNameConstant                               = "retag"
+	releaseRetagCommandAliasConstant                                 = "fix"
+	releaseRetagCommandLongDescriptionConstant                       = "Retag existing annotated tags to new commits."
 	removeCommandUseNameConstant                                     = "rm"
 	removeCommandAliasConstant                                       = "purge"
 	removeCommandShortDescriptionConstant                            = "Rewrite history to delete selected paths"
@@ -199,11 +207,11 @@ const (
 	versionCommandShortDescriptionConstant                           = "Print the gix version"
 	versionCommandLongDescriptionConstant                            = "version prints the current gix release identifier."
 	operationDecodeErrorMessageConstant                              = "unable to decode operation defaults"
-	operationNameLogFieldConstant                                    = "operation"
+	operationNameLogFieldConstant                                    = "command"
 	operationErrorLogFieldConstant                                   = "error"
-	duplicateOperationConfigurationTemplateConstant                  = "duplicate configuration for operation %q"
-	missingOperationConfigurationTemplateConstant                    = "missing configuration for operation %q"
-	missingOperationConfigurationSkippedMessageConstant              = "operation configuration missing; continuing without defaults"
+	duplicateOperationConfigurationTemplateConstant                  = "duplicate configuration for command %q"
+	missingOperationConfigurationTemplateConstant                    = "missing configuration for command %q"
+	missingOperationConfigurationSkippedMessageConstant              = "command configuration missing; continuing without defaults"
 	unknownCommandNamePlaceholderConstant                            = "unknown"
 	dryRunOptionKeyConstant                                          = "dry_run"
 	assumeYesOptionKeyConstant                                       = "assume_yes"
@@ -226,8 +234,10 @@ var commandOperationRequirements = map[string][]string{
 	refreshCommandUseNameConstant:                                             {branchRefreshOperationNameConstant},
 	branchNamespaceUseNameConstant + "/" + branchChangeCommandUseNameConstant: {branchChangeOperationNameConstant},
 	repoNamespaceUseNameConstant + "/" + repoReleaseCommandUseNameConstant:    {repoReleaseOperationNameConstant},
-	repoNamespaceUseNameConstant + "/" + removeCommandUseNameConstant:         {repoHistoryOperationNameConstant},
+	repoNamespaceUseNameConstant + "/" + repoReleaseCommandUseNameConstant + "/" + releaseRetagCommandUseNameConstant:                {repoReleaseOperationNameConstant},
+	repoNamespaceUseNameConstant + "/" + removeCommandUseNameConstant:                                                                {repoHistoryOperationNameConstant},
 	repoNamespaceUseNameConstant + "/" + repoFilesNamespaceUseNameConstant + "/" + filesReplaceCommandUseNameConstant:                {repoFilesReplaceOperationNameConstant},
+	repoNamespaceUseNameConstant + "/" + repoFilesNamespaceUseNameConstant + "/" + filesAddCommandUseNameConstant:                    {repoFilesAddOperationNameConstant},
 	repoNamespaceUseNameConstant + "/" + repoNamespaceRewriteNamespaceUseNameConstant + "/" + namespaceRewriteCommandUseNameConstant: {repoNamespaceRewriteOperationNameConstant},
 	repoNamespaceUseNameConstant + "/" + repoLicenseNamespaceUseNameConstant + "/" + licenseApplyCommandUseNameConstant:              {repoLicenseOperationNameConstant},
 	renameCommandUseNameConstant:         {reposRenameOperationNameConstant},
@@ -236,6 +246,8 @@ var commandOperationRequirements = map[string][]string{
 	reposRenameOperationNameConstant:     {reposRenameOperationNameConstant},
 	repoLicenseOperationNameConstant:     {repoLicenseOperationNameConstant},
 	licenseApplyCommandUseNameConstant:   {repoLicenseOperationNameConstant},
+	repoFilesAddOperationNameConstant:    {repoFilesAddOperationNameConstant},
+	filesAddCommandUseNameConstant:       {repoFilesAddOperationNameConstant},
 	updateProtocolCommandUseNameConstant: {reposProtocolOperationNameConstant},
 	updateRemoteCanonicalUseNameConstant: {reposRemotesOperationNameConstant},
 	workflowCommandOperationNameConstant: {workflowCommandOperationNameConstant},
@@ -284,7 +296,7 @@ type ApplicationCommonConfiguration struct {
 
 // ApplicationOperationConfiguration captures reusable operation defaults from the configuration file.
 type ApplicationOperationConfiguration struct {
-	Name    string         `mapstructure:"operation"`
+	Command []string       `mapstructure:"command"`
 	Options map[string]any `mapstructure:"with"`
 }
 
@@ -323,7 +335,7 @@ func newOperationConfigurations(definitions []ApplicationOperationConfiguration)
 	entries := make(map[string]map[string]any)
 	seenOperations := make(map[string]struct{})
 	for definitionIndex := range definitions {
-		normalizedName := normalizeOperationName(definitions[definitionIndex].Name)
+		normalizedName := workflowpkg.CommandPathKey(definitions[definitionIndex].Command)
 		if len(normalizedName) == 0 {
 			continue
 		}
@@ -621,6 +633,14 @@ func NewApplication() *Application {
 		ConfigurationProvider:        application.repoReleaseConfiguration,
 	}
 
+	retagBuilder := releasecmd.RetagCommandBuilder{
+		LoggerProvider: func() *zap.Logger {
+			return application.logger
+		},
+		HumanReadableLoggingProvider: application.humanReadableLoggingEnabled,
+		ConfigurationProvider:        application.repoReleaseConfiguration,
+	}
+
 	renameBuilder := repos.RenameCommandBuilder{
 		LoggerProvider: func() *zap.Logger {
 			return application.logger
@@ -659,6 +679,14 @@ func NewApplication() *Application {
 		},
 		HumanReadableLoggingProvider: application.humanReadableLoggingEnabled,
 		ConfigurationProvider:        application.reposReplaceConfiguration,
+	}
+
+	filesAddBuilder := repos.FilesAddCommandBuilder{
+		LoggerProvider: func() *zap.Logger {
+			return application.logger
+		},
+		HumanReadableLoggingProvider: application.humanReadableLoggingEnabled,
+		ConfigurationProvider:        application.reposFilesAddConfiguration,
 	}
 
 	namespaceBuilder := repos.NamespaceCommandBuilder{
@@ -767,6 +795,10 @@ func NewApplication() *Application {
 		configureCommandMetadata(filesReplaceCommand, filesReplaceCommandUseNameConstant, filesReplaceCommand.Short, filesReplaceCommandLongDescriptionConstant, filesReplaceCommandAliasConstant)
 		repoFilesCommand.AddCommand(filesReplaceCommand)
 	}
+	if filesAddCommand, filesAddBuildError := filesAddBuilder.Build(); filesAddBuildError == nil {
+		configureCommandMetadata(filesAddCommand, filesAddCommandUseNameConstant, filesAddCommand.Short, filesAddCommandLongDescriptionConstant, filesAddCommandAliasConstant)
+		repoFilesCommand.AddCommand(filesAddCommand)
+	}
 	if len(repoFilesCommand.Commands()) > 0 {
 		repoNamespaceCommand.AddCommand(repoFilesCommand)
 	}
@@ -797,6 +829,10 @@ func NewApplication() *Application {
 	if releaseCommand, releaseBuildError := releaseBuilder.Build(); releaseBuildError == nil {
 		configureCommandMetadata(releaseCommand, repoReleaseCommandUsageTemplateConstant, releaseCommand.Short, repoReleaseCommandLongDescriptionConstant, repoReleaseCommandAliasConstant)
 		repoNamespaceCommand.AddCommand(releaseCommand)
+	}
+	if retagCommand, retagBuildError := retagBuilder.Build(); retagBuildError == nil {
+		configureCommandMetadata(retagCommand, releaseRetagCommandUseNameConstant, retagCommand.Short, releaseRetagCommandLongDescriptionConstant, releaseRetagCommandAliasConstant)
+		repoNamespaceCommand.AddCommand(retagCommand)
 	}
 
 	if changelogNamespaceCommand != nil {
@@ -1262,6 +1298,21 @@ func (application *Application) reposLicenseConfiguration() repos.LicenseConfigu
 	}
 	if !optionsExist || !optionExists(options, requireCleanOptionKeyConstant) {
 		configuration.RequireClean = application.configuration.Common.RequireClean
+	}
+
+	return configuration.Sanitize()
+}
+
+func (application *Application) reposFilesAddConfiguration() repos.AddConfiguration {
+	configuration := repos.DefaultToolsConfiguration().Add
+	application.decodeOperationConfiguration(repoFilesAddOperationNameConstant, &configuration)
+
+	options, optionsExist := application.lookupOperationOptions(repoFilesAddOperationNameConstant)
+	if !optionsExist || !optionExists(options, dryRunOptionKeyConstant) {
+		configuration.DryRun = application.configuration.Common.DryRun
+	}
+	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
+		configuration.AssumeYes = application.configuration.Common.AssumeYes
 	}
 
 	return configuration.Sanitize()

@@ -103,6 +103,33 @@ func TestExecutorDeduplicatesRelativeRoots(testInstance *testing.T) {
 	require.Equal(testInstance, 1, occurrences)
 }
 
+func TestExecutorSkipsMetadataWhenGitHubClientMissing(testInstance *testing.T) {
+	tempDirectory := testInstance.TempDir()
+	repositoryPath := filepath.Join(tempDirectory, "sample")
+	require.NoError(testInstance, os.Mkdir(repositoryPath, 0o755))
+
+	gitExecutor := newStubWorkflowGitExecutor()
+	repositoryManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(testInstance, managerError)
+
+	dependencies := Dependencies{
+		RepositoryDiscoverer: executorStubRepositoryDiscoverer{repositories: []string{repositoryPath}},
+		GitExecutor:          gitExecutor,
+		RepositoryManager:    repositoryManager,
+		Output:               &bytes.Buffer{},
+		Errors:               &bytes.Buffer{},
+	}
+
+	executor := NewExecutor([]Operation{repoSwitchOperation{}}, dependencies)
+
+	executionError := executor.Execute(
+		context.Background(),
+		[]string{repositoryPath},
+		RuntimeOptions{SkipRepositoryMetadata: true},
+	)
+	require.NoError(testInstance, executionError)
+}
+
 type executorStubRepositoryDiscoverer struct {
 	repositories []string
 }
