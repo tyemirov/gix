@@ -210,7 +210,8 @@ workflow operation apply-tasks failed: DEFAULT-BRANCH-UPDATE repository=MarcoPol
   - Notes: Observed during the owner-renaming workflow run on `/tmp/repos`.
   - Resolution: Namespace workflow templates now emit actual newline characters, regression tests enforce the absence of literal `\n`, and push/skip outputs render as separate lines.
 
-- [ ] [GX-312] When replacing the namespace, include tests. E.g. The dependency has been switched to `github.com/tyemirov/GAuss`, but the test suites still import `github.com/temirov/GAuss` (see `cmd/server/auth_redirect_test.go`, `internal/httpapi/auth_test.go`, `internal/httpapi/dashboard_integration_test.go`). Once the upstream module renames its `module` path, these imports will no longer resolve and `go test ./...` fails at compile time with “cannot find module providing github.com/temirov/GAuss/...”. The tests need their imports rewritten to the new namespace to keep the build green.
+- [x] [GX-312] When replacing the namespace, include tests. E.g. The dependency has been switched to `github.com/tyemirov/GAuss`, but the test suites still import `github.com/temirov/GAuss` (see `cmd/server/auth_redirect_test.go`, `internal/httpapi/auth_test.go`, `internal/httpapi/dashboard_integration_test.go`). Once the upstream module renames its `module` path, these imports will no longer resolve and `go test ./...` fails at compile time with “cannot find module providing github.com/temirov/GAuss/...”. The tests need their imports rewritten to the new namespace to keep the build green.
+  - Resolution: Namespace rewrite now scans Go test files, rewrites imports, stages them, and regression coverage locks `_test.go` handling.
 
 - [x] [GX-313] Repository discovery should skip nested repositories ignored by parent `.gitignore`
   - Category: BugFix
@@ -218,14 +219,69 @@ workflow operation apply-tasks failed: DEFAULT-BRANCH-UPDATE repository=MarcoPol
   - Desired: Leverage `git check-ignore` to filter out ignored nested repositories before executing operations across commands and workflows.
   - Resolution: Added shared gitignore helpers, wired audit discovery to remove gitignored children, updated namespace rewrite to reuse the helper, and refreshed unit/integration coverage so workflows skip ignored repositories.
 
-- [ ] [GX-314] The changelog command generates the message twice
+- [x] [GX-314] The changelog command generates the message twice
+  - Resolution: Added workflow-level repository deduplication so changelog actions run once per path and added regression coverage preventing duplicate CLI output.
 
-- [ ] [GX-315] Invesigate the bug and write a plan for fixing it:
+- [x] [GX-315] Invesigate the bug and write a plan for fixing it:
 ```
 -- repo: tyemirov/product_page_analysis.py -------------------------------------
 13:39:03 INFO  REMOTE_SKIP        tyemirov/product_page_analysis.py  already canonical                        | event=REMOTE_SKIP path=/tmp/repos/Poodle/product_page_analysis.py reason=already_canonical repo=tyemirov/product_page_analysis.py
 13:39:04 INFO  REPO_FOLDER_RENAME                                    /tmp/repos/Poodle/product_page_analysis.py → /tmp/repos/Poodle/tyemirov/product_page_analysis.py | event=REPO_FOLDER_RENAME new_path=/tmp/repos/Poodle/tyemirov/product_page_analysis.py old_path=/tmp/repos/Poodle/product_page_analysis.py path=/tmp/repos/Poodle/product_page_analysis.py
 apply-tasks: failed to switch to branch "master": fatal: invalid reference: master: git command exited with code 128
+```
+  - Resolution: Workflow task execution now verifies the start point branch before checkout, logs a warning when missing, and falls back to the current HEAD so namespace workflows continue on repositories without a `master` branch.
+
+- [x] [GX-316] The stats and logs show switching repo twice. There is only one repo to switch. Fix the bug and ensure we don't have duplicate logic of identifying repos.
+  - Resolution: Workflow executor now canonicalizes repository paths from roots so relative entries (like `.`) cannot duplicate the same repository, and branch logs emit a single `REPO_SWITCHED` per repo.
+```
+14:32:50 tyemirov@computercat:~/Development/Research/TAuth/tools/mpr-ui [improvement/TA-208-nonce-cdn] $ gix b cd master
+-- repo: MarcoPoloResearchLab/mpr-ui -------------------------------------------
+14:33:16 INFO  REPO_SWITCHED      MarcoPoloResearchLab/mpr-ui        → master                                 | branch=master created=false event=REPO_SWITCHED path=/home/tyemirov/Development/Research/TAuth/tools/mpr-ui repo=MarcoPoloResearchLab/mpr-ui
+14:33:19 INFO  REPO_SWITCHED                                         → master                                 | branch=master created=false event=REPO_SWITCHED path=.
+Summary: total.repos=1 REPO_SWITCHED=2 WARN=0 ERROR=0 duration_ms=5792
+14:33:19 tyemirov@computercat:~/Development/Research/TAuth/tools/mpr-ui [master] $ ll
+total 72K
+drwxrwxr-x 3 tyemirov tyemirov 4.0K Nov  3 14:33 ./
+drwxrwxr-x 3 tyemirov tyemirov 4.0K Nov  3 10:34 ../
+-rw-rw-r-- 1 tyemirov tyemirov  17K Nov  3 10:43 footer.js
+drwxrwxr-x 8 tyemirov tyemirov 4.0K Nov  3 14:33 .git/
+-rw-rw-r-- 1 tyemirov tyemirov 2.2K Nov  2 12:27 .gitignore
+-rw-rw-r-- 1 tyemirov tyemirov  21K Nov  3 14:33 mpr-ui.js
+-rw-rw-r-- 1 tyemirov tyemirov  12K Nov  3 10:44 README.md
+14:33:42 tyemirov@computercat:~/Development/Research/TAuth/tools/mpr-ui [master] $ 
+```
+
+- [ ] [GX-316] `git b cd` command must pull down the latest version of the code after switching to the sepcified branch
+```
+14:36:12 tyemirov@computercat:~/Development/Research/TAuth [improvement/TA-208-nonce-validation] $ gix b cd master
+-- repo: tyemirov/TAuth --------------------------------------------------------
+14:36:18 INFO  REPO_SWITCHED      tyemirov/TAuth                     → master                                 | branch=master created=false event=REPO_SWITCHED path=/home/tyemirov/Development/Research/TAuth repo=tyemirov/TAuth
+14:36:21 INFO  REPO_SWITCHED                                         → master                                 | branch=master created=false event=REPO_SWITCHED path=.
+Summary: total.repos=1 REPO_SWITCHED=2 WARN=0 ERROR=0 duration_ms=5687
+14:36:21 tyemirov@computercat:~/Development/Research/TAuth [master] $ 
+14:40:47 tyemirov@computercat:~/Development/Research/TAuth [master] $ git pull
+Updating cd6d70a..c430e78
+Fast-forward
+ ARCHITECTURE.md                             |   6 ++-
+ CHANGELOG.md                                |   2 +
+ ISSUES.md                                   |   5 +-
+ README.md                                   |  44 +++++++++++++++-
+ cmd/server/main.go                          |  12 ++++-
+ internal/authkit/config.go                  |   1 +
+ internal/authkit/nonce_store.go             |  92 +++++++++++++++++++++++++++++++++
+ internal/authkit/nonce_store_test.go        |  48 +++++++++++++++++
+ internal/authkit/routes.go                  |  48 +++++++++++++++--
+ internal/authkit/routes_http_test.go        |  69 +++++++++++++++++++------
+ internal/authkit/routes_integration_test.go | 303 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++---------------------------------
+ tests/mpr-auth-header.test.js               | 165 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++---
+ tests/mpr-footer.test.js                    |  74 +++++++++++++++++++++++++++
+ web/demo.html                               | 168 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++--
+ web/mpr-ui.js                               | 296 ---------------------------------------------------------------------------------------------------------
+ 15 files changed, 908 insertions(+), 425 deletions(-)
+ create mode 100644 internal/authkit/nonce_store.go
+ create mode 100644 internal/authkit/nonce_store_test.go
+ create mode 100644 tests/mpr-footer.test.js
+ delete mode 100644 web/mpr-ui.js
 ```
 
 ## Maintenance (400–499)

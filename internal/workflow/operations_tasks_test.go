@@ -17,6 +17,7 @@ import (
 	"github.com/temirov/gix/internal/execshell"
 	"github.com/temirov/gix/internal/githubcli"
 	"github.com/temirov/gix/internal/gitrepo"
+	"github.com/temirov/gix/pkg/llm"
 )
 
 func TestTaskPlannerBuildPlanRendersTemplates(testInstance *testing.T) {
@@ -67,6 +68,106 @@ func TestTaskPlannerBuildPlanRendersTemplates(testInstance *testing.T) {
 	require.Equal(testInstance, []byte("Repository: octocat/sample"), fileChange.content)
 	require.Equal(testInstance, defaultTaskFilePermissions, fileChange.permissions)
 	require.Nil(testInstance, plan.pullRequest)
+}
+
+func TestTaskOperationSkipsDuplicateRepositories(t *testing.T) {
+	t.Parallel()
+
+	executor := &stubLLMGitExecutor{responses: map[string]string{
+		"describe --tags --abbrev=0": "v0.9.0\n",
+		"log --no-merges --date=short --pretty=format:%h %ad %an %s --max-count=200 v0.9.0..HEAD": "abc123 2025-10-07 Alice Add feature\n",
+		"diff --stat v0.9.0..HEAD":      " internal/app.go | 5 ++++-\n",
+		"diff --unified=3 v0.9.0..HEAD": "diff --git a/internal/app.go b/internal/app.go\n",
+	}}
+
+	client := &stubChangelogChatClient{response: "## [v1.0.0]\n\n### Features ✨\n- Highlight"}
+
+	environment := &Environment{
+		GitExecutor: executor,
+		Output:      &bytes.Buffer{},
+	}
+
+	task := TaskDefinition{
+		Name:        "Generate changelog section",
+		EnsureClean: false,
+		Actions: []TaskActionDefinition{
+			{
+				Type: taskActionChangelog,
+				Options: map[string]any{
+					changelogOptionClient:  client,
+					changelogOptionVersion: "v1.0.0",
+				},
+			},
+		},
+	}
+
+	repository := &RepositoryState{Path: "/repositories/sample"}
+	duplicate := &RepositoryState{Path: "/repositories/sample"}
+	state := &State{Repositories: []*RepositoryState{repository, duplicate}}
+
+	executionError := (&TaskOperation{tasks: []TaskDefinition{task}}).Execute(context.Background(), environment, state)
+	require.NoError(t, executionError)
+	require.Equal(t, 1, client.calls)
+}
+
+func TestTaskOperationFallsBackWhenStartPointMissing(t *testing.T) {
+	t.Parallel()
+
+	gitExecutor := &recordingGitExecutor{
+		branchExists:  false,
+		worktreeClean: true,
+		currentBranch: "main",
+	}
+	fileSystem := newFakeFileSystem(nil)
+	repositoryManager, managerErr := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(t, managerErr)
+
+	repository := NewRepositoryState(audit.RepositoryInspection{
+		Path:                "/repositories/sample",
+		FinalOwnerRepo:      "octocat/sample",
+		RemoteDefaultBranch: "master",
+		LocalBranch:         "main",
+	})
+
+	task := TaskDefinition{
+		Name:        "Rewrite Namespace",
+		EnsureClean: false,
+		Files: []TaskFileDefinition{{
+			PathTemplate:    "README.md",
+			ContentTemplate: "updated",
+			Mode:            taskFileModeOverwrite,
+			Permissions:     defaultTaskFilePermissions,
+		}},
+	}
+
+	planner := newTaskPlanner(task, buildTaskTemplateData(repository, task))
+	environment := &Environment{
+		GitExecutor:       gitExecutor,
+		RepositoryManager: repositoryManager,
+		FileSystem:        fileSystem,
+		Output:            &bytes.Buffer{},
+	}
+
+	plan, planErr := planner.BuildPlan(environment, repository)
+	require.NoError(t, planErr)
+	require.Equal(t, "master", plan.startPoint)
+
+	gitExecutor.existingRefs = map[string]bool{
+		plan.branchName: false,
+		plan.startPoint: false,
+	}
+
+	executor := newTaskExecutor(environment, repository, plan)
+	executionErr := executor.Execute(context.Background())
+	require.NoError(t, executionErr)
+
+	output := environment.Output.(*bytes.Buffer).String()
+	require.Contains(t, output, "TASK-WARN")
+	require.Contains(t, output, "start point missing")
+
+	for _, details := range gitExecutor.commands {
+		require.NotEqual(t, []string{"checkout", "master"}, details.Arguments)
+	}
 }
 
 func TestTaskPlannerBuildPlanSupportsActions(testInstance *testing.T) {
@@ -400,6 +501,11 @@ func TestTaskExecutorAppliesChanges(testInstance *testing.T) {
 	require.NoError(testInstance, planError)
 	require.False(testInstance, plan.skipped)
 
+	gitExecutor.existingRefs = map[string]bool{
+		plan.branchName: false,
+		plan.startPoint: true,
+	}
+
 	executor := newTaskExecutor(environment, repository, plan)
 
 	executionError := executor.Execute(context.Background())
@@ -412,6 +518,7 @@ func TestTaskExecutorAppliesChanges(testInstance *testing.T) {
 		{"status", "--porcelain"},
 		{"rev-parse", "--verify", "feature-sample-docs"},
 		{"rev-parse", "--abbrev-ref", "HEAD"},
+		{"rev-parse", "--verify", "main"},
 		{"checkout", "main"},
 		{"checkout", "-B", "feature-sample-docs", "main"},
 		{"add", "docs/sample.md"},
@@ -458,6 +565,32 @@ func TestTaskExecutorSkipsWhenSafeguardFails(testInstance *testing.T) {
 	require.NoError(testInstance, executionError)
 	require.Contains(testInstance, environment.Output.(*bytes.Buffer).String(), "TASK-SKIP")
 	require.Contains(testInstance, environment.Output.(*bytes.Buffer).String(), "requires branch main")
+}
+
+type stubLLMGitExecutor struct {
+	responses map[string]string
+}
+
+func (executor *stubLLMGitExecutor) ExecuteGit(ctx context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
+	key := strings.Join(details.Arguments, " ")
+	if output, ok := executor.responses[key]; ok {
+		return execshell.ExecutionResult{StandardOutput: output}, nil
+	}
+	return execshell.ExecutionResult{}, nil
+}
+
+func (executor *stubLLMGitExecutor) ExecuteGitHubCLI(ctx context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
+	return execshell.ExecutionResult{}, nil
+}
+
+type stubChangelogChatClient struct {
+	response string
+	calls    int
+}
+
+func (client *stubChangelogChatClient) Chat(ctx context.Context, request llm.ChatRequest) (string, error) {
+	client.calls++
+	return client.response, nil
 }
 
 type fakeFileSystem struct {
@@ -534,6 +667,7 @@ type recordingGitExecutor struct {
 	branchExists   bool
 	worktreeClean  bool
 	currentBranch  string
+	existingRefs   map[string]bool
 }
 
 func (executor *recordingGitExecutor) ExecuteGit(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
@@ -552,6 +686,21 @@ func (executor *recordingGitExecutor) ExecuteGit(_ context.Context, details exec
 		if len(details.Arguments) >= 2 {
 			switch details.Arguments[1] {
 			case "--verify":
+				target := ""
+				if len(details.Arguments) >= 3 {
+					target = details.Arguments[2]
+				}
+				if executor.existingRefs != nil {
+					if exists, ok := executor.existingRefs[target]; ok {
+						if exists {
+							return execshell.ExecutionResult{}, nil
+						}
+						return execshell.ExecutionResult{}, execshell.CommandFailedError{
+							Command: execshell.ShellCommand{Name: execshell.CommandGit, Details: details},
+							Result:  execshell.ExecutionResult{ExitCode: 1},
+						}
+					}
+				}
 				if executor.branchExists {
 					return execshell.ExecutionResult{}, nil
 				}
