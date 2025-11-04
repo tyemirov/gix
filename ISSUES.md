@@ -251,7 +251,8 @@ drwxrwxr-x 8 tyemirov tyemirov 4.0K Nov  3 14:33 .git/
 14:33:42 tyemirov@computercat:~/Development/Research/TAuth/tools/mpr-ui [master] $ 
 ```
 
-- [ ] [GX-316] `git b cd` command must pull down the latest version of the code after switching to the sepcified branch
+- [x] [GX-316] `git b cd` command must pull down the latest version of the code after switching to the sepcified branch
+  - Resolution: `branch cd` now falls back to fetching all remotes and running a pull when the configured remote is missing, emitting a `FETCH-FALLBACK` warning instead of silently skipping updates.
 ```
 14:36:12 tyemirov@computercat:~/Development/Research/TAuth [improvement/TA-208-nonce-validation] $ gix b cd master
 -- repo: tyemirov/TAuth --------------------------------------------------------
