@@ -1,6 +1,7 @@
 package repos
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -15,6 +16,7 @@ type ToolsConfiguration struct {
 	Remove    RemoveConfiguration    `mapstructure:"remove"`
 	Replace   ReplaceConfiguration   `mapstructure:"replace"`
 	Namespace NamespaceConfiguration `mapstructure:"namespace"`
+	License   LicenseConfiguration   `mapstructure:"license"`
 }
 
 // RemotesConfiguration describes configuration values for repo-remote-update.
@@ -82,6 +84,22 @@ type NamespaceConfiguration struct {
 	Safeguards      map[string]any `mapstructure:"safeguards"`
 }
 
+// LicenseConfiguration describes configuration values for license distribution.
+type LicenseConfiguration struct {
+	DryRun          bool     `mapstructure:"dry_run"`
+	AssumeYes       bool     `mapstructure:"assume_yes"`
+	RepositoryRoots []string `mapstructure:"roots"`
+	TemplatePath    string   `mapstructure:"template_path"`
+	Content         string   `mapstructure:"content"`
+	TargetPath      string   `mapstructure:"target_path"`
+	Mode            string   `mapstructure:"mode"`
+	RequireClean    bool     `mapstructure:"require_clean"`
+	Branch          string   `mapstructure:"branch"`
+	StartPoint      string   `mapstructure:"start_point"`
+	PushRemote      string   `mapstructure:"push_remote"`
+	CommitMessage   string   `mapstructure:"commit_message"`
+}
+
 // DefaultToolsConfiguration returns baseline configuration values for repository commands.
 func DefaultToolsConfiguration() ToolsConfiguration {
 	return ToolsConfiguration{
@@ -132,11 +150,24 @@ func DefaultToolsConfiguration() ToolsConfiguration {
 			RepositoryRoots: nil,
 			OldPrefix:       "",
 			NewPrefix:       "",
-			Push:            true,
 			Remote:          "origin",
 			BranchPrefix:    "namespace-rewrite",
 			CommitMessage:   "",
 			Safeguards:      nil,
+		},
+		License: LicenseConfiguration{
+			DryRun:          false,
+			AssumeYes:       false,
+			RepositoryRoots: nil,
+			TemplatePath:    "",
+			Content:         "",
+			TargetPath:      "LICENSE",
+			Mode:            "skip-if-exists",
+			RequireClean:    true,
+			Branch:          "license/{{ .Repository.Name }}",
+			StartPoint:      "",
+			PushRemote:      "origin",
+			CommitMessage:   "",
 		},
 	}
 }
@@ -218,6 +249,59 @@ func (configuration NamespaceConfiguration) sanitize() NamespaceConfiguration {
 
 // Sanitize normalizes namespace configuration values.
 func (configuration NamespaceConfiguration) Sanitize() NamespaceConfiguration {
+	return configuration.sanitize()
+}
+
+// sanitize normalizes license configuration values.
+func (configuration LicenseConfiguration) sanitize() LicenseConfiguration {
+	sanitized := configuration
+	sanitized.RepositoryRoots = rootutils.SanitizeConfigured(configuration.RepositoryRoots)
+	sanitized.TemplatePath = strings.TrimSpace(configuration.TemplatePath)
+	sanitized.Content = configuration.Content
+
+	targetPath := strings.TrimSpace(configuration.TargetPath)
+	if len(targetPath) == 0 {
+		targetPath = "LICENSE"
+	}
+	cleanedTarget := filepath.Clean(targetPath)
+	if cleanedTarget == "." {
+		cleanedTarget = "LICENSE"
+	}
+	sanitized.TargetPath = cleanedTarget
+
+	modeValue := strings.TrimSpace(strings.ToLower(configuration.Mode))
+	if len(modeValue) == 0 {
+		modeValue = "skip-if-exists"
+	}
+	sanitized.Mode = modeValue
+
+	sanitized.RequireClean = configuration.RequireClean
+
+	if len(strings.TrimSpace(configuration.Branch)) == 0 {
+		sanitized.Branch = "license/{{ .Repository.Name }}"
+	} else {
+		sanitized.Branch = strings.TrimSpace(configuration.Branch)
+	}
+
+	sanitized.StartPoint = strings.TrimSpace(configuration.StartPoint)
+
+	if len(strings.TrimSpace(configuration.PushRemote)) == 0 {
+		sanitized.PushRemote = "origin"
+	} else {
+		sanitized.PushRemote = strings.TrimSpace(configuration.PushRemote)
+	}
+
+	commitMessage := strings.TrimSpace(configuration.CommitMessage)
+	if len(commitMessage) == 0 {
+		commitMessage = fmt.Sprintf("docs: add %s", sanitized.TargetPath)
+	}
+	sanitized.CommitMessage = commitMessage
+
+	return sanitized
+}
+
+// Sanitize normalizes license configuration values.
+func (configuration LicenseConfiguration) Sanitize() LicenseConfiguration {
 	return configuration.sanitize()
 }
 

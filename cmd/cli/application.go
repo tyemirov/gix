@@ -104,6 +104,7 @@ const (
 	repoReleaseOperationNameConstant                                 = "repo-release"
 	repoHistoryOperationNameConstant                                 = "repo-history-remove"
 	repoFilesReplaceOperationNameConstant                            = "repo-files-replace"
+	repoLicenseOperationNameConstant                                 = "repo-license-apply"
 	repoNamespaceRewriteOperationNameConstant                        = "repo-namespace-rewrite"
 	workflowCommandOperationNameConstant                             = "workflow"
 	branchRefreshOperationNameConstant                               = "branch-refresh"
@@ -137,6 +138,8 @@ const (
 	repoFilesNamespaceUseNameConstant                                = "files"
 	repoFilesNamespaceAliasConstant                                  = "f"
 	repoFilesNamespaceShortDescriptionConstant                       = "Repository file commands"
+	repoLicenseNamespaceUseNameConstant                              = "license"
+	repoLicenseNamespaceShortDescriptionConstant                     = "License distribution commands"
 	repoNamespaceRewriteNamespaceUseNameConstant                     = "namespace"
 	repoNamespaceRewriteNamespaceShortDescriptionConstant            = "Namespace rewrite commands"
 	namespaceRewriteCommandUseNameConstant                           = "rewrite"
@@ -145,6 +148,9 @@ const (
 	filesReplaceCommandUseNameConstant                               = "replace"
 	filesReplaceCommandAliasConstant                                 = "sub"
 	filesReplaceCommandLongDescriptionConstant                       = "repo files replace applies string substitutions to files matched by glob patterns, optionally enforcing safeguards and running a follow-up command."
+	licenseApplyCommandUseNameConstant                               = "apply"
+	licenseApplyCommandAliasConstant                                 = "inject"
+	licenseApplyCommandLongDescriptionConstant                       = "repo license apply writes the configured license file across repositories using workflow tasks."
 	repoReleaseCommandUseNameConstant                                = "release"
 	repoReleaseCommandUsageTemplateConstant                          = repoReleaseCommandUseNameConstant + " <tag>"
 	repoReleaseCommandAliasConstant                                  = "rel"
@@ -223,10 +229,13 @@ var commandOperationRequirements = map[string][]string{
 	repoNamespaceUseNameConstant + "/" + removeCommandUseNameConstant:         {repoHistoryOperationNameConstant},
 	repoNamespaceUseNameConstant + "/" + repoFilesNamespaceUseNameConstant + "/" + filesReplaceCommandUseNameConstant:                {repoFilesReplaceOperationNameConstant},
 	repoNamespaceUseNameConstant + "/" + repoNamespaceRewriteNamespaceUseNameConstant + "/" + namespaceRewriteCommandUseNameConstant: {repoNamespaceRewriteOperationNameConstant},
+	repoNamespaceUseNameConstant + "/" + repoLicenseNamespaceUseNameConstant + "/" + licenseApplyCommandUseNameConstant:              {repoLicenseOperationNameConstant},
 	renameCommandUseNameConstant:         {reposRenameOperationNameConstant},
 	reposProtocolOperationNameConstant:   {reposProtocolOperationNameConstant},
 	reposRemotesOperationNameConstant:    {reposRemotesOperationNameConstant},
 	reposRenameOperationNameConstant:     {reposRenameOperationNameConstant},
+	repoLicenseOperationNameConstant:     {repoLicenseOperationNameConstant},
+	licenseApplyCommandUseNameConstant:   {repoLicenseOperationNameConstant},
 	updateProtocolCommandUseNameConstant: {reposProtocolOperationNameConstant},
 	updateRemoteCanonicalUseNameConstant: {reposRemotesOperationNameConstant},
 	workflowCommandOperationNameConstant: {workflowCommandOperationNameConstant},
@@ -660,6 +669,14 @@ func NewApplication() *Application {
 		ConfigurationProvider:        application.reposNamespaceConfiguration,
 	}
 
+	licenseBuilder := repos.LicenseCommandBuilder{
+		LoggerProvider: func() *zap.Logger {
+			return application.logger
+		},
+		HumanReadableLoggingProvider: application.humanReadableLoggingEnabled,
+		ConfigurationProvider:        application.reposLicenseConfiguration,
+	}
+
 	workflowBuilder := workflowcmd.CommandBuilder{
 		LoggerProvider: func() *zap.Logger {
 			return application.logger
@@ -752,6 +769,15 @@ func NewApplication() *Application {
 	}
 	if len(repoFilesCommand.Commands()) > 0 {
 		repoNamespaceCommand.AddCommand(repoFilesCommand)
+	}
+
+	repoLicenseCommand := newNamespaceCommand(repoLicenseNamespaceUseNameConstant, repoLicenseNamespaceShortDescriptionConstant)
+	if licenseApplyCommand, licenseBuildError := licenseBuilder.Build(); licenseBuildError == nil {
+		configureCommandMetadata(licenseApplyCommand, licenseApplyCommandUseNameConstant, licenseApplyCommand.Short, licenseApplyCommandLongDescriptionConstant, licenseApplyCommandAliasConstant)
+		repoLicenseCommand.AddCommand(licenseApplyCommand)
+	}
+	if len(repoLicenseCommand.Commands()) > 0 {
+		repoNamespaceCommand.AddCommand(repoLicenseCommand)
 	}
 
 	repoNamespaceRewriteCommand := newNamespaceCommand(repoNamespaceRewriteNamespaceUseNameConstant, repoNamespaceRewriteNamespaceShortDescriptionConstant)
@@ -1218,6 +1244,24 @@ func (application *Application) reposReplaceConfiguration() repos.ReplaceConfigu
 	}
 	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
 		configuration.AssumeYes = application.configuration.Common.AssumeYes
+	}
+
+	return configuration.Sanitize()
+}
+
+func (application *Application) reposLicenseConfiguration() repos.LicenseConfiguration {
+	configuration := repos.DefaultToolsConfiguration().License
+	application.decodeOperationConfiguration(repoLicenseOperationNameConstant, &configuration)
+
+	options, optionsExist := application.lookupOperationOptions(repoLicenseOperationNameConstant)
+	if !optionsExist || !optionExists(options, dryRunOptionKeyConstant) {
+		configuration.DryRun = application.configuration.Common.DryRun
+	}
+	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
+		configuration.AssumeYes = application.configuration.Common.AssumeYes
+	}
+	if !optionsExist || !optionExists(options, requireCleanOptionKeyConstant) {
+		configuration.RequireClean = application.configuration.Common.RequireClean
 	}
 
 	return configuration.Sanitize()

@@ -337,6 +337,8 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
     - Removes untagged GHCR versions. Flag: `--package` for the container name.
   - `gix repo files replace --find <string> [--replace <string>] [--pattern <glob>...] [--command "<shell>"] [--require-clean] [--branch <name>] [--require-path <rel>...] [--roots <dir>...] [--dry-run] [-y]` (alias `sub`)
     - Performs text substitutions across matched files. Safeguards via `--require-clean`, `--branch`, `--require-path`.
+  - `gix repo license apply --template <path> [--content <text>] [--target <path>] [--mode overwrite|skip-if-exists] [--branch <template>] [--remote <name>] [--commit-message <text>] [--roots <dir>...] [--dry-run] [-y]` (alias `inject`)
+    - Writes the configured license file to every discovered repository, creating a branch and pushing updates to the remote per repository.
   - `gix repo namespace rewrite --old <module/prefix> --new <module/prefix> [--branch-prefix <prefix>] [--remote <name>] [--push] [--commit-message <text>] [--roots <dir>...] [--dry-run] [-y]` (alias `ns`)
     - Rewrites Go module namespaces and imports.
   - `gix repo rm <path>... [--remote <name>] [--push] [--restore] [--push-missing] [--roots <dir>...] [--dry-run] [-y]` (alias `purge`)
