@@ -19,6 +19,8 @@ const (
 	OperationHistoryPurge Operation = "repo.history.purge"
 	// OperationNamespaceRewrite denotes namespace rewrite executors.
 	OperationNamespaceRewrite Operation = "repo.namespace.rewrite"
+	// OperationReleaseTag denotes release tag creation executors.
+	OperationReleaseTag Operation = "repo.release.tag"
 )
 
 // Sentinel describes a stable error code shared across executors.
@@ -104,6 +106,20 @@ func WrapMessage(operation Operation, subject string, sentinel Sentinel, message
 	return OperationError{operation: operation, subject: subject, err: fmt.Errorf("%w: %s", sentinel, message), message: message}
 }
 
+// WrapWithMessage constructs an OperationError combining metadata, sentinel, chained detail, and a formatted message.
+func WrapWithMessage(operation Operation, subject string, sentinel Sentinel, detail error, message string) error {
+	if len(message) == 0 {
+		return Wrap(operation, subject, sentinel, detail)
+	}
+
+	baseError := fmt.Errorf("%w: %s", sentinel, message)
+	if detail != nil {
+		baseError = stdErrors.Join(baseError, detail)
+	}
+
+	return OperationError{operation: operation, subject: subject, err: baseError, message: message}
+}
+
 func findSentinel(err error) (Sentinel, bool) {
 	if err == nil {
 		return "", false
@@ -178,4 +194,8 @@ var (
 	ErrNamespaceRewriteFailed Sentinel = "namespace_rewrite_failed"
 	// ErrNamespacePushFailed indicates namespace rewrite push step failed.
 	ErrNamespacePushFailed Sentinel = "namespace_push_failed"
+	// ErrReleaseTagCreateFailed indicates release tag annotation failed.
+	ErrReleaseTagCreateFailed Sentinel = "release_tag_create_failed"
+	// ErrReleaseTagPushFailed indicates release tag push failed.
+	ErrReleaseTagPushFailed Sentinel = "release_tag_push_failed"
 )

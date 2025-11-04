@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/temirov/gix/internal/execshell"
+	repoerrors "github.com/temirov/gix/internal/repos/errors"
 	"github.com/temirov/gix/internal/repos/shared"
 )
 
@@ -14,8 +16,6 @@ const (
 	repositoryPathRequiredMessageConstant       = "repository path must be provided"
 	tagNameRequiredMessageConstant              = "tag name must be provided"
 	gitExecutorMissingMessageConstant           = "git executor not configured"
-	annotateTagFailureTemplateConstant          = "failed to create tag %q: %w"
-	pushTagFailureTemplateConstant              = "failed to push tag %q to %s: %w"
 	defaultRemoteNameConstant                   = "origin"
 	gitTagSubcommandConstant                    = "tag"
 	gitTagAnnotatedFlagConstant                 = "-a"
@@ -95,21 +95,116 @@ func (service *Service) Release(executionContext context.Context, options Option
 
 	environment := map[string]string{gitTerminalPromptEnvironmentNameConstant: gitTerminalPromptEnvironmentDisableConstant}
 
-	if _, err := service.executor.ExecuteGit(executionContext, execshell.CommandDetails{
+	annotateCommand := execshell.CommandDetails{
 		Arguments:            []string{gitTagSubcommandConstant, gitTagAnnotatedFlagConstant, tagName, gitTagMessageFlagConstant, message},
 		WorkingDirectory:     repositoryPath,
 		EnvironmentVariables: environment,
-	}); err != nil {
-		return Result{}, fmt.Errorf(annotateTagFailureTemplateConstant, tagName, err)
 	}
 
-	if _, err := service.executor.ExecuteGit(executionContext, execshell.CommandDetails{
+	if _, err := service.executor.ExecuteGit(executionContext, annotateCommand); err != nil {
+		messageText := formatReleaseTagCreateFailure(tagName, annotateCommand, err)
+		detail := fmt.Errorf("%s: %w", messageText, err)
+		return Result{}, repoerrors.WrapWithMessage(
+			repoerrors.OperationReleaseTag,
+			repositoryPath,
+			repoerrors.ErrReleaseTagCreateFailed,
+			detail,
+			messageText,
+		)
+	}
+
+	pushCommand := execshell.CommandDetails{
 		Arguments:            []string{gitPushSubcommandConstant, remoteName, tagName},
 		WorkingDirectory:     repositoryPath,
 		EnvironmentVariables: environment,
-	}); err != nil {
-		return Result{}, fmt.Errorf(pushTagFailureTemplateConstant, tagName, remoteName, err)
+	}
+
+	if _, err := service.executor.ExecuteGit(executionContext, pushCommand); err != nil {
+		messageText := formatReleaseTagPushFailure(tagName, remoteName, pushCommand, err)
+		detail := fmt.Errorf("%s: %w", messageText, err)
+		return Result{}, repoerrors.WrapWithMessage(
+			repoerrors.OperationReleaseTag,
+			repositoryPath,
+			repoerrors.ErrReleaseTagPushFailed,
+			detail,
+			messageText,
+		)
 	}
 
 	return Result{RepositoryPath: repositoryPath, TagName: tagName}, nil
+}
+
+func formatReleaseTagCreateFailure(tagName string, command execshell.CommandDetails, err error) string {
+	return formatReleaseFailureMessage(fmt.Sprintf("failed to create tag %q", tagName), command, err)
+}
+
+func formatReleaseTagPushFailure(tagName string, remoteName string, command execshell.CommandDetails, err error) string {
+	return formatReleaseFailureMessage(fmt.Sprintf("failed to push tag %q to %s", tagName, remoteName), command, err)
+}
+
+func formatReleaseFailureMessage(prefix string, command execshell.CommandDetails, err error) string {
+	commandSummary := formatGitCommand(command)
+	details := describeGitFailure(err)
+	if len(details) == 0 {
+		return fmt.Sprintf("%s: %s", prefix, commandSummary)
+	}
+	return fmt.Sprintf("%s: %s (%s)", prefix, commandSummary, details)
+}
+
+func formatGitCommand(command execshell.CommandDetails) string {
+	if len(command.Arguments) == 0 {
+		return "git"
+	}
+
+	formatted := make([]string, 0, len(command.Arguments)+1)
+	formatted = append(formatted, "git")
+	for _, argument := range command.Arguments {
+		formatted = append(formatted, quoteArgument(argument))
+	}
+
+	return strings.Join(formatted, " ")
+}
+
+func quoteArgument(argument string) string {
+	if len(argument) == 0 {
+		return `""`
+	}
+	if strings.ContainsAny(argument, " \t\"'") {
+		return strconv.Quote(argument)
+	}
+	return argument
+}
+
+func describeGitFailure(err error) string {
+	if err == nil {
+		return ""
+	}
+
+	var commandFailed execshell.CommandFailedError
+	if errors.As(err, &commandFailed) {
+		parts := make([]string, 0, 2)
+		if commandFailed.Result.ExitCode != 0 {
+			parts = append(parts, fmt.Sprintf("exit code %d", commandFailed.Result.ExitCode))
+		}
+		if stderr := summarizeStandardError(commandFailed.Result.StandardError); len(stderr) > 0 {
+			parts = append(parts, fmt.Sprintf("stderr: %s", stderr))
+		}
+		return strings.Join(parts, ", ")
+	}
+
+	return strings.TrimSpace(err.Error())
+}
+
+func summarizeStandardError(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if len(trimmed) == 0 {
+		return ""
+	}
+
+	collapsed := strings.Join(strings.Fields(trimmed), " ")
+	const maxLength = 200
+	if len(collapsed) > maxLength {
+		return collapsed[:maxLength]
+	}
+	return collapsed
 }
