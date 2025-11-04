@@ -76,7 +76,7 @@ func (builder *FilesAddCommandBuilder) Build() (*cobra.Command, error) {
 	return command, nil
 }
 
-func (builder *FilesAddCommandBuilder) run(command *cobra.Command, _ []string) error {
+func (builder *FilesAddCommandBuilder) run(command *cobra.Command, arguments []string) error {
 	configuration := builder.resolveConfiguration()
 	executionFlags, executionFlagsAvailable := flagutils.ResolveExecutionFlags(command)
 
@@ -239,7 +239,7 @@ func (builder *FilesAddCommandBuilder) run(command *cobra.Command, _ []string) e
 		commitMessage = fmt.Sprintf(filesAddDefaultCommitTemplate, targetPath)
 	}
 
-	roots, rootsError := requireRepositoryRoots(command, nil, configuration.RepositoryRoots)
+	roots, rootsError := requireRepositoryRoots(command, arguments, configuration.RepositoryRoots)
 	if rootsError != nil {
 		return rootsError
 	}

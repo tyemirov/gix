@@ -313,7 +313,7 @@ What's interesting, teh command actually worked, and I can see the tag I wanted 
 22:35:01 INFO  REPO_SWITCHED      tyemirov/ctx                       → master                                 | branch=master created=false event=REPO_SWITCHED path=/tmp/repos/tyemirov/ctx repo=tyemirov/ctx
 22:35:01 INFO  NAMESPACE_NOOP     tyemirov/ctx                       namespace rewrite skipped: files ignored by git | event=NAMESPACE_NOOP path=/tmp/repos/tyemirov/ctx reason=namespace_rewrite_skipped:_files_ignored_by_git repo=tyemirov/ctx
 ```
-- [ ] [GX-319] `gix  repo prs delete --yes yes` results in panic. Find the cause of the bug and fix it
+- [x] [GX-319] `gix  repo prs delete --yes yes` results in panic. Find the cause of the bug and fix it
 ```
 12:27:03 tyemirov@Vadyms-MacBook-Pro:~/Development/MarcoPoloResearchLab/mpr-ui - [master] $ gix  repo prs delete --yes yes
 panic: runtime error: invalid memory address or nil pointer dereference
@@ -347,6 +347,7 @@ github.com/temirov/gix/cmd/cli.Execute()
 main.main()
         /Users/tyemirov/go/pkg/mod/github.com/temirov/gix@v0.2.0-rc.5/main.go:16 +0x13
 ```
+  - Resolution: Workflow executor now skips GitHub metadata lookups when disabled, avoiding nil-client panics, and new CLI tests prove `--yes yes` yields the expected positional-roots error without crashing.
 
 ## Maintenance (400–499)
 

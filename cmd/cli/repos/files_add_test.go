@@ -10,6 +10,7 @@ import (
 
 	repos "github.com/temirov/gix/cmd/cli/repos"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
+	rootutils "github.com/temirov/gix/internal/utils/roots"
 	"github.com/temirov/gix/internal/workflow"
 )
 
@@ -191,4 +192,38 @@ func TestFilesAddCommandRequiresContent(t *testing.T) {
 
 	err := command.Execute()
 	require.Error(t, err)
+}
+
+func TestFilesAddCommandRejectsPositionalRoots(t *testing.T) {
+	t.Parallel()
+
+	taskRunner := &filesAddRecordingTaskRunner{}
+	builder := repos.FilesAddCommandBuilder{
+		LoggerProvider:               func() *zap.Logger { return zap.NewNop() },
+		Discoverer:                   &fakeRepositoryDiscoverer{repositories: []string{filesAddConfiguredRoot}},
+		GitExecutor:                  &fakeGitExecutor{},
+		GitManager:                   &fakeGitRepositoryManager{cleanWorktree: true, cleanWorktreeSet: true, currentBranch: "main"},
+		FileSystem:                   fakeFileSystem{},
+		HumanReadableLoggingProvider: func() bool { return false },
+		ConfigurationProvider: func() repos.AddConfiguration {
+			return repos.AddConfiguration{
+				RepositoryRoots: []string{filesAddConfiguredRoot},
+				Path:            "docs/POLICY.md",
+				Content:         "Example",
+			}
+		},
+		TaskRunnerFactory: func(workflow.Dependencies) repos.TaskRunnerExecutor { return taskRunner },
+	}
+
+	command, buildError := builder.Build()
+	require.NoError(t, buildError)
+	bindGlobalReplaceFlags(command)
+
+	command.SetContext(context.Background())
+	command.SetArgs([]string{"./explicit-root"})
+
+	err := command.Execute()
+	require.Error(t, err)
+	require.Equal(t, rootutils.PositionalRootsUnsupportedMessage(), err.Error())
+	require.Empty(t, taskRunner.roots)
 }
