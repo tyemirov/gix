@@ -89,7 +89,7 @@ Human part (left): aligned columns, easy to scan.
 TASK-SKIP: Switch to master if clean /tmp/repos/tyemirov/GAuss repository not clean
 TASK-SKIP: Rewrite module namespace /tmp/repos/tyemirov/GAuss repository dirty
 ```
-- [ ] [GX-212] Erroneous summary message: total.repos=0, should be total.repos=1, and it also must have taken some time, so the executor shall be returning time that we shall be printing in human readeable foramt.
+- [ ] [GX-213] Erroneous summary message: total.repos=0, should be total.repos=1, and it also must have taken some time, so the executor shall be returning time that we shall be printing in human readeable foramt.
 RELEASED: /Users/tyemirov/Development/tyemirov/gix -> v0.2.0-rc.6
 Summary: total.repos=0 duration_ms=0
 
