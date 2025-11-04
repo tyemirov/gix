@@ -7,11 +7,12 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 - [x] [GX-100] Implement rewriting namespace. The prototype is under @tools/ns-rewrite. Use workflow/task interface and lean on the already built ability to change file content.
   - Resolution: Added namespace rewrite service, workflow action, and `gix repo namespace rewrite` command with tests and configuration defaults.
 
-- [ ] [GX-22] License injection (prototype under tools/licenser)
-  - Status: Unresolved
+- [x] [GX-22] License injection (prototype under tools/licenser)
+  - Status: Resolved
   - Category: Feature
   - Context: Prototype exists; not yet slated.
   - Desired: Implement a repo level workflow that would allow distribution of licensing using built in capabilities
+  - Resolution: Added `gix repo license apply` to distribute license files via workflow tasks with configuration defaults, README docs, and regression coverage.
 
 - [ ] [GX-23] Git retag (prototype under tools/git_retag)
   - Status: Unresolved (Not ready)
@@ -299,6 +300,15 @@ apply-tasks: failed to create tag "v0.2.0-rc.4": git command exited with code 12
 ```
 What's interesting, teh command actually worked, and I can see the tag I wanted both locally and remotely. So the error is especially infuriating as it's a complete bogus.
 - Resolution: Release tag creation/push failures now emit repository-scoped operation errors that include the git command, exit code, and sanitized stderr, with regression tests covering annotate and push scenarios.
+
+- [ ] [GX-318] The message "namespace rewrite skipped: files ignored by git" doesnt make much sense. Must be a bug. Investigate the real reason the operation hasn't been performed.
+```
+-- repo: tyemirov/ctx ----------------------------------------------------------
+22:34:53 INFO  REMOTE_SKIP        tyemirov/ctx                       already canonical                        | event=REMOTE_SKIP path=/tmp/repos/ctx reason=already_canonical repo=tyemirov/ctx
+22:34:55 INFO  REPO_FOLDER_RENAME                                    /tmp/repos/ctx → /tmp/repos/tyemirov/ctx | event=REPO_FOLDER_RENAME new_path=/tmp/repos/tyemirov/ctx old_path=/tmp/repos/ctx path=/tmp/repos/ctx
+22:35:01 INFO  REPO_SWITCHED      tyemirov/ctx                       → master                                 | branch=master created=false event=REPO_SWITCHED path=/tmp/repos/tyemirov/ctx repo=tyemirov/ctx
+22:35:01 INFO  NAMESPACE_NOOP     tyemirov/ctx                       namespace rewrite skipped: files ignored by git | event=NAMESPACE_NOOP path=/tmp/repos/tyemirov/ctx reason=namespace_rewrite_skipped:_files_ignored_by_git repo=tyemirov/ctx
+```
 
 ## Maintenance (400–499)
 
