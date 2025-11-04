@@ -287,13 +287,14 @@ Fast-forward
  delete mode 100644 web/mpr-ui.js
 ```
 
-- [ ] [GX-317] I am getting cryptic error. Ensure that all errors in all commands have detailed information about when an error occured, and what exactly has happend to cause the error
+- [x] [GX-317] I am getting cryptic error. Ensure that all errors in all commands have detailed information about when an error occured, and what exactly has happend to cause the error
 ```
 20:31:21 tyemirov@computercat:~/Development/gix [master] $ gix r release v0.2.0-rc.4
 RELEASED: /home/tyemirov/Development/gix -> v0.2.0-rc.4
 apply-tasks: failed to create tag "v0.2.0-rc.4": git command exited with code 128
 ```
 What's interesting, teh command actually worked, and I can see the tag I wanted both locally and remotely. So the error is especially infuriating as it's a complete bogus.
+- Resolution: Release tag creation/push failures now emit repository-scoped operation errors that include the git command, exit code, and sanitized stderr, with regression tests covering annotate and push scenarios.
 
 ## Maintenance (400–499)
 
