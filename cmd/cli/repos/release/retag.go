@@ -138,7 +138,7 @@ func (builder *RetagCommandBuilder) run(command *cobra.Command, _ []string) erro
 
 	taskRunner := repocli.ResolveTaskRunner(builder.TaskRunnerFactory, taskDependencies)
 
-	mappings := make([]map[string]any, 0, len(mappingValues))
+	mappings := make([]any, 0, len(mappingValues))
 	for _, raw := range mappingValues {
 		parts := strings.SplitN(raw, "=", 2)
 		if len(parts) != 2 {
