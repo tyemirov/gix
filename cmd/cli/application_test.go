@@ -243,24 +243,47 @@ func TestApplicationInitializationLoggingModes(testInstance *testing.T) {
 				trimmedOutput := strings.TrimSpace(capturedOutput)
 				require.NotEmpty(t, trimmedOutput)
 
-				expectedBanner := fmt.Sprintf(
-					configurationInitializedConsoleTemplateConstant,
-					configurationInitializedMessageTextConstant,
-					string(utils.LogLevelDebug),
-					string(utils.LogFormatConsole),
-					configurationPath,
-				)
-
-				require.Contains(t, trimmedOutput, expectedBanner)
 				require.NotContains(t, trimmedOutput, "\""+configurationLogLevelFieldNameConstant+"\"")
 
-				var bannerLine string
-				for _, candidateLine := range strings.Split(trimmedOutput, "\n") {
-					if strings.Contains(candidateLine, expectedBanner) {
-						bannerLine = strings.TrimSpace(candidateLine)
+				pathCandidates := []string{configurationPath}
+				resolvedCandidatePath := resolveSymlinkedPath(t, configurationPath)
+				if len(resolvedCandidatePath) > 0 && resolvedCandidatePath != configurationPath {
+					pathCandidates = append(pathCandidates, resolvedCandidatePath)
+				}
+
+				var (
+					bannerLine    string
+					bannerMatched bool
+				)
+
+				for _, candidatePath := range pathCandidates {
+					expectedBanner := fmt.Sprintf(
+						configurationInitializedConsoleTemplateConstant,
+						configurationInitializedMessageTextConstant,
+						string(utils.LogLevelDebug),
+						string(utils.LogFormatConsole),
+						candidatePath,
+					)
+
+					if !strings.Contains(trimmedOutput, expectedBanner) {
+						continue
+					}
+
+					bannerMatched = true
+
+					for _, candidateLine := range strings.Split(trimmedOutput, "\n") {
+						if strings.Contains(candidateLine, expectedBanner) {
+							bannerLine = strings.TrimSpace(candidateLine)
+							break
+						}
+					}
+
+					if len(bannerLine) > 0 {
 						break
 					}
 				}
+
+				require.True(t, bannerMatched, "configuration initialization banner missing for expected paths: %v\nOutput:\n%s", pathCandidates, trimmedOutput)
 				require.NotEmpty(t, bannerLine)
 				require.True(t, strings.HasPrefix(bannerLine, "DEBUG"))
 			},
@@ -284,10 +307,12 @@ func TestApplicationInitializationLoggingModes(testInstance *testing.T) {
 
 			require.NoError(t, initializationError)
 
-			resolvedConfigPath := resolveSymlinkedPath(t, application.ConfigFileUsed())
-			require.Equal(t, configurationPath, resolvedConfigPath)
+			rawConfigPath := application.ConfigFileUsed()
+			expectedConfigPath := resolveSymlinkedPath(t, configurationPath)
+			resolvedConfigPath := resolveSymlinkedPath(t, rawConfigPath)
+			require.Equal(t, expectedConfigPath, resolvedConfigPath)
 
-			testCase.assertion(t, capturedOutput, resolvedConfigPath)
+			testCase.assertion(t, capturedOutput, rawConfigPath)
 		})
 	}
 }

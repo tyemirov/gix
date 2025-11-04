@@ -271,13 +271,22 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 
 func canonicalRepositoryIdentifier(path string) string {
 	cleaned := filepath.Clean(path)
+
+	absolutePath := cleaned
 	if abs, err := filepath.Abs(cleaned); err == nil {
-		cleaned = filepath.Clean(abs)
+		absolutePath = filepath.Clean(abs)
 	}
+
+	resolvedPath := absolutePath
+	if evaluated, err := filepath.EvalSymlinks(absolutePath); err == nil && len(strings.TrimSpace(evaluated)) > 0 {
+		resolvedPath = filepath.Clean(evaluated)
+	}
+
 	if runtime.GOOS == "windows" {
-		cleaned = strings.ToLower(cleaned)
+		resolvedPath = strings.ToLower(resolvedPath)
 	}
-	return cleaned
+
+	return resolvedPath
 }
 
 func repositoryPathDepth(path string) int {
