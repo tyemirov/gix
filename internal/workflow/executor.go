@@ -124,11 +124,16 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 		return errors.New(workflowExecutorMissingRootsMessage)
 	}
 
+	var metadataResolver audit.GitHubMetadataResolver
+	if !runtimeOptions.SkipRepositoryMetadata {
+		metadataResolver = executor.dependencies.GitHubClient
+	}
+
 	auditService := audit.NewService(
 		executor.dependencies.RepositoryDiscoverer,
 		executor.dependencies.RepositoryManager,
 		executor.dependencies.GitExecutor,
-		executor.dependencies.GitHubClient,
+		metadataResolver,
 		executor.dependencies.Output,
 		executor.dependencies.Errors,
 	)

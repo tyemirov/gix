@@ -304,7 +304,8 @@ apply-tasks: failed to create tag "v0.2.0-rc.4": git command exited with code 12
 What's interesting, teh command actually worked, and I can see the tag I wanted both locally and remotely. So the error is especially infuriating as it's a complete bogus.
 - Resolution: Release tag creation/push failures now emit repository-scoped operation errors that include the git command, exit code, and sanitized stderr, with regression tests covering annotate and push scenarios.
 
-- [ ] [GX-318] The message "namespace rewrite skipped: files ignored by git" doesnt make much sense. Must be a bug. Investigate the real reason the operation hasn't been performed.
+- [x] [GX-318] The message "namespace rewrite skipped: files ignored by git" doesnt make much sense. Must be a bug. Investigate the real reason the operation hasn't been performed.
+  - Resolution: Namespace rewrite now distinguishes between "no references" and "all matches ignored"; skips without matches report `namespace rewrite skipped: no references to <prefix>` while gitignored-only matches keep the git warning. Updated unit tests cover both skip paths.
 ```
 -- repo: tyemirov/ctx ----------------------------------------------------------
 22:34:53 INFO  REMOTE_SKIP        tyemirov/ctx                       already canonical                        | event=REMOTE_SKIP path=/tmp/repos/ctx reason=already_canonical repo=tyemirov/ctx
