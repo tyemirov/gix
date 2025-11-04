@@ -89,18 +89,18 @@ func TestExecutorDeduplicatesRelativeRoots(testInstance *testing.T) {
 	require.NoError(testInstance, os.Chdir(repositoryPath))
 	testInstance.Cleanup(func() { _ = os.Chdir(workingDirectory) })
 
-    executionError := executor.Execute(
-        context.Background(),
-        []string{"."},
-        RuntimeOptions{SkipRepositoryMetadata: true},
-    )
-    require.NoError(testInstance, executionError)
+	executionError := executor.Execute(
+		context.Background(),
+		[]string{"."},
+		RuntimeOptions{SkipRepositoryMetadata: true},
+	)
+	require.NoError(testInstance, executionError)
 
-    occurrences := strings.Count(outputBuffer.String(), "event="+shared.EventCodeRepoSwitched)
-    if occurrences != 1 {
-        testInstance.Logf("executor output:\n%s", outputBuffer.String())
-    }
-    require.Equal(testInstance, 1, occurrences)
+	occurrences := strings.Count(outputBuffer.String(), "event="+shared.EventCodeRepoSwitched)
+	if occurrences != 1 {
+		testInstance.Logf("executor output:\n%s", outputBuffer.String())
+	}
+	require.Equal(testInstance, 1, occurrences)
 }
 
 type executorStubRepositoryDiscoverer struct {

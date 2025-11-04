@@ -14,34 +14,38 @@ import (
 )
 
 const (
-	repositoryPathRequiredMessageConstant    = "repository path must be provided"
-	branchNameRequiredMessageConstant        = "branch name must be provided"
-	gitExecutorMissingMessageConstant        = "git executor not configured"
-	gitFetchFailureTemplateConstant          = "failed to fetch updates: %w"
-	gitRemoteListFailureTemplateConstant     = "failed to list remotes: %w"
-	gitSwitchFailureTemplateConstant         = "failed to switch to branch %q: %s: %w"
-	gitCreateBranchFromRemoteFailureTemplate = "failed to create branch %q from %s: %s: %w"
-	gitCreateBranchLocalFailureTemplate      = "failed to create branch %q: %s: %w"
-	gitPullFailureTemplateConstant           = "failed to pull latest changes: %w"
-	defaultRemoteNameConstant                = shared.OriginRemoteNameConstant
-	logFieldRemoteNameConstant               = "remote"
-	logFieldRepositoryPathConstant           = "repository_path"
-	fetchWarningLogMessageConstant           = "Fetch skipped due to error"
-	pullWarningLogMessageConstant            = "Pull skipped due to error"
-	fetchWarningTemplateConstant             = "FETCH-SKIP: %s (%s)"
-	pullWarningTemplateConstant              = "PULL-SKIP: %s"
-	missingRemoteWarningTemplateConstant     = "WARNING: no remote counterpart for %s"
-	gitFetchSubcommandConstant               = "fetch"
-	gitFetchAllFlagConstant                  = "--all"
-	gitFetchPruneFlagConstant                = "--prune"
-	gitRemoteSubcommandConstant              = "remote"
-	gitSwitchSubcommandConstant              = "switch"
-	gitCreateBranchFlagConstant              = "-c"
-	gitTrackFlagConstant                     = "--track"
-	gitPullSubcommandConstant                = "pull"
-	gitPullRebaseFlagConstant                = "--rebase"
-	gitTerminalPromptEnvironmentNameConstant = "GIT_TERMINAL_PROMPT"
-	gitTerminalPromptEnvironmentDisableValue = "0"
+	repositoryPathRequiredMessageConstant     = "repository path must be provided"
+	branchNameRequiredMessageConstant         = "branch name must be provided"
+	gitExecutorMissingMessageConstant         = "git executor not configured"
+	gitFetchFailureTemplateConstant           = "failed to fetch updates: %w"
+	gitRemoteListFailureTemplateConstant      = "failed to list remotes: %w"
+	gitSwitchFailureTemplateConstant          = "failed to switch to branch %q: %s: %w"
+	gitCreateBranchFromRemoteFailureTemplate  = "failed to create branch %q from %s: %s: %w"
+	gitCreateBranchLocalFailureTemplate       = "failed to create branch %q: %s: %w"
+	gitPullFailureTemplateConstant            = "failed to pull latest changes: %w"
+	defaultRemoteNameConstant                 = shared.OriginRemoteNameConstant
+	logFieldRemoteNameConstant                = "remote"
+	logFieldRepositoryPathConstant            = "repository_path"
+	fetchWarningLogMessageConstant            = "Fetch skipped due to error"
+	fetchFallbackLogMessageConstant           = "Requested remote not configured; fetching all remotes"
+	missingConfiguredRemoteLogMessageConstant = "Requested remote not configured; skipping network operations"
+	pullWarningLogMessageConstant             = "Pull skipped due to error"
+	fetchWarningTemplateConstant              = "FETCH-SKIP: %s (%s)"
+	fetchFallbackWarningTemplateConstant      = "FETCH-FALLBACK: %s (remote not configured; fetched all remotes)"
+	missingConfiguredRemoteWarningTemplate    = "FETCH-SKIP: %s (remote not configured)"
+	pullWarningTemplateConstant               = "PULL-SKIP: %s"
+	missingRemoteWarningTemplateConstant      = "WARNING: no remote counterpart for %s"
+	gitFetchSubcommandConstant                = "fetch"
+	gitFetchAllFlagConstant                   = "--all"
+	gitFetchPruneFlagConstant                 = "--prune"
+	gitRemoteSubcommandConstant               = "remote"
+	gitSwitchSubcommandConstant               = "switch"
+	gitCreateBranchFlagConstant               = "-c"
+	gitTrackFlagConstant                      = "--track"
+	gitPullSubcommandConstant                 = "pull"
+	gitPullRebaseFlagConstant                 = "--rebase"
+	gitTerminalPromptEnvironmentNameConstant  = "GIT_TERMINAL_PROMPT"
+	gitTerminalPromptEnvironmentDisableValue  = "0"
 )
 
 // ErrRepositoryPathRequired indicates the repository path option was empty.
@@ -123,11 +127,38 @@ func (service *Service) Change(executionContext context.Context, options Options
 		return Result{}, fmt.Errorf(gitFetchFailureTemplateConstant, fmt.Errorf(gitRemoteListFailureTemplateConstant, remoteLookupErr))
 	}
 
-	useAllRemotes := !remoteExplicitlyProvided && remoteEnumeration.hasRemotes && !remoteEnumeration.requestedExists
-	shouldFetch := remoteEnumeration.hasRemotes && (!remoteExplicitlyProvided || remoteEnumeration.requestedExists)
+	useAllRemotes := false
+	if remoteEnumeration.hasRemotes && !remoteEnumeration.requestedExists {
+		useAllRemotes = true
+	}
+
+	shouldFetch := remoteEnumeration.hasRemotes && (remoteEnumeration.requestedExists || useAllRemotes)
 	shouldPull := shouldFetch
 	shouldTrackRemote := remoteEnumeration.requestedExists && shouldFetch
 	warnings := make([]string, 0)
+
+	if remoteExplicitlyProvided && !remoteEnumeration.requestedExists {
+		if remoteEnumeration.hasRemotes {
+			fallbackMessage := fmt.Sprintf(fetchFallbackWarningTemplateConstant, remoteName)
+			warnings = append(warnings, fallbackMessage)
+			service.logger.Warn(
+				fetchFallbackLogMessageConstant,
+				zap.String(logFieldRepositoryPathConstant, trimmedRepositoryPath),
+				zap.String(logFieldRemoteNameConstant, remoteName),
+			)
+		} else {
+			shouldFetch = false
+			shouldPull = false
+			useAllRemotes = false
+			skipMessage := fmt.Sprintf(missingConfiguredRemoteWarningTemplate, remoteName)
+			warnings = append(warnings, skipMessage)
+			service.logger.Warn(
+				missingConfiguredRemoteLogMessageConstant,
+				zap.String(logFieldRepositoryPathConstant, trimmedRepositoryPath),
+				zap.String(logFieldRemoteNameConstant, remoteName),
+			)
+		}
+	}
 
 	if shouldFetch {
 		fetchArguments := []string{gitFetchSubcommandConstant}

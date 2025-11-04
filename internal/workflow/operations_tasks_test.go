@@ -686,28 +686,28 @@ func (executor *recordingGitExecutor) ExecuteGit(_ context.Context, details exec
 		if len(details.Arguments) >= 2 {
 			switch details.Arguments[1] {
 			case "--verify":
-					target := ""
-					if len(details.Arguments) >= 3 {
-						target = details.Arguments[2]
-					}
-					if executor.existingRefs != nil {
-						if exists, ok := executor.existingRefs[target]; ok {
-							if exists {
-								return execshell.ExecutionResult{}, nil
-							}
-							return execshell.ExecutionResult{}, execshell.CommandFailedError{
-								Command: execshell.ShellCommand{Name: execshell.CommandGit, Details: details},
-								Result:  execshell.ExecutionResult{ExitCode: 1},
-							}
+				target := ""
+				if len(details.Arguments) >= 3 {
+					target = details.Arguments[2]
+				}
+				if executor.existingRefs != nil {
+					if exists, ok := executor.existingRefs[target]; ok {
+						if exists {
+							return execshell.ExecutionResult{}, nil
+						}
+						return execshell.ExecutionResult{}, execshell.CommandFailedError{
+							Command: execshell.ShellCommand{Name: execshell.CommandGit, Details: details},
+							Result:  execshell.ExecutionResult{ExitCode: 1},
 						}
 					}
-					if executor.branchExists {
-						return execshell.ExecutionResult{}, nil
-					}
-					return execshell.ExecutionResult{}, execshell.CommandFailedError{
-						Command: execshell.ShellCommand{Name: execshell.CommandGit, Details: details},
-						Result:  execshell.ExecutionResult{ExitCode: 1},
-					}
+				}
+				if executor.branchExists {
+					return execshell.ExecutionResult{}, nil
+				}
+				return execshell.ExecutionResult{}, execshell.CommandFailedError{
+					Command: execshell.ShellCommand{Name: execshell.CommandGit, Details: details},
+					Result:  execshell.ExecutionResult{ExitCode: 1},
+				}
 			case "--abbrev-ref":
 				branch := executor.currentBranch
 				if len(branch) == 0 {

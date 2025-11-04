@@ -3,6 +3,7 @@ package cd
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -167,6 +168,52 @@ func TestChangeFetchesAllWhenDefaultRemoteMissing(t *testing.T) {
 	require.Len(t, executor.recorded, 4)
 	require.Equal(t, []string{"remote"}, executor.recorded[0].Arguments)
 	require.Equal(t, []string{"fetch", "--all", "--prune"}, executor.recorded[1].Arguments)
+}
+
+func TestChangeFetchesAllWhenExplicitRemoteMissing(t *testing.T) {
+	executor := &stubGitExecutor{responses: []stubGitResponse{
+		{result: execshell.ExecutionResult{StandardOutput: "origin\n"}},
+	}}
+	service, err := NewService(ServiceDependencies{GitExecutor: executor})
+	require.NoError(t, err)
+
+	result, changeError := service.Change(context.Background(), Options{
+		RepositoryPath: "/tmp/repo",
+		BranchName:     "feature",
+		RemoteName:     "canonical",
+	})
+	require.NoError(t, changeError)
+	require.False(t, result.BranchCreated)
+	expectedWarning := fmt.Sprintf(fetchFallbackWarningTemplateConstant, "canonical")
+	require.Contains(t, result.Warnings, expectedWarning)
+
+	require.Len(t, executor.recorded, 4)
+	require.Equal(t, []string{"remote"}, executor.recorded[0].Arguments)
+	require.Equal(t, []string{"fetch", "--all", "--prune"}, executor.recorded[1].Arguments)
+	require.Equal(t, []string{"switch", "feature"}, executor.recorded[2].Arguments)
+	require.Equal(t, []string{"pull", "--rebase"}, executor.recorded[3].Arguments)
+}
+
+func TestChangeWarnsWhenExplicitRemoteMissingWithoutAlternatives(t *testing.T) {
+	executor := &stubGitExecutor{responses: []stubGitResponse{
+		{result: execshell.ExecutionResult{}},
+	}}
+	service, err := NewService(ServiceDependencies{GitExecutor: executor})
+	require.NoError(t, err)
+
+	result, changeError := service.Change(context.Background(), Options{
+		RepositoryPath: "/tmp/repo",
+		BranchName:     "feature",
+		RemoteName:     "canonical",
+	})
+	require.NoError(t, changeError)
+	require.False(t, result.BranchCreated)
+	expectedWarning := fmt.Sprintf(missingConfiguredRemoteWarningTemplate, "canonical")
+	require.Contains(t, result.Warnings, expectedWarning)
+
+	require.Len(t, executor.recorded, 2)
+	require.Equal(t, []string{"remote"}, executor.recorded[0].Arguments)
+	require.Equal(t, []string{"switch", "feature"}, executor.recorded[1].Arguments)
 }
 
 func TestChangeSkipsNetworkWhenNoRemotesDetected(t *testing.T) {
