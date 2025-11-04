@@ -93,7 +93,7 @@ func buildWorkflowTasks(nodes []*workflowpkg.OperationNode) ([]workflowpkg.TaskD
 				continue
 			}
 			if len(typedOperation.Targets) > 1 {
-				return nil, workflowpkg.RuntimeOptions{}, fmt.Errorf("default-branch step supports a single target; received %d", len(typedOperation.Targets))
+				return nil, workflowpkg.RuntimeOptions{}, fmt.Errorf("branch default step supports a single target; received %d", len(typedOperation.Targets))
 			}
 
 			target := typedOperation.Targets[0]
@@ -144,7 +144,7 @@ func buildWorkflowTasks(nodes []*workflowpkg.OperationNode) ([]workflowpkg.TaskD
 			})
 
 		default:
-			return nil, workflowpkg.RuntimeOptions{}, fmt.Errorf("unsupported workflow operation: %s", operation.Name())
+			return nil, workflowpkg.RuntimeOptions{}, fmt.Errorf("unsupported workflow command: %s", operation.Name())
 		}
 	}
 

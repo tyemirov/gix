@@ -62,7 +62,7 @@ func TestWorkflowDefaultBranchHandlesRepositoriesWithoutRemotes(testInstance *te
 	configContents := `workflow:
   - step:
       name: promote-master
-      operation: default-branch
+      command: ["branch", "default"]
       with:
         targets:
           - remote_name: origin

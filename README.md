@@ -89,13 +89,13 @@ Workflows reuse repository discovery, confirmation prompts, and logging so you c
 
 ### Workflow syntax
 
-Workflows are YAML or JSON files with a top-level `workflow` sequence. Each entry wraps a `step` describing one operation, optional dependencies, and operation-specific options.
+Workflows are YAML or JSON files with a top-level `workflow` sequence. Each entry wraps a `step` describing one command path, optional dependencies, and command-specific options.
 
 ```yaml
 workflow:
   - step:
       name: rename
-      operation: rename-directories
+      command: ["repo", "folder", "rename"]
       with:
         require_clean: true
         include_owner: false
@@ -103,21 +103,21 @@ workflow:
   - step:
       name: remotes
       after: ["rename"]
-      operation: update-canonical-remote
+      command: ["repo", "remote", "update-to-canonical"]
       with:
         owner: temirov
 
   - step:
       name: protocols
       after: ["remotes"]
-      operation: convert-protocol
+      command: ["repo", "remote", "update-protocol"]
       with:
         from: https
         to: ssh
 
   - step:
       name: default-branch
-      operation: default-branch
+      command: ["branch", "default"]
       with:
         targets:
           - remote_name: origin
@@ -129,33 +129,33 @@ workflow:
   - step:
       name: audit
       after: ["default-branch"]
-      operation: audit-report
+      command: ["audit", "report"]
       with:
         output: ./reports/audit.csv
 ```
 
 - `name` is optional; if omitted a stable name is generated (e.g., `convert-protocol-1`).
 - `after` lists step names this step depends on. If omitted, each step depends on the previous step, preserving sequential order.
-- `operation` selects a built-in operation (see below).
-- `with` carries operation-specific options.
+- `command` selects a built-in workflow command path (see below).
+- `with` carries command-specific options.
 
 Run with: `gix workflow path/to/file.yaml --roots ~/Development [--dry-run] [-y] [--require-clean]`.
 
-### Built-in operations
+### Built-in workflow commands
 
-- `convert-protocol`
+- `repo remote update-protocol`
   - with: `from: <git|ssh|https>`, `to: <git|ssh|https>` (required, must differ)
-- `update-canonical-remote`
+- `repo remote update-to-canonical`
   - with: `owner: <slug>` (optional owner constraint)
-- `rename-directories`
+- `repo folder rename`
   - with: `require_clean: <bool>`, `include_owner: <bool>`
   - CLI `--require-clean` provides a default when not specified.
-- `default-branch`
+- `branch default`
   - with: `targets: [{ remote_name, source_branch, target_branch, push_to_remote, delete_source_branch }]`
   - Defaults: `remote_name: origin`, `target_branch: master`, `push_to_remote: true`, `delete_source_branch: false`; `source_branch` auto-detected from remote/local if omitted.
-- `audit-report`
+- `audit report`
   - with: `output: <path>` (optional). When provided, writes a CSV file; otherwise prints to stdout (respects `--dry-run`).
-- `apply-tasks`
+- `repo tasks apply`
   - with: `tasks: [...]` (see below) for fine-grained file changes, commits, PRs, and built-in actions.
 
 ### Example: Canonicalize after owner rename
@@ -166,12 +166,12 @@ This example updates remotes to canonical, renames folders to include owners, sw
 workflow:
   - step:
       name: remotes
-      operation: update-canonical-remote
+      command: ["repo", "remote", "update-to-canonical"]
 
   - step:
       name: folders
       after: ["remotes"]
-      operation: rename-directories
+      command: ["repo", "folder", "rename"]
       with:
         include_owner: true
         require_clean: false
@@ -179,7 +179,7 @@ workflow:
   - step:
       name: protocol-to-git-https
       after: ["folders"]
-      operation: convert-protocol
+      command: ["repo", "remote", "update-protocol"]
       with:
         from: https
         to: git
@@ -187,7 +187,7 @@ workflow:
   - step:
       name: protocol-to-git-ssh
       after: ["folders"]
-      operation: convert-protocol
+      command: ["repo", "remote", "update-protocol"]
       with:
         from: ssh
         to: git
@@ -195,7 +195,7 @@ workflow:
   - step:
       name: switch-branch
       after: ["protocol-to-git-https", "protocol-to-git-ssh"]
-      operation: apply-tasks
+      command: ["repo", "tasks", "apply"]
       with:
         tasks:
           - name: "Switch to master if clean"
@@ -211,7 +211,7 @@ workflow:
   - step:
       name: rewrite-go-namespace
       after: ["switch-branch"]
-      operation: apply-tasks
+      command: ["repo", "tasks", "apply"]
       with:
         tasks:
           - name: "Rewrite module namespace"
@@ -254,7 +254,7 @@ Example task-only workflow step:
 ```yaml
 - step:
     name: apply-task
-    operation: apply-tasks
+    command: ["repo", "tasks", "apply"]
     with:
       tasks:
         - name: "Bump license header"
@@ -377,4 +377,4 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
 - Repository services accept domain types from `internal/repos/shared` (paths, owners, remotes, branches); CLI edges construct them so executors run without defensive validation.
 - Executor errors surface via the contextual catalog in `internal/repos/errors`, which prints `PLAN-*`, `*-DONE`, and `*-SKIP` banners through the shared reporter.
 - Confirmation prompts respect the `[a/N/y]` contract everywhere; passing `--yes` (or setting `assume_yes: true` in workflows) flips the shared confirmation policy to auto-accept.
-- Run `make ci` before submitting patches; it enforces formatting plus `go vet`, `staticcheck`, `ineffassign`, and the unit/integration test suites.
+- Run `make ci` before submitting patches; it enforces formatting plus `go vet`, `staticcheck`, `ineffassign`, and the unit/integration test suites. At minimum, run `go run honnef.co/go/tools/cmd/staticcheck@master ./...` so lint blocks (SA1006, etc.) surface before you commit.

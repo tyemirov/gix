@@ -178,6 +178,42 @@ func TestCommandFlagsOverrideConfiguration(t *testing.T) {
 	require.True(t, runner.runtimeOptions.SkipRepositoryMetadata)
 }
 
+func TestCommandHandlesExplicitYesValue(t *testing.T) {
+	discoverer := &fakeRepositoryDiscoverer{repositories: []string{"/tmp/branches"}}
+	executor := &stubGitExecutor{}
+	manager := stubGitRepositoryManager{}
+	runner := &recordingTaskRunner{}
+
+	builder := branches.CommandBuilder{
+		LoggerProvider:  func() *zap.Logger { return zap.NewNop() },
+		Discoverer:      discoverer,
+		GitExecutor:     executor,
+		GitManager:      manager,
+		PrompterFactory: func(*cobra.Command) shared.ConfirmationPrompter { return stubPrompter{} },
+		ConfigurationProvider: func() branches.CommandConfiguration {
+			return branches.CommandConfiguration{
+				RemoteName:       configurationRemoteNameConstant,
+				PullRequestLimit: 12,
+				RepositoryRoots:  []string{configurationRootConstant},
+			}
+		},
+		TaskRunnerFactory: func(deps workflow.Dependencies) branches.TaskRunnerExecutor {
+			runner.dependencies = deps
+			return runner
+		},
+	}
+
+	command, buildError := builder.Build()
+	require.NoError(t, buildError)
+	bindGlobalBranchFlags(command)
+	command.SetContext(context.Background())
+	command.SetArgs([]string{commandAssumeYesFlagConstant, "yes"})
+
+	executionError := command.Execute()
+	require.Error(t, executionError)
+	require.Equal(t, rootutils.PositionalRootsUnsupportedMessage(), executionError.Error())
+}
+
 func TestCommandErrorsWhenRemoteInvalid(t *testing.T) {
 	builder := branches.CommandBuilder{}
 	command, buildError := builder.Build()

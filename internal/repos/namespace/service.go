@@ -22,12 +22,13 @@ import (
 )
 
 const (
-	defaultBranchPrefix          = "namespace-rewrite"
-	defaultCommitMessageTemplate = "chore(namespace): rewrite %s -> %s"
-	goFileExtension              = ".go"
-	gitDirectoryName             = ".git"
-	vendorDirectoryName          = "vendor"
-	gitIgnoredSkipReason         = "namespace rewrite skipped: files ignored by git"
+	defaultBranchPrefix                = "namespace-rewrite"
+	defaultCommitMessageTemplate       = "chore(namespace): rewrite %s -> %s"
+	goFileExtension                    = ".go"
+	gitDirectoryName                   = ".git"
+	vendorDirectoryName                = "vendor"
+	gitIgnoredSkipReason               = "namespace rewrite skipped: all matching files ignored by git"
+	noMatchingPrefixSkipReasonTemplate = "namespace rewrite skipped: no references to %s"
 )
 
 var (
@@ -256,12 +257,17 @@ func (service *Service) planRewrite(repositoryPath string, options Options) (Res
 	if planError != nil {
 		return Result{}, planError
 	}
+	planHasChanges := plan.requiresRewrite()
 	plan, planError = service.excludeIgnoredPlanEntries(context.Background(), repositoryPath, plan)
 	if planError != nil {
 		return Result{}, planError
 	}
 	if !plan.requiresRewrite() {
-		return Result{Skipped: true, SkipReason: gitIgnoredSkipReason}, nil
+		skipReason := gitIgnoredSkipReason
+		if !planHasChanges {
+			skipReason = fmt.Sprintf(noMatchingPrefixSkipReasonTemplate, options.OldPrefix.String())
+		}
+		return Result{Skipped: true, SkipReason: skipReason}, nil
 	}
 
 	result := Result{
@@ -278,12 +284,17 @@ func (service *Service) applyRewrite(ctx context.Context, repositoryPath string,
 	if planError != nil {
 		return Result{}, planError
 	}
+	planHasChanges := plan.requiresRewrite()
 	plan, planError = service.excludeIgnoredPlanEntries(ctx, repositoryPath, plan)
 	if planError != nil {
 		return Result{}, planError
 	}
 	if !plan.requiresRewrite() {
-		return Result{Skipped: true, SkipReason: gitIgnoredSkipReason}, nil
+		skipReason := gitIgnoredSkipReason
+		if !planHasChanges {
+			skipReason = fmt.Sprintf(noMatchingPrefixSkipReasonTemplate, options.OldPrefix.String())
+		}
+		return Result{Skipped: true, SkipReason: skipReason}, nil
 	}
 
 	if err := service.ensureGitRepository(repositoryPath); err != nil {
