@@ -1,5 +1,35 @@
 # Changelog
 
+## [v0.2.0-rc.4]
+
+### Features ✨
+- _No changes._
+
+### Improvements ⚙️
+- Added workflow-level repository deduplication to ensure changelog actions run once per path.
+- Enhanced branch switch command to fetch all remotes and pull when the configured remote is missing, emitting a fetch fallback warning.
+- Improved namespace rewrite to update Go test files, rewriting imports to the new module prefix and staging changes.
+
+### Bug Fixes 🐛
+- Fixed skipping of gitignored nested repositories and files during namespace rewrite.
+- Fixed namespace rewrite to update Go test files, ensuring `_test.go` imports follow the new module prefix.
+- Fixed workflow apply-tasks to skip duplicate repositories so changelog actions emit a single section per path.
+- Fixed namespace workflows to warn and proceed when the configured start point branch is missing, defaulting to the current HEAD.
+- Fixed branch change workflows deduplicating relative roots so each repository logs `REPO_SWITCHED` exactly once.
+- Fixed namespace task log formatting to emit actual newlines instead of escaped `\n`.
+- Fixed namespace push failures by capturing git stderr and degrading push/auth errors into actionable skip messages.
+- Fixed branch default command to fail fast with clear error when GitHub token is missing.
+
+### Testing 🧪
+- Added regression tests to prevent duplicate changelog message generation.
+- Added tests covering namespace rewrite handling for Go test files.
+- Added tests ensuring workflow executor canonicalizes repository paths to avoid duplicate branch switch logs.
+- Expanded unit and integration tests for workflows skipping gitignored nested repositories.
+
+### Docs 📚
+- Updated ISSUES.md with resolutions for namespace rewrite, repository discovery, changelog duplication, missing start branch, and branch switch improvements.
+Summary: total.repos=0 duration_ms=0
+
 ## [v0.2.0-rc.3]
 
 ### Features ✨
