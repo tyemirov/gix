@@ -151,11 +151,13 @@ func TestRetagCommandBuildsMappings(t *testing.T) {
 	action := actionDefinitions[0]
 	require.Equal(t, "repo.release.retag", action.Type)
 
-	mappingValue, ok := action.Options["mappings"].([]map[string]any)
+	mappingValue, ok := action.Options["mappings"].([]any)
 	require.True(t, ok)
 	require.Len(t, mappingValue, 2)
-	require.Equal(t, "v1.0.0", mappingValue[0]["tag"])
-	require.Equal(t, "main", mappingValue[0]["target"])
-	require.Equal(t, "Retag v1.0.0 -> main", mappingValue[0]["message"])
+	firstMapping, ok := mappingValue[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "v1.0.0", firstMapping["tag"])
+	require.Equal(t, "main", firstMapping["target"])
+	require.Equal(t, "Retag v1.0.0 -> main", firstMapping["message"])
 	require.Equal(t, "origin", action.Options["remote"])
 }
