@@ -8,18 +8,16 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - Resolution: Added namespace rewrite service, workflow action, and `gix repo namespace rewrite` command with tests and configuration defaults.
 
 - [ ] [GX-22] License injection (prototype under tools/licenser)
-  - Status: Unresolved (Not ready)
+  - Status: Unresolved
   - Category: Feature
   - Context: Prototype exists; not yet slated.
-  - Desired: Keep as backlog; no plan in ISSUES.md. Use PLAN.md when ready.
-  - Notes: Formerly under “Planning”.
+  - Desired: Implement a repo level workflow that would allow distribution of licensing using built in capabilities
 
 - [ ] [GX-23] Git retag (prototype under tools/git_retag)
   - Status: Unresolved (Not ready)
   - Category: Feature
   - Context: Prototype exists; not yet slated.
-  - Desired: Keep as backlog; no plan in ISSUES.md. Use PLAN.md when ready.
-  - Notes: Formerly under “Planning”.
+  - Desired: Implement a repo level workflow that would allow fixing incorrect tagging, including history, into proper sequence
 
 - [ ] [GX-104] Add convenience CLI: `gix repo files add` mapping to apply-tasks
   - Status: Resolved
@@ -30,7 +28,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
     - Honors `--dry-run`, `-y/--yes`, shared `--remote`, and root discovery flags consistent with other repo commands.
   - Notes: Lives under existing `repo files` namespace alongside `replace`.
 
-  - [ ] [GX-105] Refactor the DSL for the workflow and make use of commands and subcommands DSL instead of `operation: rename-directories`. Document the changes.
+- [ ] [GX-105] Refactor the DSL for the workflow and make use of commands and subcommands DSL instead of `operation: rename-directories`. Document the changes.
 
 ## Improvements (200–299)
 
@@ -81,6 +79,12 @@ If a repository doesnt have a remote, there is nothing to fetch, but we can stil
 Single line per event, with two parts:
 
 Human part (left): aligned columns, easy to scan.
+
+- [ ] [GX-212] Add details of what exactly is unclean in a directory, which files. Improve the message we are getting now with the details
+```
+TASK-SKIP: Switch to master if clean /tmp/repos/tyemirov/GAuss repository not clean
+TASK-SKIP: Rewrite module namespace /tmp/repos/tyemirov/GAuss repository dirty
+```
 
 ### Examples (your lines → refactored)
 
