@@ -30,6 +30,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
     - Honors `--dry-run`, `-y/--yes`, shared `--remote`, and root discovery flags consistent with other repo commands.
   - Notes: Lives under existing `repo files` namespace alongside `replace`.
 
+  - [ ] [GX-105] Refactor the DSL for the workflow and make use of commands and subcommands DSL instead of `operation: rename-directories`. Document the changes.
+
 ## Improvements (200–299)
 
 - [x] [GX-200] Remove `--to` flag from default command and accept the new branch as an argument, e.g. `gix b default master`
