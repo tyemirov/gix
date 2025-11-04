@@ -21,7 +21,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - Desired: Implement a repo level workflow that would allow fixing incorrect tagging, including history, into proper sequence
   - Resolution: Added `gix repo release retag` and `repo.release.retag` workflow action to remap tags to new commits with force-push, including regression coverage and documentation.
 
-- [ ] [GX-104] Add convenience CLI: `gix repo files add` mapping to apply-tasks
+- [x] [GX-104] Add convenience CLI: `gix repo files add` mapping to apply-tasks
   - Status: Resolved
   - Category: Feature
   - Context: Frequently need to drop a standard file (e.g., POLICY.md) into many repos without crafting a workflow file.
@@ -29,6 +29,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
     - Maps to an `apply-tasks` task that writes the file, commits with a configurable message (default `docs: add <path>`), and optionally pushes/opens a PR.
     - Honors `--dry-run`, `-y/--yes`, shared `--remote`, and root discovery flags consistent with other repo commands.
   - Notes: Lives under existing `repo files` namespace alongside `replace`.
+  - Resolution: Added `gix repo files add` command and workflow support to seed files with configurable content, permissions, branch/push settings, plus docs and regression tests.
 
 - [ ] [GX-105] Refactor the DSL for the workflow and make use of commands and subcommands DSL instead of `operation: rename-directories`. Document the changes.
 

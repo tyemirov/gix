@@ -104,6 +104,7 @@ const (
 	repoReleaseOperationNameConstant                                 = "repo-release"
 	repoHistoryOperationNameConstant                                 = "repo-history-remove"
 	repoFilesReplaceOperationNameConstant                            = "repo-files-replace"
+	repoFilesAddOperationNameConstant                                = "repo-files-add"
 	repoLicenseOperationNameConstant                                 = "repo-license-apply"
 	repoNamespaceRewriteOperationNameConstant                        = "repo-namespace-rewrite"
 	workflowCommandOperationNameConstant                             = "workflow"
@@ -140,6 +141,9 @@ const (
 	repoFilesNamespaceShortDescriptionConstant                       = "Repository file commands"
 	repoLicenseNamespaceUseNameConstant                              = "license"
 	repoLicenseNamespaceShortDescriptionConstant                     = "License distribution commands"
+	filesAddCommandUseNameConstant                                   = "add"
+	filesAddCommandAliasConstant                                     = "seed"
+	filesAddCommandLongDescriptionConstant                           = "repo files add writes or seeds files across repositories."
 	repoNamespaceRewriteNamespaceUseNameConstant                     = "namespace"
 	repoNamespaceRewriteNamespaceShortDescriptionConstant            = "Namespace rewrite commands"
 	namespaceRewriteCommandUseNameConstant                           = "rewrite"
@@ -232,6 +236,7 @@ var commandOperationRequirements = map[string][]string{
 	repoNamespaceUseNameConstant + "/" + repoReleaseCommandUseNameConstant + "/" + releaseRetagCommandUseNameConstant:                {repoReleaseOperationNameConstant},
 	repoNamespaceUseNameConstant + "/" + removeCommandUseNameConstant:                                                                {repoHistoryOperationNameConstant},
 	repoNamespaceUseNameConstant + "/" + repoFilesNamespaceUseNameConstant + "/" + filesReplaceCommandUseNameConstant:                {repoFilesReplaceOperationNameConstant},
+	repoNamespaceUseNameConstant + "/" + repoFilesNamespaceUseNameConstant + "/" + filesAddCommandUseNameConstant:                    {repoFilesAddOperationNameConstant},
 	repoNamespaceUseNameConstant + "/" + repoNamespaceRewriteNamespaceUseNameConstant + "/" + namespaceRewriteCommandUseNameConstant: {repoNamespaceRewriteOperationNameConstant},
 	repoNamespaceUseNameConstant + "/" + repoLicenseNamespaceUseNameConstant + "/" + licenseApplyCommandUseNameConstant:              {repoLicenseOperationNameConstant},
 	renameCommandUseNameConstant:         {reposRenameOperationNameConstant},
@@ -240,6 +245,8 @@ var commandOperationRequirements = map[string][]string{
 	reposRenameOperationNameConstant:     {reposRenameOperationNameConstant},
 	repoLicenseOperationNameConstant:     {repoLicenseOperationNameConstant},
 	licenseApplyCommandUseNameConstant:   {repoLicenseOperationNameConstant},
+	repoFilesAddOperationNameConstant:    {repoFilesAddOperationNameConstant},
+	filesAddCommandUseNameConstant:       {repoFilesAddOperationNameConstant},
 	updateProtocolCommandUseNameConstant: {reposProtocolOperationNameConstant},
 	updateRemoteCanonicalUseNameConstant: {reposRemotesOperationNameConstant},
 	workflowCommandOperationNameConstant: {workflowCommandOperationNameConstant},
@@ -673,6 +680,14 @@ func NewApplication() *Application {
 		ConfigurationProvider:        application.reposReplaceConfiguration,
 	}
 
+	filesAddBuilder := repos.FilesAddCommandBuilder{
+		LoggerProvider: func() *zap.Logger {
+			return application.logger
+		},
+		HumanReadableLoggingProvider: application.humanReadableLoggingEnabled,
+		ConfigurationProvider:        application.reposFilesAddConfiguration,
+	}
+
 	namespaceBuilder := repos.NamespaceCommandBuilder{
 		LoggerProvider: func() *zap.Logger {
 			return application.logger
@@ -778,6 +793,10 @@ func NewApplication() *Application {
 	if filesReplaceCommand, filesReplaceBuildError := replaceBuilder.Build(); filesReplaceBuildError == nil {
 		configureCommandMetadata(filesReplaceCommand, filesReplaceCommandUseNameConstant, filesReplaceCommand.Short, filesReplaceCommandLongDescriptionConstant, filesReplaceCommandAliasConstant)
 		repoFilesCommand.AddCommand(filesReplaceCommand)
+	}
+	if filesAddCommand, filesAddBuildError := filesAddBuilder.Build(); filesAddBuildError == nil {
+		configureCommandMetadata(filesAddCommand, filesAddCommandUseNameConstant, filesAddCommand.Short, filesAddCommandLongDescriptionConstant, filesAddCommandAliasConstant)
+		repoFilesCommand.AddCommand(filesAddCommand)
 	}
 	if len(repoFilesCommand.Commands()) > 0 {
 		repoNamespaceCommand.AddCommand(repoFilesCommand)
@@ -1278,6 +1297,21 @@ func (application *Application) reposLicenseConfiguration() repos.LicenseConfigu
 	}
 	if !optionsExist || !optionExists(options, requireCleanOptionKeyConstant) {
 		configuration.RequireClean = application.configuration.Common.RequireClean
+	}
+
+	return configuration.Sanitize()
+}
+
+func (application *Application) reposFilesAddConfiguration() repos.AddConfiguration {
+	configuration := repos.DefaultToolsConfiguration().Add
+	application.decodeOperationConfiguration(repoFilesAddOperationNameConstant, &configuration)
+
+	options, optionsExist := application.lookupOperationOptions(repoFilesAddOperationNameConstant)
+	if !optionsExist || !optionExists(options, dryRunOptionKeyConstant) {
+		configuration.DryRun = application.configuration.Common.DryRun
+	}
+	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
+		configuration.AssumeYes = application.configuration.Common.AssumeYes
 	}
 
 	return configuration.Sanitize()

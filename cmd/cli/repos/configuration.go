@@ -17,6 +17,7 @@ type ToolsConfiguration struct {
 	Replace   ReplaceConfiguration   `mapstructure:"replace"`
 	Namespace NamespaceConfiguration `mapstructure:"namespace"`
 	License   LicenseConfiguration   `mapstructure:"license"`
+	Add       AddConfiguration       `mapstructure:"add"`
 }
 
 // RemotesConfiguration describes configuration values for repo-remote-update.
@@ -100,6 +101,24 @@ type LicenseConfiguration struct {
 	CommitMessage   string   `mapstructure:"commit_message"`
 }
 
+// AddConfiguration describes configuration values for repo files add.
+type AddConfiguration struct {
+	DryRun          bool     `mapstructure:"dry_run"`
+	AssumeYes       bool     `mapstructure:"assume_yes"`
+	RepositoryRoots []string `mapstructure:"roots"`
+	Path            string   `mapstructure:"path"`
+	Content         string   `mapstructure:"content"`
+	ContentFile     string   `mapstructure:"content_file"`
+	Mode            string   `mapstructure:"mode"`
+	Permissions     string   `mapstructure:"permissions"`
+	RequireClean    bool     `mapstructure:"require_clean"`
+	Branch          string   `mapstructure:"branch"`
+	StartPoint      string   `mapstructure:"start_point"`
+	Push            bool     `mapstructure:"push"`
+	PushRemote      string   `mapstructure:"push_remote"`
+	CommitMessage   string   `mapstructure:"commit_message"`
+}
+
 // DefaultToolsConfiguration returns baseline configuration values for repository commands.
 func DefaultToolsConfiguration() ToolsConfiguration {
 	return ToolsConfiguration{
@@ -166,6 +185,22 @@ func DefaultToolsConfiguration() ToolsConfiguration {
 			RequireClean:    true,
 			Branch:          "license/{{ .Repository.Name }}",
 			StartPoint:      "",
+			PushRemote:      "origin",
+			CommitMessage:   "",
+		},
+		Add: AddConfiguration{
+			DryRun:          false,
+			AssumeYes:       false,
+			RepositoryRoots: nil,
+			Path:            "",
+			Content:         "",
+			ContentFile:     "",
+			Mode:            "skip-if-exists",
+			Permissions:     "0644",
+			RequireClean:    true,
+			Branch:          "docs/add/{{ .Repository.Name }}",
+			StartPoint:      "",
+			Push:            true,
 			PushRemote:      "origin",
 			CommitMessage:   "",
 		},
@@ -302,6 +337,56 @@ func (configuration LicenseConfiguration) sanitize() LicenseConfiguration {
 
 // Sanitize normalizes license configuration values.
 func (configuration LicenseConfiguration) Sanitize() LicenseConfiguration {
+	return configuration.sanitize()
+}
+
+// sanitize normalizes add configuration values.
+func (configuration AddConfiguration) sanitize() AddConfiguration {
+	sanitized := configuration
+	sanitized.RepositoryRoots = rootutils.SanitizeConfigured(configuration.RepositoryRoots)
+	sanitized.Path = strings.TrimSpace(configuration.Path)
+	sanitized.Content = configuration.Content
+	sanitized.ContentFile = strings.TrimSpace(configuration.ContentFile)
+
+	modeValue := strings.TrimSpace(strings.ToLower(configuration.Mode))
+	if len(modeValue) == 0 {
+		modeValue = "skip-if-exists"
+	}
+	sanitized.Mode = modeValue
+
+	sanitized.RequireClean = configuration.RequireClean
+
+	if len(strings.TrimSpace(configuration.Branch)) == 0 {
+		sanitized.Branch = "docs/add/{{ .Repository.Name }}"
+	} else {
+		sanitized.Branch = strings.TrimSpace(configuration.Branch)
+	}
+
+	sanitized.StartPoint = strings.TrimSpace(configuration.StartPoint)
+	sanitized.Push = configuration.Push
+
+	if len(strings.TrimSpace(configuration.PushRemote)) == 0 {
+		sanitized.PushRemote = "origin"
+	} else {
+		sanitized.PushRemote = strings.TrimSpace(configuration.PushRemote)
+	}
+
+	if len(strings.TrimSpace(configuration.CommitMessage)) == 0 && len(sanitized.Path) > 0 {
+		sanitized.CommitMessage = fmt.Sprintf("docs: add %s", sanitized.Path)
+	} else {
+		sanitized.CommitMessage = strings.TrimSpace(configuration.CommitMessage)
+	}
+
+	sanitized.Permissions = strings.TrimSpace(configuration.Permissions)
+	if len(sanitized.Permissions) == 0 {
+		sanitized.Permissions = "0644"
+	}
+
+	return sanitized
+}
+
+// Sanitize normalizes add configuration values.
+func (configuration AddConfiguration) Sanitize() AddConfiguration {
 	return configuration.sanitize()
 }
 
