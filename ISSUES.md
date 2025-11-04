@@ -14,11 +14,12 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - Desired: Implement a repo level workflow that would allow distribution of licensing using built in capabilities
   - Resolution: Added `gix repo license apply` to distribute license files via workflow tasks with configuration defaults, README docs, and regression coverage.
 
-- [ ] [GX-23] Git retag (prototype under tools/git_retag)
-  - Status: Unresolved (Not ready)
+- [x] [GX-23] Git retag (prototype under tools/git_retag)
+  - Status: Resolved
   - Category: Feature
   - Context: Prototype exists; not yet slated.
   - Desired: Implement a repo level workflow that would allow fixing incorrect tagging, including history, into proper sequence
+  - Resolution: Added `gix repo release retag` and `repo.release.retag` workflow action to remap tags to new commits with force-push, including regression coverage and documentation.
 
 - [ ] [GX-104] Add convenience CLI: `gix repo files add` mapping to apply-tasks
   - Status: Resolved

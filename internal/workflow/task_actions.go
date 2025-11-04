@@ -21,12 +21,14 @@ const (
 	taskActionRenameDirectories  = "repo.folder.rename"
 	taskActionBranchDefault      = "branch.default"
 	taskActionReleaseTag         = "repo.release.tag"
+	taskActionReleaseRetag       = "repo.release.retag"
 	taskActionAuditReport        = "audit.report"
 	taskActionHistoryPurge       = "repo.history.purge"
 	taskActionFileReplace        = "repo.files.replace"
 	taskActionNamespaceRewrite   = "repo.namespace.rewrite"
 
 	releaseActionMessageTemplate = "RELEASED: %s -> %s"
+	retagActionMessageTemplate   = "RETAGGED: %s tag=%s target=%s"
 )
 
 var taskActionHandlers = map[string]taskActionHandlerFunc{
@@ -35,6 +37,7 @@ var taskActionHandlers = map[string]taskActionHandlerFunc{
 	taskActionRenameDirectories:  handleRenameDirectoriesAction,
 	taskActionBranchDefault:      handleBranchDefaultAction,
 	taskActionReleaseTag:         handleReleaseTagAction,
+	taskActionReleaseRetag:       handleReleaseRetagAction,
 	taskActionAuditReport:        handleAuditReportAction,
 	taskActionHistoryPurge:       handleHistoryPurgeAction,
 	taskActionFileReplace:        handleFileReplaceAction,
@@ -249,6 +252,78 @@ func handleReleaseTagAction(ctx context.Context, environment *Environment, repos
 
 	if environment.Output != nil {
 		fmt.Fprintf(environment.Output, releaseActionMessageTemplate+"\n", result.RepositoryPath, result.TagName)
+	}
+
+	return nil
+}
+
+func handleReleaseRetagAction(ctx context.Context, environment *Environment, repository *RepositoryState, parameters map[string]any) error {
+	if environment == nil || repository == nil {
+		return nil
+	}
+
+	reader := newOptionReader(parameters)
+
+	remoteValue, _, remoteError := reader.stringValue("remote")
+	if remoteError != nil {
+		return remoteError
+	}
+
+	mappingEntries, mappingsExist, mappingsError := reader.mapSlice("mappings")
+	if mappingsError != nil {
+		return mappingsError
+	}
+	if !mappingsExist || len(mappingEntries) == 0 {
+		return errors.New("retag action requires 'mappings'")
+	}
+
+	mappings := make([]releases.RetagMapping, 0, len(mappingEntries))
+	for _, entry := range mappingEntries {
+		entryReader := newOptionReader(entry)
+
+		tagValue, tagExists, tagError := entryReader.stringValue("tag")
+		if tagError != nil {
+			return tagError
+		}
+		if !tagExists || len(tagValue) == 0 {
+			return errors.New("retag mapping requires 'tag'")
+		}
+
+		targetValue, targetExists, targetError := entryReader.stringValue("target")
+		if targetError != nil {
+			return targetError
+		}
+		if !targetExists || len(targetValue) == 0 {
+			return errors.New("retag mapping requires 'target'")
+		}
+
+		messageValue, _, messageError := entryReader.stringValue("message")
+		if messageError != nil {
+			return messageError
+		}
+
+		mappings = append(mappings, releases.RetagMapping{TagName: tagValue, TargetReference: targetValue, Message: messageValue})
+	}
+
+	service, serviceError := releases.NewService(releases.ServiceDependencies{GitExecutor: environment.GitExecutor})
+	if serviceError != nil {
+		return serviceError
+	}
+
+	results, retagError := service.Retag(ctx, releases.RetagOptions{
+		RepositoryPath: repository.Path,
+		RemoteName:     remoteValue,
+		DryRun:         environment.DryRun,
+		Mappings:       mappings,
+	})
+	if retagError != nil {
+		return retagError
+	}
+
+	if environment.Output != nil {
+		for _, result := range results {
+			fmt.Fprintf(environment.Output, retagActionMessageTemplate+"\n", repository.Path, result.TagName, result.TargetReference)
+		}
 	}
 
 	return nil

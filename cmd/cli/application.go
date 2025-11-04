@@ -155,6 +155,9 @@ const (
 	repoReleaseCommandUsageTemplateConstant                          = repoReleaseCommandUseNameConstant + " <tag>"
 	repoReleaseCommandAliasConstant                                  = "rel"
 	repoReleaseCommandLongDescriptionConstant                        = "repo release annotates the provided tag (default message 'Release <tag>') and pushes it to the configured remote. Provide the tag as the first argument before any optional repository roots or flags."
+	releaseRetagCommandUseNameConstant                               = "retag"
+	releaseRetagCommandAliasConstant                                 = "fix"
+	releaseRetagCommandLongDescriptionConstant                       = "Retag existing annotated tags to new commits."
 	removeCommandUseNameConstant                                     = "rm"
 	removeCommandAliasConstant                                       = "purge"
 	removeCommandShortDescriptionConstant                            = "Rewrite history to delete selected paths"
@@ -226,7 +229,8 @@ var commandOperationRequirements = map[string][]string{
 	refreshCommandUseNameConstant:                                             {branchRefreshOperationNameConstant},
 	branchNamespaceUseNameConstant + "/" + branchChangeCommandUseNameConstant: {branchChangeOperationNameConstant},
 	repoNamespaceUseNameConstant + "/" + repoReleaseCommandUseNameConstant:    {repoReleaseOperationNameConstant},
-	repoNamespaceUseNameConstant + "/" + removeCommandUseNameConstant:         {repoHistoryOperationNameConstant},
+	repoNamespaceUseNameConstant + "/" + repoReleaseCommandUseNameConstant + "/" + releaseRetagCommandUseNameConstant:                {repoReleaseOperationNameConstant},
+	repoNamespaceUseNameConstant + "/" + removeCommandUseNameConstant:                                                                {repoHistoryOperationNameConstant},
 	repoNamespaceUseNameConstant + "/" + repoFilesNamespaceUseNameConstant + "/" + filesReplaceCommandUseNameConstant:                {repoFilesReplaceOperationNameConstant},
 	repoNamespaceUseNameConstant + "/" + repoNamespaceRewriteNamespaceUseNameConstant + "/" + namespaceRewriteCommandUseNameConstant: {repoNamespaceRewriteOperationNameConstant},
 	repoNamespaceUseNameConstant + "/" + repoLicenseNamespaceUseNameConstant + "/" + licenseApplyCommandUseNameConstant:              {repoLicenseOperationNameConstant},
@@ -621,6 +625,14 @@ func NewApplication() *Application {
 		ConfigurationProvider:        application.repoReleaseConfiguration,
 	}
 
+	retagBuilder := releasecmd.RetagCommandBuilder{
+		LoggerProvider: func() *zap.Logger {
+			return application.logger
+		},
+		HumanReadableLoggingProvider: application.humanReadableLoggingEnabled,
+		ConfigurationProvider:        application.repoReleaseConfiguration,
+	}
+
 	renameBuilder := repos.RenameCommandBuilder{
 		LoggerProvider: func() *zap.Logger {
 			return application.logger
@@ -797,6 +809,10 @@ func NewApplication() *Application {
 	if releaseCommand, releaseBuildError := releaseBuilder.Build(); releaseBuildError == nil {
 		configureCommandMetadata(releaseCommand, repoReleaseCommandUsageTemplateConstant, releaseCommand.Short, repoReleaseCommandLongDescriptionConstant, repoReleaseCommandAliasConstant)
 		repoNamespaceCommand.AddCommand(releaseCommand)
+	}
+	if retagCommand, retagBuildError := retagBuilder.Build(); retagBuildError == nil {
+		configureCommandMetadata(retagCommand, releaseRetagCommandUseNameConstant, retagCommand.Short, releaseRetagCommandLongDescriptionConstant, releaseRetagCommandAliasConstant)
+		repoNamespaceCommand.AddCommand(retagCommand)
 	}
 
 	if changelogNamespaceCommand != nil {

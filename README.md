@@ -345,6 +345,8 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
     - Purges paths from history using git-filter-repo and optionally force-pushes updates.
   - `gix repo release <tag> [--message <text>] [--remote <name>] [--roots <dir>...] [--dry-run] [-y]` (alias `rel`)
     - Creates and pushes an annotated tag for each repository root.
+  - `gix repo release retag --map <tag=ref> [--map <tag=ref>...] [--message-template <text>] [--remote <name>] [--roots <dir>...] [--dry-run] [-y]` (alias `fix`)
+    - Reassigns existing release tags to the provided commits and force-pushes the updates.
   - `gix repo changelog message [--version <v>] [--release-date YYYY-MM-DD] [--since-tag <ref>] [--since-date <ts>] [--max-tokens <N>] [--temperature <0-2>] [--model <id>] [--base-url <url>] [--api-key-env <NAME>] [--timeout-seconds <N>] [--roots <dir>...]` (aliases `section`, `msg`)
     - Generates a changelog section from git history using the configured LLM.
 
