@@ -304,7 +304,8 @@ apply-tasks: failed to create tag "v0.2.0-rc.4": git command exited with code 12
 What's interesting, teh command actually worked, and I can see the tag I wanted both locally and remotely. So the error is especially infuriating as it's a complete bogus.
 - Resolution: Release tag creation/push failures now emit repository-scoped operation errors that include the git command, exit code, and sanitized stderr, with regression tests covering annotate and push scenarios.
 
-- [ ] [GX-318] The message "namespace rewrite skipped: files ignored by git" doesnt make much sense. Must be a bug. Investigate the real reason the operation hasn't been performed.
+- [x] [GX-318] The message "namespace rewrite skipped: files ignored by git" doesnt make much sense. Must be a bug. Investigate the real reason the operation hasn't been performed.
+  - Resolution: Namespace rewrite now distinguishes between "no references" and "all matches ignored"; skips without matches report `namespace rewrite skipped: no references to <prefix>` while gitignored-only matches keep the git warning. Updated unit tests cover both skip paths.
 ```
 -- repo: tyemirov/ctx ----------------------------------------------------------
 22:34:53 INFO  REMOTE_SKIP        tyemirov/ctx                       already canonical                        | event=REMOTE_SKIP path=/tmp/repos/ctx reason=already_canonical repo=tyemirov/ctx
@@ -312,7 +313,7 @@ What's interesting, teh command actually worked, and I can see the tag I wanted 
 22:35:01 INFO  REPO_SWITCHED      tyemirov/ctx                       → master                                 | branch=master created=false event=REPO_SWITCHED path=/tmp/repos/tyemirov/ctx repo=tyemirov/ctx
 22:35:01 INFO  NAMESPACE_NOOP     tyemirov/ctx                       namespace rewrite skipped: files ignored by git | event=NAMESPACE_NOOP path=/tmp/repos/tyemirov/ctx reason=namespace_rewrite_skipped:_files_ignored_by_git repo=tyemirov/ctx
 ```
-- [ ] [GX-319] `gix  repo prs delete --yes yes` results in panic. Find the cause of the bug and fix it
+- [x] [GX-319] `gix  repo prs delete --yes yes` results in panic. Find the cause of the bug and fix it
 ```
 12:27:03 tyemirov@Vadyms-MacBook-Pro:~/Development/MarcoPoloResearchLab/mpr-ui - [master] $ gix  repo prs delete --yes yes
 panic: runtime error: invalid memory address or nil pointer dereference
@@ -346,6 +347,7 @@ github.com/temirov/gix/cmd/cli.Execute()
 main.main()
         /Users/tyemirov/go/pkg/mod/github.com/temirov/gix@v0.2.0-rc.5/main.go:16 +0x13
 ```
+  - Resolution: Workflow executor now skips GitHub metadata lookups when disabled, avoiding nil-client panics, and new CLI tests prove `--yes yes` yields the expected positional-roots error without crashing.
 
 ## Maintenance (400–499)
 
