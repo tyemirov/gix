@@ -232,11 +232,11 @@ func (builder *LicenseCommandBuilder) run(command *cobra.Command, arguments []st
 	}
 
 	if filepath.IsAbs(targetPath) {
-		return fmt.Errorf(relativePathValidationErrorMsg)
+		return errors.New(relativePathValidationErrorMsg)
 	}
 	cleanedTarget := filepath.Clean(targetPath)
 	if cleanedTarget == "." {
-		return fmt.Errorf(relativePathValidationErrorMsg)
+		return errors.New(relativePathValidationErrorMsg)
 	}
 	targetPath = cleanedTarget
 
