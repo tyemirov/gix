@@ -293,6 +293,7 @@ Fast-forward
 RELEASED: /home/tyemirov/Development/gix -> v0.2.0-rc.4
 apply-tasks: failed to create tag "v0.2.0-rc.4": git command exited with code 128
 ```
+What's interesting, teh command actually worked, and I can see the tag I wanted both locally and remotely. So the error is especially infuriating as it's a complete bogus.
 
 ## Maintenance (400–499)
 
