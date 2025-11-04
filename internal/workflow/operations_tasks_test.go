@@ -523,6 +523,7 @@ func TestTaskExecutorAppliesChanges(testInstance *testing.T) {
 		{"checkout", "-B", "feature-sample-docs", "main"},
 		{"add", "docs/sample.md"},
 		{"commit", "-m", "docs: update Add Docs"},
+		{"remote", "get-url", "origin"},
 		{"push", "--set-upstream", "origin", "feature-sample-docs"},
 		{"checkout", "master"},
 	}
@@ -715,6 +716,10 @@ func (executor *recordingGitExecutor) ExecuteGit(_ context.Context, details exec
 				}
 				return execshell.ExecutionResult{StandardOutput: branch}, nil
 			}
+		}
+	case "remote":
+		if len(details.Arguments) >= 3 && details.Arguments[1] == "get-url" {
+			return execshell.ExecutionResult{StandardOutput: "git@github.com:example/repo.git\n"}, nil
 		}
 	}
 

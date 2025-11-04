@@ -20,9 +20,9 @@ type ProtocolConversionOperation struct {
 	ToProtocol   shared.RemoteProtocol
 }
 
-// Name identifies the operation type.
+// Name identifies the workflow command handled by this operation.
 func (operation *ProtocolConversionOperation) Name() string {
-	return string(OperationTypeProtocolConversion)
+	return commandRepoRemoteConvertProtocolKey
 }
 
 // Execute applies the protocol conversion to repositories matching the source protocol.

@@ -22,11 +22,11 @@ import (
 
 const (
 	workflowConfigFileNameConstant          = "config.yaml"
-	workflowConfigContentConstant           = "operations:\n  - operation: workflow\n    with:\n      roots:\n        - .\nworkflow:\n  - step:\n      operation: audit-report\n"
+	workflowConfigContentConstant           = "operations:\n  - command: [\"workflow\"]\n    with:\n      roots:\n        - .\nworkflow:\n  - step:\n      command: [\"audit\", \"report\"]\n"
 	workflowApplyTasksConfigContentConstant = `
 workflow:
   - step:
-      operation: apply-tasks
+      command: ["repo", "tasks", "apply"]
       with:
         tasks:
           - name: Add Notes

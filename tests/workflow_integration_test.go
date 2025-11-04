@@ -305,13 +305,13 @@ func buildWorkflowConfiguration(auditPath string) string {
 	return fmt.Sprintf(`common:
   log_level: error
 operations:
-  - operation: workflow
+  - command: ["workflow"]
     with: &workflow_defaults
       roots:
         - .
       dry_run: false
       assume_yes: false
-  - operation: repo-protocol-convert
+  - command: ["repo", "remote", "update-protocol"]
     with: &conversion_defaults
       roots:
         - .
@@ -319,14 +319,14 @@ operations:
       dry_run: false
       from: https
       to: ssh
-  - operation: repo-remote-update
+  - command: ["repo", "remote", "update-to-canonical"]
     with: &remote_defaults
       roots:
         - .
       assume_yes: true
       dry_run: false
       owner: canonical
-  - operation: branch-default
+  - command: ["branch", "default"]
     with: &migration_defaults
       roots:
         - .
@@ -338,19 +338,19 @@ operations:
           delete_source_branch: false
 workflow:
   - step:
-      operation: convert-protocol
+      command: ["repo", "remote", "update-protocol"]
       with:
         <<: *conversion_defaults
   - step:
-      operation: update-canonical-remote
+      command: ["repo", "remote", "update-to-canonical"]
       with:
         <<: *remote_defaults
   - step:
-      operation: default-branch
+      command: ["branch", "default"]
       with:
         <<: *migration_defaults
   - step:
-      operation: audit-report
+      command: ["audit", "report"]
       with:
         output: %s
 `, auditPath)

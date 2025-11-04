@@ -65,6 +65,21 @@ const (
 	taskFileModeSkipIfExists taskFileExistsMode = "skip-if-exists"
 )
 
+// TaskFileMode enumerates file handling semantics for task-managed files.
+type TaskFileMode = taskFileExistsMode
+
+const (
+	// TaskFileModeOverwrite replaces existing files or creates new ones when absent.
+	TaskFileModeOverwrite TaskFileMode = taskFileModeOverwrite
+	// TaskFileModeSkipIfExists preserves existing files by skipping writes.
+	TaskFileModeSkipIfExists TaskFileMode = taskFileModeSkipIfExists
+)
+
+// ParseTaskFileMode normalizes a raw mode string into a TaskFileMode value.
+func ParseTaskFileMode(raw string) TaskFileMode {
+	return parseTaskFileMode(raw)
+}
+
 // TaskOperation executes declarative repository tasks (file mutations, commits, and PRs).
 type TaskOperation struct {
 	tasks []TaskDefinition
@@ -145,9 +160,9 @@ type TaskRepositoryTemplateData struct {
 	HasNestedRepositories bool
 }
 
-// Name identifies the operation type.
+// Name identifies the workflow command handled by this operation.
 func (operation *TaskOperation) Name() string {
-	return string(OperationTypeApplyTasks)
+	return commandRepoTasksApplyKey
 }
 
 // Execute runs the configured tasks across repositories.
@@ -230,7 +245,7 @@ func buildTaskOperation(options map[string]any) (Operation, error) {
 		return nil, err
 	}
 	if !exists || len(entries) == 0 {
-		return nil, errors.New("apply-tasks step requires at least one task entry")
+		return nil, errors.New("repo tasks apply step requires at least one task entry")
 	}
 
 	tasks := make([]TaskDefinition, 0, len(entries))
@@ -334,7 +349,11 @@ func buildTaskBranchDefinition(reader optionReader) (TaskBranchDefinition, error
 		pushRemote = defaultTaskPushRemote
 	}
 
-	return TaskBranchDefinition{NameTemplate: nameTemplate, StartPointTemplate: startPointTemplate, PushRemote: pushRemote}, nil
+	return TaskBranchDefinition{
+		NameTemplate:       nameTemplate,
+		StartPointTemplate: startPointTemplate,
+		PushRemote:         pushRemote,
+	}, nil
 }
 
 func buildTaskFiles(reader optionReader) ([]TaskFileDefinition, error) {
@@ -963,9 +982,19 @@ func (executor taskExecutor) Execute(executionContext context.Context) error {
 			return err
 		}
 
-		if err := executor.pushBranch(executionContext); err != nil {
-			cleanup()
-			return err
+		remoteName := strings.TrimSpace(executor.plan.task.Branch.PushRemote)
+		if len(remoteName) > 0 {
+			remoteURL, remoteErr := executor.environment.RepositoryManager.GetRemoteURL(executionContext, executor.repository.Path, remoteName)
+			if remoteErr != nil {
+				executor.logf(taskLogPrefixWarn, "remote lookup failed", map[string]any{"remote": remoteName, "error": remoteErr.Error()})
+			} else if len(strings.TrimSpace(remoteURL)) == 0 {
+				executor.logf(taskLogPrefixSkip, "remote missing", map[string]any{"remote": remoteName})
+			} else if err := executor.pushBranch(executionContext); err != nil {
+				cleanup()
+				return err
+			}
+		} else {
+			executor.logf(taskLogPrefixSkip, "remote missing", nil)
 		}
 
 		if executor.plan.pullRequest != nil {
@@ -1069,7 +1098,12 @@ func (executor taskExecutor) commitChanges(executionContext context.Context) err
 }
 
 func (executor taskExecutor) pushBranch(executionContext context.Context) error {
-	arguments := []string{"push", "--set-upstream", executor.plan.task.Branch.PushRemote, executor.plan.branchName}
+	remote := strings.TrimSpace(executor.plan.task.Branch.PushRemote)
+	if len(remote) == 0 {
+		return nil
+	}
+
+	arguments := []string{"push", "--set-upstream", remote, executor.plan.branchName}
 	_, err := executor.environment.GitExecutor.ExecuteGit(executionContext, execshell.CommandDetails{Arguments: arguments, WorkingDirectory: executor.repository.Path})
 	return err
 }

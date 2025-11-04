@@ -23,6 +23,7 @@ import (
 	"github.com/temirov/gix/internal/migrate"
 	"github.com/temirov/gix/internal/packages"
 	"github.com/temirov/gix/internal/utils"
+	workflowpkg "github.com/temirov/gix/internal/workflow"
 )
 
 const (
@@ -31,19 +32,32 @@ const (
 	testConsoleConfigurationHeaderConstant                   = "common:\n  log_level: error\n  log_format: console\noperations:\n"
 	testDebugConfigurationHeaderConstant                     = "common:\n  log_level: debug\n  log_format: structured\noperations:\n"
 	testDebugConsoleConfigurationHeaderConstant              = "common:\n  log_level: debug\n  log_format: console\noperations:\n"
-	testOperationBlockTemplateConstant                       = "  - operation: %s\n    with:\n%s"
+	testOperationBlockTemplateConstant                       = "  - command: %s\n    with:\n%s"
 	testOperationRootsTemplateConstant                       = "      roots:\n        - %s\n"
 	testOperationRootDirectoryConstant                       = "/tmp/config-root"
 	testConfigurationSearchPathEnvironmentName               = "GIX_CONFIG_SEARCH_PATH"
 	testPackagesCommandNameConstant                          = "repo-packages-purge"
+	testPackagesCommandKeyConstant                           = "repo packages delete"
 	testBranchDefaultCommandNameConstant                     = "branch-default"
+	testBranchDefaultCommandKeyConstant                      = "branch default"
 	testBranchRefreshCommandNameConstant                     = "branch-refresh"
+	testBranchRefreshCommandKeyConstant                      = "branch refresh"
 	testBranchCleanupCommandNameConstant                     = "repo-prs-purge"
+	testBranchCleanupCommandKeyConstant                      = "repo prs delete"
 	testReposRemotesCommandNameConstant                      = "repo-remote-update"
+	testReposRemotesCommandKeyConstant                       = "repo remote update-to-canonical"
 	testReposProtocolCommandNameConstant                     = "repo-protocol-convert"
+	testReposProtocolCommandKeyConstant                      = "repo remote update-protocol"
 	testReposRenameCommandNameConstant                       = "repo-folders-rename"
+	testReposRenameCommandKeyConstant                        = "repo folder rename"
 	testAuditCommandNameConstant                             = "audit"
+	testAuditCommandKeyConstant                              = "audit"
 	testWorkflowCommandNameConstant                          = "workflow"
+	testWorkflowCommandKeyConstant                           = "workflow"
+	testRepoReleaseCommandKeyConstant                        = "repo release"
+	testBranchChangeCommandKeyConstant                       = "branch cd"
+	testCommitMessageCommandKeyConstant                      = "branch commit message"
+	testChangelogMessageCommandKeyConstant                   = "repo changelog message"
 	embeddedDefaultsBranchCleanupTestNameConstant            = "BranchCleanupDefaults"
 	embeddedDefaultsPackagesTestNameConstant                 = "PackagesDefaults"
 	embeddedDefaultsReposRemotesTestNameConstant             = "ReposRemotesDefaults"
@@ -83,56 +97,56 @@ const (
 	configurationInitializationUserHomeEnvNameConstant       = "HOME"
 )
 
-var requiredOperationNames = []string{
-	"audit",
-	"repo-packages-purge",
-	"repo-prs-purge",
-	"repo-folders-rename",
-	"repo-remote-update",
-	"repo-protocol-convert",
-	"repo-release",
-	"workflow",
-	"branch-refresh",
-	"branch-default",
-	"branch-cd",
-	"commit-message",
-	"changelog-message",
+var requiredCommandKeys = []string{
+	testAuditCommandKeyConstant,
+	testPackagesCommandKeyConstant,
+	testBranchCleanupCommandKeyConstant,
+	testReposRenameCommandKeyConstant,
+	testReposRemotesCommandKeyConstant,
+	testReposProtocolCommandKeyConstant,
+	testRepoReleaseCommandKeyConstant,
+	testWorkflowCommandKeyConstant,
+	testBranchRefreshCommandKeyConstant,
+	testBranchDefaultCommandKeyConstant,
+	testBranchChangeCommandKeyConstant,
+	testCommitMessageCommandKeyConstant,
+	testChangelogMessageCommandKeyConstant,
 }
 
 func TestApplicationInitializeConfiguration(t *testing.T) {
 	testCases := []struct {
 		name                  string
-		operationNames        []string
+		commandKeys           []string
 		expectedErrorSample   error
 		expectedOperationName string
 		commandUse            string
 	}{
 		{
-			name:           "ValidConfiguration",
-			operationNames: requiredOperationNames,
-			commandUse:     testPackagesCommandNameConstant,
+			name:        "ValidConfiguration",
+			commandKeys: requiredCommandKeys,
+			commandUse:  testPackagesCommandNameConstant,
 		},
 		{
 			name: "DuplicateOperationConfiguration",
-			operationNames: append([]string{
+			commandKeys: append([]string{
 				"audit",
 				"Audit",
-			}, requiredOperationNames[1:]...),
+			}, requiredCommandKeys[1:]...),
 			expectedErrorSample:   &cli.DuplicateOperationConfigurationError{},
 			expectedOperationName: "audit",
 			commandUse:            testPackagesCommandNameConstant,
 		},
 		{
 			name: "CommandConfigurationMissingForTargetCommandIgnored",
-			operationNames: []string{
+			commandKeys: []string{
 				"audit",
-				"repo-packages-purge",
-				"repo-prs-purge",
-				"repo-folders-rename",
-				"repo-remote-update",
-				"repo-protocol-convert",
+				"repo packages delete",
+				"repo prs delete",
+				"repo folder rename",
+				"repo remote update-to-canonical",
+				"repo remote update-protocol",
 				"workflow",
-				"branch-refresh",
+				"branch refresh",
 			},
 			commandUse: testBranchDefaultCommandNameConstant,
 		},
@@ -142,7 +156,7 @@ func TestApplicationInitializeConfiguration(t *testing.T) {
 		testCase := testCase
 		t.Run(testCase.name, func(t *testing.T) {
 			temporaryDirectory := t.TempDir()
-			configurationContent := buildConfigurationContent(testCase.operationNames)
+			configurationContent := buildConfigurationContent(testCase.commandKeys)
 			configurationPath := filepath.Join(temporaryDirectory, testConfigurationFileNameConstant)
 
 			writeConfigurationFile(t, configurationPath, configurationContent)
@@ -294,7 +308,7 @@ func TestApplicationInitializationLoggingModes(testInstance *testing.T) {
 		testCase := testCase
 		testInstance.Run(testCase.name, func(t *testing.T) {
 			configurationDirectory := t.TempDir()
-			configurationContent := buildConfigurationContentWithHeader(testCase.configurationHeader, requiredOperationNames)
+			configurationContent := buildConfigurationContentWithHeader(testCase.configurationHeader, requiredCommandKeys)
 			configurationPath := filepath.Join(configurationDirectory, testConfigurationFileNameConstant)
 
 			writeConfigurationFile(t, configurationPath, configurationContent)
@@ -449,7 +463,7 @@ func TestApplicationConfigurationInitializationForceHandling(testInstance *testi
 }
 
 func TestApplicationConfigurationSearchPaths(testInstance *testing.T) {
-	fullConfigurationContent := buildConfigurationContent(requiredOperationNames)
+	fullConfigurationContent := buildConfigurationContent(requiredCommandKeys)
 	testCases := []struct {
 		name                                string
 		createWorkingDirectoryConfiguration bool
@@ -575,13 +589,13 @@ func TestApplicationConfigurationCliFlagOverridesScopes(t *testing.T) {
 		return fmt.Sprintf("common:\n  log_level: %s\n  log_format: structured\noperations:\n", logLevel)
 	}
 
-	writeConfigurationFile(t, localConfigurationPath, buildConfigurationContentWithHeader(buildHeader("info"), requiredOperationNames))
-	writeConfigurationFile(t, xdgConfigurationPath, buildConfigurationContentWithHeader(buildHeader("warn"), requiredOperationNames))
-	writeConfigurationFile(t, userConfigurationPath, buildConfigurationContentWithHeader(buildHeader("error"), requiredOperationNames))
+	writeConfigurationFile(t, localConfigurationPath, buildConfigurationContentWithHeader(buildHeader("info"), requiredCommandKeys))
+	writeConfigurationFile(t, xdgConfigurationPath, buildConfigurationContentWithHeader(buildHeader("warn"), requiredCommandKeys))
+	writeConfigurationFile(t, userConfigurationPath, buildConfigurationContentWithHeader(buildHeader("error"), requiredCommandKeys))
 
 	cliConfigurationDirectory := t.TempDir()
 	cliConfigurationPath := filepath.Join(cliConfigurationDirectory, testConfigurationFileNameConstant)
-	writeConfigurationFile(t, cliConfigurationPath, buildConfigurationContentWithHeader(buildHeader("debug"), requiredOperationNames))
+	writeConfigurationFile(t, cliConfigurationPath, buildConfigurationContentWithHeader(buildHeader("debug"), requiredCommandKeys))
 
 	originalArgs := os.Args
 	t.Cleanup(func() {
@@ -627,15 +641,15 @@ func TestApplicationEmbeddedDefaultsProvideCommandConfigurations(testInstance *t
 	operationIndex := buildEmbeddedOperationIndex(testInstance)
 
 	testCases := []struct {
-		name          string
-		commandUse    string
-		operationName string
-		assertion     func(testing.TB, map[string]any)
+		name       string
+		commandUse string
+		commandKey string
+		assertion  func(testing.TB, map[string]any)
 	}{
 		{
-			name:          embeddedDefaultsBranchCleanupTestNameConstant,
-			commandUse:    testBranchCleanupCommandNameConstant,
-			operationName: testBranchCleanupCommandNameConstant,
+			name:       embeddedDefaultsBranchCleanupTestNameConstant,
+			commandUse: testBranchCleanupCommandNameConstant,
+			commandKey: testBranchCleanupCommandKeyConstant,
 			assertion: func(assertionTarget testing.TB, options map[string]any) {
 				assertionTarget.Helper()
 
@@ -650,9 +664,9 @@ func TestApplicationEmbeddedDefaultsProvideCommandConfigurations(testInstance *t
 			},
 		},
 		{
-			name:          embeddedDefaultsPackagesTestNameConstant,
-			commandUse:    testPackagesCommandNameConstant,
-			operationName: testPackagesCommandNameConstant,
+			name:       embeddedDefaultsPackagesTestNameConstant,
+			commandUse: testPackagesCommandNameConstant,
+			commandKey: testPackagesCommandKeyConstant,
 			assertion: func(assertionTarget testing.TB, options map[string]any) {
 				assertionTarget.Helper()
 
@@ -665,9 +679,9 @@ func TestApplicationEmbeddedDefaultsProvideCommandConfigurations(testInstance *t
 			},
 		},
 		{
-			name:          embeddedDefaultsReposRemotesTestNameConstant,
-			commandUse:    testReposRemotesCommandNameConstant,
-			operationName: testReposRemotesCommandNameConstant,
+			name:       embeddedDefaultsReposRemotesTestNameConstant,
+			commandUse: testReposRemotesCommandNameConstant,
+			commandKey: testReposRemotesCommandKeyConstant,
 			assertion: func(assertionTarget testing.TB, options map[string]any) {
 				assertionTarget.Helper()
 
@@ -679,9 +693,9 @@ func TestApplicationEmbeddedDefaultsProvideCommandConfigurations(testInstance *t
 			},
 		},
 		{
-			name:          embeddedDefaultsReposProtocolTestNameConstant,
-			commandUse:    testReposProtocolCommandNameConstant,
-			operationName: testReposProtocolCommandNameConstant,
+			name:       embeddedDefaultsReposProtocolTestNameConstant,
+			commandUse: testReposProtocolCommandNameConstant,
+			commandKey: testReposProtocolCommandKeyConstant,
 			assertion: func(assertionTarget testing.TB, options map[string]any) {
 				assertionTarget.Helper()
 
@@ -695,9 +709,9 @@ func TestApplicationEmbeddedDefaultsProvideCommandConfigurations(testInstance *t
 			},
 		},
 		{
-			name:          embeddedDefaultsReposRenameTestNameConstant,
-			commandUse:    testReposRenameCommandNameConstant,
-			operationName: testReposRenameCommandNameConstant,
+			name:       embeddedDefaultsReposRenameTestNameConstant,
+			commandUse: testReposRenameCommandNameConstant,
+			commandKey: testReposRenameCommandKeyConstant,
 			assertion: func(assertionTarget testing.TB, options map[string]any) {
 				assertionTarget.Helper()
 
@@ -709,9 +723,9 @@ func TestApplicationEmbeddedDefaultsProvideCommandConfigurations(testInstance *t
 			},
 		},
 		{
-			name:          embeddedDefaultsWorkflowTestNameConstant,
-			commandUse:    testWorkflowCommandNameConstant,
-			operationName: testWorkflowCommandNameConstant,
+			name:       embeddedDefaultsWorkflowTestNameConstant,
+			commandUse: testWorkflowCommandNameConstant,
+			commandKey: testWorkflowCommandKeyConstant,
 			assertion: func(assertionTarget testing.TB, options map[string]any) {
 				assertionTarget.Helper()
 
@@ -724,9 +738,9 @@ func TestApplicationEmbeddedDefaultsProvideCommandConfigurations(testInstance *t
 			},
 		},
 		{
-			name:          embeddedDefaultsBranchRefreshTestNameConstant,
-			commandUse:    testBranchRefreshCommandNameConstant,
-			operationName: testBranchRefreshCommandNameConstant,
+			name:       embeddedDefaultsBranchRefreshTestNameConstant,
+			commandUse: testBranchRefreshCommandNameConstant,
+			commandKey: testBranchRefreshCommandKeyConstant,
 			assertion: func(assertionTarget testing.TB, options map[string]any) {
 				assertionTarget.Helper()
 
@@ -740,9 +754,9 @@ func TestApplicationEmbeddedDefaultsProvideCommandConfigurations(testInstance *t
 			},
 		},
 		{
-			name:          embeddedDefaultsBranchDefaultTestNameConstant,
-			commandUse:    testBranchDefaultCommandNameConstant,
-			operationName: testBranchDefaultCommandNameConstant,
+			name:       embeddedDefaultsBranchDefaultTestNameConstant,
+			commandUse: testBranchDefaultCommandNameConstant,
+			commandKey: testBranchDefaultCommandKeyConstant,
 			assertion: func(assertionTarget testing.TB, options map[string]any) {
 				assertionTarget.Helper()
 
@@ -756,9 +770,9 @@ func TestApplicationEmbeddedDefaultsProvideCommandConfigurations(testInstance *t
 			},
 		},
 		{
-			name:          embeddedDefaultsAuditTestNameConstant,
-			commandUse:    testAuditCommandNameConstant,
-			operationName: testAuditCommandNameConstant,
+			name:       embeddedDefaultsAuditTestNameConstant,
+			commandUse: testAuditCommandNameConstant,
+			commandKey: testAuditCommandKeyConstant,
 			assertion: func(assertionTarget testing.TB, options map[string]any) {
 				assertionTarget.Helper()
 
@@ -781,8 +795,8 @@ func TestApplicationEmbeddedDefaultsProvideCommandConfigurations(testInstance *t
 			initializationError := application.InitializeForCommand(testCase.commandUse)
 			require.NoError(t, initializationError)
 
-			normalizedOperationName := strings.ToLower(strings.TrimSpace(testCase.operationName))
-			operationOptions, exists := operationIndex[normalizedOperationName]
+			normalizedCommandKey := normalizeCommandKey(testCase.commandKey)
+			operationOptions, exists := operationIndex[normalizedCommandKey]
 			require.True(t, exists)
 
 			testCase.assertion(t, operationOptions)
@@ -802,21 +816,39 @@ func resolveSymlinkedPath(testingInstance testing.TB, candidatePath string) stri
 	return resolvedPath
 }
 
-func buildConfigurationContent(operationNames []string) string {
-	return buildConfigurationContentWithHeader(testConfigurationHeaderConstant, operationNames)
+func buildConfigurationContent(commandKeys []string) string {
+	return buildConfigurationContentWithHeader(testConfigurationHeaderConstant, commandKeys)
 }
 
-func buildConfigurationContentWithHeader(commonHeader string, operationNames []string) string {
+func buildConfigurationContentWithHeader(commonHeader string, commandKeys []string) string {
 	configurationBuilder := strings.Builder{}
 	configurationBuilder.WriteString(commonHeader)
 
-	for _, operationName := range operationNames {
+	for _, commandKey := range commandKeys {
 		rootsBlock := fmt.Sprintf(testOperationRootsTemplateConstant, testOperationRootDirectoryConstant)
-		operationBlock := fmt.Sprintf(testOperationBlockTemplateConstant, operationName, rootsBlock)
+		commandLiteral := formatCommandArray(commandKey)
+		operationBlock := fmt.Sprintf(testOperationBlockTemplateConstant, commandLiteral, rootsBlock)
 		configurationBuilder.WriteString(operationBlock)
 	}
 
 	return configurationBuilder.String()
+}
+
+func formatCommandArray(commandKey string) string {
+	parts := strings.Fields(commandKey)
+	if len(parts) == 0 {
+		return "[]"
+	}
+	quotedParts := make([]string, len(parts))
+	for index := range parts {
+		quotedParts[index] = fmt.Sprintf("\"%s\"", parts[index])
+	}
+	return fmt.Sprintf("[%s]", strings.Join(quotedParts, ", "))
+}
+
+func normalizeCommandKey(commandKey string) string {
+	parts := strings.Fields(commandKey)
+	return workflowpkg.CommandPathKey(parts)
 }
 
 func writeConfigurationFile(t *testing.T, configurationPath string, configurationContent string) {
@@ -833,8 +865,8 @@ func buildEmbeddedOperationIndex(testingInstance testing.TB) map[string]map[stri
 	operationIndex := make(map[string]map[string]any)
 
 	for _, operation := range configuration.Operations {
-		normalizedName := strings.ToLower(strings.TrimSpace(operation.Name))
-		if len(normalizedName) == 0 {
+		commandKey := workflowpkg.CommandPathKey(operation.Command)
+		if len(commandKey) == 0 {
 			continue
 		}
 
@@ -843,7 +875,7 @@ func buildEmbeddedOperationIndex(testingInstance testing.TB) map[string]map[stri
 			duplicatedOptions[optionKey] = optionValue
 		}
 
-		operationIndex[normalizedName] = duplicatedOptions
+		operationIndex[commandKey] = duplicatedOptions
 	}
 
 	return operationIndex

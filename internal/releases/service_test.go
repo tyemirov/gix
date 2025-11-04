@@ -14,19 +14,25 @@ import (
 type recordingGitExecutor struct {
 	commands []execshell.CommandDetails
 	errors   []error
+	results  []execshell.ExecutionResult
 }
 
 func (executor *recordingGitExecutor) ExecuteGit(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
 	executor.commands = append(executor.commands, details)
+	var result execshell.ExecutionResult
+	if len(executor.results) > 0 {
+		result = executor.results[0]
+		executor.results = executor.results[1:]
+	}
 	if len(executor.errors) == 0 {
-		return execshell.ExecutionResult{}, nil
+		return result, nil
 	}
 	value := executor.errors[0]
 	executor.errors = executor.errors[1:]
 	if value != nil {
-		return execshell.ExecutionResult{}, value
+		return result, value
 	}
-	return execshell.ExecutionResult{}, nil
+	return result, nil
 }
 
 func (executor *recordingGitExecutor) ExecuteGitHubCLI(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
@@ -126,6 +132,116 @@ func TestReleasePushFailureIncludesCommandDetails(t *testing.T) {
 	var commandFailed execshell.CommandFailedError
 	require.ErrorAs(t, releaseError, &commandFailed)
 	require.Equal(t, 1, commandFailed.Result.ExitCode)
+}
+
+func TestRetagExecutesDeleteAnnotatePush(t *testing.T) {
+	executor := &recordingGitExecutor{
+		results: []execshell.ExecutionResult{
+			{StandardOutput: "abcdef1234567890\n"},
+			{StandardOutput: "deadbeefcafebabe\n"},
+		},
+	}
+	service, err := NewService(ServiceDependencies{GitExecutor: executor})
+	require.NoError(t, err)
+
+	results, retagError := service.Retag(context.Background(), RetagOptions{
+		RepositoryPath: "/tmp/repo",
+		RemoteName:     "origin",
+		Mappings: []RetagMapping{
+			{TagName: "v1.2.3", TargetReference: "main"},
+		},
+	})
+	require.NoError(t, retagError)
+	require.Len(t, results, 1)
+	require.Equal(t, "v1.2.3", results[0].TagName)
+	require.Equal(t, "main", results[0].TargetReference)
+	require.Len(t, executor.commands, 5)
+	require.Equal(t, gitRevParseSubcommandConstant, executor.commands[0].Arguments[0])
+	require.Equal(t, []string{gitTagSubcommandConstant, gitTagDeleteFlagConstant, "v1.2.3"}, executor.commands[2].Arguments)
+	require.Equal(t, []string{gitTagSubcommandConstant, gitTagAnnotatedFlagConstant, "v1.2.3", "main", gitTagMessageFlagConstant, "Retag v1.2.3 to main"}, executor.commands[3].Arguments)
+	require.Equal(t, []string{gitPushSubcommandConstant, gitPushForceFlagConstant, "origin", "v1.2.3"}, executor.commands[4].Arguments)
+}
+
+func TestRetagDryRunSkipsMutationCommands(t *testing.T) {
+	executor := &recordingGitExecutor{
+		results: []execshell.ExecutionResult{
+			{StandardOutput: "abcdef1234567890\n"},
+		},
+	}
+	service, err := NewService(ServiceDependencies{GitExecutor: executor})
+	require.NoError(t, err)
+
+	results, retagError := service.Retag(context.Background(), RetagOptions{
+		RepositoryPath: "/tmp/repo",
+		DryRun:         true,
+		Mappings: []RetagMapping{
+			{TagName: "v1.0.1", TargetReference: "commit123"},
+		},
+	})
+	require.NoError(t, retagError)
+	require.Len(t, results, 1)
+	require.Len(t, executor.commands, 1)
+	require.Equal(t, gitRevParseSubcommandConstant, executor.commands[0].Arguments[0])
+}
+
+func TestRetagValidatesInputs(t *testing.T) {
+	service, err := NewService(ServiceDependencies{GitExecutor: &recordingGitExecutor{}})
+	require.NoError(t, err)
+
+	_, retagError := service.Retag(context.Background(), RetagOptions{})
+	require.Error(t, retagError)
+
+	_, retagError = service.Retag(context.Background(), RetagOptions{RepositoryPath: "/tmp/repo"})
+	require.Error(t, retagError)
+
+	_, retagError = service.Retag(context.Background(), RetagOptions{
+		RepositoryPath: "/tmp/repo",
+		Mappings:       []RetagMapping{{TagName: "", TargetReference: "main"}},
+	})
+	require.Error(t, retagError)
+}
+
+func TestRetagTargetResolutionFailureWrapped(t *testing.T) {
+	executor := &annotateFailureExecutor{exitCode: 128, standardError: "fatal: ambiguous argument"}
+	service, err := NewService(ServiceDependencies{GitExecutor: executor})
+	require.NoError(t, err)
+
+	_, retagError := service.Retag(context.Background(), RetagOptions{
+		RepositoryPath: "/tmp/repo",
+		Mappings:       []RetagMapping{{TagName: "v1.0.0", TargetReference: "missing"}},
+	})
+	require.Error(t, retagError)
+
+	var operationError repoerrors.OperationError
+	require.ErrorAs(t, retagError, &operationError)
+	require.Equal(t, repoerrors.OperationReleaseTag, operationError.Operation())
+	require.Equal(t, repoerrors.ErrReleaseTagResolveFailed.Code(), operationError.Code())
+}
+
+func TestRetagDeleteFailureWrapped(t *testing.T) {
+	executor := &recordingGitExecutor{
+		results: []execshell.ExecutionResult{
+			{StandardOutput: "abcdef1234567890\n"},
+			{StandardOutput: "deadbeefcafebabe\n"},
+		},
+		errors: []error{
+			nil,
+			nil,
+			errors.New("delete failed"),
+		},
+	}
+	service, err := NewService(ServiceDependencies{GitExecutor: executor})
+	require.NoError(t, err)
+
+	_, retagError := service.Retag(context.Background(), RetagOptions{
+		RepositoryPath: "/tmp/repo",
+		Mappings:       []RetagMapping{{TagName: "v1.0.1", TargetReference: "main"}},
+	})
+	require.Error(t, retagError)
+
+	var operationError repoerrors.OperationError
+	require.ErrorAs(t, retagError, &operationError)
+	require.Equal(t, repoerrors.ErrReleaseTagDeleteFailed.Code(), operationError.Code())
 }
 
 type genericErrorExecutor struct {

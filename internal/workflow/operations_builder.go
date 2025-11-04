@@ -9,10 +9,10 @@ import (
 )
 
 const (
-	protocolConversionInvalidFromMessageConstant  = "convert-protocol step requires a valid 'from' protocol"
-	protocolConversionInvalidToMessageConstant    = "convert-protocol step requires a valid 'to' protocol"
-	protocolConversionSameProtocolMessageConstant = "convert-protocol step requires distinct source and target protocols"
-	branchMigrationTargetsRequiredMessageConstant = "default-branch step requires at least one target"
+	protocolConversionInvalidFromMessageConstant  = "repo remote update-protocol step requires a valid 'from' protocol"
+	protocolConversionInvalidToMessageConstant    = "repo remote update-protocol step requires a valid 'to' protocol"
+	protocolConversionSameProtocolMessageConstant = "repo remote update-protocol step requires distinct source and target protocols"
+	branchMigrationTargetsRequiredMessageConstant = "branch default step requires at least one target"
 )
 
 // BuildOperations converts the declarative configuration into executable operations with dependency metadata.
@@ -30,7 +30,7 @@ func BuildOperations(configuration Configuration) ([]*OperationNode, error) {
 
 		stepName := strings.TrimSpace(step.Name)
 		if len(stepName) == 0 {
-			stepName = fmt.Sprintf("%s-%d", step.Operation, stepIndex+1)
+			stepName = fmt.Sprintf("%s-%d", CommandPathKey(step.Command), stepIndex+1)
 		}
 		if _, exists := stepNames[stepName]; exists {
 			return nil, fmt.Errorf("workflow step name %q defined multiple times", stepName)
@@ -81,28 +81,28 @@ func BuildOperations(configuration Configuration) ([]*OperationNode, error) {
 }
 
 func buildOperationFromStep(step StepConfiguration) (Operation, error) {
-	resolvedOperation := OperationType(strings.TrimSpace(string(step.Operation)))
-	if len(resolvedOperation) == 0 {
-		return nil, errors.New(configurationOperationMissingMessageConstant)
+	commandKey := CommandPathKey(step.Command)
+	if len(commandKey) == 0 {
+		return nil, errors.New(configurationCommandMissingMessageConstant)
 	}
 
 	normalizedOptions := step.Options
 
-	switch resolvedOperation {
-	case OperationTypeProtocolConversion:
+	switch commandKey {
+	case commandRepoRemoteConvertProtocolKey:
 		return buildProtocolConversionOperation(normalizedOptions)
-	case OperationTypeCanonicalRemote:
+	case commandRepoRemoteCanonicalKey:
 		return buildCanonicalRemoteOperation(normalizedOptions)
-	case OperationTypeRenameDirectories:
+	case commandRepoFolderRenameKey:
 		return buildRenameOperation(normalizedOptions)
-	case OperationTypeBranchDefault:
+	case commandBranchDefaultKey:
 		return buildBranchMigrationOperation(normalizedOptions)
-	case OperationTypeAuditReport:
+	case commandAuditReportKey:
 		return buildAuditReportOperation(normalizedOptions)
-	case OperationTypeApplyTasks:
+	case commandRepoTasksApplyKey:
 		return buildTaskOperation(normalizedOptions)
 	default:
-		return nil, fmt.Errorf("unsupported workflow operation: %s", resolvedOperation)
+		return nil, fmt.Errorf("unsupported workflow command: %s", commandKey)
 	}
 }
 

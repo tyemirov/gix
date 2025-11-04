@@ -198,4 +198,8 @@ var (
 	ErrReleaseTagCreateFailed Sentinel = "release_tag_create_failed"
 	// ErrReleaseTagPushFailed indicates release tag push failed.
 	ErrReleaseTagPushFailed Sentinel = "release_tag_push_failed"
+	// ErrReleaseTagResolveFailed indicates resolving a target reference for retagging failed.
+	ErrReleaseTagResolveFailed Sentinel = "release_tag_resolve_failed"
+	// ErrReleaseTagDeleteFailed indicates deleting an existing tag prior to retagging failed.
+	ErrReleaseTagDeleteFailed Sentinel = "release_tag_delete_failed"
 )

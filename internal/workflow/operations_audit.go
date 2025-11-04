@@ -34,9 +34,9 @@ type AuditReportOperation struct {
 	WriteToFile bool
 }
 
-// Name identifies the operation type.
+// Name identifies the workflow command handled by this operation.
 func (operation *AuditReportOperation) Name() string {
-	return string(OperationTypeAuditReport)
+	return commandAuditReportKey
 }
 
 // Execute writes the audit report using the current repository state.
