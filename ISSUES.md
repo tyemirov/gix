@@ -285,6 +285,13 @@ Fast-forward
  delete mode 100644 web/mpr-ui.js
 ```
 
+- [ ] [GX-317] I am getting cryptic error. Ensure that all errors in all commands have detailed information about when an error occured, and what exactly has happend to cause the error
+```
+20:31:21 tyemirov@computercat:~/Development/gix [master] $ gix r release v0.2.0-rc.4
+RELEASED: /home/tyemirov/Development/gix -> v0.2.0-rc.4
+apply-tasks: failed to create tag "v0.2.0-rc.4": git command exited with code 128
+```
+
 ## Maintenance (400–499)
 
 - [x] [GX-400] Update the documentation @README.md and focus on the usefullness to the user. Move the technical details to @ARCHITECTURE.md
