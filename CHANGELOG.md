@@ -1,5 +1,39 @@
 # Changelog
 
+## [v0.2.0-rc.6]
+
+### Features ✨
+- Added `gix repo files add` command to seed files with configurable content, permissions, branch, and push settings.
+- Introduced `gix repo release retag` command and workflow action to remap tags to new commits with force-push.
+- Added `gix repo license apply` command to distribute license files via workflow tasks.
+- Refactored workflow DSL to use command path arrays instead of legacy operation keys.
+
+### Improvements ⚙️
+- Swapped workflow and configuration schemas to use `command` path arrays; updated CLI defaults, docs, and tests accordingly.
+- Clarified namespace rewrite skip reasons and improved tolerance for missing metadata.
+- Workflow executor now skips GitHub metadata lookups when disabled to avoid panics.
+- Updated workflow examples and documentation to reflect command-based DSL.
+- Fixed staticcheck warnings and documented linting steps.
+
+### Bug Fixes 🐛
+- Fixed panic caused by `gix repo prs delete --yes yes` due to nil GitHub client.
+- Corrected namespace rewrite skip messages to distinguish between no references and gitignored files.
+- Ensured `gix repo files add` respects CLI roots and warns on positional arguments.
+- Emitted retag mappings as generic arrays for workflow compatibility.
+
+### Testing 🧪
+- Added regression tests covering license apply, release retag, and files add commands.
+- Covered edge cases for `--yes` flag in branch commands.
+- Added unit and integration tests for workflow command path DSL changes.
+- Expanded tests for namespace rewrite skip scenarios.
+
+### Docs 📚
+- Updated README and ARCHITECTURE.md to document new command-based workflow DSL.
+- Added examples for new commands and workflows.
+- Improved ISSUE.md with resolved feature statuses and detailed resolutions.
+- Enhanced error message documentation for release tag creation and namespace rewrite.
+Summary: total.repos=0 duration_ms=0
+
 ## [v0.2.0-rc.4]
 
 ### Features ✨
