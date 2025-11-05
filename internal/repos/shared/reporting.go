@@ -155,8 +155,8 @@ func (reporter *StructuredReporter) Report(event Event) {
 		writer = reporter.errorWriter
 	}
 
-	if len(repositoryIdentifier) > 0 {
-		reporter.seenRepositories[repositoryIdentifier] = struct{}{}
+	if seenKey := reporter.computeSeenRepositoryKey(repositoryIdentifier, repositoryPath); len(seenKey) > 0 {
+		reporter.seenRepositories[seenKey] = struct{}{}
 	}
 	reporter.eventCounts[code]++
 	reporter.levelCounts[level]++
@@ -182,7 +182,7 @@ func (reporter *StructuredReporter) Summary() string {
 	defer reporter.mutex.Unlock()
 
 	if len(reporter.eventCounts) == 0 && len(reporter.seenRepositories) == 0 {
-		return "Summary: total.repos=0 duration_ms=0"
+		return "Summary: total.repos=0 duration=0s duration_ms=0"
 	}
 
 	keys := make([]string, 0, len(reporter.eventCounts))
@@ -212,6 +212,8 @@ func (reporter *StructuredReporter) Summary() string {
 	if duration < 0 {
 		duration = 0
 	}
+	humanDuration := reporter.formatDuration(duration)
+	parts = append(parts, fmt.Sprintf("duration=%s", humanDuration))
 	parts = append(parts, fmt.Sprintf("duration_ms=%d", duration.Milliseconds()))
 
 	return strings.Join(parts, " ")
@@ -231,6 +233,27 @@ func (reporter *StructuredReporter) PrintSummary() {
 	defer reporter.mutex.Unlock()
 
 	fmt.Fprintln(reporter.outputWriter, summary)
+}
+
+func (reporter *StructuredReporter) computeSeenRepositoryKey(identifier string, path string) string {
+	if len(identifier) > 0 {
+		return identifier
+	}
+	if len(strings.TrimSpace(path)) > 0 {
+		return strings.TrimSpace(path)
+	}
+	return ""
+}
+
+func (reporter *StructuredReporter) formatDuration(value time.Duration) string {
+	if value < 0 {
+		value = 0
+	}
+	rounded := value.Round(time.Millisecond)
+	if rounded == 0 && value > 0 {
+		rounded = time.Millisecond
+	}
+	return rounded.String()
 }
 
 func (reporter *StructuredReporter) printRepositoryHeader(writer io.Writer, repositoryIdentifier string) {

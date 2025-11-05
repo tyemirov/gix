@@ -21,7 +21,9 @@ TASK-SKIP: Switch to master if clean /tmp/repos/tyemirov/GAuss repository not cl
 TASK-SKIP: Rewrite module namespace /tmp/repos/tyemirov/GAuss repository dirty
 ```
 
-- [ ] [GX-217] Erroneous summary message: total.repos=0, should be total.repos=1, and it also must have taken some time, so the executor shall be returning time that we shall be printing in human readeable foramt.
+- [x] [GX-217] Erroneous summary message: total.repos=0, should be total.repos=1, and it also must have taken some time, so the executor shall be returning time that we shall be printing in human readeable foramt.
+  - Status: Resolved
+  - Resolution: StructuredReporter now falls back to repository paths when identifiers are missing and adds a human-readable `duration` field, producing accurate counts and elapsed time.
 RELEASED: /Users/tyemirov/Development/tyemirov/gix -> v0.2.0-rc.6
 Summary: total.repos=0 duration_ms=0
 
@@ -39,7 +41,7 @@ Summary: total.repos=0 duration_ms=0
 22:35:01 INFO  NAMESPACE_NOOP     tyemirov/ctx                       namespace rewrite skipped: files ignored by git | event=NAMESPACE_NOOP path=/tmp/repos/tyemirov/ctx reason=namespace_rewrite_skipped:_files_ignored_by_git repo=tyemirov/ctx
 ```
 
-- [ ] [GX-321] the changelog command produces a summary: "Summary: total.repos=0 duration_ms=0". It shall not produce a summary (and neither shall a commit message command)
+- [ ] [GX-321] the changelog command produces a summary: "Summary: total.repos=0 duration_ms=0". Obviously, this is wrong -- there was a repo it analyzed and it tooks some time.
 
 - [ ] [GX-322] Investigate the reason of the workflow exit. Ensure it is impossible for a workflow to exit, only the tasks can report the error conditions but a workflow will always finish successfully even if with an error status
 ```shell
