@@ -3,6 +3,7 @@ package workflow
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -194,6 +195,39 @@ func TestExecutorContinuesExecutingOperationsAfterFailure(testInstance *testing.
 	require.Contains(testInstance, buffer.String(), "Summary: total.repos=1")
 }
 
+func TestExecutorLogsAllErrorsFromJoinedOperationFailures(testInstance *testing.T) {
+	tempDirectory := testInstance.TempDir()
+	repositoryPath := filepath.Join(tempDirectory, "sample")
+	require.NoError(testInstance, os.Mkdir(repositoryPath, 0o755))
+
+	gitExecutor := newStubWorkflowGitExecutor()
+	repositoryManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(testInstance, managerError)
+
+	outputBuffer := &bytes.Buffer{}
+	dependencies := Dependencies{
+		RepositoryDiscoverer: executorStubRepositoryDiscoverer{repositories: []string{repositoryPath}},
+		GitExecutor:          gitExecutor,
+		RepositoryManager:    repositoryManager,
+		Output:               outputBuffer,
+		Errors:               outputBuffer,
+		Logger:               nil,
+	}
+
+	executor := NewExecutor([]Operation{joinFailOperation{}}, dependencies)
+
+	executionError := executor.Execute(
+		context.Background(),
+		[]string{repositoryPath},
+		RuntimeOptions{SkipRepositoryMetadata: true},
+	)
+	require.Error(testInstance, executionError)
+	output := outputBuffer.String()
+	require.Contains(testInstance, output, "NAMESPACE_REWRITE_FAILED")
+	require.Contains(testInstance, output, "ORIGIN_OWNER_MISSING")
+	require.Contains(testInstance, output, "Summary: total.repos=1")
+}
+
 type executorStubRepositoryDiscoverer struct {
 	repositories []string
 }
@@ -223,6 +257,33 @@ func (operation *recordingOperation) Name() string {
 func (operation *recordingOperation) Execute(ctx context.Context, environment *Environment, state *State) error {
 	operation.executed = true
 	return nil
+}
+
+type joinFailOperation struct{}
+
+func (operation joinFailOperation) Name() string {
+	return "join-failure"
+}
+
+func (operation joinFailOperation) Execute(ctx context.Context, environment *Environment, state *State) error {
+	if state == nil || len(state.Repositories) == 0 {
+		return fmt.Errorf("missing repositories")
+	}
+
+	repositoryPath := state.Repositories[0].Path
+	errOne := repoerrors.WrapMessage(
+		repoerrors.OperationCanonicalRemote,
+		repositoryPath,
+		repoerrors.ErrOriginOwnerMissing,
+		"cannot resolve origin owner metadata",
+	)
+	errTwo := repoerrors.WrapMessage(
+		repoerrors.OperationNamespaceRewrite,
+		repositoryPath,
+		repoerrors.ErrNamespaceRewriteFailed,
+		"rewrite skipped",
+	)
+	return errors.Join(errOne, errTwo)
 }
 
 type stubWorkflowGitExecutor struct {

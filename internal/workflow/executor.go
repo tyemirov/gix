@@ -77,6 +77,37 @@ type recordedOperationFailure struct {
 	message string
 }
 
+func collectOperationErrors(err error) []error {
+	if err == nil {
+		return nil
+	}
+
+	type multiUnwrapper interface{ Unwrap() []error }
+	type singleUnwrapper interface{ Unwrap() error }
+
+	if _, ok := err.(repoerrors.OperationError); ok {
+		return []error{err}
+	}
+
+	if multi, ok := err.(multiUnwrapper); ok {
+		children := multi.Unwrap()
+		results := make([]error, 0, len(children))
+		for _, child := range children {
+			results = append(results, collectOperationErrors(child)...)
+		}
+		return results
+	}
+
+	if single, ok := err.(singleUnwrapper); ok {
+		child := single.Unwrap()
+		if child != nil {
+			return collectOperationErrors(child)
+		}
+	}
+
+	return []error{err}
+}
+
 // NewExecutor constructs an Executor instance from the provided operations, preserving sequential execution semantics.
 func NewExecutor(operations []Operation, dependencies Dependencies) *Executor {
 	nodes := make([]*OperationNode, 0, len(operations))
@@ -263,14 +294,20 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 			go func(operation Operation) {
 				defer waitGroup.Done()
 				if executeError := operation.Execute(executionContext, environment, state); executeError != nil {
-					formatted := formatOperationFailure(environment, executeError, operation.Name())
-					failureMu.Lock()
-					if !logRepositoryOperationError(environment, executeError) {
-						if environment != nil && environment.Errors != nil {
-							fmt.Fprintln(environment.Errors, formatted)
-						}
+					subErrors := collectOperationErrors(executeError)
+					if len(subErrors) == 0 {
+						subErrors = []error{executeError}
 					}
-					failures = append(failures, recordedOperationFailure{name: operation.Name(), err: executeError, message: formatted})
+					failureMu.Lock()
+					for _, failureErr := range subErrors {
+						formatted := formatOperationFailure(environment, failureErr, operation.Name())
+						if !logRepositoryOperationError(environment, failureErr) {
+							if environment != nil && environment.Errors != nil {
+								fmt.Fprintln(environment.Errors, formatted)
+							}
+						}
+						failures = append(failures, recordedOperationFailure{name: operation.Name(), err: failureErr, message: formatted})
+					}
 					failureMu.Unlock()
 				}
 			}(node.Operation)
