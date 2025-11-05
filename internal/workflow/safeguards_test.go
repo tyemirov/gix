@@ -22,7 +22,7 @@ func TestEvaluateSafeguardsRequireClean(t *testing.T) {
 	pass, reason, evalErr := EvaluateSafeguards(context.Background(), env, repo, map[string]any{"require_clean": true})
 	require.NoError(t, evalErr)
 	require.False(t, pass)
-	require.Equal(t, "repository not clean", reason)
+	require.Equal(t, "repository not clean: M file.txt", reason)
 }
 
 func TestEvaluateSafeguardsBranchAndPaths(t *testing.T) {

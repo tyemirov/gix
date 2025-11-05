@@ -15,6 +15,8 @@ var (
 	errSafeguardFileSystem  = errors.New("filesystem not configured for safeguard evaluation")
 )
 
+const maxStatusReasonEntries = 5
+
 // EvaluateSafeguards validates whether the current repository satisfies the provided safeguards.
 // It returns false with a human-readable reason when a safeguard fails.
 func EvaluateSafeguards(ctx context.Context, environment *Environment, repository *RepositoryState, raw map[string]any) (bool, string, error) {
@@ -36,12 +38,25 @@ func EvaluateSafeguards(ctx context.Context, environment *Environment, repositor
 		if environment.RepositoryManager == nil {
 			return false, "", errSafeguardRepoManager
 		}
-		clean, cleanError := environment.RepositoryManager.CheckCleanWorktree(ctx, repositoryPath)
-		if cleanError != nil {
-			return false, "", cleanError
+		statusEntries, statusError := environment.RepositoryManager.WorktreeStatus(ctx, repositoryPath)
+		if statusError != nil {
+			return false, "", statusError
 		}
-		if !clean {
-			return false, "repository not clean", nil
+		if len(statusEntries) > 0 {
+			displayEntries := statusEntries
+			if len(displayEntries) > maxStatusReasonEntries {
+				displayEntries = append([]string(nil), statusEntries[:maxStatusReasonEntries]...)
+			} else {
+				displayEntries = append([]string(nil), statusEntries...)
+			}
+			for index := range displayEntries {
+				displayEntries[index] = strings.TrimSpace(displayEntries[index])
+			}
+			reason := fmt.Sprintf("repository not clean: %s", strings.Join(displayEntries, ", "))
+			if len(statusEntries) > maxStatusReasonEntries {
+				reason = fmt.Sprintf("%s (+%d more)", reason, len(statusEntries)-maxStatusReasonEntries)
+			}
+			return false, reason, nil
 		}
 	}
 

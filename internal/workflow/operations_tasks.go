@@ -1073,7 +1073,7 @@ func (executor taskExecutor) Execute(executionContext context.Context) error {
 				return err
 			}
 		} else {
-			executor.logf(taskLogPrefixSkip, "remote missing", nil)
+			executor.logf(taskLogPrefixSkip, "push remote not configured (set task.branch.push_remote)", nil)
 		}
 
 		if executor.plan.pullRequest != nil {
