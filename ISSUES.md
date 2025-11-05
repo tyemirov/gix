@@ -25,7 +25,7 @@ TASK-SKIP: Rewrite module namespace /tmp/repos/tyemirov/GAuss repository dirty
 RELEASED: /Users/tyemirov/Development/tyemirov/gix -> v0.2.0-rc.6
 Summary: total.repos=0 duration_ms=0
 
-- [ ] [GX-218] Remove the top level command repository and branch and only use subcommands
+- [ ] [GX-218] Remove the top level commands `repository` and `branch` and only use their subcommands.
 
 ## BugFixes (320–399)
 
