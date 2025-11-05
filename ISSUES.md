@@ -13,7 +13,9 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - Desired: Allow configuring an LLM client in workflow YAML (model, base-url, api-key env, timeout) and introduce workflow variables so action outputs can be referenced as inputs by later steps.
   - Resolution: Workflow tasks accept an `llm` client block and LLM actions can `capture_as` variables, which become available to subsequent tasks and steps via `.Environment` templating.
 
-- [ ] [GX-216] Add details of what exactly is unclean in a directory, which files. Improve the message we are getting now with the details
+- [x] [GX-216] Add details of what exactly is unclean in a directory, which files. Improve the message we are getting now with the details
+  - Status: Resolved
+  - Resolution: Dirty-task skip logging now includes git status entries, so the warning lists the precise files that block execution.
 ```
 TASK-SKIP: Switch to master if clean /tmp/repos/tyemirov/GAuss repository not clean
 TASK-SKIP: Rewrite module namespace /tmp/repos/tyemirov/GAuss repository dirty

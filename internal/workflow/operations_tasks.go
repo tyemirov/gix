@@ -978,7 +978,17 @@ func (executor taskExecutor) Execute(executionContext context.Context) error {
 			return cleanError
 		}
 		if !clean {
-			executor.logf(taskLogPrefixSkip, "repository dirty", nil)
+			fields := map[string]any{}
+			statusEntries, statusError := executor.environment.RepositoryManager.WorktreeStatus(executionContext, executor.repository.Path)
+			if statusError != nil {
+				fields["status_error"] = statusError.Error()
+			} else if len(statusEntries) > 0 {
+				fields["status"] = strings.Join(statusEntries, ", ")
+			}
+			if len(fields) == 0 {
+				fields = nil
+			}
+			executor.logf(taskLogPrefixSkip, "repository dirty", fields)
 			return nil
 		}
 	}
