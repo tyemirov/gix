@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/temirov/gix/internal/audit"
+	"github.com/temirov/gix/internal/commitmsg"
 	"github.com/temirov/gix/internal/execshell"
 	"github.com/temirov/gix/internal/githubcli"
 	"github.com/temirov/gix/internal/gitrepo"
@@ -49,7 +50,7 @@ func TestTaskPlannerBuildPlanRendersTemplates(testInstance *testing.T) {
 		},
 	}
 
-	templateData := buildTaskTemplateData(repository, taskDefinition)
+	templateData := buildTaskTemplateData(repository, taskDefinition, nil)
 	planner := newTaskPlanner(taskDefinition, templateData)
 
 	plan, planError := planner.BuildPlan(environment, repository)
@@ -68,6 +69,106 @@ func TestTaskPlannerBuildPlanRendersTemplates(testInstance *testing.T) {
 	require.Equal(testInstance, []byte("Repository: octocat/sample"), fileChange.content)
 	require.Equal(testInstance, defaultTaskFilePermissions, fileChange.permissions)
 	require.Nil(testInstance, plan.pullRequest)
+}
+
+func TestTaskPlannerBuildPlanAppliesEnvironmentVariables(t *testing.T) {
+	fileSystem := newFakeFileSystem(nil)
+	environment := &Environment{FileSystem: fileSystem}
+
+	inspection := audit.RepositoryInspection{
+		Path:                "/repositories/sample",
+		FinalOwnerRepo:      "octocat/sample",
+		RemoteDefaultBranch: "main",
+	}
+	repository := NewRepositoryState(inspection)
+
+	taskDefinition := TaskDefinition{
+		Name:        "UseCapturedOutput",
+		EnsureClean: true,
+		Files: []TaskFileDefinition{{
+			PathTemplate:    "README.md",
+			ContentTemplate: "{{ index .Environment \"captured_message\" }}",
+			Mode:            TaskFileModeOverwrite,
+			Permissions:     defaultTaskFilePermissions,
+		}},
+		Commit: TaskCommitDefinition{
+			MessageTemplate: "{{ index .Environment \"captured_message\" }}",
+		},
+	}
+
+	variables := map[string]string{"captured_message": "feat: captured message"}
+	templateData := buildTaskTemplateData(repository, taskDefinition, variables)
+	planner := newTaskPlanner(taskDefinition, templateData)
+
+	plan, planError := planner.BuildPlan(environment, repository)
+	require.NoError(t, planError)
+	require.Equal(t, "feat: captured message", plan.commitMessage)
+	require.Len(t, plan.fileChanges, 1)
+	require.Equal(t, []byte("feat: captured message"), plan.fileChanges[0].content)
+}
+
+func TestBuildTaskOperationInjectsLLMConfiguration(t *testing.T) {
+	options := map[string]any{
+		optionTaskLLMKeyConstant: map[string]any{
+			optionTaskLLMModelKeyConstant:     "gpt-test",
+			optionTaskLLMAPIKeyEnvKeyConstant: "WORKFLOW_TEST_KEY",
+		},
+		optionTasksKeyConstant: []any{
+			map[string]any{
+				optionTaskNameKeyConstant:        "Generate Message",
+				optionTaskEnsureCleanKeyConstant: false,
+				optionTaskActionsKeyConstant: []any{
+					map[string]any{
+						optionTaskActionTypeKeyConstant:    taskActionCommitMessage,
+						optionTaskActionOptionsKeyConstant: map[string]any{commitOptionDiffSource: string(commitmsg.DiffSourceStaged)},
+					},
+				},
+			},
+		},
+	}
+
+	operation, buildErr := buildTaskOperation(options)
+	require.NoError(t, buildErr)
+
+	taskOperation, ok := operation.(*TaskOperation)
+	require.True(t, ok)
+	require.NotNil(t, taskOperation.llmConfiguration)
+
+	actionOptions := taskOperation.tasks[0].Actions[0].Options
+	injected, exists := actionOptions[commitOptionClient]
+	require.True(t, exists)
+	_, ok = injected.(*TaskLLMClientConfiguration)
+	require.True(t, ok)
+}
+
+func TestCommitMessageActionCapturesOutput(t *testing.T) {
+	executor := &stubLLMGitExecutor{responses: map[string]string{
+		"status --short":                   " M main.go\n",
+		"diff --unified=3 --stat --cached": " main.go | 1 +\n",
+		"diff --unified=3 --cached":        "diff --git a/main.go b/main.go\n",
+	}}
+	environment := &Environment{
+		GitExecutor: executor,
+		Output:      &bytes.Buffer{},
+		Variables:   NewVariableStore(),
+	}
+	repository := &RepositoryState{Path: "/repositories/sample"}
+	client := &stubCommitChatClient{response: "feat: capture commit"}
+	parameters := map[string]any{
+		commitOptionDiffSource:     string(commitmsg.DiffSourceStaged),
+		commitOptionClient:         client,
+		taskActionCaptureOptionKey: "generated_commit",
+	}
+
+	executionErr := handleCommitMessageAction(context.Background(), environment, repository, parameters)
+	require.NoError(t, executionErr)
+	require.Equal(t, 1, client.calls)
+
+	name, nameErr := NewVariableName("generated_commit")
+	require.NoError(t, nameErr)
+	value, exists := environment.Variables.Get(name)
+	require.True(t, exists)
+	require.Equal(t, "feat: capture commit", value)
 }
 
 func TestTaskOperationSkipsDuplicateRepositories(t *testing.T) {
@@ -140,7 +241,7 @@ func TestTaskOperationFallsBackWhenStartPointMissing(t *testing.T) {
 		}},
 	}
 
-	planner := newTaskPlanner(task, buildTaskTemplateData(repository, task))
+	planner := newTaskPlanner(task, buildTaskTemplateData(repository, task, nil))
 	environment := &Environment{
 		GitExecutor:       gitExecutor,
 		RepositoryManager: repositoryManager,
@@ -193,7 +294,7 @@ func TestTaskPlannerBuildPlanSupportsActions(testInstance *testing.T) {
 		Commit: TaskCommitDefinition{},
 	}
 
-	templateData := buildTaskTemplateData(repository, taskDefinition)
+	templateData := buildTaskTemplateData(repository, taskDefinition, nil)
 	planner := newTaskPlanner(taskDefinition, templateData)
 
 	plan, planError := planner.BuildPlan(environment, repository)
@@ -377,7 +478,7 @@ func TestTaskPlannerSkipWhenFileUnchanged(testInstance *testing.T) {
 		Commit: TaskCommitDefinition{},
 	}
 
-	templateData := buildTaskTemplateData(repository, taskDefinition)
+	templateData := buildTaskTemplateData(repository, taskDefinition, nil)
 	planner := newTaskPlanner(taskDefinition, templateData)
 
 	plan, planError := planner.BuildPlan(environment, repository)
@@ -421,7 +522,7 @@ func TestTaskExecutorSkipsWhenBranchExists(testInstance *testing.T) {
 		Commit: TaskCommitDefinition{},
 	}
 
-	templateData := buildTaskTemplateData(repository, taskDefinition)
+	templateData := buildTaskTemplateData(repository, taskDefinition, nil)
 	planner := newTaskPlanner(taskDefinition, templateData)
 
 	environment := &Environment{
@@ -487,7 +588,7 @@ func TestTaskExecutorAppliesChanges(testInstance *testing.T) {
 		},
 	}
 
-	templateData := buildTaskTemplateData(repository, taskDefinition)
+	templateData := buildTaskTemplateData(repository, taskDefinition, nil)
 	planner := newTaskPlanner(taskDefinition, templateData)
 
 	environment := &Environment{
@@ -582,6 +683,16 @@ func (executor *stubLLMGitExecutor) ExecuteGit(ctx context.Context, details exec
 
 func (executor *stubLLMGitExecutor) ExecuteGitHubCLI(ctx context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
 	return execshell.ExecutionResult{}, nil
+}
+
+type stubCommitChatClient struct {
+	response string
+	calls    int
+}
+
+func (client *stubCommitChatClient) Chat(ctx context.Context, request llm.ChatRequest) (string, error) {
+	client.calls++
+	return client.response, nil
 }
 
 type stubChangelogChatClient struct {
