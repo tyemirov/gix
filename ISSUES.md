@@ -24,12 +24,11 @@ Summary: total.repos=0 duration_ms=0
 
 - [ ] [GX-218] Remove the top level command repository and branch and only use subcommands
 
-
 ## BugFixes (320–399)
 
 - [ ] [GX-320] The message "namespace rewrite skipped: files ignored by git" doesnt make much sense. Must be a bug. Investigate the real reason the operation hasn't been performed.
   - Resolution: Namespace rewrite now distinguishes between "no references" and "all matches ignored"; skips without matches report `namespace rewrite skipped: no references to <prefix>` while gitignored-only matches keep the git warning. Updated unit tests cover both skip paths.
-```
+```shell
 -- repo: tyemirov/ctx ----------------------------------------------------------
 22:34:53 INFO  REMOTE_SKIP        tyemirov/ctx                       already canonical                        | event=REMOTE_SKIP path=/tmp/repos/ctx reason=already_canonical repo=tyemirov/ctx
 22:34:55 INFO  REPO_FOLDER_RENAME                                    /tmp/repos/ctx → /tmp/repos/tyemirov/ctx | event=REPO_FOLDER_RENAME new_path=/tmp/repos/tyemirov/ctx old_path=/tmp/repos/ctx path=/tmp/repos/ctx
@@ -40,7 +39,7 @@ Summary: total.repos=0 duration_ms=0
 - [ ] [GX-321] the changelog command produces a summary: "Summary: total.repos=0 duration_ms=0". It shall not produce a summary (and neither shall a commit message command)
 
 - [ ] [GX-322] Investigate the reason of the workflow exit. Ensure it is impossible for a workflow to exit, only the tasks can report the error conditions but a workflow will always finish successfully even if with an error status
-```
+```shell
 17:28:34 tyemirov@Vadyms-MacBook-Pro:~/Development/tyemirov/gix - [improvement/GX-212-summary-warnings] $ go run ./... b default master -
 -roots /tmp/repos/
 WORKFLOW-DEFAULT-SKIP: /tmp/repos/Research/MarcoPoloResearchLab/skazka already defaults to master
@@ -59,7 +58,7 @@ WORKFLOW-DEFAULT-SKIP: /tmp/repos/tyemirov/Obsidian-santizer already defaults to
 WORKFLOW-DEFAULT-SKIP: /tmp/repos/tyemirov/SummerCamp24 already defaults to master
 repo tasks apply: default branch checkout failed: CheckoutBranch operation failed: git command exited with code 1
 exit status 1
-
+```
 ## Maintenance (410–499)
 
 - [ ] [GX-411] Review @POLICY.md and verify what code areas need improvements and refactoring. Prepare a detailed plan of refactoring. Check for bugs, missing tests, poor coding practices, uplication and slop. Ensure strong encapsulation and following the principles og @AGENTS.md and policies of @POLICY.md
