@@ -3,6 +3,7 @@ package workflow
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -22,12 +23,14 @@ type scriptedExecutor struct {
 	gitCommands          []execshell.CommandDetails
 	githubCommands       []execshell.CommandDetails
 	defaultBranchFailure *execshell.CommandFailedError
+	graphqlDefaultBranch string
 }
 
 func newScriptedExecutor() *scriptedExecutor {
 	return &scriptedExecutor{
-		gitHandlers:    map[string]func(execshell.CommandDetails) (execshell.ExecutionResult, error){},
-		githubHandlers: map[string]func(execshell.CommandDetails) (execshell.ExecutionResult, error){},
+		gitHandlers:          map[string]func(execshell.CommandDetails) (execshell.ExecutionResult, error){},
+		githubHandlers:       map[string]func(execshell.CommandDetails) (execshell.ExecutionResult, error){},
+		graphqlDefaultBranch: "main",
 	}
 }
 
@@ -65,7 +68,12 @@ func (executor *scriptedExecutor) ExecuteGitHubCLI(_ context.Context, details ex
 			}
 		case "api":
 			if len(details.Arguments) > 1 && details.Arguments[1] == "graphql" {
-				return execshell.ExecutionResult{StandardOutput: `{"data":{"search":{"nodes":[{"name":"loopaware","nameWithOwner":"tyemirov/loopaware","defaultBranchRef":{"name":"master"}}]}}}`}, nil
+				branchName := executor.graphqlDefaultBranch
+				if len(strings.TrimSpace(branchName)) == 0 {
+					branchName = "main"
+				}
+				payload := fmt.Sprintf(`{"data":{"search":{"nodes":[{"name":"loopaware","nameWithOwner":"tyemirov/loopaware","defaultBranchRef":{"name":"%s"}}]}}}`, branchName)
+				return execshell.ExecutionResult{StandardOutput: payload}, nil
 			}
 			joined := strings.Join(details.Arguments, " ")
 			if strings.Contains(joined, "/pages") && strings.Contains(joined, "GET") {
@@ -103,7 +111,7 @@ func TestBranchMigrationOperationRequiresSingleTarget(testInstance *testing.T) {
 	require.NoError(testInstance, clientError)
 
 	operation := &BranchMigrationOperation{Targets: []BranchMigrationTarget{
-		{RemoteName: "origin", SourceBranch: "main", TargetBranch: "master", PushToRemote: true},
+		{RemoteName: "origin", SourceBranch: "main", TargetBranch: "release", PushToRemote: true},
 		{RemoteName: "upstream", SourceBranch: "develop", TargetBranch: "main"},
 	}}
 
@@ -342,10 +350,10 @@ func TestBranchMigrationOperationInfersIdentifierFromRemote(testInstance *testin
 		return execshell.ExecutionResult{StandardOutput: ""}, nil
 	}
 	executor.githubHandlers["repo view temirov/loopaware --json defaultBranchRef,nameWithOwner,description,isInOrganization"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
-		return execshell.ExecutionResult{StandardOutput: `{"defaultBranchRef":{"name":"master"},"nameWithOwner":"tyemirov/loopaware","description":"","isInOrganization":false}`}, nil
+		return execshell.ExecutionResult{StandardOutput: `{"defaultBranchRef":{"name":"main"},"nameWithOwner":"tyemirov/loopaware","description":"","isInOrganization":false}`}, nil
 	}
 	executor.githubHandlers["repo view tyemirov/loopaware --json defaultBranchRef,nameWithOwner,description,isInOrganization"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
-		return execshell.ExecutionResult{StandardOutput: `{"defaultBranchRef":{"name":"master"},"nameWithOwner":"tyemirov/loopaware","description":"","isInOrganization":false}`}, nil
+		return execshell.ExecutionResult{StandardOutput: `{"defaultBranchRef":{"name":"main"},"nameWithOwner":"tyemirov/loopaware","description":"","isInOrganization":false}`}, nil
 	}
 
 	repositoryManager, managerError := gitrepo.NewRepositoryManager(executor)
@@ -405,17 +413,24 @@ func TestBranchMigrationOperationSkipsRemotePushWhenUnavailable(testInstance *te
 	testInstance.Setenv(githubauth.EnvGitHubToken, "test-token")
 	testInstance.Setenv(githubauth.EnvGitHubCLIToken, "test-token")
 	executor := newScriptedExecutor()
+	executor.graphqlDefaultBranch = "main"
 	executor.gitHandlers["remote"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
 		return execshell.ExecutionResult{StandardOutput: "origin\n"}, nil
 	}
 	executor.gitHandlers["remote get-url origin"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
 		return execshell.ExecutionResult{StandardOutput: "git@github.com:owner/example.git\n"}, nil
 	}
-	executor.gitHandlers["show-ref --verify --quiet refs/heads/master"] = branchMissing
-	executor.gitHandlers["ls-remote --heads origin master"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
+	executor.githubHandlers["repo view owner/example --json defaultBranchRef,nameWithOwner,description,isInOrganization"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
+		return execshell.ExecutionResult{StandardOutput: `{"defaultBranchRef":{"name":"main"},"nameWithOwner":"owner/example","description":"","isInOrganization":false}`}, nil
+	}
+	executor.githubHandlers["repo view owner/example --json defaultBranchRef,nameWithOwner,description,isInOrganization"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
+		return execshell.ExecutionResult{StandardOutput: `{"defaultBranchRef":{"name":"master"},"nameWithOwner":"owner/example","description":"","isInOrganization":false}`}, nil
+	}
+	executor.gitHandlers["show-ref --verify --quiet refs/heads/release"] = branchMissing
+	executor.gitHandlers["ls-remote --heads origin release"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
 		return execshell.ExecutionResult{StandardOutput: ""}, nil
 	}
-	executor.gitHandlers["push origin master:master"] = func(details execshell.CommandDetails) (execshell.ExecutionResult, error) {
+	executor.gitHandlers["push origin release:release"] = func(details execshell.CommandDetails) (execshell.ExecutionResult, error) {
 		return execshell.ExecutionResult{}, execshell.CommandFailedError{
 			Command: execshell.ShellCommand{Name: execshell.CommandGit, Details: details},
 			Result:  execshell.ExecutionResult{ExitCode: 128, StandardError: "fatal: could not read from remote repository"},
@@ -429,7 +444,7 @@ func TestBranchMigrationOperationSkipsRemotePushWhenUnavailable(testInstance *te
 	require.NoError(testInstance, clientError)
 
 	operation := &BranchMigrationOperation{Targets: []BranchMigrationTarget{
-		{RemoteName: "origin", SourceBranch: "main", TargetBranch: "master", PushToRemote: true},
+		{RemoteName: "origin", SourceBranch: "main", TargetBranch: "release", PushToRemote: true},
 	}}
 
 	outputBuffer := &bytes.Buffer{}
@@ -440,7 +455,7 @@ func TestBranchMigrationOperationSkipsRemotePushWhenUnavailable(testInstance *te
 				Path: "/repository",
 				Inspection: audit.RepositoryInspection{
 					FinalOwnerRepo:      "owner/example",
-					LocalBranch:         "main",
+					LocalBranch:         "develop",
 					RemoteDefaultBranch: "main",
 				},
 			},
@@ -457,15 +472,82 @@ func TestBranchMigrationOperationSkipsRemotePushWhenUnavailable(testInstance *te
 	executionError := operation.Execute(context.Background(), environment, state)
 
 	require.NoError(testInstance, executionError)
-	require.Contains(testInstance, outputBuffer.String(), "WORKFLOW-DEFAULT: /repository (main → master)")
+	require.Contains(testInstance, outputBuffer.String(), "WORKFLOW-DEFAULT: /repository (main → release)")
 
 	foundPushAttempt := false
 	for _, commandDetails := range executor.gitCommands {
-		if strings.Join(commandDetails.Arguments, " ") == "push origin master:master" {
+		if strings.Join(commandDetails.Arguments, " ") == "push origin release:release" {
 			foundPushAttempt = true
 		}
 	}
 	require.True(testInstance, foundPushAttempt)
+}
+
+func TestBranchMigrationOperationSkipsWhenRemoteAlreadyTarget(testInstance *testing.T) {
+	testInstance.Setenv(githubauth.EnvGitHubToken, "test-token")
+	testInstance.Setenv(githubauth.EnvGitHubCLIToken, "test-token")
+
+	executor := newScriptedExecutor()
+	executor.graphqlDefaultBranch = "master"
+	executor.gitHandlers["remote"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
+		return execshell.ExecutionResult{StandardOutput: "origin\n"}, nil
+	}
+	executor.gitHandlers["remote get-url origin"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
+		return execshell.ExecutionResult{StandardOutput: "git@github.com:owner/example.git\n"}, nil
+	}
+	executor.githubHandlers["repo view owner/example --json defaultBranchRef,nameWithOwner,description,isInOrganization"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
+		return execshell.ExecutionResult{StandardOutput: `{"defaultBranchRef":{"name":"master"},"nameWithOwner":"owner/example","description":"","isInOrganization":false}`}, nil
+	}
+
+	repositoryManager, managerError := gitrepo.NewRepositoryManager(executor)
+	require.NoError(testInstance, managerError)
+
+	githubClient, clientError := githubcli.NewClient(executor)
+	require.NoError(testInstance, clientError)
+
+	operation := &BranchMigrationOperation{Targets: []BranchMigrationTarget{
+		{RemoteName: "origin", TargetBranch: "master", PushToRemote: true, DeleteSourceBranch: true},
+	}}
+
+	outputBuffer := &bytes.Buffer{}
+
+	state := &State{
+		Repositories: []*RepositoryState{
+			{
+				Path: "/repository",
+				Inspection: audit.RepositoryInspection{
+					FinalOwnerRepo:      "owner/example",
+					RemoteDefaultBranch: "master",
+					LocalBranch:         "feature",
+				},
+			},
+		},
+	}
+
+	environment := &Environment{
+		RepositoryManager: repositoryManager,
+		GitExecutor:       executor,
+		GitHubClient:      githubClient,
+		Output:            outputBuffer,
+	}
+
+	executionError := operation.Execute(context.Background(), environment, state)
+
+	require.NoError(testInstance, executionError)
+	require.Contains(testInstance, outputBuffer.String(), "WORKFLOW-DEFAULT-SKIP: /repository already defaults to master")
+
+	for _, commandDetails := range executor.gitCommands {
+		joined := strings.Join(commandDetails.Arguments, " ")
+		require.NotEqual(testInstance, "branch master feature", joined)
+		require.NotEqual(testInstance, "checkout master", joined)
+	}
+
+	for _, commandDetails := range executor.githubCommands {
+		joined := strings.Join(commandDetails.Arguments, " ")
+		require.NotContains(testInstance, joined, "default_branch=")
+		require.NotContains(testInstance, joined, "pr edit")
+		require.NotContains(testInstance, joined, "/pages")
+	}
 }
 
 func TestBranchMigrationOperationFallsBackWhenIdentifierMissing(testInstance *testing.T) {

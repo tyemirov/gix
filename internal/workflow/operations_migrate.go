@@ -182,9 +182,9 @@ func (operation *BranchMigrationOperation) Execute(executionContext context.Cont
 		targetBranch := migrate.BranchName(targetBranchValue)
 
 		skipMigration := false
-		if remoteAvailable && len(remoteDefaultBranch) > 0 && len(localDefaultBranch) > 0 {
-			skipMigration = strings.EqualFold(targetBranchValue, remoteDefaultBranch) && strings.EqualFold(targetBranchValue, localDefaultBranch)
-		} else if !remoteAvailable && len(localDefaultBranch) > 0 {
+		if remoteAvailable && len(remoteDefaultBranch) > 0 {
+			skipMigration = strings.EqualFold(targetBranchValue, remoteDefaultBranch)
+		} else if len(localDefaultBranch) > 0 {
 			skipMigration = strings.EqualFold(targetBranchValue, localDefaultBranch)
 		}
 
