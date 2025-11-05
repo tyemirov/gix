@@ -48,7 +48,9 @@ Summary: total.repos=0 duration_ms=0
   - Status: Resolved
   - Resolution: Workflow execution now pre-registers repositories with the structured reporter, so summary output reflects the actual repository count and elapsed duration even when operations emit no events. Added reporter and executor tests to guarantee the behaviour.
 
-- [ ] [GX-322] Investigate the reason of the workflow exit. Ensure it is impossible for a workflow to exit, only the tasks can report the error conditions but a workflow will always finish successfully even if with an error status
+- [x] [GX-322] Investigate the reason of the workflow exit. Ensure it is impossible for a workflow to exit, only the tasks can report the error conditions but a workflow will always finish successfully even if with an error status
+  - Status: Resolved
+  - Resolution: Workflow executor now records failures without cancelling subsequent operations, accumulates errors for reporting, and task execution continues across repositories. New tests cover mixed success/failure runs to prove the workflow completes and summaries still emit.
 ```shell
 17:28:34 tyemirov@Vadyms-MacBook-Pro:~/Development/tyemirov/gix - [improvement/GX-212-summary-warnings] $ go run ./... b default master -
 -roots /tmp/repos/

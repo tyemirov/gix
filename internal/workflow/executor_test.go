@@ -162,6 +162,38 @@ func TestExecutorSummaryCountsRepositoriesWithoutEmittedEvents(testInstance *tes
 	require.Contains(testInstance, summary, "Summary: total.repos=1")
 }
 
+func TestExecutorContinuesExecutingOperationsAfterFailure(testInstance *testing.T) {
+	tempDirectory := testInstance.TempDir()
+	repositoryPath := filepath.Join(tempDirectory, "sample")
+	require.NoError(testInstance, os.Mkdir(repositoryPath, 0o755))
+
+	gitExecutor := newStubWorkflowGitExecutor()
+	repositoryManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(testInstance, managerError)
+
+	buffer := &bytes.Buffer{}
+	recorder := &recordingOperation{}
+
+	dependencies := Dependencies{
+		RepositoryDiscoverer: executorStubRepositoryDiscoverer{repositories: []string{repositoryPath}},
+		GitExecutor:          gitExecutor,
+		RepositoryManager:    repositoryManager,
+		Output:               buffer,
+		Errors:               buffer,
+	}
+
+	executor := NewExecutor([]Operation{failingOperation{}, recorder}, dependencies)
+
+	executionError := executor.Execute(
+		context.Background(),
+		[]string{repositoryPath},
+		RuntimeOptions{SkipRepositoryMetadata: true},
+	)
+	require.Error(testInstance, executionError)
+	require.True(testInstance, recorder.executed)
+	require.Contains(testInstance, buffer.String(), "Summary: total.repos=1")
+}
+
 type executorStubRepositoryDiscoverer struct {
 	repositories []string
 }
@@ -177,6 +209,19 @@ func (noopOperation) Name() string {
 }
 
 func (noopOperation) Execute(ctx context.Context, environment *Environment, state *State) error {
+	return nil
+}
+
+type recordingOperation struct {
+	executed bool
+}
+
+func (operation *recordingOperation) Name() string {
+	return "recording"
+}
+
+func (operation *recordingOperation) Execute(ctx context.Context, environment *Environment, state *State) error {
+	operation.executed = true
 	return nil
 }
 

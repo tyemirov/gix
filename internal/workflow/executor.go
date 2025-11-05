@@ -71,6 +71,12 @@ func (failure operationFailureError) Unwrap() error {
 	return failure.cause
 }
 
+type recordedOperationFailure struct {
+	name    string
+	err     error
+	message string
+}
+
 // NewExecutor constructs an Executor instance from the provided operations, preserving sequential execution semantics.
 func NewExecutor(operations []Operation, dependencies Dependencies) *Executor {
 	nodes := make([]*OperationNode, 0, len(operations))
@@ -219,6 +225,11 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 	}
 	environment.State = state
 
+	var (
+		failureMu sync.Mutex
+		failures  []recordedOperationFailure
+	)
+
 	for _, repository := range repositoryStates {
 		if repository == nil {
 			continue
@@ -241,10 +252,6 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 			continue
 		}
 
-		stageContext, cancelStage := context.WithCancel(executionContext)
-		var stageError error
-		var failedOperation Operation
-		var once sync.Once
 		var waitGroup sync.WaitGroup
 
 		for _, node := range stage.Operations {
@@ -255,34 +262,45 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 			waitGroup.Add(1)
 			go func(operation Operation) {
 				defer waitGroup.Done()
-				if executeError := operation.Execute(stageContext, environment, state); executeError != nil {
-					once.Do(func() {
-						stageError = executeError
-						failedOperation = operation
-						cancelStage()
-					})
+				if executeError := operation.Execute(executionContext, environment, state); executeError != nil {
+					formatted := formatOperationFailure(environment, executeError, operation.Name())
+					failureMu.Lock()
+					if !logRepositoryOperationError(environment, executeError) {
+						if environment != nil && environment.Errors != nil {
+							fmt.Fprintln(environment.Errors, formatted)
+						}
+					}
+					failures = append(failures, recordedOperationFailure{name: operation.Name(), err: executeError, message: formatted})
+					failureMu.Unlock()
 				}
 			}(node.Operation)
 		}
 
 		waitGroup.Wait()
-		cancelStage()
-
-		if stageError != nil {
-			operationName := ""
-			if failedOperation != nil {
-				operationName = failedOperation.Name()
-			}
-			failureMessage := formatOperationFailure(environment, stageError, operationName)
-			return operationFailureError{message: failureMessage, cause: stageError}
-		}
 	}
 
 	if reporter != nil {
 		reporter.PrintSummary()
 	}
 
-	return nil
+	if len(failures) == 0 {
+		return nil
+	}
+
+	distinctErrors := make([]error, 0, len(failures))
+	for _, failure := range failures {
+		distinctErrors = append(distinctErrors, failure.err)
+	}
+
+	message := failures[0].message
+	if len(failures) > 1 {
+		message = fmt.Sprintf("%s (and %d more failures)", message, len(failures)-1)
+	}
+
+	return operationFailureError{
+		message: message,
+		cause:   errors.Join(distinctErrors...),
+	}
 
 }
 
