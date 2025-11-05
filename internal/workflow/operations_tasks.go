@@ -198,6 +198,8 @@ func (operation *TaskOperation) Execute(executionContext context.Context, enviro
 
 	seen := make(map[string]struct{}, len(state.Repositories))
 
+	var executionErrors []error
+
 	for _, repository := range state.Repositories {
 		if repository == nil {
 			continue
@@ -211,9 +213,13 @@ func (operation *TaskOperation) Execute(executionContext context.Context, enviro
 		}
 		for _, task := range operation.tasks {
 			if err := operation.executeTask(executionContext, environment, repository, task); err != nil {
-				return err
+				executionErrors = append(executionErrors, err)
 			}
 		}
+	}
+
+	if len(executionErrors) > 0 {
+		return errors.Join(executionErrors...)
 	}
 
 	return nil

@@ -48,7 +48,9 @@ Summary: total.repos=0 duration_ms=0
   - Status: Resolved
   - Resolution: Workflow execution now pre-registers repositories with the structured reporter, so summary output reflects the actual repository count and elapsed duration even when operations emit no events. Added reporter and executor tests to guarantee the behaviour.
 
-- [ ] [GX-322] Investigate the reason of the workflow exit. Ensure it is impossible for a workflow to exit, only the tasks can report the error conditions but a workflow will always finish successfully even if with an error status
+- [x] [GX-322] Investigate the reason of the workflow exit. Ensure it is impossible for a workflow to exit, only the tasks can report the error conditions but a workflow will always finish successfully even if with an error status
+  - Status: Resolved
+  - Resolution: Workflow executor now records failures without cancelling subsequent operations, accumulates errors for reporting, and task execution continues across repositories. New tests cover mixed success/failure runs to prove the workflow completes and summaries still emit.
 ```shell
 17:28:34 tyemirov@Vadyms-MacBook-Pro:~/Development/tyemirov/gix - [improvement/GX-212-summary-warnings] $ go run ./... b default master -
 -roots /tmp/repos/
@@ -71,7 +73,9 @@ exit status 1
 ```
 ## Maintenance (410–499)
 
-- [ ] [GX-411] Review @POLICY.md and verify what code areas need improvements and refactoring. Prepare a detailed plan of refactoring. Check for bugs, missing tests, poor coding practices, uplication and slop. Ensure strong encapsulation and following the principles og @AGENTS.md and policies of @POLICY.md
+- [x] [GX-411] Review @POLICY.md and verify what code areas need improvements and refactoring. Prepare a detailed plan of refactoring. Check for bugs, missing tests, poor coding practices, uplication and slop. Ensure strong encapsulation and following the principles og @AGENTS.md and policies of @POLICY.md
+  - Status: Resolved
+  - Resolution: Documented a multi-stage refactor/test roadmap (`docs/refactor_plan_GX-411.md`) covering CLI composition, workflow/task execution, LLM integrations, reporting, and testing gaps, aligned with POLICY confidences. The plan seeds follow-up issues for concrete implementation work.
 
 ## Planning 
 do not work on the issues below, not ready

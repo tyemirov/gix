@@ -71,6 +71,43 @@ func (failure operationFailureError) Unwrap() error {
 	return failure.cause
 }
 
+type recordedOperationFailure struct {
+	name    string
+	err     error
+	message string
+}
+
+func collectOperationErrors(err error) []error {
+	if err == nil {
+		return nil
+	}
+
+	type multiUnwrapper interface{ Unwrap() []error }
+	type singleUnwrapper interface{ Unwrap() error }
+
+	if _, ok := err.(repoerrors.OperationError); ok {
+		return []error{err}
+	}
+
+	if multi, ok := err.(multiUnwrapper); ok {
+		children := multi.Unwrap()
+		results := make([]error, 0, len(children))
+		for _, child := range children {
+			results = append(results, collectOperationErrors(child)...)
+		}
+		return results
+	}
+
+	if single, ok := err.(singleUnwrapper); ok {
+		child := single.Unwrap()
+		if child != nil {
+			return collectOperationErrors(child)
+		}
+	}
+
+	return []error{err}
+}
+
 // NewExecutor constructs an Executor instance from the provided operations, preserving sequential execution semantics.
 func NewExecutor(operations []Operation, dependencies Dependencies) *Executor {
 	nodes := make([]*OperationNode, 0, len(operations))
@@ -219,6 +256,11 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 	}
 	environment.State = state
 
+	var (
+		failureMu sync.Mutex
+		failures  []recordedOperationFailure
+	)
+
 	for _, repository := range repositoryStates {
 		if repository == nil {
 			continue
@@ -241,10 +283,6 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 			continue
 		}
 
-		stageContext, cancelStage := context.WithCancel(executionContext)
-		var stageError error
-		var failedOperation Operation
-		var once sync.Once
 		var waitGroup sync.WaitGroup
 
 		for _, node := range stage.Operations {
@@ -255,34 +293,51 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 			waitGroup.Add(1)
 			go func(operation Operation) {
 				defer waitGroup.Done()
-				if executeError := operation.Execute(stageContext, environment, state); executeError != nil {
-					once.Do(func() {
-						stageError = executeError
-						failedOperation = operation
-						cancelStage()
-					})
+				if executeError := operation.Execute(executionContext, environment, state); executeError != nil {
+					subErrors := collectOperationErrors(executeError)
+					if len(subErrors) == 0 {
+						subErrors = []error{executeError}
+					}
+					failureMu.Lock()
+					for _, failureErr := range subErrors {
+						formatted := formatOperationFailure(environment, failureErr, operation.Name())
+						if !logRepositoryOperationError(environment, failureErr) {
+							if environment != nil && environment.Errors != nil {
+								fmt.Fprintln(environment.Errors, formatted)
+							}
+						}
+						failures = append(failures, recordedOperationFailure{name: operation.Name(), err: failureErr, message: formatted})
+					}
+					failureMu.Unlock()
 				}
 			}(node.Operation)
 		}
 
 		waitGroup.Wait()
-		cancelStage()
-
-		if stageError != nil {
-			operationName := ""
-			if failedOperation != nil {
-				operationName = failedOperation.Name()
-			}
-			failureMessage := formatOperationFailure(environment, stageError, operationName)
-			return operationFailureError{message: failureMessage, cause: stageError}
-		}
 	}
 
 	if reporter != nil {
 		reporter.PrintSummary()
 	}
 
-	return nil
+	if len(failures) == 0 {
+		return nil
+	}
+
+	distinctErrors := make([]error, 0, len(failures))
+	for _, failure := range failures {
+		distinctErrors = append(distinctErrors, failure.err)
+	}
+
+	message := failures[0].message
+	if len(failures) > 1 {
+		message = fmt.Sprintf("%s (and %d more failures)", message, len(failures)-1)
+	}
+
+	return operationFailureError{
+		message: message,
+		cause:   errors.Join(distinctErrors...),
+	}
 
 }
 
