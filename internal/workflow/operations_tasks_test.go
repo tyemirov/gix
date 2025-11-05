@@ -271,6 +271,40 @@ func TestTaskOperationFallsBackWhenStartPointMissing(t *testing.T) {
 	}
 }
 
+func TestTaskExecutorLogsDirtyRepositoryDetails(t *testing.T) {
+	fileSystem := newFakeFileSystem(nil)
+	repository := NewRepositoryState(audit.RepositoryInspection{Path: "/repositories/sample"})
+	gitExecutor := &recordingGitExecutor{worktreeClean: false}
+	repositoryManager, managerErr := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(t, managerErr)
+	taskDefinition := TaskDefinition{
+		Name:        "Dirty Task",
+		EnsureClean: true,
+		Files: []TaskFileDefinition{{
+			PathTemplate:    "README.md",
+			ContentTemplate: "updated",
+			Mode:            taskFileModeOverwrite,
+			Permissions:     defaultTaskFilePermissions,
+		}},
+	}
+	templateData := buildTaskTemplateData(repository, taskDefinition, nil)
+	planner := newTaskPlanner(taskDefinition, templateData)
+	plan, planErr := planner.BuildPlan(&Environment{FileSystem: fileSystem}, repository)
+	require.NoError(t, planErr)
+	environment := &Environment{
+		GitExecutor:       gitExecutor,
+		RepositoryManager: repositoryManager,
+		FileSystem:        fileSystem,
+		Output:            &bytes.Buffer{},
+	}
+	executor := newTaskExecutor(environment, repository, plan)
+	executionErr := executor.Execute(context.Background())
+	require.NoError(t, executionErr)
+	output := environment.Output.(*bytes.Buffer).String()
+	require.Contains(t, output, "repository dirty")
+	require.Contains(t, output, "file.txt")
+}
+
 func TestTaskPlannerBuildPlanSupportsActions(testInstance *testing.T) {
 	fileSystem := newFakeFileSystem(nil)
 	environment := &Environment{FileSystem: fileSystem}
