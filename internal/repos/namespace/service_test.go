@@ -348,7 +348,56 @@ import "github.com/old/account/dep"
 	require.NoError(t, rewriteErr)
 
 	require.True(t, result.Skipped)
-	require.Equal(t, "namespace rewrite skipped: all matching files ignored by git", result.SkipReason)
+	require.Equal(t, "namespace rewrite skipped: all matching files ignored by git (ignored/ignored.go)", result.SkipReason)
+	require.False(t, result.CommitCreated)
+}
+
+func TestRewriteSkipReasonIncludesIgnoredGoMod(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(tempDir, ".git"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, ".gitignore"), []byte("go.mod\n"), 0o644))
+
+	goModContent := "module github.com/old/account/app\n\ngo 1.22\nrequire github.com/old/account/lib v1.0.0\n"
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "go.mod"), []byte(goModContent), 0o644))
+
+	oldPrefix, err := namespace.NewModulePrefix("github.com/old/account")
+	require.NoError(t, err)
+	newPrefix, err := namespace.NewModulePrefix("github.com/new/account")
+	require.NoError(t, err)
+
+	executor := &recordingGitExecutor{
+		configValues: map[string]string{
+			"user.name":  "Test User",
+			"user.email": "test@example.com",
+		},
+		ignoredPaths: map[string]struct{}{
+			"go.mod": {},
+		},
+	}
+	manager, err := gitrepo.NewRepositoryManager(executor)
+	require.NoError(t, err)
+
+	service, err := namespace.NewService(namespace.Dependencies{
+		FileSystem:        filesystem.OSFileSystem{},
+		GitExecutor:       executor,
+		RepositoryManager: manager,
+	})
+	require.NoError(t, err)
+
+	repositoryPath, err := shared.NewRepositoryPath(tempDir)
+	require.NoError(t, err)
+
+	result, rewriteErr := service.Rewrite(context.Background(), namespace.Options{
+		RepositoryPath: repositoryPath,
+		OldPrefix:      oldPrefix,
+		NewPrefix:      newPrefix,
+	})
+	require.NoError(t, rewriteErr)
+
+	require.True(t, result.Skipped)
+	require.Equal(t, "namespace rewrite skipped: all matching files ignored by git (go.mod)", result.SkipReason)
 	require.False(t, result.CommitCreated)
 }
 
