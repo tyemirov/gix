@@ -245,6 +245,7 @@ Schema highlights:
 - Files: `{ path, content, mode: overwrite|skip-if-exists, permissions }` with templated `path`/`content`.
 - Actions: `{ type, options }` where `type` is one of:
   - `repo.remote.update`, `repo.remote.convert-protocol`, `repo.folder.rename`, `branch.default`, `repo.release.tag`, `audit.report`, `repo.history.purge`, `repo.files.replace`, `repo.namespace.rewrite`
+- LLM: optional `{ model, base_url, api_key_env, timeout_seconds, max_completion_tokens, temperature }` block. When present, commit/changelog actions reuse the configured client instead of requiring a programmatic injector.
 - Commit: `{ message }` (templated). Defaults to `Apply task <name>` when empty.
 - Pull request: `{ title, body, base, draft }` (templated; optional).
 - Safeguards: map of conditions that skip the task when unmet; see below.
@@ -273,7 +274,7 @@ Example task-only workflow step:
             paths: [".git"]
 ```
 
-Templating supports Go text/template with `.Task.*` and `.Repository.*` fields. Available repository fields include: `Path`, `Owner`, `Name`, `FullName`, `DefaultBranch`, `PathDepth`, `InitialClean`, `HasNestedRepositories`.
+Templating supports Go text/template with `.Task.*`, `.Repository.*`, and `.Environment` fields. Available repository fields include: `Path`, `Owner`, `Name`, `FullName`, `DefaultBranch`, `PathDepth`, `InitialClean`, `HasNestedRepositories`. Capture outputs from LLM actions with `capture_as: <variable>` and reference them in later tasks or workflow steps using `{{ index .Environment "variable" }}`.
 
 ### Safeguards
 

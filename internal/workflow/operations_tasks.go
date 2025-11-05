@@ -82,7 +82,8 @@ func ParseTaskFileMode(raw string) TaskFileMode {
 
 // TaskOperation executes declarative repository tasks (file mutations, commits, and PRs).
 type TaskOperation struct {
-	tasks []TaskDefinition
+	tasks            []TaskDefinition
+	llmConfiguration *TaskLLMClientConfiguration
 }
 
 // Definitions returns a copy of the task definitions associated with the operation.
@@ -93,6 +94,30 @@ func (operation *TaskOperation) Definitions() []TaskDefinition {
 	definitions := make([]TaskDefinition, len(operation.tasks))
 	copy(definitions, operation.tasks)
 	return definitions
+}
+
+func (operation *TaskOperation) attachLLMConfiguration() {
+	if operation == nil || operation.llmConfiguration == nil {
+		return
+	}
+
+	for taskIndex := range operation.tasks {
+		actionDefinitions := operation.tasks[taskIndex].Actions
+		for actionIndex := range actionDefinitions {
+			action := &actionDefinitions[actionIndex]
+			normalizedType := strings.ToLower(strings.TrimSpace(action.Type))
+			switch normalizedType {
+			case taskActionCommitMessage:
+				if _, exists := action.Options[commitOptionClient]; !exists {
+					action.Options[commitOptionClient] = operation.llmConfiguration
+				}
+			case taskActionChangelog:
+				if _, exists := action.Options[changelogOptionClient]; !exists {
+					action.Options[changelogOptionClient] = operation.llmConfiguration
+				}
+			}
+		}
+	}
 }
 
 // TaskDefinition describes a single repository task.
@@ -212,7 +237,12 @@ func (operation *TaskOperation) executeTask(executionContext context.Context, en
 		}
 	}
 
-	templateData := buildTaskTemplateData(repository, task)
+	variableSnapshot := map[string]string(nil)
+	if environment != nil && environment.Variables != nil {
+		variableSnapshot = environment.Variables.Snapshot()
+	}
+
+	templateData := buildTaskTemplateData(repository, task, variableSnapshot)
 
 	planner := newTaskPlanner(task, templateData)
 	plan, planError := planner.BuildPlan(environment, repository)
@@ -240,6 +270,12 @@ func (operation *TaskOperation) executeTask(executionContext context.Context, en
 // buildTaskOperation constructs a TaskOperation from declarative options.
 func buildTaskOperation(options map[string]any) (Operation, error) {
 	reader := newOptionReader(options)
+
+	llmConfiguration, llmConfigurationErr := buildTaskLLMConfiguration(reader)
+	if llmConfigurationErr != nil {
+		return nil, llmConfigurationErr
+	}
+
 	entries, exists, err := reader.mapSlice(optionTasksKeyConstant)
 	if err != nil {
 		return nil, err
@@ -257,7 +293,12 @@ func buildTaskOperation(options map[string]any) (Operation, error) {
 		tasks = append(tasks, task)
 	}
 
-	return &TaskOperation{tasks: tasks}, nil
+	operation := &TaskOperation{
+		tasks:            tasks,
+		llmConfiguration: llmConfiguration,
+	}
+	operation.attachLLMConfiguration()
+	return operation, nil
 }
 
 func buildTaskDefinition(raw map[string]any) (TaskDefinition, error) {
@@ -525,11 +566,20 @@ func parseFilePermissions(raw string) (fs.FileMode, error) {
 	return fs.FileMode(value), nil
 }
 
-func buildTaskTemplateData(repository *RepositoryState, task TaskDefinition) TaskTemplateData {
+func buildTaskTemplateData(repository *RepositoryState, task TaskDefinition, variables map[string]string) TaskTemplateData {
 	owner, name := splitOwnerAndName(repository.Inspection.FinalOwnerRepo)
 	defaultBranch := strings.TrimSpace(repository.Inspection.RemoteDefaultBranch)
 	if len(defaultBranch) == 0 {
 		defaultBranch = strings.TrimSpace(repository.Inspection.LocalBranch)
+	}
+
+	environmentValues := make(map[string]string, len(variables))
+	for key, value := range variables {
+		normalizedKey := strings.TrimSpace(key)
+		if len(normalizedKey) == 0 {
+			continue
+		}
+		environmentValues[normalizedKey] = value
 	}
 
 	return TaskTemplateData{
@@ -544,7 +594,7 @@ func buildTaskTemplateData(repository *RepositoryState, task TaskDefinition) Tas
 			InitialClean:          repository.InitialCleanWorktree,
 			HasNestedRepositories: repository.HasNestedRepositories,
 		},
-		Environment: map[string]string{},
+		Environment: environmentValues,
 	}
 }
 
@@ -880,10 +930,23 @@ func formatActionParameters(parameters map[string]any) string {
 
 	values := make([]string, 0, len(keys))
 	for _, key := range keys {
-		values = append(values, fmt.Sprintf("%s=%v", key, parameters[key]))
+		formatted := formatActionParameterValue(parameters[key])
+		values = append(values, fmt.Sprintf("%s=%s", key, formatted))
 	}
 
 	return strings.Join(values, ", ")
+}
+
+func formatActionParameterValue(value any) string {
+	switch typed := value.(type) {
+	case *TaskLLMClientConfiguration:
+		if typed == nil {
+			return "<llm-client:nil>"
+		}
+		return "<llm-client>"
+	default:
+		return fmt.Sprintf("%v", value)
+	}
 }
 
 type taskExecutor struct {

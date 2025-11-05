@@ -14,6 +14,7 @@
 - Workflow executor now skips GitHub metadata lookups when disabled to avoid panics.
 - Updated workflow examples and documentation to reflect command-based DSL.
 - Fixed staticcheck warnings and documented linting steps.
+- Workflow `repo tasks apply` can now build LLM clients from configuration and capture action output into workflow variables for later steps.
 
 ### Bug Fixes 🐛
 - Fixed panic caused by `gix repo prs delete --yes yes` due to nil GitHub client.

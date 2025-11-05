@@ -6,11 +6,12 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
 ## Improvements (215–299)
 
-- [ ] [GX-215] Enable LLM actions in workflows and output piping between steps
-  - Status: Unresolved
+- [x] [GX-215] Enable LLM actions in workflows and output piping between steps
+  - Status: Resolved
   - Category: Improvement
   - Context: `apply-tasks` supports `commit.message.generate` and `changelog.message.generate` actions, but they require a programmatic client and there is no way to pass their outputs into subsequent steps (e.g., as a `commit_message` for namespace rewrite).
   - Desired: Allow configuring an LLM client in workflow YAML (model, base-url, api-key env, timeout) and introduce workflow variables so action outputs can be referenced as inputs by later steps.
+  - Resolution: Workflow tasks accept an `llm` client block and LLM actions can `capture_as` variables, which become available to subsequent tasks and steps via `.Environment` templating.
 
 - [ ] [GX-216] Add details of what exactly is unclean in a directory, which files. Improve the message we are getting now with the details
 ```

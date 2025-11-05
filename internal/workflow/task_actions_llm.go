@@ -28,6 +28,7 @@ const (
 	changelogOptionMaxTokens   = "max_tokens"
 	changelogOptionTemperature = "temperature"
 	changelogOptionClient      = "client"
+	taskActionCaptureOptionKey = "capture_as"
 )
 
 func init() {
@@ -88,9 +89,10 @@ func handleCommitMessageAction(ctx context.Context, environment *Environment, re
 		output = io.Discard
 	}
 
+	planPreview := fmt.Sprintf(commitPlanTemplate, request.Messages[0].Content, request.Messages[1].Content)
 	if environment.DryRun {
-		fmt.Fprintf(output, commitPlanTemplate, request.Messages[0].Content, request.Messages[1].Content)
-		return nil
+		fmt.Fprint(output, planPreview)
+		return captureActionOutput(environment, parameters, planPreview)
 	}
 
 	response, chatErr := client.Chat(ctx, request)
@@ -98,8 +100,9 @@ func handleCommitMessageAction(ctx context.Context, environment *Environment, re
 		return chatErr
 	}
 
-	fmt.Fprintln(output, strings.TrimSpace(response))
-	return nil
+	trimmedResponse := strings.TrimSpace(response)
+	fmt.Fprintln(output, trimmedResponse)
+	return captureActionOutput(environment, parameters, trimmedResponse)
 }
 
 func handleChangelogAction(ctx context.Context, environment *Environment, repository *RepositoryState, parameters map[string]any) error {
@@ -170,9 +173,10 @@ func handleChangelogAction(ctx context.Context, environment *Environment, reposi
 		output = io.Discard
 	}
 
+	planPreview := fmt.Sprintf(changelogPlanTemplate, request.Messages[0].Content, request.Messages[1].Content)
 	if environment.DryRun {
-		fmt.Fprintf(output, changelogPlanTemplate, request.Messages[0].Content, request.Messages[1].Content)
-		return nil
+		fmt.Fprint(output, planPreview)
+		return captureActionOutput(environment, parameters, planPreview)
 	}
 
 	response, chatErr := client.Chat(ctx, request)
@@ -180,8 +184,9 @@ func handleChangelogAction(ctx context.Context, environment *Environment, reposi
 		return chatErr
 	}
 
-	fmt.Fprintln(output, strings.TrimSpace(response))
-	return nil
+	trimmedResponse := strings.TrimSpace(response)
+	fmt.Fprintln(output, trimmedResponse)
+	return captureActionOutput(environment, parameters, trimmedResponse)
 }
 
 func extractCommitClient(options map[string]any) (commitmsg.ChatClient, error) {
@@ -189,11 +194,21 @@ func extractCommitClient(options map[string]any) (commitmsg.ChatClient, error) {
 	if !ok {
 		return nil, errors.New("commit message action requires client option")
 	}
-	client, ok := rawClient.(commitmsg.ChatClient)
-	if !ok {
+	switch typed := rawClient.(type) {
+	case commitmsg.ChatClient:
+		return typed, nil
+	case *TaskLLMClientConfiguration:
+		if typed == nil {
+			return nil, errors.New("commit message action received invalid client configuration")
+		}
+		client, clientErr := typed.Client()
+		if clientErr != nil {
+			return nil, clientErr
+		}
+		return client, nil
+	default:
 		return nil, errors.New("commit message action received invalid client option")
 	}
-	return client, nil
 }
 
 func extractChangelogClient(options map[string]any) (changelog.ChatClient, error) {
@@ -201,11 +216,45 @@ func extractChangelogClient(options map[string]any) (changelog.ChatClient, error
 	if !ok {
 		return nil, errors.New("changelog action requires client option")
 	}
-	client, ok := rawClient.(changelog.ChatClient)
-	if !ok {
+	switch typed := rawClient.(type) {
+	case changelog.ChatClient:
+		return typed, nil
+	case *TaskLLMClientConfiguration:
+		if typed == nil {
+			return nil, errors.New("changelog action received invalid client configuration")
+		}
+		client, clientErr := typed.Client()
+		if clientErr != nil {
+			return nil, clientErr
+		}
+		return client, nil
+	default:
 		return nil, errors.New("changelog action received invalid client option")
 	}
-	return client, nil
+}
+
+func captureActionOutput(environment *Environment, parameters map[string]any, value string) error {
+	if environment == nil {
+		return nil
+	}
+
+	reader := newOptionReader(parameters)
+	variableName, exists, nameErr := reader.stringValue(taskActionCaptureOptionKey)
+	if nameErr != nil {
+		return nameErr
+	}
+	if !exists || variableName == "" {
+		return nil
+	}
+	if environment.Variables == nil {
+		return errors.New("workflow variable store not configured")
+	}
+	normalizedName, normalizedErr := NewVariableName(variableName)
+	if normalizedErr != nil {
+		return normalizedErr
+	}
+	environment.Variables.Set(normalizedName, strings.TrimSpace(value))
+	return nil
 }
 
 func parseCommitDiffSource(value string) (commitmsg.DiffSource, error) {

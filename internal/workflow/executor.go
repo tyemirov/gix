@@ -215,6 +215,7 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 		Reporter:          reporter,
 		Logger:            executor.dependencies.Logger,
 		DryRun:            runtimeOptions.DryRun,
+		Variables:         NewVariableStore(),
 	}
 	environment.State = state
 

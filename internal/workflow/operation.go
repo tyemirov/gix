@@ -32,6 +32,7 @@ type Environment struct {
 	Reporter            shared.SummaryReporter
 	Logger              *zap.Logger
 	DryRun              bool
+	Variables           *VariableStore
 	State               *State
 	auditReportExecuted bool
 }
