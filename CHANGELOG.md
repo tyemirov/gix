@@ -1,5 +1,37 @@
 # Changelog
 
+## [v0.2.0-rc.7]
+
+### Features ✨
+- Exposed LLM configuration and task variables in workflow steps.
+- Restructured CLI command surface to flatten namespaces, removing legacy `repo` and `branch` wrappers.
+- Added workflow `tasks apply` step to build LLM clients and capture action output into workflow variables.
+
+### Improvements ⚙️
+- Fixed workflow summary totals to correctly count repositories without metadata and emit human-readable durations.
+- Enhanced task executor skip logs to include git status entries for dirty worktrees.
+- Clarified namespace rewrite skip reasons distinguishing no references versus gitignored files.
+- Documented resolution improvements and updated workflow DSL to use command path arrays.
+- Workflow execution now continues after failures to improve robustness.
+
+### Bug Fixes 🐛
+- Fixed aggregation error in reporting.
+- Fixed panic caused by missing GitHub client in `prs delete`.
+- Ensured changelog summary counts repositories correctly.
+- Corrected CLI roots handling and warnings on positional arguments for file commands.
+
+### Testing 🧪
+- Added extensive tests for workflow executor, LLM configuration, and task actions.
+- Improved coverage for CLI commands including rename, workflow, and release commands.
+- Added integration tests for branch default, migrate, no-remote, packages, repos, and workflow scenarios.
+
+### Docs 📚
+- Added detailed refactor plan for workflow capture and task execution.
+- Updated CLI command documentation to reflect flattened command structure.
+- Improved workflow guidance with templating details and sample YAML for `apply-tasks`.
+- Clarified namespace rewrite and resolution documentation.
+Summary: total.repos=1 WARN=0 ERROR=0 duration_human=6.635s duration_ms=6635
+
 ## [v0.2.0-rc.6]
 
 ### Features ✨
