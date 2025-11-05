@@ -31,6 +31,13 @@ const (
 	noMatchingPrefixSkipReasonTemplate = "namespace rewrite skipped: no references to %s"
 )
 
+func formatIgnoredSkipReason(ignoredPaths []string) string {
+	if len(ignoredPaths) == 0 {
+		return gitIgnoredSkipReason
+	}
+	return fmt.Sprintf("%s (%s)", gitIgnoredSkipReason, strings.Join(ignoredPaths, ", "))
+}
+
 var (
 	errDependenciesMissing = errors.New("namespace rewrite dependencies missing")
 	errInvalidPrefix       = errors.New("namespace prefix invalid")
@@ -194,7 +201,7 @@ func (plan changePlan) relativeGoFiles() []string {
 	return paths
 }
 
-func (service *Service) excludeIgnoredPlanEntries(ctx context.Context, repositoryPath string, plan changePlan) (changePlan, error) {
+func (service *Service) excludeIgnoredPlanEntries(ctx context.Context, repositoryPath string, plan changePlan) (changePlan, []string, error) {
 	candidates := make([]string, 0, len(plan.goFilePaths)+1)
 	seen := make(map[string]struct{}, len(plan.goFilePaths)+1)
 
@@ -213,24 +220,32 @@ func (service *Service) excludeIgnoredPlanEntries(ctx context.Context, repositor
 
 	ignoredSet, ignoreErr := shared.CheckIgnoredPaths(ctx, service.gitExecutor, repositoryPath, candidates)
 	if ignoreErr != nil {
-		return changePlan{}, ignoreErr
+		return changePlan{}, nil, ignoreErr
 	}
 
 	filtered := newChangePlan()
+	ignoredPaths := make([]string, 0, len(ignoredSet))
 	if plan.goMod {
 		if _, ignored := ignoredSet["go.mod"]; !ignored {
 			filtered.goMod = true
+		} else {
+			ignoredPaths = append(ignoredPaths, "go.mod")
 		}
 	}
 
 	for relativePath := range plan.goFilePaths {
 		if _, ignored := ignoredSet[relativePath]; ignored {
+			ignoredPaths = append(ignoredPaths, relativePath)
 			continue
 		}
 		filtered.goFilePaths[relativePath] = struct{}{}
 	}
 
-	return filtered, nil
+	if len(ignoredPaths) > 0 {
+		sort.Strings(ignoredPaths)
+	}
+
+	return filtered, ignoredPaths, nil
 }
 
 // Rewrite applies namespace updates across go.mod and Go source files.
@@ -258,14 +273,17 @@ func (service *Service) planRewrite(repositoryPath string, options Options) (Res
 		return Result{}, planError
 	}
 	planHasChanges := plan.requiresRewrite()
-	plan, planError = service.excludeIgnoredPlanEntries(context.Background(), repositoryPath, plan)
+	filteredPlan, ignoredPaths, planError := service.excludeIgnoredPlanEntries(context.Background(), repositoryPath, plan)
 	if planError != nil {
 		return Result{}, planError
 	}
+	plan = filteredPlan
 	if !plan.requiresRewrite() {
 		skipReason := gitIgnoredSkipReason
 		if !planHasChanges {
 			skipReason = fmt.Sprintf(noMatchingPrefixSkipReasonTemplate, options.OldPrefix.String())
+		} else if len(ignoredPaths) > 0 {
+			skipReason = formatIgnoredSkipReason(ignoredPaths)
 		}
 		return Result{Skipped: true, SkipReason: skipReason}, nil
 	}
@@ -285,14 +303,17 @@ func (service *Service) applyRewrite(ctx context.Context, repositoryPath string,
 		return Result{}, planError
 	}
 	planHasChanges := plan.requiresRewrite()
-	plan, planError = service.excludeIgnoredPlanEntries(ctx, repositoryPath, plan)
+	filteredPlan, ignoredPaths, planError := service.excludeIgnoredPlanEntries(ctx, repositoryPath, plan)
 	if planError != nil {
 		return Result{}, planError
 	}
+	plan = filteredPlan
 	if !plan.requiresRewrite() {
 		skipReason := gitIgnoredSkipReason
 		if !planHasChanges {
 			skipReason = fmt.Sprintf(noMatchingPrefixSkipReasonTemplate, options.OldPrefix.String())
+		} else if len(ignoredPaths) > 0 {
+			skipReason = formatIgnoredSkipReason(ignoredPaths)
 		}
 		return Result{Skipped: true, SkipReason: skipReason}, nil
 	}
