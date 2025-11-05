@@ -71,6 +71,20 @@ WORKFLOW-DEFAULT-SKIP: /tmp/repos/tyemirov/SummerCamp24 already defaults to mast
 repo tasks apply: default branch checkout failed: CheckoutBranch operation failed: git command exited with code 1
 exit status 1
 ```
+
+- [ ] [GX-323] Rename the commands:
+branch-cd      => rename to cd. add a default argument being master (or whatever the default branch is)
+branch-default => rename to default
+branch-refresh => non needed, the cd command shall be able to handle it passing the name of the branch a user is on
+changelog      => message changelog
+commit         => message commit
+license        => not needed as a separate command but must be a part of a default embedded config.yaml that is invokabl with workflow, e.g. w license
+namespace     => not needed as a separate command but must be a part of a default embedded config.yaml that is invokabl with workflow, e.g. w namespace
+rm             => should be a subcommand of files
+workflow       => shall allow invoking various predefined workflows or specify the new ones. 
+
+Let's consider each rename as a separate issue and what consequences it entails
+
 ## Maintenance (410–499)
 
 - [x] [GX-411] Review @POLICY.md and verify what code areas need improvements and refactoring. Prepare a detailed plan of refactoring. Check for bugs, missing tests, poor coding practices, uplication and slop. Ensure strong encapsulation and following the principles og @AGENTS.md and policies of @POLICY.md
