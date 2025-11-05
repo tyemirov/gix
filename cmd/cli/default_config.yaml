@@ -10,26 +10,26 @@ operations:
     with:
       roots:
         - .
-  - command: ["repo", "packages", "delete"]
+  - command: ["packages", "delete"]
     with:
       roots:
         - .
-  - command: ["repo", "prs", "delete"]
+  - command: ["prs", "delete"]
     with:
       remote: origin
       limit: 100
       roots:
         - .
-  - command: ["repo", "remote", "update-to-canonical"]
+  - command: ["remote", "update-to-canonical"]
     with:
       roots:
         - .
       owner: ""
-  - command: ["repo", "remote", "update-protocol"]
+  - command: ["remote", "update-protocol"]
     with:
       roots:
         - .
-  - command: ["repo", "rm"]
+  - command: ["rm"]
     with:
       roots:
         - .
@@ -37,12 +37,12 @@ operations:
       push: true
       restore: true
       push_missing: false
-  - command: ["repo", "folder", "rename"]
+  - command: ["folder", "rename"]
     with:
       roots:
         - .
       include_owner: false
-  - command: ["repo", "release"]
+  - command: ["release"]
     with:
       roots:
         - .
@@ -51,21 +51,21 @@ operations:
     with:
       roots:
         - .
-  - command: ["branch", "refresh"]
+  - command: ["branch-refresh"]
     with:
       roots:
         - .
-  - command: ["branch", "default"]
+  - command: ["branch-default"]
     with:
       roots:
         - .
-  - command: ["branch", "cd"]
+  - command: ["branch-cd"]
     with:
       roots:
         - .
       remote: origin
       branch: master
-  - command: ["branch", "commit", "message"]
+  - command: ["commit", "message"]
     with:
       roots:
         - .
@@ -75,7 +75,7 @@ operations:
       max_completion_tokens: 256
       temperature: 0.2
       timeout_seconds: 60
-  - command: ["repo", "changelog", "message"]
+  - command: ["changelog", "message"]
     with:
       roots:
         - .

@@ -27,7 +27,9 @@ TASK-SKIP: Rewrite module namespace /tmp/repos/tyemirov/GAuss repository dirty
 RELEASED: /Users/tyemirov/Development/tyemirov/gix -> v0.2.0-rc.6
 Summary: total.repos=0 duration_ms=0
 
-- [ ] [GX-218] Remove the top level commands `repository` and `branch` and only use their subcommands.
+- [x] [GX-218] Remove the top level commands `repository` and `branch` and only use their subcommands.
+  - Status: Resolved
+  - Resolution: CLI namespaces now expose the former `repo` and `branch` subcommands as first-class operations (`folder rename`, `remote update-*`, `branch-*`, etc.), legacy configuration keys are normalized to the new command paths, workflow builders accept both canonical and legacy keys, and documentation plus configuration samples were updated accordingly.
 
 ## BugFixes (320–399)
 

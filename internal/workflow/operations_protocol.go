@@ -22,7 +22,7 @@ type ProtocolConversionOperation struct {
 
 // Name identifies the workflow command handled by this operation.
 func (operation *ProtocolConversionOperation) Name() string {
-	return commandRepoRemoteConvertProtocolKey
+	return commandRemoteConvertProtocolKey
 }
 
 // Execute applies the protocol conversion to repositories matching the source protocol.
