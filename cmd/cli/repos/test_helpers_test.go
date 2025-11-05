@@ -56,6 +56,13 @@ func (manager *fakeGitRepositoryManager) CheckCleanWorktree(context.Context, str
 	return true, nil
 }
 
+func (manager *fakeGitRepositoryManager) WorktreeStatus(context.Context, string) ([]string, error) {
+	if manager.cleanWorktreeSet && !manager.cleanWorktree {
+		return []string{" M file.txt"}, nil
+	}
+	return nil, nil
+}
+
 func (manager *fakeGitRepositoryManager) GetCurrentBranch(context.Context, string) (string, error) {
 	if manager.panicOnCurrentBranchLookup {
 		panic("GetCurrentBranch should not be called during minimal inspection")

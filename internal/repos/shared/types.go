@@ -337,6 +337,7 @@ type GitExecutor interface {
 // GitRepositoryManager exposes repository-level git operations.
 type GitRepositoryManager interface {
 	CheckCleanWorktree(executionContext context.Context, repositoryPath string) (bool, error)
+	WorktreeStatus(executionContext context.Context, repositoryPath string) ([]string, error)
 	GetCurrentBranch(executionContext context.Context, repositoryPath string) (string, error)
 	GetRemoteURL(executionContext context.Context, repositoryPath string, remoteName string) (string, error)
 	SetRemoteURL(executionContext context.Context, repositoryPath string, remoteName string, remoteURL string) error

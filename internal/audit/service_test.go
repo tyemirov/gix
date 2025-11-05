@@ -58,6 +58,13 @@ func (manager stubGitManager) CheckCleanWorktree(ctx context.Context, repository
 	return manager.cleanWorktree, nil
 }
 
+func (manager stubGitManager) WorktreeStatus(ctx context.Context, repositoryPath string) ([]string, error) {
+	if manager.cleanWorktree {
+		return nil, nil
+	}
+	return []string{" M placeholder.txt"}, nil
+}
+
 func (manager stubGitManager) GetCurrentBranch(ctx context.Context, repositoryPath string) (string, error) {
 	if manager.panicOnBranchLookup {
 		panic("GetCurrentBranch should not be called during minimal inspection")

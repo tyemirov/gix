@@ -62,6 +62,10 @@ func (manager stubRepositoryManager) CheckCleanWorktree(context.Context, string)
 	return true, nil
 }
 
+func (manager stubRepositoryManager) WorktreeStatus(context.Context, string) ([]string, error) {
+	return nil, nil
+}
+
 func (manager stubRepositoryManager) GetCurrentBranch(context.Context, string) (string, error) {
 	return "main", nil
 }

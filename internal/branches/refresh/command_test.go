@@ -45,6 +45,10 @@ func (constantCleanRepositoryManager) CheckCleanWorktree(context.Context, string
 	return true, nil
 }
 
+func (constantCleanRepositoryManager) WorktreeStatus(context.Context, string) ([]string, error) {
+	return nil, nil
+}
+
 func (constantCleanRepositoryManager) GetCurrentBranch(context.Context, string) (string, error) {
 	return "", nil
 }
@@ -59,6 +63,10 @@ func (constantCleanRepositoryManager) SetRemoteURL(context.Context, string, stri
 
 func (erroringRepositoryManager) CheckCleanWorktree(context.Context, string) (bool, error) {
 	return false, nil
+}
+
+func (erroringRepositoryManager) WorktreeStatus(context.Context, string) ([]string, error) {
+	return []string{" M file.txt"}, nil
 }
 
 func (erroringRepositoryManager) GetCurrentBranch(context.Context, string) (string, error) {

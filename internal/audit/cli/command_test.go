@@ -161,6 +161,9 @@ type stubGitRepositoryManager struct{}
 func (stubGitRepositoryManager) CheckCleanWorktree(context.Context, string) (bool, error) {
 	return true, nil
 }
+func (stubGitRepositoryManager) WorktreeStatus(context.Context, string) ([]string, error) {
+	return nil, nil
+}
 func (stubGitRepositoryManager) GetCurrentBranch(context.Context, string) (string, error) {
 	return "main", nil
 }

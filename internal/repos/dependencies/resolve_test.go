@@ -100,6 +100,10 @@ func (stubRepositoryManager) CheckCleanWorktree(executionContext context.Context
 	return true, nil
 }
 
+func (stubRepositoryManager) WorktreeStatus(executionContext context.Context, repositoryPath string) ([]string, error) {
+	return nil, nil
+}
+
 func (stubRepositoryManager) GetCurrentBranch(executionContext context.Context, repositoryPath string) (string, error) {
 	return "main", nil
 }
