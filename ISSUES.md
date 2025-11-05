@@ -31,7 +31,7 @@ Summary: total.repos=0 duration_ms=0
   - Status: Resolved
   - Resolution: CLI namespaces now expose the former `repo` and `branch` subcommands as first-class operations (`folder rename`, `remote update-*`, `branch-*`, etc.), legacy configuration keys are normalized to the new command paths, workflow builders accept both canonical and legacy keys, and documentation plus configuration samples were updated accordingly.
 
-- [ ] [GX-219] Remove the dry-run flag, it gurantees nothing.
+- [ ] [GX-219] Remove the `--dry-run` flag and all associated logic, it gurantees nothing.
 
 ## BugFixes (320–399)
 
