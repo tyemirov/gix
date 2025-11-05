@@ -31,6 +31,8 @@ Summary: total.repos=0 duration_ms=0
   - Status: Resolved
   - Resolution: CLI namespaces now expose the former `repo` and `branch` subcommands as first-class operations (`folder rename`, `remote update-*`, `branch-*`, etc.), legacy configuration keys are normalized to the new command paths, workflow builders accept both canonical and legacy keys, and documentation plus configuration samples were updated accordingly.
 
+- [ ] [GX-219] Remove the dry-run flag, it gurantees nothing.
+
 ## BugFixes (320–399)
 
 - [x] [GX-320] The message "namespace rewrite skipped: files ignored by git" doesnt make much sense. Must be a bug. Investigate the real reason the operation hasn't been performed.
