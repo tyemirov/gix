@@ -18,7 +18,6 @@ const (
 	reposIntegrationErrorLevel                  = "error"
 	reposIntegrationRunSubcommand               = "run"
 	reposIntegrationModulePathConstant          = "."
-	reposIntegrationRepoNamespaceCommand        = "repo"
 	reposIntegrationFolderNamespaceCommand      = "folder"
 	reposIntegrationRemoteNamespaceCommand      = "remote"
 	reposIntegrationRenameActionCommand         = "rename"
@@ -63,11 +62,11 @@ const (
 	reposIntegrationProtocolConfigDryRunCase    = "convert_protocol_config_dry_run_literal"
 	reposIntegrationHistoryRemoveCaseName       = "history_remove_dry_run"
 	reposIntegrationProtocolHelpCaseName        = "protocol_help_missing_flags"
-	reposIntegrationProtocolUsageSnippet        = "gix repo remote update-protocol [flags]"
+	reposIntegrationProtocolUsageSnippet        = "gix remote update-protocol [flags]"
 	reposIntegrationProtocolMissingFlagsMessage = "specify both --from and --to"
 	reposIntegrationConfigFlagName              = "--config"
 	reposIntegrationConfigFileName              = "config.yaml"
-	reposIntegrationConfigTemplate              = "common:\n  log_level: error\noperations:\n  - command: [\"repo\", \"remote\", \"update-to-canonical\"]\n    with:\n      roots:\n        - %s\n      assume_yes: true\n  - command: [\"repo\", \"remote\", \"update-protocol\"]\n    with:\n      roots:\n        - %s\n      assume_yes: true\n      from: https\n      to: ssh\nworkflow: []\n"
+	reposIntegrationConfigTemplate              = "common:\n  log_level: error\noperations:\n  - command: [\"remote\", \"update-to-canonical\"]\n    with:\n      roots:\n        - %s\n      assume_yes: true\n  - command: [\"remote\", \"update-protocol\"]\n    with:\n      roots:\n        - %s\n      assume_yes: true\n      from: https\n      to: ssh\nworkflow: []\n"
 	reposIntegrationConfigSearchEnvName         = "GIX_CONFIG_SEARCH_PATH"
 	reposIntegrationHomeSymbolConstant          = "~"
 	reposIntegrationHomeRootPatternConstant     = "gix-home-root-*"
@@ -99,7 +98,6 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				reposIntegrationModulePathConstant,
 				reposIntegrationLogLevelFlag,
 				reposIntegrationErrorLevel,
-				reposIntegrationRepoNamespaceCommand,
 				reposIntegrationFolderNamespaceCommand,
 				reposIntegrationRenameActionCommand,
 				reposIntegrationDryRunFlag,
@@ -123,7 +121,6 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				reposIntegrationModulePathConstant,
 				reposIntegrationLogLevelFlag,
 				reposIntegrationErrorLevel,
-				reposIntegrationRepoNamespaceCommand,
 				reposIntegrationFolderNamespaceCommand,
 				reposIntegrationRenameActionCommand,
 				reposIntegrationDryRunFlag,
@@ -155,7 +152,6 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				reposIntegrationModulePathConstant,
 				reposIntegrationLogLevelFlag,
 				reposIntegrationErrorLevel,
-				reposIntegrationRepoNamespaceCommand,
 				reposIntegrationFolderNamespaceCommand,
 				reposIntegrationRenameActionCommand,
 				reposIntegrationYesFlag,
@@ -215,7 +211,6 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				reposIntegrationModulePathConstant,
 				reposIntegrationLogLevelFlag,
 				reposIntegrationErrorLevel,
-				reposIntegrationRepoNamespaceCommand,
 				reposIntegrationFolderNamespaceCommand,
 				reposIntegrationRenameActionCommand,
 				reposIntegrationYesFlag,
@@ -253,7 +248,6 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				reposIntegrationModulePathConstant,
 				reposIntegrationLogLevelFlag,
 				reposIntegrationErrorLevel,
-				reposIntegrationRepoNamespaceCommand,
 				reposIntegrationRemoteNamespaceCommand,
 				reposIntegrationUpdateCanonicalAction,
 				reposIntegrationYesFlag,
@@ -279,7 +273,6 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				reposIntegrationModulePathConstant,
 				reposIntegrationLogLevelFlag,
 				reposIntegrationErrorLevel,
-				reposIntegrationRepoNamespaceCommand,
 				reposIntegrationRemoteNamespaceCommand,
 				reposIntegrationUpdateCanonicalAction,
 			},
@@ -324,7 +317,6 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				reposIntegrationModulePathConstant,
 				reposIntegrationLogLevelFlag,
 				reposIntegrationErrorLevel,
-				reposIntegrationRepoNamespaceCommand,
 				reposIntegrationRemoteNamespaceCommand,
 				reposIntegrationUpdateCanonicalAction,
 				reposIntegrationYesFlag,
@@ -359,7 +351,6 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				reposIntegrationModulePathConstant,
 				reposIntegrationLogLevelFlag,
 				reposIntegrationErrorLevel,
-				reposIntegrationRepoNamespaceCommand,
 				reposIntegrationRemoteNamespaceCommand,
 				reposIntegrationUpdateProtocolAction,
 				reposIntegrationYesFlag,
@@ -389,7 +380,6 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				reposIntegrationModulePathConstant,
 				reposIntegrationLogLevelFlag,
 				reposIntegrationErrorLevel,
-				reposIntegrationRepoNamespaceCommand,
 				reposIntegrationRemoteNamespaceCommand,
 				reposIntegrationUpdateProtocolAction,
 			},
@@ -423,7 +413,6 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				reposIntegrationModulePathConstant,
 				reposIntegrationLogLevelFlag,
 				reposIntegrationErrorLevel,
-				reposIntegrationRepoNamespaceCommand,
 				reposIntegrationRemoteNamespaceCommand,
 				reposIntegrationUpdateProtocolAction,
 				reposIntegrationDryRunFlag,
@@ -478,7 +467,6 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				reposIntegrationModulePathConstant,
 				reposIntegrationLogLevelFlag,
 				reposIntegrationErrorLevel,
-				reposIntegrationRepoNamespaceCommand,
 				reposIntegrationHistoryCommand,
 				reposIntegrationDryRunFlag + "=yes",
 				"secrets.txt",
@@ -535,7 +523,6 @@ func TestReposProtocolCommandDisplaysHelpWhenProtocolsMissing(testInstance *test
 				reposIntegrationModulePathConstant,
 				reposIntegrationLogLevelFlag,
 				reposIntegrationErrorLevel,
-				reposIntegrationRepoNamespaceCommand,
 				reposIntegrationRemoteNamespaceCommand,
 				reposIntegrationUpdateProtocolAction,
 			},

@@ -30,14 +30,14 @@ const (
 )
 
 var expectedCommandOperations = map[string]struct{}{
-	"audit":                           {},
-	"repo packages delete":            {},
-	"repo prs delete":                 {},
-	"repo remote update-to-canonical": {},
-	"repo remote update-protocol":     {},
-	"repo folder rename":              {},
-	"workflow":                        {},
-	"branch default":                  {},
+	"audit":                      {},
+	"packages delete":            {},
+	"prs delete":                 {},
+	"remote update-to-canonical": {},
+	"remote update-protocol":     {},
+	"folder rename":              {},
+	"workflow":                   {},
+	"branch-default":             {},
 }
 
 type readmeApplicationConfiguration struct {

@@ -311,7 +311,7 @@ operations:
         - .
       dry_run: false
       assume_yes: false
-  - command: ["repo", "remote", "update-protocol"]
+  - command: ["remote", "update-protocol"]
     with: &conversion_defaults
       roots:
         - .
@@ -319,14 +319,14 @@ operations:
       dry_run: false
       from: https
       to: ssh
-  - command: ["repo", "remote", "update-to-canonical"]
+  - command: ["remote", "update-to-canonical"]
     with: &remote_defaults
       roots:
         - .
       assume_yes: true
       dry_run: false
       owner: canonical
-  - command: ["branch", "default"]
+  - command: ["branch-default"]
     with: &migration_defaults
       roots:
         - .
@@ -338,15 +338,15 @@ operations:
           delete_source_branch: false
 workflow:
   - step:
-      command: ["repo", "remote", "update-protocol"]
+      command: ["remote", "update-protocol"]
       with:
         <<: *conversion_defaults
   - step:
-      command: ["repo", "remote", "update-to-canonical"]
+      command: ["remote", "update-to-canonical"]
       with:
         <<: *remote_defaults
   - step:
-      command: ["branch", "default"]
+      command: ["branch-default"]
       with:
         <<: *migration_defaults
   - step:

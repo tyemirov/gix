@@ -24,7 +24,7 @@ type RenameOperation struct {
 
 // Name identifies the workflow command handled by this operation.
 func (operation *RenameOperation) Name() string {
-	return commandRepoFolderRenameKey
+	return commandFolderRenameKey
 }
 
 // Execute applies rename operations for repositories with desired folder names.

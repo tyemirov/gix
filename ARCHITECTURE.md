@@ -26,8 +26,8 @@ gix is a Go 1.24 command-line application built with Cobra and Viper. The binary
 
 The Cobra application (`cmd/cli/application.go`) initialises the root command and nests feature namespaces below it (`audit`, `repo`, `branch`, `commit`, `workflow`, and others). Each namespace hosts subcommands that ultimately depend on injected services from `internal/...` packages. Commands share common flag parsing helpers (`internal/utils/flags`) and prompt utilities.
 
-- `cmd/cli/repos` registers multi-command groups such as `repo folder rename`, `repo remote update-to-canonical`, `repo prs delete`, and `repo files replace`.
-- `cmd/cli/repos/release` contains the `repo release` tagging workflow.
+- `cmd/cli/repos` registers multi-command groups such as `folder rename`, `remote update-to-canonical`, `prs delete`, and `files replace`.
+- `cmd/cli/repos/release` contains the `release` tagging workflow.
 - `cmd/cli/changelog`, `cmd/cli/commit`, and `cmd/cli/workflow` expose focused entrypoints for changelog generation, AI-assisted commit messaging, and workflow execution.
 - `cmd/cli/default_configuration.go` houses the embedded default YAML used by the `gix --init` flag.
 
@@ -44,12 +44,12 @@ Each feature area resides in `internal/<domain>` and exposes structs with method
   - `dependencies`: Dependency resolution for discovery, filesystem, Git, and GitHub integrations.
   - `discovery`: Filesystem scanning for Git repositories.
   - `filesystem`: Filesystem abstractions used by rename/history flows.
-  - `history`: Wrapper around git-filter-repo operations for `repo rm`.
+  - `history`: Wrapper around git-filter-repo operations for `rm`.
   - `prompt`: End-user confirmation and message formatting.
   - `protocol`, `remotes`, `rename`: Operations that update remotes, protocols, and directory names.
   - `shared`: Shared interfaces (Git executor, GitHub resolver, repository manager).
 - `internal/packages`: GitHub Packages purge workflow including GHCR API clients.
-- `internal/releases`: Annotated tag creation and push orchestration used by `repo release`.
+- `internal/releases`: Annotated tag creation and push orchestration used by `release`.
 - `internal/workflow`: YAML/JSON workflow runner, step registry, and execution environment.
 - `internal/execshell`, `internal/gitrepo`, `internal/githubcli`: Adapters for running Git commands, interacting with repositories, and resolving metadata through the GitHub CLI.
 - `internal/utils`: Logging factories, command flag helpers, filesystem path utilities, and repository root deduplication.
@@ -61,7 +61,7 @@ External integrations (for example, Git/GitHub shells and GHCR APIs) are isolate
 
 The workflow command consumes declarative YAML or JSON plans describing ordered actions. `internal/workflow` resolves steps into concrete executors registered through `internal/repos/dependencies` and other domain services. Discovery of repositories, confirmation prompts, and logging contexts are reused across steps to minimise duplicate code.
 
-- Workflow steps call domain executors such as `repo folders rename`, `repo protocol convert`, `apply-tasks`, and audit report generation.
+- Workflow steps call domain executors such as `folder rename`, `remote update-protocol`, `tasks apply`, and audit report generation.
 - Additional utilities (for example, template rendering or safeguards) live alongside the executors so they can be reused across CLI and workflow entrypoints.
 Each workflow step enforces dry-run previews and respects the global confirmation strategy. Discovery and prompting are shared with direct CLI invocations so adopters can migrate between ad-hoc and scripted automation without rewriting plumbing.
 
@@ -93,13 +93,13 @@ operations:
         - ~/Development
       debug: false
 
-  - command: ["repo", "packages", "delete"]
+  - command: ["packages", "delete"]
     with: &packages_purge_defaults
       # package: my-image  # Optional override; defaults to the repository name
       roots:
         - ~/Development
 
-  - command: ["repo", "prs", "delete"]
+  - command: ["prs", "delete"]
     with: &branch_cleanup_defaults
       remote: origin
       limit: 100
@@ -107,7 +107,7 @@ operations:
       roots:
         - ~/Development
 
-  - command: ["repo", "remote", "update-to-canonical"]
+  - command: ["remote", "update-to-canonical"]
     with: &repo_remotes_defaults
       dry_run: false
       assume_yes: true
@@ -115,7 +115,7 @@ operations:
       roots:
         - ~/Development
 
-  - command: ["repo", "remote", "update-protocol"]
+  - command: ["remote", "update-protocol"]
     with: &repo_protocol_defaults
       dry_run: false
       assume_yes: true
@@ -124,7 +124,7 @@ operations:
       from: https
       to: git
 
-  - command: ["repo", "folder", "rename"]
+  - command: ["folder", "rename"]
     with: &repo_rename_defaults
       dry_run: false
       assume_yes: true
@@ -140,7 +140,7 @@ operations:
       dry_run: false
       assume_yes: false
 
-  - command: ["branch", "default"]
+  - command: ["branch-default"]
     with: &branch_default_defaults
       debug: false
       roots:
@@ -149,25 +149,25 @@ operations:
 workflow:
   - step:
       order: 1
-      command: ["repo", "remote", "update-protocol"]
+      command: ["remote", "update-protocol"]
       with:
         <<: *repo_protocol_defaults
 
   - step:
       order: 2
-      command: ["repo", "remote", "update-to-canonical"]
+      command: ["remote", "update-to-canonical"]
       with:
         <<: *repo_remotes_defaults
 
   - step:
       order: 3
-      command: ["repo", "folder", "rename"]
+      command: ["folder", "rename"]
       with:
         <<: *repo_rename_defaults
 
   - step:
       order: 4
-      command: ["branch", "default"]
+      command: ["branch-default"]
       with:
         <<: *branch_default_defaults
         targets:

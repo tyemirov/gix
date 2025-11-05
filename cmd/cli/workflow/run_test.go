@@ -26,7 +26,7 @@ const (
 	workflowApplyTasksConfigContentConstant = `
 workflow:
   - step:
-      command: ["repo", "tasks", "apply"]
+      command: ["tasks", "apply"]
       with:
         tasks:
           - name: Add Notes

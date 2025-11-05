@@ -3,12 +3,17 @@ package workflow
 import "strings"
 
 const (
-	commandAuditReportKey               = "audit report"
-	commandBranchDefaultKey             = "branch default"
-	commandRepoFolderRenameKey          = "repo folder rename"
-	commandRepoRemoteCanonicalKey       = "repo remote update-to-canonical"
-	commandRepoRemoteConvertProtocolKey = "repo remote update-protocol"
-	commandRepoTasksApplyKey            = "repo tasks apply"
+	commandAuditReportKey                     = "audit report"
+	commandBranchDefaultKey                   = "branch-default"
+	commandFolderRenameKey                    = "folder rename"
+	commandRemoteCanonicalKey                 = "remote update-to-canonical"
+	commandRemoteConvertProtocolKey           = "remote update-protocol"
+	commandTasksApplyKey                      = "tasks apply"
+	legacyCommandRepoTasksApplyKey            = "repo tasks apply"
+	legacyCommandRepoFolderRenameKey          = "repo folder rename"
+	legacyCommandRepoRemoteCanonicalKey       = "repo remote update-to-canonical"
+	legacyCommandRepoRemoteConvertProtocolKey = "repo remote update-protocol"
+	legacyCommandBranchDefaultKey             = "branch default"
 )
 
 func normalizeCommandParts(parts []string) []string {

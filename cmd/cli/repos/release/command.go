@@ -19,7 +19,7 @@ import (
 const (
 	commandUseName          = "release"
 	commandUsageTemplate    = commandUseName + " <tag>"
-	commandExampleTemplate  = "gix repo release v1.2.3 --roots ~/Development"
+	commandExampleTemplate  = "gix release v1.2.3 --roots ~/Development"
 	commandShortDescription = "Create and push an annotated release tag"
 	commandLongDescription  = "release annotates the provided tag (default message 'Release <tag>') and pushes it to the configured remote for each repository root. Provide the tag as the first argument before any optional repository roots or flags."
 	messageFlagName         = "message"

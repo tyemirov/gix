@@ -3,9 +3,9 @@
 ## [v0.2.0-rc.6]
 
 ### Features ✨
-- Added `gix repo files add` command to seed files with configurable content, permissions, branch, and push settings.
-- Introduced `gix repo release retag` command and workflow action to remap tags to new commits with force-push.
-- Added `gix repo license apply` command to distribute license files via workflow tasks.
+- Added `gix files add` command to seed files with configurable content, permissions, branch, and push settings.
+- Introduced `gix release retag` command and workflow action to remap tags to new commits with force-push.
+- Added `gix license apply` command to distribute license files via workflow tasks.
 - Refactored workflow DSL to use command path arrays instead of legacy operation keys.
 
 ### Improvements ⚙️
@@ -14,14 +14,15 @@
 - Workflow executor now skips GitHub metadata lookups when disabled to avoid panics.
 - Updated workflow examples and documentation to reflect command-based DSL.
 - Fixed staticcheck warnings and documented linting steps.
-- Workflow `repo tasks apply` can now build LLM clients from configuration and capture action output into workflow variables for later steps.
+- Workflow `tasks apply` can now build LLM clients from configuration and capture action output into workflow variables for later steps.
 - Task executor skip logs now include git status entries so dirty repositories list the blocking files.
 - Summary reporter now counts repositories without metadata and emits `duration_human` alongside `duration_ms`.
+- Flattened CLI so repository and branch operations are exposed directly (`folder rename`, `remote update-*`, `branch-*`) without the legacy `repo`/`branch` wrappers.
 
 ### Bug Fixes 🐛
-- Fixed panic caused by `gix repo prs delete --yes yes` due to nil GitHub client.
+- Fixed panic caused by `gix prs delete --yes yes` due to nil GitHub client.
 - Corrected namespace rewrite skip messages to distinguish between no references and gitignored files.
-- Ensured `gix repo files add` respects CLI roots and warns on positional arguments.
+- Ensured `gix files add` respects CLI roots and warns on positional arguments.
 - Emitted retag mappings as generic arrays for workflow compatibility.
 
 ### Testing 🧪
@@ -70,7 +71,7 @@ Summary: total.repos=0 duration_ms=0
 ## [v0.2.0-rc.3]
 
 ### Features ✨
-- Added `repo namespace rewrite` command with a namespace rewrite service and workflow action to update Go module paths across repositories.
+- Added `namespace rewrite` command with a namespace rewrite service and workflow action to update Go module paths across repositories.
 - Added structured workflow logging with aligned human-readable columns and machine-parseable key/value pairs.
 - Added `branch default` command enhancements to create missing branches and accept target branch as a positional argument.
 - Added reusable workflow safeguards to declaratively skip repositories before mutating operations.
@@ -115,9 +116,9 @@ Summary: total.repos=0 duration_ms=0
 ## [v0.2.0-rc.1]
 
 ### Features ✨
-- Added `repo namespace rewrite` command backed by a namespace rewrite service and workflow action to update Go module paths across repositories.
-- Added `repo files replace` command for file replacement tasks across repositories.
-- Added `repo history purge` command with task-runner orchestration and dry-run previews.
+- Added `namespace rewrite` command backed by a namespace rewrite service and workflow action to update Go module paths across repositories.
+- Added `files replace` command for file replacement tasks across repositories.
+- Added `rm` command with task-runner orchestration and dry-run previews.
 - Routed the workflow CLI through the shared task runner so declarative workflow steps execute as orchestrated tasks.
 - `branch default` command now accepts the target branch as a positional argument (`gix b default master`) while retaining configuration fallbacks and removing the legacy `--to` flag.
 
@@ -127,11 +128,11 @@ Summary: total.repos=0 duration_ms=0
 - Added a contextual error catalog and updated repository executors/workflow bridges to emit stable sentinel codes instead of ad-hoc failure strings.
 - Consolidated repository helper utilities (optional owner parsing, confirmation policies, shared reporter) and removed duplicated normalization across workflows.
 - Downgraded GitHub Pages configuration failures encountered during `branch default` to warnings so branch promotion proceeds when Pages is not configured.
-- `branch cd` reports network issues as `FETCH-SKIP`/`PULL-SKIP` warnings instead of aborting when remotes are missing or offline.
+- `branch-cd` reports network issues as `FETCH-SKIP`/`PULL-SKIP` warnings instead of aborting when remotes are missing or offline.
 - Refined repository executors and workflow bridges to use the new domain constructors and error handling.
 
 ### Bug Fixes 🐛
-- Prevented `branch cd` from aborting when repositories lack remotes by skipping network operations and creating untracked branches.
+- Prevented `branch-cd` from aborting when repositories lack remotes by skipping network operations and creating untracked branches.
 - Fixed history purge test alignment with multi-path commands.
 - Fixed audit roots handling after renames and improved test coverage.
 
@@ -157,7 +158,7 @@ Summary: total.repos=0 duration_ms=0
 - Refreshed README and workflow examples to use `branch default` instead of `branch migrate`.
 - Enhanced safety gates and automation for default branch promotion.
 - Streamlined configuration and command hierarchy for branch management commands.
-- Added `repo rm` command to purge history via git-filter-repo with task-runner orchestration and dry-run previews.
+- Added `rm` command to purge history via git-filter-repo with task-runner orchestration and dry-run previews.
 - Routed the workflow CLI through the shared task runner so declarative steps execute via workflow tasks while retaining legacy audit report file output and stdout banners.
 
 ### Bug Fixes 🐛
@@ -213,7 +214,7 @@ Summary: total.repos=0 duration_ms=0
 - Clarified owner constraint skip message for better understanding.
 - Logged configuration banner at debug level for cleaner logs.
 - Various bug fixes to enhance stability.
-- Restored the `--owner` flag for `repo remote update-to-canonical` so CLI workflows can keep owner-scoped folder plans aligned while still tolerating canonical owner migrations.
+- Restored the `--owner` flag for `remote update-to-canonical` so CLI workflows can keep owner-scoped folder plans aligned while still tolerating canonical owner migrations.
 
 ### Testing 🧪
 - Added tests and improved test coverage in CLI application and remotes.
@@ -228,8 +229,8 @@ Summary: total.repos=0 duration_ms=0
 ### Features ✨
 - Added a `commit message` command that summarizes staged or worktree changes with the shared LLM client and returns a Conventional Commit draft.
 - Added a `changelog message` command that turns tagged or time-based git history into Markdown release notes using the shared LLM client.
-- Added a `branch cd` command that fetches, switches, and rebases repositories onto the requested branch, creating it from the remote when missing.
-- Added a `repo release` command that annotates tags with customizable messages and pushes them to the selected remote across repositories.
+- Added a `branch-cd` command that fetches, switches, and rebases repositories onto the requested branch, creating it from the remote when missing.
+- Added a `release` command that annotates tags with customizable messages and pushes them to the selected remote across repositories.
 
 ### Improvements ⚙️
 - Introduced hierarchical command namespaces (`repo`, `branch`) with short aliases (`r`, `b`, `a`, `w`) and removed the legacy hyphenated commands.
@@ -237,24 +238,24 @@ Summary: total.repos=0 duration_ms=0
 - Nested `commit message` under the `branch` namespace and `changelog message` under `repo` to keep related commands grouped.
 
 ### Bug Fixes 🐛
-- Updated `repo release` help to surface the required `<tag>` argument along with usage guidance and examples across the CLI.
-- Updated `branch cd` help to surface the required `<branch>` argument along with usage guidance and examples.
-- Ensured `repo release` falls back to the embedded `.` repository root when user configuration omits the operation defaults.
+- Updated `release` help to surface the required `<tag>` argument along with usage guidance and examples across the CLI.
+- Updated `branch-cd` help to surface the required `<branch>` argument along with usage guidance and examples.
+- Ensured `release` falls back to the embedded `.` repository root when user configuration omits the operation defaults.
 - Updated `workflow` help text to surface the required configuration path and example usage.
 - Disabled default CLI info logging and set the default log level to `error` so commands run silently unless verbosity is explicitly requested.
 - Downgraded the configuration initialization banner to DEBUG so standard operations continue logging at INFO severity only.
 - Clarified the remote owner constraint skip message to spell out the required `--owner` value and detected repository owner.
 - Allowed canonical remote updates to proceed regardless of the configured `--owner` constraint, supporting repositories that migrated between accounts.
-- Added `SKIP (already normalized)` messaging to `repo folder rename` so re-running normalization reports repositories that already match canonical naming.
+- Added `SKIP (already normalized)` messaging to `folder rename` so re-running normalization reports repositories that already match canonical naming.
 
 ### Testing 🧪
 - Added application command hierarchy coverage to ensure aliases and nested commands resolve to the existing operations.
 - Added task operation planner/executor unit tests and a workflow CLI integration test covering the new `apply-tasks` step.
 - Added unit coverage for the LLM client wrapper, commit message generator, changelog generator, and CLI dry-run flows.
-- Added branch cd service and command tests covering fetch/switch/create flows and CLI execution.
+- Added branch-cd service and command tests covering fetch/switch/create flows and CLI execution.
 - Added release service and CLI tests verifying tag annotation, push behavior, and dry-run handling.
-- Added CLI and command unit tests to enforce the `<branch>` usage template for `branch cd`.
-- Added configuration and CLI tests confirming the `repo release` command retains default roots without explicit configuration.
+- Added CLI and command unit tests to enforce the `<branch>` usage template for `branch-cd`.
+- Added configuration and CLI tests confirming the `release` command retains default roots without explicit configuration.
 - Added branch refresh coverage to exercise the command-level `--branch` flag after removing the global variant.
 
 ### Docs 📚
@@ -262,8 +263,8 @@ Summary: total.repos=0 duration_ms=0
 - Added `apply-tasks` workflow guidance to `README.md`, including templating details and sample YAML.
 - Documented the `commit message` assistant, configuration knobs, and usage examples.
 - Documented the `changelog message` assistant, baseline controls, and sample invocations in `README.md`.
-- Documented the `branch cd` helper with usage notes and remote/dry-run options.
-- Documented the `repo release` helper including remote overrides, custom messages, and dry-run support.
+- Documented the `branch-cd` helper with usage notes and remote/dry-run options.
+- Documented the `release` helper including remote overrides, custom messages, and dry-run support.
 - Documented the branch command expectations now that the global `--branch` flag is removed.
 - Refreshed the README command catalog with up-to-date command paths and shortcuts.
 

@@ -23,7 +23,7 @@ const (
 	configurationOptionOwnerKey             = "owner"
 	anchoredWorkflowConfigurationTemplate   = `operations:
   - &protocol_conversion_step
-    command: ["repo", "remote", "update-protocol"]
+    command: ["remote", "update-protocol"]
     with:
       from: https
       to: ssh
@@ -32,7 +32,7 @@ workflow:
 `
 	inlineWorkflowConfiguration = `workflow:
   - step:
-      command: ["repo", "remote", "update-to-canonical"]
+      command: ["remote", "update-to-canonical"]
 `
 	invalidWorkflowMappingConfiguration = `workflow:
   steps: []
@@ -51,7 +51,7 @@ func TestBuildOperations(testInstance *testing.T) {
 			configuration: workflow.Configuration{
 				Steps: []workflow.StepConfiguration{
 					{
-						Command: []string{"repo", "remote", "update-protocol"},
+						Command: []string{"remote", "update-protocol"},
 						Options: map[string]any{
 							configurationOptionFromKey: string(shared.RemoteProtocolHTTPS),
 							configurationOptionToKey:   string(shared.RemoteProtocolSSH),
@@ -59,7 +59,7 @@ func TestBuildOperations(testInstance *testing.T) {
 					},
 				},
 			},
-			expectedCommand: []string{"repo", "remote", "update-protocol"},
+			expectedCommand: []string{"remote", "update-protocol"},
 			assertFunc: func(testingInstance *testing.T, node *workflow.OperationNode) {
 				require.NotNil(testingInstance, node)
 				protocolConversionOperation, castSucceeded := node.Operation.(*workflow.ProtocolConversionOperation)
@@ -73,14 +73,14 @@ func TestBuildOperations(testInstance *testing.T) {
 			configuration: workflow.Configuration{
 				Steps: []workflow.StepConfiguration{
 					{
-						Command: []string{"repo", "remote", "update-to-canonical"},
+						Command: []string{"remote", "update-to-canonical"},
 						Options: map[string]any{
 							configurationOptionOwnerKey: "  canonical  ",
 						},
 					},
 				},
 			},
-			expectedCommand: []string{"repo", "remote", "update-to-canonical"},
+			expectedCommand: []string{"remote", "update-to-canonical"},
 			assertFunc: func(testingInstance *testing.T, node *workflow.OperationNode) {
 				require.NotNil(testingInstance, node)
 				canonicalOperation, castSucceeded := node.Operation.(*workflow.CanonicalRemoteOperation)
@@ -93,11 +93,11 @@ func TestBuildOperations(testInstance *testing.T) {
 			configuration: workflow.Configuration{
 				Steps: []workflow.StepConfiguration{
 					{
-						Command: []string{"repo", "folder", "rename"},
+						Command: []string{"folder", "rename"},
 					},
 				},
 			},
-			expectedCommand: []string{"repo", "folder", "rename"},
+			expectedCommand: []string{"folder", "rename"},
 			assertFunc: func(testingInstance *testing.T, node *workflow.OperationNode) {
 				require.NotNil(testingInstance, node)
 				renameOperation, castSucceeded := node.Operation.(*workflow.RenameOperation)
@@ -111,7 +111,7 @@ func TestBuildOperations(testInstance *testing.T) {
 			configuration: workflow.Configuration{
 				Steps: []workflow.StepConfiguration{
 					{
-						Command: []string{"repo", "folder", "rename"},
+						Command: []string{"folder", "rename"},
 						Options: map[string]any{
 							configurationOptionRequireClean:    true,
 							configurationOptionIncludeOwnerKey: true,
@@ -119,7 +119,7 @@ func TestBuildOperations(testInstance *testing.T) {
 					},
 				},
 			},
-			expectedCommand: []string{"repo", "folder", "rename"},
+			expectedCommand: []string{"folder", "rename"},
 			assertFunc: func(testingInstance *testing.T, node *workflow.OperationNode) {
 				require.NotNil(testingInstance, node)
 				renameOperation, castSucceeded := node.Operation.(*workflow.RenameOperation)
@@ -133,7 +133,7 @@ func TestBuildOperations(testInstance *testing.T) {
 			configuration: workflow.Configuration{
 				Steps: []workflow.StepConfiguration{
 					{
-						Command: []string{"repo", "tasks", "apply"},
+						Command: []string{"tasks", "apply"},
 						Options: map[string]any{
 							"tasks": []any{
 								map[string]any{
@@ -150,7 +150,35 @@ func TestBuildOperations(testInstance *testing.T) {
 					},
 				},
 			},
-			expectedCommand: []string{"repo", "tasks", "apply"},
+			expectedCommand: []string{"tasks", "apply"},
+			assertFunc: func(testingInstance *testing.T, node *workflow.OperationNode) {
+				require.NotNil(testingInstance, node)
+				require.IsType(testingInstance, &workflow.TaskOperation{}, node.Operation)
+			},
+		},
+		{
+			name: "builds task operation using legacy command path",
+			configuration: workflow.Configuration{
+				Steps: []workflow.StepConfiguration{
+					{
+						Command: []string{"repo", "tasks", "apply"},
+						Options: map[string]any{
+							"tasks": []any{
+								map[string]any{
+									"name": "legacy",
+									"files": []any{
+										map[string]any{
+											"path":    "README.md",
+											"content": "legacy",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedCommand: []string{"tasks", "apply"},
 			assertFunc: func(testingInstance *testing.T, node *workflow.OperationNode) {
 				require.NotNil(testingInstance, node)
 				require.IsType(testingInstance, &workflow.TaskOperation{}, node.Operation)
@@ -187,13 +215,25 @@ func TestBuildOperationsMissingCommand(testInstance *testing.T) {
 func TestBuildOperationsApplyTasksValidation(testInstance *testing.T) {
 	configuration := workflow.Configuration{
 		Steps: []workflow.StepConfiguration{
+			{Command: []string{"tasks", "apply"}},
+		},
+	}
+
+	_, buildError := workflow.BuildOperations(configuration)
+	require.Error(testInstance, buildError)
+	require.ErrorContains(testInstance, buildError, "tasks apply step requires at least one task entry")
+}
+
+func TestBuildOperationsApplyTasksValidationLegacy(testInstance *testing.T) {
+	configuration := workflow.Configuration{
+		Steps: []workflow.StepConfiguration{
 			{Command: []string{"repo", "tasks", "apply"}},
 		},
 	}
 
 	_, buildError := workflow.BuildOperations(configuration)
 	require.Error(testInstance, buildError)
-	require.ErrorContains(testInstance, buildError, "repo tasks apply step requires at least one task entry")
+	require.ErrorContains(testInstance, buildError, "tasks apply step requires at least one task entry")
 }
 
 func TestLoadConfiguration(testInstance *testing.T) {
@@ -208,7 +248,7 @@ func TestLoadConfiguration(testInstance *testing.T) {
 			name:            configurationAnchoredSequenceCaseName,
 			contents:        anchoredWorkflowConfigurationTemplate,
 			expectError:     false,
-			expectedCommand: []string{"repo", "remote", "update-protocol"},
+			expectedCommand: []string{"remote", "update-protocol"},
 			expectedOptions: map[string]any{
 				configurationOptionFromKey: "https",
 				configurationOptionToKey:   "ssh",
@@ -218,7 +258,7 @@ func TestLoadConfiguration(testInstance *testing.T) {
 			name:            configurationInlineSequenceCaseName,
 			contents:        inlineWorkflowConfiguration,
 			expectError:     false,
-			expectedCommand: []string{"repo", "remote", "update-to-canonical"},
+			expectedCommand: []string{"remote", "update-to-canonical"},
 			expectedOptions: nil,
 		},
 		{

@@ -10,13 +10,13 @@ operations:
         - ~/Development
       debug: false
 
-  - command: ["repo", "packages", "delete"]
+  - command: ["packages", "delete"]
     with: &packages_purge_defaults
       # package: my-image  # Optional override; defaults to the repository name
       roots:
         - ~/Development
 
-  - command: ["repo", "prs", "delete"]
+  - command: ["prs", "delete"]
     with: &branch_cleanup_defaults
       remote: origin
       limit: 100
@@ -24,7 +24,7 @@ operations:
       roots:
         - ~/Development
 
-  - command: ["repo", "remote", "update-to-canonical"]
+  - command: ["remote", "update-to-canonical"]
     with: &repo_remotes_defaults
       dry_run: false
       assume_yes: true
@@ -32,7 +32,7 @@ operations:
       roots:
         - ~/Development
 
-  - command: ["repo", "remote", "update-protocol"]
+  - command: ["remote", "update-protocol"]
     with: &repo_protocol_defaults
       dry_run: false
       assume_yes: true
@@ -41,7 +41,7 @@ operations:
       from: https
       to: git
 
-  - command: ["repo", "folder", "rename"]
+  - command: ["folder", "rename"]
     with: &repo_rename_defaults
       dry_run: false
       assume_yes: true
@@ -57,12 +57,12 @@ operations:
       dry_run: false
       assume_yes: false
 
-  - command: ["branch", "refresh"]
+  - command: ["branch-refresh"]
     with: &branch_refresh_defaults
       roots:
         - ~/Development
 
-  - command: ["branch", "default"]
+  - command: ["branch-default"]
     with: &branch_default_defaults
       debug: false
       roots:
@@ -71,25 +71,25 @@ operations:
 workflow:
   - step:
       order: 1
-      command: ["repo", "remote", "update-protocol"]
+      command: ["remote", "update-protocol"]
       with:
         <<: *repo_protocol_defaults
 
   - step:
       order: 2
-      command: ["repo", "remote", "update-to-canonical"]
+      command: ["remote", "update-to-canonical"]
       with:
         <<: *repo_remotes_defaults
 
   - step:
       order: 3
-      command: ["repo", "folder", "rename"]
+      command: ["folder", "rename"]
       with:
         <<: *repo_rename_defaults
 
   - step:
       order: 4
-      command: ["branch", "default"]
+      command: ["branch-default"]
       with:
         <<: *branch_default_defaults
         targets:

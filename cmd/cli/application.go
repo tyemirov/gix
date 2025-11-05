@@ -97,23 +97,23 @@ const (
 	userConfigurationDirectoryNameConstant                           = ".gix"
 	configurationSearchPathEnvironmentVariableConstant               = "GIX_CONFIG_SEARCH_PATH"
 	auditOperationNameConstant                                       = "audit"
-	packagesPurgeOperationNameConstant                               = "repo packages delete"
-	branchCleanupOperationNameConstant                               = "repo prs delete"
-	reposRenameOperationNameConstant                                 = "repo folder rename"
-	reposRemotesOperationNameConstant                                = "repo remote update-to-canonical"
-	reposProtocolOperationNameConstant                               = "repo remote update-protocol"
-	repoReleaseOperationNameConstant                                 = "repo release"
-	repoHistoryOperationNameConstant                                 = "repo rm"
-	repoFilesReplaceOperationNameConstant                            = "repo files replace"
-	repoFilesAddOperationNameConstant                                = "repo files add"
-	repoLicenseOperationNameConstant                                 = "repo license apply"
-	repoNamespaceRewriteOperationNameConstant                        = "repo namespace rewrite"
+	packagesPurgeOperationNameConstant                               = "packages delete"
+	branchCleanupOperationNameConstant                               = "prs delete"
+	reposRenameOperationNameConstant                                 = "folder rename"
+	reposRemotesOperationNameConstant                                = "remote update-to-canonical"
+	reposProtocolOperationNameConstant                               = "remote update-protocol"
+	repoReleaseOperationNameConstant                                 = "release"
+	repoHistoryOperationNameConstant                                 = "rm"
+	repoFilesReplaceOperationNameConstant                            = "files replace"
+	repoFilesAddOperationNameConstant                                = "files add"
+	repoLicenseOperationNameConstant                                 = "license apply"
+	repoNamespaceRewriteOperationNameConstant                        = "namespace rewrite"
 	workflowCommandOperationNameConstant                             = "workflow"
-	branchRefreshOperationNameConstant                               = "branch refresh"
-	branchDefaultOperationNameConstant                               = "branch default"
-	branchChangeOperationNameConstant                                = "branch cd"
-	commitMessageOperationNameConstant                               = "branch commit message"
-	changelogMessageOperationNameConstant                            = "repo changelog message"
+	branchRefreshOperationNameConstant                               = "branch-refresh"
+	branchDefaultOperationNameConstant                               = "branch-default"
+	branchChangeOperationNameConstant                                = "branch-cd"
+	commitMessageOperationNameConstant                               = "commit message"
+	changelogMessageOperationNameConstant                            = "changelog message"
 	auditCommandAliasConstant                                        = "a"
 	workflowCommandAliasConstant                                     = "w"
 	repoNamespaceUseNameConstant                                     = "repo"
@@ -152,31 +152,36 @@ const (
 	namespaceRewriteCommandLongDescriptionConstant                   = "Rewrite Go module namespaces across repositories."
 	filesReplaceCommandUseNameConstant                               = "replace"
 	filesReplaceCommandAliasConstant                                 = "sub"
-	filesReplaceCommandLongDescriptionConstant                       = "repo files replace applies string substitutions to files matched by glob patterns, optionally enforcing safeguards and running a follow-up command."
+	filesReplaceCommandLongDescriptionConstant                       = "files replace applies string substitutions to files matched by glob patterns, optionally enforcing safeguards and running a follow-up command."
 	licenseApplyCommandUseNameConstant                               = "apply"
 	licenseApplyCommandAliasConstant                                 = "inject"
-	licenseApplyCommandLongDescriptionConstant                       = "repo license apply writes the configured license file across repositories using workflow tasks."
+	licenseApplyCommandLongDescriptionConstant                       = "license apply writes the configured license file across repositories using workflow tasks."
 	repoReleaseCommandUseNameConstant                                = "release"
 	repoReleaseCommandUsageTemplateConstant                          = repoReleaseCommandUseNameConstant + " <tag>"
 	repoReleaseCommandAliasConstant                                  = "rel"
-	repoReleaseCommandLongDescriptionConstant                        = "repo release annotates the provided tag (default message 'Release <tag>') and pushes it to the configured remote. Provide the tag as the first argument before any optional repository roots or flags."
+	repoReleaseCommandLongDescriptionConstant                        = "release annotates the provided tag (default message 'Release <tag>') and pushes it to the configured remote. Provide the tag as the first argument before any optional repository roots or flags."
 	releaseRetagCommandUseNameConstant                               = "retag"
 	releaseRetagCommandAliasConstant                                 = "fix"
 	releaseRetagCommandLongDescriptionConstant                       = "Retag existing annotated tags to new commits."
 	removeCommandUseNameConstant                                     = "rm"
 	removeCommandAliasConstant                                       = "purge"
 	removeCommandShortDescriptionConstant                            = "Rewrite history to delete selected paths"
-	removeCommandLongDescriptionConstant                             = "repo rm rewrites repository history to purge the specified paths using git-filter-repo. Provide one or more paths before optional repository roots or flags."
+	removeCommandLongDescriptionConstant                             = "rm rewrites repository history to purge the specified paths using git-filter-repo. Provide one or more paths before optional repository roots or flags."
 	branchNamespaceUseNameConstant                                   = "branch"
 	branchNamespaceAliasConstant                                     = "b"
 	branchNamespaceShortDescriptionConstant                          = "Branch management commands"
+	branchDefaultTopLevelUseNameConstant                             = "branch-default"
+	branchDefaultTopLevelUsageTemplateConstant                       = branchDefaultTopLevelUseNameConstant + " <target-branch>"
+	branchChangeTopLevelUseNameConstant                              = "branch-cd"
+	branchChangeTopLevelUsageTemplateConstant                        = branchChangeTopLevelUseNameConstant + " <branch>"
+	branchRefreshTopLevelUseNameConstant                             = "branch-refresh"
 	defaultCommandUseNameConstant                                    = "default"
 	defaultCommandUsageTemplateConstant                              = defaultCommandUseNameConstant + " <target-branch>"
 	refreshCommandUseNameConstant                                    = "refresh"
 	branchChangeCommandUseNameConstant                               = "cd"
 	branchChangeCommandUsageTemplateConstant                         = branchChangeCommandUseNameConstant + " <branch>"
 	branchChangeCommandAliasConstant                                 = "switch"
-	branchChangeLongDescriptionConstant                              = "branch cd fetches updates, switches to the requested branch, creates it when missing, and rebases onto the remote. Provide the branch name as the first argument before any optional repository roots or flags, or configure a default branch in the application settings."
+	branchChangeLongDescriptionConstant                              = "branch-cd fetches updates, switches to the requested branch, creates it when missing, and rebases onto the remote. Provide the branch name as the first argument before any optional repository roots or flags, or configure a default branch in the application settings."
 	commitNamespaceUseNameConstant                                   = "commit"
 	commitNamespaceAliasConstant                                     = "c"
 	commitNamespaceShortDescriptionConstant                          = "Commit assistance commands"
@@ -189,17 +194,44 @@ const (
 	changelogMessageUseNameConstant                                  = "message"
 	changelogMessageAliasConstant                                    = "section"
 	changelogMessageLongDescriptionConstant                          = "changelog message summarizes recent history into Markdown release notes using the configured language model."
-	repoPullRequestsDeleteCompositeKeyConstant                       = repoPullRequestsNamespaceUseNameConstant + "/" + prsDeleteCommandUseNameConstant
-	repoPackagesDeleteCompositeKeyConstant                           = repoPackagesNamespaceUseNameConstant + "/" + packagesDeleteCommandUseNameConstant
-	commitMessageCompositeKeyConstant                                = commitNamespaceUseNameConstant + "/" + commitMessageUseNameConstant
-	changelogMessageCompositeKeyConstant                             = changelogNamespaceUseNameConstant + "/" + changelogMessageUseNameConstant
-	renameNestedLongDescriptionConstant                              = "repo folder rename normalizes repository directory names to match canonical GitHub repositories."
-	updateRemoteCanonicalLongDescriptionConstant                     = "repo remote update-to-canonical adjusts origin remotes to match canonical GitHub repositories."
-	updateProtocolLongDescriptionConstant                            = "repo remote update-protocol converts origin URLs to a desired protocol."
-	prsDeleteLongDescriptionConstant                                 = "repo prs delete removes remote and local Git branches whose pull requests are already closed."
-	packagesDeleteLongDescriptionConstant                            = "repo packages delete removes untagged container versions from GitHub Packages."
-	branchDefaultNestedLongDescriptionConstant                       = "branch default promotes a branch to the repository default, auto-detecting the current default branch before retargeting workflows and safety gates."
-	branchRefreshNestedLongDescriptionConstant                       = "branch refresh synchronizes repository branches by fetching, checking out, and pulling updates."
+	folderRenameCommandPathKeyConstant                               = repoFolderNamespaceUseNameConstant + "/" + renameCommandUseNameConstant
+	remoteCanonicalCommandPathKeyConstant                            = repoRemoteNamespaceUseNameConstant + "/" + updateRemoteCanonicalUseNameConstant
+	remoteProtocolCommandPathKeyConstant                             = repoRemoteNamespaceUseNameConstant + "/" + updateProtocolCommandUseNameConstant
+	pullRequestsDeleteCommandPathKeyConstant                         = repoPullRequestsNamespaceUseNameConstant + "/" + prsDeleteCommandUseNameConstant
+	packagesDeleteCommandPathKeyConstant                             = repoPackagesNamespaceUseNameConstant + "/" + packagesDeleteCommandUseNameConstant
+	filesReplaceCommandPathKeyConstant                               = repoFilesNamespaceUseNameConstant + "/" + filesReplaceCommandUseNameConstant
+	filesAddCommandPathKeyConstant                                   = repoFilesNamespaceUseNameConstant + "/" + filesAddCommandUseNameConstant
+	licenseApplyCommandPathKeyConstant                               = repoLicenseNamespaceUseNameConstant + "/" + licenseApplyCommandUseNameConstant
+	namespaceRewriteCommandPathKeyConstant                           = repoNamespaceRewriteNamespaceUseNameConstant + "/" + namespaceRewriteCommandUseNameConstant
+	releaseRetagCommandPathKeyConstant                               = repoReleaseCommandUseNameConstant + "/" + releaseRetagCommandUseNameConstant
+	releaseRetagCommandAliasKeyConstant                              = repoReleaseCommandUseNameConstant + " " + releaseRetagCommandUseNameConstant
+	commitMessageCommandPathKeyConstant                              = commitNamespaceUseNameConstant + "/" + commitMessageUseNameConstant
+	changelogMessageCommandPathKeyConstant                           = changelogNamespaceUseNameConstant + "/" + changelogMessageUseNameConstant
+	legacyRepoNamespaceUseNameConstant                               = "repo"
+	legacyBranchNamespaceUseNameConstant                             = "branch"
+	legacyRepoFolderRenameCommandKeyConstant                         = legacyRepoNamespaceUseNameConstant + " " + repoFolderNamespaceUseNameConstant + " " + renameCommandUseNameConstant
+	legacyRepoRemoteCanonicalCommandKeyConstant                      = legacyRepoNamespaceUseNameConstant + " " + repoRemoteNamespaceUseNameConstant + " " + updateRemoteCanonicalUseNameConstant
+	legacyRepoRemoteProtocolCommandKeyConstant                       = legacyRepoNamespaceUseNameConstant + " " + repoRemoteNamespaceUseNameConstant + " " + updateProtocolCommandUseNameConstant
+	legacyRepoPullRequestsDeleteCommandKeyConstant                   = legacyRepoNamespaceUseNameConstant + " " + repoPullRequestsNamespaceUseNameConstant + " " + prsDeleteCommandUseNameConstant
+	legacyRepoPackagesDeleteCommandKeyConstant                       = legacyRepoNamespaceUseNameConstant + " " + repoPackagesNamespaceUseNameConstant + " " + packagesDeleteCommandUseNameConstant
+	legacyRepoFilesReplaceCommandKeyConstant                         = legacyRepoNamespaceUseNameConstant + " " + repoFilesNamespaceUseNameConstant + " " + filesReplaceCommandUseNameConstant
+	legacyRepoFilesAddCommandKeyConstant                             = legacyRepoNamespaceUseNameConstant + " " + repoFilesNamespaceUseNameConstant + " " + filesAddCommandUseNameConstant
+	legacyRepoLicenseApplyCommandKeyConstant                         = legacyRepoNamespaceUseNameConstant + " " + repoLicenseNamespaceUseNameConstant + " " + licenseApplyCommandUseNameConstant
+	legacyRepoNamespaceRewriteCommandKeyConstant                     = legacyRepoNamespaceUseNameConstant + " " + repoNamespaceRewriteNamespaceUseNameConstant + " " + namespaceRewriteCommandUseNameConstant
+	legacyRepoReleaseCommandKeyConstant                              = legacyRepoNamespaceUseNameConstant + " " + repoReleaseCommandUseNameConstant
+	legacyRepoReleaseRetagCommandKeyConstant                         = legacyRepoReleaseCommandKeyConstant + " " + releaseRetagCommandUseNameConstant
+	legacyRepoRmCommandKeyConstant                                   = legacyRepoNamespaceUseNameConstant + " " + removeCommandUseNameConstant
+	legacyBranchDefaultCommandKeyConstant                            = legacyBranchNamespaceUseNameConstant + " " + defaultCommandUseNameConstant
+	legacyBranchChangeCommandKeyConstant                             = legacyBranchNamespaceUseNameConstant + " " + branchChangeCommandUseNameConstant
+	legacyBranchChangeAliasCommandKeyConstant                        = legacyBranchNamespaceUseNameConstant + " " + branchChangeCommandAliasConstant
+	legacyBranchRefreshCommandKeyConstant                            = legacyBranchNamespaceUseNameConstant + " " + refreshCommandUseNameConstant
+	renameNestedLongDescriptionConstant                              = "folder rename normalizes repository directory names to match canonical GitHub repositories."
+	updateRemoteCanonicalLongDescriptionConstant                     = "remote update-to-canonical adjusts origin remotes to match canonical GitHub repositories."
+	updateProtocolLongDescriptionConstant                            = "remote update-protocol converts origin URLs to a desired protocol."
+	prsDeleteLongDescriptionConstant                                 = "prs delete removes remote and local Git branches whose pull requests are already closed."
+	packagesDeleteLongDescriptionConstant                            = "packages delete removes untagged container versions from GitHub Packages."
+	branchDefaultNestedLongDescriptionConstant                       = "branch-default promotes a branch to the repository default, auto-detecting the current default branch before retargeting workflows and safety gates."
+	branchRefreshNestedLongDescriptionConstant                       = "branch-refresh synchronizes repositories by fetching, checking out, and pulling updates."
 	versionFlagNameConstant                                          = "version"
 	versionFlagUsageConstant                                         = "Print the application version and exit"
 	versionOutputTemplateConstant                                    = "gix version: %s\n"
@@ -219,41 +251,48 @@ const (
 )
 
 var commandOperationRequirements = map[string][]string{
-	auditOperationNameConstant:                                                {auditOperationNameConstant},
-	branchCleanupOperationNameConstant:                                        {branchCleanupOperationNameConstant},
-	branchDefaultOperationNameConstant:                                        {branchDefaultOperationNameConstant},
-	branchRefreshOperationNameConstant:                                        {branchRefreshOperationNameConstant},
-	branchChangeOperationNameConstant:                                         {branchChangeOperationNameConstant},
-	repoReleaseOperationNameConstant:                                          {repoReleaseOperationNameConstant},
-	commitMessageCompositeKeyConstant:                                         {commitMessageOperationNameConstant},
-	changelogMessageCompositeKeyConstant:                                      {changelogMessageOperationNameConstant},
-	defaultCommandUseNameConstant:                                             {branchDefaultOperationNameConstant},
-	packagesPurgeOperationNameConstant:                                        {packagesPurgeOperationNameConstant},
-	repoPackagesDeleteCompositeKeyConstant:                                    {packagesPurgeOperationNameConstant},
-	repoPullRequestsDeleteCompositeKeyConstant:                                {branchCleanupOperationNameConstant},
-	refreshCommandUseNameConstant:                                             {branchRefreshOperationNameConstant},
-	branchNamespaceUseNameConstant + "/" + branchChangeCommandUseNameConstant: {branchChangeOperationNameConstant},
-	repoNamespaceUseNameConstant + "/" + repoReleaseCommandUseNameConstant:    {repoReleaseOperationNameConstant},
-	repoNamespaceUseNameConstant + "/" + repoReleaseCommandUseNameConstant + "/" + releaseRetagCommandUseNameConstant:                {repoReleaseOperationNameConstant},
-	repoNamespaceUseNameConstant + "/" + removeCommandUseNameConstant:                                                                {repoHistoryOperationNameConstant},
-	repoNamespaceUseNameConstant + "/" + repoFilesNamespaceUseNameConstant + "/" + filesReplaceCommandUseNameConstant:                {repoFilesReplaceOperationNameConstant},
-	repoNamespaceUseNameConstant + "/" + repoFilesNamespaceUseNameConstant + "/" + filesAddCommandUseNameConstant:                    {repoFilesAddOperationNameConstant},
-	repoNamespaceUseNameConstant + "/" + repoNamespaceRewriteNamespaceUseNameConstant + "/" + namespaceRewriteCommandUseNameConstant: {repoNamespaceRewriteOperationNameConstant},
-	repoNamespaceUseNameConstant + "/" + repoLicenseNamespaceUseNameConstant + "/" + licenseApplyCommandUseNameConstant:              {repoLicenseOperationNameConstant},
-	renameCommandUseNameConstant:         {reposRenameOperationNameConstant},
-	reposProtocolOperationNameConstant:   {reposProtocolOperationNameConstant},
-	reposRemotesOperationNameConstant:    {reposRemotesOperationNameConstant},
-	reposRenameOperationNameConstant:     {reposRenameOperationNameConstant},
-	repoLicenseOperationNameConstant:     {repoLicenseOperationNameConstant},
-	licenseApplyCommandUseNameConstant:   {repoLicenseOperationNameConstant},
-	repoFilesAddOperationNameConstant:    {repoFilesAddOperationNameConstant},
-	filesAddCommandUseNameConstant:       {repoFilesAddOperationNameConstant},
-	updateProtocolCommandUseNameConstant: {reposProtocolOperationNameConstant},
-	updateRemoteCanonicalUseNameConstant: {reposRemotesOperationNameConstant},
-	workflowCommandOperationNameConstant: {workflowCommandOperationNameConstant},
+	auditOperationNameConstant:               {auditOperationNameConstant},
+	packagesDeleteCommandPathKeyConstant:     {packagesPurgeOperationNameConstant},
+	pullRequestsDeleteCommandPathKeyConstant: {branchCleanupOperationNameConstant},
+	folderRenameCommandPathKeyConstant:       {reposRenameOperationNameConstant},
+	remoteCanonicalCommandPathKeyConstant:    {reposRemotesOperationNameConstant},
+	remoteProtocolCommandPathKeyConstant:     {reposProtocolOperationNameConstant},
+	repoReleaseCommandUseNameConstant:        {repoReleaseOperationNameConstant},
+	releaseRetagCommandPathKeyConstant:       {repoReleaseOperationNameConstant},
+	removeCommandUseNameConstant:             {repoHistoryOperationNameConstant},
+	filesReplaceCommandPathKeyConstant:       {repoFilesReplaceOperationNameConstant},
+	filesAddCommandPathKeyConstant:           {repoFilesAddOperationNameConstant},
+	licenseApplyCommandPathKeyConstant:       {repoLicenseOperationNameConstant},
+	namespaceRewriteCommandPathKeyConstant:   {repoNamespaceRewriteOperationNameConstant},
+	workflowCommandOperationNameConstant:     {workflowCommandOperationNameConstant},
+	branchRefreshTopLevelUseNameConstant:     {branchRefreshOperationNameConstant},
+	branchDefaultTopLevelUseNameConstant:     {branchDefaultOperationNameConstant},
+	branchChangeTopLevelUseNameConstant:      {branchChangeOperationNameConstant},
+	commitMessageCommandPathKeyConstant:      {commitMessageOperationNameConstant},
+	changelogMessageCommandPathKeyConstant:   {changelogMessageOperationNameConstant},
 }
 
 var requiredOperationConfigurationNames = collectRequiredOperationConfigurationNames()
+
+var operationNameAliases = map[string]string{
+	legacyRepoFolderRenameCommandKeyConstant:       reposRenameOperationNameConstant,
+	legacyRepoRemoteCanonicalCommandKeyConstant:    reposRemotesOperationNameConstant,
+	legacyRepoRemoteProtocolCommandKeyConstant:     reposProtocolOperationNameConstant,
+	legacyRepoPullRequestsDeleteCommandKeyConstant: branchCleanupOperationNameConstant,
+	legacyRepoPackagesDeleteCommandKeyConstant:     packagesPurgeOperationNameConstant,
+	legacyRepoFilesReplaceCommandKeyConstant:       repoFilesReplaceOperationNameConstant,
+	legacyRepoFilesAddCommandKeyConstant:           repoFilesAddOperationNameConstant,
+	legacyRepoLicenseApplyCommandKeyConstant:       repoLicenseOperationNameConstant,
+	legacyRepoNamespaceRewriteCommandKeyConstant:   repoNamespaceRewriteOperationNameConstant,
+	legacyRepoReleaseCommandKeyConstant:            repoReleaseOperationNameConstant,
+	legacyRepoReleaseRetagCommandKeyConstant:       repoReleaseOperationNameConstant,
+	legacyRepoRmCommandKeyConstant:                 repoHistoryOperationNameConstant,
+	legacyBranchDefaultCommandKeyConstant:          branchDefaultOperationNameConstant,
+	legacyBranchChangeCommandKeyConstant:           branchChangeOperationNameConstant,
+	legacyBranchChangeAliasCommandKeyConstant:      branchChangeOperationNameConstant,
+	legacyBranchRefreshCommandKeyConstant:          branchRefreshOperationNameConstant,
+	releaseRetagCommandAliasKeyConstant:            repoReleaseOperationNameConstant,
+}
 
 type loggerOutputsFactory interface {
 	CreateLoggerOutputs(utils.LogLevel, utils.LogFormat) (utils.LoggerOutputs, error)
@@ -338,6 +377,10 @@ func newOperationConfigurations(definitions []ApplicationOperationConfiguration)
 		normalizedName := workflowpkg.CommandPathKey(definitions[definitionIndex].Command)
 		if len(normalizedName) == 0 {
 			continue
+		}
+
+		if canonicalName, exists := operationNameAliases[normalizedName]; exists {
+			normalizedName = canonicalName
 		}
 
 		if _, exists := seenOperations[normalizedName]; exists {
@@ -748,15 +791,13 @@ func NewApplication() *Application {
 		commitNamespaceCommand.AddCommand(commitMessageCommand)
 	}
 
-	repoNamespaceCommand := newNamespaceCommand(repoNamespaceUseNameConstant, repoNamespaceShortDescriptionConstant, repoNamespaceAliasConstant)
-
 	repoFolderCommand := newNamespaceCommand(repoFolderNamespaceUseNameConstant, repoFolderNamespaceShortDescriptionConstant, repoFolderNamespaceAliasConstant)
 	if renameNestedCommand, nestedRenameError := renameBuilder.Build(); nestedRenameError == nil {
 		configureCommandMetadata(renameNestedCommand, renameCommandUseNameConstant, renameNestedCommand.Short, renameNestedLongDescriptionConstant)
 		repoFolderCommand.AddCommand(renameNestedCommand)
 	}
 	if len(repoFolderCommand.Commands()) > 0 {
-		repoNamespaceCommand.AddCommand(repoFolderCommand)
+		cobraCommand.AddCommand(repoFolderCommand)
 	}
 
 	repoRemoteCommand := newNamespaceCommand(repoRemoteNamespaceUseNameConstant, repoRemoteNamespaceShortDescriptionConstant)
@@ -769,7 +810,7 @@ func NewApplication() *Application {
 		repoRemoteCommand.AddCommand(protocolConversionCommand)
 	}
 	if len(repoRemoteCommand.Commands()) > 0 {
-		repoNamespaceCommand.AddCommand(repoRemoteCommand)
+		cobraCommand.AddCommand(repoRemoteCommand)
 	}
 
 	repoPullRequestsCommand := newNamespaceCommand(repoPullRequestsNamespaceUseNameConstant, repoPullRequestsNamespaceShortDescriptionConstant)
@@ -778,7 +819,7 @@ func NewApplication() *Application {
 		repoPullRequestsCommand.AddCommand(pullRequestCleanupCommand)
 	}
 	if len(repoPullRequestsCommand.Commands()) > 0 {
-		repoNamespaceCommand.AddCommand(repoPullRequestsCommand)
+		cobraCommand.AddCommand(repoPullRequestsCommand)
 	}
 
 	repoPackagesCommand := newNamespaceCommand(repoPackagesNamespaceUseNameConstant, repoPackagesNamespaceShortDescriptionConstant)
@@ -787,7 +828,7 @@ func NewApplication() *Application {
 		repoPackagesCommand.AddCommand(packagesCleanupCommand)
 	}
 	if len(repoPackagesCommand.Commands()) > 0 {
-		repoNamespaceCommand.AddCommand(repoPackagesCommand)
+		cobraCommand.AddCommand(repoPackagesCommand)
 	}
 
 	repoFilesCommand := newNamespaceCommand(repoFilesNamespaceUseNameConstant, repoFilesNamespaceShortDescriptionConstant, repoFilesNamespaceAliasConstant)
@@ -800,7 +841,7 @@ func NewApplication() *Application {
 		repoFilesCommand.AddCommand(filesAddCommand)
 	}
 	if len(repoFilesCommand.Commands()) > 0 {
-		repoNamespaceCommand.AddCommand(repoFilesCommand)
+		cobraCommand.AddCommand(repoFilesCommand)
 	}
 
 	repoLicenseCommand := newNamespaceCommand(repoLicenseNamespaceUseNameConstant, repoLicenseNamespaceShortDescriptionConstant)
@@ -809,7 +850,7 @@ func NewApplication() *Application {
 		repoLicenseCommand.AddCommand(licenseApplyCommand)
 	}
 	if len(repoLicenseCommand.Commands()) > 0 {
-		repoNamespaceCommand.AddCommand(repoLicenseCommand)
+		cobraCommand.AddCommand(repoLicenseCommand)
 	}
 
 	repoNamespaceRewriteCommand := newNamespaceCommand(repoNamespaceRewriteNamespaceUseNameConstant, repoNamespaceRewriteNamespaceShortDescriptionConstant)
@@ -818,48 +859,49 @@ func NewApplication() *Application {
 		repoNamespaceRewriteCommand.AddCommand(namespaceRewriteCommand)
 	}
 	if len(repoNamespaceRewriteCommand.Commands()) > 0 {
-		repoNamespaceCommand.AddCommand(repoNamespaceRewriteCommand)
+		cobraCommand.AddCommand(repoNamespaceRewriteCommand)
 	}
 
 	if removeCommand, removeBuildError := removeBuilder.Build(); removeBuildError == nil {
 		configureCommandMetadata(removeCommand, removeCommandUseNameConstant, removeCommandShortDescriptionConstant, removeCommandLongDescriptionConstant, removeCommandAliasConstant)
-		repoNamespaceCommand.AddCommand(removeCommand)
+		cobraCommand.AddCommand(removeCommand)
 	}
 
-	if releaseCommand, releaseBuildError := releaseBuilder.Build(); releaseBuildError == nil {
-		configureCommandMetadata(releaseCommand, repoReleaseCommandUsageTemplateConstant, releaseCommand.Short, repoReleaseCommandLongDescriptionConstant, repoReleaseCommandAliasConstant)
-		repoNamespaceCommand.AddCommand(releaseCommand)
+	var releaseCommand *cobra.Command
+	if builtReleaseCommand, releaseBuildError := releaseBuilder.Build(); releaseBuildError == nil {
+		configureCommandMetadata(builtReleaseCommand, repoReleaseCommandUsageTemplateConstant, builtReleaseCommand.Short, repoReleaseCommandLongDescriptionConstant, repoReleaseCommandAliasConstant)
+		releaseCommand = builtReleaseCommand
 	}
 	if retagCommand, retagBuildError := retagBuilder.Build(); retagBuildError == nil {
 		configureCommandMetadata(retagCommand, releaseRetagCommandUseNameConstant, retagCommand.Short, releaseRetagCommandLongDescriptionConstant, releaseRetagCommandAliasConstant)
-		repoNamespaceCommand.AddCommand(retagCommand)
+		if releaseCommand != nil {
+			releaseCommand.AddCommand(retagCommand)
+		} else {
+			cobraCommand.AddCommand(retagCommand)
+		}
+	}
+	if releaseCommand != nil {
+		cobraCommand.AddCommand(releaseCommand)
 	}
 
 	if changelogNamespaceCommand != nil {
-		repoNamespaceCommand.AddCommand(changelogNamespaceCommand)
-	}
-	if len(repoNamespaceCommand.Commands()) > 0 {
-		cobraCommand.AddCommand(repoNamespaceCommand)
-	}
-
-	branchNamespaceCommand := newNamespaceCommand(branchNamespaceUseNameConstant, branchNamespaceShortDescriptionConstant, branchNamespaceAliasConstant)
-	if branchDefaultNestedCommand, branchDefaultNestedError := branchDefaultBuilder.Build(); branchDefaultNestedError == nil {
-		configureCommandMetadata(branchDefaultNestedCommand, defaultCommandUsageTemplateConstant, branchDefaultNestedCommand.Short, branchDefaultNestedLongDescriptionConstant)
-		branchNamespaceCommand.AddCommand(branchDefaultNestedCommand)
-	}
-	if branchChangeCommand, branchChangeError := branchChangeBuilder.Build(); branchChangeError == nil {
-		configureCommandMetadata(branchChangeCommand, branchChangeCommandUsageTemplateConstant, branchChangeCommand.Short, branchChangeLongDescriptionConstant, branchChangeCommandAliasConstant)
-		branchNamespaceCommand.AddCommand(branchChangeCommand)
-	}
-	if branchRefreshNestedCommand, branchRefreshNestedError := branchRefreshBuilder.Build(); branchRefreshNestedError == nil {
-		configureCommandMetadata(branchRefreshNestedCommand, refreshCommandUseNameConstant, branchRefreshNestedCommand.Short, branchRefreshNestedLongDescriptionConstant)
-		branchNamespaceCommand.AddCommand(branchRefreshNestedCommand)
+		cobraCommand.AddCommand(changelogNamespaceCommand)
 	}
 	if commitNamespaceCommand != nil {
-		branchNamespaceCommand.AddCommand(commitNamespaceCommand)
+		cobraCommand.AddCommand(commitNamespaceCommand)
 	}
-	if len(branchNamespaceCommand.Commands()) > 0 {
-		cobraCommand.AddCommand(branchNamespaceCommand)
+
+	if branchDefaultNestedCommand, branchDefaultNestedError := branchDefaultBuilder.Build(); branchDefaultNestedError == nil {
+		configureCommandMetadata(branchDefaultNestedCommand, branchDefaultTopLevelUsageTemplateConstant, branchDefaultNestedCommand.Short, branchDefaultNestedLongDescriptionConstant)
+		cobraCommand.AddCommand(branchDefaultNestedCommand)
+	}
+	if branchChangeCommand, branchChangeError := branchChangeBuilder.Build(); branchChangeError == nil {
+		configureCommandMetadata(branchChangeCommand, branchChangeTopLevelUsageTemplateConstant, branchChangeCommand.Short, branchChangeLongDescriptionConstant, branchChangeCommandAliasConstant)
+		cobraCommand.AddCommand(branchChangeCommand)
+	}
+	if branchRefreshNestedCommand, branchRefreshNestedError := branchRefreshBuilder.Build(); branchRefreshNestedError == nil {
+		configureCommandMetadata(branchRefreshNestedCommand, branchRefreshTopLevelUseNameConstant, branchRefreshNestedCommand.Short, branchRefreshNestedLongDescriptionConstant)
+		cobraCommand.AddCommand(branchRefreshNestedCommand)
 	}
 
 	application.rootCommand = cobraCommand

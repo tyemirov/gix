@@ -9,10 +9,10 @@ import (
 )
 
 const (
-	protocolConversionInvalidFromMessageConstant  = "repo remote update-protocol step requires a valid 'from' protocol"
-	protocolConversionInvalidToMessageConstant    = "repo remote update-protocol step requires a valid 'to' protocol"
-	protocolConversionSameProtocolMessageConstant = "repo remote update-protocol step requires distinct source and target protocols"
-	branchMigrationTargetsRequiredMessageConstant = "branch default step requires at least one target"
+	protocolConversionInvalidFromMessageConstant  = "remote update-protocol step requires a valid 'from' protocol"
+	protocolConversionInvalidToMessageConstant    = "remote update-protocol step requires a valid 'to' protocol"
+	protocolConversionSameProtocolMessageConstant = "remote update-protocol step requires distinct source and target protocols"
+	branchMigrationTargetsRequiredMessageConstant = "branch-default step requires at least one target"
 )
 
 // BuildOperations converts the declarative configuration into executable operations with dependency metadata.
@@ -89,17 +89,17 @@ func buildOperationFromStep(step StepConfiguration) (Operation, error) {
 	normalizedOptions := step.Options
 
 	switch commandKey {
-	case commandRepoRemoteConvertProtocolKey:
+	case commandRemoteConvertProtocolKey, legacyCommandRepoRemoteConvertProtocolKey:
 		return buildProtocolConversionOperation(normalizedOptions)
-	case commandRepoRemoteCanonicalKey:
+	case commandRemoteCanonicalKey, legacyCommandRepoRemoteCanonicalKey:
 		return buildCanonicalRemoteOperation(normalizedOptions)
-	case commandRepoFolderRenameKey:
+	case commandFolderRenameKey, legacyCommandRepoFolderRenameKey:
 		return buildRenameOperation(normalizedOptions)
-	case commandBranchDefaultKey:
+	case commandBranchDefaultKey, legacyCommandBranchDefaultKey:
 		return buildBranchMigrationOperation(normalizedOptions)
 	case commandAuditReportKey:
 		return buildAuditReportOperation(normalizedOptions)
-	case commandRepoTasksApplyKey:
+	case commandTasksApplyKey, legacyCommandRepoTasksApplyKey:
 		return buildTaskOperation(normalizedOptions)
 	default:
 		return nil, fmt.Errorf("unsupported workflow command: %s", commandKey)

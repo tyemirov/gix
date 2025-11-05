@@ -36,28 +36,28 @@ const (
 	testOperationRootsTemplateConstant                       = "      roots:\n        - %s\n"
 	testOperationRootDirectoryConstant                       = "/tmp/config-root"
 	testConfigurationSearchPathEnvironmentName               = "GIX_CONFIG_SEARCH_PATH"
-	testPackagesCommandNameConstant                          = "repo-packages-purge"
-	testPackagesCommandKeyConstant                           = "repo packages delete"
+	testPackagesCommandNameConstant                          = "packages"
+	testPackagesCommandKeyConstant                           = "packages delete"
 	testBranchDefaultCommandNameConstant                     = "branch-default"
-	testBranchDefaultCommandKeyConstant                      = "branch default"
+	testBranchDefaultCommandKeyConstant                      = "branch-default"
 	testBranchRefreshCommandNameConstant                     = "branch-refresh"
-	testBranchRefreshCommandKeyConstant                      = "branch refresh"
-	testBranchCleanupCommandNameConstant                     = "repo-prs-purge"
-	testBranchCleanupCommandKeyConstant                      = "repo prs delete"
-	testReposRemotesCommandNameConstant                      = "repo-remote-update"
-	testReposRemotesCommandKeyConstant                       = "repo remote update-to-canonical"
-	testReposProtocolCommandNameConstant                     = "repo-protocol-convert"
-	testReposProtocolCommandKeyConstant                      = "repo remote update-protocol"
-	testReposRenameCommandNameConstant                       = "repo-folders-rename"
-	testReposRenameCommandKeyConstant                        = "repo folder rename"
+	testBranchRefreshCommandKeyConstant                      = "branch-refresh"
+	testBranchCleanupCommandNameConstant                     = "prs-delete"
+	testBranchCleanupCommandKeyConstant                      = "prs delete"
+	testReposRemotesCommandNameConstant                      = "remote-update-to-canonical"
+	testReposRemotesCommandKeyConstant                       = "remote update-to-canonical"
+	testReposProtocolCommandNameConstant                     = "remote-update-protocol"
+	testReposProtocolCommandKeyConstant                      = "remote update-protocol"
+	testReposRenameCommandNameConstant                       = "folder-rename"
+	testReposRenameCommandKeyConstant                        = "folder rename"
 	testAuditCommandNameConstant                             = "audit"
 	testAuditCommandKeyConstant                              = "audit"
 	testWorkflowCommandNameConstant                          = "workflow"
 	testWorkflowCommandKeyConstant                           = "workflow"
-	testRepoReleaseCommandKeyConstant                        = "repo release"
-	testBranchChangeCommandKeyConstant                       = "branch cd"
-	testCommitMessageCommandKeyConstant                      = "branch commit message"
-	testChangelogMessageCommandKeyConstant                   = "repo changelog message"
+	testRepoReleaseCommandKeyConstant                        = "release"
+	testBranchChangeCommandKeyConstant                       = "branch-cd"
+	testCommitMessageCommandKeyConstant                      = "commit message"
+	testChangelogMessageCommandKeyConstant                   = "changelog message"
 	embeddedDefaultsBranchCleanupTestNameConstant            = "BranchCleanupDefaults"
 	embeddedDefaultsPackagesTestNameConstant                 = "PackagesDefaults"
 	embeddedDefaultsReposRemotesTestNameConstant             = "ReposRemotesDefaults"
@@ -140,13 +140,13 @@ func TestApplicationInitializeConfiguration(t *testing.T) {
 			name: "CommandConfigurationMissingForTargetCommandIgnored",
 			commandKeys: []string{
 				"audit",
-				"repo packages delete",
-				"repo prs delete",
-				"repo folder rename",
-				"repo remote update-to-canonical",
-				"repo remote update-protocol",
+				"packages delete",
+				"prs delete",
+				"folder rename",
+				"remote update-to-canonical",
+				"remote update-protocol",
 				"workflow",
-				"branch refresh",
+				"branch-refresh",
 			},
 			commandUse: testBranchDefaultCommandNameConstant,
 		},

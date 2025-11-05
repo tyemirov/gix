@@ -187,7 +187,7 @@ type TaskRepositoryTemplateData struct {
 
 // Name identifies the workflow command handled by this operation.
 func (operation *TaskOperation) Name() string {
-	return commandRepoTasksApplyKey
+	return commandTasksApplyKey
 }
 
 // Execute runs the configured tasks across repositories.
@@ -281,7 +281,7 @@ func buildTaskOperation(options map[string]any) (Operation, error) {
 		return nil, err
 	}
 	if !exists || len(entries) == 0 {
-		return nil, errors.New("repo tasks apply step requires at least one task entry")
+		return nil, errors.New("tasks apply step requires at least one task entry")
 	}
 
 	tasks := make([]TaskDefinition, 0, len(entries))

@@ -17,7 +17,7 @@ import (
 func TestApplicationCommonDefaultsApplied(t *testing.T) {
 	operations, buildError := newOperationConfigurations([]ApplicationOperationConfiguration{
 		{
-			Command: []string{"repo", "folder", "rename"},
+			Command: []string{"folder", "rename"},
 			Options: map[string]any{
 				"roots": []string{"/tmp/rename"},
 			},
@@ -58,7 +58,7 @@ func TestApplicationCommonDefaultsApplied(t *testing.T) {
 func TestApplicationOperationOverridesTakePriority(t *testing.T) {
 	operations, buildError := newOperationConfigurations([]ApplicationOperationConfiguration{
 		{
-			Command: []string{"repo", "folder", "rename"},
+			Command: []string{"folder", "rename"},
 			Options: map[string]any{
 				"dry_run":       false,
 				"assume_yes":    false,
@@ -101,6 +101,35 @@ func TestApplicationOperationOverridesTakePriority(t *testing.T) {
 	require.False(t, workflowConfiguration.DryRun)
 	require.False(t, workflowConfiguration.AssumeYes)
 	require.False(t, workflowConfiguration.RequireClean)
+}
+
+func TestOperationConfigurationsNormalizeLegacyCommandNames(t *testing.T) {
+	operations, buildError := newOperationConfigurations([]ApplicationOperationConfiguration{
+		{
+			Command: []string{"repo", "remote", "update-to-canonical"},
+			Options: map[string]any{
+				"roots": []string{"/tmp/legacy"},
+			},
+		},
+	})
+	require.NoError(t, buildError)
+
+	options, lookupError := operations.Lookup(reposRemotesOperationNameConstant)
+	require.NoError(t, lookupError)
+	roots, rootsCast := options["roots"].([]string)
+	require.True(t, rootsCast)
+	require.Equal(t, []string{"/tmp/legacy"}, roots)
+}
+
+func TestOperationConfigurationsRejectDuplicateLegacyAndCanonicalNames(t *testing.T) {
+	_, buildError := newOperationConfigurations([]ApplicationOperationConfiguration{
+		{Command: []string{"repo", "folder", "rename"}},
+		{Command: []string{"folder", "rename"}},
+	})
+
+	var duplicateError DuplicateOperationConfigurationError
+	require.ErrorAs(t, buildError, &duplicateError)
+	require.Equal(t, reposRenameOperationNameConstant, duplicateError.OperationName)
 }
 
 func TestInitializeConfigurationAttachesBranchContext(t *testing.T) {
@@ -199,71 +228,69 @@ func TestApplicationCommandHierarchyAndAliases(t *testing.T) {
 	require.NoError(t, workflowError)
 	require.Equal(t, workflowCommandOperationNameConstant, workflowCommand.Name())
 
-	repoRenameCommand, _, renameError := rootCommand.Find([]string{"r", "folder", "rename"})
+	folderRenameCommand, _, renameError := rootCommand.Find([]string{"folder", "rename"})
 	require.NoError(t, renameError)
-	require.Equal(t, "rename", repoRenameCommand.Name())
-	require.NotNil(t, repoRenameCommand.Parent())
-	require.Equal(t, "folder", repoRenameCommand.Parent().Name())
-	require.NotNil(t, repoRenameCommand.Parent().Parent())
-	require.Equal(t, "repo", repoRenameCommand.Parent().Parent().Name())
+	require.Equal(t, "rename", folderRenameCommand.Name())
+	require.NotNil(t, folderRenameCommand.Parent())
+	require.Equal(t, "folder", folderRenameCommand.Parent().Name())
 
-	repoRemoteCanonicalCommand, _, canonicalError := rootCommand.Find([]string{"r", "remote", "update-to-canonical"})
+	repoRemoteCanonicalCommand, _, canonicalError := rootCommand.Find([]string{"remote", "update-to-canonical"})
 	require.NoError(t, canonicalError)
 	require.Equal(t, "update-to-canonical", repoRemoteCanonicalCommand.Name())
 	require.NotNil(t, repoRemoteCanonicalCommand.Parent())
 	require.Equal(t, "remote", repoRemoteCanonicalCommand.Parent().Name())
 
-	repoRemoteProtocolCommand, _, protocolError := rootCommand.Find([]string{"r", "remote", "update-protocol"})
+	repoRemoteProtocolCommand, _, protocolError := rootCommand.Find([]string{"remote", "update-protocol"})
 	require.NoError(t, protocolError)
 	require.Equal(t, "update-protocol", repoRemoteProtocolCommand.Name())
 	require.NotNil(t, repoRemoteProtocolCommand.Parent())
 	require.Equal(t, "remote", repoRemoteProtocolCommand.Parent().Name())
 
-	repoPullRequestsCommand, _, pullRequestsError := rootCommand.Find([]string{"r", "prs", "delete"})
+	repoPullRequestsCommand, _, pullRequestsError := rootCommand.Find([]string{"prs", "delete"})
 	require.NoError(t, pullRequestsError)
 	require.Equal(t, "delete", repoPullRequestsCommand.Name())
 	require.NotNil(t, repoPullRequestsCommand.Parent())
 	require.Equal(t, "prs", repoPullRequestsCommand.Parent().Name())
 
-	repoPackagesCommand, _, packagesError := rootCommand.Find([]string{"r", "packages", "delete"})
+	repoPackagesCommand, _, packagesError := rootCommand.Find([]string{"packages", "delete"})
 	require.NoError(t, packagesError)
 	require.Equal(t, "delete", repoPackagesCommand.Name())
 	require.NotNil(t, repoPackagesCommand.Parent())
 	require.Equal(t, "packages", repoPackagesCommand.Parent().Name())
 
-	releaseCommand, _, releaseError := rootCommand.Find([]string{"r", "release"})
+	releaseCommand, _, releaseError := rootCommand.Find([]string{"release"})
 	require.NoError(t, releaseError)
 	require.Equal(t, "release", releaseCommand.Name())
 	require.NotNil(t, releaseCommand.Parent())
-	require.Equal(t, "repo", releaseCommand.Parent().Name())
+	require.Equal(t, applicationNameConstant, releaseCommand.Parent().Name())
 
-	branchDefaultCommand, _, branchDefaultError := rootCommand.Find([]string{"b", "default"})
+	branchDefaultCommand, _, branchDefaultError := rootCommand.Find([]string{branchDefaultTopLevelUseNameConstant})
 	require.NoError(t, branchDefaultError)
-	require.Equal(t, "default", branchDefaultCommand.Name())
+	require.Equal(t, branchDefaultTopLevelUseNameConstant, branchDefaultCommand.Name())
 	require.NotNil(t, branchDefaultCommand.Parent())
-	require.Equal(t, "branch", branchDefaultCommand.Parent().Name())
+	require.Equal(t, applicationNameConstant, branchDefaultCommand.Parent().Name())
 
-	branchChangeCommand, _, branchChangeError := rootCommand.Find([]string{"b", "cd"})
+	branchChangeCommand, _, branchChangeError := rootCommand.Find([]string{branchChangeTopLevelUseNameConstant})
 	require.NoError(t, branchChangeError)
-	require.Equal(t, "cd", branchChangeCommand.Name())
+	require.Equal(t, branchChangeTopLevelUseNameConstant, branchChangeCommand.Name())
 	require.NotNil(t, branchChangeCommand.Parent())
-	require.Equal(t, "branch", branchChangeCommand.Parent().Name())
+	require.Equal(t, applicationNameConstant, branchChangeCommand.Parent().Name())
 
-	commitMessageCommand, _, commitMessageError := rootCommand.Find([]string{"b", "commit", "message"})
+	commitMessageCommand, _, commitMessageError := rootCommand.Find([]string{"commit", "message"})
 	require.NoError(t, commitMessageError)
 	require.Equal(t, "message", commitMessageCommand.Name())
 	require.NotNil(t, commitMessageCommand.Parent())
 	require.Equal(t, "commit", commitMessageCommand.Parent().Name())
 	require.NotNil(t, commitMessageCommand.Parent().Parent())
-	require.Equal(t, "branch", commitMessageCommand.Parent().Parent().Name())
+	require.Equal(t, applicationNameConstant, commitMessageCommand.Parent().Parent().Name())
 
-	changelogMessageCommand, _, changelogMessageError := rootCommand.Find([]string{"r", "changelog", "message"})
+	changelogMessageCommand, _, changelogMessageError := rootCommand.Find([]string{"changelog", "message"})
 	require.NoError(t, changelogMessageError)
 	require.Equal(t, "message", changelogMessageCommand.Name())
 	require.NotNil(t, changelogMessageCommand.Parent())
 	require.Equal(t, "changelog", changelogMessageCommand.Parent().Name())
 	require.NotNil(t, changelogMessageCommand.Parent().Parent())
-	require.Equal(t, "repo", changelogMessageCommand.Parent().Parent().Name())
+	require.Equal(t, applicationNameConstant, changelogMessageCommand.Parent().Parent().Name())
 
 	_, _, legacyRenameError := rootCommand.Find([]string{"repo-folders-rename"})
 	require.Error(t, legacyRenameError)
@@ -290,35 +317,35 @@ func TestApplicationHierarchicalCommandsLoadExpectedOperations(t *testing.T) {
 	application := NewApplication()
 	rootCommand := application.rootCommand
 
-	repoRenameCommand, _, renameError := rootCommand.Find([]string{"r", "folder", "rename"})
+	folderRenameCommand, _, renameError := rootCommand.Find([]string{"folder", "rename"})
 	require.NoError(t, renameError)
-	require.Equal(t, []string{reposRenameOperationNameConstant}, application.operationsRequiredForCommand(repoRenameCommand))
+	require.Equal(t, []string{reposRenameOperationNameConstant}, application.operationsRequiredForCommand(folderRenameCommand))
 
-	repoRemoteCanonicalCommand, _, canonicalError := rootCommand.Find([]string{"r", "remote", "update-to-canonical"})
+	repoRemoteCanonicalCommand, _, canonicalError := rootCommand.Find([]string{"remote", "update-to-canonical"})
 	require.NoError(t, canonicalError)
 	require.Equal(t, []string{reposRemotesOperationNameConstant}, application.operationsRequiredForCommand(repoRemoteCanonicalCommand))
 
-	repoRemoteProtocolCommand, _, protocolError := rootCommand.Find([]string{"r", "remote", "update-protocol"})
+	repoRemoteProtocolCommand, _, protocolError := rootCommand.Find([]string{"remote", "update-protocol"})
 	require.NoError(t, protocolError)
 	require.Equal(t, []string{reposProtocolOperationNameConstant}, application.operationsRequiredForCommand(repoRemoteProtocolCommand))
 
-	repoPullRequestsCommand, _, pullRequestsError := rootCommand.Find([]string{"r", "prs", "delete"})
+	repoPullRequestsCommand, _, pullRequestsError := rootCommand.Find([]string{"prs", "delete"})
 	require.NoError(t, pullRequestsError)
 	require.Equal(t, []string{branchCleanupOperationNameConstant}, application.operationsRequiredForCommand(repoPullRequestsCommand))
 
-	repoPackagesCommand, _, packagesError := rootCommand.Find([]string{"r", "packages", "delete"})
+	repoPackagesCommand, _, packagesError := rootCommand.Find([]string{"packages", "delete"})
 	require.NoError(t, packagesError)
 	require.Equal(t, []string{packagesPurgeOperationNameConstant}, application.operationsRequiredForCommand(repoPackagesCommand))
 
-	branchDefaultCommand, _, branchDefaultError := rootCommand.Find([]string{"b", "default"})
+	branchDefaultCommand, _, branchDefaultError := rootCommand.Find([]string{branchDefaultTopLevelUseNameConstant})
 	require.NoError(t, branchDefaultError)
 	require.Equal(t, []string{branchDefaultOperationNameConstant}, application.operationsRequiredForCommand(branchDefaultCommand))
 
-	commitMessageCommand, _, commitMessageError := rootCommand.Find([]string{"b", "commit", "message"})
+	commitMessageCommand, _, commitMessageError := rootCommand.Find([]string{"commit", "message"})
 	require.NoError(t, commitMessageError)
 	require.Equal(t, []string{commitMessageOperationNameConstant}, application.operationsRequiredForCommand(commitMessageCommand))
 
-	changelogMessageCommand, _, changelogMessageError := rootCommand.Find([]string{"r", "changelog", "message"})
+	changelogMessageCommand, _, changelogMessageError := rootCommand.Find([]string{"changelog", "message"})
 	require.NoError(t, changelogMessageError)
 	require.Equal(t, []string{changelogMessageOperationNameConstant}, application.operationsRequiredForCommand(changelogMessageCommand))
 }
@@ -327,26 +354,26 @@ func TestReleaseCommandUsageIncludesTagPlaceholder(t *testing.T) {
 	application := NewApplication()
 	rootCommand := application.rootCommand
 
-	releaseCommand, _, releaseError := rootCommand.Find([]string{"r", "release"})
+	releaseCommand, _, releaseError := rootCommand.Find([]string{"release"})
 	require.NoError(t, releaseError)
 
 	require.True(t, strings.HasPrefix(strings.TrimSpace(releaseCommand.Use), repoReleaseCommandUseNameConstant))
 	require.Contains(t, releaseCommand.Use, "<tag>")
 	require.Contains(t, releaseCommand.Long, "Provide the tag as the first argument")
-	require.Contains(t, releaseCommand.Example, "gix repo release")
+	require.Contains(t, releaseCommand.Example, "gix release")
 }
 
 func TestBranchChangeCommandUsageIncludesBranchPlaceholder(t *testing.T) {
 	application := NewApplication()
 	rootCommand := application.rootCommand
 
-	branchChangeCommand, _, branchChangeError := rootCommand.Find([]string{"b", "cd"})
+	branchChangeCommand, _, branchChangeError := rootCommand.Find([]string{branchChangeTopLevelUseNameConstant})
 	require.NoError(t, branchChangeError)
 
-	require.True(t, strings.HasPrefix(strings.TrimSpace(branchChangeCommand.Use), branchChangeCommandUseNameConstant))
+	require.True(t, strings.HasPrefix(strings.TrimSpace(branchChangeCommand.Use), branchChangeTopLevelUseNameConstant))
 	require.Contains(t, branchChangeCommand.Use, "<branch>")
 	require.Contains(t, branchChangeCommand.Long, "Provide the branch name as the first argument")
-	require.Contains(t, branchChangeCommand.Example, "gix branch cd")
+	require.Contains(t, branchChangeCommand.Example, "gix "+branchChangeTopLevelUseNameConstant)
 }
 
 func TestWorkflowCommandUsageIncludesConfigurationPlaceholder(t *testing.T) {
@@ -382,7 +409,7 @@ func TestInitializeConfigurationMergesEmbeddedRepoReleaseDefaults(t *testing.T) 
   log_level: info
   log_format: console
 operations:
-  - command: ["repo", "folder", "rename"]
+  - command: ["folder", "rename"]
     with:
       roots:
         - ./custom

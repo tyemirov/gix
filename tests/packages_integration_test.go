@@ -29,7 +29,6 @@ const (
 	packagesIntegrationRunSubcommandConstant            = "run"
 	packagesIntegrationModulePathConstant               = "."
 	packagesIntegrationConfigFlagTemplateConstant       = "--config=%s"
-	packagesIntegrationRepoNamespaceCommand             = "repo"
 	packagesIntegrationPackagesNamespaceCommand         = "packages"
 	packagesIntegrationDeleteActionCommand              = "delete"
 	packagesIntegrationCommandTimeout                   = 10 * time.Second
@@ -242,7 +241,6 @@ func TestPackagesCommandIntegration(testInstance *testing.T) {
 				packagesIntegrationRunSubcommandConstant,
 				packagesIntegrationModulePathConstant,
 				fmt.Sprintf(packagesIntegrationConfigFlagTemplateConstant, configPath),
-				packagesIntegrationRepoNamespaceCommand,
 				packagesIntegrationPackagesNamespaceCommand,
 				packagesIntegrationDeleteActionCommand,
 			}
