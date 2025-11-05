@@ -73,7 +73,9 @@ exit status 1
 ```
 ## Maintenance (410–499)
 
-- [ ] [GX-411] Review @POLICY.md and verify what code areas need improvements and refactoring. Prepare a detailed plan of refactoring. Check for bugs, missing tests, poor coding practices, uplication and slop. Ensure strong encapsulation and following the principles og @AGENTS.md and policies of @POLICY.md
+- [x] [GX-411] Review @POLICY.md and verify what code areas need improvements and refactoring. Prepare a detailed plan of refactoring. Check for bugs, missing tests, poor coding practices, uplication and slop. Ensure strong encapsulation and following the principles og @AGENTS.md and policies of @POLICY.md
+  - Status: Resolved
+  - Resolution: Documented a multi-stage refactor/test roadmap (`docs/refactor_plan_GX-411.md`) covering CLI composition, workflow/task execution, LLM integrations, reporting, and testing gaps, aligned with POLICY confidences. The plan seeds follow-up issues for concrete implementation work.
 
 ## Planning 
 do not work on the issues below, not ready
