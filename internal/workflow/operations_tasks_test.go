@@ -13,12 +13,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/temirov/gix/internal/audit"
-	"github.com/temirov/gix/internal/commitmsg"
-	"github.com/temirov/gix/internal/execshell"
-	"github.com/temirov/gix/internal/githubcli"
-	"github.com/temirov/gix/internal/gitrepo"
-	"github.com/temirov/gix/pkg/llm"
+	"github.com/tyemirov/gix/internal/audit"
+	"github.com/tyemirov/gix/internal/commitmsg"
+	"github.com/tyemirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/githubcli"
+	"github.com/tyemirov/gix/internal/gitrepo"
+	"github.com/tyemirov/gix/pkg/llm"
 )
 
 func TestTaskPlannerBuildPlanRendersTemplates(testInstance *testing.T) {

@@ -8,10 +8,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	repos "github.com/temirov/gix/cmd/cli/repos"
-	flagutils "github.com/temirov/gix/internal/utils/flags"
-	rootutils "github.com/temirov/gix/internal/utils/roots"
-	"github.com/temirov/gix/internal/workflow"
+	repos "github.com/tyemirov/gix/cmd/cli/repos"
+	flagutils "github.com/tyemirov/gix/internal/utils/flags"
+	rootutils "github.com/tyemirov/gix/internal/utils/roots"
+	"github.com/tyemirov/gix/internal/workflow"
 )
 
 const (

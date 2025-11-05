@@ -11,7 +11,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/temirov/gix/internal/githubauth"
+	"github.com/tyemirov/gix/internal/githubauth"
 )
 
 const (

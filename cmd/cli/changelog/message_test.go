@@ -10,13 +10,13 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	changeloggen "github.com/temirov/gix/internal/changelog"
-	"github.com/temirov/gix/internal/execshell"
-	"github.com/temirov/gix/internal/gitrepo"
-	"github.com/temirov/gix/internal/utils"
-	flagutils "github.com/temirov/gix/internal/utils/flags"
-	"github.com/temirov/gix/internal/workflow"
-	"github.com/temirov/gix/pkg/llm"
+	changeloggen "github.com/tyemirov/gix/internal/changelog"
+	"github.com/tyemirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/gitrepo"
+	"github.com/tyemirov/gix/internal/utils"
+	flagutils "github.com/tyemirov/gix/internal/utils/flags"
+	"github.com/tyemirov/gix/internal/workflow"
+	"github.com/tyemirov/gix/pkg/llm"
 )
 
 func TestMessageCommandGeneratesChangelog(t *testing.T) {

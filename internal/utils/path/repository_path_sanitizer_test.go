@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	pathutils "github.com/temirov/gix/internal/utils/path"
+	pathutils "github.com/tyemirov/gix/internal/utils/path"
 )
 
 const (

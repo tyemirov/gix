@@ -3,7 +3,7 @@ package workflow
 import (
 	"sync/atomic"
 
-	"github.com/temirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/internal/repos/shared"
 )
 
 // PromptState tracks the shared confirmation policy across operations.

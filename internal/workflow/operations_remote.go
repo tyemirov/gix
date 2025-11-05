@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	repoerrors "github.com/temirov/gix/internal/repos/errors"
-	"github.com/temirov/gix/internal/repos/identity"
-	"github.com/temirov/gix/internal/repos/remotes"
-	"github.com/temirov/gix/internal/repos/shared"
+	repoerrors "github.com/tyemirov/gix/internal/repos/errors"
+	"github.com/tyemirov/gix/internal/repos/identity"
+	"github.com/tyemirov/gix/internal/repos/remotes"
+	"github.com/tyemirov/gix/internal/repos/shared"
 )
 
 const (

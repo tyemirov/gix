@@ -14,16 +14,16 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 
-	"github.com/temirov/gix/cmd/cli"
-	repos "github.com/temirov/gix/cmd/cli/repos"
-	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
-	"github.com/temirov/gix/internal/audit"
-	"github.com/temirov/gix/internal/branches"
-	branchrefresh "github.com/temirov/gix/internal/branches/refresh"
-	"github.com/temirov/gix/internal/migrate"
-	"github.com/temirov/gix/internal/packages"
-	"github.com/temirov/gix/internal/utils"
-	workflowpkg "github.com/temirov/gix/internal/workflow"
+	"github.com/tyemirov/gix/cmd/cli"
+	repos "github.com/tyemirov/gix/cmd/cli/repos"
+	workflowcmd "github.com/tyemirov/gix/cmd/cli/workflow"
+	"github.com/tyemirov/gix/internal/audit"
+	"github.com/tyemirov/gix/internal/branches"
+	branchrefresh "github.com/tyemirov/gix/internal/branches/refresh"
+	"github.com/tyemirov/gix/internal/migrate"
+	"github.com/tyemirov/gix/internal/packages"
+	"github.com/tyemirov/gix/internal/utils"
+	workflowpkg "github.com/tyemirov/gix/internal/workflow"
 )
 
 const (

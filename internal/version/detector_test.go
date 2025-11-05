@@ -8,9 +8,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/temirov/gix/internal/execshell"
-	"github.com/temirov/gix/internal/repos/shared"
-	"github.com/temirov/gix/internal/version"
+	"github.com/tyemirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/internal/version"
 )
 
 type stubBuildInfoProvider struct {

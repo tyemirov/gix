@@ -8,12 +8,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/temirov/gix/internal/audit"
-	"github.com/temirov/gix/internal/execshell"
-	"github.com/temirov/gix/internal/githubauth"
-	"github.com/temirov/gix/internal/githubcli"
-	"github.com/temirov/gix/internal/gitrepo"
-	migrate "github.com/temirov/gix/internal/migrate"
+	"github.com/tyemirov/gix/internal/audit"
+	"github.com/tyemirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/githubauth"
+	"github.com/tyemirov/gix/internal/githubcli"
+	"github.com/tyemirov/gix/internal/gitrepo"
+	migrate "github.com/tyemirov/gix/internal/migrate"
 )
 
 type scriptedExecutor struct {

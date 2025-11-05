@@ -1,12 +1,12 @@
 package dependencies
 
 import (
-	"github.com/temirov/gix/internal/execshell"
-	"github.com/temirov/gix/internal/githubcli"
-	"github.com/temirov/gix/internal/gitrepo"
-	"github.com/temirov/gix/internal/repos/discovery"
-	"github.com/temirov/gix/internal/repos/filesystem"
-	"github.com/temirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/githubcli"
+	"github.com/tyemirov/gix/internal/gitrepo"
+	"github.com/tyemirov/gix/internal/repos/discovery"
+	"github.com/tyemirov/gix/internal/repos/filesystem"
+	"github.com/tyemirov/gix/internal/repos/shared"
 	"go.uber.org/zap"
 )
 

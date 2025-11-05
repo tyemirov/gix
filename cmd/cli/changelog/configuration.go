@@ -3,7 +3,7 @@ package changelog
 import (
 	"strings"
 
-	rootutils "github.com/temirov/gix/internal/utils/roots"
+	rootutils "github.com/tyemirov/gix/internal/utils/roots"
 )
 
 const (

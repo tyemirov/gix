@@ -9,11 +9,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/temirov/gix/internal/audit"
-	"github.com/temirov/gix/internal/audit/cli"
-	"github.com/temirov/gix/internal/execshell"
-	flagutils "github.com/temirov/gix/internal/utils/flags"
-	"github.com/temirov/gix/internal/workflow"
+	"github.com/tyemirov/gix/internal/audit"
+	"github.com/tyemirov/gix/internal/audit/cli"
+	"github.com/tyemirov/gix/internal/execshell"
+	flagutils "github.com/tyemirov/gix/internal/utils/flags"
+	"github.com/tyemirov/gix/internal/workflow"
 )
 
 const (

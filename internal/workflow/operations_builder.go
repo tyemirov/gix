@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/temirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/internal/repos/shared"
 )
 
 const (

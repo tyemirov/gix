@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/temirov/gix/internal/gitrepo"
+	"github.com/tyemirov/gix/internal/gitrepo"
 )
 
 func TestEvaluateSafeguardsRequireClean(t *testing.T) {

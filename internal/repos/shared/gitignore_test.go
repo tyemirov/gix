@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/temirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/execshell"
 )
 
 type stubGitExecutor struct {

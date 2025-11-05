@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/temirov/gix/internal/execshell"
-	"github.com/temirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/repos/shared"
 )
 
 type fakeRepositoryDiscoverer struct {
