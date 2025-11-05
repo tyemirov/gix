@@ -99,9 +99,18 @@ func NewRepositoryManager(executor GitCommandExecutor) (*RepositoryManager, erro
 
 // CheckCleanWorktree returns true when the repository has no staged or unstaged changes.
 func (manager *RepositoryManager) CheckCleanWorktree(executionContext context.Context, repositoryPath string) (bool, error) {
+	status, statusError := manager.WorktreeStatus(executionContext, repositoryPath)
+	if statusError != nil {
+		return false, statusError
+	}
+	return len(status) == 0, nil
+}
+
+// WorktreeStatus returns the porcelain status entries for the repository.
+func (manager *RepositoryManager) WorktreeStatus(executionContext context.Context, repositoryPath string) ([]string, error) {
 	trimmedPath := strings.TrimSpace(repositoryPath)
 	if len(trimmedPath) == 0 {
-		return false, InvalidRepositoryInputError{FieldName: repositoryPathFieldNameConstant, Message: requiredValueMessageConstant}
+		return nil, InvalidRepositoryInputError{FieldName: repositoryPathFieldNameConstant, Message: requiredValueMessageConstant}
 	}
 
 	commandDetails := execshell.CommandDetails{
@@ -111,11 +120,22 @@ func (manager *RepositoryManager) CheckCleanWorktree(executionContext context.Co
 
 	executionResult, executionError := manager.executor.ExecuteGit(executionContext, commandDetails)
 	if executionError != nil {
-		return false, RepositoryOperationError{Operation: cleanWorktreeOperationNameConstant, Cause: executionError}
+		return nil, RepositoryOperationError{Operation: cleanWorktreeOperationNameConstant, Cause: executionError}
 	}
 
 	trimmedOutput := strings.TrimSpace(executionResult.StandardOutput)
-	return len(trimmedOutput) == 0, nil
+	if len(trimmedOutput) == 0 {
+		return nil, nil
+	}
+
+	lines := strings.Split(trimmedOutput, "\n")
+	entries := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if trimmed := strings.TrimSpace(line); len(trimmed) > 0 {
+			entries = append(entries, trimmed)
+		}
+	}
+	return entries, nil
 }
 
 // CheckoutBranch checks out an existing branch.

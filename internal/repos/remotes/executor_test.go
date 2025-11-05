@@ -25,6 +25,10 @@ func (manager *stubGitManager) CheckCleanWorktree(ctx context.Context, repositor
 	return true, nil
 }
 
+func (manager *stubGitManager) WorktreeStatus(ctx context.Context, repositoryPath string) ([]string, error) {
+	return nil, nil
+}
+
 func (manager *stubGitManager) GetCurrentBranch(ctx context.Context, repositoryPath string) (string, error) {
 	return "main", nil
 }

@@ -107,11 +107,22 @@ func (stubFileInfo) IsDir() bool        { return true }
 func (stubFileInfo) Sys() any           { return nil }
 
 type stubGitManager struct {
-	clean bool
+	clean        bool
+	dirtyEntries []string
 }
 
 func (manager stubGitManager) CheckCleanWorktree(ctx context.Context, repositoryPath string) (bool, error) {
 	return manager.clean, nil
+}
+
+func (manager stubGitManager) WorktreeStatus(ctx context.Context, repositoryPath string) ([]string, error) {
+	if manager.clean {
+		return nil, nil
+	}
+	if len(manager.dirtyEntries) > 0 {
+		return manager.dirtyEntries, nil
+	}
+	return []string{" M README.md"}, nil
 }
 
 func (manager stubGitManager) GetCurrentBranch(ctx context.Context, repositoryPath string) (string, error) {
@@ -397,7 +408,7 @@ func TestExecutorBehaviors(testInstance *testing.T) {
 					renameTestProjectFolderPath: true,
 				},
 			},
-			gitManager:      stubGitManager{clean: false},
+			gitManager:      stubGitManager{clean: false, dirtyEntries: []string{" M README.md", "?? tmp.txt"}},
 			expectedRenames: 0,
 			expectedEvents: []eventExpectation{
 				{
@@ -405,6 +416,7 @@ func TestExecutorBehaviors(testInstance *testing.T) {
 					assert: func(t *testing.T, event map[string]string) {
 						require.Equal(t, renameTestProjectFolderPath, event["path"])
 						require.Equal(t, "dirty_worktree", event["reason"])
+						require.Equal(t, "M README.md; ?? tmp.txt", event["dirty_entries"])
 					},
 				},
 			},
@@ -577,12 +589,20 @@ func parseStructuredEvents(output string) []map[string]string {
 		}
 
 		event := make(map[string]string, len(fields))
+		var lastKey string
 		for _, field := range fields {
 			keyValue := strings.SplitN(field, "=", 2)
-			if len(keyValue) != 2 {
+			if len(keyValue) == 2 {
+				key := keyValue[0]
+				value := keyValue[1]
+				event[key] = value
+				lastKey = key
 				continue
 			}
-			event[keyValue[0]] = keyValue[1]
+			if len(field) == 0 || len(lastKey) == 0 {
+				continue
+			}
+			event[lastKey] = event[lastKey] + " " + field
 		}
 		if len(event) > 0 {
 			events = append(events, event)

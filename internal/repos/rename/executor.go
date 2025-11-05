@@ -113,7 +113,7 @@ func (executor *Executor) Execute(executionContext context.Context, options Opti
 		prompt := fmt.Sprintf(promptTemplate, oldAbsolutePath, newAbsolutePath)
 		confirmationResult, promptError := executor.dependencies.Prompter.Confirm(prompt)
 		if promptError != nil {
-			executor.printfOutput(failureMessage, oldAbsolutePath, newAbsolutePath)
+			executor.reportOutput(failureMessage, oldAbsolutePath, newAbsolutePath)
 			return repoerrors.Wrap(
 				repoerrors.OperationRenameDirectories,
 				oldAbsolutePath,
@@ -122,7 +122,7 @@ func (executor *Executor) Execute(executionContext context.Context, options Opti
 			)
 		}
 		if !confirmationResult.Confirmed {
-			executor.printfOutput(skipMessage, oldAbsolutePath)
+			executor.reportOutput(skipMessage, oldAbsolutePath)
 			return nil
 		}
 	}
@@ -135,7 +135,7 @@ func (executor *Executor) Execute(executionContext context.Context, options Opti
 		return renameError
 	}
 
-	executor.printfOutput(successMessage, oldAbsolutePath, newAbsolutePath)
+	executor.reportOutput(successMessage, oldAbsolutePath, newAbsolutePath)
 	return nil
 }
 
@@ -148,30 +148,39 @@ func (executor *Executor) printPlan(executionContext context.Context, oldAbsolut
 	caseOnlyRename := isCaseOnlyRename(oldAbsolutePath, newAbsolutePath)
 	parentDetails := executor.parentDirectoryDetails(newAbsolutePath)
 
+	if requireClean {
+		dirtyEntries, dirtyError := executor.worktreeStatus(executionContext, oldAbsolutePath)
+		if dirtyError != nil {
+			executor.reportOutput(planSkipDirtyMessage, newDirtyWorktreeArgument(oldAbsolutePath, []string{dirtyError.Error()}))
+			return
+		}
+		if len(dirtyEntries) > 0 {
+			executor.reportOutput(planSkipDirtyMessage, newDirtyWorktreeArgument(oldAbsolutePath, dirtyEntries))
+			return
+		}
+	}
+
 	switch {
 	case oldAbsolutePath == newAbsolutePath:
-		executor.printfOutput(planSkipAlreadyMessage, oldAbsolutePath)
-		return
-	case requireClean && !executor.isClean(executionContext, oldAbsolutePath):
-		executor.printfOutput(planSkipDirtyMessage, oldAbsolutePath)
+		executor.reportOutput(planSkipAlreadyMessage, oldAbsolutePath)
 		return
 	case parentDetails.exists && !parentDetails.isDirectory:
-		executor.printfOutput(planSkipParentNotDirectoryMessage, parentDetails.path)
+		executor.reportOutput(planSkipParentNotDirectoryMessage, parentDetails.path)
 		return
 	case !ensureParentDirectories && !parentDetails.exists:
-		executor.printfOutput(planSkipParentMissingMessage, parentDetails.path)
+		executor.reportOutput(planSkipParentMissingMessage, parentDetails.path)
 		return
 	case executor.targetExists(newAbsolutePath) && !caseOnlyRename:
-		executor.printfOutput(planSkipExistsMessage, newAbsolutePath)
+		executor.reportOutput(planSkipExistsMessage, newAbsolutePath)
 		return
 	}
 
 	if caseOnlyRename {
-		executor.printfOutput(planCaseOnlyMessage, oldAbsolutePath, newAbsolutePath)
+		executor.reportOutput(planCaseOnlyMessage, oldAbsolutePath, newAbsolutePath)
 		return
 	}
 
-	executor.printfOutput(planReadyMessage, oldAbsolutePath, newAbsolutePath)
+	executor.reportOutput(planReadyMessage, oldAbsolutePath, newAbsolutePath)
 }
 
 func (executor *Executor) evaluatePrerequisites(executionContext context.Context, oldAbsolutePath string, newAbsolutePath string, requireClean bool, ensureParentDirectories bool) (bool, error) {
@@ -179,17 +188,24 @@ func (executor *Executor) evaluatePrerequisites(executionContext context.Context
 	parentDetails := executor.parentDirectoryDetails(newAbsolutePath)
 
 	if oldAbsolutePath == newAbsolutePath {
-		executor.printfOutput(skipAlreadyNormalizedMessage, oldAbsolutePath)
+		executor.reportOutput(skipAlreadyNormalizedMessage, oldAbsolutePath)
 		return true, nil
 	}
 
-	if requireClean && !executor.isClean(executionContext, oldAbsolutePath) {
-		executor.printfOutput(skipDirtyMessage, oldAbsolutePath)
-		return true, nil
+	if requireClean {
+		dirtyEntries, dirtyError := executor.worktreeStatus(executionContext, oldAbsolutePath)
+		if dirtyError != nil {
+			executor.reportOutput(skipDirtyMessage, newDirtyWorktreeArgument(oldAbsolutePath, []string{dirtyError.Error()}))
+			return true, nil
+		}
+		if len(dirtyEntries) > 0 {
+			executor.reportOutput(skipDirtyMessage, newDirtyWorktreeArgument(oldAbsolutePath, dirtyEntries))
+			return true, nil
+		}
 	}
 
 	if parentDetails.exists && !parentDetails.isDirectory {
-		executor.printfOutput(errorParentNotDirectoryMessage, parentDetails.path)
+		executor.reportOutput(errorParentNotDirectoryMessage, parentDetails.path)
 		return true, repoerrors.WrapMessage(
 			repoerrors.OperationRenameDirectories,
 			parentDetails.path,
@@ -199,7 +215,7 @@ func (executor *Executor) evaluatePrerequisites(executionContext context.Context
 	}
 
 	if !ensureParentDirectories && !parentDetails.exists {
-		executor.printfOutput(errorParentMissingMessage, parentDetails.path)
+		executor.reportOutput(errorParentMissingMessage, parentDetails.path)
 		return true, repoerrors.WrapMessage(
 			repoerrors.OperationRenameDirectories,
 			parentDetails.path,
@@ -209,7 +225,7 @@ func (executor *Executor) evaluatePrerequisites(executionContext context.Context
 	}
 
 	if executor.targetExists(newAbsolutePath) && !caseOnlyRename {
-		executor.printfOutput(errorTargetExistsMessage, newAbsolutePath)
+		executor.reportOutput(errorTargetExistsMessage, newAbsolutePath)
 		return true, repoerrors.WrapMessage(
 			repoerrors.OperationRenameDirectories,
 			newAbsolutePath,
@@ -221,16 +237,17 @@ func (executor *Executor) evaluatePrerequisites(executionContext context.Context
 	return false, nil
 }
 
-func (executor *Executor) isClean(executionContext context.Context, repositoryPath string) bool {
+func (executor *Executor) worktreeStatus(executionContext context.Context, repositoryPath string) ([]string, error) {
 	if executor.dependencies.GitManager == nil {
-		return false
+		return nil, repoerrors.Wrap(
+			repoerrors.OperationRenameDirectories,
+			repositoryPath,
+			repoerrors.ErrGitManagerUnavailable,
+			nil,
+		)
 	}
 
-	clean, cleanError := executor.dependencies.GitManager.CheckCleanWorktree(executionContext, repositoryPath)
-	if cleanError != nil {
-		return false
-	}
-	return clean
+	return executor.dependencies.GitManager.WorktreeStatus(executionContext, repositoryPath)
 }
 
 func (executor *Executor) parentDirectoryDetails(path string) parentDirectoryInformation {
@@ -269,7 +286,7 @@ func (executor *Executor) ensureParentDirectory(newAbsolutePath string, ensurePa
 		if parentDetails.isDirectory {
 			return nil
 		}
-		executor.printfOutput(errorParentNotDirectoryMessage, parentDetails.path)
+		executor.reportOutput(errorParentNotDirectoryMessage, parentDetails.path)
 		return repoerrors.WrapMessage(
 			repoerrors.OperationRenameDirectories,
 			parentDetails.path,
@@ -279,7 +296,7 @@ func (executor *Executor) ensureParentDirectory(newAbsolutePath string, ensurePa
 	}
 
 	if executor.dependencies.FileSystem == nil {
-		executor.printfOutput(errorParentMissingMessage, parentDetails.path)
+		executor.reportOutput(errorParentMissingMessage, parentDetails.path)
 		return repoerrors.WrapMessage(
 			repoerrors.OperationRenameDirectories,
 			parentDetails.path,
@@ -289,7 +306,7 @@ func (executor *Executor) ensureParentDirectory(newAbsolutePath string, ensurePa
 	}
 
 	if creationError := executor.dependencies.FileSystem.MkdirAll(parentDetails.path, parentDirectoryPermissionConstant); creationError != nil {
-		executor.printfOutput(errorParentMissingMessage, parentDetails.path)
+		executor.reportOutput(errorParentMissingMessage, parentDetails.path)
 		return repoerrors.WrapMessage(
 			repoerrors.OperationRenameDirectories,
 			parentDetails.path,
@@ -347,7 +364,7 @@ func (executor *Executor) performRename(oldAbsolutePath string, newAbsolutePath 
 		trimmed := strings.TrimSuffix(message, "\n")
 		message = fmt.Sprintf("%s: %v\n", trimmed, lastError)
 	}
-	executor.printfOutput("%s", message)
+	executor.reportOutput("%s", message)
 
 	return repoerrors.WrapMessage(
 		repoerrors.OperationRenameDirectories,
@@ -357,7 +374,7 @@ func (executor *Executor) performRename(oldAbsolutePath string, newAbsolutePath 
 	)
 }
 
-func (executor *Executor) printfOutput(format string, arguments ...any) {
+func (executor *Executor) reportOutput(format string, arguments ...any) {
 	if executor.dependencies.Reporter == nil {
 		return
 	}
@@ -399,9 +416,13 @@ func (executor *Executor) printfOutput(format string, arguments ...any) {
 	case skipDirtyMessage:
 		repositoryPath := fmt.Sprintf("%v", arguments[0])
 		event.Code = shared.EventCodeFolderSkip
-		event.Message = "skipped due to dirty worktree"
+		dirtyEntries := normalizeDirtyEntries(arguments)
+		event.Message = buildDirtyWorktreeMessage("skipped due to dirty worktree", dirtyEntries)
 		event.RepositoryPath = repositoryPath
 		event.Details["reason"] = "dirty_worktree"
+		if len(dirtyEntries) > 0 {
+			event.Details["dirty_entries"] = strings.Join(dirtyEntries, "; ")
+		}
 	case skipAlreadyNormalizedMessage:
 		repositoryPath := fmt.Sprintf("%v", arguments[0])
 		event.Code = shared.EventCodeFolderSkip
@@ -417,9 +438,13 @@ func (executor *Executor) printfOutput(format string, arguments ...any) {
 	case planSkipDirtyMessage:
 		repositoryPath := fmt.Sprintf("%v", arguments[0])
 		event.Code = shared.EventCodeFolderPlan
-		event.Message = "skip: dirty worktree"
+		dirtyEntries := normalizeDirtyEntries(arguments)
+		event.Message = buildDirtyWorktreeMessage("skip: dirty worktree", dirtyEntries)
 		event.RepositoryPath = repositoryPath
 		event.Details["reason"] = "dirty_worktree"
+		if len(dirtyEntries) > 0 {
+			event.Details["dirty_entries"] = strings.Join(dirtyEntries, "; ")
+		}
 	case planSkipParentMissingMessage:
 		parentPath := fmt.Sprintf("%v", arguments[0])
 		event.Code = shared.EventCodeFolderPlan
@@ -494,6 +519,68 @@ func (executor *Executor) printfOutput(format string, arguments ...any) {
 
 func isCaseOnlyRename(oldPath string, newPath string) bool {
 	return strings.EqualFold(oldPath, newPath) && oldPath != newPath
+}
+
+type dirtyEntriesProvider interface {
+	DirtyEntries() []string
+}
+
+type dirtyWorktreeArgument struct {
+	repositoryPath string
+	entries        []string
+}
+
+func newDirtyWorktreeArgument(repositoryPath string, entries []string) dirtyWorktreeArgument {
+	duplicate := make([]string, len(entries))
+	copy(duplicate, entries)
+	return dirtyWorktreeArgument{repositoryPath: repositoryPath, entries: duplicate}
+}
+
+func (argument dirtyWorktreeArgument) String() string {
+	return argument.repositoryPath
+}
+
+func (argument dirtyWorktreeArgument) DirtyEntries() []string {
+	duplicate := make([]string, len(argument.entries))
+	copy(duplicate, argument.entries)
+	return duplicate
+}
+
+func normalizeDirtyEntries(arguments []any) []string {
+	var rawEntries []string
+	for _, argument := range arguments {
+		if provider, ok := argument.(dirtyEntriesProvider); ok {
+			rawEntries = provider.DirtyEntries()
+			break
+		}
+	}
+
+	if rawEntries == nil && len(arguments) > 1 {
+		if entries, ok := arguments[1].([]string); ok {
+			rawEntries = append([]string(nil), entries...)
+		}
+	}
+
+	if rawEntries == nil {
+		return nil
+	}
+
+	normalized := make([]string, 0, len(rawEntries))
+	for _, entry := range rawEntries {
+		trimmed := strings.TrimSpace(entry)
+		if len(trimmed) == 0 {
+			continue
+		}
+		normalized = append(normalized, trimmed)
+	}
+	return normalized
+}
+
+func buildDirtyWorktreeMessage(prefix string, entries []string) string {
+	if len(entries) == 0 {
+		return prefix
+	}
+	return fmt.Sprintf("%s (%s)", prefix, strings.Join(entries, "; "))
 }
 
 // parentDirectoryInformation describes the state of a parent directory for rename planning.

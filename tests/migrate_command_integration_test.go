@@ -125,6 +125,9 @@ type integrationGitRepositoryManager struct{}
 func (integrationGitRepositoryManager) CheckCleanWorktree(context.Context, string) (bool, error) {
 	return true, nil
 }
+func (integrationGitRepositoryManager) WorktreeStatus(context.Context, string) ([]string, error) {
+	return nil, nil
+}
 func (integrationGitRepositoryManager) GetCurrentBranch(context.Context, string) (string, error) {
 	return "main", nil
 }

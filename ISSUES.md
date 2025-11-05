@@ -93,6 +93,8 @@ TASK-SKIP: Rewrite module namespace /tmp/repos/tyemirov/GAuss repository dirty
 RELEASED: /Users/tyemirov/Development/tyemirov/gix -> v0.2.0-rc.6
 Summary: total.repos=0 duration_ms=0
 
+- [ ] Remove the top level command and only use subcommands
+
 ### Examples (your lines → refactored)
 
 **Switch**
