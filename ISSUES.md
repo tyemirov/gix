@@ -33,8 +33,9 @@ Summary: total.repos=0 duration_ms=0
 
 ## BugFixes (320–399)
 
-- [ ] [GX-320] The message "namespace rewrite skipped: files ignored by git" doesnt make much sense. Must be a bug. Investigate the real reason the operation hasn't been performed.
-  - Resolution: Namespace rewrite now distinguishes between "no references" and "all matches ignored"; skips without matches report `namespace rewrite skipped: no references to <prefix>` while gitignored-only matches keep the git warning. Updated unit tests cover both skip paths.
+- [x] [GX-320] The message "namespace rewrite skipped: files ignored by git" doesnt make much sense. Must be a bug. Investigate the real reason the operation hasn't been performed.
+  - Status: Resolved
+  - Resolution: Namespace rewrite skips now report the actual ignored paths (for example `namespace rewrite skipped: all matching files ignored by git (go.mod, vendor/pkg.go)`), while the "no references" case keeps its dedicated message. Updated unit tests lock in the richer diagnostics.
 ```shell
 -- repo: tyemirov/ctx ----------------------------------------------------------
 22:34:53 INFO  REMOTE_SKIP        tyemirov/ctx                       already canonical                        | event=REMOTE_SKIP path=/tmp/repos/ctx reason=already_canonical repo=tyemirov/ctx
