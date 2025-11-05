@@ -130,12 +130,54 @@ func TestExecutorSkipsMetadataWhenGitHubClientMissing(testInstance *testing.T) {
 	require.NoError(testInstance, executionError)
 }
 
+func TestExecutorSummaryCountsRepositoriesWithoutEmittedEvents(testInstance *testing.T) {
+	tempDirectory := testInstance.TempDir()
+	repositoryPath := filepath.Join(tempDirectory, "sample")
+	require.NoError(testInstance, os.Mkdir(repositoryPath, 0o755))
+
+	gitExecutor := newStubWorkflowGitExecutor()
+	repositoryManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(testInstance, managerError)
+
+	outputBuffer := &bytes.Buffer{}
+
+	dependencies := Dependencies{
+		RepositoryDiscoverer: executorStubRepositoryDiscoverer{repositories: []string{repositoryPath}},
+		GitExecutor:          gitExecutor,
+		RepositoryManager:    repositoryManager,
+		Output:               outputBuffer,
+		Errors:               &bytes.Buffer{},
+	}
+
+	executor := NewExecutor([]Operation{noopOperation{}}, dependencies)
+
+	executionError := executor.Execute(
+		context.Background(),
+		[]string{repositoryPath},
+		RuntimeOptions{SkipRepositoryMetadata: true},
+	)
+	require.NoError(testInstance, executionError)
+
+	summary := outputBuffer.String()
+	require.Contains(testInstance, summary, "Summary: total.repos=1")
+}
+
 type executorStubRepositoryDiscoverer struct {
 	repositories []string
 }
 
 func (discoverer executorStubRepositoryDiscoverer) DiscoverRepositories(roots []string) ([]string, error) {
 	return append([]string{}, discoverer.repositories...), nil
+}
+
+type noopOperation struct{}
+
+func (noopOperation) Name() string {
+	return "noop"
+}
+
+func (noopOperation) Execute(ctx context.Context, environment *Environment, state *State) error {
+	return nil
 }
 
 type stubWorkflowGitExecutor struct {

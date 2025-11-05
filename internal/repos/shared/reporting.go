@@ -130,6 +130,23 @@ func NewStructuredReporter(output io.Writer, errors io.Writer, options ...Report
 	return reporter
 }
 
+// RecordRepository registers a repository as observed without emitting an event.
+func (reporter *StructuredReporter) RecordRepository(identifier string, path string) {
+	if reporter == nil {
+		return
+	}
+
+	reporter.mutex.Lock()
+	defer reporter.mutex.Unlock()
+
+	key := reporter.computeSeenRepositoryKey(strings.TrimSpace(identifier), strings.TrimSpace(path))
+	if len(key) == 0 {
+		return
+	}
+
+	reporter.seenRepositories[key] = struct{}{}
+}
+
 // Report logs the provided event using the configured formatting rules.
 func (reporter *StructuredReporter) Report(event Event) {
 	if reporter == nil {

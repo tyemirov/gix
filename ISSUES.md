@@ -44,7 +44,9 @@ Summary: total.repos=0 duration_ms=0
 22:35:01 INFO  NAMESPACE_NOOP     tyemirov/ctx                       namespace rewrite skipped: files ignored by git | event=NAMESPACE_NOOP path=/tmp/repos/tyemirov/ctx reason=namespace_rewrite_skipped:_files_ignored_by_git repo=tyemirov/ctx
 ```
 
-- [ ] [GX-321] the changelog command produces a summary: "Summary: total.repos=0 duration_ms=0". Obviously, this is wrong -- there was a repo it analyzed and it tooks some time.
+- [x] [GX-321] the changelog command produces a summary: "Summary: total.repos=0 duration_ms=0". Obviously, this is wrong -- there was a repo it analyzed and it tooks some time.
+  - Status: Resolved
+  - Resolution: Workflow execution now pre-registers repositories with the structured reporter, so summary output reflects the actual repository count and elapsed duration even when operations emit no events. Added reporter and executor tests to guarantee the behaviour.
 
 - [ ] [GX-322] Investigate the reason of the workflow exit. Ensure it is impossible for a workflow to exit, only the tasks can report the error conditions but a workflow will always finish successfully even if with an error status
 ```shell

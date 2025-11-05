@@ -219,6 +219,17 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 	}
 	environment.State = state
 
+	for _, repository := range repositoryStates {
+		if repository == nil {
+			continue
+		}
+		identifier := strings.TrimSpace(repository.Inspection.FinalOwnerRepo)
+		if identifier == "" {
+			identifier = strings.TrimSpace(repository.Inspection.CanonicalOwnerRepo)
+		}
+		reporter.RecordRepository(identifier, repository.Path)
+	}
+
 	stages, planError := planOperationStages(executor.nodes)
 	if planError != nil {
 		return planError
