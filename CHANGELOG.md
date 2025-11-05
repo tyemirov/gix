@@ -1,5 +1,26 @@
 # Changelog
 
+## [v0.2.0-rc.8]
+
+### Features ✨
+- _No changes._
+
+### Improvements ⚙️
+- Updated branch migration logic to skip further checks when the remote destination branch matches the target branch.
+- Enhanced test coverage for branch migration operations, including scenarios for skipping remote push and skipping migration when remote already matches the target.
+- Refined default branch detection in tests to use "main" instead of "master" for better alignment with modern defaults.
+
+### Bug Fixes 🐛
+- Fixed issue where branch migration would perform unnecessary checks even if the remote destination branch already matched the target.
+
+### Testing 🧪
+- Added tests to verify branch migration skips when remote branch matches target.
+- Improved scripted executor mocks to handle default branch names dynamically.
+- Adjusted existing tests to reflect updated branch naming conventions and migration logic.
+
+### Docs 📚
+- Added a note in ISSUES.md regarding removal of the `--dry-run` flag and associated logic.
+
 ## [v0.2.0-rc.7]
 
 ### Features ✨
