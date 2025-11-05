@@ -37,3 +37,14 @@ func TestStructuredReporterSummaryCountsRepositoriesAndFormatsDuration(t *testin
 	require.Contains(t, summary, "duration_human=1.5s")
 	require.Contains(t, summary, "duration_ms=1500")
 }
+
+func TestStructuredReporterRecordRepositoryIncludesObservedRoots(t *testing.T) {
+	reporter := NewStructuredReporter(&bytes.Buffer{}, &bytes.Buffer{}, WithRepositoryHeaders(false))
+
+	reporter.RecordRepository("", "/tmp/repos/demo")
+
+	summary := reporter.Summary()
+	require.Contains(t, summary, "Summary: total.repos=1")
+	require.Contains(t, summary, "WARN=0")
+	require.Contains(t, summary, "ERROR=0")
+}
