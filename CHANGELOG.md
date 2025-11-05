@@ -16,7 +16,7 @@
 - Fixed staticcheck warnings and documented linting steps.
 - Workflow `repo tasks apply` can now build LLM clients from configuration and capture action output into workflow variables for later steps.
 - Task executor skip logs now include git status entries so dirty repositories list the blocking files.
-- Summary reporter now counts repositories without metadata and emits human-readable durations alongside milliseconds.
+- Summary reporter now counts repositories without metadata and emits `duration_human` alongside `duration_ms`.
 
 ### Bug Fixes 🐛
 - Fixed panic caused by `gix repo prs delete --yes yes` due to nil GitHub client.

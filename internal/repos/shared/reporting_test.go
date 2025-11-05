@@ -34,6 +34,6 @@ func TestStructuredReporterSummaryCountsRepositoriesAndFormatsDuration(t *testin
 	require.Contains(t, summary, "TEST_EVENT=1")
 	require.Contains(t, summary, "WARN=0")
 	require.Contains(t, summary, "ERROR=0")
-	require.Contains(t, summary, "duration=1.5s")
+	require.Contains(t, summary, "duration_human=1.5s")
 	require.Contains(t, summary, "duration_ms=1500")
 }

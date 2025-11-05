@@ -182,7 +182,7 @@ func (reporter *StructuredReporter) Summary() string {
 	defer reporter.mutex.Unlock()
 
 	if len(reporter.eventCounts) == 0 && len(reporter.seenRepositories) == 0 {
-		return "Summary: total.repos=0 duration=0s duration_ms=0"
+		return "Summary: total.repos=0 duration_human=0s duration_ms=0"
 	}
 
 	keys := make([]string, 0, len(reporter.eventCounts))
@@ -213,7 +213,7 @@ func (reporter *StructuredReporter) Summary() string {
 		duration = 0
 	}
 	humanDuration := reporter.formatDuration(duration)
-	parts = append(parts, fmt.Sprintf("duration=%s", humanDuration))
+	parts = append(parts, fmt.Sprintf("duration_human=%s", humanDuration))
 	parts = append(parts, fmt.Sprintf("duration_ms=%d", duration.Milliseconds()))
 
 	return strings.Join(parts, " ")

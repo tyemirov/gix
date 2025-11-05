@@ -23,7 +23,7 @@ TASK-SKIP: Rewrite module namespace /tmp/repos/tyemirov/GAuss repository dirty
 
 - [x] [GX-217] Erroneous summary message: total.repos=0, should be total.repos=1, and it also must have taken some time, so the executor shall be returning time that we shall be printing in human readeable foramt.
   - Status: Resolved
-  - Resolution: StructuredReporter now falls back to repository paths when identifiers are missing and adds a human-readable `duration` field, producing accurate counts and elapsed time.
+  - Resolution: StructuredReporter now falls back to repository paths when identifiers are missing and adds a `duration_human` field alongside milliseconds, producing accurate counts and elapsed time.
 RELEASED: /Users/tyemirov/Development/tyemirov/gix -> v0.2.0-rc.6
 Summary: total.repos=0 duration_ms=0
 
