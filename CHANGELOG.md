@@ -28,7 +28,7 @@
 - Adjusted existing tests to reflect updated branch naming conventions and migration logic.
 
 ### Docs 📚
-- Added a note in ISSUES.md regarding removal of the `--dry-run` flag and associated logic.
+- Added a note in ISSUES.md regarding removal of the `--preview` flag and associated logic.
 
 ## [v0.2.0-rc.7]
 
@@ -180,7 +180,7 @@ Summary: total.repos=0 duration_ms=0
 ### Features ✨
 - Added `namespace rewrite` command backed by a namespace rewrite service and workflow action to update Go module paths across repositories.
 - Added `files replace` command for file replacement tasks across repositories.
-- Added `rm` command with task-runner orchestration and dry-run previews.
+- Added `rm` command with task-runner orchestration and preview previews.
 - Routed the workflow CLI through the shared task runner so declarative workflow steps execute as orchestrated tasks.
 - `branch default` command now accepts the target branch as a positional argument (`gix b default master`) while retaining configuration fallbacks and removing the legacy `--to` flag.
 
@@ -220,7 +220,7 @@ Summary: total.repos=0 duration_ms=0
 - Refreshed README and workflow examples to use `branch default` instead of `branch migrate`.
 - Enhanced safety gates and automation for default branch promotion.
 - Streamlined configuration and command hierarchy for branch management commands.
-- Added `rm` command to purge history via git-filter-repo with task-runner orchestration and dry-run previews.
+- Added `rm` command to purge history via git-filter-repo with task-runner orchestration and preview previews.
 - Routed the workflow CLI through the shared task runner so declarative steps execute via workflow tasks while retaining legacy audit report file output and stdout banners.
 
 ### Bug Fixes 🐛
@@ -313,9 +313,9 @@ Summary: total.repos=0 duration_ms=0
 ### Testing 🧪
 - Added application command hierarchy coverage to ensure aliases and nested commands resolve to the existing operations.
 - Added task operation planner/executor unit tests and a workflow CLI integration test covering the new `apply-tasks` step.
-- Added unit coverage for the LLM client wrapper, commit message generator, changelog generator, and CLI dry-run flows.
+- Added unit coverage for the LLM client wrapper, commit message generator, changelog generator, and CLI preview flows.
 - Added branch-cd service and command tests covering fetch/switch/create flows and CLI execution.
-- Added release service and CLI tests verifying tag annotation, push behavior, and dry-run handling.
+- Added release service and CLI tests verifying tag annotation, push behavior, and preview handling.
 - Added CLI and command unit tests to enforce the `<branch>` usage template for `branch-cd`.
 - Added configuration and CLI tests confirming the `release` command retains default roots without explicit configuration.
 - Added branch refresh coverage to exercise the command-level `--branch` flag after removing the global variant.
@@ -325,8 +325,8 @@ Summary: total.repos=0 duration_ms=0
 - Added `apply-tasks` workflow guidance to `README.md`, including templating details and sample YAML.
 - Documented the `commit message` assistant, configuration knobs, and usage examples.
 - Documented the `changelog message` assistant, baseline controls, and sample invocations in `README.md`.
-- Documented the `branch-cd` helper with usage notes and remote/dry-run options.
-- Documented the `release` helper including remote overrides, custom messages, and dry-run support.
+- Documented the `branch-cd` helper with usage notes and remote/preview options.
+- Documented the `release` helper including remote overrides, custom messages, and preview support.
 - Documented the branch command expectations now that the global `--branch` flag is removed.
 - Refreshed the README command catalog with up-to-date command paths and shortcuts.
 
@@ -446,7 +446,7 @@ Summary: total.repos=0 duration_ms=0
 ## [v0.0.2] - 2025-10-03
 
 ### Highlights
-- Standardized global CLI flags so `--roots`, `--dry-run`, `--yes`, and `--require-clean` behave consistently across commands.
+- Standardized global CLI flags so `--roots`, `--preview`, `--yes`, and `--require-clean` behave consistently across commands.
 - Embedded configuration defaults and extended search paths improve out-of-the-box repository discovery.
 - Enhanced branch and audit workflows with cleaner logging defaults and additional safeguards.
 

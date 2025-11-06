@@ -309,14 +309,12 @@ operations:
     with: &workflow_defaults
       roots:
         - .
-      dry_run: false
       assume_yes: false
   - command: ["remote", "update-protocol"]
     with: &conversion_defaults
       roots:
         - .
       assume_yes: true
-      dry_run: false
       from: https
       to: ssh
   - command: ["remote", "update-to-canonical"]
@@ -324,7 +322,6 @@ operations:
       roots:
         - .
       assume_yes: true
-      dry_run: false
       owner: canonical
   - command: ["branch-default"]
     with: &migration_defaults

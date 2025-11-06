@@ -31,10 +31,10 @@ Summary: total.repos=0 duration_ms=0
   - Status: Resolved
   - Resolution: CLI namespaces now expose the former `repo` and `branch` subcommands as first-class operations (`folder rename`, `remote update-*`, `branch-*`, etc.), legacy configuration keys are normalized to the new command paths, workflow builders accept both canonical and legacy keys, and documentation plus configuration samples were updated accordingly.
 
-- [ ] [GX-219] Remove the `--dry-run` flag and all associated logic, it gurantees nothing.
-  1. Audit all occurance of dry-run
+- [ ] [GX-219] Remove the `--preview` flag and all associated logic, it gurantees nothing.
+  1. Audit all occurance of preview mode
   2. Write a plan of how to remove each occurance
-  3. make a checkpoint after each instance of dry-run is removed
+  3. make a checkpoint after each instance of preview mode is removed
 
 - [x] [GX-220] Rename branch-cd CLI surface to cd with default branch fallback
   - Status: Resolved

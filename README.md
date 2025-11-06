@@ -7,7 +7,6 @@ gix keeps large fleets of Git repositories in a healthy state. It bundles the da
 ## Highlights
 
 - Run trusted maintenance commands across many repositories from one terminal session.
-- Preview every action with `--dry-run` before touching remotes or the filesystem.
 - Reuse discovery, prompting, and logging whether you call a single command or an entire workflow file.
 - Lean on AI-assisted helpers for commit messages and changelog summaries when you want them.
 
@@ -16,7 +15,7 @@ gix keeps large fleets of Git repositories in a healthy state. It bundles the da
 1. Install the CLI: `go install github.com/temirov/gix@latest` (Go 1.24+).
 2. Explore the available commands: `gix --help`.
 3. Bootstrap defaults in your workspace: `gix --init LOCAL` (or `gix --init user` for a per-user config).
-4. Run a dry-run audit to confirm your environment: `gix audit --roots ~/Development --dry-run`.
+4. Run an audit to confirm your environment: `gix audit --roots ~/Development`.
 
 ## Everyday workflows
 
@@ -31,7 +30,7 @@ Automatically rename each repository directory so it matches the canonical GitHu
 ### Ensure remotes point to the canonical URL
 
 ```shell
-gix remote update-to-canonical --roots ~/Development --dry-run
+gix remote update-to-canonical --roots ~/Development
 ```
 
 Preview and apply remote URL fixes across every repository under one or more roots.
@@ -93,45 +92,45 @@ Workflows are YAML or JSON files with a top-level `workflow` sequence. Each entr
 
 ```yaml
 workflow:
-  - step:
-      name: rename
-      command: ["folder", "rename"]
-      with:
-        require_clean: true
-        include_owner: false
+ - step:
+   name: rename
+   command: ["folder", "rename"]
+   with:
+    require_clean: true
+    include_owner: false
 
-  - step:
-      name: remotes
-      after: ["rename"]
-      command: ["remote", "update-to-canonical"]
-      with:
-        owner: temirov
+ - step:
+   name: remotes
+   after: ["rename"]
+   command: ["remote", "update-to-canonical"]
+   with:
+    owner: temirov
 
-  - step:
-      name: protocols
-      after: ["remotes"]
-      command: ["remote", "update-protocol"]
-      with:
-        from: https
-        to: ssh
+ - step:
+   name: protocols
+   after: ["remotes"]
+   command: ["remote", "update-protocol"]
+   with:
+    from: https
+    to: ssh
 
-  - step:
-      name: default-branch
-      command: ["branch-default"]
-      with:
-        targets:
-          - remote_name: origin
-            # if omitted, source_branch is discovered from remote or local
-            target_branch: master
-            push_to_remote: true
-            delete_source_branch: false
+ - step:
+   name: default-branch
+   command: ["branch-default"]
+   with:
+    targets:
+     - remote_name: origin
+      # if omitted, source_branch is discovered from remote or local
+      target_branch: master
+      push_to_remote: true
+      delete_source_branch: false
 
-  - step:
-      name: audit
-      after: ["default-branch"]
-      command: ["audit", "report"]
-      with:
-        output: ./reports/audit.csv
+ - step:
+   name: audit
+   after: ["default-branch"]
+   command: ["audit", "report"]
+   with:
+    output: ./reports/audit.csv
 ```
 
 - `name` is optional; if omitted a stable name is generated (e.g., `convert-protocol-1`).
@@ -139,24 +138,24 @@ workflow:
 - `command` selects a built-in workflow command path (see below).
 - `with` carries command-specific options.
 
-Run with: `gix workflow path/to/file.yaml --roots ~/Development [--dry-run] [-y] [--require-clean]`.
+Run with: `gix workflow path/to/file.yaml --roots ~/Development [-y] [--require-clean]`.
 
 ### Built-in workflow commands
 
 - `remote update-protocol`
-  - with: `from: <git|ssh|https>`, `to: <git|ssh|https>` (required, must differ)
+ - with: `from: <git|ssh|https>`, `to: <git|ssh|https>` (required, must differ)
 - `remote update-to-canonical`
-  - with: `owner: <slug>` (optional owner constraint)
+ - with: `owner: <slug>` (optional owner constraint)
 - `folder rename`
-  - with: `require_clean: <bool>`, `include_owner: <bool>`
-  - CLI `--require-clean` provides a default when not specified.
+ - with: `require_clean: <bool>`, `include_owner: <bool>`
+ - CLI `--require-clean` provides a default when not specified.
 - `branch-default`
-  - with: `targets: [{ remote_name, source_branch, target_branch, push_to_remote, delete_source_branch }]`
-  - Defaults: `remote_name: origin`, `target_branch: master`, `push_to_remote: true`, `delete_source_branch: false`; `source_branch` auto-detected from remote/local if omitted.
+ - with: `targets: [{ remote_name, source_branch, target_branch, push_to_remote, delete_source_branch }]`
+ - Defaults: `remote_name: origin`, `target_branch: master`, `push_to_remote: true`, `delete_source_branch: false`; `source_branch` auto-detected from remote/local if omitted.
 - `audit report`
-  - with: `output: <path>` (optional). When provided, writes a CSV file; otherwise prints to stdout (respects `--dry-run`).
+ - with: `output: <path>` (optional). When provided, writes a CSV file; otherwise prints to stdout.
 - `tasks apply`
-  - with: `tasks: [...]` (see below) for fine-grained file changes, commits, PRs, and built-in actions.
+ - with: `tasks: [...]` (see below) for fine-grained file changes, commits, PRs, and built-in actions.
 
 ### Example: Canonicalize after owner rename
 
@@ -164,69 +163,69 @@ This example updates remotes to canonical, renames folders to include owners, sw
 
 ```yaml
 workflow:
-  - step:
-      name: remotes
-      command: ["remote", "update-to-canonical"]
+ - step:
+   name: remotes
+   command: ["remote", "update-to-canonical"]
 
-  - step:
-      name: folders
-      after: ["remotes"]
-      command: ["folder", "rename"]
-      with:
-        include_owner: true
-        require_clean: false
-  
-  - step:
-      name: protocol-to-git-https
-      after: ["folders"]
-      command: ["remote", "update-protocol"]
-      with:
-        from: https
-        to: git
+ - step:
+   name: folders
+   after: ["remotes"]
+   command: ["folder", "rename"]
+   with:
+    include_owner: true
+    require_clean: false
 
-  - step:
-      name: protocol-to-git-ssh
-      after: ["folders"]
-      command: ["remote", "update-protocol"]
-      with:
-        from: ssh
-        to: git
+ - step:
+   name: protocol-to-git-https
+   after: ["folders"]
+   command: ["remote", "update-protocol"]
+   with:
+    from: https
+    to: git
 
-  - step:
-      name: switch-branch
-      after: ["protocol-to-git-https", "protocol-to-git-ssh"]
-      command: ["tasks", "apply"]
-      with:
-        tasks:
-          - name: "Switch to master if clean"
-            actions:
-              - type: branch.change
-                options:
-                  branch: master
-                  remote: origin
-                  create_if_missing: false
-            safeguards:
-              require_clean: true
+ - step:
+   name: protocol-to-git-ssh
+   after: ["folders"]
+   command: ["remote", "update-protocol"]
+   with:
+    from: ssh
+    to: git
 
-  - step:
-      name: rewrite-go-namespace
-      after: ["switch-branch"]
-      command: ["tasks", "apply"]
-      with:
-        tasks:
-          - name: "Rewrite module namespace"
-            actions:
-              - type: repo.namespace.rewrite
-                options:
-                  old: github.com/temirov
-                  new: github.com/tyemirov
-                  branch_prefix: chore/ns-rename
-                  push: true
-                  remote: origin
-                  commit_message: "refactor: rewrite module namespace after owner rename"
-            safeguards:
-              branch_in: [ master ]
-              paths: [ go.mod ]
+ - step:
+   name: switch-branch
+   after: ["protocol-to-git-https", "protocol-to-git-ssh"]
+   command: ["tasks", "apply"]
+   with:
+    tasks:
+     - name: "Switch to master if clean"
+      actions:
+       - type: branch.change
+        options:
+         branch: master
+         remote: origin
+         create_if_missing: false
+      safeguards:
+       require_clean: true
+
+ - step:
+   name: rewrite-go-namespace
+   after: ["switch-branch"]
+   command: ["tasks", "apply"]
+   with:
+    tasks:
+     - name: "Rewrite module namespace"
+      actions:
+       - type: repo.namespace.rewrite
+        options:
+         old: github.com/temirov
+         new: github.com/tyemirov
+         branch_prefix: chore/ns-rename
+         push: true
+         remote: origin
+         commit_message: "refactor: rewrite module namespace after owner rename"
+      safeguards:
+       branch_in: [ master ]
+       paths: [ go.mod ]
 ```
 
 Notes:
@@ -244,7 +243,7 @@ Schema highlights:
 - Branch: `{ name, start_point, push_remote }` where `name`/`start_point` are Go text/templates rendered with repository data; default `push_remote: origin`.
 - Files: `{ path, content, mode: overwrite|skip-if-exists, permissions }` with templated `path`/`content`.
 - Actions: `{ type, options }` where `type` is one of:
-  - `repo.remote.update`, `repo.remote.convert-protocol`, `repo.folder.rename`, `branch.default`, `repo.release.tag`, `audit.report`, `repo.history.purge`, `repo.files.replace`, `repo.namespace.rewrite`
+ - `repo.remote.update`, `repo.remote.convert-protocol`, `repo.folder.rename`, `branch.default`, `repo.release.tag`, `audit.report`, `repo.history.purge`, `repo.files.replace`, `repo.namespace.rewrite`
 - LLM: optional `{ model, base_url, api_key_env, timeout_seconds, max_completion_tokens, temperature }` block. When present, commit/changelog actions reuse the configured client instead of requiring a programmatic injector.
 - Commit: `{ message }` (templated). Defaults to `Apply task <name>` when empty.
 - Pull request: `{ title, body, base, draft }` (templated; optional).
@@ -254,24 +253,24 @@ Example task-only workflow step:
 
 ```yaml
 - step:
-    name: apply-task
-    command: ["repo", "tasks", "apply"]
-    with:
-      tasks:
-        - name: "Bump license header"
-          ensure_clean: true
-          branch:
-            name: "chore/{{ .Repository.Name }}/license"
-          files:
-            - path: "LICENSE"
-              content: "Copyright (c) {{ .Repository.Owner }}"
-              mode: overwrite
-          commit:
-            message: "chore: update license"
-          safeguards:
-            require_clean: true
-            branch_in: [master]
-            paths: [".git"]
+  name: apply-task
+  command: ["repo", "tasks", "apply"]
+  with:
+   tasks:
+    - name: "Bump license header"
+     ensure_clean: true
+     branch:
+      name: "chore/{{ .Repository.Name }}/license"
+     files:
+      - path: "LICENSE"
+       content: "Copyright (c) {{ .Repository.Owner }}"
+       mode: overwrite
+     commit:
+      message: "chore: update license"
+     safeguards:
+      require_clean: true
+      branch_in: [master]
+      paths: [".git"]
 ```
 
 Templating supports Go text/template with `.Task.*`, `.Repository.*`, and `.Environment` fields. Available repository fields include: `Path`, `Owner`, `Name`, `FullName`, `DefaultBranch`, `PathDepth`, `InitialClean`, `HasNestedRepositories`. Capture outputs from LLM actions with `capture_as: <variable>` and reference them in later tasks or workflow steps using `{{ index .Environment "variable" }}`.
@@ -288,14 +287,14 @@ Safeguards gate tasks (and are also used internally by some actions). Supported 
 ### Execution model and defaults
 
 - Steps form a DAG: `after` defines dependencies; independent steps run in parallel stages; omitted `after` implies sequential chaining.
-- `--dry-run` prints plans and skips mutations; confirmations respect `--yes`.
+- `` prints plans and skips mutations; confirmations respect `--yes`.
 - `--require-clean` sets the default `require_clean` for rename operations when not specified in `with`.
 - Repository discovery honors `--roots` and ignores nested repositories by default; certain operations may enable nested processing when appropriate.
 
 ## Shared command options
 
 - `--roots <path>` — target one or more directories; nested repositories are ignored automatically.
-- `--dry-run` — print the proposed actions without mutating anything.
+- `` — print the proposed actions without mutating anything.
 - `--yes` (`-y`) — accept confirmations when you are ready to apply the plan.
 - `--config path/to/config.yaml` — load persisted defaults for flags such as roots, owners, or log level.
 - `--log-level`, `--log-format` — control Zap logging output (structured JSON or console).
@@ -312,54 +311,54 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
 
 - `gix version`
 
-  - Prints the current release. Also available as `gix --version`.
+ - Prints the current release. Also available as `gix --version`.
 
-- `gix audit [--roots <dir>...] [--all] [--dry-run] [-y]` (alias `a`)
+- `gix audit [--roots <dir>...] [--all] [-y]` (alias `a`)
 
-  - Flags: `--roots` (repeatable), `--all` to include non-git folders in output.
+ - Flags: `--roots` (repeatable), `--all` to include non-git folders in output.
 
-- `gix workflow <configuration> [--roots <dir>...] [--require-clean] [--dry-run] [-y]` (alias `w`)
+- `gix workflow <configuration> [--roots <dir>...] [--require-clean] [-y]` (alias `w`)
 
-  - Runs tasks from a YAML/JSON workflow file.
-  - Flags: `--require-clean` sets the default safeguard for operations that support it.
+ - Runs tasks from a YAML/JSON workflow file.
+ - Flags: `--require-clean` sets the default safeguard for operations that support it.
 
-- `gix folder rename [--owner] [--require-clean] [--roots <dir>...] [--dry-run] [-y]`
-  - Renames repository directories to canonical GitHub names. Flags: `--owner` includes the owner segment; `--require-clean` enforces clean worktrees.
-- `gix remote update-to-canonical [--owner <slug>] [--roots <dir>...] [--dry-run] [-y]` (alias `canonical`)
-  - Updates `origin` URLs to the canonical GitHub repository; optional `--owner` constraint.
-- `gix remote update-protocol --from <git|ssh|https> --to <git|ssh|https> [--roots <dir>...] [--dry-run] [-y]` (alias `convert`)
-  - Converts remote protocols in bulk.
-- `gix prs delete [--limit <N>] [--remote <name>] [--roots <dir>...] [--dry-run] [-y]` (alias `purge`)
-  - Deletes branches whose pull requests are closed. Flags: `--limit`, `--remote`.
-- `gix packages delete [--package <name>] [--roots <dir>...] [--dry-run] [-y]` (alias `prune`)
-  - Removes untagged GHCR versions. Flag: `--package` for the container name.
-- `gix files replace --find <string> [--replace <string>] [--pattern <glob>...] [--command "<shell>"] [--require-clean] [--branch <name>] [--require-path <rel>...] [--roots <dir>...] [--dry-run] [-y]` (alias `sub`)
-  - Performs text substitutions across matched files with optional safeguards.
-- `gix files add --template <path> [--content <text>] [--mode overwrite|skip-if-exists] [--branch <template>] [--remote <name>] [--commit-message <text>] [--roots <dir>...] [--dry-run] [-y]` (alias `seed`)
-  - Seeds or updates files across repositories, creating branches and pushes when configured.
-- `gix license apply --template <path> [--content <text>] [--target <path>] [--mode overwrite|skip-if-exists] [--branch <template>] [--remote <name>] [--commit-message <text>] [--roots <dir>...] [--dry-run] [-y]` (alias `inject`)
-  - Writes the configured license file to every repository.
-- `gix namespace rewrite --old <module/prefix> --new <module/prefix> [--branch-prefix <prefix>] [--remote <name>] [--push] [--commit-message <text>] [--roots <dir>...] [--dry-run] [-y]` (alias `ns`)
-  - Rewrites Go module namespaces and imports.
-- `gix rm <path>... [--remote <name>] [--push] [--restore] [--push-missing] [--roots <dir>...] [--dry-run] [-y]` (alias `purge`)
-  - Purges paths from history using git-filter-repo and optionally force-pushes updates.
-- `gix release <tag> [--message <text>] [--remote <name>] [--roots <dir>...] [--dry-run] [-y]` (alias `rel`)
-  - Creates and pushes an annotated tag for each repository root.
-- `gix release retag --map <tag=ref> [--map <tag=ref>...] [--message-template <text>] [--remote <name>] [--roots <dir>...] [--dry-run] [-y]` (alias `fix`)
-  - Reassigns existing release tags to provided commits and force-pushes updates.
+- `gix folder rename [--owner] [--require-clean] [--roots <dir>...] [-y]`
+ - Renames repository directories to canonical GitHub names. Flags: `--owner` includes the owner segment; `--require-clean` enforces clean worktrees.
+- `gix remote update-to-canonical [--owner <slug>] [--roots <dir>...] [-y]` (alias `canonical`)
+ - Updates `origin` URLs to the canonical GitHub repository; optional `--owner` constraint.
+- `gix remote update-protocol --from <git|ssh|https> --to <git|ssh|https> [--roots <dir>...] [-y]` (alias `convert`)
+ - Converts remote protocols in bulk.
+- `gix prs delete [--limit <N>] [--remote <name>] [--roots <dir>...] [-y]` (alias `purge`)
+ - Deletes branches whose pull requests are closed. Flags: `--limit`, `--remote`.
+- `gix packages delete [--package <name>] [--roots <dir>...] [-y]` (alias `prune`)
+ - Removes untagged GHCR versions. Flag: `--package` for the container name.
+- `gix files replace --find <string> [--replace <string>] [--pattern <glob>...] [--command "<shell>"] [--require-clean] [--branch <name>] [--require-path <rel>...] [--roots <dir>...] [-y]` (alias `sub`)
+ - Performs text substitutions across matched files with optional safeguards.
+- `gix files add --template <path> [--content <text>] [--mode overwrite|skip-if-exists] [--branch <template>] [--remote <name>] [--commit-message <text>] [--roots <dir>...] [-y]` (alias `seed`)
+ - Seeds or updates files across repositories, creating branches and pushes when configured.
+- `gix license apply --template <path> [--content <text>] [--target <path>] [--mode overwrite|skip-if-exists] [--branch <template>] [--remote <name>] [--commit-message <text>] [--roots <dir>...] [-y]` (alias `inject`)
+ - Writes the configured license file to every repository.
+- `gix namespace rewrite --old <module/prefix> --new <module/prefix> [--branch-prefix <prefix>] [--remote <name>] [--push] [--commit-message <text>] [--roots <dir>...] [-y]` (alias `ns`)
+ - Rewrites Go module namespaces and imports.
+- `gix rm <path>... [--remote <name>] [--push] [--restore] [--push-missing] [--roots <dir>...] [-y]` (alias `purge`)
+ - Purges paths from history using git-filter-repo and optionally force-pushes updates.
+- `gix release <tag> [--message <text>] [--remote <name>] [--roots <dir>...] [-y]` (alias `rel`)
+ - Creates and pushes an annotated tag for each repository root.
+- `gix release retag --map <tag=ref> [--map <tag=ref>...] [--message-template <text>] [--remote <name>] [--roots <dir>...] [-y]` (alias `fix`)
+ - Reassigns existing release tags to provided commits and force-pushes updates.
 - `gix changelog message [--version <v>] [--release-date YYYY-MM-DD] [--since-tag <ref>] [--since-date <ts>] [--max-tokens <N>] [--temperature <0-2>] [--model <id>] [--base-url <url>] [--api-key-env <NAME>] [--timeout-seconds <N>] [--roots <dir>...]` (aliases `section`, `msg`)
-  - Generates a changelog section from git history using the configured LLM.
+ - Generates a changelog section from git history using the configured LLM.
 - `gix commit message [--diff-source staged|worktree] [--max-tokens <N>] [--temperature <0-2>] [--model <id>] [--base-url <url>] [--api-key-env <NAME>] [--timeout-seconds <N>] [--roots <dir>...]` (alias `msg`)
-  - Drafts Conventional Commit subjects and optional bullets using the configured LLM.
-- `gix branch-default <target-branch> [--roots <dir>...] [--dry-run] [-y]`
-  - Promotes the default branch across repositories.
-- `gix cd [branch] [--remote <name>] [--refresh] [--stash | --commit] [--require-clean] [--roots <dir>...] [--dry-run]` (aliases `switch`, `branch-cd`)
-  - Switches repositories to the selected branch when provided, or the repository default when omitted. Creates the branch if missing, rebases onto the remote, and, when `--refresh` is enabled, fetches/pulls with optional stash/commit recovery.
+ - Drafts Conventional Commit subjects and optional bullets using the configured LLM.
+- `gix branch-default <target-branch> [--roots <dir>...] [-y]`
+ - Promotes the default branch across repositories.
+- `gix cd [branch] [--remote <name>] [--refresh] [--stash | --commit] [--require-clean] [--roots <dir>...]` (aliases `switch`, `branch-cd`)
+ - Switches repositories to the selected branch when provided, or the repository default when omitted. Creates the branch if missing, rebases onto the remote, and, when `--refresh` is enabled, fetches/pulls with optional stash/commit recovery.
 ## Configuration essentials
 
 - `gix --init LOCAL` writes an embeddable starter `config.yaml` to the current directory; `gix --init user` places it under `$XDG_CONFIG_HOME/gix` or `$HOME/.gix`.
 - Configuration precedence is: CLI flags → environment variables prefixed with `GIX_` → local config → user config.
-- Default settings include log level, log format, dry-run behaviour, confirmation prompts, and reusable workflow definitions.
+- Default settings include log level, log format, behaviour, confirmation prompts, and reusable workflow definitions.
 
 ## Need more depth?
 

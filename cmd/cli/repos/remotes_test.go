@@ -65,7 +65,7 @@ func TestRemotesCommandConfigurationPrecedence(testInstance *testing.T) {
 		expectTaskInvocation    bool
 	}{
 		{
-			name: "configuration_enables_dry_run",
+			name: "configuration_uses_defaults",
 			configuration: repos.RemotesConfiguration{
 				AssumeYes:       false,
 				RepositoryRoots: []string{remotesConfiguredRootConstant},

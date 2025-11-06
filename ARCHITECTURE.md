@@ -18,7 +18,7 @@ gix is a Go 1.24 command-line application built with Cobra and Viper. The binary
 
 1. The binary entrypoint (`main.go`) invokes `cli.Execute`, which builds the Cobra root command inside `cmd/cli/application.go`.
 2. `cmd/cli` initialises Viper, loads configuration files via `internal/utils/flags`, and prepares a structured Zap logger.
-3. Each namespace (`audit`, `repo`, `branch`, `commit`, `workflow`, etc.) registers subcommands that accept shared flags (`--roots`, `--dry-run`, `--yes`) before delegating to domain services.
+3. Each namespace (`audit`, `repo`, `branch`, `commit`, `workflow`, etc.) registers subcommands that accept shared flags (`--roots`, ``, `--yes`) before delegating to domain services.
 4. Domain services resolve their collaborators through `internal/repos/dependencies`, which supplies defaults for repository discovery, filesystem access, Git execution, and GitHub metadata unless tests inject fakes.
 5. Commands perform work through `internal/...` packages (for example, `internal/repos/rename.Run`), returning contextual errors that bubble back to Cobra for consistent exit handling.
 
@@ -31,7 +31,7 @@ The Cobra application (`cmd/cli/application.go`) initialises the root command an
 - `cmd/cli/changelog`, `cmd/cli/commit`, and `cmd/cli/workflow` expose focused entrypoints for changelog generation, AI-assisted commit messaging, and workflow execution.
 - `cmd/cli/default_configuration.go` houses the embedded default YAML used by the `gix --init` flag.
 
-All commands accept shared flags for log level, log format, dry-run previews, repository roots, and confirmation prompts. Validation occurs in Cobra `PreRunE` functions, aligning with the confident-programming rules in `POLICY.md`.
+All commands accept shared flags for log level, log format, previews, repository roots, and confirmation prompts. Validation occurs in Cobra `PreRunE` functions, aligning with the confident-programming rules in `POLICY.md`.
 
 ## Domain Packages
 
@@ -63,7 +63,7 @@ The workflow command consumes declarative YAML or JSON plans describing ordered 
 
 - Workflow steps call domain executors such as `folder rename`, `remote update-protocol`, `tasks apply`, and audit report generation.
 - Additional utilities (for example, template rendering or safeguards) live alongside the executors so they can be reused across CLI and workflow entrypoints.
-Each workflow step enforces dry-run previews and respects the global confirmation strategy. Discovery and prompting are shared with direct CLI invocations so adopters can migrate between ad-hoc and scripted automation without rewriting plumbing.
+Each workflow step enforces previews and respects the global confirmation strategy. Discovery and prompting are shared with direct CLI invocations so adopters can migrate between ad-hoc and scripted automation without rewriting plumbing.
 
 ## Configuration and Logging
 
@@ -103,13 +103,11 @@ operations:
     with: &branch_cleanup_defaults
       remote: origin
       limit: 100
-      dry_run: false
       roots:
         - ~/Development
 
   - command: ["remote", "update-to-canonical"]
     with: &repo_remotes_defaults
-      dry_run: false
       assume_yes: true
       owner: canonical
       roots:
@@ -117,7 +115,6 @@ operations:
 
   - command: ["remote", "update-protocol"]
     with: &repo_protocol_defaults
-      dry_run: false
       assume_yes: true
       roots:
         - ~/Development
@@ -126,7 +123,6 @@ operations:
 
   - command: ["folder", "rename"]
     with: &repo_rename_defaults
-      dry_run: false
       assume_yes: true
       require_clean: true
       include_owner: false
@@ -137,7 +133,6 @@ operations:
     with: &workflow_command_defaults
       roots:
         - ~/Development
-      dry_run: false
       assume_yes: false
 
   - command: ["branch-default"]
