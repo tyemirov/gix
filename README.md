@@ -353,8 +353,8 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
   - Drafts Conventional Commit subjects and optional bullets using the configured LLM.
 - `gix branch-default <target-branch> [--roots <dir>...] [--dry-run] [-y]`
   - Promotes the default branch across repositories.
-- `gix branch-cd <branch> [--remote <name>] [--roots <dir>...] [--dry-run]` (alias `switch`)
-  - Switches repositories to the selected branch, creating it if missing and rebasing onto the remote.
+- `gix cd [branch] [--remote <name>] [--roots <dir>...] [--dry-run]` (aliases `switch`, `branch-cd`)
+  - Switches repositories to the selected branch when provided, or the repository default when omitted. Creates the branch if missing and rebases onto the remote.
 - `gix branch-refresh --branch <name> [--stash | --commit] [--roots <dir>...]`
   - Fetches, checks out, and pulls a branch; optionally stashes or commits local changes.
 

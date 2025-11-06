@@ -11,10 +11,15 @@ import (
 )
 
 const (
-	taskTypeBranchChange   = "branch.change"
-	taskOptionBranchName   = "branch"
-	taskOptionBranchRemote = "remote"
-	taskOptionBranchCreate = "create_if_missing"
+	taskTypeBranchChange              = "branch.change"
+	taskOptionBranchName              = "branch"
+	taskOptionBranchRemote            = "remote"
+	taskOptionBranchCreate            = "create_if_missing"
+	taskOptionConfiguredDefaultBranch = "default_branch"
+
+	branchResolutionSourceExplicit      = "explicit"
+	branchResolutionSourceRemoteDefault = "remote_default"
+	branchResolutionSourceConfigured    = "configured_default"
 )
 
 func init() {
@@ -30,8 +35,9 @@ func handleBranchChangeAction(ctx context.Context, environment *workflow.Environ
 	if branchErr != nil {
 		return branchErr
 	}
-	if len(branchName) == 0 {
-		return errors.New("branch change action requires branch name")
+	configuredFallbackBranch, fallbackErr := optionalStringOption(parameters, taskOptionConfiguredDefaultBranch)
+	if fallbackErr != nil {
+		return fallbackErr
 	}
 
 	remoteName, remoteErr := optionalStringOption(parameters, taskOptionBranchRemote)
@@ -46,6 +52,29 @@ func handleBranchChangeAction(ctx context.Context, environment *workflow.Environ
 		}
 	}
 
+	resolvedBranchName := strings.TrimSpace(branchName)
+	resolutionSource := branchResolutionSourceExplicit
+
+	if len(resolvedBranchName) == 0 {
+		remoteDefault := strings.TrimSpace(repository.Inspection.RemoteDefaultBranch)
+		if len(remoteDefault) > 0 {
+			resolvedBranchName = remoteDefault
+			resolutionSource = branchResolutionSourceRemoteDefault
+		}
+	}
+
+	if len(resolvedBranchName) == 0 {
+		configuredDefault := strings.TrimSpace(configuredFallbackBranch)
+		if len(configuredDefault) > 0 {
+			resolvedBranchName = configuredDefault
+			resolutionSource = branchResolutionSourceConfigured
+		}
+	}
+
+	if len(resolvedBranchName) == 0 {
+		return errors.New(missingBranchMessageConstant)
+	}
+
 	service, serviceError := NewService(ServiceDependencies{
 		GitExecutor: environment.GitExecutor,
 		Logger:      environment.Logger,
@@ -56,7 +85,7 @@ func handleBranchChangeAction(ctx context.Context, environment *workflow.Environ
 
 	result, changeError := service.Change(ctx, Options{
 		RepositoryPath:  repository.Path,
-		BranchName:      branchName,
+		BranchName:      resolvedBranchName,
 		RemoteName:      remoteName,
 		CreateIfMissing: createIfMissing,
 		DryRun:          environment.DryRun,
@@ -78,6 +107,7 @@ func handleBranchChangeAction(ctx context.Context, environment *workflow.Environ
 	message := fmt.Sprintf("→ %s", result.BranchName)
 	details := map[string]string{
 		"branch": result.BranchName,
+		"source": resolutionSource,
 	}
 	created := result.BranchCreated && !environment.DryRun
 	if created {

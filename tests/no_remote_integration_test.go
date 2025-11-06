@@ -31,7 +31,7 @@ func TestBranchCommandsHandleRepositoriesWithoutRemotes(testInstance *testing.T)
 		noRemoteIntegrationModulePath,
 		noRemoteIntegrationLogLevelArg,
 		noRemoteIntegrationErrorLevel,
-		"branch-cd",
+		"cd",
 		"master",
 		"--roots",
 		repositoryPath,
@@ -44,7 +44,7 @@ func TestBranchCommandsHandleRepositoriesWithoutRemotes(testInstance *testing.T)
 		noRemoteIntegrationTimeout,
 		commandArguments,
 	)
-	testInstance.Logf("branch-cd output:\n%s", output)
+	testInstance.Logf("cd output:\n%s", output)
 
 	require.Contains(testInstance, output, "event=REPO_SWITCHED")
 	require.Contains(testInstance, output, "branch=master")

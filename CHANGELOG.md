@@ -1,5 +1,13 @@
 # Changelog
 
+# Unreleased
+
+### Improvements ⚙️
+- Renamed the `branch-cd` command to `cd`, added deprecation warnings when the legacy name is used, and allowed the branch argument to default to the repository's detected default or configured fallback.
+
+### Testing 🧪
+- Added unit coverage for branch change task actions to verify repository-default and configured fallback branch resolution.
+
 ## [v0.2.0-rc.8]
 
 ### Features ✨

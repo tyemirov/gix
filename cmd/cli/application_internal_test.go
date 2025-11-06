@@ -371,7 +371,7 @@ func TestBranchChangeCommandUsageIncludesBranchPlaceholder(t *testing.T) {
 	require.NoError(t, branchChangeError)
 
 	require.True(t, strings.HasPrefix(strings.TrimSpace(branchChangeCommand.Use), branchChangeTopLevelUseNameConstant))
-	require.Contains(t, branchChangeCommand.Use, "<branch>")
+	require.Contains(t, branchChangeCommand.Use, "[branch]")
 	require.Contains(t, branchChangeCommand.Long, "Provide the branch name as the first argument")
 	require.Contains(t, branchChangeCommand.Example, "gix "+branchChangeTopLevelUseNameConstant)
 }

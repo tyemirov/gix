@@ -59,7 +59,7 @@ operations:
     with:
       roots:
         - .
-  - command: ["branch-cd"]
+  - command: ["cd"]
     with:
       roots:
         - .
