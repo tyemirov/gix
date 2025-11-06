@@ -104,9 +104,18 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				require.NoError(testInstance, absError)
 				parent := filepath.Dir(absolutePath)
 				target := filepath.Join(parent, "example")
-				return fmt.Sprintf("event=REPO_FOLDER_PLAN new_path=%s", target)
+				return fmt.Sprintf("event=REPO_FOLDER_RENAME new_path=%s", target)
 			},
-			verify: func(testInstance *testing.T, repositoryPath string) {},
+			verify: func(testInstance *testing.T, repositoryPath string) {
+				absolutePath, absError := filepath.Abs(repositoryPath)
+				require.NoError(testInstance, absError)
+				parent := filepath.Dir(absolutePath)
+				target := filepath.Join(parent, "example")
+				_, statNewErr := os.Stat(target)
+				require.NoError(testInstance, statNewErr)
+				_, statOldErr := os.Stat(repositoryPath)
+				require.Error(testInstance, statOldErr)
+			},
 		},
 		{
 			name: reposIntegrationRenameOwnerPlanCaseName,
@@ -127,11 +136,17 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				require.NoError(testInstance, absError)
 				parent := filepath.Dir(absolutePath)
 				target := filepath.Join(parent, reposIntegrationOwnerDirectoryName, reposIntegrationRepositoryName)
-				return fmt.Sprintf("event=REPO_FOLDER_PLAN new_path=%s", target)
+				return fmt.Sprintf("event=REPO_FOLDER_RENAME new_path=%s", target)
 			},
 			verify: func(testInstance *testing.T, repositoryPath string) {
-				_, statError := os.Stat(repositoryPath)
-				require.NoError(testInstance, statError)
+				absolutePath, absError := filepath.Abs(repositoryPath)
+				require.NoError(testInstance, absError)
+				parent := filepath.Dir(absolutePath)
+				target := filepath.Join(parent, reposIntegrationOwnerDirectoryName, reposIntegrationRepositoryName)
+				_, statNewErr := os.Stat(target)
+				require.NoError(testInstance, statNewErr)
+				_, statOldErr := os.Stat(repositoryPath)
+				require.Error(testInstance, statOldErr)
 			},
 			prepare: func(testInstance *testing.T, repositoryPath string, arguments *[]string) {
 				ownerDirectory := filepath.Join(filepath.Dir(repositoryPath), reposIntegrationOwnerDirectoryName)
@@ -412,14 +427,14 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				reposIntegrationUpdateProtocolAction,
 			},
 			expectedOutput: func(repositoryPath string) string {
-				return fmt.Sprintf("event=PROTOCOL_PLAN path=%s", repositoryPath)
+				return fmt.Sprintf("event=PROTOCOL_UPDATE path=%s", repositoryPath)
 			},
 			verify: func(testInstance *testing.T, repositoryPath string) {
 				remoteCommand := exec.Command(reposIntegrationGitExecutable, "-C", repositoryPath, reposIntegrationRemoteSubcommand, reposIntegrationGetURLSubcommand, reposIntegrationOriginRemoteName)
 				remoteCommand.Env = buildGitCommandEnvironment(nil)
 				outputBytes, remoteError := remoteCommand.CombinedOutput()
 				require.NoError(testInstance, remoteError, string(outputBytes))
-				require.Equal(testInstance, "https://github.com/origin/example.git\n", string(outputBytes))
+				require.Equal(testInstance, "ssh://git@github.com/canonical/example.git\n", string(outputBytes))
 			},
 			prepare: func(testInstance *testing.T, repositoryPath string, arguments *[]string) {
 				configDirectory := testInstance.TempDir()
@@ -454,6 +469,15 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				commitCommand.Env = buildGitCommandEnvironment(nil)
 				require.NoError(testInstance, commitCommand.Run())
 
+				bareRemotePath := filepath.Join(filepath.Dir(repositoryPath), "origin.git")
+				initBare := exec.Command(reposIntegrationGitExecutable, "init", "--bare", bareRemotePath)
+				initBare.Env = buildGitCommandEnvironment(nil)
+				require.NoError(testInstance, initBare.Run())
+
+				setRemoteCommand := exec.Command(reposIntegrationGitExecutable, "-C", repositoryPath, reposIntegrationRemoteSubcommand, "set-url", reposIntegrationOriginRemoteName, bareRemotePath)
+				setRemoteCommand.Env = buildGitCommandEnvironment(nil)
+				require.NoError(testInstance, setRemoteCommand.Run())
+
 				return repositoryPath, extendedPath
 			},
 			arguments: []string{
@@ -463,13 +487,16 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				reposIntegrationErrorLevel,
 				reposIntegrationHistoryCommand,
 				"secrets.txt",
+				"--push", "no",
+				"--restore", "no",
+				"--push-missing", "no",
 			},
 			expectedOutput: func(repositoryPath string) string {
-				return fmt.Sprintf("PLAN-HISTORY-PURGE: %s paths=secrets.txt remote=origin push=true restore=true push_missing=false\n", repositoryPath)
+				return fmt.Sprintf("HISTORY-PURGE: %s removed=secrets.txt remote=origin push=false restore=false push_missing=false", repositoryPath)
 			},
 			verify: func(testInstance *testing.T, repositoryPath string) {
 				_, statError := os.Stat(filepath.Join(repositoryPath, "secrets.txt"))
-				require.NoError(testInstance, statError)
+				require.Error(testInstance, statError)
 			},
 		},
 	}
