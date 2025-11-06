@@ -64,12 +64,13 @@ Summary: total.repos=0 duration_ms=0
   - Acceptance: `gix default` promotes repository defaults end-to-end, help text/docs/config samples use the new name, automated tests are updated, and workflow/config loaders accept `branch-default` with a deprecation notice.
   - Resolution: CLI, workflow dispatcher, defaults, and docs now register the command as `default`; `branch-default` remains an alias with deprecation warnings, and tests/docs/config samples were updated accordingly.
 
-- [ ] [GX-223] Introduce message namespace and migrate changelog message to message changelog
-  - Status: Unresolved
+- [x] [GX-223] Introduce message namespace and migrate changelog message to message changelog
+  - Status: Resolved
   - Category: Improvement
   - Context: The changelog LLM integration is exposed as `gix changelog message`, with configuration/tests anchored to the `changelog` namespace.
   - Desired: Register a top-level `message` command, mount the existing changelog message builder under it (`gix message changelog`), adjust configuration keys, workflow command paths, docs, and tests, and ensure legacy `changelog message` entries still resolve with a warning.
   - Acceptance: `gix message changelog` produces identical output, CLI help/docs/default config reference the new path, integration/unit tests align with the renamed command, and legacy config entries remain functional with migration guidance.
+  - Resolution: Added a `message` namespace that hosts `changelog`, moved configs/docs/tests to `["message","changelog"]`, and kept `changelog message` as a deprecated alias that logs migration warnings.
 
 - [ ] [GX-224] Move commit message generator under message commit
   - Status: Unresolved

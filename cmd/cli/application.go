@@ -178,6 +178,9 @@ const (
 	branchChangeCommandUsageTemplateConstant                         = branchChangeCommandUseNameConstant + " [branch]"
 	branchChangeCommandAliasConstant                                 = "switch"
 	branchChangeLongDescriptionConstant                              = "cd fetches updates, switches to the requested branch (or repository default when omitted), creates it when missing, and rebases onto the remote for each repository root. Provide the branch name as the first argument before any optional repository roots or flags, or configure a default branch in the application settings."
+	messageNamespaceUseNameConstant                                  = "message"
+	messageNamespaceAliasConstant                                    = "msg"
+	messageNamespaceShortDescriptionConstant                         = "Message assistance commands"
 	commitNamespaceUseNameConstant                                   = "commit"
 	commitNamespaceAliasConstant                                     = "c"
 	commitNamespaceShortDescriptionConstant                          = "Commit assistance commands"
@@ -187,7 +190,8 @@ const (
 	changelogNamespaceUseNameConstant                                = "changelog"
 	changelogNamespaceAliasConstant                                  = "l"
 	changelogNamespaceShortDescriptionConstant                       = "Changelog assistance commands"
-	changelogMessageUseNameConstant                                  = "message"
+	changelogMessageUseNameConstant                                  = "changelog"
+	legacyChangelogMessageUseNameConstant                            = "message"
 	changelogMessageAliasConstant                                    = "section"
 	changelogMessageLongDescriptionConstant                          = "changelog message summarizes recent history into Markdown release notes using the configured language model."
 	folderRenameCommandPathKeyConstant                               = repoFolderNamespaceUseNameConstant + "/" + renameCommandUseNameConstant
@@ -202,7 +206,7 @@ const (
 	releaseRetagCommandPathKeyConstant                               = repoReleaseCommandUseNameConstant + "/" + releaseRetagCommandUseNameConstant
 	releaseRetagCommandAliasKeyConstant                              = repoReleaseCommandUseNameConstant + " " + releaseRetagCommandUseNameConstant
 	commitMessageCommandPathKeyConstant                              = commitNamespaceUseNameConstant + "/" + commitMessageUseNameConstant
-	changelogMessageCommandPathKeyConstant                           = changelogNamespaceUseNameConstant + "/" + changelogMessageUseNameConstant
+	changelogMessageCommandPathKeyConstant                           = messageNamespaceUseNameConstant + "/" + changelogMessageUseNameConstant
 	legacyRepoNamespaceUseNameConstant                               = "repo"
 	legacyBranchNamespaceUseNameConstant                             = "branch"
 	legacyRepoFolderRenameCommandKeyConstant                         = legacyRepoNamespaceUseNameConstant + " " + repoFolderNamespaceUseNameConstant + " " + renameCommandUseNameConstant
@@ -217,6 +221,8 @@ const (
 	legacyRepoReleaseCommandKeyConstant                              = legacyRepoNamespaceUseNameConstant + " " + repoReleaseCommandUseNameConstant
 	legacyRepoReleaseRetagCommandKeyConstant                         = legacyRepoReleaseCommandKeyConstant + " " + releaseRetagCommandUseNameConstant
 	legacyRepoRmCommandKeyConstant                                   = legacyRepoNamespaceUseNameConstant + " " + removeCommandUseNameConstant
+	legacyChangelogMessageCommandPathKeyConstant                     = changelogNamespaceUseNameConstant + "/" + legacyChangelogMessageUseNameConstant
+	legacyChangelogMessageCommandKeyConstant                         = changelogNamespaceUseNameConstant + " " + legacyChangelogMessageUseNameConstant
 	legacyBranchDefaultCommandKeyConstant                            = legacyBranchNamespaceUseNameConstant + " " + defaultCommandUseNameConstant
 	legacyBranchChangeCommandKeyConstant                             = legacyBranchNamespaceUseNameConstant + " " + branchChangeCommandUseNameConstant
 	legacyBranchChangeAliasCommandKeyConstant                        = legacyBranchNamespaceUseNameConstant + " " + branchChangeCommandAliasConstant
@@ -227,6 +233,7 @@ const (
 	prsDeleteLongDescriptionConstant                                 = "prs delete removes remote and local Git branches whose pull requests are already closed."
 	packagesDeleteLongDescriptionConstant                            = "packages delete removes untagged container versions from GitHub Packages."
 	defaultCommandLongDescriptionConstant                            = "default promotes a branch to the repository default, auto-detecting the current default branch before retargeting workflows and safety gates."
+	legacyChangelogMessageDeprecatedMessageConstant                  = "command deprecated; use \"gix message changelog\"."
 	versionFlagNameConstant                                          = "version"
 	versionFlagUsageConstant                                         = "Print the application version and exit"
 	versionOutputTemplateConstant                                    = "gix version: %s\n"
@@ -245,24 +252,25 @@ const (
 )
 
 var commandOperationRequirements = map[string][]string{
-	auditOperationNameConstant:               {auditOperationNameConstant},
-	packagesDeleteCommandPathKeyConstant:     {packagesPurgeOperationNameConstant},
-	pullRequestsDeleteCommandPathKeyConstant: {branchCleanupOperationNameConstant},
-	folderRenameCommandPathKeyConstant:       {reposRenameOperationNameConstant},
-	remoteCanonicalCommandPathKeyConstant:    {reposRemotesOperationNameConstant},
-	remoteProtocolCommandPathKeyConstant:     {reposProtocolOperationNameConstant},
-	repoReleaseCommandUseNameConstant:        {repoReleaseOperationNameConstant},
-	releaseRetagCommandPathKeyConstant:       {repoReleaseOperationNameConstant},
-	removeCommandUseNameConstant:             {repoHistoryOperationNameConstant},
-	filesReplaceCommandPathKeyConstant:       {repoFilesReplaceOperationNameConstant},
-	filesAddCommandPathKeyConstant:           {repoFilesAddOperationNameConstant},
-	licenseApplyCommandPathKeyConstant:       {repoLicenseOperationNameConstant},
-	namespaceRewriteCommandPathKeyConstant:   {repoNamespaceRewriteOperationNameConstant},
-	workflowCommandOperationNameConstant:     {workflowCommandOperationNameConstant},
-	defaultCommandUseNameConstant:            {defaultOperationNameConstant},
-	branchChangeTopLevelUseNameConstant:      {branchChangeOperationNameConstant},
-	commitMessageCommandPathKeyConstant:      {commitMessageOperationNameConstant},
-	changelogMessageCommandPathKeyConstant:   {changelogMessageOperationNameConstant},
+	auditOperationNameConstant:                   {auditOperationNameConstant},
+	packagesDeleteCommandPathKeyConstant:         {packagesPurgeOperationNameConstant},
+	pullRequestsDeleteCommandPathKeyConstant:     {branchCleanupOperationNameConstant},
+	folderRenameCommandPathKeyConstant:           {reposRenameOperationNameConstant},
+	remoteCanonicalCommandPathKeyConstant:        {reposRemotesOperationNameConstant},
+	remoteProtocolCommandPathKeyConstant:         {reposProtocolOperationNameConstant},
+	repoReleaseCommandUseNameConstant:            {repoReleaseOperationNameConstant},
+	releaseRetagCommandPathKeyConstant:           {repoReleaseOperationNameConstant},
+	removeCommandUseNameConstant:                 {repoHistoryOperationNameConstant},
+	filesReplaceCommandPathKeyConstant:           {repoFilesReplaceOperationNameConstant},
+	filesAddCommandPathKeyConstant:               {repoFilesAddOperationNameConstant},
+	licenseApplyCommandPathKeyConstant:           {repoLicenseOperationNameConstant},
+	namespaceRewriteCommandPathKeyConstant:       {repoNamespaceRewriteOperationNameConstant},
+	workflowCommandOperationNameConstant:         {workflowCommandOperationNameConstant},
+	defaultCommandUseNameConstant:                {defaultOperationNameConstant},
+	branchChangeTopLevelUseNameConstant:          {branchChangeOperationNameConstant},
+	commitMessageCommandPathKeyConstant:          {commitMessageOperationNameConstant},
+	changelogMessageCommandPathKeyConstant:       {changelogMessageOperationNameConstant},
+	legacyChangelogMessageCommandPathKeyConstant: {changelogMessageOperationNameConstant},
 }
 
 var requiredOperationConfigurationNames = collectRequiredOperationConfigurationNames()
@@ -280,6 +288,7 @@ var operationNameAliases = map[string]string{
 	legacyRepoReleaseCommandKeyConstant:            repoReleaseOperationNameConstant,
 	legacyRepoReleaseRetagCommandKeyConstant:       repoReleaseOperationNameConstant,
 	legacyRepoRmCommandKeyConstant:                 repoHistoryOperationNameConstant,
+	legacyChangelogMessageCommandKeyConstant:       changelogMessageOperationNameConstant,
 	legacyBranchDefaultCommandKeyConstant:          defaultOperationNameConstant,
 	legacyBranchDefaultTopLevelUseNameConstant:     defaultOperationNameConstant,
 	legacyBranchChangeCommandKeyConstant:           branchChangeOperationNameConstant,
@@ -296,6 +305,7 @@ var operationAliasWarnings = map[string]string{
 	legacyBranchRefreshCommandKeyConstant:      "command configuration uses deprecated name \"branch refresh\"; update to \"cd\" with refresh options.",
 	legacyBranchDefaultTopLevelUseNameConstant: "command configuration uses deprecated name \"branch-default\"; update to \"default\".",
 	legacyBranchDefaultCommandKeyConstant:      "command configuration uses deprecated name \"branch default\"; update to \"default\".",
+	legacyChangelogMessageCommandKeyConstant:   "command configuration uses deprecated name \"changelog message\"; update to \"message changelog\".",
 }
 
 type loggerOutputsFactory interface {
@@ -822,12 +832,24 @@ func NewApplication() *Application {
 		HumanReadableLoggingProvider: application.humanReadableLoggingEnabled,
 		ConfigurationProvider:        application.changelogMessageConfiguration,
 	}
+	messageNamespaceCommand := newNamespaceCommand(messageNamespaceUseNameConstant, messageNamespaceShortDescriptionConstant, messageNamespaceAliasConstant)
 	var changelogNamespaceCommand *cobra.Command
 	changelogMessageCommand, changelogMessageBuildError := changelogMessageBuilder.Build()
 	if changelogMessageBuildError == nil {
-		changelogNamespaceCommand = newNamespaceCommand(changelogNamespaceUseNameConstant, changelogNamespaceShortDescriptionConstant, changelogNamespaceAliasConstant)
 		configureCommandMetadata(changelogMessageCommand, changelogMessageUseNameConstant, changelogMessageCommand.Short, changelogMessageLongDescriptionConstant, changelogMessageAliasConstant)
-		changelogNamespaceCommand.AddCommand(changelogMessageCommand)
+		messageNamespaceCommand.AddCommand(changelogMessageCommand)
+	}
+	if legacyChangelogCommand, legacyChangelogBuildError := changelogMessageBuilder.Build(); legacyChangelogBuildError == nil {
+		configureCommandMetadata(legacyChangelogCommand, legacyChangelogMessageUseNameConstant, legacyChangelogCommand.Short, changelogMessageLongDescriptionConstant, changelogMessageAliasConstant)
+		legacyChangelogCommand.Deprecated = legacyChangelogMessageDeprecatedMessageConstant
+		changelogNamespaceCommand = newNamespaceCommand(changelogNamespaceUseNameConstant, changelogNamespaceShortDescriptionConstant, changelogNamespaceAliasConstant)
+		changelogNamespaceCommand.AddCommand(legacyChangelogCommand)
+	}
+	if len(messageNamespaceCommand.Commands()) > 0 {
+		cobraCommand.AddCommand(messageNamespaceCommand)
+	}
+	if changelogNamespaceCommand != nil && len(changelogNamespaceCommand.Commands()) > 0 {
+		cobraCommand.AddCommand(changelogNamespaceCommand)
 	}
 
 	commitMessageBuilder := commitcmd.MessageCommandBuilder{

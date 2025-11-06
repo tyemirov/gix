@@ -71,7 +71,7 @@ Capture metadata (default branches, owners, remotes, protocol mismatches) for ev
 
 ```shell
 gix commit message --roots .
-gix changelog message --since-tag v1.2.0 --version v1.3.0
+gix message changelog --since-tag v1.2.0 --version v1.3.0
 ```
 
 Use the reusable LLM client to summarise staged changes or recent history.
@@ -346,7 +346,7 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
  - Creates and pushes an annotated tag for each repository root.
 - `gix release retag --map <tag=ref> [--map <tag=ref>...] [--message-template <text>] [--remote <name>] [--roots <dir>...] [-y]` (alias `fix`)
  - Reassigns existing release tags to provided commits and force-pushes updates.
-- `gix changelog message [--version <v>] [--release-date YYYY-MM-DD] [--since-tag <ref>] [--since-date <ts>] [--max-tokens <N>] [--temperature <0-2>] [--model <id>] [--base-url <url>] [--api-key-env <NAME>] [--timeout-seconds <N>] [--roots <dir>...]` (aliases `section`, `msg`)
+- `gix message changelog [--version <v>] [--release-date YYYY-MM-DD] [--since-tag <ref>] [--since-date <ts>] [--max-tokens <N>] [--temperature <0-2>] [--model <id>] [--base-url <url>] [--api-key-env <NAME>] [--timeout-seconds <N>] [--roots <dir>...]` (aliases `section`)
  - Generates a changelog section from git history using the configured LLM.
 - `gix commit message [--diff-source staged|worktree] [--max-tokens <N>] [--temperature <0-2>] [--model <id>] [--base-url <url>] [--api-key-env <NAME>] [--timeout-seconds <N>] [--roots <dir>...]` (alias `msg`)
  - Drafts Conventional Commit subjects and optional bullets using the configured LLM.

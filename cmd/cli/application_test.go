@@ -54,7 +54,7 @@ const (
 	testRepoReleaseCommandKeyConstant                        = "release"
 	testBranchChangeCommandKeyConstant                       = "cd"
 	testCommitMessageCommandKeyConstant                      = "commit message"
-	testChangelogMessageCommandKeyConstant                   = "changelog message"
+	testChangelogMessageCommandKeyConstant                   = "message changelog"
 	embeddedDefaultsBranchCleanupTestNameConstant            = "BranchCleanupDefaults"
 	embeddedDefaultsPackagesTestNameConstant                 = "PackagesDefaults"
 	embeddedDefaultsReposRemotesTestNameConstant             = "ReposRemotesDefaults"
