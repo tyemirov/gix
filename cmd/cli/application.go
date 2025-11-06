@@ -69,7 +69,6 @@ const (
 	commonConfigurationKeyConstant                                   = "common"
 	commonLogLevelConfigKeyConstant                                  = commonConfigurationKeyConstant + ".log_level"
 	commonLogFormatConfigKeyConstant                                 = commonConfigurationKeyConstant + ".log_format"
-	commonDryRunConfigKeyConstant                                    = commonConfigurationKeyConstant + ".dry_run"
 	commonAssumeYesConfigKeyConstant                                 = commonConfigurationKeyConstant + ".assume_yes"
 	commonRequireCleanConfigKeyConstant                              = commonConfigurationKeyConstant + ".require_clean"
 	environmentPrefixConstant                                        = "GIX"
@@ -245,7 +244,6 @@ const (
 	missingOperationConfigurationTemplateConstant                    = "missing configuration for command %q"
 	missingOperationConfigurationSkippedMessageConstant              = "command configuration missing; continuing without defaults"
 	unknownCommandNamePlaceholderConstant                            = "unknown"
-	dryRunOptionKeyConstant                                          = "dry_run"
 	assumeYesOptionKeyConstant                                       = "assume_yes"
 	requireCleanOptionKeyConstant                                    = "require_clean"
 )
@@ -328,7 +326,6 @@ type ApplicationConfiguration struct {
 type ApplicationCommonConfiguration struct {
 	LogLevel     string `mapstructure:"log_level"`
 	LogFormat    string `mapstructure:"log_format"`
-	DryRun       bool   `mapstructure:"dry_run"`
 	AssumeYes    bool   `mapstructure:"assume_yes"`
 	RequireClean bool   `mapstructure:"require_clean"`
 }
@@ -588,7 +585,6 @@ func NewApplication() *Application {
 		cobraCommand,
 		flagutils.ExecutionDefaults{},
 		flagutils.ExecutionFlagDefinitions{
-			DryRun:    flagutils.ExecutionFlagDefinition{Name: flagutils.DryRunFlagName, Usage: flagutils.DryRunFlagUsage, Enabled: true},
 			AssumeYes: flagutils.ExecutionFlagDefinition{Name: flagutils.AssumeYesFlagName, Usage: flagutils.AssumeYesFlagUsage, Shorthand: flagutils.AssumeYesFlagShorthand, Enabled: true},
 		},
 	)
@@ -1038,7 +1034,6 @@ func (application *Application) initializeConfiguration(command *cobra.Command) 
 	defaultValues := map[string]any{
 		commonLogLevelConfigKeyConstant:     string(utils.LogLevelError),
 		commonLogFormatConfigKeyConstant:    string(utils.LogFormatStructured),
-		commonDryRunConfigKeyConstant:       false,
 		commonAssumeYesConfigKeyConstant:    false,
 		commonRequireCleanConfigKeyConstant: false,
 	}
@@ -1157,11 +1152,6 @@ func (application *Application) collectExecutionFlags(command *cobra.Command) ut
 		return executionFlags
 	}
 
-	if dryRunValue, dryRunChanged, dryRunError := flagutils.BoolFlag(command, flagutils.DryRunFlagName); dryRunError == nil {
-		executionFlags.DryRun = dryRunValue
-		executionFlags.DryRunSet = dryRunChanged
-	}
-
 	if assumeYesValue, assumeYesChanged, assumeYesError := flagutils.BoolFlag(command, flagutils.AssumeYesFlagName); assumeYesError == nil {
 		executionFlags.AssumeYes = assumeYesValue
 		executionFlags.AssumeYesSet = assumeYesChanged
@@ -1188,11 +1178,6 @@ func (application *Application) auditCommandConfiguration() audit.CommandConfigu
 func (application *Application) packagesConfiguration() packages.Configuration {
 	configuration := packages.DefaultConfiguration()
 	application.decodeOperationConfiguration(packagesPurgeOperationNameConstant, &configuration.Purge)
-
-	options, optionsExist := application.lookupOperationOptions(packagesPurgeOperationNameConstant)
-	if !optionsExist || !optionExists(options, dryRunOptionKeyConstant) {
-		configuration.Purge.DryRun = application.configuration.Common.DryRun
-	}
 	return configuration
 }
 
@@ -1201,9 +1186,6 @@ func (application *Application) branchCleanupConfiguration() branches.CommandCon
 	application.decodeOperationConfiguration(branchCleanupOperationNameConstant, &configuration)
 
 	options, optionsExist := application.lookupOperationOptions(branchCleanupOperationNameConstant)
-	if !optionsExist || !optionExists(options, dryRunOptionKeyConstant) {
-		configuration.DryRun = application.configuration.Common.DryRun
-	}
 	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
 		configuration.AssumeYes = application.configuration.Common.AssumeYes
 	}
@@ -1254,9 +1236,6 @@ func (application *Application) reposRenameConfiguration() repos.RenameConfigura
 	application.decodeOperationConfiguration(reposRenameOperationNameConstant, &configuration)
 
 	options, optionsExist := application.lookupOperationOptions(reposRenameOperationNameConstant)
-	if !optionsExist || !optionExists(options, dryRunOptionKeyConstant) {
-		configuration.DryRun = application.configuration.Common.DryRun
-	}
 	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
 		configuration.AssumeYes = application.configuration.Common.AssumeYes
 	}
@@ -1272,9 +1251,6 @@ func (application *Application) reposRemotesConfiguration() repos.RemotesConfigu
 	application.decodeOperationConfiguration(reposRemotesOperationNameConstant, &configuration)
 
 	options, optionsExist := application.lookupOperationOptions(reposRemotesOperationNameConstant)
-	if !optionsExist || !optionExists(options, dryRunOptionKeyConstant) {
-		configuration.DryRun = application.configuration.Common.DryRun
-	}
 	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
 		configuration.AssumeYes = application.configuration.Common.AssumeYes
 	}
@@ -1287,9 +1263,6 @@ func (application *Application) reposProtocolConfiguration() repos.ProtocolConfi
 	application.decodeOperationConfiguration(reposProtocolOperationNameConstant, &configuration)
 
 	options, optionsExist := application.lookupOperationOptions(reposProtocolOperationNameConstant)
-	if !optionsExist || !optionExists(options, dryRunOptionKeyConstant) {
-		configuration.DryRun = application.configuration.Common.DryRun
-	}
 	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
 		configuration.AssumeYes = application.configuration.Common.AssumeYes
 	}
@@ -1302,9 +1275,6 @@ func (application *Application) reposRemoveConfiguration() repos.RemoveConfigura
 	application.decodeOperationConfiguration(repoHistoryOperationNameConstant, &configuration)
 
 	options, optionsExist := application.lookupOperationOptions(repoHistoryOperationNameConstant)
-	if !optionsExist || !optionExists(options, dryRunOptionKeyConstant) {
-		configuration.DryRun = application.configuration.Common.DryRun
-	}
 	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
 		configuration.AssumeYes = application.configuration.Common.AssumeYes
 	}
@@ -1317,9 +1287,6 @@ func (application *Application) reposReplaceConfiguration() repos.ReplaceConfigu
 	application.decodeOperationConfiguration(repoFilesReplaceOperationNameConstant, &configuration)
 
 	options, optionsExist := application.lookupOperationOptions(repoFilesReplaceOperationNameConstant)
-	if !optionsExist || !optionExists(options, dryRunOptionKeyConstant) {
-		configuration.DryRun = application.configuration.Common.DryRun
-	}
 	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
 		configuration.AssumeYes = application.configuration.Common.AssumeYes
 	}
@@ -1332,9 +1299,6 @@ func (application *Application) reposLicenseConfiguration() repos.LicenseConfigu
 	application.decodeOperationConfiguration(repoLicenseOperationNameConstant, &configuration)
 
 	options, optionsExist := application.lookupOperationOptions(repoLicenseOperationNameConstant)
-	if !optionsExist || !optionExists(options, dryRunOptionKeyConstant) {
-		configuration.DryRun = application.configuration.Common.DryRun
-	}
 	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
 		configuration.AssumeYes = application.configuration.Common.AssumeYes
 	}
@@ -1350,9 +1314,6 @@ func (application *Application) reposFilesAddConfiguration() repos.AddConfigurat
 	application.decodeOperationConfiguration(repoFilesAddOperationNameConstant, &configuration)
 
 	options, optionsExist := application.lookupOperationOptions(repoFilesAddOperationNameConstant)
-	if !optionsExist || !optionExists(options, dryRunOptionKeyConstant) {
-		configuration.DryRun = application.configuration.Common.DryRun
-	}
 	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
 		configuration.AssumeYes = application.configuration.Common.AssumeYes
 	}
@@ -1365,9 +1326,6 @@ func (application *Application) reposNamespaceConfiguration() repos.NamespaceCon
 	application.decodeOperationConfiguration(repoNamespaceRewriteOperationNameConstant, &configuration)
 
 	options, optionsExist := application.lookupOperationOptions(repoNamespaceRewriteOperationNameConstant)
-	if !optionsExist || !optionExists(options, dryRunOptionKeyConstant) {
-		configuration.DryRun = application.configuration.Common.DryRun
-	}
 	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
 		configuration.AssumeYes = application.configuration.Common.AssumeYes
 	}
@@ -1380,9 +1338,6 @@ func (application *Application) workflowCommandConfiguration() workflowcmd.Comma
 	application.decodeOperationConfiguration(workflowCommandOperationNameConstant, &configuration)
 
 	options, optionsExist := application.lookupOperationOptions(workflowCommandOperationNameConstant)
-	if !optionsExist || !optionExists(options, dryRunOptionKeyConstant) {
-		configuration.DryRun = application.configuration.Common.DryRun
-	}
 	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
 		configuration.AssumeYes = application.configuration.Common.AssumeYes
 	}

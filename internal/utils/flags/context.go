@@ -7,10 +7,6 @@ const (
 	DefaultRootFlagName = "roots"
 	// DefaultRootFlagUsage describes the shared repository root flag purpose.
 	DefaultRootFlagUsage = "Repository roots to scan (repeatable; nested paths ignored)"
-	// DryRunFlagName exposes the shared dry-run flag name.
-	DryRunFlagName = "dry-run"
-	// DryRunFlagUsage describes the shared dry-run flag purpose.
-	DryRunFlagUsage = "Preview operations without making changes"
 	// AssumeYesFlagName exposes the shared assume-yes flag name.
 	AssumeYesFlagName = "yes"
 	// AssumeYesFlagShorthand provides the shorthand for the assume-yes flag.

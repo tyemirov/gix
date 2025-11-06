@@ -12,7 +12,6 @@ var branchConfigurationRepositoryPathSanitizer = pathutils.NewRepositoryPathSani
 type CommandConfiguration struct {
 	RemoteName       string   `mapstructure:"remote"`
 	PullRequestLimit int      `mapstructure:"limit"`
-	DryRun           bool     `mapstructure:"dry_run"`
 	AssumeYes        bool     `mapstructure:"assume_yes"`
 	RepositoryRoots  []string `mapstructure:"roots"`
 }
@@ -22,7 +21,6 @@ func DefaultCommandConfiguration() CommandConfiguration {
 	return CommandConfiguration{
 		RemoteName:       "",
 		PullRequestLimit: 0,
-		DryRun:           false,
 		AssumeYes:        false,
 		RepositoryRoots:  nil,
 	}

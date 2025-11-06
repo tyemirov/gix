@@ -8,7 +8,6 @@ import (
 
 // ExecutionDefaults describes default flag values shared across commands.
 type ExecutionDefaults struct {
-	DryRun       bool
 	AssumeYes    bool
 	RequireClean bool
 }
@@ -23,7 +22,6 @@ type ExecutionFlagDefinition struct {
 
 // ExecutionFlagDefinitions groups execution flag definitions.
 type ExecutionFlagDefinitions struct {
-	DryRun       ExecutionFlagDefinition
 	AssumeYes    ExecutionFlagDefinition
 	RequireClean ExecutionFlagDefinition
 }
@@ -36,7 +34,6 @@ func BindExecutionFlags(command *cobra.Command, defaults ExecutionDefaults, defi
 
 	persistentFlagSet := command.PersistentFlags()
 
-	bindToggleFlag(persistentFlagSet, definitions.DryRun, defaults.DryRun)
 	bindToggleFlag(persistentFlagSet, definitions.AssumeYes, defaults.AssumeYes)
 	bindToggleFlag(persistentFlagSet, definitions.RequireClean, defaults.RequireClean)
 }

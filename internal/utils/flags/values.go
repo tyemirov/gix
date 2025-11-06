@@ -96,11 +96,6 @@ func CollectExecutionFlags(command *cobra.Command) utils.ExecutionFlags {
 		return executionFlags
 	}
 
-	if dryRunValue, dryRunChanged, dryRunError := BoolFlag(command, DryRunFlagName); dryRunError == nil {
-		executionFlags.DryRun = dryRunValue
-		executionFlags.DryRunSet = dryRunChanged
-	}
-
 	if assumeYesValue, assumeYesChanged, assumeYesError := BoolFlag(command, AssumeYesFlagName); assumeYesError == nil {
 		executionFlags.AssumeYes = assumeYesValue
 		executionFlags.AssumeYesSet = assumeYesChanged
@@ -124,6 +119,6 @@ func ResolveExecutionFlags(command *cobra.Command) (utils.ExecutionFlags, bool) 
 	}
 
 	executionFlags := CollectExecutionFlags(command)
-	available := executionFlags.DryRunSet || executionFlags.AssumeYesSet || executionFlags.RemoteSet
+	available := executionFlags.AssumeYesSet || executionFlags.RemoteSet
 	return executionFlags, available
 }

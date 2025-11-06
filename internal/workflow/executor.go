@@ -43,7 +43,6 @@ type Dependencies struct {
 
 // RuntimeOptions captures user-provided execution modifiers.
 type RuntimeOptions struct {
-	DryRun                               bool
 	AssumeYes                            bool
 	IncludeNestedRepositories            bool
 	ProcessRepositoriesByDescendingDepth bool
@@ -251,7 +250,6 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 		Errors:            executor.dependencies.Errors,
 		Reporter:          reporter,
 		Logger:            executor.dependencies.Logger,
-		DryRun:            runtimeOptions.DryRun,
 		Variables:         NewVariableStore(),
 	}
 	environment.State = state

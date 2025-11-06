@@ -161,18 +161,12 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 		return rootsError
 	}
 
-	dryRun := commandConfiguration.DryRun
-	if executionFlagsAvailable && executionFlags.DryRunSet {
-		dryRun = executionFlags.DryRun
-	}
-
 	assumeYes := commandConfiguration.AssumeYes
 	if executionFlagsAvailable && executionFlags.AssumeYesSet {
 		assumeYes = executionFlags.AssumeYes
 	}
 
 	runtimeOptions := workflow.RuntimeOptions{
-		DryRun:                               dryRun,
 		AssumeYes:                            assumeYes,
 		IncludeNestedRepositories:            taskRuntimeOptions.IncludeNestedRepositories,
 		ProcessRepositoriesByDescendingDepth: taskRuntimeOptions.ProcessRepositoriesByDescendingDepth,

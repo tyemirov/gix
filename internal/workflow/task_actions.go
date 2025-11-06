@@ -244,7 +244,6 @@ func handleReleaseTagAction(ctx context.Context, environment *Environment, repos
 		TagName:        tagValue,
 		Message:        messageValue,
 		RemoteName:     remoteValue,
-		DryRun:         environment.DryRun,
 	})
 	if releaseError != nil {
 		return releaseError
@@ -313,7 +312,6 @@ func handleReleaseRetagAction(ctx context.Context, environment *Environment, rep
 	results, retagError := service.Retag(ctx, releases.RetagOptions{
 		RepositoryPath: repository.Path,
 		RemoteName:     remoteValue,
-		DryRun:         environment.DryRun,
 		Mappings:       mappings,
 	})
 	if retagError != nil {

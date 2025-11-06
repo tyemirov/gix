@@ -169,6 +169,13 @@ func TestRootCommandToggleHelpFormatting(t *testing.T) {
 	require.NotContains(t, usage, "toggle[")
 }
 
+func TestRootCommandDoesNotExposeDryRunFlag(t *testing.T) {
+	application := NewApplication()
+	const dryRunFlagName = "dry-run"
+
+	require.Nil(t, application.rootCommand.PersistentFlags().Lookup(dryRunFlagName))
+}
+
 func TestNormalizeInitializationScopeArguments(t *testing.T) {
 	testCases := []struct {
 		name         string
