@@ -1,7 +1,6 @@
 package cd
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 
@@ -18,20 +17,22 @@ import (
 )
 
 const (
-	commandUseNameConstant               = "branch-cd"
-	commandUsageTemplateConstant         = commandUseNameConstant + " <branch>"
-	commandExampleTemplateConstant       = "gix branch-cd feature/new-branch --roots ~/Development"
+	commandUseNameConstant               = "cd"
+	commandUsageTemplateConstant         = commandUseNameConstant + " [branch]"
+	commandExampleTemplateConstant       = "gix cd feature/new-branch --roots ~/Development"
 	commandShortDescriptionConstant      = "Switch repositories to the selected branch"
-	commandLongDescriptionConstant       = "branch-cd fetches updates, switches to the requested branch, creates it if missing, and rebases onto the remote for each repository root. Provide the branch name as the first argument before any optional repository roots or flags, or configure a default branch in the application settings."
-	missingBranchMessageConstant         = "branch name is required; provide it as the first argument or configure a default"
+	commandLongDescriptionConstant       = "cd fetches updates, switches to the requested branch, creates it if missing, and rebases onto the remote for each repository root. Provide the branch name as the first argument before any optional repository roots or flags, or configure a default branch in the application settings."
+	missingBranchMessageConstant         = "unable to determine branch; provide a branch argument or configure a default branch"
 	changeSuccessMessageTemplateConstant = "SWITCHED: %s -> %s"
 	changeCreatedSuffixConstant          = " (created)"
+	legacyAliasNameConstant              = "branch-cd"
+	legacyAliasDeprecationMessage        = "DEPRECATED: use `gix cd` instead of `gix branch-cd`."
 )
 
 // LoggerProvider yields a zap logger instance.
 type LoggerProvider func() *zap.Logger
 
-// CommandBuilder assembles the branch-cd command.
+// CommandBuilder assembles the cd command.
 type CommandBuilder struct {
 	LoggerProvider               LoggerProvider
 	GitExecutor                  shared.GitExecutor
@@ -44,7 +45,7 @@ type CommandBuilder struct {
 	TaskRunnerFactory            func(workflow.Dependencies) TaskRunnerExecutor
 }
 
-// Build constructs the branch-cd command.
+// Build constructs the cd command.
 func (builder *CommandBuilder) Build() (*cobra.Command, error) {
 	command := &cobra.Command{
 		Use:     commandUsageTemplateConstant,
@@ -61,19 +62,17 @@ func (builder *CommandBuilder) Build() (*cobra.Command, error) {
 func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) error {
 	configuration := builder.resolveConfiguration()
 
+	if command != nil && strings.EqualFold(command.CalledAs(), legacyAliasNameConstant) {
+		_, _ = fmt.Fprintln(command.ErrOrStderr(), legacyAliasDeprecationMessage)
+	}
+
 	executionFlags, executionFlagsAvailable := flagutils.ResolveExecutionFlags(command)
 	dryRun := false
 	if executionFlagsAvailable && executionFlags.DryRunSet {
 		dryRun = executionFlags.DryRun
 	}
 
-	branchName, remainingArgs := builder.resolveBranchName(command, arguments, configuration)
-	if branchName == "" {
-		if command != nil {
-			_ = command.Help()
-		}
-		return errors.New(missingBranchMessageConstant)
-	}
+	explicitBranch, configuredFallbackBranch, remainingArgs := builder.resolveBranchName(command, arguments, configuration)
 
 	remoteName := strings.TrimSpace(configuration.RemoteName)
 	if executionFlagsAvailable && executionFlags.RemoteSet {
@@ -138,13 +137,27 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 	taskRunner := resolveTaskRunner(builder.TaskRunnerFactory, taskDependencies)
 
 	actionOptions := map[string]any{
-		taskOptionBranchName:   branchName,
 		taskOptionBranchRemote: remoteName,
 		taskOptionBranchCreate: configuration.CreateIfMissing,
 	}
+	if len(explicitBranch) > 0 {
+		actionOptions[taskOptionBranchName] = explicitBranch
+	}
+	if len(configuredFallbackBranch) > 0 {
+		actionOptions[taskOptionConfiguredDefaultBranch] = configuredFallbackBranch
+	}
+
+	taskBranchLabel := strings.TrimSpace(explicitBranch)
+	if len(taskBranchLabel) == 0 {
+		taskBranchLabel = strings.TrimSpace(configuredFallbackBranch)
+	}
+	taskName := fmt.Sprintf("Switch branch to %s", taskBranchLabel)
+	if len(taskBranchLabel) == 0 {
+		taskName = "Switch branch to default branch"
+	}
 
 	taskDefinition := workflow.TaskDefinition{
-		Name:        fmt.Sprintf("Switch branch to %s", branchName),
+		Name:        taskName,
 		EnsureClean: false,
 		Actions: []workflow.TaskActionDefinition{
 			{Type: taskTypeBranchChange, Options: actionOptions},
@@ -182,17 +195,12 @@ func (builder *CommandBuilder) resolveLogger() *zap.Logger {
 	return logger
 }
 
-func (builder *CommandBuilder) resolveBranchName(command *cobra.Command, arguments []string, configuration CommandConfiguration) (string, []string) {
+func (builder *CommandBuilder) resolveBranchName(command *cobra.Command, arguments []string, configuration CommandConfiguration) (string, string, []string) {
 	remaining := arguments
 	if len(remaining) > 0 {
 		branch := strings.TrimSpace(remaining[0])
-		return branch, remaining[1:]
+		return branch, strings.TrimSpace(configuration.DefaultBranch), remaining[1:]
 	}
 
-	defaultBranch := strings.TrimSpace(configuration.DefaultBranch)
-	if len(defaultBranch) > 0 {
-		return defaultBranch, remaining
-	}
-
-	return "", remaining
+	return "", strings.TrimSpace(configuration.DefaultBranch), remaining
 }

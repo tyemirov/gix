@@ -111,7 +111,7 @@ const (
 	workflowCommandOperationNameConstant                             = "workflow"
 	branchRefreshOperationNameConstant                               = "branch-refresh"
 	branchDefaultOperationNameConstant                               = "branch-default"
-	branchChangeOperationNameConstant                                = "branch-cd"
+	branchChangeOperationNameConstant                                = "cd"
 	commitMessageOperationNameConstant                               = "commit message"
 	changelogMessageOperationNameConstant                            = "changelog message"
 	auditCommandAliasConstant                                        = "a"
@@ -172,16 +172,17 @@ const (
 	branchNamespaceShortDescriptionConstant                          = "Branch management commands"
 	branchDefaultTopLevelUseNameConstant                             = "branch-default"
 	branchDefaultTopLevelUsageTemplateConstant                       = branchDefaultTopLevelUseNameConstant + " <target-branch>"
-	branchChangeTopLevelUseNameConstant                              = "branch-cd"
-	branchChangeTopLevelUsageTemplateConstant                        = branchChangeTopLevelUseNameConstant + " <branch>"
+	branchChangeLegacyTopLevelUseNameConstant                        = "branch-cd"
+	branchChangeTopLevelUseNameConstant                              = "cd"
+	branchChangeTopLevelUsageTemplateConstant                        = branchChangeTopLevelUseNameConstant + " [branch]"
 	branchRefreshTopLevelUseNameConstant                             = "branch-refresh"
 	defaultCommandUseNameConstant                                    = "default"
 	defaultCommandUsageTemplateConstant                              = defaultCommandUseNameConstant + " <target-branch>"
 	refreshCommandUseNameConstant                                    = "refresh"
 	branchChangeCommandUseNameConstant                               = "cd"
-	branchChangeCommandUsageTemplateConstant                         = branchChangeCommandUseNameConstant + " <branch>"
+	branchChangeCommandUsageTemplateConstant                         = branchChangeCommandUseNameConstant + " [branch]"
 	branchChangeCommandAliasConstant                                 = "switch"
-	branchChangeLongDescriptionConstant                              = "branch-cd fetches updates, switches to the requested branch, creates it when missing, and rebases onto the remote. Provide the branch name as the first argument before any optional repository roots or flags, or configure a default branch in the application settings."
+	branchChangeLongDescriptionConstant                              = "cd fetches updates, switches to the requested branch (or repository default when omitted), creates it when missing, and rebases onto the remote for each repository root. Provide the branch name as the first argument before any optional repository roots or flags, or configure a default branch in the application settings."
 	commitNamespaceUseNameConstant                                   = "commit"
 	commitNamespaceAliasConstant                                     = "c"
 	commitNamespaceShortDescriptionConstant                          = "Commit assistance commands"
@@ -290,8 +291,13 @@ var operationNameAliases = map[string]string{
 	legacyBranchDefaultCommandKeyConstant:          branchDefaultOperationNameConstant,
 	legacyBranchChangeCommandKeyConstant:           branchChangeOperationNameConstant,
 	legacyBranchChangeAliasCommandKeyConstant:      branchChangeOperationNameConstant,
+	branchChangeLegacyTopLevelUseNameConstant:      branchChangeOperationNameConstant,
 	legacyBranchRefreshCommandKeyConstant:          branchRefreshOperationNameConstant,
 	releaseRetagCommandAliasKeyConstant:            repoReleaseOperationNameConstant,
+}
+
+var operationAliasWarnings = map[string]string{
+	branchChangeLegacyTopLevelUseNameConstant: "command configuration uses deprecated name \"branch-cd\"; update to \"cd\".",
 }
 
 type loggerOutputsFactory interface {
@@ -451,6 +457,55 @@ func (configurations OperationConfigurations) decode(operationName string, targe
 
 func normalizeOperationName(raw string) string {
 	return strings.ToLower(strings.TrimSpace(raw))
+}
+
+func (application *Application) collectLegacyOperationUsage(definitions []ApplicationOperationConfiguration) []string {
+	if len(definitions) == 0 {
+		return nil
+	}
+
+	legacyKeys := make(map[string]struct{})
+	for index := range definitions {
+		commandKey := workflowpkg.CommandPathKey(definitions[index].Command)
+		if len(commandKey) == 0 {
+			continue
+		}
+		if _, exists := operationAliasWarnings[commandKey]; exists {
+			legacyKeys[commandKey] = struct{}{}
+		}
+	}
+
+	if len(legacyKeys) == 0 {
+		return nil
+	}
+
+	collected := make([]string, 0, len(legacyKeys))
+	for key := range legacyKeys {
+		collected = append(collected, key)
+	}
+	sort.Strings(collected)
+	return collected
+}
+
+func (application *Application) emitLegacyOperationWarnings(legacyKeys []string) {
+	if len(legacyKeys) == 0 {
+		return
+	}
+
+	for _, key := range legacyKeys {
+		warningMessage, exists := operationAliasWarnings[key]
+		if !exists {
+			continue
+		}
+		application.consoleLogger.Warn(
+			warningMessage,
+			zap.String(operationNameLogFieldConstant, key),
+		)
+		application.logger.Warn(
+			warningMessage,
+			zap.String(operationNameLogFieldConstant, key),
+		)
+	}
 }
 
 func loadEmbeddedOperationConfigurations() OperationConfigurations {
@@ -896,7 +951,14 @@ func NewApplication() *Application {
 		cobraCommand.AddCommand(branchDefaultNestedCommand)
 	}
 	if branchChangeCommand, branchChangeError := branchChangeBuilder.Build(); branchChangeError == nil {
-		configureCommandMetadata(branchChangeCommand, branchChangeTopLevelUsageTemplateConstant, branchChangeCommand.Short, branchChangeLongDescriptionConstant, branchChangeCommandAliasConstant)
+		configureCommandMetadata(
+			branchChangeCommand,
+			branchChangeTopLevelUsageTemplateConstant,
+			branchChangeCommand.Short,
+			branchChangeLongDescriptionConstant,
+			branchChangeCommandAliasConstant,
+			branchChangeLegacyTopLevelUseNameConstant,
+		)
 		cobraCommand.AddCommand(branchChangeCommand)
 	}
 	if branchRefreshNestedCommand, branchRefreshNestedError := branchRefreshBuilder.Build(); branchRefreshNestedError == nil {
@@ -1049,6 +1111,7 @@ func (application *Application) initializeConfiguration(command *cobra.Command) 
 	}
 
 	application.configurationMetadata = loadedConfiguration
+	legacyOperationKeys := application.collectLegacyOperationUsage(application.configuration.Operations)
 
 	operationConfigurations, configurationBuildError := newOperationConfigurations(application.configuration.Operations)
 	if configurationBuildError != nil {
@@ -1088,6 +1151,7 @@ func (application *Application) initializeConfiguration(command *cobra.Command) 
 	}
 
 	application.logConfigurationInitialization()
+	application.emitLegacyOperationWarnings(legacyOperationKeys)
 
 	if command != nil {
 		updatedContext := application.commandContextAccessor.WithConfigurationFilePath(

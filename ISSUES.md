@@ -33,8 +33,9 @@ Summary: total.repos=0 duration_ms=0
 
 - [ ] [GX-219] Remove the `--dry-run` flag and all associated logic, it gurantees nothing.
 
-- [ ] [GX-220] Rename branch-cd CLI surface to cd with default branch fallback
-  - Status: Unresolved
+- [x] [GX-220] Rename branch-cd CLI surface to cd with default branch fallback
+  - Status: Resolved
+  - Resolution: The CLI now exposes `gix cd` as the canonical entry point (with `branch-cd` logged as a deprecated alias), configuration loaders emit warnings for legacy keys, default configuration/docs/tests reference `cd`, and branch switching falls back to the repository default or configured branch when no argument is provided.
   - Category: Improvement
   - Context: `cmd/cli/application.go` registers the branch switching command under the `branch-cd` verb, and `internal/branches/cd`, `cmd/cli/default_config.yaml`, `docs/command_warning_matrix.md`, `docs/readme_config_test.go`, `tests/no_remote_integration_test.go`, and workflow command keys all depend on that name while forcing every invocation to supply an explicit branch.
   - Desired: Expose the command as `gix cd` while preserving the existing task runner wiring, make the branch argument optional by defaulting to the repository default (falling back to the configured `branch` in command settings when discovery fails), update configuration keys and docs/tests to use `cd`, and keep legacy `branch-cd` config entries runnable with a deprecation warning.

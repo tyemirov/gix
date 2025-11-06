@@ -24,21 +24,37 @@ func TestCommandUsageIncludesBranchPlaceholder(t *testing.T) {
 	builder := CommandBuilder{}
 	command, err := builder.Build()
 	require.NoError(t, err)
-	require.Contains(t, command.Use, "<branch>")
+	require.Contains(t, command.Use, "[branch]")
 }
 
-func TestCommandRequiresBranchArgument(t *testing.T) {
+func TestCommandAllowsMissingBranchAndUsesConfiguredFallback(t *testing.T) {
 	builder := CommandBuilder{
 		LoggerProvider: func() *zap.Logger { return zap.NewNop() },
 		ConfigurationProvider: func() CommandConfiguration {
-			return CommandConfiguration{}
+			return CommandConfiguration{DefaultBranch: "main", RepositoryRoots: []string{t.TempDir()}, RemoteName: "origin"}
 		},
 		GitExecutor: &stubGitExecutor{},
+	}
+	runner := &recordingTaskRunner{}
+	builder.TaskRunnerFactory = func(deps workflow.Dependencies) TaskRunnerExecutor {
+		runner.dependencies = deps
+		return runner
 	}
 	command, err := builder.Build()
 	require.NoError(t, err)
 	flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Enabled: true})
-	require.Error(t, command.RunE(command, []string{}))
+
+	contextAccessor := utils.NewCommandContextAccessor()
+	command.SetContext(contextAccessor.WithExecutionFlags(context.Background(), utils.ExecutionFlags{}))
+
+	require.NoError(t, command.RunE(command, []string{}))
+	require.Len(t, runner.definitions, 1)
+	require.Equal(t, "Switch branch to main", runner.definitions[0].Name)
+	require.Len(t, runner.definitions[0].Actions, 1)
+	action := runner.definitions[0].Actions[0]
+	_, explicitExists := action.Options[taskOptionBranchName]
+	require.False(t, explicitExists)
+	require.Equal(t, "main", action.Options[taskOptionConfiguredDefaultBranch])
 }
 
 func TestCommandExecutesAcrossRoots(t *testing.T) {

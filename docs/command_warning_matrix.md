@@ -4,7 +4,7 @@ The table below categorises the major maintenance commands into **fatal** and **
 
 | Command | Step | Classification | Behaviour |
 | --- | --- | --- | --- |
-| branch-cd | Enumerate remotes, switch branch, create branch (when missing) | Fatal | Missing dependencies or branch creation errors abort execution. |
+| cd (alias `branch-cd`) | Enumerate remotes, switch branch, create branch (when missing) | Fatal | Missing dependencies or branch creation errors abort execution. |
 |  | Fetch remote (`git fetch`) | Non-fatal | Logged as `FETCH-SKIP` and the command proceeds without pulling. |
 |  | Pull branch (`git pull --rebase`) | Non-fatal | Logged as `PULL-SKIP`; branch switch still succeeds. |
 |  | Dry-run skip | Non-fatal | Explicit message and continue. |
