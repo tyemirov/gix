@@ -14,7 +14,6 @@ import (
 	"github.com/temirov/gix/internal/execshell"
 	"github.com/temirov/gix/internal/gitrepo"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
-	"github.com/temirov/gix/internal/workflow"
 	"github.com/temirov/gix/pkg/llm"
 )
 
@@ -86,20 +85,6 @@ func (client *fakeChatClient) Chat(ctx context.Context, request llm.ChatRequest)
 		return "", client.err
 	}
 	return client.response, nil
-}
-
-type recordingTaskRunner struct {
-	dependencies   workflow.Dependencies
-	roots          []string
-	definitions    []workflow.TaskDefinition
-	runtimeOptions workflow.RuntimeOptions
-}
-
-func (runner *recordingTaskRunner) Run(ctx context.Context, roots []string, definitions []workflow.TaskDefinition, options workflow.RuntimeOptions) error {
-	runner.roots = append([]string{}, roots...)
-	runner.definitions = append([]workflow.TaskDefinition{}, definitions...)
-	runner.runtimeOptions = options
-	return nil
 }
 
 type mockDiscoverer struct {
