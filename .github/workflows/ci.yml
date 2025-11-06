@@ -27,6 +27,11 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
+      - name: Install git-filter-repo
+        run: |
+          python3 -m pip install --user git-filter-repo
+          echo "$(python3 -m site --user-base)/bin" >> "$GITHUB_PATH"
+
       - name: Verify formatting
         run: make check-format
 

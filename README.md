@@ -366,6 +366,12 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
 - Historical roadmap and design notes: [docs/cli_design.md](docs/cli_design.md)
 - Recent changes: [CHANGELOG.md](CHANGELOG.md)
 
+## Prerequisites
+
+- Go 1.25 or newer (matching the version pinned in CI).
+- Git 2.40+ (history rewrite features rely on modern plumbing commands).
+- [`git-filter-repo`](https://github.com/newren/git-filter-repo) installed on your `PATH`. It is required for `gix rm` and for running the repository integration tests locally (`pip install git-filter-repo` on Linux/macOS, or `brew install git-filter-repo` when using Homebrew).
+
 ## Developer notes
 
 - Repository services accept domain types from `internal/repos/shared` (paths, owners, remotes, branches); CLI edges construct them so executors run without defensive validation.
