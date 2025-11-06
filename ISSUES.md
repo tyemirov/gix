@@ -208,3 +208,4 @@ Let's consider each rename as a separate issue and what consequences it entails
 
 ## Planning 
 do not work on the issues below, not ready
+- [x] [GX-219] Removed preview mode; backend/CLI/docs/tests updated and integration suite passes (commits c75a607..cb0e1e3).
