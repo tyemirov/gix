@@ -159,36 +159,6 @@ func TestPackageVersionServiceHandlesHTTPFailures(testingInstance *testing.T) {
 	}
 }
 
-func TestPackageVersionServiceDryRunSkipsDeletion(testingInstance *testing.T) {
-	testingInstance.Parallel()
-
-	pageOneVersions := fmt.Sprintf(`[{"id":%d,"metadata":{"container":{"tags":[]}}},{"id":%d,"metadata":{"container":{"tags":["latest"]}}}]`, testUntaggedVersionID, testTaggedVersionID)
-	emptyPage := "[]"
-
-	client := &stubHTTPClient{
-		responses: []stubHTTPResponse{
-			{response: buildHTTPResponse(http.StatusOK, pageOneVersions)},
-			{response: buildHTTPResponse(http.StatusOK, emptyPage)},
-		},
-	}
-
-	service, serviceError := ghcr.NewPackageVersionService(zap.NewNop(), client, ghcr.ServiceConfiguration{PageSize: 2})
-	require.NoError(testingInstance, serviceError)
-
-	result, purgeError := service.PurgeUntaggedVersions(context.Background(), ghcr.PurgeRequest{
-		Owner:       testOwnerNameConstant,
-		PackageName: testPackageNameConstant,
-		OwnerType:   ghcr.OrganizationOwnerType,
-		Token:       testTokenValueConstant,
-		DryRun:      true,
-	})
-	require.NoError(testingInstance, purgeError)
-	require.Equal(testingInstance, 2, result.TotalVersions)
-	require.Equal(testingInstance, 1, result.UntaggedVersions)
-	require.Equal(testingInstance, 0, result.DeletedVersions)
-	require.Equal(testingInstance, []string{http.MethodGet, http.MethodGet}, client.recordedMethods)
-}
-
 func TestPackageVersionServiceDeletesUntaggedVersions(testingInstance *testing.T) {
 	testingInstance.Parallel()
 

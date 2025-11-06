@@ -321,8 +321,7 @@ func TestTaskPlannerBuildPlanSupportsActions(testInstance *testing.T) {
 		Actions: []TaskActionDefinition{{
 			Type: "repo.remote.update",
 			Options: map[string]any{
-				"owner":  "{{ .Repository.Owner }}",
-				"dryRun": true,
+				"owner": "{{ .Repository.Owner }}",
 			},
 		}},
 		Commit: TaskCommitDefinition{},
@@ -341,7 +340,7 @@ func TestTaskPlannerBuildPlanSupportsActions(testInstance *testing.T) {
 	action := plan.actions[0]
 	require.Equal(testInstance, "repo.remote.update", action.actionType)
 	require.Equal(testInstance, "octocat", action.parameters["owner"])
-	require.Equal(testInstance, true, action.parameters["dryrun"])
+	require.Len(testInstance, action.parameters, 1)
 }
 
 func TestTaskExecutorExecuteActionsUnknownType(testInstance *testing.T) {

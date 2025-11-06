@@ -35,8 +35,6 @@ const (
 	deletingRemoteLogMessageConstant       = "Deleting remote branch"
 	deletingLocalLogMessageConstant        = "Deleting local branch"
 	skippingMissingLogMessageConstant      = "Skipping branch (already gone)"
-	skippingRemoteDryRunLogMessageConstant = "Skipping remote branch deletion (dry run)"
-	skippingLocalDryRunLogMessageConstant  = "Skipping local branch deletion (dry run)"
 	deletionDeclinedLogMessageConstant     = "Skipping branch deletion (user declined)"
 	pullRequestJSONFieldNameConstant       = "headRefName"
 	gitListRemoteSubcommandConstant        = "ls-remote"
@@ -200,7 +198,6 @@ func TestServiceCleanupScenarios(testInstance *testing.T) {
 			options: branches.CleanupOptions{
 				RemoteName:       testRemoteNameConstant,
 				PullRequestLimit: testPullRequestLimitConstant,
-				DryRun:           false,
 				WorkingDirectory: testWorkingDirectoryConstant,
 			},
 			expectedCommandKeys: []string{
@@ -219,7 +216,7 @@ func TestServiceCleanupScenarios(testInstance *testing.T) {
 				buildCommandKey(gitCommandLabelConstant, []string{gitBranchSubcommandConstant, gitForceDeleteFlagConstant, "feature/delete"}),
 			},
 			expectedLogMessages:   []string{deletingRemoteLogMessageConstant, deletingLocalLogMessageConstant},
-			unexpectedLogMessages: []string{skippingMissingLogMessageConstant, skippingRemoteDryRunLogMessageConstant, skippingLocalDryRunLogMessageConstant},
+			unexpectedLogMessages: []string{skippingMissingLogMessageConstant},
 		},
 		{
 			name:                "skips_missing_remote_branch",
@@ -228,7 +225,6 @@ func TestServiceCleanupScenarios(testInstance *testing.T) {
 			options: branches.CleanupOptions{
 				RemoteName:       testRemoteNameConstant,
 				PullRequestLimit: testPullRequestLimitConstant,
-				DryRun:           false,
 				WorkingDirectory: testWorkingDirectoryConstant,
 			},
 			expectedCommandKeys: []string{
@@ -248,39 +244,12 @@ func TestServiceCleanupScenarios(testInstance *testing.T) {
 			unexpectedLogMessages: []string{deletingRemoteLogMessageConstant, deletingLocalLogMessageConstant},
 		},
 		{
-			name:                "dry_run_does_not_execute_deletions",
-			remoteBranches:      []string{"feature/dry-run"},
-			pullRequestBranches: []string{"feature/dry-run"},
-			options: branches.CleanupOptions{
-				RemoteName:       testRemoteNameConstant,
-				PullRequestLimit: testPullRequestLimitConstant,
-				DryRun:           true,
-				WorkingDirectory: testWorkingDirectoryConstant,
-			},
-			expectedCommandKeys: []string{
-				buildCommandKey(gitCommandLabelConstant, []string{gitListRemoteSubcommandConstant, gitHeadsFlagConstant, testRemoteNameConstant}),
-				buildCommandKey(githubCommandLabelConstant, []string{
-					githubPullRequestSubcommandConstant,
-					githubListSubcommandConstant,
-					githubStateFlagConstant,
-					githubClosedStateConstant,
-					githubJSONFlagConstant,
-					pullRequestJSONFieldNameConstant,
-					githubLimitFlagConstant,
-					strconv.Itoa(testPullRequestLimitConstant),
-				}),
-			},
-			expectedLogMessages:   []string{skippingRemoteDryRunLogMessageConstant, skippingLocalDryRunLogMessageConstant},
-			unexpectedLogMessages: []string{deletingRemoteLogMessageConstant, deletingLocalLogMessageConstant},
-		},
-		{
 			name:                "user_declines_branch_deletion",
 			remoteBranches:      []string{"feature/user-decline"},
 			pullRequestBranches: []string{"feature/user-decline"},
 			options: branches.CleanupOptions{
 				RemoteName:       testRemoteNameConstant,
 				PullRequestLimit: testPullRequestLimitConstant,
-				DryRun:           false,
 				WorkingDirectory: testWorkingDirectoryConstant,
 			},
 			expectedCommandKeys: []string{
@@ -308,7 +277,6 @@ func TestServiceCleanupScenarios(testInstance *testing.T) {
 			options: branches.CleanupOptions{
 				RemoteName:       testRemoteNameConstant,
 				PullRequestLimit: testPullRequestLimitConstant,
-				DryRun:           false,
 				WorkingDirectory: testWorkingDirectoryConstant,
 			},
 			expectedCommandKeys: []string{
@@ -426,7 +394,6 @@ func TestServiceCleanupFailures(testInstance *testing.T) {
 			options: branches.CleanupOptions{
 				RemoteName:       "",
 				PullRequestLimit: testPullRequestLimitConstant,
-				DryRun:           false,
 			},
 			expectedError: remoteNameErrorMessageConstant,
 		},
@@ -437,7 +404,6 @@ func TestServiceCleanupFailures(testInstance *testing.T) {
 			options: branches.CleanupOptions{
 				RemoteName:       testRemoteNameConstant,
 				PullRequestLimit: 0,
-				DryRun:           false,
 			},
 			expectedError: limitValidationErrorMessageConstant,
 		},
@@ -450,7 +416,6 @@ func TestServiceCleanupFailures(testInstance *testing.T) {
 			options: branches.CleanupOptions{
 				RemoteName:       testRemoteNameConstant,
 				PullRequestLimit: testPullRequestLimitConstant,
-				DryRun:           false,
 			},
 			expectedError: remoteListErrorContainsConstant,
 		},
@@ -475,7 +440,6 @@ func TestServiceCleanupFailures(testInstance *testing.T) {
 			options: branches.CleanupOptions{
 				RemoteName:       testRemoteNameConstant,
 				PullRequestLimit: testPullRequestLimitConstant,
-				DryRun:           false,
 			},
 			expectedError: pullRequestListErrorContainsConstant,
 		},
@@ -500,7 +464,6 @@ func TestServiceCleanupFailures(testInstance *testing.T) {
 			options: branches.CleanupOptions{
 				RemoteName:       testRemoteNameConstant,
 				PullRequestLimit: testPullRequestLimitConstant,
-				DryRun:           false,
 			},
 			expectedError: pullRequestDecodeErrorContainsConstant,
 		},

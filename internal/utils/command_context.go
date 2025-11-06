@@ -29,8 +29,6 @@ type BranchContext struct {
 
 // ExecutionFlags captures standardized execution modifiers derived from CLI flags.
 type ExecutionFlags struct {
-	DryRun       bool
-	DryRunSet    bool
 	AssumeYes    bool
 	AssumeYesSet bool
 	Remote       string

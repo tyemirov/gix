@@ -69,7 +69,6 @@ type Options struct {
 	BranchName      string
 	RemoteName      string
 	CreateIfMissing bool
-	DryRun          bool
 }
 
 // Result captures the outcome of a branch change.
@@ -114,10 +113,6 @@ func (service *Service) Change(executionContext context.Context, options Options
 	remoteExplicitlyProvided := len(remoteName) > 0
 	if !remoteExplicitlyProvided {
 		remoteName = defaultRemoteNameConstant
-	}
-
-	if options.DryRun {
-		return Result{RepositoryPath: trimmedRepositoryPath, BranchName: trimmedBranchName}, nil
 	}
 
 	environment := map[string]string{gitTerminalPromptEnvironmentNameConstant: gitTerminalPromptEnvironmentDisableValue}

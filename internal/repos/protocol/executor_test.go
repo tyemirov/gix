@@ -140,29 +140,6 @@ func TestExecutorBehaviors(t *testing.T) {
 			expectNoEvents: true,
 		},
 		{
-			name: "dry_run_plan",
-			options: protocol.Options{
-				RepositoryPath:           repositoryPath,
-				OriginOwnerRepository:    cloneOwnerRepository(originOwnerRepository),
-				CanonicalOwnerRepository: cloneOwnerRepository(canonicalOwnerRepository),
-				CurrentProtocol:          shared.RemoteProtocolHTTPS,
-				TargetProtocol:           shared.RemoteProtocolSSH,
-				DryRun:                   true,
-			},
-			gitManager: &stubGitManager{currentURL: protocolTestOriginURL},
-			expectedEvents: []eventExpectation{
-				{
-					code: shared.EventCodeProtocolPlan,
-					assert: func(t *testing.T, event map[string]string) {
-						require.Equal(t, protocolTestRepositoryPath, event["path"])
-						require.Equal(t, protocolTestTargetDisplayURL, event["target_url"])
-						require.Equal(t, string(shared.RemoteProtocolHTTPS), event["current_protocol"])
-						require.Equal(t, string(shared.RemoteProtocolSSH), event["target_protocol"])
-					},
-				},
-			},
-		},
-		{
 			name: "prompter_declines",
 			options: protocol.Options{
 				RepositoryPath:           repositoryPath,

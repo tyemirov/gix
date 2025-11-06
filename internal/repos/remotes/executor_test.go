@@ -135,46 +135,6 @@ func TestExecutorBehaviors(t *testing.T) {
 			}},
 		},
 		{
-			name: "dry_run_plan",
-			options: remotes.Options{
-				RepositoryPath:           repositoryPath,
-				CurrentOriginURL:         cloneRemoteURL(currentOriginURL),
-				OriginOwnerRepository:    cloneOwnerRepository(originOwnerRepository),
-				CanonicalOwnerRepository: cloneOwnerRepository(canonicalOwnerRepository),
-				RemoteProtocol:           shared.RemoteProtocolHTTPS,
-				DryRun:                   true,
-			},
-			gitManager: &stubGitManager{},
-			expectedEvents: []eventExpectation{{
-				code: shared.EventCodeRemotePlan,
-				assert: func(t *testing.T, event map[string]string) {
-					require.Equal(t, remotesTestRepositoryPath, event["path"])
-					require.Equal(t, remotesTestCanonicalURL, event["target_url"])
-					require.Equal(t, string(shared.RemoteProtocolHTTPS), event["protocol"])
-				},
-			}},
-		},
-		{
-			name: "dry_run_plan_ssh_formats_display",
-			options: remotes.Options{
-				RepositoryPath:           repositoryPath,
-				CurrentOriginURL:         cloneRemoteURL(currentOriginURL),
-				OriginOwnerRepository:    cloneOwnerRepository(originOwnerRepository),
-				CanonicalOwnerRepository: cloneOwnerRepository(canonicalOwnerRepository),
-				RemoteProtocol:           shared.RemoteProtocolSSH,
-				DryRun:                   true,
-			},
-			gitManager: &stubGitManager{},
-			expectedEvents: []eventExpectation{{
-				code: shared.EventCodeRemotePlan,
-				assert: func(t *testing.T, event map[string]string) {
-					require.Equal(t, remotesTestRepositoryPath, event["path"])
-					require.Equal(t, remotesTestCanonicalSSHDisplayURL, event["target_url"])
-					require.Equal(t, string(shared.RemoteProtocolSSH), event["protocol"])
-				},
-			}},
-		},
-		{
 			name: "prompter_declines",
 			options: remotes.Options{
 				RepositoryPath:           repositoryPath,

@@ -33,12 +33,10 @@ const (
 	purgeStartMessageConstant                    = "Starting GHCR untagged version purge"
 	purgePageMessageConstant                     = "Fetched GHCR package versions page"
 	purgeDeleteMessageConstant                   = "Deleting untagged GHCR package version"
-	purgeDryRunSkipMessageConstant               = "Skipping deletion during dry run"
 	purgeCompleteMessageConstant                 = "Completed GHCR untagged version purge"
 	ownerLogFieldNameConstant                    = "owner"
 	packageLogFieldNameConstant                  = "package"
 	ownerTypeLogFieldNameConstant                = "owner_type"
-	dryRunLogFieldNameConstant                   = "dry_run"
 	pageLogFieldNameConstant                     = "page_number"
 	pageSizeLogFieldNameConstant                 = "page_size"
 	versionIdentifierLogFieldNameConstant        = "version_id"
@@ -73,7 +71,6 @@ type PurgeRequest struct {
 	PackageName string
 	OwnerType   OwnerType
 	Token       string
-	DryRun      bool
 }
 
 // PurgeResult contains summary statistics from a purge operation.
@@ -148,7 +145,6 @@ func (service *PackageVersionService) PurgeUntaggedVersions(executionContext con
 		zap.String(ownerLogFieldNameConstant, trimmedOwner),
 		zap.String(packageLogFieldNameConstant, trimmedPackageName),
 		zap.String(ownerTypeLogFieldNameConstant, string(request.OwnerType)),
-		zap.Bool(dryRunLogFieldNameConstant, request.DryRun),
 		zap.Int(pageSizeLogFieldNameConstant, service.pageSize),
 	)
 
@@ -185,16 +181,7 @@ func (service *PackageVersionService) PurgeUntaggedVersions(executionContext con
 			service.logger.Info(
 				purgeDeleteMessageConstant,
 				zap.Int64(versionIdentifierLogFieldNameConstant, version.ID),
-				zap.Bool(dryRunLogFieldNameConstant, request.DryRun),
 			)
-
-			if request.DryRun {
-				service.logger.Debug(
-					purgeDryRunSkipMessageConstant,
-					zap.Int64(versionIdentifierLogFieldNameConstant, version.ID),
-				)
-				continue
-			}
 
 			deleteError := service.deleteVersion(executionContext, request, version.ID)
 			if deleteError != nil {

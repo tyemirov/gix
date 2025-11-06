@@ -18,7 +18,6 @@ import (
 const (
 	gitIgnoreFileName              = ".gitignore"
 	gitCommitMessage               = "chore: ignore purged paths"
-	planMessageTemplate            = "PLAN-HISTORY-PURGE: %s paths=%s remote=%s push=%t restore=%t push_missing=%t\n"
 	skipMessageTemplate            = "HISTORY-SKIP: %s (no matching history for %s)\n"
 	successMessageTemplate         = "HISTORY-PURGE: %s removed=%s remote=%s push=%t restore=%t push_missing=%t\n"
 	pathsRequiredErrorMessage      = "history purge requires at least one path"
@@ -74,7 +73,6 @@ type Options struct {
 	Push           bool
 	Restore        bool
 	PushMissing    bool
-	DryRun         bool
 }
 
 // Executor orchestrates history removal using git-filter-repo.
@@ -116,11 +114,6 @@ func (executor Executor) Execute(ctx context.Context, options Options) error {
 	}
 	remoteName, savedRemoteURL := executor.prepareRemote(ctx, repositoryPath, requestedRemote)
 	joinedPaths := strings.Join(paths, ",")
-
-	if options.DryRun {
-		executor.printf(planMessageTemplate, repositoryPath, joinedPaths, remoteName, options.Push, options.Restore, options.PushMissing)
-		return nil
-	}
 
 	if len(strings.TrimSpace(remoteName)) > 0 {
 		if err := executor.fetchRemoteRefs(ctx, repositoryPath, remoteName); err != nil {

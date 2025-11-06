@@ -52,7 +52,6 @@ type Options struct {
 	TagName        string
 	Message        string
 	RemoteName     string
-	DryRun         bool
 }
 
 // Result captures the outcome of a release.
@@ -77,7 +76,6 @@ type RetagMapping struct {
 type RetagOptions struct {
 	RepositoryPath string
 	RemoteName     string
-	DryRun         bool
 	Mappings       []RetagMapping
 }
 
@@ -105,10 +103,6 @@ func (service *Service) Release(executionContext context.Context, options Option
 	tagName := strings.TrimSpace(options.TagName)
 	if len(tagName) == 0 {
 		return Result{}, ErrTagNameRequired
-	}
-
-	if options.DryRun {
-		return Result{RepositoryPath: repositoryPath, TagName: tagName}, nil
 	}
 
 	message := strings.TrimSpace(options.Message)
@@ -208,9 +202,6 @@ func (service *Service) Retag(executionContext context.Context, options RetagOpt
 		}
 
 		results = append(results, RetagResult{TagName: tagName, TargetReference: targetReference})
-		if options.DryRun {
-			continue
-		}
 
 		tagExists := false
 		inspectCommand := execshell.CommandDetails{

@@ -36,7 +36,6 @@ const (
 type Options struct {
 	RepositoryPath          shared.RepositoryPath
 	DesiredFolderName       string
-	DryRun                  bool
 	CleanPolicy             shared.CleanWorktreePolicy
 	ConfirmationPolicy      shared.ConfirmationPolicy
 	IncludeOwner            bool
@@ -96,11 +95,6 @@ func (executor *Executor) Execute(executionContext context.Context, options Opti
 	parentDirectory := filepath.Dir(oldAbsolutePath)
 	newAbsolutePath := filepath.Join(parentDirectory, desiredName)
 
-	if options.DryRun {
-		executor.printPlan(executionContext, oldAbsolutePath, newAbsolutePath, options.CleanPolicy.RequireClean(), options.EnsureParentDirectories)
-		return nil
-	}
-
 	skip, prerequisiteError := executor.evaluatePrerequisites(executionContext, oldAbsolutePath, newAbsolutePath, options.CleanPolicy.RequireClean(), options.EnsureParentDirectories)
 	if prerequisiteError != nil {
 		return prerequisiteError
@@ -142,45 +136,6 @@ func (executor *Executor) Execute(executionContext context.Context, options Opti
 // Execute performs the rename workflow using transient executor state.
 func Execute(executionContext context.Context, dependencies Dependencies, options Options) error {
 	return NewExecutor(dependencies).Execute(executionContext, options)
-}
-
-func (executor *Executor) printPlan(executionContext context.Context, oldAbsolutePath string, newAbsolutePath string, requireClean bool, ensureParentDirectories bool) {
-	caseOnlyRename := isCaseOnlyRename(oldAbsolutePath, newAbsolutePath)
-	parentDetails := executor.parentDirectoryDetails(newAbsolutePath)
-
-	if requireClean {
-		dirtyEntries, dirtyError := executor.worktreeStatus(executionContext, oldAbsolutePath)
-		if dirtyError != nil {
-			executor.reportOutput(planSkipDirtyMessage, newDirtyWorktreeArgument(oldAbsolutePath, []string{dirtyError.Error()}))
-			return
-		}
-		if len(dirtyEntries) > 0 {
-			executor.reportOutput(planSkipDirtyMessage, newDirtyWorktreeArgument(oldAbsolutePath, dirtyEntries))
-			return
-		}
-	}
-
-	switch {
-	case oldAbsolutePath == newAbsolutePath:
-		executor.reportOutput(planSkipAlreadyMessage, oldAbsolutePath)
-		return
-	case parentDetails.exists && !parentDetails.isDirectory:
-		executor.reportOutput(planSkipParentNotDirectoryMessage, parentDetails.path)
-		return
-	case !ensureParentDirectories && !parentDetails.exists:
-		executor.reportOutput(planSkipParentMissingMessage, parentDetails.path)
-		return
-	case executor.targetExists(newAbsolutePath) && !caseOnlyRename:
-		executor.reportOutput(planSkipExistsMessage, newAbsolutePath)
-		return
-	}
-
-	if caseOnlyRename {
-		executor.reportOutput(planCaseOnlyMessage, oldAbsolutePath, newAbsolutePath)
-		return
-	}
-
-	executor.reportOutput(planReadyMessage, oldAbsolutePath, newAbsolutePath)
 }
 
 func (executor *Executor) evaluatePrerequisites(executionContext context.Context, oldAbsolutePath string, newAbsolutePath string, requireClean bool, ensureParentDirectories bool) (bool, error) {
@@ -463,21 +418,6 @@ func (executor *Executor) reportOutput(format string, arguments ...any) {
 		event.Message = "skip: target exists"
 		event.RepositoryPath = targetPath
 		event.Details["reason"] = "target_exists"
-	case planCaseOnlyMessage:
-		oldPath := fmt.Sprintf("%v", arguments[0])
-		newPath := fmt.Sprintf("%v", arguments[1])
-		event.Code = shared.EventCodeFolderPlan
-		event.Message = fmt.Sprintf("case-only rename %s → %s", oldPath, newPath)
-		event.RepositoryPath = oldPath
-		event.Details["reason"] = "case_only"
-		event.Details["new_path"] = newPath
-	case planReadyMessage:
-		oldPath := fmt.Sprintf("%v", arguments[0])
-		newPath := fmt.Sprintf("%v", arguments[1])
-		event.Code = shared.EventCodeFolderPlan
-		event.Message = fmt.Sprintf("ready %s → %s", oldPath, newPath)
-		event.RepositoryPath = oldPath
-		event.Details["new_path"] = newPath
 	case errorParentNotDirectoryMessage:
 		parentPath := fmt.Sprintf("%v", arguments[0])
 		event.Code = shared.EventCodeFolderError

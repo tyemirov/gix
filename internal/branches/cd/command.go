@@ -82,10 +82,6 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 	}
 
 	executionFlags, executionFlagsAvailable := flagutils.ResolveExecutionFlags(command)
-	dryRun := false
-	if executionFlagsAvailable && executionFlags.DryRunSet {
-		dryRun = executionFlags.DryRun
-	}
 
 	explicitBranch, configuredFallbackBranch, remainingArgs := builder.resolveBranchName(command, arguments, configuration)
 
@@ -217,7 +213,6 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 	}
 
 	runtimeOptions := workflow.RuntimeOptions{
-		DryRun:    dryRun,
 		AssumeYes: false,
 	}
 

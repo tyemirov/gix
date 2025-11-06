@@ -60,7 +60,6 @@ func handleBranchCleanupAction(ctx context.Context, environment *workflow.Enviro
 	options := CleanupOptions{
 		RemoteName:       remoteString,
 		PullRequestLimit: cleanupLimit,
-		DryRun:           environment.DryRun,
 		WorkingDirectory: repository.Path,
 		AssumeYes:        assumeYes,
 	}
@@ -89,13 +88,6 @@ func handleBranchRefreshAction(ctx context.Context, environment *workflow.Enviro
 	requireClean, requireCleanError := boolValueDefault(parameters["require_clean"], true)
 	if requireCleanError != nil {
 		return requireCleanError
-	}
-
-	if environment.DryRun {
-		if environment.Output != nil {
-			fmt.Fprintf(environment.Output, branchRefreshMessageTemplate, repository.Path, branchName)
-		}
-		return nil
 	}
 
 	service, serviceError := refresh.NewService(refresh.Dependencies{

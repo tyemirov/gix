@@ -27,7 +27,6 @@ type Options struct {
 	OriginOwnerRepository    *shared.OwnerRepository
 	CanonicalOwnerRepository *shared.OwnerRepository
 	RemoteProtocol           shared.RemoteProtocol
-	DryRun                   bool
 	ConfirmationPolicy       shared.ConfirmationPolicy
 	OwnerConstraint          *shared.OwnerSlug
 }
@@ -90,22 +89,6 @@ func (executor *Executor) Execute(executionContext context.Context, options Opti
 			repoerrors.ErrRemoteURLBuildFailed,
 			"failed to build target URL",
 		)
-	}
-
-	currentOriginURL := ""
-	if options.CurrentOriginURL != nil {
-		currentOriginURL = options.CurrentOriginURL.String()
-	}
-
-	if options.DryRun {
-		displayCurrent := FormatRemoteURLForDisplay(currentOriginURL)
-		displayTarget := FormatRemoteURLForDisplay(targetURL)
-		executor.report(shared.EventLevelInfo, shared.EventCodeRemotePlan, repositoryPath, options.CanonicalOwnerRepository, fmt.Sprintf("%s → %s", displayCurrent, displayTarget), map[string]string{
-			"current_url": displayCurrent,
-			"target_url":  displayTarget,
-			"protocol":    string(options.RemoteProtocol),
-		})
-		return nil
 	}
 
 	if options.ConfirmationPolicy.ShouldPrompt() && executor.dependencies.Prompter != nil {

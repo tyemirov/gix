@@ -77,11 +77,10 @@ func TestCommandExecutesAcrossRoots(t *testing.T) {
 	flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Enabled: true})
 
 	contextAccessor := utils.NewCommandContextAccessor()
-	command.SetContext(contextAccessor.WithExecutionFlags(context.Background(), utils.ExecutionFlags{DryRun: false}))
+	command.SetContext(contextAccessor.WithExecutionFlags(context.Background(), utils.ExecutionFlags{}))
 
 	require.NoError(t, command.RunE(command, []string{"feature/foo"}))
 	require.Equal(t, []string{temporaryRoot}, runner.roots)
-	require.False(t, runner.runtimeOptions.DryRun)
 	require.Len(t, runner.definitions, 1)
 	require.Len(t, runner.definitions[0].Actions, 1)
 	action := runner.definitions[0].Actions[0]

@@ -61,7 +61,7 @@ func TestWithBranchContextSkipsEmptyValueWhenNoDetails(t *testing.T) {
 func TestWithExecutionFlagsStoresValues(t *testing.T) {
 	accessor := NewCommandContextAccessor()
 	base := context.Background()
-	flags := ExecutionFlags{DryRun: true, DryRunSet: true, AssumeYes: true, AssumeYesSet: true, Remote: "origin", RemoteSet: true}
+	flags := ExecutionFlags{AssumeYes: true, AssumeYesSet: true, Remote: "origin", RemoteSet: true}
 
 	enriched := accessor.WithExecutionFlags(base, flags)
 

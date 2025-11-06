@@ -74,11 +74,6 @@ func (builder *CommandBuilder) runDefault(command *cobra.Command, arguments []st
 
 	executionFlags, executionFlagsAvailable := flagutils.ResolveExecutionFlags(command)
 
-	dryRun := false
-	if executionFlagsAvailable && executionFlags.DryRunSet {
-		dryRun = executionFlags.DryRun
-	}
-
 	assumeYes := false
 	if executionFlagsAvailable && executionFlags.AssumeYesSet {
 		assumeYes = executionFlags.AssumeYes
@@ -147,7 +142,6 @@ func (builder *CommandBuilder) runDefault(command *cobra.Command, arguments []st
 	}
 
 	runtimeOptions := workflow.RuntimeOptions{
-		DryRun:    dryRun,
 		AssumeYes: assumeYes,
 	}
 

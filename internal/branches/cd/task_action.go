@@ -119,7 +119,6 @@ func handleBranchChangeAction(ctx context.Context, environment *workflow.Environ
 		BranchName:      resolvedBranchName,
 		RemoteName:      remoteName,
 		CreateIfMissing: createIfMissing,
-		DryRun:          environment.DryRun,
 	})
 	if changeError != nil {
 		return changeError
@@ -150,7 +149,7 @@ func handleBranchChangeAction(ctx context.Context, environment *workflow.Environ
 			details["commit"] = "true"
 		}
 	}
-	created := result.BranchCreated && !environment.DryRun
+	created := result.BranchCreated
 	if created {
 		message += changeCreatedSuffixConstant
 	}
@@ -168,13 +167,6 @@ func handleBranchChangeAction(ctx context.Context, environment *workflow.Environ
 		if environment.RepositoryManager == nil || environment.GitExecutor == nil {
 			return errors.New(refreshMissingRepositoryManagerMessage)
 		}
-		if environment.DryRun {
-			if environment.Output != nil {
-				fmt.Fprintf(environment.Output, branchRefreshMessageTemplate, repository.Path, result.BranchName)
-			}
-			return nil
-		}
-
 		service, serviceError := refresh.NewService(refresh.Dependencies{
 			GitExecutor:       environment.GitExecutor,
 			RepositoryManager: environment.RepositoryManager,

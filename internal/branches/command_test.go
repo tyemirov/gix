@@ -21,7 +21,6 @@ const (
 	commandRemoteFlagConstant         = "--" + flagutils.RemoteFlagName
 	commandLimitFlagConstant          = "--limit"
 	commandRootFlagConstant           = "--" + flagutils.DefaultRootFlagName
-	commandDryRunFlagConstant         = "--" + flagutils.DryRunFlagName
 	commandAssumeYesFlagConstant      = "--" + flagutils.AssumeYesFlagName
 	configurationRemoteNameConstant   = "configured-remote"
 	configurationRootConstant         = "/tmp/config-root"
@@ -101,7 +100,6 @@ func TestCommandConfigurationPrecedence(t *testing.T) {
 		RemoteName:       configurationRemoteNameConstant,
 		PullRequestLimit: 42,
 		RepositoryRoots:  []string{configurationRootConstant},
-		DryRun:           false,
 		AssumeYes:        false,
 	}
 
@@ -133,7 +131,6 @@ func TestCommandConfigurationPrecedence(t *testing.T) {
 	require.Equal(t, "repo.branches.cleanup", action.Type)
 	require.Equal(t, configurationRemoteNameConstant, action.Options["remote"])
 	require.Equal(t, strconv.Itoa(configuration.PullRequestLimit), action.Options["limit"])
-	require.False(t, runner.runtimeOptions.DryRun)
 	require.False(t, runner.runtimeOptions.AssumeYes)
 	require.True(t, runner.runtimeOptions.SkipRepositoryMetadata)
 }
@@ -167,7 +164,7 @@ func TestCommandFlagsOverrideConfiguration(t *testing.T) {
 	require.NoError(t, buildError)
 	bindGlobalBranchFlags(command)
 	command.SetContext(context.Background())
-	command.SetArgs([]string{commandRemoteFlagConstant, "override-remote", commandLimitFlagConstant, "7", commandDryRunFlagConstant, commandAssumeYesFlagConstant, commandRootFlagConstant, "/tmp/other"})
+	command.SetArgs([]string{commandRemoteFlagConstant, "override-remote", commandLimitFlagConstant, "7", commandAssumeYesFlagConstant, commandRootFlagConstant, "/tmp/other"})
 
 	executionError := command.Execute()
 	require.NoError(t, executionError)
@@ -176,7 +173,6 @@ func TestCommandFlagsOverrideConfiguration(t *testing.T) {
 	action := runner.definitions[0].Actions[0]
 	require.Equal(t, "override-remote", action.Options["remote"])
 	require.Equal(t, "7", action.Options["limit"])
-	require.True(t, runner.runtimeOptions.DryRun)
 	require.True(t, runner.runtimeOptions.AssumeYes)
 	require.True(t, runner.runtimeOptions.SkipRepositoryMetadata)
 }
@@ -259,7 +255,6 @@ func TestCommandErrorsWhenRootsMissing(t *testing.T) {
 func bindGlobalBranchFlags(command *cobra.Command) {
 	flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Enabled: true})
 	flagutils.BindExecutionFlags(command, flagutils.ExecutionDefaults{}, flagutils.ExecutionFlagDefinitions{
-		DryRun:    flagutils.ExecutionFlagDefinition{Name: flagutils.DryRunFlagName, Usage: flagutils.DryRunFlagUsage, Enabled: true},
 		AssumeYes: flagutils.ExecutionFlagDefinition{Name: flagutils.AssumeYesFlagName, Usage: flagutils.AssumeYesFlagUsage, Shorthand: flagutils.AssumeYesFlagShorthand, Enabled: true},
 	})
 	flagutils.EnsureRemoteFlag(command, configurationRemoteNameConstant, "remote")
