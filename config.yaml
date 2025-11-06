@@ -57,11 +57,6 @@ operations:
       dry_run: false
       assume_yes: false
 
-  - command: ["branch-refresh"]
-    with: &branch_refresh_defaults
-      roots:
-        - ~/Development
-
   - command: ["branch-default"]
     with: &branch_default_defaults
       debug: false

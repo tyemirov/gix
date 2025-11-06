@@ -51,10 +51,6 @@ operations:
     with:
       roots:
         - .
-  - command: ["branch-refresh"]
-    with:
-      roots:
-        - .
   - command: ["branch-default"]
     with:
       roots:

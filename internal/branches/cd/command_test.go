@@ -90,6 +90,62 @@ func TestCommandExecutesAcrossRoots(t *testing.T) {
 	require.Equal(t, "origin", action.Options[taskOptionBranchRemote])
 }
 
+func TestCommandRefreshFlagsPropagateToAction(t *testing.T) {
+	temporaryRoot := t.TempDir()
+	executor := &stubGitExecutor{}
+	runner := &recordingTaskRunner{}
+	builder := CommandBuilder{
+		LoggerProvider: func() *zap.Logger { return zap.NewNop() },
+		ConfigurationProvider: func() CommandConfiguration {
+			return CommandConfiguration{RepositoryRoots: []string{temporaryRoot}, RemoteName: "origin"}
+		},
+		GitExecutor: executor,
+		TaskRunnerFactory: func(deps workflow.Dependencies) TaskRunnerExecutor {
+			runner.dependencies = deps
+			return runner
+		},
+	}
+	command, err := builder.Build()
+	require.NoError(t, err)
+	flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Enabled: true})
+
+	require.NoError(t, command.Flags().Set(refreshFlagNameConstant, "true"))
+	require.NoError(t, command.Flags().Set(stashFlagNameConstant, "true"))
+	require.NoError(t, command.Flags().Set(requireCleanFlagNameConstant, "false"))
+
+	contextAccessor := utils.NewCommandContextAccessor()
+	command.SetContext(contextAccessor.WithExecutionFlags(context.Background(), utils.ExecutionFlags{}))
+
+	require.NoError(t, command.RunE(command, []string{"feature/foo"}))
+	require.Len(t, runner.definitions, 1)
+	action := runner.definitions[0].Actions[0]
+	require.Equal(t, taskTypeBranchChange, action.Type)
+	require.Equal(t, true, action.Options[taskOptionRefreshEnabled])
+	require.Equal(t, true, action.Options[taskOptionStashChanges])
+	require.Equal(t, false, action.Options[taskOptionRequireClean])
+}
+
+func TestCommandRejectsConflictingRecoveryFlags(t *testing.T) {
+	builder := CommandBuilder{
+		LoggerProvider: func() *zap.Logger { return zap.NewNop() },
+		ConfigurationProvider: func() CommandConfiguration {
+			return CommandConfiguration{RepositoryRoots: []string{t.TempDir()}, RemoteName: "origin"}
+		},
+		GitExecutor: &stubGitExecutor{},
+	}
+	command, err := builder.Build()
+	require.NoError(t, err)
+	flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Enabled: true})
+
+	require.NoError(t, command.Flags().Set(stashFlagNameConstant, "true"))
+	require.NoError(t, command.Flags().Set(commitFlagNameConstant, "true"))
+
+	contextAccessor := utils.NewCommandContextAccessor()
+	command.SetContext(contextAccessor.WithExecutionFlags(context.Background(), utils.ExecutionFlags{}))
+
+	require.Error(t, command.RunE(command, []string{"feature/foo"}))
+}
+
 type recordingTaskRunner struct {
 	dependencies   workflow.Dependencies
 	roots          []string

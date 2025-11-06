@@ -14,11 +14,18 @@ type CommandConfiguration struct {
 	DefaultBranch   string   `mapstructure:"branch"`
 	RemoteName      string   `mapstructure:"remote"`
 	CreateIfMissing bool     `mapstructure:"create_if_missing"`
+	RefreshEnabled  bool     `mapstructure:"refresh"`
+	RequireClean    bool     `mapstructure:"require_clean"`
+	StashChanges    bool     `mapstructure:"stash"`
+	CommitChanges   bool     `mapstructure:"commit"`
 }
 
 // DefaultCommandConfiguration returns the baseline configuration for cd.
 func DefaultCommandConfiguration() CommandConfiguration {
-	return CommandConfiguration{CreateIfMissing: true}
+	return CommandConfiguration{
+		CreateIfMissing: true,
+		RequireClean:    true,
+	}
 }
 
 // Sanitize normalizes textual configuration values and repository roots.

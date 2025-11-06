@@ -24,7 +24,6 @@ import (
 	auditcli "github.com/temirov/gix/internal/audit/cli"
 	"github.com/temirov/gix/internal/branches"
 	branchcdcmd "github.com/temirov/gix/internal/branches/cd"
-	branchrefresh "github.com/temirov/gix/internal/branches/refresh"
 	"github.com/temirov/gix/internal/migrate"
 	migratecli "github.com/temirov/gix/internal/migrate/cli"
 	"github.com/temirov/gix/internal/packages"
@@ -109,7 +108,6 @@ const (
 	repoLicenseOperationNameConstant                                 = "license apply"
 	repoNamespaceRewriteOperationNameConstant                        = "namespace rewrite"
 	workflowCommandOperationNameConstant                             = "workflow"
-	branchRefreshOperationNameConstant                               = "branch-refresh"
 	branchDefaultOperationNameConstant                               = "branch-default"
 	branchChangeOperationNameConstant                                = "cd"
 	commitMessageOperationNameConstant                               = "commit message"
@@ -175,10 +173,9 @@ const (
 	branchChangeLegacyTopLevelUseNameConstant                        = "branch-cd"
 	branchChangeTopLevelUseNameConstant                              = "cd"
 	branchChangeTopLevelUsageTemplateConstant                        = branchChangeTopLevelUseNameConstant + " [branch]"
-	branchRefreshTopLevelUseNameConstant                             = "branch-refresh"
+	branchRefreshLegacyTopLevelUseNameConstant                       = "branch-refresh"
 	defaultCommandUseNameConstant                                    = "default"
 	defaultCommandUsageTemplateConstant                              = defaultCommandUseNameConstant + " <target-branch>"
-	refreshCommandUseNameConstant                                    = "refresh"
 	branchChangeCommandUseNameConstant                               = "cd"
 	branchChangeCommandUsageTemplateConstant                         = branchChangeCommandUseNameConstant + " [branch]"
 	branchChangeCommandAliasConstant                                 = "switch"
@@ -225,14 +222,13 @@ const (
 	legacyBranchDefaultCommandKeyConstant                            = legacyBranchNamespaceUseNameConstant + " " + defaultCommandUseNameConstant
 	legacyBranchChangeCommandKeyConstant                             = legacyBranchNamespaceUseNameConstant + " " + branchChangeCommandUseNameConstant
 	legacyBranchChangeAliasCommandKeyConstant                        = legacyBranchNamespaceUseNameConstant + " " + branchChangeCommandAliasConstant
-	legacyBranchRefreshCommandKeyConstant                            = legacyBranchNamespaceUseNameConstant + " " + refreshCommandUseNameConstant
+	legacyBranchRefreshCommandKeyConstant                            = legacyBranchNamespaceUseNameConstant + " refresh"
 	renameNestedLongDescriptionConstant                              = "folder rename normalizes repository directory names to match canonical GitHub repositories."
 	updateRemoteCanonicalLongDescriptionConstant                     = "remote update-to-canonical adjusts origin remotes to match canonical GitHub repositories."
 	updateProtocolLongDescriptionConstant                            = "remote update-protocol converts origin URLs to a desired protocol."
 	prsDeleteLongDescriptionConstant                                 = "prs delete removes remote and local Git branches whose pull requests are already closed."
 	packagesDeleteLongDescriptionConstant                            = "packages delete removes untagged container versions from GitHub Packages."
 	branchDefaultNestedLongDescriptionConstant                       = "branch-default promotes a branch to the repository default, auto-detecting the current default branch before retargeting workflows and safety gates."
-	branchRefreshNestedLongDescriptionConstant                       = "branch-refresh synchronizes repositories by fetching, checking out, and pulling updates."
 	versionFlagNameConstant                                          = "version"
 	versionFlagUsageConstant                                         = "Print the application version and exit"
 	versionOutputTemplateConstant                                    = "gix version: %s\n"
@@ -266,7 +262,6 @@ var commandOperationRequirements = map[string][]string{
 	licenseApplyCommandPathKeyConstant:       {repoLicenseOperationNameConstant},
 	namespaceRewriteCommandPathKeyConstant:   {repoNamespaceRewriteOperationNameConstant},
 	workflowCommandOperationNameConstant:     {workflowCommandOperationNameConstant},
-	branchRefreshTopLevelUseNameConstant:     {branchRefreshOperationNameConstant},
 	branchDefaultTopLevelUseNameConstant:     {branchDefaultOperationNameConstant},
 	branchChangeTopLevelUseNameConstant:      {branchChangeOperationNameConstant},
 	commitMessageCommandPathKeyConstant:      {commitMessageOperationNameConstant},
@@ -292,12 +287,15 @@ var operationNameAliases = map[string]string{
 	legacyBranchChangeCommandKeyConstant:           branchChangeOperationNameConstant,
 	legacyBranchChangeAliasCommandKeyConstant:      branchChangeOperationNameConstant,
 	branchChangeLegacyTopLevelUseNameConstant:      branchChangeOperationNameConstant,
-	legacyBranchRefreshCommandKeyConstant:          branchRefreshOperationNameConstant,
+	branchRefreshLegacyTopLevelUseNameConstant:     branchChangeOperationNameConstant,
+	legacyBranchRefreshCommandKeyConstant:          branchChangeOperationNameConstant,
 	releaseRetagCommandAliasKeyConstant:            repoReleaseOperationNameConstant,
 }
 
 var operationAliasWarnings = map[string]string{
-	branchChangeLegacyTopLevelUseNameConstant: "command configuration uses deprecated name \"branch-cd\"; update to \"cd\".",
+	branchChangeLegacyTopLevelUseNameConstant:  "command configuration uses deprecated name \"branch-cd\"; update to \"cd\".",
+	branchRefreshLegacyTopLevelUseNameConstant: "command configuration uses deprecated name \"branch-refresh\"; update to \"cd\" with refresh options.",
+	legacyBranchRefreshCommandKeyConstant:      "command configuration uses deprecated name \"branch refresh\"; update to \"cd\" with refresh options.",
 }
 
 type loggerOutputsFactory interface {
@@ -385,6 +383,7 @@ func newOperationConfigurations(definitions []ApplicationOperationConfiguration)
 			continue
 		}
 
+		originalName := normalizedName
 		if canonicalName, exists := operationNameAliases[normalizedName]; exists {
 			normalizedName = canonicalName
 		}
@@ -397,6 +396,16 @@ func newOperationConfigurations(definitions []ApplicationOperationConfiguration)
 		options := make(map[string]any)
 		for optionKey, optionValue := range definitions[definitionIndex].Options {
 			options[optionKey] = optionValue
+		}
+
+		if normalizedName == branchChangeOperationNameConstant &&
+			(originalName == branchRefreshLegacyTopLevelUseNameConstant || originalName == legacyBranchRefreshCommandKeyConstant) {
+			if _, exists := options["refresh"]; !exists {
+				options["refresh"] = true
+			}
+			if _, exists := options["require_clean"]; !exists {
+				options["require_clean"] = true
+			}
 		}
 
 		entries[normalizedName] = options
@@ -692,14 +701,6 @@ func NewApplication() *Application {
 		},
 	}
 
-	branchRefreshBuilder := branchrefresh.CommandBuilder{
-		LoggerProvider: func() *zap.Logger {
-			return application.logger
-		},
-		HumanReadableLoggingProvider: application.humanReadableLoggingEnabled,
-		ConfigurationProvider:        application.branchRefreshConfiguration,
-	}
-
 	branchChangeBuilder := branchcdcmd.CommandBuilder{
 		LoggerProvider: func() *zap.Logger {
 			return application.logger
@@ -960,10 +961,6 @@ func NewApplication() *Application {
 			branchChangeLegacyTopLevelUseNameConstant,
 		)
 		cobraCommand.AddCommand(branchChangeCommand)
-	}
-	if branchRefreshNestedCommand, branchRefreshNestedError := branchRefreshBuilder.Build(); branchRefreshNestedError == nil {
-		configureCommandMetadata(branchRefreshNestedCommand, branchRefreshTopLevelUseNameConstant, branchRefreshNestedCommand.Short, branchRefreshNestedLongDescriptionConstant)
-		cobraCommand.AddCommand(branchRefreshNestedCommand)
 	}
 
 	application.rootCommand = cobraCommand
@@ -1275,15 +1272,15 @@ func (application *Application) branchCleanupConfiguration() branches.CommandCon
 	return configuration
 }
 
-func (application *Application) branchRefreshConfiguration() branchrefresh.CommandConfiguration {
-	configuration := branchrefresh.DefaultCommandConfiguration()
-	application.decodeOperationConfiguration(branchRefreshOperationNameConstant, &configuration)
-	return configuration.Sanitize()
-}
-
 func (application *Application) branchChangeConfiguration() branchcdcmd.CommandConfiguration {
 	configuration := branchcdcmd.DefaultCommandConfiguration()
 	application.decodeOperationConfiguration(branchChangeOperationNameConstant, &configuration)
+
+	options, optionsExist := application.lookupOperationOptions(branchChangeOperationNameConstant)
+	if !optionsExist || !optionExists(options, requireCleanOptionKeyConstant) {
+		configuration.RequireClean = application.configuration.Common.RequireClean
+	}
+
 	return configuration.Sanitize()
 }
 
