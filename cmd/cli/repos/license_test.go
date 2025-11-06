@@ -63,7 +63,6 @@ func TestLicenseCommandUsesConfigurationDefaults(t *testing.T) {
 		},
 		ConfigurationProvider: func() repos.LicenseConfiguration {
 			return repos.LicenseConfiguration{
-				DryRun:          true,
 				AssumeYes:       true,
 				RepositoryRoots: []string{"/tmp/license-config-root"},
 				TemplatePath:    templatePath,
@@ -92,7 +91,6 @@ func TestLicenseCommandUsesConfigurationDefaults(t *testing.T) {
 	require.NoError(t, runError)
 
 	require.Equal(t, []string{"/tmp/license-config-root"}, taskRunner.roots)
-	require.True(t, taskRunner.runtimeOptions.DryRun)
 	require.True(t, taskRunner.runtimeOptions.AssumeYes)
 	require.True(t, taskRunner.runtimeOptions.CaptureInitialWorktreeStatus)
 
@@ -149,7 +147,6 @@ func TestLicenseCommandFlagOverrides(t *testing.T) {
 
 	cliRoot := "/tmp/license-cli-root"
 	args := flagutils.NormalizeToggleArguments([]string{
-		"--" + flagutils.DryRunFlagName,
 		"--" + flagutils.AssumeYesFlagName,
 		"--" + flagutils.DefaultRootFlagName, cliRoot,
 		"--" + testLicenseTemplateFlag, templatePath,
@@ -170,7 +167,6 @@ func TestLicenseCommandFlagOverrides(t *testing.T) {
 	require.NoError(t, runError)
 
 	require.Equal(t, []string{cliRoot}, taskRunner.roots)
-	require.True(t, taskRunner.runtimeOptions.DryRun)
 	require.True(t, taskRunner.runtimeOptions.AssumeYes)
 	require.True(t, taskRunner.runtimeOptions.CaptureInitialWorktreeStatus)
 
@@ -224,7 +220,6 @@ func TestLicenseCommandRequiresTemplateOrContent(t *testing.T) {
 func bindGlobalLicenseFlags(command *cobra.Command) {
 	flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Enabled: true})
 	flagutils.BindExecutionFlags(command, flagutils.ExecutionDefaults{}, flagutils.ExecutionFlagDefinitions{
-		DryRun:    flagutils.ExecutionFlagDefinition{Name: flagutils.DryRunFlagName, Usage: flagutils.DryRunFlagUsage, Enabled: true},
 		AssumeYes: flagutils.ExecutionFlagDefinition{Name: flagutils.AssumeYesFlagName, Usage: flagutils.AssumeYesFlagUsage, Shorthand: flagutils.AssumeYesFlagShorthand, Enabled: true},
 	})
 }

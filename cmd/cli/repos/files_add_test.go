@@ -15,7 +15,6 @@ import (
 )
 
 const (
-	filesAddDryRunFlag        = "--" + flagutils.DryRunFlagName
 	filesAddAssumeYesFlag     = "--" + flagutils.AssumeYesFlagName
 	filesAddRootFlag          = "--" + flagutils.DefaultRootFlagName
 	filesAddPathFlag          = "--path"
@@ -59,7 +58,6 @@ func TestFilesAddCommandUsesConfigurationDefaults(t *testing.T) {
 		HumanReadableLoggingProvider: func() bool { return false },
 		ConfigurationProvider: func() repos.AddConfiguration {
 			return repos.AddConfiguration{
-				DryRun:          true,
 				AssumeYes:       true,
 				RepositoryRoots: []string{filesAddConfiguredRoot},
 				Path:            "docs/POLICY.md",
@@ -85,7 +83,6 @@ func TestFilesAddCommandUsesConfigurationDefaults(t *testing.T) {
 	require.NoError(t, command.Execute())
 
 	require.Equal(t, []string{filesAddConfiguredRoot}, taskRunner.roots)
-	require.True(t, taskRunner.runtimeOptions.DryRun)
 	require.True(t, taskRunner.runtimeOptions.AssumeYes)
 	require.True(t, taskRunner.runtimeOptions.CaptureInitialWorktreeStatus)
 	require.Len(t, taskRunner.definitions, 1)
@@ -128,7 +125,6 @@ func TestFilesAddCommandFlagOverrides(t *testing.T) {
 	bindGlobalReplaceFlags(command)
 
 	args := flagutils.NormalizeToggleArguments([]string{
-		filesAddDryRunFlag,
 		filesAddAssumeYesFlag,
 		filesAddRootFlag, filesAddCliRoot,
 		filesAddPathFlag, "docs/POLICY.md",
@@ -148,7 +144,6 @@ func TestFilesAddCommandFlagOverrides(t *testing.T) {
 
 	require.NoError(t, command.Execute())
 	require.Equal(t, []string{filesAddCliRoot}, taskRunner.roots)
-	require.True(t, taskRunner.runtimeOptions.DryRun)
 	require.True(t, taskRunner.runtimeOptions.AssumeYes)
 
 	definition := taskRunner.definitions[0]

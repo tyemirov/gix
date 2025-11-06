@@ -24,7 +24,6 @@ const (
 	reposIntegrationUpdateCanonicalAction       = "update-to-canonical"
 	reposIntegrationUpdateProtocolAction        = "update-protocol"
 	reposIntegrationHistoryCommand              = "rm"
-	reposIntegrationDryRunFlag                  = "--dry-run"
 	reposIntegrationYesFlag                     = "--yes"
 	reposIntegrationOwnerFlag                   = "--owner"
 	reposIntegrationRootFlag                    = "--" + flagutils.DefaultRootFlagName
@@ -59,8 +58,7 @@ const (
 	reposIntegrationRemoteTildeCaseName         = "update_canonical_remote_tilde_flag"
 	reposIntegrationProtocolCaseName            = "convert_protocol"
 	reposIntegrationProtocolConfigCaseName      = "convert_protocol_config"
-	reposIntegrationProtocolConfigDryRunCase    = "convert_protocol_config_dry_run_literal"
-	reposIntegrationHistoryRemoveCaseName       = "history_remove_dry_run"
+	reposIntegrationHistoryRemoveCaseName       = "history_remove_executes_tasks"
 	reposIntegrationProtocolHelpCaseName        = "protocol_help_missing_flags"
 	reposIntegrationProtocolUsageSnippet        = "gix remote update-protocol [flags]"
 	reposIntegrationProtocolMissingFlagsMessage = "specify both --from and --to"
@@ -100,7 +98,6 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				reposIntegrationErrorLevel,
 				reposIntegrationFolderNamespaceCommand,
 				reposIntegrationRenameActionCommand,
-				reposIntegrationDryRunFlag,
 			},
 			expectedOutput: func(repositoryPath string) string {
 				absolutePath, absError := filepath.Abs(repositoryPath)
@@ -123,7 +120,6 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				reposIntegrationErrorLevel,
 				reposIntegrationFolderNamespaceCommand,
 				reposIntegrationRenameActionCommand,
-				reposIntegrationDryRunFlag,
 				reposIntegrationOwnerFlag,
 			},
 			expectedOutput: func(repositoryPath string) string {
@@ -404,7 +400,6 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 			omitRepositoryArgument: true,
 		},
 		{
-			name: reposIntegrationProtocolConfigDryRunCase,
 			setup: func(testInstance *testing.T) (string, string) {
 				return initializeRepositoryWithStub(testInstance)
 			},
@@ -415,7 +410,6 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				reposIntegrationErrorLevel,
 				reposIntegrationRemoteNamespaceCommand,
 				reposIntegrationUpdateProtocolAction,
-				reposIntegrationDryRunFlag,
 			},
 			expectedOutput: func(repositoryPath string) string {
 				return fmt.Sprintf("event=PROTOCOL_PLAN path=%s", repositoryPath)
@@ -468,7 +462,6 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				reposIntegrationLogLevelFlag,
 				reposIntegrationErrorLevel,
 				reposIntegrationHistoryCommand,
-				reposIntegrationDryRunFlag + "=yes",
 				"secrets.txt",
 			},
 			expectedOutput: func(repositoryPath string) string {

@@ -97,7 +97,6 @@ func TestCommandRunsAcrossRoots(t *testing.T) {
 	require.Equal(t, "v1.2.3", action.Options["tag"])
 	require.Equal(t, "Ship it", action.Options["message"])
 	require.Equal(t, "origin", action.Options["remote"])
-	require.False(t, runner.runtimeOptions.DryRun)
 	require.False(t, runner.runtimeOptions.AssumeYes)
 }
 
@@ -132,7 +131,6 @@ func TestRetagCommandBuildsMappings(t *testing.T) {
 	require.NoError(t, err)
 	flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Enabled: true})
 	flagutils.BindExecutionFlags(command, flagutils.ExecutionDefaults{}, flagutils.ExecutionFlagDefinitions{
-		DryRun:    flagutils.ExecutionFlagDefinition{Name: flagutils.DryRunFlagName, Usage: flagutils.DryRunFlagUsage, Enabled: true},
 		AssumeYes: flagutils.ExecutionFlagDefinition{Name: flagutils.AssumeYesFlagName, Usage: flagutils.AssumeYesFlagUsage, Shorthand: flagutils.AssumeYesFlagShorthand, Enabled: true},
 	})
 

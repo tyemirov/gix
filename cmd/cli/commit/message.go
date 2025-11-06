@@ -85,10 +85,6 @@ func (builder *MessageCommandBuilder) run(command *cobra.Command, arguments []st
 	configuration := builder.resolveConfiguration()
 
 	executionFlags, _ := flagutils.ResolveExecutionFlags(command)
-	dryRun := executionFlags.DryRun
-	if executionFlags.DryRunSet {
-		dryRun = executionFlags.DryRun
-	}
 
 	repositoryPath, rootError := selectRepositoryRoot(command, configuration)
 	if rootError != nil {
@@ -236,10 +232,7 @@ func (builder *MessageCommandBuilder) run(command *cobra.Command, arguments []st
 		},
 	}
 
-	runtimeOptions := workflow.RuntimeOptions{
-		DryRun:    dryRun,
-		AssumeYes: false,
-	}
+	runtimeOptions := workflow.RuntimeOptions{AssumeYes: executionFlags.AssumeYes}
 
 	return taskRunner.Run(
 		command.Context(),

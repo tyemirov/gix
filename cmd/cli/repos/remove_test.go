@@ -35,7 +35,6 @@ func bindGlobalRemoveFlags(command *cobra.Command) {
 		command,
 		flagutils.ExecutionDefaults{},
 		flagutils.ExecutionFlagDefinitions{
-			DryRun:    flagutils.ExecutionFlagDefinition{Name: flagutils.DryRunFlagName, Usage: flagutils.DryRunFlagUsage, Enabled: true},
 			AssumeYes: flagutils.ExecutionFlagDefinition{Name: flagutils.AssumeYesFlagName, Usage: flagutils.AssumeYesFlagUsage, Enabled: true},
 		},
 	)
@@ -53,7 +52,6 @@ func TestRemoveCommandConfigurationPrecedence(testInstance *testing.T) {
 		arguments            []string
 		expectedRoots        []string
 		expectedPaths        []string
-		expectDryRun         bool
 		expectAssumeYes      bool
 		expectedRemote       string
 		expectPush           bool
@@ -64,7 +62,6 @@ func TestRemoveCommandConfigurationPrecedence(testInstance *testing.T) {
 		{
 			name: "configuration_applies_without_flags",
 			configuration: repos.RemoveConfiguration{
-				DryRun:          true,
 				AssumeYes:       false,
 				RepositoryRoots: []string{configuredRoot},
 				Remote:          "origin",
@@ -75,7 +72,6 @@ func TestRemoveCommandConfigurationPrecedence(testInstance *testing.T) {
 			arguments:            []string{"secrets.txt", "./nested/creds.env"},
 			expectedRoots:        []string{configuredRoot},
 			expectedPaths:        []string{"secrets.txt", "nested/creds.env"},
-			expectDryRun:         true,
 			expectAssumeYes:      false,
 			expectedRemote:       "origin",
 			expectPush:           false,
@@ -86,7 +82,6 @@ func TestRemoveCommandConfigurationPrecedence(testInstance *testing.T) {
 		{
 			name: "flags_override_configuration",
 			configuration: repos.RemoveConfiguration{
-				DryRun:          false,
 				AssumeYes:       false,
 				RepositoryRoots: []string{configuredRoot},
 				Remote:          "",
@@ -100,12 +95,10 @@ func TestRemoveCommandConfigurationPrecedence(testInstance *testing.T) {
 				"--push", "no",
 				"--restore", "no",
 				"--push-missing", "yes",
-				"--dry-run", "yes",
 				"config.yml",
 			},
 			expectedRoots:        []string{flagRoot},
 			expectedPaths:        []string{"config.yml"},
-			expectDryRun:         true,
 			expectAssumeYes:      false,
 			expectedRemote:       "upstream",
 			expectPush:           false,
@@ -185,7 +178,6 @@ func TestRemoveCommandConfigurationPrecedence(testInstance *testing.T) {
 				require.True(subtest, ok)
 				require.Equal(subtest, testCase.expectPushMissing, pushMissingValue)
 
-				require.Equal(subtest, testCase.expectDryRun, runner.runtimeOptions.DryRun)
 				require.Equal(subtest, testCase.expectAssumeYes, runner.runtimeOptions.AssumeYes)
 			} else {
 				require.Equal(subtest, 0, runner.invocations)

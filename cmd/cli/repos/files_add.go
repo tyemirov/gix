@@ -80,11 +80,6 @@ func (builder *FilesAddCommandBuilder) run(command *cobra.Command, arguments []s
 	configuration := builder.resolveConfiguration()
 	executionFlags, executionFlagsAvailable := flagutils.ResolveExecutionFlags(command)
 
-	dryRun := configuration.DryRun
-	if executionFlagsAvailable && executionFlags.DryRunSet {
-		dryRun = executionFlags.DryRun
-	}
-
 	assumeYes := configuration.AssumeYes
 	if executionFlagsAvailable && executionFlags.AssumeYesSet {
 		assumeYes = executionFlags.AssumeYes
@@ -317,7 +312,6 @@ func (builder *FilesAddCommandBuilder) run(command *cobra.Command, arguments []s
 	}
 
 	runtimeOptions := workflow.RuntimeOptions{
-		DryRun:                       dryRun,
 		AssumeYes:                    assumeYes,
 		CaptureInitialWorktreeStatus: requireClean,
 	}

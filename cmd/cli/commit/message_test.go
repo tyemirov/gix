@@ -10,7 +10,6 @@ import (
 
 	"github.com/temirov/gix/internal/commitmsg"
 	"github.com/temirov/gix/internal/execshell"
-	"github.com/temirov/gix/internal/utils"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
 	"github.com/temirov/gix/internal/workflow"
 	"github.com/temirov/gix/pkg/llm"
@@ -65,7 +64,6 @@ func TestMessageCommandGeneratesCommitMessage(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, runner)
 	require.Equal(t, []string{tempDir}, runner.roots)
-	require.False(t, runner.runtimeOptions.DryRun)
 	require.Len(t, runner.definitions, 1)
 	require.Len(t, runner.definitions[0].Actions, 1)
 	action := runner.definitions[0].Actions[0]
@@ -75,62 +73,6 @@ func TestMessageCommandGeneratesCommitMessage(t *testing.T) {
 	require.NotNil(t, action.Options[taskOptionCommitClient])
 	require.Equal(t, "mock-model", client.config.Model)
 	require.Equal(t, "test-api-key", client.config.APIKey)
-	require.Nil(t, client.request)
-}
-
-func TestMessageCommandDryRunWritesPrompt(t *testing.T) {
-	tempDir := t.TempDir()
-	apiKeyEnv := "TEST_LLM_KEY"
-	t.Setenv(apiKeyEnv, "token")
-
-	executor := &fakeGitExecutor{
-		responses: map[string]string{
-			"status --short":                   " A new.txt\n",
-			"diff --unified=3 --cached":        "diff --git a/new.txt b/new.txt\n+content\n",
-			"diff --unified=3 --cached --stat": " new.txt | 1 +",
-		},
-	}
-	client := &fakeChatClient{}
-	runner := &recordingTaskRunner{}
-
-	builder := MessageCommandBuilder{
-		GitExecutor: executor,
-		ConfigurationProvider: func() MessageConfiguration {
-			return MessageConfiguration{
-				Roots:      []string{tempDir},
-				APIKeyEnv:  apiKeyEnv,
-				Model:      "mock-model",
-				DiffSource: "staged",
-			}.Sanitize()
-		},
-		ClientFactory: func(config llm.Config) (commitmsg.ChatClient, error) {
-			return client, nil
-		},
-		Discoverer: mockDiscoverer{roots: []string{tempDir}},
-		TaskRunnerFactory: func(deps workflow.Dependencies) TaskRunnerExecutor {
-			runner.dependencies = deps
-			return runner
-		},
-	}
-
-	command, err := builder.Build()
-	require.NoError(t, err)
-	flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Name: flagutils.DefaultRootFlagName, Usage: flagutils.DefaultRootFlagUsage, Enabled: true})
-	var output bytes.Buffer
-	command.SetOut(&output)
-	command.SetErr(&output)
-
-	accessor := utils.NewCommandContextAccessor()
-	command.SetContext(accessor.WithExecutionFlags(context.Background(), utils.ExecutionFlags{DryRun: true, DryRunSet: true}))
-
-	err = command.Execute()
-	require.NoError(t, err)
-	require.Equal(t, []string{tempDir}, runner.roots)
-	require.True(t, runner.runtimeOptions.DryRun)
-	require.Len(t, runner.definitions, 1)
-	action := runner.definitions[0].Actions[0]
-	require.Equal(t, taskTypeCommitMessage, action.Type)
-	require.Equal(t, "staged", action.Options[taskOptionCommitDiffSource])
 	require.Nil(t, client.request)
 }
 

@@ -17,7 +17,6 @@ import (
 )
 
 const (
-	replaceDryRunFlag       = "--" + flagutils.DryRunFlagName
 	replaceAssumeYesFlag    = "--" + flagutils.AssumeYesFlagName
 	replaceRootFlag         = "--" + flagutils.DefaultRootFlagName
 	replacePatternFlag      = "--pattern"
@@ -61,7 +60,6 @@ func TestReplaceCommandUsesConfigurationDefaults(t *testing.T) {
 		},
 		ConfigurationProvider: func() repos.ReplaceConfiguration {
 			return repos.ReplaceConfiguration{
-				DryRun:          true,
 				AssumeYes:       true,
 				RepositoryRoots: []string{replaceConfiguredRoot},
 				Patterns:        []string{"*.md"},
@@ -90,7 +88,6 @@ func TestReplaceCommandUsesConfigurationDefaults(t *testing.T) {
 	require.NoError(t, runError)
 
 	require.Equal(t, []string{replaceConfiguredRoot}, taskRunner.roots)
-	require.True(t, taskRunner.runtimeOptions.DryRun)
 	require.True(t, taskRunner.runtimeOptions.AssumeYes)
 	require.Len(t, taskRunner.definitions, 1)
 
@@ -123,7 +120,6 @@ func TestReplaceCommandFlagOverrides(t *testing.T) {
 		HumanReadableLoggingProvider: func() bool { return false },
 		ConfigurationProvider: func() repos.ReplaceConfiguration {
 			return repos.ReplaceConfiguration{
-				DryRun:          false,
 				AssumeYes:       false,
 				RepositoryRoots: []string{replaceConfiguredRoot},
 				Find:            "config",
@@ -138,7 +134,6 @@ func TestReplaceCommandFlagOverrides(t *testing.T) {
 	bindGlobalReplaceFlags(command)
 
 	args := flagutils.NormalizeToggleArguments([]string{
-		replaceDryRunFlag,
 		replaceAssumeYesFlag,
 		replaceRootFlag, replaceCliRoot,
 		replacePatternFlag, "*.go",
@@ -157,7 +152,6 @@ func TestReplaceCommandFlagOverrides(t *testing.T) {
 	require.NoError(t, runError)
 
 	require.Equal(t, []string{replaceCliRoot}, taskRunner.roots)
-	require.True(t, taskRunner.runtimeOptions.DryRun)
 	require.True(t, taskRunner.runtimeOptions.AssumeYes)
 
 	require.Len(t, taskRunner.definitions, 1)
@@ -211,7 +205,6 @@ func TestReplaceCommandRequiresFind(t *testing.T) {
 func bindGlobalReplaceFlags(command *cobra.Command) {
 	flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Enabled: true})
 	flagutils.BindExecutionFlags(command, flagutils.ExecutionDefaults{}, flagutils.ExecutionFlagDefinitions{
-		DryRun:    flagutils.ExecutionFlagDefinition{Name: flagutils.DryRunFlagName, Usage: flagutils.DryRunFlagUsage, Enabled: true},
 		AssumeYes: flagutils.ExecutionFlagDefinition{Name: flagutils.AssumeYesFlagName, Usage: flagutils.AssumeYesFlagUsage, Shorthand: flagutils.AssumeYesFlagShorthand, Enabled: true},
 	})
 }

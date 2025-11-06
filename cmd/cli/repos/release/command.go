@@ -59,10 +59,6 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 	configuration := builder.resolveConfiguration()
 
 	executionFlags, executionFlagsAvailable := flagutils.ResolveExecutionFlags(command)
-	dryRun := false
-	if executionFlagsAvailable && executionFlags.DryRunSet {
-		dryRun = executionFlags.DryRun
-	}
 
 	if len(arguments) == 0 {
 		if command != nil {
@@ -179,7 +175,7 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 		assumeYes = executionFlags.AssumeYes
 	}
 
-	runtimeOptions := workflow.RuntimeOptions{DryRun: dryRun, AssumeYes: assumeYes}
+	runtimeOptions := workflow.RuntimeOptions{AssumeYes: assumeYes}
 
 	return taskRunner.Run(command.Context(), repositoryRoots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
 }
