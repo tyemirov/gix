@@ -56,12 +56,13 @@ Summary: total.repos=0 duration_ms=0
   - Desired: Extend `gix cd` with options covering fetch/pull plus stash/commit recovery, run the existing `branch.refresh` workflow action from the unified command, and remove `branch-refresh` from the CLI/config/docs while maintaining legacy key compatibility via warnings.
   - Acceptance: `branch-refresh` disappears from `gix --help` and default configs, `gix cd --branch <name>` with the new refresh flags executes the same workflow path as today's command, updated tests cover refresh scenarios under `cd`, and legacy configs referencing `branch-refresh` are mapped with a migration warning.
 
-- [ ] [GX-222] Rename branch-default to default and update dependent workflow plumbing
-  - Status: Unresolved
+- [x] [GX-222] Rename branch-default to default and update dependent workflow plumbing
+  - Status: Resolved
   - Category: Improvement
   - Context: Default branch promotion currently lives under the `branch-default` command path in `cmd/cli/application.go`, configuration fixtures, workflow command keys, and documentation.
   - Desired: Switch the Cobra use string and registration to `default`, propagate the rename through `internal/workflow/command_path.go`, `cmd/cli/default_config.yaml`, docs, and tests, and provide aliasing so existing `branch-default` configuration entries continue to execute while warning users.
   - Acceptance: `gix default` promotes repository defaults end-to-end, help text/docs/config samples use the new name, automated tests are updated, and workflow/config loaders accept `branch-default` with a deprecation notice.
+  - Resolution: CLI, workflow dispatcher, defaults, and docs now register the command as `default`; `branch-default` remains an alias with deprecation warnings, and tests/docs/config samples were updated accordingly.
 
 - [ ] [GX-223] Introduce message namespace and migrate changelog message to message changelog
   - Status: Unresolved

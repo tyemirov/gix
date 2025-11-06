@@ -63,7 +63,7 @@ type BranchMigrationOperation struct {
 
 // Name identifies the workflow command handled by this operation.
 func (operation *BranchMigrationOperation) Name() string {
-	return commandBranchDefaultKey
+	return commandDefaultKey
 }
 
 // Execute performs branch migration workflows for configured targets.

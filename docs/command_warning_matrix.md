@@ -9,7 +9,7 @@ The table below categorises the major maintenance commands into **fatal** and **
 |  | Pull branch (`git pull --rebase`) | Non-fatal | Logged as `PULL-SKIP`; branch switch still succeeds. |
 |  | Preview skip | Non-fatal | Explicit message and continue. |
 |  | Remote/local deletion (branch cleanup) | Non-fatal | Errors appear as warnings; remaining branches processed. |
-| branch-default | Workflow rewrite, default branch update | Fatal | Required to guarantee correctness. |
+| default (alias `branch-default`) | Workflow rewrite, default branch update | Fatal | Required to guarantee correctness. |
 |  | GitHub Pages update | Non-fatal | Logged as `PAGES-SKIP`; migration continues. |
 |  | Pull request listing | Non-fatal | Logged as `PR-LIST-SKIP`; migration continues. |
 |  | Pull request retarget | Non-fatal | Each failure logs `PR-RETARGET-SKIP`; other PRs still processed. |

@@ -14,6 +14,10 @@ import (
 	flagutils "github.com/temirov/gix/internal/utils/flags"
 )
 
+const (
+	defaultCommandNameConstant = defaultCommandUseNameConstant
+)
+
 func TestApplicationCommonDefaultsApplied(t *testing.T) {
 	operations, buildError := newOperationConfigurations([]ApplicationOperationConfiguration{
 		{
@@ -253,9 +257,9 @@ func TestApplicationCommandHierarchyAndAliases(t *testing.T) {
 	require.NotNil(t, releaseCommand.Parent())
 	require.Equal(t, applicationNameConstant, releaseCommand.Parent().Name())
 
-	branchDefaultCommand, _, branchDefaultError := rootCommand.Find([]string{branchDefaultTopLevelUseNameConstant})
+	branchDefaultCommand, _, branchDefaultError := rootCommand.Find([]string{defaultCommandNameConstant})
 	require.NoError(t, branchDefaultError)
-	require.Equal(t, branchDefaultTopLevelUseNameConstant, branchDefaultCommand.Name())
+	require.Equal(t, defaultCommandNameConstant, branchDefaultCommand.Name())
 	require.NotNil(t, branchDefaultCommand.Parent())
 	require.Equal(t, applicationNameConstant, branchDefaultCommand.Parent().Name())
 
@@ -326,9 +330,9 @@ func TestApplicationHierarchicalCommandsLoadExpectedOperations(t *testing.T) {
 	require.NoError(t, packagesError)
 	require.Equal(t, []string{packagesPurgeOperationNameConstant}, application.operationsRequiredForCommand(repoPackagesCommand))
 
-	branchDefaultCommand, _, branchDefaultError := rootCommand.Find([]string{branchDefaultTopLevelUseNameConstant})
+	branchDefaultCommand, _, branchDefaultError := rootCommand.Find([]string{defaultCommandNameConstant})
 	require.NoError(t, branchDefaultError)
-	require.Equal(t, []string{branchDefaultOperationNameConstant}, application.operationsRequiredForCommand(branchDefaultCommand))
+	require.Equal(t, []string{defaultOperationNameConstant}, application.operationsRequiredForCommand(branchDefaultCommand))
 
 	commitMessageCommand, _, commitMessageError := rootCommand.Find([]string{"commit", "message"})
 	require.NoError(t, commitMessageError)
@@ -337,6 +341,20 @@ func TestApplicationHierarchicalCommandsLoadExpectedOperations(t *testing.T) {
 	changelogMessageCommand, _, changelogMessageError := rootCommand.Find([]string{"changelog", "message"})
 	require.NoError(t, changelogMessageError)
 	require.Equal(t, []string{changelogMessageOperationNameConstant}, application.operationsRequiredForCommand(changelogMessageCommand))
+}
+
+func TestApplicationCollectLegacyOperationUsageFlagsDefaultAliases(t *testing.T) {
+	application := &Application{}
+	definitions := []ApplicationOperationConfiguration{
+		{Command: []string{legacyBranchDefaultTopLevelUseNameConstant}},
+		{Command: []string{"branch", defaultCommandUseNameConstant}},
+	}
+
+	legacyKeys := application.collectLegacyOperationUsage(definitions)
+	require.Equal(t, []string{
+		legacyBranchDefaultCommandKeyConstant,
+		legacyBranchDefaultTopLevelUseNameConstant,
+	}, legacyKeys)
 }
 
 func TestReleaseCommandUsageIncludesTagPlaceholder(t *testing.T) {

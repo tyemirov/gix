@@ -32,7 +32,7 @@ const (
 	branchDefaultStubStateDirectoryEnvironment  = "BRANCH_DEFAULT_STATE_DIR"
 	branchDefaultStubDefaultBranchPlaceholder   = "main"
 	branchDefaultUserName                       = "Branch Default Tester"
-	branchDefaultUserEmail                      = "branch-default@example.com"
+	branchDefaultUserEmail                      = "default-command@example.com"
 	branchDefaultWorkflowCommitMessageTemplate  = "add workflow for %s"
 	branchDefaultGitWrapperRealBinaryEnv        = "BRANCH_DEFAULT_REAL_GIT"
 	branchDefaultWorkflowRewriteCommitSubstring = "CI: switch workflow branch filters to"
@@ -101,7 +101,7 @@ func TestBranchDefaultHandlesNestedRepositoriesWithMixedRemotes(testInstance *te
 		".",
 		"--log-level",
 		"error",
-		"branch-default",
+		"default",
 		branchDefaultTargetBranch,
 		"--roots",
 		parentRepositoryPath,
