@@ -31,7 +31,7 @@
 
 ### Phase D – Testing Expansion
 1. Add table-driven unit tests for new constructors, ensuring invalid inputs are rejected with precise sentinel errors.
-2. Cover protocol conversion edge cases (`internal/repos/protocol`): mismatched current protocol, missing owner/repo, unknown protocol errors, dry-run output.
+2. Cover protocol conversion edge cases (`internal/repos/protocol`): mismatched current protocol, missing owner/repo, unknown protocol errors, and general plan output.
 3. Add resolver tests for `internal/repos/dependencies.ResolveGitExecutor/ResolveGitRepositoryManager` verifying logger wiring and error propagation.
 4. Expand workflow integration tests to ensure domain types propagate correctly after refactors.
 
@@ -44,7 +44,7 @@
 
 - **Incremental rollout**: start with domain types and a single slice of functionality (e.g., remote updates) to prove the pattern, then propagate across other executors.
 - **Backward compatibility**: maintain current CLI output initially by adapting reporters; once tests assert on structured errors, gradually migrate user messaging.
-- **Testing first**: create regression tests around existing behavior before refactors to prevent accidental behavior regression (especially around rename skips and history purge dry-runs).
+- **Testing first**: create regression tests around existing behavior before refactors to prevent accidental behavior regression (especially around rename skips and history purge safeguards).
 - **Communication**: track progress in `CHANGELOG.md` and consider opening follow-up issues per phase to manage scope.
 
 This roadmap satisfies GX-402 by pinpointing policy violations, defining required structural changes, and outlining a test-backed migration path.

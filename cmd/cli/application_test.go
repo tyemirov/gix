@@ -19,7 +19,6 @@ import (
 	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
 	"github.com/temirov/gix/internal/audit"
 	"github.com/temirov/gix/internal/branches"
-	branchrefresh "github.com/temirov/gix/internal/branches/refresh"
 	"github.com/temirov/gix/internal/migrate"
 	"github.com/temirov/gix/internal/packages"
 	"github.com/temirov/gix/internal/utils"
@@ -40,8 +39,6 @@ const (
 	testPackagesCommandKeyConstant                           = "packages delete"
 	testBranchDefaultCommandNameConstant                     = "branch-default"
 	testBranchDefaultCommandKeyConstant                      = "branch-default"
-	testBranchRefreshCommandNameConstant                     = "branch-refresh"
-	testBranchRefreshCommandKeyConstant                      = "branch-refresh"
 	testBranchCleanupCommandNameConstant                     = "prs-delete"
 	testBranchCleanupCommandKeyConstant                      = "prs delete"
 	testReposRemotesCommandNameConstant                      = "remote-update-to-canonical"
@@ -64,7 +61,6 @@ const (
 	embeddedDefaultsReposProtocolTestNameConstant            = "ReposProtocolDefaults"
 	embeddedDefaultsReposRenameTestNameConstant              = "ReposRenameDefaults"
 	embeddedDefaultsWorkflowTestNameConstant                 = "WorkflowDefaults"
-	embeddedDefaultsBranchRefreshTestNameConstant            = "BranchRefreshDefaults"
 	embeddedDefaultsBranchDefaultTestNameConstant            = "BranchDefaultDefaults"
 	embeddedDefaultsAuditTestNameConstant                    = "AuditDefaults"
 	embeddedDefaultRootPathConstant                          = "."
@@ -106,7 +102,6 @@ var requiredCommandKeys = []string{
 	testReposProtocolCommandKeyConstant,
 	testRepoReleaseCommandKeyConstant,
 	testWorkflowCommandKeyConstant,
-	testBranchRefreshCommandKeyConstant,
 	testBranchDefaultCommandKeyConstant,
 	testBranchChangeCommandKeyConstant,
 	testCommitMessageCommandKeyConstant,
@@ -146,7 +141,6 @@ func TestApplicationInitializeConfiguration(t *testing.T) {
 				"remote update-to-canonical",
 				"remote update-protocol",
 				"workflow",
-				"branch-refresh",
 			},
 			commandUse: testBranchDefaultCommandNameConstant,
 		},
@@ -735,22 +729,6 @@ func TestApplicationEmbeddedDefaultsProvideCommandConfigurations(testInstance *t
 
 				assertions := require.New(assertionTarget)
 				assertions.Equal([]string{embeddedDefaultRootPathConstant}, sanitized.Roots)
-			},
-		},
-		{
-			name:       embeddedDefaultsBranchRefreshTestNameConstant,
-			commandUse: testBranchRefreshCommandNameConstant,
-			commandKey: testBranchRefreshCommandKeyConstant,
-			assertion: func(assertionTarget testing.TB, options map[string]any) {
-				assertionTarget.Helper()
-
-				var configuration branchrefresh.CommandConfiguration
-				decodeOperationOptions(assertionTarget, options, &configuration)
-				sanitized := configuration.Sanitize()
-
-				assertions := require.New(assertionTarget)
-				assertions.Equal([]string{embeddedDefaultRootPathConstant}, sanitized.RepositoryRoots)
-				assertions.Empty(strings.TrimSpace(sanitized.BranchName))
 			},
 		},
 		{

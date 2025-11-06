@@ -50,16 +50,6 @@ func TestReleaseExecutesTagAndPush(t *testing.T) {
 	require.Len(t, executor.commands, 2)
 }
 
-func TestReleaseDryRunSkipsGitCommands(t *testing.T) {
-	executor := &recordingGitExecutor{}
-	service, err := NewService(ServiceDependencies{GitExecutor: executor})
-	require.NoError(t, err)
-
-	_, releaseError := service.Release(context.Background(), Options{RepositoryPath: "/tmp/repo", TagName: "v1.0.0", DryRun: true})
-	require.NoError(t, releaseError)
-	require.Empty(t, executor.commands)
-}
-
 func TestReleaseValidatesInputs(t *testing.T) {
 	service, err := NewService(ServiceDependencies{GitExecutor: &recordingGitExecutor{}})
 	require.NoError(t, err)
@@ -160,28 +150,6 @@ func TestRetagExecutesDeleteAnnotatePush(t *testing.T) {
 	require.Equal(t, []string{gitTagSubcommandConstant, gitTagDeleteFlagConstant, "v1.2.3"}, executor.commands[2].Arguments)
 	require.Equal(t, []string{gitTagSubcommandConstant, gitTagAnnotatedFlagConstant, "v1.2.3", "main", gitTagMessageFlagConstant, "Retag v1.2.3 to main"}, executor.commands[3].Arguments)
 	require.Equal(t, []string{gitPushSubcommandConstant, gitPushForceFlagConstant, "origin", "v1.2.3"}, executor.commands[4].Arguments)
-}
-
-func TestRetagDryRunSkipsMutationCommands(t *testing.T) {
-	executor := &recordingGitExecutor{
-		results: []execshell.ExecutionResult{
-			{StandardOutput: "abcdef1234567890\n"},
-		},
-	}
-	service, err := NewService(ServiceDependencies{GitExecutor: executor})
-	require.NoError(t, err)
-
-	results, retagError := service.Retag(context.Background(), RetagOptions{
-		RepositoryPath: "/tmp/repo",
-		DryRun:         true,
-		Mappings: []RetagMapping{
-			{TagName: "v1.0.1", TargetReference: "commit123"},
-		},
-	})
-	require.NoError(t, retagError)
-	require.Len(t, results, 1)
-	require.Len(t, executor.commands, 1)
-	require.Equal(t, gitRevParseSubcommandConstant, executor.commands[0].Arguments[0])
 }
 
 func TestRetagValidatesInputs(t *testing.T) {

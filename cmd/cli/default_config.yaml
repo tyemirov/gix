@@ -1,7 +1,6 @@
 common:
   log_level: error
   log_format: console
-  dry_run: false
   assume_yes: false
   require_clean: false
 
@@ -48,10 +47,6 @@ operations:
         - .
       remote: origin
   - command: ["workflow"]
-    with:
-      roots:
-        - .
-  - command: ["branch-refresh"]
     with:
       roots:
         - .

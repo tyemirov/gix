@@ -37,7 +37,6 @@ workflow:
 	workflowConfiguredRootConstant = "/tmp/workflow-config-root"
 	workflowCliRootConstant        = "/tmp/workflow-cli-root"
 	workflowRootsFlagConstant      = "--" + flagutils.DefaultRootFlagName
-	workflowDryRunFlagConstant     = "--dry-run"
 	workflowUsageSnippet           = "Usage:"
 )
 
@@ -56,8 +55,7 @@ func TestWorkflowCommandConfigurationPrecedence(testInstance *testing.T) {
 		{
 			name: "configuration_applies_without_flags",
 			configuration: workflowcmd.CommandConfiguration{
-				Roots:  []string{workflowConfiguredRootConstant},
-				DryRun: true,
+				Roots: []string{workflowConfiguredRootConstant},
 			},
 			additionalArgs:       []string{},
 			expectedRoots:        []string{workflowConfiguredRootConstant},
@@ -67,13 +65,11 @@ func TestWorkflowCommandConfigurationPrecedence(testInstance *testing.T) {
 		{
 			name: "flags_override_configuration",
 			configuration: workflowcmd.CommandConfiguration{
-				Roots:  []string{workflowConfiguredRootConstant},
-				DryRun: false,
+				Roots: []string{workflowConfiguredRootConstant},
 			},
 			additionalArgs: []string{
 				workflowRootsFlagConstant,
 				workflowCliRootConstant,
-				workflowDryRunFlagConstant,
 			},
 			expectedRoots:        []string{workflowCliRootConstant},
 			expectPlanMessage:    true,
@@ -84,7 +80,6 @@ func TestWorkflowCommandConfigurationPrecedence(testInstance *testing.T) {
 			configuration: workflowcmd.CommandConfiguration{
 				Roots:        []string{workflowConfiguredRootConstant},
 				RequireClean: true,
-				DryRun:       false,
 			},
 			additionalArgs: []string{
 				workflowRootsFlagConstant,
@@ -163,7 +158,6 @@ func TestWorkflowCommandConfigurationPrecedence(testInstance *testing.T) {
 
 			require.Equal(subtest, 1, runner.invocations)
 			require.Equal(subtest, testCase.expectedRoots, runner.roots)
-			require.Equal(subtest, testCase.expectPlanMessage, runner.runtimeOptions.DryRun)
 			require.NotEmpty(subtest, runner.definitions)
 			require.Equal(subtest, "audit.report", runner.definitions[0].Actions[0].Type)
 		})
@@ -173,17 +167,12 @@ func TestWorkflowCommandConfigurationPrecedence(testInstance *testing.T) {
 func bindGlobalWorkflowFlags(command *cobra.Command) {
 	flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Enabled: true})
 	flagutils.BindExecutionFlags(command, flagutils.ExecutionDefaults{}, flagutils.ExecutionFlagDefinitions{
-		DryRun:    flagutils.ExecutionFlagDefinition{Name: flagutils.DryRunFlagName, Usage: flagutils.DryRunFlagUsage, Enabled: true},
 		AssumeYes: flagutils.ExecutionFlagDefinition{Name: flagutils.AssumeYesFlagName, Usage: flagutils.AssumeYesFlagUsage, Shorthand: flagutils.AssumeYesFlagShorthand, Enabled: true},
 	})
 	command.PersistentFlags().String(flagutils.RemoteFlagName, "", flagutils.RemoteFlagUsage)
 	command.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		contextAccessor := utils.NewCommandContextAccessor()
 		executionFlags := utils.ExecutionFlags{}
-		if dryRunValue, dryRunChanged, dryRunError := flagutils.BoolFlag(cmd, flagutils.DryRunFlagName); dryRunError == nil {
-			executionFlags.DryRun = dryRunValue
-			executionFlags.DryRunSet = dryRunChanged
-		}
 		if assumeYesValue, assumeYesChanged, assumeYesError := flagutils.BoolFlag(cmd, flagutils.AssumeYesFlagName); assumeYesError == nil {
 			executionFlags.AssumeYes = assumeYesValue
 			executionFlags.AssumeYesSet = assumeYesChanged
@@ -196,61 +185,6 @@ func bindGlobalWorkflowFlags(command *cobra.Command) {
 		cmd.SetContext(updatedContext)
 		return nil
 	}
-}
-
-func TestWorkflowCommandApplyTasksDryRun(testInstance *testing.T) {
-	tempDirectory := testInstance.TempDir()
-	repositoryPath := filepath.Join(tempDirectory, "sample")
-	writeRepositoryError := os.MkdirAll(repositoryPath, 0o755)
-	require.NoError(testInstance, writeRepositoryError)
-
-	configPath := filepath.Join(tempDirectory, workflowConfigFileNameConstant)
-	configContent := strings.TrimSpace(workflowApplyTasksConfigContentConstant)
-	writeConfigError := os.WriteFile(configPath, []byte(configContent), 0o644)
-	require.NoError(testInstance, writeConfigError)
-
-	discoverer := &fakeWorkflowDiscoverer{
-		repositories: []string{repositoryPath},
-	}
-	gitExecutor := &fakeWorkflowGitExecutor{}
-	runner := &recordingTaskRunner{}
-
-	builder := workflowcmd.CommandBuilder{
-		LoggerProvider: func() *zap.Logger { return zap.NewNop() },
-		Discoverer:     discoverer,
-		GitExecutor:    gitExecutor,
-		ConfigurationProvider: func() workflowcmd.CommandConfiguration {
-			return workflowcmd.CommandConfiguration{
-				Roots:  []string{repositoryPath},
-				DryRun: true,
-			}
-		},
-		TaskRunnerFactory: func(workflowpkg.Dependencies) workflowcmd.TaskRunnerExecutor {
-			return runner
-		},
-	}
-
-	command, buildError := builder.Build()
-	require.NoError(testInstance, buildError)
-	bindGlobalWorkflowFlags(command)
-
-	command.SetOut(&bytes.Buffer{})
-	command.SetErr(&bytes.Buffer{})
-	command.SetContext(context.Background())
-
-	command.SetArgs([]string{configPath})
-
-	executionError := command.Execute()
-	require.NoError(testInstance, executionError)
-
-	require.Equal(testInstance, 1, runner.invocations)
-	require.Equal(testInstance, []string{repositoryPath}, runner.roots)
-	require.True(testInstance, runner.runtimeOptions.DryRun)
-	require.Len(testInstance, runner.definitions, 1)
-	task := runner.definitions[0]
-	require.Equal(testInstance, "Add Notes", task.Name)
-	require.Len(testInstance, task.Files, 1)
-	require.Equal(testInstance, "NOTES.md", task.Files[0].PathTemplate)
 }
 
 type fakeWorkflowDiscoverer struct {

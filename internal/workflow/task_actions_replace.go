@@ -98,18 +98,11 @@ func handleFileReplaceAction(ctx context.Context, environment *Environment, repo
 		return planningError
 	}
 
-	if environment.DryRun {
-		describeReplacementPlan(environment, repository.Path, plans)
-		if len(commandArguments) > 0 && len(plans) > 0 {
-			writeReplacementMessage(environment, fileReplaceCommandPlanTemplate, repository.Path, strings.Join(commandArguments, " "))
-		}
-		return nil
-	}
-
 	if len(plans) == 0 {
 		writeReplacementMessage(environment, fileReplaceNoopMessageTemplate, repository.Path, "no matches")
 		return nil
 	}
+	describeReplacementPlan(environment, repository.Path, plans)
 
 	if applyError := applyReplacementPlans(environment.FileSystem, plans); applyError != nil {
 		return applyError

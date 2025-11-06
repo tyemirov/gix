@@ -142,7 +142,6 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 	}
 
 	runtimeOptions := workflow.RuntimeOptions{
-		DryRun:                 options.CleanupOptions.DryRun,
 		AssumeYes:              options.CleanupOptions.AssumeYes,
 		SkipRepositoryMetadata: true,
 	}
@@ -195,11 +194,6 @@ func (builder *CommandBuilder) parseOptions(command *cobra.Command, arguments []
 		return commandOptions{}, errors.New(invalidPullRequestLimitErrorMessageConstant)
 	}
 
-	dryRunValue := configuration.DryRun
-	if executionFlagsAvailable && executionFlags.DryRunSet {
-		dryRunValue = executionFlags.DryRun
-	}
-
 	assumeYesValue := configuration.AssumeYes
 	if executionFlagsAvailable && executionFlags.AssumeYesSet {
 		assumeYesValue = executionFlags.AssumeYes
@@ -208,7 +202,6 @@ func (builder *CommandBuilder) parseOptions(command *cobra.Command, arguments []
 	cleanupOptions := CleanupOptions{
 		RemoteName:       trimmedRemoteName,
 		PullRequestLimit: limitValue,
-		DryRun:           dryRunValue,
 		AssumeYes:        assumeYesValue,
 	}
 

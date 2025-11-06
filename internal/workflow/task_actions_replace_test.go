@@ -94,46 +94,6 @@ func TestHandleFileReplaceActionAppliesChanges(t *testing.T) {
 	require.Equal(t, tempDir, executor.commands[0].Details.WorkingDirectory)
 }
 
-func TestHandleFileReplaceActionDryRun(t *testing.T) {
-	t.Parallel()
-
-	tempDir := t.TempDir()
-	targetPath := filepath.Join(tempDir, "example.txt")
-	require.NoError(t, filesystem.OSFileSystem{}.WriteFile(targetPath, []byte("replace me"), 0o644))
-
-	executor := &recordingShellExecutor{clean: true, branch: "main"}
-	manager, managerError := gitrepo.NewRepositoryManager(executor)
-	require.NoError(t, managerError)
-
-	output := &bytes.Buffer{}
-	environment := &Environment{
-		FileSystem:        filesystem.OSFileSystem{},
-		RepositoryManager: manager,
-		GitExecutor:       executor,
-		Output:            output,
-		DryRun:            true,
-	}
-
-	repository := &RepositoryState{Path: tempDir}
-	parameters := map[string]any{
-		"pattern": "*.txt",
-		"find":    "replace",
-		"replace": "keep",
-		"command": []string{"git", "status"},
-	}
-
-	err := handleFileReplaceAction(context.Background(), environment, repository, parameters)
-	require.NoError(t, err)
-
-	currentContent, readErr := filesystem.OSFileSystem{}.ReadFile(targetPath)
-	require.NoError(t, readErr)
-	require.Equal(t, "replace me", string(currentContent))
-
-	require.Contains(t, output.String(), "REPLACE-PLAN")
-	require.Contains(t, output.String(), "REPLACE-COMMAND-PLAN")
-	require.Empty(t, executor.commands)
-}
-
 func TestHandleFileReplaceActionSafeguardSkips(t *testing.T) {
 	t.Parallel()
 

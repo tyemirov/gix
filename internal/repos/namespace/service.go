@@ -115,7 +115,6 @@ type Options struct {
 	PushRemote     string
 	Push           bool
 	CommitMessage  string
-	DryRun         bool
 }
 
 func (options Options) sanitize(clock shared.Clock) (Options, error) {
@@ -157,7 +156,6 @@ func (options Options) sanitize(clock shared.Clock) (Options, error) {
 		PushRemote:     pushRemote,
 		Push:           options.Push,
 		CommitMessage:  commitMessage,
-		DryRun:         options.DryRun,
 	}, nil
 }
 
@@ -260,41 +258,7 @@ func (service *Service) Rewrite(ctx context.Context, options Options) (Result, e
 	}
 
 	repositoryPath := sanitized.RepositoryPath.String()
-	if sanitized.DryRun {
-		return service.planRewrite(repositoryPath, sanitized)
-	}
-
 	return service.applyRewrite(ctx, repositoryPath, sanitized)
-}
-
-func (service *Service) planRewrite(repositoryPath string, options Options) (Result, error) {
-	plan, planError := service.buildChangePlan(repositoryPath, options.OldPrefix)
-	if planError != nil {
-		return Result{}, planError
-	}
-	planHasChanges := plan.requiresRewrite()
-	filteredPlan, ignoredPaths, planError := service.excludeIgnoredPlanEntries(context.Background(), repositoryPath, plan)
-	if planError != nil {
-		return Result{}, planError
-	}
-	plan = filteredPlan
-	if !plan.requiresRewrite() {
-		skipReason := gitIgnoredSkipReason
-		if !planHasChanges {
-			skipReason = fmt.Sprintf(noMatchingPrefixSkipReasonTemplate, options.OldPrefix.String())
-		} else if len(ignoredPaths) > 0 {
-			skipReason = formatIgnoredSkipReason(ignoredPaths)
-		}
-		return Result{Skipped: true, SkipReason: skipReason}, nil
-	}
-
-	result := Result{
-		BranchName:    service.buildBranchName(options.BranchPrefix),
-		GoModChanged:  plan.goMod,
-		ChangedFiles:  plan.relativeGoFiles(),
-		PushPerformed: options.Push, // indicates intent
-	}
-	return result, nil
 }
 
 func (service *Service) applyRewrite(ctx context.Context, repositoryPath string, options Options) (Result, error) {

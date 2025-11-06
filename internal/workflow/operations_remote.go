@@ -129,7 +129,6 @@ func (operation *CanonicalRemoteOperation) Execute(executionContext context.Cont
 			OriginOwnerRepository:    originOwnerRepository,
 			CanonicalOwnerRepository: canonicalOwnerRepository,
 			RemoteProtocol:           remoteProtocol,
-			DryRun:                   environment.DryRun,
 			ConfirmationPolicy:       shared.ConfirmationPolicyFromBool(assumeYes),
 			OwnerConstraint:          ownerConstraint,
 		}
@@ -139,10 +138,6 @@ func (operation *CanonicalRemoteOperation) Execute(executionContext context.Cont
 				continue
 			}
 			return fmt.Errorf("canonical remote update: %w", executionError)
-		}
-
-		if environment.DryRun {
-			continue
 		}
 
 		if refreshError := repository.Refresh(executionContext, environment.AuditService); refreshError != nil {

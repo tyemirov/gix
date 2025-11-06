@@ -77,11 +77,6 @@ func (builder *NamespaceCommandBuilder) run(command *cobra.Command, arguments []
 	configuration := builder.resolveConfiguration()
 	executionFlags, executionFlagsAvailable := flagutils.ResolveExecutionFlags(command)
 
-	dryRun := configuration.DryRun
-	if executionFlagsAvailable && executionFlags.DryRunSet {
-		dryRun = executionFlags.DryRun
-	}
-
 	assumeYes := configuration.AssumeYes
 	if executionFlagsAvailable && executionFlags.AssumeYesSet {
 		assumeYes = executionFlags.AssumeYes
@@ -218,7 +213,6 @@ func (builder *NamespaceCommandBuilder) run(command *cobra.Command, arguments []
 	}
 
 	runtimeOptions := workflow.RuntimeOptions{
-		DryRun:    dryRun,
 		AssumeYes: trackingPrompter.AssumeYes(),
 	}
 

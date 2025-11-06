@@ -59,10 +59,6 @@ func (builder *RetagCommandBuilder) run(command *cobra.Command, _ []string) erro
 	configuration := builder.resolveConfiguration()
 
 	executionFlags, executionFlagsAvailable := flagutils.ResolveExecutionFlags(command)
-	dryRun := false
-	if executionFlagsAvailable && executionFlags.DryRunSet {
-		dryRun = executionFlags.DryRun
-	}
 
 	messageTemplate := configuration.Message
 	if command != nil && command.Flags().Changed(retagMessageTemplateFlagName) {
@@ -191,10 +187,7 @@ func (builder *RetagCommandBuilder) run(command *cobra.Command, _ []string) erro
 		assumeYes = executionFlags.AssumeYes
 	}
 
-	runtimeOptions := workflow.RuntimeOptions{
-		DryRun:    dryRun,
-		AssumeYes: assumeYes,
-	}
+	runtimeOptions := workflow.RuntimeOptions{AssumeYes: assumeYes}
 
 	return taskRunner.Run(command.Context(), repositoryRoots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
 }

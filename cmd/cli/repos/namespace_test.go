@@ -39,7 +39,6 @@ func TestNamespaceCommandUsesConfigurationDefaults(t *testing.T) {
 		FileSystem:     filesystem.OSFileSystem{},
 		ConfigurationProvider: func() repos.NamespaceConfiguration {
 			return repos.NamespaceConfiguration{
-				DryRun:          true,
 				AssumeYes:       true,
 				RepositoryRoots: []string{"/tmp/cfg-root"},
 				OldPrefix:       "github.com/old/org",
@@ -64,7 +63,6 @@ func TestNamespaceCommandUsesConfigurationDefaults(t *testing.T) {
 	require.NoError(t, runErr)
 
 	require.Equal(t, []string{"/tmp/cfg-root"}, taskRunner.roots)
-	require.True(t, taskRunner.options.DryRun)
 	require.True(t, taskRunner.options.AssumeYes)
 	require.Len(t, taskRunner.definitions, 1)
 
@@ -98,7 +96,6 @@ func TestNamespaceCommandFlagOverrides(t *testing.T) {
 	bindGlobalNamespaceFlags(command)
 
 	args := flagutils.NormalizeToggleArguments([]string{
-		"--dry-run",
 		"--" + flagutils.AssumeYesFlagName,
 		"--" + flagutils.DefaultRootFlagName, "/tmp/cli-root",
 		"--old", "github.com/cli/old",
@@ -115,7 +112,6 @@ func TestNamespaceCommandFlagOverrides(t *testing.T) {
 	require.NoError(t, runErr)
 
 	require.Equal(t, []string{"/tmp/cli-root"}, taskRunner.roots)
-	require.True(t, taskRunner.options.DryRun)
 	require.True(t, taskRunner.options.AssumeYes)
 	action := taskRunner.definitions[0].Actions[0]
 	require.Equal(t, "github.com/cli/old", action.Options["old"])
@@ -154,7 +150,6 @@ func TestNamespaceCommandRequiresPrefixes(t *testing.T) {
 func bindGlobalNamespaceFlags(command *cobra.Command) {
 	flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Name: flagutils.DefaultRootFlagName, Usage: flagutils.DefaultRootFlagUsage, Enabled: true, Persistent: false})
 	flagutils.BindExecutionFlags(command, flagutils.ExecutionDefaults{}, flagutils.ExecutionFlagDefinitions{
-		DryRun:    flagutils.ExecutionFlagDefinition{Name: flagutils.DryRunFlagName, Usage: flagutils.DryRunFlagUsage, Enabled: true},
 		AssumeYes: flagutils.ExecutionFlagDefinition{Name: flagutils.AssumeYesFlagName, Usage: flagutils.AssumeYesFlagUsage, Enabled: true},
 	})
 }

@@ -31,7 +31,10 @@ Summary: total.repos=0 duration_ms=0
   - Status: Resolved
   - Resolution: CLI namespaces now expose the former `repo` and `branch` subcommands as first-class operations (`folder rename`, `remote update-*`, `branch-*`, etc.), legacy configuration keys are normalized to the new command paths, workflow builders accept both canonical and legacy keys, and documentation plus configuration samples were updated accordingly.
 
-- [ ] [GX-219] Remove the `--dry-run` flag and all associated logic, it gurantees nothing.
+- [ ] [GX-219] Remove the `--preview` flag and all associated logic, it gurantees nothing.
+  1. Audit all occurance of preview mode
+  2. Write a plan of how to remove each occurance
+  3. make a checkpoint after each instance of preview mode is removed
 
 - [x] [GX-220] Rename branch-cd CLI surface to cd with default branch fallback
   - Status: Resolved
@@ -41,8 +44,9 @@ Summary: total.repos=0 duration_ms=0
   - Desired: Expose the command as `gix cd` while preserving the existing task runner wiring, make the branch argument optional by defaulting to the repository default (falling back to the configured `branch` in command settings when discovery fails), update configuration keys and docs/tests to use `cd`, and keep legacy `branch-cd` config entries runnable with a deprecation warning.
   - Acceptance: `gix cd` without arguments checks out each repository's default branch or configured fallback, positional branch arguments still work, CLI help/docs/config samples mention `cd`, workflow builders resolve both `cd` and `branch-cd` keys with a warning, and branch switching integration tests cover the implicit-argument path.
 
-- [ ] [GX-221] Fold branch-refresh behaviors into cd and retire the standalone command
-  - Status: Unresolved
+- [x] [GX-221] Fold branch-refresh behaviors into cd and retire the standalone command
+  - Status: Resolved
+  - Resolution: `gix cd` exposes `--refresh`, `--stash`, and `--commit` flags that delegate to the former branch refresh workflow, the standalone CLI was removed, default configs/docs/tests now reference `cd`, and legacy `branch-refresh` configuration keys trigger deprecation warnings while mapping to the new options.
   - Category: Improvement
   - Context: `internal/branches/refresh` wires the `branch-refresh` Cobra command with stash/commit recovery flags that overlap with the branch switcher, while `cmd/cli/default_config.yaml`, workflow builders, and docs surface it as a separate entry point.
   - Desired: Extend `gix cd` with options covering fetch/pull plus stash/commit recovery, run the existing `branch.refresh` workflow action from the unified command, and remove `branch-refresh` from the CLI/config/docs while maintaining legacy key compatibility via warnings.

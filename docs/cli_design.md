@@ -16,11 +16,11 @@ The following tables document each script. "Inputs" include both positional argu
 | Aspect | Details |
 | --- | --- |
 | Primary purpose | Audit GitHub repositories across one or more directories, optionally renaming local folders, updating remotes to canonical URLs, or converting remote protocols. |
-| Inputs & flags | Positional scan roots (defaults to `.`). Flags: `--rename`, `--update-remote`, `--protocol-from {https\|git\|ssh}`, `--protocol-to {https\|git\|ssh}`, `--dry-run`, `--yes` (`-y`), `--require-clean`, `--debug`. |
+| Inputs & flags | Positional scan roots (defaults to `.`). Flags: `--rename`, `--update-remote`, `--protocol-from {https\|git\|ssh}`, `--protocol-to {https\|git\|ssh}`, ``, `--yes` (`-y`), `--require-clean`, `--debug`. |
 | Environment variables | `GIT_TERMINAL_PROMPT=0` (set within script to disable interactive credential prompts). |
 | External dependencies | `git`, `gh`, `jq`, `find`, `readlink`/`realpath`, `mv`, `sed`, `awk`, standard GNU coreutils. Requires authenticated `gh` session. |
 | Network/API usage | `gh api` to resolve repository canonical metadata; `gh repo view` to determine default branch; optional `git fetch` for sync detection; `git remote set-url` for updates. |
-| Side effects | File-system renames of repository directories; remote URL changes; Git fetches; optional prompts; stdout/stderr logging. With `--dry-run`, operations are read-only. |
+| Side effects | File-system renames of repository directories; remote URL changes; Git fetches; optional prompts; stdout/stderr logging. With ``, operations are read-only. |
 | Outputs | When the dedicated audit command runs, it emits CSV (header + one line per repo) to stdout. Operational modes emit plan/action messages (`PLAN-OK`, `UPDATE-REMOTE-DONE`, etc.) to stdout and error messages to stderr. Debug logging when `--debug` is set. |
 
 ### 2.2 `delete_merged_branches.sh`
@@ -49,11 +49,11 @@ The following tables document each script. "Inputs" include both positional argu
 | Aspect | Details |
 | --- | --- |
 | Primary purpose | Delete untagged container image versions from GitHub Container Registry (GHCR) for a given owner/package. |
-| Inputs & flags | Configuration provided via environment variables or in-script defaults: `GITHUB_OWNER`, `PACKAGE_NAME`, `OWNER_TYPE` (`user` or `org`), `GITHUB_PACKAGES_TOKEN` (exported as `TOKEN`). Optional `DRY_RUN` env flag (`1` = preview). |
+| Inputs & flags | Configuration provided via environment variables or in-script defaults: `GITHUB_OWNER`, `PACKAGE_NAME`, `OWNER_TYPE` (`user` or `org`), `GITHUB_PACKAGES_TOKEN` (exported as `TOKEN`). |
 | Environment variables | As above; requires GitHub Personal Access Token with `read:packages`, `write:packages`, `delete:packages`. |
 | External dependencies | `curl`, `jq`. |
 | Network/API usage | GitHub REST API `GET` on package versions endpoint; `DELETE` for untagged versions. |
-| Side effects | Deletes GHCR image versions when `DRY_RUN` is not set to `1`; increments local counter for reporting. |
+| Side effects | Deletes GHCR image versions and increments local counter for reporting. |
 | Outputs | Logs deletions and final summary to stdout. API errors surface to stderr via `curl` exit behavior. |
 
 ## 3. Command Equivalence Plan
@@ -72,7 +72,7 @@ The table below maps current script switches to Cobra equivalents and documents 
 
 | Script behavior | Cobra command | Flags & arguments | `gh` usage strategy |
 | --- | --- | --- | --- |
-| Remove untagged GHCR packages | `git-maintenance repo-packages-purge` | `--package` (optional override), `--dry-run`, `--page-size` (default 100). The command resolves the owner, owner type, and default package name from each repository's origin remote and requires a token with GitHub Packages scopes. Configurable via Viper with env prefix `GITMAINT`. | Prefer direct HTTP using `go-github` REST client authenticated with token. If we reuse `gh`, we would invoke `gh api` with `--method`. The design chooses native HTTP to avoid shelling out where OAuth token is already provided. |
+| Remove untagged GHCR packages | `git-maintenance repo-packages-purge` | `--package` (optional override), ``, `--page-size` (default 100). The command resolves the owner, owner type, and default package name from each repository's origin remote and requires a token with GitHub Packages scopes. Configurable via Viper with env prefix `GITMAINT`. | Prefer direct HTTP using `go-github` REST client authenticated with token. If we reuse `gh`, we would invoke `gh api` with `--method`. The design chooses native HTTP to avoid shelling out where OAuth token is already provided. |
 
 ### 3.2 Shared command behavior
 - All `repo` subcommands support `--debug` to raise Zap logging level to `Debug`.
@@ -126,7 +126,7 @@ tests/
   integration/
     repo_audit_test.go   # Black-box CLI runs using fixture repos
     branchflip_test.go   # End-to-end branch migration tests
-    packages_test.go     # GHCR purge dry-run tests (mock server)
+    packages_test.go     # GHCR purge tests (mock server)
 ```
 
 Notes:
@@ -164,14 +164,14 @@ Integration tests live in `tests/integration` and execute the compiled CLI binar
 | Feature area | Scenario | Git / GitHub setup | Expected assertions |
 | --- | --- | --- | --- |
 | Repo audit | Canonical rename detection | Local repo with simulated redirect via mocked `gh api` response | CSV output includes canonical name mismatch and `origin_matches_canonical=no`. |
-| Repo audit | Protocol conversion dry-run | Repo using HTTPS remote | Command logs `PLAN-CONVERT` without modifying remote. |
-| Repo rename | Dry-run and execute | Case-only rename on case-insensitive filesystem simulation | Dry-run prints `PLAN-CASE-ONLY`; execute performs two-step rename. |
+| Repo audit | Protocol conversion | Repo using HTTPS remote | Command logs `PLAN-CONVERT` without modifying remote. |
+| Repo rename |  and execute | Case-only rename on case-insensitive filesystem simulation |  prints `PLAN-CASE-ONLY`; execute performs two-step rename. |
 | Remote update | Redirected repository | `origin` pointing to old owner; mocked `gh api` returns new owner | Remote URL updated; message `UPDATE-REMOTE-DONE`. |
 | Branch cleanup | Closed PR branch removal | Temp repo with local+remote branches; stubbed `gh pr list` output | Command deletes matching branches, leaves others. |
 | Branch flip | Workflow rewrite & Pages update | Fixture repo with workflows referencing `main`, GitHub Pages in legacy mode (mocked) | Workflows retargeted; API call made to update Pages; default branch switched; safety gates respected. |
 | Branch flip | Safety gate triggered | Repo with open PR targeting `main` (mocked) | Command exits gracefully, logs skip for main deletion. |
-| Packages purge | Dry-run | Mock GHCR API server returning tagged/untagged versions | Untagged IDs listed; no DELETE requests issued. |
-| Packages purge | Deletion | Same as above with `--dry-run=false` | DELETE invoked for untagged IDs only; summary count matches. |
+| Packages purge |  | Mock GHCR API server returning tagged/untagged versions | Untagged IDs listed; no DELETE requests issued. |
+| Packages purge | Deletion | Same as above with `=false` | DELETE invoked for untagged IDs only; summary count matches. |
 
 Integration harness responsibilities:
 - Use temporary directories and `git init` to avoid mutating real repositories.

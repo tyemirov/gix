@@ -83,11 +83,6 @@ func (builder *LicenseCommandBuilder) run(command *cobra.Command, arguments []st
 	configuration := builder.resolveConfiguration()
 	executionFlags, executionFlagsAvailable := flagutils.ResolveExecutionFlags(command)
 
-	dryRun := configuration.DryRun
-	if executionFlagsAvailable && executionFlags.DryRunSet {
-		dryRun = executionFlags.DryRun
-	}
-
 	assumeYes := configuration.AssumeYes
 	if executionFlagsAvailable && executionFlags.AssumeYesSet {
 		assumeYes = executionFlags.AssumeYes
@@ -274,7 +269,6 @@ func (builder *LicenseCommandBuilder) run(command *cobra.Command, arguments []st
 	}
 
 	runtimeOptions := workflow.RuntimeOptions{
-		DryRun:                       dryRun,
 		AssumeYes:                    assumeYes,
 		CaptureInitialWorktreeStatus: requireClean,
 	}

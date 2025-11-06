@@ -16,47 +16,44 @@ import (
 )
 
 const (
-	defaultRemoteNameConstant                    = "origin"
-	defaultPullRequestLimitConstant              = 100
-	lsRemoteSubcommandConstant                   = "ls-remote"
-	headsFlagConstant                            = "--heads"
-	pushSubcommandConstant                       = "push"
-	deleteFlagConstant                           = "--delete"
-	branchSubcommandConstant                     = "branch"
-	forceDeleteFlagConstant                      = "-D"
-	pullRequestSubcommandConstant                = "pr"
-	listSubcommandConstant                       = "list"
-	stateFlagConstant                            = "--state"
-	closedStateConstant                          = "closed"
-	jsonFlagConstant                             = "--json"
-	headRefFieldConstant                         = "headRefName"
-	limitFlagConstant                            = "--limit"
-	branchReferencePrefixConstant                = "refs/heads/"
-	logMessageListingRemoteBranchesConstant      = "Listing remote branches"
-	logMessageListingPullRequestsConstant        = "Listing closed pull request branches"
-	logMessageDeletingRemoteBranchConstant       = "Deleting remote branch"
-	logMessageSkippingRemoteBranchDryRunConstant = "Skipping remote branch deletion (dry run)"
-	logMessageSkippingMissingBranchConstant      = "Skipping branch (already gone)"
-	logMessageDeletingLocalBranchConstant        = "Deleting local branch"
-	logMessageSkippingLocalBranchDryRunConstant  = "Skipping local branch deletion (dry run)"
-	logMessageRemoteDeletionFailedConstant       = "Remote branch deletion failed"
-	logMessageLocalDeletionFailedConstant        = "Local branch deletion failed"
-	logMessageDeletionSkippedByUserConstant      = "Skipping branch deletion (user declined)"
-	logMessageDeletionPromptFailedConstant       = "Branch deletion confirmation failed"
-	logFieldBranchNameConstant                   = "branch"
-	logFieldRemoteNameConstant                   = "remote"
-	logFieldDryRunConstant                       = "dry_run"
-	logFieldWorkingDirectoryConstant             = "working_directory"
-	logFieldErrorConstant                        = "error"
-	logFieldPullRequestLimitConstant             = "pull_request_limit"
-	remoteBranchesListErrorTemplateConstant      = "unable to list remote branches: %w"
-	pullRequestListErrorTemplateConstant         = "unable to list closed pull requests: %w"
-	remoteBranchParsingErrorTemplateConstant     = "unable to parse remote branch list: %w"
-	pullRequestDecodingErrorTemplateConstant     = "unable to decode pull request response: %w"
-	remoteNameRequiredMessageConstant            = "remote name must be provided"
-	limitPositiveRequirementMessageConstant      = "pull request limit must be greater than zero"
-	executorNotConfiguredMessageConstant         = "command executor not configured"
-	branchDeletionPromptTemplateConstant         = "Delete pull request branch '%s' from remote '%s' and the local repository? [y/N] "
+	defaultRemoteNameConstant                = "origin"
+	defaultPullRequestLimitConstant          = 100
+	lsRemoteSubcommandConstant               = "ls-remote"
+	headsFlagConstant                        = "--heads"
+	pushSubcommandConstant                   = "push"
+	deleteFlagConstant                       = "--delete"
+	branchSubcommandConstant                 = "branch"
+	forceDeleteFlagConstant                  = "-D"
+	pullRequestSubcommandConstant            = "pr"
+	listSubcommandConstant                   = "list"
+	stateFlagConstant                        = "--state"
+	closedStateConstant                      = "closed"
+	jsonFlagConstant                         = "--json"
+	headRefFieldConstant                     = "headRefName"
+	limitFlagConstant                        = "--limit"
+	branchReferencePrefixConstant            = "refs/heads/"
+	logMessageListingRemoteBranchesConstant  = "Listing remote branches"
+	logMessageListingPullRequestsConstant    = "Listing closed pull request branches"
+	logMessageDeletingRemoteBranchConstant   = "Deleting remote branch"
+	logMessageSkippingMissingBranchConstant  = "Skipping branch (already gone)"
+	logMessageDeletingLocalBranchConstant    = "Deleting local branch"
+	logMessageRemoteDeletionFailedConstant   = "Remote branch deletion failed"
+	logMessageLocalDeletionFailedConstant    = "Local branch deletion failed"
+	logMessageDeletionSkippedByUserConstant  = "Skipping branch deletion (user declined)"
+	logMessageDeletionPromptFailedConstant   = "Branch deletion confirmation failed"
+	logFieldBranchNameConstant               = "branch"
+	logFieldRemoteNameConstant               = "remote"
+	logFieldWorkingDirectoryConstant         = "working_directory"
+	logFieldErrorConstant                    = "error"
+	logFieldPullRequestLimitConstant         = "pull_request_limit"
+	remoteBranchesListErrorTemplateConstant  = "unable to list remote branches: %w"
+	pullRequestListErrorTemplateConstant     = "unable to list closed pull requests: %w"
+	remoteBranchParsingErrorTemplateConstant = "unable to parse remote branch list: %w"
+	pullRequestDecodingErrorTemplateConstant = "unable to decode pull request response: %w"
+	remoteNameRequiredMessageConstant        = "remote name must be provided"
+	limitPositiveRequirementMessageConstant  = "pull request limit must be greater than zero"
+	executorNotConfiguredMessageConstant     = "command executor not configured"
+	branchDeletionPromptTemplateConstant     = "Delete pull request branch '%s' from remote '%s' and the local repository? [y/N] "
 )
 
 // CommandExecutor coordinates git and GitHub CLI invocations required for cleanup.
@@ -69,7 +66,6 @@ type CommandExecutor interface {
 type CleanupOptions struct {
 	RemoteName       string
 	PullRequestLimit int
-	DryRun           bool
 	WorkingDirectory string
 	AssumeYes        bool
 }
@@ -217,16 +213,6 @@ func (service *Service) deleteRemoteAndLocalBranch(executionContext context.Cont
 		zap.String(logFieldBranchNameConstant, branchName),
 		zap.String(logFieldRemoteNameConstant, remoteName),
 		zap.String(logFieldWorkingDirectoryConstant, options.WorkingDirectory),
-	}
-
-	if options.DryRun {
-		service.logger.Info(logMessageSkippingRemoteBranchDryRunConstant,
-			append(baseFields, zap.Bool(logFieldDryRunConstant, true))...,
-		)
-		service.logger.Info(logMessageSkippingLocalBranchDryRunConstant,
-			append(baseFields, zap.Bool(logFieldDryRunConstant, true))...,
-		)
-		return
 	}
 
 	if confirmation != nil {

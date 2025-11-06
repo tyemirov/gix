@@ -89,12 +89,6 @@ func handleCommitMessageAction(ctx context.Context, environment *Environment, re
 		output = io.Discard
 	}
 
-	planPreview := fmt.Sprintf(commitPlanTemplate, request.Messages[0].Content, request.Messages[1].Content)
-	if environment.DryRun {
-		fmt.Fprint(output, planPreview)
-		return captureActionOutput(environment, parameters, planPreview)
-	}
-
 	response, chatErr := client.Chat(ctx, request)
 	if chatErr != nil {
 		return chatErr
@@ -171,12 +165,6 @@ func handleChangelogAction(ctx context.Context, environment *Environment, reposi
 	output := environment.Output
 	if output == nil {
 		output = io.Discard
-	}
-
-	planPreview := fmt.Sprintf(changelogPlanTemplate, request.Messages[0].Content, request.Messages[1].Content)
-	if environment.DryRun {
-		fmt.Fprint(output, planPreview)
-		return captureActionOutput(environment, parameters, planPreview)
 	}
 
 	response, chatErr := client.Chat(ctx, request)

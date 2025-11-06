@@ -181,7 +181,6 @@ func bindRootAndExecutionFlags(command *cobra.Command) {
 		command,
 		flagutils.ExecutionDefaults{},
 		flagutils.ExecutionFlagDefinitions{
-			DryRun:    flagutils.ExecutionFlagDefinition{Name: flagutils.DryRunFlagName, Usage: flagutils.DryRunFlagUsage, Enabled: true},
 			AssumeYes: flagutils.ExecutionFlagDefinition{Name: flagutils.AssumeYesFlagName, Usage: flagutils.AssumeYesFlagUsage, Shorthand: flagutils.AssumeYesFlagShorthand, Enabled: true},
 		},
 	)

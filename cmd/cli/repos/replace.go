@@ -66,11 +66,6 @@ func (builder *ReplaceCommandBuilder) run(command *cobra.Command, _ []string) er
 	configuration := builder.resolveConfiguration()
 	executionFlags, executionFlagsAvailable := flagutils.ResolveExecutionFlags(command)
 
-	dryRun := configuration.DryRun
-	if executionFlagsAvailable && executionFlags.DryRunSet {
-		dryRun = executionFlags.DryRun
-	}
-
 	assumeYes := configuration.AssumeYes
 	if executionFlagsAvailable && executionFlags.AssumeYesSet {
 		assumeYes = executionFlags.AssumeYes
@@ -238,10 +233,7 @@ func (builder *ReplaceCommandBuilder) run(command *cobra.Command, _ []string) er
 		},
 	}
 
-	runtimeOptions := workflow.RuntimeOptions{
-		DryRun:    dryRun,
-		AssumeYes: assumeYes,
-	}
+	runtimeOptions := workflow.RuntimeOptions{AssumeYes: assumeYes}
 
 	return taskRunner.Run(command.Context(), roots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
 }

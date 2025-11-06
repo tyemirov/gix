@@ -21,7 +21,7 @@ const (
 	commandUseConstant                        = "workflow <configuration>"
 	commandShortDescriptionConstant           = "Run a workflow configuration file"
 	commandLongDescriptionConstant            = "workflow executes operations defined in a YAML or JSON configuration file across discovered repositories. Provide the configuration path as the first argument or supply --config."
-	commandExampleConstant                    = "gix workflow ./workflow.yaml --roots ~/Development --dry-run"
+	commandExampleConstant                    = "gix workflow ./workflow.yaml --roots ~/Development"
 	requireCleanFlagNameConstant              = "require-clean"
 	requireCleanFlagDescriptionConstant       = "Require clean worktrees for rename operations"
 	configurationPathRequiredMessageConstant  = "workflow configuration path required; provide a positional argument or --config flag"
@@ -161,18 +161,12 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 		return rootsError
 	}
 
-	dryRun := commandConfiguration.DryRun
-	if executionFlagsAvailable && executionFlags.DryRunSet {
-		dryRun = executionFlags.DryRun
-	}
-
 	assumeYes := commandConfiguration.AssumeYes
 	if executionFlagsAvailable && executionFlags.AssumeYesSet {
 		assumeYes = executionFlags.AssumeYes
 	}
 
 	runtimeOptions := workflow.RuntimeOptions{
-		DryRun:                               dryRun,
 		AssumeYes:                            assumeYes,
 		IncludeNestedRepositories:            taskRuntimeOptions.IncludeNestedRepositories,
 		ProcessRepositoriesByDescendingDepth: taskRuntimeOptions.ProcessRepositoriesByDescendingDepth,

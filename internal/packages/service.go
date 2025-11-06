@@ -23,7 +23,6 @@ const (
 	ownerLogFieldNameConstant                    = "owner"
 	packageLogFieldNameConstant                  = "package"
 	ownerTypeLogFieldNameConstant                = "owner_type"
-	dryRunLogFieldNameConstant                   = "dry_run"
 	deletedVersionsLogFieldNameConstant          = "deleted_versions"
 	untaggedVersionsLogFieldNameConstant         = "untagged_versions"
 	totalVersionsLogFieldNameConstant            = "total_versions"
@@ -42,7 +41,6 @@ type PurgeOptions struct {
 	PackageName string
 	OwnerType   ghcr.OwnerType
 	TokenSource TokenSourceConfiguration
-	DryRun      bool
 }
 
 // PurgeExecutor defines the behavior required by the command layer.
@@ -104,7 +102,6 @@ func (service *PurgeService) Execute(executionContext context.Context, options P
 		zap.String(ownerLogFieldNameConstant, trimmedOwner),
 		zap.String(packageLogFieldNameConstant, trimmedPackageName),
 		zap.String(ownerTypeLogFieldNameConstant, string(options.OwnerType)),
-		zap.Bool(dryRunLogFieldNameConstant, options.DryRun),
 	)
 
 	resolvedToken, tokenResolutionError := service.tokenResolver.ResolveToken(executionContext, options.TokenSource)
@@ -117,7 +114,6 @@ func (service *PurgeService) Execute(executionContext context.Context, options P
 		PackageName: trimmedPackageName,
 		OwnerType:   options.OwnerType,
 		Token:       resolvedToken,
-		DryRun:      options.DryRun,
 	}
 
 	purgeResult, purgeError := service.packageService.PurgeUntaggedVersions(executionContext, purgeRequest)

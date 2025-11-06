@@ -20,70 +20,6 @@ import (
 	"github.com/temirov/gix/internal/repos/shared"
 )
 
-func TestRewriteDryRunReportsChanges(t *testing.T) {
-	t.Parallel()
-
-	tempDir := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(tempDir, ".git"), 0o755))
-
-	goModContent := "module github.com/old/account/app\n\ngo 1.22\nrequire github.com/old/account/dep v1.0.0\n"
-	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "go.mod"), []byte(goModContent), 0o644))
-
-	source := `package main
-import "github.com/old/account/dep"
-func main() { dep.Do() }
-`
-	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "main.go"), []byte(source), 0o644))
-
-	testSource := `package main
-import (
-	"testing"
-	"github.com/old/account/dep"
-)
-
-func TestDo(t *testing.T) {
-	dep.Do()
-}
-`
-	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "main_test.go"), []byte(testSource), 0o644))
-
-	oldPrefix, err := namespace.NewModulePrefix("github.com/old/account")
-	require.NoError(t, err)
-	newPrefix, err := namespace.NewModulePrefix("github.com/new/account")
-	require.NoError(t, err)
-
-	executor := &noopGitExecutor{}
-	manager, err := gitrepo.NewRepositoryManager(executor)
-	require.NoError(t, err)
-
-	service, err := namespace.NewService(namespace.Dependencies{
-		FileSystem:        filesystem.OSFileSystem{},
-		GitExecutor:       executor,
-		RepositoryManager: manager,
-		Clock:             fixedClock{instant: time.Date(2024, 11, 24, 12, 0, 0, 0, time.UTC)},
-	})
-	require.NoError(t, err)
-
-	repositoryPath, err := shared.NewRepositoryPath(tempDir)
-	require.NoError(t, err)
-
-	result, rewriteErr := service.Rewrite(context.Background(), namespace.Options{
-		RepositoryPath: repositoryPath,
-		OldPrefix:      oldPrefix,
-		NewPrefix:      newPrefix,
-		DryRun:         true,
-		Push:           true,
-	})
-	require.NoError(t, rewriteErr)
-
-	require.False(t, result.Skipped)
-	require.True(t, result.GoModChanged)
-	require.Contains(t, result.ChangedFiles, "main.go")
-	require.Contains(t, result.ChangedFiles, "main_test.go")
-	require.NotEmpty(t, result.BranchName)
-	require.Contains(t, result.BranchName, "namespace-rewrite")
-}
-
 func TestRewriteAppliesChanges(t *testing.T) {
 	t.Parallel()
 
@@ -458,48 +394,6 @@ func main() { dep.Do() }
 	require.Contains(t, goModString, "github.com/new/account/dep v1.0.0")
 	require.Contains(t, goModString, "github.com/new/account/dep => github.com/new/account/dep v1.0.1")
 	require.Contains(t, goModString, "github.com/new/account/tool => github.com/new/account/tool v1.2.3")
-}
-
-func TestRewriteDryRunDetectsRootModulePrefix(t *testing.T) {
-	t.Parallel()
-
-	tempDir := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(tempDir, ".git"), 0o755))
-
-	goModContent := "module github.com/old/account\n\ngo 1.22\n\nrequire (\n\tgithub.com/old/account v1.0.0\n\tgithub.com/another/module v0.2.0\n)\n"
-	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "go.mod"), []byte(goModContent), 0o644))
-
-	oldPrefix, err := namespace.NewModulePrefix("github.com/old/account")
-	require.NoError(t, err)
-	newPrefix, err := namespace.NewModulePrefix("github.com/new/account")
-	require.NoError(t, err)
-
-	executor := &noopGitExecutor{}
-	manager, err := gitrepo.NewRepositoryManager(executor)
-	require.NoError(t, err)
-
-	service, err := namespace.NewService(namespace.Dependencies{
-		FileSystem:        filesystem.OSFileSystem{},
-		GitExecutor:       executor,
-		RepositoryManager: manager,
-		Clock:             fixedClock{instant: time.Date(2024, 11, 24, 12, 0, 0, 0, time.UTC)},
-	})
-	require.NoError(t, err)
-
-	repositoryPath, err := shared.NewRepositoryPath(tempDir)
-	require.NoError(t, err)
-
-	result, rewriteErr := service.Rewrite(context.Background(), namespace.Options{
-		RepositoryPath: repositoryPath,
-		OldPrefix:      oldPrefix,
-		NewPrefix:      newPrefix,
-		DryRun:         true,
-	})
-	require.NoError(t, rewriteErr)
-
-	require.False(t, result.Skipped)
-	require.True(t, result.GoModChanged)
-	require.Empty(t, result.ChangedFiles)
 }
 
 func TestRewriteUpdatesGoModRootModuleEntries(t *testing.T) {

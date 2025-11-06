@@ -18,7 +18,6 @@ type Configuration struct {
 // PurgeConfiguration stores options for purging container versions.
 type PurgeConfiguration struct {
 	PackageName     string   `mapstructure:"package"`
-	DryRun          bool     `mapstructure:"dry_run"`
 	RepositoryRoots []string `mapstructure:"roots"`
 }
 

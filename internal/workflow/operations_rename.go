@@ -68,7 +68,6 @@ func (operation *RenameOperation) Execute(executionContext context.Context, envi
 		options := rename.Options{
 			RepositoryPath:          repositoryPath,
 			DesiredFolderName:       trimmedFolderName,
-			DryRun:                  environment.DryRun,
 			CleanPolicy:             shared.CleanWorktreePolicyFromBool(operation.RequireCleanWorktree),
 			ConfirmationPolicy:      shared.ConfirmationPolicyFromBool(assumeYes),
 			IncludeOwner:            plan.IncludeOwner,
@@ -80,10 +79,6 @@ func (operation *RenameOperation) Execute(executionContext context.Context, envi
 				continue
 			}
 			return fmt.Errorf("rename directories: %w", executionError)
-		}
-
-		if environment.DryRun {
-			continue
 		}
 
 		newPath := filepath.Join(filepath.Dir(originalPath), plan.FolderName)

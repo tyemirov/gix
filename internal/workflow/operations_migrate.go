@@ -17,7 +17,6 @@ const (
 	defaultMigrationRemoteNameConstant                 = "origin"
 	defaultMigrationTargetBranchConstant               = "master"
 	defaultMigrationWorkflowsDirectoryConstant         = ".github/workflows"
-	migrationDryRunMessageTemplateConstant             = "WORKFLOW-PLAN: default %s (%s → %s)\n"
 	migrationSuccessMessageTemplateConstant            = "WORKFLOW-DEFAULT: %s (%s → %s) safe_to_delete=%t\n"
 	migrationIdentifierMissingMessageConstant          = "repository identifier unavailable for default-branch target"
 	migrationExecutionErrorTemplateConstant            = "default branch update failed: %w"
@@ -204,13 +203,6 @@ func (operation *BranchMigrationOperation) Execute(executionContext context.Cont
 			TargetBranch:         targetBranch,
 			PushUpdates:          target.PushToRemote && remoteAvailable,
 			DeleteSourceBranch:   target.DeleteSourceBranch && remoteAvailable,
-		}
-
-		if environment.DryRun {
-			if environment.Output != nil {
-				fmt.Fprintf(environment.Output, migrationDryRunMessageTemplateConstant, repositoryState.Path, sourceBranchValue, targetBranchValue)
-			}
-			continue
 		}
 
 		if ensureLocalError := ensureLocalBranch(executionContext, environment.RepositoryManager, environment.GitExecutor, repositoryPath, targetBranchValue, sourceBranchValue); ensureLocalError != nil {

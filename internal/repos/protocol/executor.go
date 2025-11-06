@@ -25,7 +25,6 @@ type Options struct {
 	CanonicalOwnerRepository *shared.OwnerRepository
 	CurrentProtocol          shared.RemoteProtocol
 	TargetProtocol           shared.RemoteProtocol
-	DryRun                   bool
 	ConfirmationPolicy       shared.ConfirmationPolicy
 }
 
@@ -122,22 +121,6 @@ func (executor *Executor) Execute(executionContext context.Context, options Opti
 			repoerrors.ErrUnknownProtocol,
 			fmt.Sprintf(targetErrorMessage, string(options.TargetProtocol), repositoryPath),
 		)
-	}
-
-	if options.DryRun {
-		executor.report(
-			shared.EventLevelInfo,
-			shared.EventCodeProtocolPlan,
-			repositoryPath,
-			ownerRepository,
-			fmt.Sprintf("%s → %s", remotes.FormatRemoteURLForDisplay(currentURL), remotes.FormatRemoteURLForDisplay(targetURL)),
-			map[string]string{
-				"current_protocol": string(currentProtocol),
-				"target_protocol":  string(options.TargetProtocol),
-				"target_url":       remotes.FormatRemoteURLForDisplay(targetURL),
-			},
-		)
-		return nil
 	}
 
 	if options.ConfirmationPolicy.ShouldPrompt() && executor.dependencies.Prompter != nil {

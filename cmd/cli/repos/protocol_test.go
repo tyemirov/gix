@@ -23,7 +23,6 @@ const (
 	protocolFromFlagConstant       = "--from"
 	protocolToFlagConstant         = "--to"
 	protocolYesFlagConstant        = "--" + flagutils.AssumeYesFlagName
-	protocolDryRunFlagConstant     = "--" + flagutils.DryRunFlagName
 	protocolRootFlagConstant       = "--" + flagutils.DefaultRootFlagName
 	protocolConfiguredRootConstant = "/tmp/protocol-config-root"
 	protocolMissingRootsMessage    = "no repository roots provided; specify --roots or configure defaults"
@@ -39,7 +38,6 @@ func TestProtocolCommandConfigurationPrecedence(testInstance *testing.T) {
 		expectedRoots        []string
 		expectedRootsBuilder func(testing.TB) []string
 		expectTaskInvocation bool
-		expectedDryRun       bool
 		expectedAssumeYes    bool
 		expectedFrom         string
 		expectedTo           string
@@ -59,7 +57,6 @@ func TestProtocolCommandConfigurationPrecedence(testInstance *testing.T) {
 		{
 			name: "configuration_supplies_protocols",
 			configuration: repos.ProtocolConfiguration{
-				DryRun:          true,
 				AssumeYes:       false,
 				RepositoryRoots: []string{protocolConfiguredRootConstant},
 				FromProtocol:    string(shared.RemoteProtocolHTTPS),
@@ -67,7 +64,6 @@ func TestProtocolCommandConfigurationPrecedence(testInstance *testing.T) {
 			},
 			expectedRoots:        []string{protocolConfiguredRootConstant},
 			expectTaskInvocation: true,
-			expectedDryRun:       true,
 			expectedAssumeYes:    false,
 			expectedFrom:         string(shared.RemoteProtocolHTTPS),
 			expectedTo:           string(shared.RemoteProtocolSSH),
@@ -75,7 +71,6 @@ func TestProtocolCommandConfigurationPrecedence(testInstance *testing.T) {
 		{
 			name: "flags_override_configuration",
 			configuration: repos.ProtocolConfiguration{
-				DryRun:          false,
 				AssumeYes:       false,
 				RepositoryRoots: []string{protocolConfiguredRootConstant},
 				FromProtocol:    string(shared.RemoteProtocolSSH),
@@ -85,12 +80,10 @@ func TestProtocolCommandConfigurationPrecedence(testInstance *testing.T) {
 				protocolFromFlagConstant, string(shared.RemoteProtocolHTTPS),
 				protocolToFlagConstant, string(shared.RemoteProtocolSSH),
 				protocolYesFlagConstant,
-				protocolDryRunFlagConstant,
 				protocolRootFlagConstant, remotesCLIRepositoryRootConstant,
 			},
 			expectedRoots:        []string{remotesCLIRepositoryRootConstant},
 			expectTaskInvocation: true,
-			expectedDryRun:       true,
 			expectedAssumeYes:    true,
 			expectedFrom:         string(shared.RemoteProtocolHTTPS),
 			expectedTo:           string(shared.RemoteProtocolSSH),
@@ -98,7 +91,6 @@ func TestProtocolCommandConfigurationPrecedence(testInstance *testing.T) {
 		{
 			name: "configuration_triggers_remote_update",
 			configuration: repos.ProtocolConfiguration{
-				DryRun:          false,
 				AssumeYes:       true,
 				RepositoryRoots: []string{protocolConfiguredRootConstant},
 				FromProtocol:    string(shared.RemoteProtocolHTTPS),
@@ -106,7 +98,6 @@ func TestProtocolCommandConfigurationPrecedence(testInstance *testing.T) {
 			},
 			expectedRoots:        []string{protocolConfiguredRootConstant},
 			expectTaskInvocation: true,
-			expectedDryRun:       false,
 			expectedAssumeYes:    true,
 			expectedFrom:         string(shared.RemoteProtocolHTTPS),
 			expectedTo:           string(shared.RemoteProtocolSSH),
@@ -114,7 +105,6 @@ func TestProtocolCommandConfigurationPrecedence(testInstance *testing.T) {
 		{
 			name: "configuration_expands_home_relative_root",
 			configuration: repos.ProtocolConfiguration{
-				DryRun:          true,
 				AssumeYes:       true,
 				RepositoryRoots: []string{"~/" + protocolHomeRootSuffixConstant},
 				FromProtocol:    string(shared.RemoteProtocolHTTPS),
@@ -123,7 +113,6 @@ func TestProtocolCommandConfigurationPrecedence(testInstance *testing.T) {
 			arguments:            []string{},
 			expectedRootsBuilder: protocolHomeRootBuilder,
 			expectTaskInvocation: true,
-			expectedDryRun:       true,
 			expectedAssumeYes:    true,
 			expectedFrom:         string(shared.RemoteProtocolHTTPS),
 			expectedTo:           string(shared.RemoteProtocolSSH),
@@ -138,12 +127,10 @@ func TestProtocolCommandConfigurationPrecedence(testInstance *testing.T) {
 				protocolFromFlagConstant, string(shared.RemoteProtocolHTTPS),
 				protocolToFlagConstant, string(shared.RemoteProtocolSSH),
 				protocolYesFlagConstant,
-				protocolDryRunFlagConstant,
 				protocolRootFlagConstant, protocolRelativeRootConstant,
 			},
 			expectedRoots:        []string{protocolRelativeRootConstant},
 			expectTaskInvocation: true,
-			expectedDryRun:       true,
 			expectedAssumeYes:    true,
 			expectedFrom:         string(shared.RemoteProtocolHTTPS),
 			expectedTo:           string(shared.RemoteProtocolSSH),
@@ -158,12 +145,10 @@ func TestProtocolCommandConfigurationPrecedence(testInstance *testing.T) {
 				protocolFromFlagConstant, string(shared.RemoteProtocolHTTPS),
 				protocolToFlagConstant, string(shared.RemoteProtocolSSH),
 				protocolYesFlagConstant,
-				protocolDryRunFlagConstant,
 				protocolRootFlagConstant, "~/" + protocolHomeRootSuffixConstant,
 			},
 			expectedRootsBuilder: protocolHomeRootBuilder,
 			expectTaskInvocation: true,
-			expectedDryRun:       true,
 			expectedAssumeYes:    true,
 			expectedFrom:         string(shared.RemoteProtocolHTTPS),
 			expectedTo:           string(shared.RemoteProtocolSSH),
@@ -229,7 +214,6 @@ func TestProtocolCommandConfigurationPrecedence(testInstance *testing.T) {
 				require.Equal(subtest, "repo.remote.convert-protocol", action.Type)
 				require.Equal(subtest, testCase.expectedFrom, action.Options["from"])
 				require.Equal(subtest, testCase.expectedTo, action.Options["to"])
-				require.Equal(subtest, testCase.expectedDryRun, runner.runtimeOptions.DryRun)
 				require.Equal(subtest, testCase.expectedAssumeYes, runner.runtimeOptions.AssumeYes)
 			} else {
 				require.Empty(subtest, runner.definitions)
@@ -241,17 +225,12 @@ func TestProtocolCommandConfigurationPrecedence(testInstance *testing.T) {
 func bindGlobalProtocolFlags(command *cobra.Command) {
 	flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Enabled: true})
 	flagutils.BindExecutionFlags(command, flagutils.ExecutionDefaults{}, flagutils.ExecutionFlagDefinitions{
-		DryRun:    flagutils.ExecutionFlagDefinition{Name: flagutils.DryRunFlagName, Usage: flagutils.DryRunFlagUsage, Enabled: true},
 		AssumeYes: flagutils.ExecutionFlagDefinition{Name: flagutils.AssumeYesFlagName, Usage: flagutils.AssumeYesFlagUsage, Shorthand: flagutils.AssumeYesFlagShorthand, Enabled: true},
 	})
 	command.PersistentFlags().String(flagutils.RemoteFlagName, "", flagutils.RemoteFlagUsage)
 	command.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		contextAccessor := utils.NewCommandContextAccessor()
 		executionFlags := utils.ExecutionFlags{}
-		if dryRunValue, dryRunChanged, dryRunError := flagutils.BoolFlag(cmd, flagutils.DryRunFlagName); dryRunError == nil {
-			executionFlags.DryRun = dryRunValue
-			executionFlags.DryRunSet = dryRunChanged
-		}
 		if assumeYesValue, assumeYesChanged, assumeYesError := flagutils.BoolFlag(cmd, flagutils.AssumeYesFlagName); assumeYesError == nil {
 			executionFlags.AssumeYes = assumeYesValue
 			executionFlags.AssumeYesSet = assumeYesChanged

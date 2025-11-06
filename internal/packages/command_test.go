@@ -75,7 +75,7 @@ func TestCommandBuildsTaskDefinition(t *testing.T) {
 	builder := packages.CommandBuilder{
 		LoggerProvider: func() *zap.Logger { return zap.NewNop() },
 		ConfigurationProvider: func() packages.Configuration {
-			return packages.Configuration{Purge: packages.PurgeConfiguration{RepositoryRoots: []string{"/src"}, DryRun: true}}
+			return packages.Configuration{Purge: packages.PurgeConfiguration{RepositoryRoots: []string{"/src"}}}
 		},
 		ServiceResolver:            resolver,
 		RepositoryMetadataResolver: metadataResolver,
@@ -99,13 +99,11 @@ func TestCommandBuildsTaskDefinition(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, []string{"/src"}, runner.roots)
-	require.True(t, runner.options.DryRun)
 	require.Len(t, runner.definitions, 1)
 	require.Len(t, runner.definitions[0].Actions, 1)
 	action := runner.definitions[0].Actions[0]
 	require.Equal(t, "repo.packages.purge", action.Type)
 	require.Equal(t, "", action.Options["package_override"])
-	require.Equal(t, true, action.Options["dry_run"])
 }
 
 func TestCommandErrorsOnUnexpectedArguments(t *testing.T) {

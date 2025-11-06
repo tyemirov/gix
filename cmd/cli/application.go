@@ -24,7 +24,6 @@ import (
 	auditcli "github.com/temirov/gix/internal/audit/cli"
 	"github.com/temirov/gix/internal/branches"
 	branchcdcmd "github.com/temirov/gix/internal/branches/cd"
-	branchrefresh "github.com/temirov/gix/internal/branches/refresh"
 	"github.com/temirov/gix/internal/migrate"
 	migratecli "github.com/temirov/gix/internal/migrate/cli"
 	"github.com/temirov/gix/internal/packages"
@@ -69,7 +68,6 @@ const (
 	commonConfigurationKeyConstant                                   = "common"
 	commonLogLevelConfigKeyConstant                                  = commonConfigurationKeyConstant + ".log_level"
 	commonLogFormatConfigKeyConstant                                 = commonConfigurationKeyConstant + ".log_format"
-	commonDryRunConfigKeyConstant                                    = commonConfigurationKeyConstant + ".dry_run"
 	commonAssumeYesConfigKeyConstant                                 = commonConfigurationKeyConstant + ".assume_yes"
 	commonRequireCleanConfigKeyConstant                              = commonConfigurationKeyConstant + ".require_clean"
 	environmentPrefixConstant                                        = "GIX"
@@ -109,7 +107,6 @@ const (
 	repoLicenseOperationNameConstant                                 = "license apply"
 	repoNamespaceRewriteOperationNameConstant                        = "namespace rewrite"
 	workflowCommandOperationNameConstant                             = "workflow"
-	branchRefreshOperationNameConstant                               = "branch-refresh"
 	branchDefaultOperationNameConstant                               = "branch-default"
 	branchChangeOperationNameConstant                                = "cd"
 	commitMessageOperationNameConstant                               = "commit message"
@@ -175,10 +172,9 @@ const (
 	branchChangeLegacyTopLevelUseNameConstant                        = "branch-cd"
 	branchChangeTopLevelUseNameConstant                              = "cd"
 	branchChangeTopLevelUsageTemplateConstant                        = branchChangeTopLevelUseNameConstant + " [branch]"
-	branchRefreshTopLevelUseNameConstant                             = "branch-refresh"
+	branchRefreshLegacyTopLevelUseNameConstant                       = "branch-refresh"
 	defaultCommandUseNameConstant                                    = "default"
 	defaultCommandUsageTemplateConstant                              = defaultCommandUseNameConstant + " <target-branch>"
-	refreshCommandUseNameConstant                                    = "refresh"
 	branchChangeCommandUseNameConstant                               = "cd"
 	branchChangeCommandUsageTemplateConstant                         = branchChangeCommandUseNameConstant + " [branch]"
 	branchChangeCommandAliasConstant                                 = "switch"
@@ -225,14 +221,13 @@ const (
 	legacyBranchDefaultCommandKeyConstant                            = legacyBranchNamespaceUseNameConstant + " " + defaultCommandUseNameConstant
 	legacyBranchChangeCommandKeyConstant                             = legacyBranchNamespaceUseNameConstant + " " + branchChangeCommandUseNameConstant
 	legacyBranchChangeAliasCommandKeyConstant                        = legacyBranchNamespaceUseNameConstant + " " + branchChangeCommandAliasConstant
-	legacyBranchRefreshCommandKeyConstant                            = legacyBranchNamespaceUseNameConstant + " " + refreshCommandUseNameConstant
+	legacyBranchRefreshCommandKeyConstant                            = legacyBranchNamespaceUseNameConstant + " refresh"
 	renameNestedLongDescriptionConstant                              = "folder rename normalizes repository directory names to match canonical GitHub repositories."
 	updateRemoteCanonicalLongDescriptionConstant                     = "remote update-to-canonical adjusts origin remotes to match canonical GitHub repositories."
 	updateProtocolLongDescriptionConstant                            = "remote update-protocol converts origin URLs to a desired protocol."
 	prsDeleteLongDescriptionConstant                                 = "prs delete removes remote and local Git branches whose pull requests are already closed."
 	packagesDeleteLongDescriptionConstant                            = "packages delete removes untagged container versions from GitHub Packages."
 	branchDefaultNestedLongDescriptionConstant                       = "branch-default promotes a branch to the repository default, auto-detecting the current default branch before retargeting workflows and safety gates."
-	branchRefreshNestedLongDescriptionConstant                       = "branch-refresh synchronizes repositories by fetching, checking out, and pulling updates."
 	versionFlagNameConstant                                          = "version"
 	versionFlagUsageConstant                                         = "Print the application version and exit"
 	versionOutputTemplateConstant                                    = "gix version: %s\n"
@@ -246,7 +241,6 @@ const (
 	missingOperationConfigurationTemplateConstant                    = "missing configuration for command %q"
 	missingOperationConfigurationSkippedMessageConstant              = "command configuration missing; continuing without defaults"
 	unknownCommandNamePlaceholderConstant                            = "unknown"
-	dryRunOptionKeyConstant                                          = "dry_run"
 	assumeYesOptionKeyConstant                                       = "assume_yes"
 	requireCleanOptionKeyConstant                                    = "require_clean"
 )
@@ -266,7 +260,6 @@ var commandOperationRequirements = map[string][]string{
 	licenseApplyCommandPathKeyConstant:       {repoLicenseOperationNameConstant},
 	namespaceRewriteCommandPathKeyConstant:   {repoNamespaceRewriteOperationNameConstant},
 	workflowCommandOperationNameConstant:     {workflowCommandOperationNameConstant},
-	branchRefreshTopLevelUseNameConstant:     {branchRefreshOperationNameConstant},
 	branchDefaultTopLevelUseNameConstant:     {branchDefaultOperationNameConstant},
 	branchChangeTopLevelUseNameConstant:      {branchChangeOperationNameConstant},
 	commitMessageCommandPathKeyConstant:      {commitMessageOperationNameConstant},
@@ -292,12 +285,15 @@ var operationNameAliases = map[string]string{
 	legacyBranchChangeCommandKeyConstant:           branchChangeOperationNameConstant,
 	legacyBranchChangeAliasCommandKeyConstant:      branchChangeOperationNameConstant,
 	branchChangeLegacyTopLevelUseNameConstant:      branchChangeOperationNameConstant,
-	legacyBranchRefreshCommandKeyConstant:          branchRefreshOperationNameConstant,
+	branchRefreshLegacyTopLevelUseNameConstant:     branchChangeOperationNameConstant,
+	legacyBranchRefreshCommandKeyConstant:          branchChangeOperationNameConstant,
 	releaseRetagCommandAliasKeyConstant:            repoReleaseOperationNameConstant,
 }
 
 var operationAliasWarnings = map[string]string{
-	branchChangeLegacyTopLevelUseNameConstant: "command configuration uses deprecated name \"branch-cd\"; update to \"cd\".",
+	branchChangeLegacyTopLevelUseNameConstant:  "command configuration uses deprecated name \"branch-cd\"; update to \"cd\".",
+	branchRefreshLegacyTopLevelUseNameConstant: "command configuration uses deprecated name \"branch-refresh\"; update to \"cd\" with refresh options.",
+	legacyBranchRefreshCommandKeyConstant:      "command configuration uses deprecated name \"branch refresh\"; update to \"cd\" with refresh options.",
 }
 
 type loggerOutputsFactory interface {
@@ -334,7 +330,6 @@ type ApplicationConfiguration struct {
 type ApplicationCommonConfiguration struct {
 	LogLevel     string `mapstructure:"log_level"`
 	LogFormat    string `mapstructure:"log_format"`
-	DryRun       bool   `mapstructure:"dry_run"`
 	AssumeYes    bool   `mapstructure:"assume_yes"`
 	RequireClean bool   `mapstructure:"require_clean"`
 }
@@ -385,6 +380,7 @@ func newOperationConfigurations(definitions []ApplicationOperationConfiguration)
 			continue
 		}
 
+		originalName := normalizedName
 		if canonicalName, exists := operationNameAliases[normalizedName]; exists {
 			normalizedName = canonicalName
 		}
@@ -397,6 +393,16 @@ func newOperationConfigurations(definitions []ApplicationOperationConfiguration)
 		options := make(map[string]any)
 		for optionKey, optionValue := range definitions[definitionIndex].Options {
 			options[optionKey] = optionValue
+		}
+
+		if normalizedName == branchChangeOperationNameConstant &&
+			(originalName == branchRefreshLegacyTopLevelUseNameConstant || originalName == legacyBranchRefreshCommandKeyConstant) {
+			if _, exists := options["refresh"]; !exists {
+				options["refresh"] = true
+			}
+			if _, exists := options["require_clean"]; !exists {
+				options["require_clean"] = true
+			}
 		}
 
 		entries[normalizedName] = options
@@ -643,7 +649,6 @@ func NewApplication() *Application {
 		cobraCommand,
 		flagutils.ExecutionDefaults{},
 		flagutils.ExecutionFlagDefinitions{
-			DryRun:    flagutils.ExecutionFlagDefinition{Name: flagutils.DryRunFlagName, Usage: flagutils.DryRunFlagUsage, Enabled: true},
 			AssumeYes: flagutils.ExecutionFlagDefinition{Name: flagutils.AssumeYesFlagName, Usage: flagutils.AssumeYesFlagUsage, Shorthand: flagutils.AssumeYesFlagShorthand, Enabled: true},
 		},
 	)
@@ -690,14 +695,6 @@ func NewApplication() *Application {
 			}
 			return prompt.NewIOConfirmationPrompter(command.InOrStdin(), command.OutOrStdout())
 		},
-	}
-
-	branchRefreshBuilder := branchrefresh.CommandBuilder{
-		LoggerProvider: func() *zap.Logger {
-			return application.logger
-		},
-		HumanReadableLoggingProvider: application.humanReadableLoggingEnabled,
-		ConfigurationProvider:        application.branchRefreshConfiguration,
 	}
 
 	branchChangeBuilder := branchcdcmd.CommandBuilder{
@@ -961,10 +958,6 @@ func NewApplication() *Application {
 		)
 		cobraCommand.AddCommand(branchChangeCommand)
 	}
-	if branchRefreshNestedCommand, branchRefreshNestedError := branchRefreshBuilder.Build(); branchRefreshNestedError == nil {
-		configureCommandMetadata(branchRefreshNestedCommand, branchRefreshTopLevelUseNameConstant, branchRefreshNestedCommand.Short, branchRefreshNestedLongDescriptionConstant)
-		cobraCommand.AddCommand(branchRefreshNestedCommand)
-	}
 
 	application.rootCommand = cobraCommand
 
@@ -1100,7 +1093,6 @@ func (application *Application) initializeConfiguration(command *cobra.Command) 
 	defaultValues := map[string]any{
 		commonLogLevelConfigKeyConstant:     string(utils.LogLevelError),
 		commonLogFormatConfigKeyConstant:    string(utils.LogFormatStructured),
-		commonDryRunConfigKeyConstant:       false,
 		commonAssumeYesConfigKeyConstant:    false,
 		commonRequireCleanConfigKeyConstant: false,
 	}
@@ -1221,11 +1213,6 @@ func (application *Application) collectExecutionFlags(command *cobra.Command) ut
 		return executionFlags
 	}
 
-	if dryRunValue, dryRunChanged, dryRunError := flagutils.BoolFlag(command, flagutils.DryRunFlagName); dryRunError == nil {
-		executionFlags.DryRun = dryRunValue
-		executionFlags.DryRunSet = dryRunChanged
-	}
-
 	if assumeYesValue, assumeYesChanged, assumeYesError := flagutils.BoolFlag(command, flagutils.AssumeYesFlagName); assumeYesError == nil {
 		executionFlags.AssumeYes = assumeYesValue
 		executionFlags.AssumeYesSet = assumeYesChanged
@@ -1253,10 +1240,6 @@ func (application *Application) packagesConfiguration() packages.Configuration {
 	configuration := packages.DefaultConfiguration()
 	application.decodeOperationConfiguration(packagesPurgeOperationNameConstant, &configuration.Purge)
 
-	options, optionsExist := application.lookupOperationOptions(packagesPurgeOperationNameConstant)
-	if !optionsExist || !optionExists(options, dryRunOptionKeyConstant) {
-		configuration.Purge.DryRun = application.configuration.Common.DryRun
-	}
 	return configuration
 }
 
@@ -1265,9 +1248,6 @@ func (application *Application) branchCleanupConfiguration() branches.CommandCon
 	application.decodeOperationConfiguration(branchCleanupOperationNameConstant, &configuration)
 
 	options, optionsExist := application.lookupOperationOptions(branchCleanupOperationNameConstant)
-	if !optionsExist || !optionExists(options, dryRunOptionKeyConstant) {
-		configuration.DryRun = application.configuration.Common.DryRun
-	}
 	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
 		configuration.AssumeYes = application.configuration.Common.AssumeYes
 	}
@@ -1275,15 +1255,15 @@ func (application *Application) branchCleanupConfiguration() branches.CommandCon
 	return configuration
 }
 
-func (application *Application) branchRefreshConfiguration() branchrefresh.CommandConfiguration {
-	configuration := branchrefresh.DefaultCommandConfiguration()
-	application.decodeOperationConfiguration(branchRefreshOperationNameConstant, &configuration)
-	return configuration.Sanitize()
-}
-
 func (application *Application) branchChangeConfiguration() branchcdcmd.CommandConfiguration {
 	configuration := branchcdcmd.DefaultCommandConfiguration()
 	application.decodeOperationConfiguration(branchChangeOperationNameConstant, &configuration)
+
+	options, optionsExist := application.lookupOperationOptions(branchChangeOperationNameConstant)
+	if !optionsExist || !optionExists(options, requireCleanOptionKeyConstant) {
+		configuration.RequireClean = application.configuration.Common.RequireClean
+	}
+
 	return configuration.Sanitize()
 }
 
@@ -1318,9 +1298,6 @@ func (application *Application) reposRenameConfiguration() repos.RenameConfigura
 	application.decodeOperationConfiguration(reposRenameOperationNameConstant, &configuration)
 
 	options, optionsExist := application.lookupOperationOptions(reposRenameOperationNameConstant)
-	if !optionsExist || !optionExists(options, dryRunOptionKeyConstant) {
-		configuration.DryRun = application.configuration.Common.DryRun
-	}
 	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
 		configuration.AssumeYes = application.configuration.Common.AssumeYes
 	}
@@ -1336,9 +1313,6 @@ func (application *Application) reposRemotesConfiguration() repos.RemotesConfigu
 	application.decodeOperationConfiguration(reposRemotesOperationNameConstant, &configuration)
 
 	options, optionsExist := application.lookupOperationOptions(reposRemotesOperationNameConstant)
-	if !optionsExist || !optionExists(options, dryRunOptionKeyConstant) {
-		configuration.DryRun = application.configuration.Common.DryRun
-	}
 	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
 		configuration.AssumeYes = application.configuration.Common.AssumeYes
 	}
@@ -1351,9 +1325,6 @@ func (application *Application) reposProtocolConfiguration() repos.ProtocolConfi
 	application.decodeOperationConfiguration(reposProtocolOperationNameConstant, &configuration)
 
 	options, optionsExist := application.lookupOperationOptions(reposProtocolOperationNameConstant)
-	if !optionsExist || !optionExists(options, dryRunOptionKeyConstant) {
-		configuration.DryRun = application.configuration.Common.DryRun
-	}
 	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
 		configuration.AssumeYes = application.configuration.Common.AssumeYes
 	}
@@ -1366,9 +1337,6 @@ func (application *Application) reposRemoveConfiguration() repos.RemoveConfigura
 	application.decodeOperationConfiguration(repoHistoryOperationNameConstant, &configuration)
 
 	options, optionsExist := application.lookupOperationOptions(repoHistoryOperationNameConstant)
-	if !optionsExist || !optionExists(options, dryRunOptionKeyConstant) {
-		configuration.DryRun = application.configuration.Common.DryRun
-	}
 	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
 		configuration.AssumeYes = application.configuration.Common.AssumeYes
 	}
@@ -1381,9 +1349,6 @@ func (application *Application) reposReplaceConfiguration() repos.ReplaceConfigu
 	application.decodeOperationConfiguration(repoFilesReplaceOperationNameConstant, &configuration)
 
 	options, optionsExist := application.lookupOperationOptions(repoFilesReplaceOperationNameConstant)
-	if !optionsExist || !optionExists(options, dryRunOptionKeyConstant) {
-		configuration.DryRun = application.configuration.Common.DryRun
-	}
 	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
 		configuration.AssumeYes = application.configuration.Common.AssumeYes
 	}
@@ -1396,9 +1361,6 @@ func (application *Application) reposLicenseConfiguration() repos.LicenseConfigu
 	application.decodeOperationConfiguration(repoLicenseOperationNameConstant, &configuration)
 
 	options, optionsExist := application.lookupOperationOptions(repoLicenseOperationNameConstant)
-	if !optionsExist || !optionExists(options, dryRunOptionKeyConstant) {
-		configuration.DryRun = application.configuration.Common.DryRun
-	}
 	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
 		configuration.AssumeYes = application.configuration.Common.AssumeYes
 	}
@@ -1414,9 +1376,6 @@ func (application *Application) reposFilesAddConfiguration() repos.AddConfigurat
 	application.decodeOperationConfiguration(repoFilesAddOperationNameConstant, &configuration)
 
 	options, optionsExist := application.lookupOperationOptions(repoFilesAddOperationNameConstant)
-	if !optionsExist || !optionExists(options, dryRunOptionKeyConstant) {
-		configuration.DryRun = application.configuration.Common.DryRun
-	}
 	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
 		configuration.AssumeYes = application.configuration.Common.AssumeYes
 	}
@@ -1429,9 +1388,6 @@ func (application *Application) reposNamespaceConfiguration() repos.NamespaceCon
 	application.decodeOperationConfiguration(repoNamespaceRewriteOperationNameConstant, &configuration)
 
 	options, optionsExist := application.lookupOperationOptions(repoNamespaceRewriteOperationNameConstant)
-	if !optionsExist || !optionExists(options, dryRunOptionKeyConstant) {
-		configuration.DryRun = application.configuration.Common.DryRun
-	}
 	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
 		configuration.AssumeYes = application.configuration.Common.AssumeYes
 	}
@@ -1444,9 +1400,6 @@ func (application *Application) workflowCommandConfiguration() workflowcmd.Comma
 	application.decodeOperationConfiguration(workflowCommandOperationNameConstant, &configuration)
 
 	options, optionsExist := application.lookupOperationOptions(workflowCommandOperationNameConstant)
-	if !optionsExist || !optionExists(options, dryRunOptionKeyConstant) {
-		configuration.DryRun = application.configuration.Common.DryRun
-	}
 	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
 		configuration.AssumeYes = application.configuration.Common.AssumeYes
 	}

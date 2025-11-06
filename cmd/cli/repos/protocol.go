@@ -72,11 +72,6 @@ func (builder *ProtocolCommandBuilder) run(command *cobra.Command, arguments []s
 	configuration := builder.resolveConfiguration()
 	executionFlags, executionFlagsAvailable := flagutils.ResolveExecutionFlags(command)
 
-	dryRun := configuration.DryRun
-	if executionFlagsAvailable && executionFlags.DryRunSet {
-		dryRun = executionFlags.DryRun
-	}
-
 	assumeYes := configuration.AssumeYes
 	if executionFlagsAvailable && executionFlags.AssumeYesSet {
 		assumeYes = executionFlags.AssumeYes
@@ -191,7 +186,7 @@ func (builder *ProtocolCommandBuilder) run(command *cobra.Command, arguments []s
 		Commit: workflow.TaskCommitDefinition{},
 	}
 
-	runtimeOptions := workflow.RuntimeOptions{DryRun: dryRun, AssumeYes: trackingPrompter.AssumeYes()}
+	runtimeOptions := workflow.RuntimeOptions{AssumeYes: trackingPrompter.AssumeYes()}
 
 	return taskRunner.Run(command.Context(), roots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
 }

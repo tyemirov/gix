@@ -31,72 +31,46 @@ const (
 func TestPackageVersionServiceIntegration(testingInstance *testing.T) {
 	testingInstance.Parallel()
 
-	testCases := []struct {
-		name                string
-		dryRun              bool
-		expectedDeleteCount int
-	}{
-		{
-			name:                "dry_run_does_not_delete",
-			dryRun:              true,
-			expectedDeleteCount: 0,
-		},
-		{
-			name:                "deletes_when_not_dry_run",
-			dryRun:              false,
-			expectedDeleteCount: 1,
-		},
-	}
+	recordedDeleteIdentifiers := make([]int64, 0)
+	requestCount := 0
 
-	for index := range testCases {
-		testCase := testCases[index]
+	server := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, httpRequest *http.Request) {
+		requestCount++
+		require.Equal(testingInstance, expectedAcceptHeaderValue, httpRequest.Header.Get(expectedAcceptHeaderName))
+		require.Equal(testingInstance, fmt.Sprintf(expectedBearerHeaderTemplate, integrationTokenConstant), httpRequest.Header.Get(expectedAuthorizationHeaderName))
 
-		testingInstance.Run(testCase.name, func(testingSubInstance *testing.T) {
-			testingSubInstance.Parallel()
+		switch httpRequest.Method {
+		case http.MethodGet:
+			handleIntegrationGet(testingInstance, responseWriter, httpRequest)
+		case http.MethodDelete:
+			versionIdentifier, parseError := parseVersionIdentifierFromPath(httpRequest.URL.Path)
+			require.NoError(testingInstance, parseError)
+			recordedDeleteIdentifiers = append(recordedDeleteIdentifiers, versionIdentifier)
+			responseWriter.WriteHeader(http.StatusNoContent)
+		default:
+			testingInstance.Fatalf("unexpected method %s", httpRequest.Method)
+		}
+	}))
+	defer server.Close()
 
-			recordedDeleteIdentifiers := make([]int64, 0)
-			requestCount := 0
+	service, serviceError := ghcr.NewPackageVersionService(zap.NewNop(), server.Client(), ghcr.ServiceConfiguration{
+		BaseURL:  server.URL,
+		PageSize: 2,
+	})
+	require.NoError(testingInstance, serviceError)
 
-			server := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, httpRequest *http.Request) {
-				requestCount++
-				require.Equal(testingSubInstance, expectedAcceptHeaderValue, httpRequest.Header.Get(expectedAcceptHeaderName))
-				require.Equal(testingSubInstance, fmt.Sprintf(expectedBearerHeaderTemplate, integrationTokenConstant), httpRequest.Header.Get(expectedAuthorizationHeaderName))
-
-				switch httpRequest.Method {
-				case http.MethodGet:
-					handleIntegrationGet(testingSubInstance, responseWriter, httpRequest)
-				case http.MethodDelete:
-					versionIdentifier, parseError := parseVersionIdentifierFromPath(httpRequest.URL.Path)
-					require.NoError(testingSubInstance, parseError)
-					recordedDeleteIdentifiers = append(recordedDeleteIdentifiers, versionIdentifier)
-					responseWriter.WriteHeader(http.StatusNoContent)
-				default:
-					testingSubInstance.Fatalf("unexpected method %s", httpRequest.Method)
-				}
-			}))
-			defer server.Close()
-
-			service, serviceError := ghcr.NewPackageVersionService(zap.NewNop(), server.Client(), ghcr.ServiceConfiguration{
-				BaseURL:  server.URL,
-				PageSize: 2,
-			})
-			require.NoError(testingSubInstance, serviceError)
-
-			result, purgeError := service.PurgeUntaggedVersions(context.Background(), ghcr.PurgeRequest{
-				Owner:       integrationOwnerNameConstant,
-				PackageName: integrationPackageNameConstant,
-				OwnerType:   ghcr.OrganizationOwnerType,
-				Token:       integrationTokenConstant,
-				DryRun:      testCase.dryRun,
-			})
-			require.NoError(testingSubInstance, purgeError)
-			require.Equal(testingSubInstance, 2, result.TotalVersions)
-			require.Equal(testingSubInstance, 1, result.UntaggedVersions)
-			require.Equal(testingSubInstance, testCase.expectedDeleteCount, result.DeletedVersions)
-			require.Len(testingSubInstance, recordedDeleteIdentifiers, testCase.expectedDeleteCount)
-			require.GreaterOrEqual(testingSubInstance, requestCount, 2)
-		})
-	}
+	result, purgeError := service.PurgeUntaggedVersions(context.Background(), ghcr.PurgeRequest{
+		Owner:       integrationOwnerNameConstant,
+		PackageName: integrationPackageNameConstant,
+		OwnerType:   ghcr.OrganizationOwnerType,
+		Token:       integrationTokenConstant,
+	})
+	require.NoError(testingInstance, purgeError)
+	require.Equal(testingInstance, 2, result.TotalVersions)
+	require.Equal(testingInstance, 1, result.UntaggedVersions)
+	require.Equal(testingInstance, 1, result.DeletedVersions)
+	require.Len(testingInstance, recordedDeleteIdentifiers, 1)
+	require.GreaterOrEqual(testingInstance, requestCount, 2)
 }
 
 func handleIntegrationGet(testingInstance *testing.T, responseWriter http.ResponseWriter, httpRequest *http.Request) {

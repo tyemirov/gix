@@ -45,11 +45,6 @@ func handlePackagesPurgeAction(ctx context.Context, environment *workflow.Enviro
 
 	packageOverride, _ := parameters["package_override"].(string)
 
-	dryRun := false
-	if value, exists := parameters["dry_run"].(bool); exists {
-		dryRun = value
-	}
-
 	metadata, metadataError := resolver.ResolveMetadata(ctx, repository.Path)
 	if metadataError != nil {
 		return fmt.Errorf("packages metadata resolution failed: %w", metadataError)
@@ -65,7 +60,6 @@ func handlePackagesPurgeAction(ctx context.Context, environment *workflow.Enviro
 		PackageName: packageName,
 		OwnerType:   metadata.OwnerType,
 		TokenSource: tokenSource,
-		DryRun:      dryRun,
 	}
 
 	_, executionError := service.Execute(ctx, options)

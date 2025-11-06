@@ -78,41 +78,6 @@ func (manager stubRepositoryManager) SetRemoteURL(context.Context, string, strin
 	return nil
 }
 
-func TestExecutorDryRunProducesPlan(testInstance *testing.T) {
-	executor := newScriptedGitExecutor()
-	executor.setResponse([]string{"rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"}, execshell.ExecutionResult{StandardOutput: "origin/main\n"})
-
-	repoManager := stubRepositoryManager{remoteURL: "https://github.com/example/repo.git"}
-	outputBuffer := &strings.Builder{}
-
-	service := history.NewExecutor(history.Dependencies{
-		GitExecutor:       executor,
-		RepositoryManager: repoManager,
-		FileSystem:        filesystem.OSFileSystem{},
-		Output:            outputBuffer,
-	})
-
-	repoPath := testInstance.TempDir()
-	repositoryPath, repositoryPathError := shared.NewRepositoryPath(repoPath)
-	require.NoError(testInstance, repositoryPathError)
-
-	options := history.Options{
-		RepositoryPath: repositoryPath,
-		Paths:          []string{"secrets.txt"},
-		RemoteName:     nil,
-		Push:           true,
-		Restore:        true,
-		PushMissing:    false,
-		DryRun:         true,
-	}
-
-	executionError := service.Execute(context.Background(), options)
-	require.NoError(testInstance, executionError)
-	require.Contains(testInstance, outputBuffer.String(), "PLAN-HISTORY-PURGE")
-	require.Len(testInstance, executor.commands, 1)
-	require.Equal(testInstance, []string{"rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"}, executor.commands[0].Arguments)
-}
-
 func TestExecutorSkipsWhenPathsMissing(testInstance *testing.T) {
 	executor := newScriptedGitExecutor()
 	executor.setResponse([]string{"rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"}, execshell.ExecutionResult{StandardOutput: "origin/main\n"})
@@ -140,7 +105,6 @@ func TestExecutorSkipsWhenPathsMissing(testInstance *testing.T) {
 		Push:           false,
 		Restore:        false,
 		PushMissing:    false,
-		DryRun:         false,
 	}
 
 	executionError := service.Execute(context.Background(), options)
@@ -188,7 +152,6 @@ func TestExecutorRunsFilterRepoAndPush(testInstance *testing.T) {
 		Push:           true,
 		Restore:        true,
 		PushMissing:    false,
-		DryRun:         false,
 	}
 
 	executionError := service.Execute(context.Background(), options)
@@ -235,7 +198,6 @@ func TestExecutorFailsWhenFetchingRemoteRefsFails(testInstance *testing.T) {
 		Push:           false,
 		Restore:        false,
 		PushMissing:    false,
-		DryRun:         false,
 	}
 
 	executionError := service.Execute(context.Background(), options)

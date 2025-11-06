@@ -22,7 +22,6 @@ type ToolsConfiguration struct {
 
 // RemotesConfiguration describes configuration values for repo-remote-update.
 type RemotesConfiguration struct {
-	DryRun          bool     `mapstructure:"dry_run"`
 	AssumeYes       bool     `mapstructure:"assume_yes"`
 	Owner           string   `mapstructure:"owner"`
 	RepositoryRoots []string `mapstructure:"roots"`
@@ -30,7 +29,6 @@ type RemotesConfiguration struct {
 
 // ProtocolConfiguration describes configuration values for repo-protocol-convert.
 type ProtocolConfiguration struct {
-	DryRun          bool     `mapstructure:"dry_run"`
 	AssumeYes       bool     `mapstructure:"assume_yes"`
 	RepositoryRoots []string `mapstructure:"roots"`
 	FromProtocol    string   `mapstructure:"from"`
@@ -39,7 +37,6 @@ type ProtocolConfiguration struct {
 
 // RenameConfiguration describes configuration values for repo-folders-rename.
 type RenameConfiguration struct {
-	DryRun               bool     `mapstructure:"dry_run"`
 	AssumeYes            bool     `mapstructure:"assume_yes"`
 	RequireCleanWorktree bool     `mapstructure:"require_clean"`
 	RepositoryRoots      []string `mapstructure:"roots"`
@@ -48,7 +45,6 @@ type RenameConfiguration struct {
 
 // RemoveConfiguration describes configuration values for repo history removal.
 type RemoveConfiguration struct {
-	DryRun          bool     `mapstructure:"dry_run"`
 	AssumeYes       bool     `mapstructure:"assume_yes"`
 	RepositoryRoots []string `mapstructure:"roots"`
 	Remote          string   `mapstructure:"remote"`
@@ -59,7 +55,6 @@ type RemoveConfiguration struct {
 
 // ReplaceConfiguration describes configuration values for repo files replacement.
 type ReplaceConfiguration struct {
-	DryRun          bool     `mapstructure:"dry_run"`
 	AssumeYes       bool     `mapstructure:"assume_yes"`
 	RepositoryRoots []string `mapstructure:"roots"`
 	Patterns        []string `mapstructure:"patterns"`
@@ -73,7 +68,6 @@ type ReplaceConfiguration struct {
 
 // NamespaceConfiguration describes configuration values for namespace rewrite.
 type NamespaceConfiguration struct {
-	DryRun          bool           `mapstructure:"dry_run"`
 	AssumeYes       bool           `mapstructure:"assume_yes"`
 	RepositoryRoots []string       `mapstructure:"roots"`
 	OldPrefix       string         `mapstructure:"old"`
@@ -87,7 +81,6 @@ type NamespaceConfiguration struct {
 
 // LicenseConfiguration describes configuration values for license distribution.
 type LicenseConfiguration struct {
-	DryRun          bool     `mapstructure:"dry_run"`
 	AssumeYes       bool     `mapstructure:"assume_yes"`
 	RepositoryRoots []string `mapstructure:"roots"`
 	TemplatePath    string   `mapstructure:"template_path"`
@@ -103,7 +96,6 @@ type LicenseConfiguration struct {
 
 // AddConfiguration describes configuration values for repo files add.
 type AddConfiguration struct {
-	DryRun          bool     `mapstructure:"dry_run"`
 	AssumeYes       bool     `mapstructure:"assume_yes"`
 	RepositoryRoots []string `mapstructure:"roots"`
 	Path            string   `mapstructure:"path"`
@@ -123,27 +115,23 @@ type AddConfiguration struct {
 func DefaultToolsConfiguration() ToolsConfiguration {
 	return ToolsConfiguration{
 		Remotes: RemotesConfiguration{
-			DryRun:          false,
 			AssumeYes:       false,
 			Owner:           "",
 			RepositoryRoots: nil,
 		},
 		Protocol: ProtocolConfiguration{
-			DryRun:          false,
 			AssumeYes:       false,
 			RepositoryRoots: nil,
 			FromProtocol:    "",
 			ToProtocol:      "",
 		},
 		Rename: RenameConfiguration{
-			DryRun:               false,
 			AssumeYes:            false,
 			RequireCleanWorktree: false,
 			RepositoryRoots:      nil,
 			IncludeOwner:         false,
 		},
 		Remove: RemoveConfiguration{
-			DryRun:          false,
 			AssumeYes:       false,
 			RepositoryRoots: nil,
 			Remote:          "",
@@ -152,7 +140,6 @@ func DefaultToolsConfiguration() ToolsConfiguration {
 			PushMissing:     false,
 		},
 		Replace: ReplaceConfiguration{
-			DryRun:          false,
 			AssumeYes:       false,
 			RepositoryRoots: nil,
 			Patterns:        nil,
@@ -164,7 +151,6 @@ func DefaultToolsConfiguration() ToolsConfiguration {
 			RequirePaths:    nil,
 		},
 		Namespace: NamespaceConfiguration{
-			DryRun:          false,
 			AssumeYes:       false,
 			RepositoryRoots: nil,
 			OldPrefix:       "",
@@ -175,7 +161,6 @@ func DefaultToolsConfiguration() ToolsConfiguration {
 			Safeguards:      nil,
 		},
 		License: LicenseConfiguration{
-			DryRun:          false,
 			AssumeYes:       false,
 			RepositoryRoots: nil,
 			TemplatePath:    "",
@@ -189,7 +174,6 @@ func DefaultToolsConfiguration() ToolsConfiguration {
 			CommitMessage:   "",
 		},
 		Add: AddConfiguration{
-			DryRun:          false,
 			AssumeYes:       false,
 			RepositoryRoots: nil,
 			Path:            "",

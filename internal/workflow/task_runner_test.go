@@ -59,7 +59,7 @@ func TestTaskRunnerRunWithTasksNoRepositories(testInstance *testing.T) {
 		Commit:  TaskCommitDefinition{},
 	}}
 
-	err := runner.Run(context.Background(), []string{"/tmp"}, definitions, RuntimeOptions{DryRun: true})
+	err := runner.Run(context.Background(), []string{"/tmp"}, definitions, RuntimeOptions{})
 	require.NoError(testInstance, err)
 }
 
@@ -88,7 +88,7 @@ func TestTaskRunnerRunSkipsGitHubMetadataRequirement(testInstance *testing.T) {
 		context.Background(),
 		[]string{"/tmp"},
 		definitions,
-		RuntimeOptions{DryRun: true, SkipRepositoryMetadata: true},
+		RuntimeOptions{SkipRepositoryMetadata: true},
 	)
 	require.NoError(testInstance, err)
 }

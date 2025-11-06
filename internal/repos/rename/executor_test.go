@@ -175,7 +175,6 @@ type eventExpectation struct {
 }
 
 func TestExecutorBehaviors(testInstance *testing.T) {
-	legacyPath := mustRepositoryPath(testInstance, renameTestLegacyFolderPath)
 	projectPath := mustRepositoryPath(testInstance, renameTestProjectFolderPath)
 	testCases := []struct {
 		name                       string
@@ -188,84 +187,6 @@ func TestExecutorBehaviors(testInstance *testing.T) {
 		expectedCreatedDirectories []string
 		expectedEvents             []eventExpectation
 	}{
-		{
-			name: "dry_run_plan_ready",
-			options: rename.Options{
-				RepositoryPath:    legacyPath,
-				DesiredFolderName: renameTestDesiredFolderName,
-				DryRun:            true,
-				CleanPolicy:       shared.CleanWorktreeRequired,
-			},
-			fileSystem: &stubFileSystem{
-				existingPaths: map[string]bool{
-					renameTestRootDirectory:    true,
-					renameTestTargetFolderPath: false,
-				},
-			},
-			gitManager:      stubGitManager{clean: true},
-			expectedRenames: 0,
-			expectedEvents: []eventExpectation{
-				{
-					code: shared.EventCodeFolderPlan,
-					assert: func(t *testing.T, event map[string]string) {
-						require.Equal(t, renameTestLegacyFolderPath, event["path"])
-						require.Equal(t, renameTestTargetFolderPath, event["new_path"])
-					},
-				},
-			},
-		},
-		{
-			name: "dry_run_missing_parent_without_creation",
-			options: rename.Options{
-				RepositoryPath:          legacyPath,
-				DesiredFolderName:       renameTestOwnerDesiredFolderName,
-				DryRun:                  true,
-				CleanPolicy:             shared.CleanWorktreeRequired,
-				EnsureParentDirectories: false,
-			},
-			fileSystem: &stubFileSystem{
-				existingPaths: map[string]bool{
-					renameTestRootDirectory: true,
-				},
-			},
-			gitManager:      stubGitManager{clean: true},
-			expectedRenames: 0,
-			expectedEvents: []eventExpectation{
-				{
-					code: shared.EventCodeFolderPlan,
-					assert: func(t *testing.T, event map[string]string) {
-						require.Equal(t, renameTestOwnerDirectoryPath, event["path"])
-						require.Equal(t, "parent_missing", event["reason"])
-					},
-				},
-			},
-		},
-		{
-			name: "dry_run_missing_parent_with_creation",
-			options: rename.Options{
-				RepositoryPath:          legacyPath,
-				DesiredFolderName:       renameTestOwnerDesiredFolderName,
-				DryRun:                  true,
-				CleanPolicy:             shared.CleanWorktreeRequired,
-				EnsureParentDirectories: true,
-			},
-			fileSystem: &stubFileSystem{
-				existingPaths: map[string]bool{
-					renameTestRootDirectory: true,
-				},
-			},
-			gitManager:      stubGitManager{clean: true},
-			expectedRenames: 0,
-			expectedEvents: []eventExpectation{
-				{
-					code: shared.EventCodeFolderPlan,
-					assert: func(t *testing.T, event map[string]string) {
-						require.Equal(t, renameTestLegacyFolderPath, event["path"])
-						require.Equal(t, filepath.Join(renameTestRootDirectory, renameTestOwnerDesiredFolderName), event["new_path"])
-					},
-				},
-			},
-		},
 		{
 			name: "prompter_declines",
 			options: rename.Options{

@@ -77,7 +77,6 @@ type WorkingDirectoryResolver func() (string, error)
 
 type commandExecutionOptions struct {
 	PackageNameOverride string
-	DryRun              bool
 	TokenSource         TokenSourceConfiguration
 	RepositoryRoots     []string
 }
@@ -179,7 +178,6 @@ func (builder *CommandBuilder) runPurge(command *cobra.Command, arguments []stri
 		"metadata_resolver": repositoryMetadataResolver,
 		"token_source":      executionOptions.TokenSource,
 		"package_override":  executionOptions.PackageNameOverride,
-		"dry_run":           executionOptions.DryRun,
 	}
 
 	taskDefinition := workflow.TaskDefinition{
@@ -190,10 +188,7 @@ func (builder *CommandBuilder) runPurge(command *cobra.Command, arguments []stri
 		},
 	}
 
-	runtimeOptions := workflow.RuntimeOptions{
-		DryRun:    executionOptions.DryRun,
-		AssumeYes: executionFlags.AssumeYes,
-	}
+	runtimeOptions := workflow.RuntimeOptions{AssumeYes: executionFlags.AssumeYes}
 
 	return taskRunner.Run(command.Context(), executionOptions.RepositoryRoots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
 }
@@ -212,11 +207,6 @@ func (builder *CommandBuilder) parseCommandOptions(command *cobra.Command, argum
 		return commandExecutionOptions{}, fmt.Errorf(tokenSourceParseErrorTemplateConstant, tokenParseError)
 	}
 
-	dryRunValue := configuration.Purge.DryRun
-	if executionFlagsAvailable && executionFlags.DryRunSet {
-		dryRunValue = executionFlags.DryRun
-	}
-
 	repositoryRoots, rootsError := rootutils.Resolve(command, arguments, configuration.Purge.RepositoryRoots)
 	if rootsError != nil {
 		return commandExecutionOptions{}, rootsError
@@ -224,7 +214,6 @@ func (builder *CommandBuilder) parseCommandOptions(command *cobra.Command, argum
 
 	executionOptions := commandExecutionOptions{
 		PackageNameOverride: packageValue,
-		DryRun:              dryRunValue,
 		TokenSource:         parsedTokenSource,
 		RepositoryRoots:     repositoryRoots,
 	}

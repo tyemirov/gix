@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/temirov/gix/internal/branches/refresh"
 	"github.com/temirov/gix/internal/repos/shared"
 	"github.com/temirov/gix/internal/workflow"
 )
@@ -16,10 +17,17 @@ const (
 	taskOptionBranchRemote            = "remote"
 	taskOptionBranchCreate            = "create_if_missing"
 	taskOptionConfiguredDefaultBranch = "default_branch"
+	taskOptionRefreshEnabled          = "refresh"
+	taskOptionRequireClean            = "require_clean"
+	taskOptionStashChanges            = "stash"
+	taskOptionCommitChanges           = "commit"
 
 	branchResolutionSourceExplicit      = "explicit"
 	branchResolutionSourceRemoteDefault = "remote_default"
 	branchResolutionSourceConfigured    = "configured_default"
+
+	branchRefreshMessageTemplate           = "REFRESHED: %s (%s)\n"
+	refreshMissingRepositoryManagerMessage = "branch refresh requires repository manager"
 )
 
 func init() {
@@ -43,6 +51,29 @@ func handleBranchChangeAction(ctx context.Context, environment *workflow.Environ
 	remoteName, remoteErr := optionalStringOption(parameters, taskOptionBranchRemote)
 	if remoteErr != nil {
 		return remoteErr
+	}
+
+	refreshRequested, refreshErr := boolOptionDefault(parameters, taskOptionRefreshEnabled, false)
+	if refreshErr != nil {
+		return refreshErr
+	}
+	stashChanges, stashErr := boolOption(parameters, taskOptionStashChanges)
+	if stashErr != nil {
+		return stashErr
+	}
+	commitChanges, commitErr := boolOption(parameters, taskOptionCommitChanges)
+	if commitErr != nil {
+		return commitErr
+	}
+	requireClean, requireCleanErr := boolOptionDefault(parameters, taskOptionRequireClean, true)
+	if requireCleanErr != nil {
+		return requireCleanErr
+	}
+	if stashChanges && commitChanges {
+		return errors.New(conflictingRecoveryFlagsMessageConstant)
+	}
+	if stashChanges || commitChanges {
+		refreshRequested = true
 	}
 
 	createIfMissing := false
@@ -88,7 +119,6 @@ func handleBranchChangeAction(ctx context.Context, environment *workflow.Environ
 		BranchName:      resolvedBranchName,
 		RemoteName:      remoteName,
 		CreateIfMissing: createIfMissing,
-		DryRun:          environment.DryRun,
 	})
 	if changeError != nil {
 		return changeError
@@ -109,7 +139,17 @@ func handleBranchChangeAction(ctx context.Context, environment *workflow.Environ
 		"branch": result.BranchName,
 		"source": resolutionSource,
 	}
-	created := result.BranchCreated && !environment.DryRun
+	details["refresh"] = fmt.Sprintf("%t", refreshRequested)
+	if refreshRequested {
+		details["require_clean"] = fmt.Sprintf("%t", requireClean)
+		if stashChanges {
+			details["stash"] = "true"
+		}
+		if commitChanges {
+			details["commit"] = "true"
+		}
+	}
+	created := result.BranchCreated
 	if created {
 		message += changeCreatedSuffixConstant
 	}
@@ -122,6 +162,34 @@ func handleBranchChangeAction(ctx context.Context, environment *workflow.Environ
 		message,
 		details,
 	)
+
+	if refreshRequested {
+		if environment.RepositoryManager == nil || environment.GitExecutor == nil {
+			return errors.New(refreshMissingRepositoryManagerMessage)
+		}
+		service, serviceError := refresh.NewService(refresh.Dependencies{
+			GitExecutor:       environment.GitExecutor,
+			RepositoryManager: environment.RepositoryManager,
+		})
+		if serviceError != nil {
+			return serviceError
+		}
+
+		_, refreshError := service.Refresh(ctx, refresh.Options{
+			RepositoryPath: repository.Path,
+			BranchName:     result.BranchName,
+			RequireClean:   requireClean,
+			StashChanges:   stashChanges,
+			CommitChanges:  commitChanges,
+		})
+		if refreshError != nil {
+			return refreshError
+		}
+
+		if environment.Output != nil {
+			fmt.Fprintf(environment.Output, branchRefreshMessageTemplate, repository.Path, result.BranchName)
+		}
+	}
 
 	return nil
 }
@@ -145,4 +213,33 @@ func optionalStringOption(options map[string]any, key string) (string, error) {
 		return "", err
 	}
 	return value, nil
+}
+
+func boolOption(options map[string]any, key string) (bool, error) {
+	return boolOptionDefault(options, key, false)
+}
+
+func boolOptionDefault(options map[string]any, key string, defaultValue bool) (bool, error) {
+	raw, exists := options[key]
+	if !exists {
+		return defaultValue, nil
+	}
+	switch typed := raw.(type) {
+	case bool:
+		return typed, nil
+	case string:
+		trimmed := strings.TrimSpace(strings.ToLower(typed))
+		if trimmed == "" {
+			return defaultValue, nil
+		}
+		if trimmed == "true" {
+			return true, nil
+		}
+		if trimmed == "false" {
+			return false, nil
+		}
+	default:
+		return false, fmt.Errorf("%s must be boolean", key)
+	}
+	return false, fmt.Errorf("%s must be boolean", key)
 }

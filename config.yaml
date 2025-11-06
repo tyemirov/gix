@@ -12,6 +12,7 @@ operations:
 
   - command: ["packages", "delete"]
     with: &packages_purge_defaults
+      assume_yes: true
       # package: my-image  # Optional override; defaults to the repository name
       roots:
         - ~/Development
@@ -20,13 +21,11 @@ operations:
     with: &branch_cleanup_defaults
       remote: origin
       limit: 100
-      dry_run: false
       roots:
         - ~/Development
 
   - command: ["remote", "update-to-canonical"]
     with: &repo_remotes_defaults
-      dry_run: false
       assume_yes: true
       owner: canonical
       roots:
@@ -34,7 +33,6 @@ operations:
 
   - command: ["remote", "update-protocol"]
     with: &repo_protocol_defaults
-      dry_run: false
       assume_yes: true
       roots:
         - ~/Development
@@ -43,7 +41,6 @@ operations:
 
   - command: ["folder", "rename"]
     with: &repo_rename_defaults
-      dry_run: false
       assume_yes: true
       require_clean: true
       include_owner: false
@@ -54,13 +51,7 @@ operations:
     with: &workflow_command_defaults
       roots:
         - ~/Development
-      dry_run: false
-      assume_yes: false
-
-  - command: ["branch-refresh"]
-    with: &branch_refresh_defaults
-      roots:
-        - ~/Development
+      assume_yes: true
 
   - command: ["branch-default"]
     with: &branch_default_defaults

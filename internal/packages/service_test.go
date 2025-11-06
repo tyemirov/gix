@@ -98,7 +98,6 @@ func TestPurgeServiceInvokesPackageService(testingInstance *testing.T) {
 		PackageName: "package",
 		OwnerType:   ghcr.OrganizationOwnerType,
 		TokenSource: packages.TokenSourceConfiguration{Type: packages.TokenSourceTypeEnvironment, Reference: "ENV"},
-		DryRun:      true,
 	}
 
 	result, executionError := service.Execute(context.Background(), options)
@@ -108,7 +107,6 @@ func TestPurgeServiceInvokesPackageService(testingInstance *testing.T) {
 	require.Equal(testingInstance, options.Owner, packageService.request.Owner)
 	require.Equal(testingInstance, options.PackageName, packageService.request.PackageName)
 	require.Equal(testingInstance, options.OwnerType, packageService.request.OwnerType)
-	require.Equal(testingInstance, options.DryRun, packageService.request.DryRun)
 	require.Equal(testingInstance, tokenResolver.token, packageService.request.Token)
 	require.Equal(testingInstance, options.TokenSource, tokenResolver.source)
 

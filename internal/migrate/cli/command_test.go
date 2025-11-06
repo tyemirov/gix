@@ -18,7 +18,6 @@ import (
 
 const (
 	rootFlagArgumentConstant      = "--" + flagutils.DefaultRootFlagName
-	dryRunFlagArgumentConstant    = "--" + flagutils.DryRunFlagName
 	assumeYesFlagArgumentConstant = "--" + flagutils.AssumeYesFlagName
 )
 
@@ -64,7 +63,6 @@ func TestCommandUsesConfigurationRootsAndTargetBranch(t *testing.T) {
 	require.Equal(t, "branch.default", action.Type)
 	require.Equal(t, "master", action.Options["target"])
 
-	require.False(t, runner.runtimeOptions.DryRun)
 	require.False(t, runner.runtimeOptions.AssumeYes)
 }
 
@@ -101,7 +99,6 @@ func TestCommandFlagsOverrideConfiguration(t *testing.T) {
 	command.SetArgs([]string{
 		"stable",
 		rootFlagArgumentConstant, flagRoot,
-		dryRunFlagArgumentConstant + "=yes",
 		assumeYesFlagArgumentConstant,
 	})
 
@@ -110,7 +107,6 @@ func TestCommandFlagsOverrideConfiguration(t *testing.T) {
 
 	require.Len(t, runner.definitions, 1)
 	require.Equal(t, "stable", runner.definitions[0].Actions[0].Options["target"])
-	require.True(t, runner.runtimeOptions.DryRun)
 	require.True(t, runner.runtimeOptions.AssumeYes)
 }
 
@@ -197,7 +193,6 @@ func bindRootAndExecutionFlags(command *cobra.Command) {
 		command,
 		flagutils.ExecutionDefaults{},
 		flagutils.ExecutionFlagDefinitions{
-			DryRun:    flagutils.ExecutionFlagDefinition{Name: flagutils.DryRunFlagName, Usage: flagutils.DryRunFlagUsage, Enabled: true},
 			AssumeYes: flagutils.ExecutionFlagDefinition{Name: flagutils.AssumeYesFlagName, Usage: flagutils.AssumeYesFlagUsage, Shorthand: flagutils.AssumeYesFlagShorthand, Enabled: true},
 		},
 	)

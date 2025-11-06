@@ -19,7 +19,6 @@ import (
 )
 
 const (
-	renameDryRunFlagConstant        = "--" + flagutils.DryRunFlagName
 	renameAssumeYesFlagConstant     = "--" + flagutils.AssumeYesFlagName
 	renameRequireCleanFlagConstant  = "--require-clean"
 	renameIncludeOwnerFlagConstant  = "--owner"
@@ -56,7 +55,6 @@ func TestRenameCommandConfigurationPrecedence(testInstance *testing.T) {
 		expectError            bool
 		expectedErrorMessage   string
 		expectTaskInvocation   bool
-		expectedDryRun         bool
 		expectedAssumeYes      bool
 		expectedRequireClean   bool
 		expectedIncludeOwner   bool
@@ -64,14 +62,12 @@ func TestRenameCommandConfigurationPrecedence(testInstance *testing.T) {
 		{
 			name: "configuration_supplies_defaults",
 			configuration: &repos.RenameConfiguration{
-				DryRun:               true,
 				AssumeYes:            true,
 				RequireCleanWorktree: false,
 				RepositoryRoots:      []string{renameConfiguredRootConstant},
 			},
 			expectedRoots:        []string{renameConfiguredRootConstant},
 			expectTaskInvocation: true,
-			expectedDryRun:       true,
 			expectedAssumeYes:    true,
 			expectedRequireClean: false,
 			expectedIncludeOwner: false,
@@ -79,13 +75,11 @@ func TestRenameCommandConfigurationPrecedence(testInstance *testing.T) {
 		{
 			name: "flags_override_configuration",
 			configuration: &repos.RenameConfiguration{
-				DryRun:               false,
 				AssumeYes:            false,
 				RequireCleanWorktree: false,
 				RepositoryRoots:      []string{renameConfiguredRootConstant},
 			},
 			arguments: []string{
-				renameDryRunFlagConstant,
 				renameAssumeYesFlagConstant,
 				renameRequireCleanFlagConstant,
 				renameIncludeOwnerFlagConstant,
@@ -93,7 +87,6 @@ func TestRenameCommandConfigurationPrecedence(testInstance *testing.T) {
 			},
 			expectedRoots:        []string{renameCLIRepositoryRootConstant},
 			expectTaskInvocation: true,
-			expectedDryRun:       true,
 			expectedAssumeYes:    true,
 			expectedRequireClean: true,
 			expectedIncludeOwner: true,
@@ -107,7 +100,6 @@ func TestRenameCommandConfigurationPrecedence(testInstance *testing.T) {
 		{
 			name: "configuration_expands_home_relative_root",
 			configuration: &repos.RenameConfiguration{
-				DryRun:               true,
 				AssumeYes:            true,
 				RequireCleanWorktree: true,
 				RepositoryRoots:      []string{"~/" + renameHomeRootSuffixConstant},
@@ -118,7 +110,6 @@ func TestRenameCommandConfigurationPrecedence(testInstance *testing.T) {
 				return []string{filepath.Join(homeDirectory, renameHomeRootSuffixConstant)}
 			},
 			expectTaskInvocation: true,
-			expectedDryRun:       true,
 			expectedAssumeYes:    true,
 			expectedRequireClean: true,
 			expectedIncludeOwner: false,
@@ -129,13 +120,11 @@ func TestRenameCommandConfigurationPrecedence(testInstance *testing.T) {
 				RepositoryRoots: []string{},
 			},
 			arguments: []string{
-				renameDryRunFlagConstant,
 				renameAssumeYesFlagConstant,
 				renameRootFlagConstant, renameRelativeRootConstant,
 			},
 			expectedRoots:        []string{renameRelativeRootConstant},
 			expectTaskInvocation: true,
-			expectedDryRun:       true,
 			expectedAssumeYes:    true,
 			expectedRequireClean: false,
 			expectedIncludeOwner: false,
@@ -143,7 +132,6 @@ func TestRenameCommandConfigurationPrecedence(testInstance *testing.T) {
 		{
 			name: "configuration_enables_include_owner",
 			configuration: &repos.RenameConfiguration{
-				DryRun:               false,
 				AssumeYes:            true,
 				RequireCleanWorktree: false,
 				IncludeOwner:         true,
@@ -151,7 +139,6 @@ func TestRenameCommandConfigurationPrecedence(testInstance *testing.T) {
 			},
 			expectedRoots:        []string{renameConfiguredRootConstant},
 			expectTaskInvocation: true,
-			expectedDryRun:       false,
 			expectedAssumeYes:    true,
 			expectedRequireClean: false,
 			expectedIncludeOwner: true,
@@ -159,7 +146,6 @@ func TestRenameCommandConfigurationPrecedence(testInstance *testing.T) {
 		{
 			name: "flag_disables_include_owner",
 			configuration: &repos.RenameConfiguration{
-				DryRun:               false,
 				AssumeYes:            true,
 				RequireCleanWorktree: false,
 				IncludeOwner:         true,
@@ -171,7 +157,6 @@ func TestRenameCommandConfigurationPrecedence(testInstance *testing.T) {
 			},
 			expectedRoots:        []string{renameConfiguredRootConstant},
 			expectTaskInvocation: true,
-			expectedDryRun:       false,
 			expectedAssumeYes:    true,
 			expectedRequireClean: false,
 			expectedIncludeOwner: false,
@@ -248,7 +233,6 @@ func TestRenameCommandConfigurationPrecedence(testInstance *testing.T) {
 				require.True(subtest, runner.runtimeOptions.IncludeNestedRepositories)
 				require.True(subtest, runner.runtimeOptions.ProcessRepositoriesByDescendingDepth)
 				require.Equal(subtest, testCase.expectedRequireClean, runner.runtimeOptions.CaptureInitialWorktreeStatus)
-				require.Equal(subtest, testCase.expectedDryRun, runner.runtimeOptions.DryRun)
 				require.Equal(subtest, testCase.expectedAssumeYes, runner.runtimeOptions.AssumeYes)
 			} else {
 				require.Empty(subtest, runner.definitions)
@@ -268,17 +252,12 @@ func TestRenameCommandConfigurationPrecedence(testInstance *testing.T) {
 func bindGlobalRenameFlags(command *cobra.Command) {
 	flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Enabled: true})
 	flagutils.BindExecutionFlags(command, flagutils.ExecutionDefaults{}, flagutils.ExecutionFlagDefinitions{
-		DryRun:    flagutils.ExecutionFlagDefinition{Name: flagutils.DryRunFlagName, Usage: flagutils.DryRunFlagUsage, Enabled: true},
 		AssumeYes: flagutils.ExecutionFlagDefinition{Name: flagutils.AssumeYesFlagName, Usage: flagutils.AssumeYesFlagUsage, Shorthand: flagutils.AssumeYesFlagShorthand, Enabled: true},
 	})
 	command.PersistentFlags().String(flagutils.RemoteFlagName, "", flagutils.RemoteFlagUsage)
 	command.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		contextAccessor := utils.NewCommandContextAccessor()
 		executionFlags := utils.ExecutionFlags{}
-		if dryRunValue, dryRunChanged, dryRunError := flagutils.BoolFlag(cmd, flagutils.DryRunFlagName); dryRunError == nil {
-			executionFlags.DryRun = dryRunValue
-			executionFlags.DryRunSet = dryRunChanged
-		}
 		if assumeYesValue, assumeYesChanged, assumeYesError := flagutils.BoolFlag(cmd, flagutils.AssumeYesFlagName); assumeYesError == nil {
 			executionFlags.AssumeYes = assumeYesValue
 			executionFlags.AssumeYesSet = assumeYesChanged

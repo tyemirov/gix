@@ -79,14 +79,12 @@ func TestBranchDefaultCommandRespectsFlags(t *testing.T) {
 	command.SetArgs([]string{
 		"stable",
 		"--" + flagutils.DefaultRootFlagName, root,
-		"--" + flagutils.DryRunFlagName + "=yes",
 	})
 
 	executionError := command.Execute()
 	require.NoError(t, executionError)
 
 	require.Equal(t, "stable", runner.definitions[0].Actions[0].Options["target"])
-	require.True(t, runner.runtimeOptions.DryRun)
 }
 
 type integrationRecordingTaskRunner struct {
@@ -145,7 +143,6 @@ func bindRootAndExecutionFlags(command *cobra.Command) {
 		command,
 		flagutils.ExecutionDefaults{},
 		flagutils.ExecutionFlagDefinitions{
-			DryRun:    flagutils.ExecutionFlagDefinition{Name: flagutils.DryRunFlagName, Usage: flagutils.DryRunFlagUsage, Enabled: true},
 			AssumeYes: flagutils.ExecutionFlagDefinition{Name: flagutils.AssumeYesFlagName, Usage: flagutils.AssumeYesFlagUsage, Shorthand: flagutils.AssumeYesFlagShorthand, Enabled: true},
 		},
 	)

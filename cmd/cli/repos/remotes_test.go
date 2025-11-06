@@ -22,7 +22,6 @@ import (
 
 const (
 	remotesAssumeYesFlagConstant     = "--" + flagutils.AssumeYesFlagName
-	remotesDryRunFlagConstant        = "--" + flagutils.DryRunFlagName
 	remotesRootFlagConstant          = "--" + flagutils.DefaultRootFlagName
 	remotesConfiguredRootConstant    = "/tmp/remotes-config-root"
 	remotesCLIRepositoryRootConstant = "/tmp/remotes-cli-root"
@@ -61,40 +60,34 @@ func TestRemotesCommandConfigurationPrecedence(testInstance *testing.T) {
 		expectPromptInvocations int
 		expectError             bool
 		expectedErrorMessage    string
-		expectedDryRun          bool
 		expectedAssumeYes       bool
 		expectedOwnerConstraint string
 		expectTaskInvocation    bool
 	}{
 		{
-			name: "configuration_enables_dry_run",
+			name: "configuration_uses_defaults",
 			configuration: repos.RemotesConfiguration{
-				DryRun:          true,
 				AssumeYes:       false,
 				RepositoryRoots: []string{remotesConfiguredRootConstant},
 			},
 			arguments:               []string{},
 			expectedRoots:           []string{remotesConfiguredRootConstant},
 			expectPromptInvocations: 0,
-			expectedDryRun:          true,
 			expectedAssumeYes:       false,
 			expectTaskInvocation:    true,
 		},
 		{
 			name: "flags_override_configuration",
 			configuration: repos.RemotesConfiguration{
-				DryRun:          false,
 				AssumeYes:       false,
 				RepositoryRoots: []string{remotesConfiguredRootConstant},
 			},
 			arguments: []string{
 				remotesAssumeYesFlagConstant,
-				remotesDryRunFlagConstant,
 				remotesRootFlagConstant, remotesCLIRepositoryRootConstant,
 			},
 			expectedRoots:           []string{remotesCLIRepositoryRootConstant},
 			expectPromptInvocations: 0,
-			expectedDryRun:          true,
 			expectedAssumeYes:       true,
 			expectTaskInvocation:    true,
 		},
@@ -104,14 +97,12 @@ func TestRemotesCommandConfigurationPrecedence(testInstance *testing.T) {
 			arguments:            []string{},
 			expectError:          true,
 			expectedErrorMessage: remotesMissingRootsMessage,
-			expectedDryRun:       false,
 			expectedAssumeYes:    false,
 			expectTaskInvocation: false,
 		},
 		{
 			name: "configuration_expands_home_relative_root",
 			configuration: repos.RemotesConfiguration{
-				DryRun:          true,
 				AssumeYes:       true,
 				RepositoryRoots: []string{"~/" + remotesHomeRootSuffixConstant},
 			},
@@ -123,25 +114,21 @@ func TestRemotesCommandConfigurationPrecedence(testInstance *testing.T) {
 				return []string{expandedRoot}
 			},
 			expectPromptInvocations: 0,
-			expectedDryRun:          true,
 			expectedAssumeYes:       true,
 			expectTaskInvocation:    true,
 		},
 		{
 			name: "arguments_preserve_relative_roots",
 			configuration: repos.RemotesConfiguration{
-				DryRun:          false,
 				AssumeYes:       false,
 				RepositoryRoots: nil,
 			},
 			arguments: []string{
 				remotesAssumeYesFlagConstant,
-				remotesDryRunFlagConstant,
 				remotesRootFlagConstant, remotesRelativeRootConstant,
 			},
 			expectedRoots:           []string{remotesRelativeRootConstant},
 			expectPromptInvocations: 0,
-			expectedDryRun:          true,
 			expectedAssumeYes:       true,
 			expectTaskInvocation:    true,
 		},
@@ -150,7 +137,6 @@ func TestRemotesCommandConfigurationPrecedence(testInstance *testing.T) {
 			configuration: repos.RemotesConfiguration{},
 			arguments: []string{
 				remotesAssumeYesFlagConstant,
-				remotesDryRunFlagConstant,
 				remotesRootFlagConstant, "~/" + remotesHomeRootSuffixConstant,
 			},
 			expectedRootsBuilder: func(testingInstance testing.TB) []string {
@@ -160,7 +146,6 @@ func TestRemotesCommandConfigurationPrecedence(testInstance *testing.T) {
 				return []string{expandedRoot}
 			},
 			expectPromptInvocations: 0,
-			expectedDryRun:          true,
 			expectedAssumeYes:       true,
 			expectTaskInvocation:    true,
 		},
@@ -230,7 +215,6 @@ func TestRemotesCommandConfigurationPrecedence(testInstance *testing.T) {
 				} else {
 					require.NotContains(subtest, action.Options, "owner")
 				}
-				require.Equal(subtest, testCase.expectedDryRun, runner.runtimeOptions.DryRun)
 				require.Equal(subtest, testCase.expectedAssumeYes, runner.runtimeOptions.AssumeYes)
 			} else {
 				require.Empty(subtest, runner.definitions)
@@ -315,17 +299,12 @@ func TestRemotesCommandOwnerOptions(testInstance *testing.T) {
 func bindGlobalRemotesFlags(command *cobra.Command) {
 	flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Enabled: true})
 	flagutils.BindExecutionFlags(command, flagutils.ExecutionDefaults{}, flagutils.ExecutionFlagDefinitions{
-		DryRun:    flagutils.ExecutionFlagDefinition{Name: flagutils.DryRunFlagName, Usage: flagutils.DryRunFlagUsage, Enabled: true},
 		AssumeYes: flagutils.ExecutionFlagDefinition{Name: flagutils.AssumeYesFlagName, Usage: flagutils.AssumeYesFlagUsage, Shorthand: flagutils.AssumeYesFlagShorthand, Enabled: true},
 	})
 	command.PersistentFlags().String(flagutils.RemoteFlagName, "", flagutils.RemoteFlagUsage)
 	command.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		contextAccessor := utils.NewCommandContextAccessor()
 		executionFlags := utils.ExecutionFlags{}
-		if dryRunValue, dryRunChanged, dryRunError := flagutils.BoolFlag(cmd, flagutils.DryRunFlagName); dryRunError == nil {
-			executionFlags.DryRun = dryRunValue
-			executionFlags.DryRunSet = dryRunChanged
-		}
 		if assumeYesValue, assumeYesChanged, assumeYesError := flagutils.BoolFlag(cmd, flagutils.AssumeYesFlagName); assumeYesError == nil {
 			executionFlags.AssumeYes = assumeYesValue
 			executionFlags.AssumeYesSet = assumeYesChanged
