@@ -124,7 +124,6 @@ func (operation *ProtocolConversionOperation) Execute(executionContext context.C
 			CanonicalOwnerRepository: canonicalOwnerRepository,
 			CurrentProtocol:          operation.FromProtocol,
 			TargetProtocol:           operation.ToProtocol,
-			DryRun:                   environment.DryRun,
 			ConfirmationPolicy:       shared.ConfirmationPolicyFromBool(assumeYes),
 		}
 
@@ -133,10 +132,6 @@ func (operation *ProtocolConversionOperation) Execute(executionContext context.C
 				continue
 			}
 			return fmt.Errorf("protocol conversion: %w", executionError)
-		}
-
-		if environment.DryRun {
-			continue
 		}
 
 		if refreshError := repository.Refresh(executionContext, environment.AuditService); refreshError != nil {

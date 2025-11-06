@@ -256,19 +256,6 @@ func (operation *TaskOperation) executeTask(executionContext context.Context, en
 		return planError
 	}
 
-	if environment.DryRun {
-		plan.describe(environment, taskLogPrefixPlan)
-		if len(plan.actions) > 0 {
-			actionExecutor := newTaskActionExecutor(environment)
-			for _, action := range plan.actions {
-				if err := actionExecutor.execute(executionContext, repository, action); err != nil {
-					return err
-				}
-			}
-		}
-		return nil
-	}
-
 	executor := newTaskExecutor(environment, repository, plan)
 	return executor.Execute(executionContext)
 }

@@ -13,7 +13,6 @@ import (
 )
 
 const (
-	auditPlanMessageTemplateConstant      = "WORKFLOW-PLAN: audit report → %s\n"
 	auditWriteMessageTemplateConstant     = "WORKFLOW-AUDIT: wrote report to %s\n"
 	auditReportDestinationStdoutConstant  = "stdout"
 	auditCurrentDirectorySentinelConstant = "."
@@ -49,13 +48,6 @@ func (operation *AuditReportOperation) Execute(executionContext context.Context,
 	sanitizedOutputPath := strings.TrimSpace(operation.OutputPath)
 	if operation.WriteToFile {
 		destination = sanitizedOutputPath
-	}
-
-	if environment.DryRun {
-		if environment.Output != nil {
-			fmt.Fprintf(environment.Output, auditPlanMessageTemplateConstant, destination)
-		}
-		return nil
 	}
 
 	var writer io.Writer

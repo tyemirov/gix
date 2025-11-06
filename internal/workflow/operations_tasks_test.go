@@ -346,7 +346,7 @@ func TestTaskPlannerBuildPlanSupportsActions(testInstance *testing.T) {
 
 func TestTaskExecutorExecuteActionsUnknownType(testInstance *testing.T) {
 	repository := NewRepositoryState(audit.RepositoryInspection{Path: "/repositories/sample"})
-	environment := &Environment{DryRun: true}
+	environment := &Environment{}
 	plan := taskPlan{actions: []taskAction{{actionType: "unknown.action", parameters: map[string]any{}}}}
 	executor := newTaskExecutor(environment, repository, plan)
 
@@ -361,7 +361,7 @@ func TestTaskExecutorExecuteActionsCanonicalRemote(testInstance *testing.T) {
 		CanonicalOwnerRepo:  "github/sample",
 		RemoteDefaultBranch: "main",
 	})
-	environment := &Environment{DryRun: true}
+	environment := &Environment{}
 	plan := taskPlan{actions: []taskAction{{actionType: taskActionCanonicalRemote, parameters: map[string]any{}}}}
 	executor := newTaskExecutor(environment, repository, plan)
 

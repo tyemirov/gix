@@ -244,7 +244,6 @@ func handleReleaseTagAction(ctx context.Context, environment *Environment, repos
 		TagName:        tagValue,
 		Message:        messageValue,
 		RemoteName:     remoteValue,
-		DryRun:         environment.DryRun,
 	})
 	if releaseError != nil {
 		return releaseError
@@ -313,7 +312,6 @@ func handleReleaseRetagAction(ctx context.Context, environment *Environment, rep
 	results, retagError := service.Retag(ctx, releases.RetagOptions{
 		RepositoryPath: repository.Path,
 		RemoteName:     remoteValue,
-		DryRun:         environment.DryRun,
 		Mappings:       mappings,
 	})
 	if retagError != nil {
@@ -369,18 +367,6 @@ func handleAuditReportAction(ctx context.Context, environment *Environment, repo
 	}
 	sanitizedOutput := strings.TrimSpace(outputValue)
 	writeToFile := outputExists && len(sanitizedOutput) > 0
-
-	if environment.DryRun {
-		target := auditReportDestinationStdoutConstant
-		if writeToFile {
-			target = sanitizedOutput
-		}
-		if environment.Output != nil {
-			fmt.Fprintf(environment.Output, auditPlanMessageTemplateConstant, target)
-		}
-		environment.auditReportExecuted = true
-		return nil
-	}
 
 	if writeToFile {
 		inspections, discoveryError := environment.AuditService.DiscoverInspections(ctx, roots, includeAll, debugOutput, depth)
@@ -549,7 +535,6 @@ func handleHistoryPurgeAction(ctx context.Context, environment *Environment, rep
 		Push:           pushEnabled,
 		Restore:        restoreEnabled,
 		PushMissing:    pushMissing,
-		DryRun:         environment.DryRun,
 	}
 
 	return executor.Execute(ctx, options)

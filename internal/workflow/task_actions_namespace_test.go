@@ -21,56 +21,6 @@ import (
 
 const namespaceTestCommitMessage = "chore: rewrite namespace"
 
-func TestHandleNamespaceRewriteActionDryRun(t *testing.T) {
-	t.Parallel()
-
-	tempDir := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(tempDir, ".git"), 0o755))
-
-	goMod := "module github.com/old/org/app\n\ngo 1.22\nrequire github.com/old/org/dep v1.0.0\n"
-	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "go.mod"), []byte(goMod), 0o644))
-
-	source := `package main
-import "github.com/old/org/dep"
-func main() { dep.Do() }
-`
-	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "main.go"), []byte(source), 0o644))
-
-	executor := &namespaceTestGitExecutor{}
-	manager, err := gitrepo.NewRepositoryManager(executor)
-	require.NoError(t, err)
-
-	output := &bytes.Buffer{}
-	environment := &Environment{
-		FileSystem:        filesystem.OSFileSystem{},
-		GitExecutor:       executor,
-		RepositoryManager: manager,
-		Output:            output,
-		Reporter:          shared.NewStructuredReporter(output, output, shared.WithRepositoryHeaders(false)),
-		DryRun:            true,
-	}
-
-	repository := &RepositoryState{Path: tempDir}
-	parameters := map[string]any{
-		"old": "github.com/old/org",
-		"new": "github.com/new/org",
-	}
-
-	err = handleNamespaceRewriteAction(context.Background(), environment, repository, parameters)
-	require.NoError(t, err)
-	events := parseStructuredEvents(output.String())
-	require.Len(t, events, 1)
-	planEvent := requireEventByCode(t, events, shared.EventCodeNamespacePlan)
-	require.Equal(t, repository.Path, planEvent["path"])
-	require.Equal(t, "true", planEvent["push"])
-	_, hasBranch := planEvent["branch"]
-	require.True(t, hasBranch)
-
-	content, readErr := os.ReadFile(filepath.Join(tempDir, "main.go"))
-	require.NoError(t, readErr)
-	require.Contains(t, string(content), "github.com/old/org/dep")
-}
-
 func TestHandleNamespaceRewriteActionApply(t *testing.T) {
 	t.Parallel()
 

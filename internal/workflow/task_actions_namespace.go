@@ -147,10 +147,9 @@ func handleNamespaceRewriteAction(ctx context.Context, environment *Environment,
 		CommitMessage:  commitMessage,
 		Push:           push,
 		PushRemote:     remote,
-		DryRun:         environment.DryRun,
 	}
 
-	if !environment.DryRun && environment.PromptState != nil && !environment.PromptState.IsAssumeYesEnabled() {
+	if environment.PromptState != nil && !environment.PromptState.IsAssumeYesEnabled() {
 		if environment.Prompter != nil {
 			prompt := fmt.Sprintf(namespacePromptTemplate, oldPrefix.String(), newPrefix.String(), repository.Path)
 			confirmation, confirmErr := environment.Prompter.Confirm(prompt)
@@ -182,17 +181,12 @@ func handleNamespaceRewriteAction(ctx context.Context, environment *Environment,
 		filesChanged++
 	}
 
-	if environment.DryRun {
-		logNamespaceApply(environment, repository, result.BranchName, filesChanged, options.Push, true)
-		return nil
-	}
-
 	if result.Skipped {
 		logNamespaceReason(environment, repository, shared.EventCodeNamespaceNoop, shared.EventLevelInfo, result.SkipReason)
 		return nil
 	}
 
-	logNamespaceApply(environment, repository, result.BranchName, filesChanged, result.PushPerformed, false)
+	logNamespaceApply(environment, repository, result.BranchName, filesChanged, result.PushPerformed)
 
 	if len(strings.TrimSpace(result.PushSkippedReason)) > 0 {
 		logNamespaceReason(environment, repository, shared.EventCodeNamespaceSkip, shared.EventLevelWarn, result.PushSkippedReason)
@@ -207,25 +201,16 @@ func handleNamespaceRewriteAction(ctx context.Context, environment *Environment,
 	return nil
 }
 
-func logNamespaceApply(environment *Environment, repository *RepositoryState, branch string, files int, pushed bool, plan bool) {
+func logNamespaceApply(environment *Environment, repository *RepositoryState, branch string, files int, pushed bool) {
 	message := fmt.Sprintf("files=%d", files)
 	if pushed {
-		if plan {
-			message = fmt.Sprintf("files=%d, push scheduled", files)
-		} else {
-			message = fmt.Sprintf("files=%d, pushed", files)
-		}
-	}
-
-	code := shared.EventCodeNamespaceApply
-	if plan {
-		code = shared.EventCodeNamespacePlan
+		message = fmt.Sprintf("files=%d, pushed", files)
 	}
 
 	environment.ReportRepositoryEvent(
 		repository,
 		shared.EventLevelInfo,
-		code,
+		shared.EventCodeNamespaceApply,
 		message,
 		map[string]string{
 			"branch":        branch,
