@@ -2,6 +2,7 @@ package tests
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -503,6 +504,9 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 
 	for testCaseIndex, testCase := range testCases {
 		testInstance.Run(fmt.Sprintf(reposIntegrationSubtestNameTemplate, testCaseIndex, testCase.name), func(subtest *testing.T) {
+			if testCase.name == reposIntegrationHistoryRemoveCaseName && !gitFilterRepoAvailable() {
+				subtest.Skip("git filter-repo not installed; skipping history purge integration")
+			}
 			subtest.Setenv("GIT_CONFIG_SYSTEM", "/dev/null")
 			subtest.Setenv("GIT_CONFIG_GLOBAL", "/dev/null")
 			subtest.Setenv("GIT_CONFIG_NOSYSTEM", "1")
@@ -591,4 +595,11 @@ func initializeRepositoryWithStub(testInstance *testing.T) (string, string) {
 
 	extendedPath := stubDirectory + string(os.PathListSeparator) + os.Getenv("PATH")
 	return repositoryPath, extendedPath
+}
+
+func gitFilterRepoAvailable() bool {
+	cmd := exec.Command("git", "filter-repo", "--help")
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
+	return cmd.Run() == nil
 }
