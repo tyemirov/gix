@@ -43,15 +43,10 @@ type Result struct {
 	Request llm.ChatRequest
 }
 
-// ChatClient issues chat completion requests.
-type ChatClient interface {
-	Chat(ctx context.Context, request llm.ChatRequest) (string, error)
-}
-
 // Generator produces commit messages from git diffs via an LLM.
 type Generator struct {
 	GitExecutor shared.GitExecutor
-	Client      ChatClient
+	Client      llm.ChatClient
 	Logger      *zap.Logger
 }
 
@@ -66,9 +61,13 @@ func (generator Generator) Generate(ctx context.Context, options Options) (Resul
 	}
 	response, llmError := generator.Client.Chat(ctx, request)
 	if llmError != nil {
-		return Result{}, llmError
+		return Result{}, fmt.Errorf("commit message generation.llm: %w", llmError)
 	}
-	return Result{Message: response, Request: request}, nil
+	trimmed := strings.TrimSpace(response)
+	if trimmed == "" {
+		return Result{}, errors.New("llm returned an empty commit message")
+	}
+	return Result{Message: trimmed, Request: request}, nil
 }
 
 // BuildRequest prepares the chat request without invoking the LLM.

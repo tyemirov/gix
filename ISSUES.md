@@ -127,12 +127,13 @@ Summary: total.repos=0 duration_ms=0
   - Desired: Break the task operations into cohesive subpackages (parse, plan, execute, actions) with explicit dependency injection, introduce strategy types for branch and PR management to enable deterministic tests, migrate user-facing output to the structured reporter, and add integration-style tests for ensure-clean failures, branch reuse, PR errors, safeguard checks, and LLM `capture_as` flows.
   - Acceptance: Task operations are distributed across new packages with clear interfaces, structured reporter events replace direct `fmt.Fprintf` usage, strategy abstractions allow targeted unit tests, and the new test suite covers the execution scenarios listed above.
 
-- [ ] [GX-232] Centralize LLM client factory and harden generator resiliency
-  - Status: Unresolved
+- [x] [GX-232] Centralize LLM client factory and harden generator resiliency
+  - Status: Resolved
   - Category: Improvement
   - Context: Changelog and commit message generators duplicate client validation logic, rely on happy-path test doubles, and lack retry/backoff behavior or guards against empty responses/timeouts.
   - Desired: Introduce a shared LLM factory in `pkg/llm` with injectable HTTP client/timeout support, enforce validation for base URL/model/api key, implement configurable retry/backoff respecting context cancellation, and expand changelog/commit generator tests with table-driven cases covering empty diffs, no commits, API errors, and empty LLM responses.
   - Acceptance: Both generators consume the shared factory, retry/backoff policies are configurable and exercised in tests, and new unit tests validate error handling for the edge cases described in `docs/refactor_plan_GX-411.md`.
+  - Resolution: Added `pkg/llm` factory with configurable retry/backoff, refactored CLI/workflow wiring to consume it, hardened commit/changelog generators against empty responses, and expanded table-driven tests plus new factory coverage; unit suite passes locally with `go test ./...` except for sandbox-blocked integration cases noted in run logs.
 
 - [ ] [GX-233] Expand structured reporter API for event counts and telemetry export
   - Status: Unresolved

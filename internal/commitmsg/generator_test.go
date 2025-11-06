@@ -104,6 +104,58 @@ func TestBuildRequestValidatesRepositoryPath(t *testing.T) {
 	require.True(t, strings.Contains(err.Error(), "repository path"))
 }
 
+func TestGenerateHandlesLLMResponses(t *testing.T) {
+	testCases := []struct {
+		name          string
+		client        *stubChatClient
+		expectedError string
+		expectedMsg   string
+	}{
+		{
+			name:        "success trims whitespace",
+			client:      &stubChatClient{response: "  feat: add example  "},
+			expectedMsg: "feat: add example",
+		},
+		{
+			name:          "empty response",
+			client:        &stubChatClient{response: " \n "},
+			expectedError: "empty commit message",
+		},
+		{
+			name:          "llm error surfaces",
+			client:        &stubChatClient{err: errors.New("timeout")},
+			expectedError: "timeout",
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			executor := &stubGitExecutor{
+				responses: map[string]string{
+					"status --short":                   " M example.go\n",
+					"diff --unified=3 --cached --stat": " example.go | 1 +-\n",
+					"diff --unified=3 --cached":        "diff --git a/example.go b/example.go\n@@\n-old\n+new\n",
+				},
+			}
+
+			generator := Generator{
+				GitExecutor: executor,
+				Client:      tc.client,
+			}
+
+			result, err := generator.Generate(context.Background(), Options{RepositoryPath: "/tmp/repo"})
+			if tc.expectedError != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.expectedError)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedMsg, result.Message)
+		})
+	}
+}
+
 type stubGitExecutor struct {
 	responses map[string]string
 	calls     [][]string

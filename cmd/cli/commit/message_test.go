@@ -8,7 +8,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/temirov/gix/internal/commitmsg"
 	"github.com/temirov/gix/internal/execshell"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
 	"github.com/temirov/gix/internal/workflow"
@@ -41,7 +40,7 @@ func TestMessageCommandGeneratesCommitMessage(t *testing.T) {
 				DiffSource: "staged",
 			}.Sanitize()
 		},
-		ClientFactory: func(config llm.Config) (commitmsg.ChatClient, error) {
+		ClientFactory: func(config llm.Config) (llm.ChatClient, error) {
 			client.config = config
 			return client, nil
 		},
@@ -91,7 +90,7 @@ func TestMessageCommandValidatesDiffSource(t *testing.T) {
 				DiffSource: "invalid",
 			}.Sanitize()
 		},
-		ClientFactory: func(config llm.Config) (commitmsg.ChatClient, error) {
+		ClientFactory: func(config llm.Config) (llm.ChatClient, error) {
 			return &fakeChatClient{}, nil
 		},
 	}
