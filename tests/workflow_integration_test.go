@@ -309,7 +309,7 @@ operations:
     with: &workflow_defaults
       roots:
         - .
-      assume_yes: false
+      assume_yes: true
   - command: ["remote", "update-protocol"]
     with: &conversion_defaults
       roots:

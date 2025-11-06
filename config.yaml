@@ -12,6 +12,7 @@ operations:
 
   - command: ["packages", "delete"]
     with: &packages_purge_defaults
+      assume_yes: true
       # package: my-image  # Optional override; defaults to the repository name
       roots:
         - ~/Development
@@ -50,7 +51,7 @@ operations:
     with: &workflow_command_defaults
       roots:
         - ~/Development
-      assume_yes: false
+      assume_yes: true
 
   - command: ["branch-default"]
     with: &branch_default_defaults
