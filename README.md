@@ -97,6 +97,20 @@ gix workflow license --roots ~/Development --yes
 
 Embedded workflows ship with the binary so you can hand teammates a stable command (for example, `license`) without distributing a separate configuration file.
 
+### Workflow variables
+
+Use runtime variables to parameterize presets or external configs:
+
+```shell
+gix workflow license --var template=apache --var branch=chore/license --roots ~/Development --yes
+gix workflow namespace --var-file ./vars/license.yaml --roots ~/Research
+```
+
+- `--var key=value` sets a single variable (repeat the flag for multiple values).
+- `--var-file path/to/file.yaml` loads variables from a YAML/JSON map.
+
+Variables appear inside task templates via `{{ index .Environment "key" }}` and merge with captured values (`capture_as`), with runtime inputs taking precedence.
+
 ### Workflow syntax
 
 Workflows are YAML or JSON files with a top-level `workflow` sequence. Each entry wraps a `step` describing one command path, optional dependencies, and command-specific options.

@@ -87,6 +87,7 @@ Summary: total.repos=0 duration_ms=0
   - Context: License distribution currently depends on the standalone `repo-license-apply` command (`cmd/cli/repos/license.go`) plus associated config and tests.
   - Desired: Encode the license distribution steps as an embedded workflow, expose it via the enhanced workflow command (e.g., `gix workflow license`), remove the direct CLI entry, and update docs/config/tests while mapping legacy command usage to the workflow with warnings.
   - Acceptance: Invoking the builtin workflow performs the same operations as the former command, new docs/config samples highlight the workflow, automated coverage exercises the workflow path, and legacy command/config paths delegate to the workflow with migration guidance.
+  - Blockers: Requires workflow runtime variables (GX-236) so presets can accept per-run inputs (license template/content/branch) before delegating to the embedded workflow.
 
 - [ ] [GX-226] Replace namespace CLI command with embedded workflow namespace
   - Status: Unresolved
@@ -219,3 +220,9 @@ Let's consider each rename as a separate issue and what consequences it entails
 
 ## Planning 
 do not work on the issues below, not ready
+- [ ] [GX-236] Add workflow runtime variables for presets and file-based configs
+  - Status: Unresolved
+  - Category: Improvement
+  - Context: Workflow tasks can capture data via `capture_as`, but there is no way to inject user-provided variables at runtime. Embedded presets (e.g., `license`) need per-run values for templates, branch names, etc., and legacy commands (like `repo-license-apply`) must forward their flags into the workflow runner.
+  - Desired: Introduce CLI flags (`gix workflow --var key=value` and `--var-file path`) plus configuration support to load user variables, surface them through `workflow.RuntimeOptions`, seed `Environment.Variables` before execution, and ensure task templates (`.Environment`) merge user-provided variables with captured ones (user values winning). Update README/CHANGELOG/docs, expose the same facility to presets, and add tests covering CLI parsing, preset execution with vars, and interaction with existing `capture_as`.
+  - Acceptance: Users can supply runtime variables when running either external configs or presets; the variables are visible to task templates; `repo-license-apply` can invoke the `license` preset by passing variables instead of re-implementing logic; docs/tests cover these flows; legacy behaviour remains intact when no variables are provided.

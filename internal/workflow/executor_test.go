@@ -163,6 +163,45 @@ func TestExecutorSummaryCountsRepositoriesWithoutEmittedEvents(testInstance *tes
 	require.Contains(testInstance, summary, "Summary: total.repos=1")
 }
 
+func TestExecutorSeedsVariablesFromRuntimeOptions(testInstance *testing.T) {
+	tempDirectory := testInstance.TempDir()
+	repositoryPath := filepath.Join(tempDirectory, "sample")
+	require.NoError(testInstance, os.Mkdir(repositoryPath, 0o755))
+
+	gitExecutor := newStubWorkflowGitExecutor()
+	repositoryManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(testInstance, managerError)
+
+	githubClient, clientError := githubcli.NewClient(gitExecutor)
+	require.NoError(testInstance, clientError)
+
+	recording := &variableRecordingOperation{}
+	dependencies := Dependencies{
+		RepositoryDiscoverer: executorStubRepositoryDiscoverer{repositories: []string{repositoryPath}},
+		GitExecutor:          gitExecutor,
+		RepositoryManager:    repositoryManager,
+		GitHubClient:         githubClient,
+		Output:               &bytes.Buffer{},
+		Errors:               &bytes.Buffer{},
+	}
+
+	executor := NewExecutor([]Operation{recording}, dependencies)
+	executionError := executor.Execute(
+		context.Background(),
+		[]string{repositoryPath},
+		RuntimeOptions{
+			SkipRepositoryMetadata: true,
+			Variables: map[string]string{
+				"license_template": "apache",
+				"scope":            "demo",
+			},
+		},
+	)
+	require.NoError(testInstance, executionError)
+	require.Equal(testInstance, "apache", recording.variables["license_template"])
+	require.Equal(testInstance, "demo", recording.variables["scope"])
+}
+
 func TestExecutorContinuesExecutingOperationsAfterFailure(testInstance *testing.T) {
 	tempDirectory := testInstance.TempDir()
 	repositoryPath := filepath.Join(tempDirectory, "sample")
@@ -256,6 +295,26 @@ func (operation *recordingOperation) Name() string {
 
 func (operation *recordingOperation) Execute(ctx context.Context, environment *Environment, state *State) error {
 	operation.executed = true
+	return nil
+}
+
+type variableRecordingOperation struct {
+	variables map[string]string
+}
+
+func (operation *variableRecordingOperation) Name() string {
+	return "capture-variables"
+}
+
+func (operation *variableRecordingOperation) Execute(ctx context.Context, environment *Environment, state *State) error {
+	if operation.variables == nil {
+		operation.variables = make(map[string]string)
+	}
+	if environment != nil && environment.Variables != nil {
+		for key, value := range environment.Variables.Snapshot() {
+			operation.variables[key] = value
+		}
+	}
 	return nil
 }
 

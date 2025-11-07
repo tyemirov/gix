@@ -267,6 +267,85 @@ func TestWorkflowCommandListsPresets(testInstance *testing.T) {
 	require.Contains(testInstance, output, "namespace")
 }
 
+func TestWorkflowCommandPassesVariablesFromFlags(testInstance *testing.T) {
+	tempDirectory := testInstance.TempDir()
+	configPath := filepath.Join(tempDirectory, workflowConfigFileNameConstant)
+	require.NoError(testInstance, os.WriteFile(configPath, []byte(workflowConfigContentConstant), 0o644))
+
+	discoverer := &fakeWorkflowDiscoverer{}
+	executor := &fakeWorkflowGitExecutor{}
+	runner := &recordingTaskRunner{}
+
+	builder := workflowcmd.CommandBuilder{
+		LoggerProvider: func() *zap.Logger { return zap.NewNop() },
+		Discoverer:     discoverer,
+		GitExecutor:    executor,
+		ConfigurationProvider: func() workflowcmd.CommandConfiguration {
+			return workflowcmd.CommandConfiguration{
+				Roots: []string{workflowConfiguredRootConstant},
+			}
+		},
+		TaskRunnerFactory: func(workflowpkg.Dependencies) workflowcmd.TaskRunnerExecutor {
+			return runner
+		},
+	}
+
+	command, buildError := builder.Build()
+	require.NoError(testInstance, buildError)
+	bindGlobalWorkflowFlags(command)
+
+	var outputBuffer bytes.Buffer
+	command.SetOut(&outputBuffer)
+	command.SetErr(&outputBuffer)
+	command.SetContext(context.Background())
+	command.SetArgs([]string{configPath, "--var", "template=apache", "--var", "scope=demo"})
+
+	require.NoError(testInstance, command.Execute())
+	require.Equal(testInstance, "apache", runner.runtimeOptions.Variables["template"])
+	require.Equal(testInstance, "demo", runner.runtimeOptions.Variables["scope"])
+}
+
+func TestWorkflowCommandLoadsVariablesFromFile(testInstance *testing.T) {
+	tempDirectory := testInstance.TempDir()
+	configPath := filepath.Join(tempDirectory, workflowConfigFileNameConstant)
+	require.NoError(testInstance, os.WriteFile(configPath, []byte(workflowConfigContentConstant), 0o644))
+
+	varFilePath := filepath.Join(tempDirectory, "vars.yaml")
+	require.NoError(testInstance, os.WriteFile(varFilePath, []byte("branch: feature/license\nmode: overwrite\n"), 0o644))
+
+	discoverer := &fakeWorkflowDiscoverer{}
+	executor := &fakeWorkflowGitExecutor{}
+	runner := &recordingTaskRunner{}
+
+	builder := workflowcmd.CommandBuilder{
+		LoggerProvider: func() *zap.Logger { return zap.NewNop() },
+		Discoverer:     discoverer,
+		GitExecutor:    executor,
+		ConfigurationProvider: func() workflowcmd.CommandConfiguration {
+			return workflowcmd.CommandConfiguration{
+				Roots: []string{workflowConfiguredRootConstant},
+			}
+		},
+		TaskRunnerFactory: func(workflowpkg.Dependencies) workflowcmd.TaskRunnerExecutor {
+			return runner
+		},
+	}
+
+	command, buildError := builder.Build()
+	require.NoError(testInstance, buildError)
+	bindGlobalWorkflowFlags(command)
+
+	var outputBuffer bytes.Buffer
+	command.SetOut(&outputBuffer)
+	command.SetErr(&outputBuffer)
+	command.SetContext(context.Background())
+	command.SetArgs([]string{configPath, "--var-file", varFilePath})
+
+	require.NoError(testInstance, command.Execute())
+	require.Equal(testInstance, "feature/license", runner.runtimeOptions.Variables["branch"])
+	require.Equal(testInstance, "overwrite", runner.runtimeOptions.Variables["mode"])
+}
+
 type fakeWorkflowDiscoverer struct {
 	receivedRoots []string
 	repositories  []string

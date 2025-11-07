@@ -24,6 +24,10 @@ const (
 	commandExampleConstant                    = "gix workflow ./workflow.yaml --roots ~/Development\n  gix workflow license --roots ~/Development --yes"
 	requireCleanFlagNameConstant              = "require-clean"
 	requireCleanFlagDescriptionConstant       = "Require clean worktrees for rename operations"
+	variableFlagNameConstant                  = "var"
+	variableFlagDescriptionConstant           = "Set workflow variable (key=value). Repeatable."
+	variableFileFlagNameConstant              = "var-file"
+	variableFileFlagDescriptionConstant       = "Load workflow variables from a YAML/JSON file. Repeatable."
 	listPresetsFlagNameConstant               = "list-presets"
 	listPresetsFlagDescriptionConstant        = "List embedded workflow presets and exit"
 	configurationPathRequiredMessageConstant  = "workflow configuration path or preset name required; provide a positional argument or --config flag"
@@ -60,6 +64,8 @@ func (builder *CommandBuilder) Build() (*cobra.Command, error) {
 
 	flagutils.AddToggleFlag(command.Flags(), nil, requireCleanFlagNameConstant, "", false, requireCleanFlagDescriptionConstant)
 	flagutils.AddToggleFlag(command.Flags(), nil, listPresetsFlagNameConstant, "", false, listPresetsFlagDescriptionConstant)
+	command.Flags().StringArray(variableFlagNameConstant, nil, variableFlagDescriptionConstant)
+	command.Flags().StringArray(variableFileFlagNameConstant, nil, variableFileFlagDescriptionConstant)
 
 	return command, nil
 }
@@ -136,6 +142,10 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 	}
 
 	commandConfiguration := builder.resolveConfiguration()
+	variableAssignments, variableError := builder.resolveVariables(command, commandConfiguration)
+	if variableError != nil {
+		return variableError
+	}
 
 	requireCleanDefault := commandConfiguration.RequireClean
 	if command != nil {
@@ -211,6 +221,7 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 		IncludeNestedRepositories:            taskRuntimeOptions.IncludeNestedRepositories,
 		ProcessRepositoriesByDescendingDepth: taskRuntimeOptions.ProcessRepositoriesByDescendingDepth,
 		CaptureInitialWorktreeStatus:         taskRuntimeOptions.CaptureInitialWorktreeStatus,
+		Variables:                            variableAssignments,
 	}
 
 	return taskRunner.Run(command.Context(), roots, taskDefinitions, runtimeOptions)
@@ -223,6 +234,50 @@ func (builder *CommandBuilder) resolveConfiguration() CommandConfiguration {
 
 	provided := builder.ConfigurationProvider()
 	return provided.Sanitize()
+}
+
+func (builder *CommandBuilder) resolveVariables(command *cobra.Command, configuration CommandConfiguration) (map[string]string, error) {
+	variableAssignments := make(map[string]string)
+	if len(configuration.Variables) > 0 {
+		for key, value := range configuration.Variables {
+			normalizedKey, normalizeError := normalizeVariableName(key)
+			if normalizeError != nil {
+				return nil, fmt.Errorf("invalid workflow variable %q in configuration: %w", key, normalizeError)
+			}
+			variableAssignments[normalizedKey] = value
+		}
+	}
+
+	if command != nil {
+		varFiles, varFileError := command.Flags().GetStringArray(variableFileFlagNameConstant)
+		if varFileError != nil {
+			return nil, varFileError
+		}
+		fileVariables, loadError := loadVariablesFromFiles(varFiles)
+		if loadError != nil {
+			return nil, loadError
+		}
+		for key, value := range fileVariables {
+			variableAssignments[key] = value
+		}
+
+		varAssignments, varError := command.Flags().GetStringArray(variableFlagNameConstant)
+		if varError != nil {
+			return nil, varError
+		}
+		parsedAssignments, parseError := parseVariableAssignments(varAssignments)
+		if parseError != nil {
+			return nil, parseError
+		}
+		for key, value := range parsedAssignments {
+			variableAssignments[key] = value
+		}
+	}
+
+	if len(variableAssignments) == 0 {
+		return nil, nil
+	}
+	return variableAssignments, nil
 }
 
 func (builder *CommandBuilder) resolvePresetCatalog() PresetCatalog {

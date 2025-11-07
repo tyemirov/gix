@@ -50,6 +50,7 @@ type RuntimeOptions struct {
 	CaptureInitialWorktreeStatus         bool
 	// SkipRepositoryMetadata disables GitHub metadata resolution during repository inspections.
 	SkipRepositoryMetadata bool
+	Variables              map[string]string
 }
 
 // Executor coordinates workflow operation execution.
@@ -254,6 +255,11 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 		Variables:         NewVariableStore(),
 	}
 	environment.State = state
+	if len(runtimeOptions.Variables) > 0 && environment.Variables != nil {
+		for key, value := range runtimeOptions.Variables {
+			environment.Variables.Set(VariableName(key), value)
+		}
+	}
 
 	var (
 		failureMu sync.Mutex
