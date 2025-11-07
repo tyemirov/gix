@@ -111,6 +111,23 @@ gix workflow namespace --var-file ./vars/license.yaml --roots ~/Research
 
 Variables appear inside task templates via `{{ index .Environment "key" }}` and merge with captured values (`capture_as`), with runtime inputs taking precedence.
 
+#### License preset variables
+
+`gix workflow license` recognizes the following keys (pass via `--var` or `--var-file`):
+
+| Variable | Description |
+| --- | --- |
+| `license_content` | Required license text (inline or loaded from `--var template=...`). |
+| `license_target` | Relative path for the output file (defaults to `LICENSE`). |
+| `license_mode` | File handling mode (`overwrite` or `skip-if-exists`). |
+| `license_branch` | Branch name template for the license changes. |
+| `license_start_point` | Start point for the license branch (defaults to the repository default). |
+| `license_remote` | Remote used for pushes (defaults to `origin`). |
+| `license_commit_message` | Commit message template. |
+| `license_require_clean` | Set to `false` to bypass clean-worktree checks. |
+
+The deprecated `gix repo-license-apply` command now prints a warning and forwards its flag values as workflow variables so you can migrate gradually.
+
 ### Workflow syntax
 
 Workflows are YAML or JSON files with a top-level `workflow` sequence. Each entry wraps a `step` describing one command path, optional dependencies, and command-specific options.
@@ -361,8 +378,8 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
  - Performs text substitutions across matched files with optional safeguards.
 - `gix files add --template <path> [--content <text>] [--mode overwrite|skip-if-exists] [--branch <template>] [--remote <name>] [--commit-message <text>] [--roots <dir>...] [-y]` (alias `seed`)
  - Seeds or updates files across repositories, creating branches and pushes when configured.
-- `gix license apply --template <path> [--content <text>] [--target <path>] [--mode overwrite|skip-if-exists] [--branch <template>] [--remote <name>] [--commit-message <text>] [--roots <dir>...] [-y]` (alias `inject`)
- - Writes the configured license file to every repository.
+- `gix repo-license-apply` (alias `inject`)
+ - Deprecated alias that delegates to `gix workflow license`. Use the workflow preset instead.
 - `gix namespace rewrite --old <module/prefix> --new <module/prefix> [--branch-prefix <prefix>] [--remote <name>] [--push] [--commit-message <text>] [--roots <dir>...] [-y]` (alias `ns`)
  - Rewrites Go module namespaces and imports.
 - `gix rm <path>... [--remote <name>] [--push] [--restore] [--push-missing] [--roots <dir>...] [-y]` (alias `purge`)

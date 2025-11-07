@@ -1,6 +1,20 @@
 workflow:
   - step:
-      name: license-audit-report
-      command: ["audit", "report"]
+      name: license-distribution
+      command: ["tasks", "apply"]
       with:
-        output: "./reports/license-audit.csv"
+        tasks:
+          - name: Distribute license file
+            ensure_clean: true
+            ensure_clean_variable: license_require_clean
+            branch:
+              name: '{{ if .Environment.license_branch }}{{ .Environment.license_branch }}{{ else }}license/{{ .Repository.Name }}{{ end }}'
+              start_point: '{{ if .Environment.license_start_point }}{{ .Environment.license_start_point }}{{ else }}{{ .Repository.DefaultBranch }}{{ end }}'
+              push_remote: '{{ if .Environment.license_remote }}{{ .Environment.license_remote }}{{ else }}origin{{ end }}'
+            files:
+              - path: '{{ if .Environment.license_target }}{{ .Environment.license_target }}{{ else }}LICENSE{{ end }}'
+                content: '{{ .Environment.license_content }}'
+                mode: '{{ if .Environment.license_mode }}{{ .Environment.license_mode }}{{ else }}overwrite{{ end }}'
+                permissions: 420
+            commit:
+              message: '{{ if .Environment.license_commit_message }}{{ .Environment.license_commit_message }}{{ else }}chore: update license{{ end }}'

@@ -32,7 +32,7 @@ type presetDefinition struct {
 var embeddedPresetDefinitions = []presetDefinition{
 	{
 		Name:        "license",
-		Description: "Generate a license audit report across repositories.",
+		Description: "Distribute a license file across repositories using tasks apply.",
 		FileName:    "presets/license.yaml",
 	},
 }

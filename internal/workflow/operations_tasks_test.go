@@ -305,6 +305,46 @@ func TestTaskExecutorLogsDirtyRepositoryDetails(t *testing.T) {
 	require.Contains(t, output, "file.txt")
 }
 
+func TestTaskExecutorEnsureCleanVariableDisablesCleanCheck(t *testing.T) {
+	fileSystem := newFakeFileSystem(nil)
+	repository := NewRepositoryState(audit.RepositoryInspection{Path: "/repositories/sample"})
+	gitExecutor := &recordingGitExecutor{worktreeClean: false}
+	repositoryManager, managerErr := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(t, managerErr)
+
+	taskDefinition := TaskDefinition{
+		Name:                "Variable Clean Task",
+		EnsureClean:         true,
+		EnsureCleanVariable: "license_require_clean",
+		Files: []TaskFileDefinition{{
+			PathTemplate:    "LICENSE",
+			ContentTemplate: "content",
+			Mode:            taskFileModeOverwrite,
+			Permissions:     defaultTaskFilePermissions,
+		}},
+	}
+
+	plan := taskPlan{
+		task:      taskDefinition,
+		variables: map[string]string{"license_require_clean": "false"},
+	}
+
+	environment := &Environment{
+		GitExecutor:       gitExecutor,
+		RepositoryManager: repositoryManager,
+		FileSystem:        fileSystem,
+		Output:            &bytes.Buffer{},
+	}
+
+	executor := newTaskExecutor(environment, repository, plan)
+	executionErr := executor.Execute(context.Background())
+	require.NoError(t, executionErr)
+
+	for _, command := range gitExecutor.commands {
+		require.NotEqual(t, "status", firstArgument(command.Arguments))
+	}
+}
+
 func TestTaskPlannerBuildPlanSupportsActions(testInstance *testing.T) {
 	fileSystem := newFakeFileSystem(nil)
 	environment := &Environment{FileSystem: fileSystem}

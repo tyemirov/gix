@@ -80,14 +80,14 @@ Summary: total.repos=0 duration_ms=0
   - Acceptance: `gix message commit` works end-to-end across CLI/config/workflow/test paths, help/docs/default config reflect the new command, and legacy `commit message` entries execute with a warning.
   - Resolution: Moved the commit generator under the `message` namespace, refreshed default configuration/tests/README to the `["message","commit"]` path, and added deprecated `commit message` aliases that warn while continuing to work.
 
-- [ ] [GX-225] Replace repo-license-apply CLI with embedded workflow license
-  - Status: Unresolved
+- [x] [GX-225] Replace repo-license-apply CLI with embedded workflow license
+  - Status: Resolved
   - Category: Improvement
   - Dependencies: Blocked by [GX-228]
   - Context: License distribution currently depends on the standalone `repo-license-apply` command (`cmd/cli/repos/license.go`) plus associated config and tests.
   - Desired: Encode the license distribution steps as an embedded workflow, expose it via the enhanced workflow command (e.g., `gix workflow license`), remove the direct CLI entry, and update docs/config/tests while mapping legacy command usage to the workflow with warnings.
   - Acceptance: Invoking the builtin workflow performs the same operations as the former command, new docs/config samples highlight the workflow, automated coverage exercises the workflow path, and legacy command/config paths delegate to the workflow with migration guidance.
-  - Blockers: Requires workflow runtime variables (GX-236) so presets can accept per-run inputs (license template/content/branch) before delegating to the embedded workflow.
+  - Resolution: Added a `license` preset driven by workflow variables (`license_content`, `license_target`, etc.), deprecated `gix repo-license-apply` so it now warns and delegates to the preset, updated README/docs with variable guidance, and ensured workflow runtime variables (GX-236) unlock the same switches as the legacy flags.
 
 - [ ] [GX-226] Replace namespace CLI command with embedded workflow namespace
   - Status: Unresolved

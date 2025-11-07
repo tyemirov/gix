@@ -1,19 +1,23 @@
 package repos
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
 	"github.com/temirov/gix/internal/githubcli"
 	"github.com/temirov/gix/internal/gitrepo"
 	"github.com/temirov/gix/internal/repos/dependencies"
 	"github.com/temirov/gix/internal/repos/shared"
+	"github.com/temirov/gix/internal/utils"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
 	"github.com/temirov/gix/internal/workflow"
 )
@@ -31,10 +35,13 @@ const (
 	licenseStartPointFlagName      = "start-point"
 	licenseRemoteFlagName          = "remote"
 	licenseCommitMessageFlagName   = "commit-message"
-	licenseTaskName                = "Distribute license file"
 	defaultLicensePermissions      = 0o644
 	relativePathValidationErrorMsg = "license target path must be a relative path"
 )
+
+type WorkflowExecutor interface {
+	Execute(ctx context.Context, roots []string, options workflow.RuntimeOptions) error
+}
 
 // LicenseCommandBuilder assembles the repo-license-apply command.
 type LicenseCommandBuilder struct {
@@ -45,7 +52,8 @@ type LicenseCommandBuilder struct {
 	FileSystem                   shared.FileSystem
 	HumanReadableLoggingProvider func() bool
 	ConfigurationProvider        func() LicenseConfiguration
-	TaskRunnerFactory            func(workflow.Dependencies) TaskRunnerExecutor
+	PresetCatalogFactory         func() workflowcmd.PresetCatalog
+	ExecutorFactory              func(nodes []*workflow.OperationNode, dependencies workflow.Dependencies) WorkflowExecutor
 }
 
 // Build constructs the repo-license-apply command.
@@ -56,6 +64,7 @@ func (builder *LicenseCommandBuilder) Build() (*cobra.Command, error) {
 		Long:  licenseLongDescription,
 		RunE:  builder.run,
 	}
+	command.Deprecated = "Use `gix workflow license --var template=PATH --var branch=...` instead."
 
 	command.Flags().String(licenseTemplateFlagName, "", "Path to a license template file (required when --content is not provided)")
 	command.Flags().String(licenseContentFlagName, "", "Inline license content (overrides --template when provided)")
@@ -211,8 +220,8 @@ func (builder *LicenseCommandBuilder) run(command *cobra.Command, arguments []st
 		return githubClientError
 	}
 
-	trimmedContent := content
-	if len(strings.TrimSpace(trimmedContent)) == 0 {
+	trimmedContent := strings.TrimSpace(content)
+	if len(trimmedContent) == 0 {
 		if len(strings.TrimSpace(templatePath)) == 0 {
 			if command != nil {
 				_ = command.Help()
@@ -225,55 +234,80 @@ func (builder *LicenseCommandBuilder) run(command *cobra.Command, arguments []st
 		}
 		trimmedContent = string(data)
 	}
+	if len(strings.TrimSpace(trimmedContent)) == 0 {
+		return errors.New("license content cannot be empty")
+	}
 
 	if filepath.IsAbs(targetPath) {
 		return errors.New(relativePathValidationErrorMsg)
 	}
-	cleanedTarget := filepath.Clean(targetPath)
+	cleanedTarget := filepath.Clean(strings.TrimSpace(targetPath))
 	if cleanedTarget == "." {
 		return errors.New(relativePathValidationErrorMsg)
 	}
 	targetPath = cleanedTarget
 
-	taskDependencies := workflow.Dependencies{
+	variables := map[string]string{
+		"license_content":       trimmedContent,
+		"license_require_clean": strconv.FormatBool(requireClean),
+	}
+
+	if len(targetPath) > 0 {
+		variables["license_target"] = targetPath
+	}
+	if trimmedMode := strings.TrimSpace(strings.ToLower(modeValue)); len(trimmedMode) > 0 {
+		variables["license_mode"] = trimmedMode
+	}
+	if len(branchTemplate) > 0 {
+		variables["license_branch"] = branchTemplate
+	}
+	if len(startPointTemplate) > 0 {
+		variables["license_start_point"] = startPointTemplate
+	}
+	if len(pushRemote) > 0 {
+		variables["license_remote"] = pushRemote
+	}
+	if len(commitMessage) > 0 {
+		variables["license_commit_message"] = commitMessage
+	}
+
+	workflowDependencies := workflow.Dependencies{
 		Logger:               logger,
 		RepositoryDiscoverer: repositoryDiscoverer,
 		GitExecutor:          gitExecutor,
 		RepositoryManager:    repositoryManager,
 		GitHubClient:         githubClient,
 		FileSystem:           fileSystem,
-		Output:               command.OutOrStdout(),
-		Errors:               command.ErrOrStderr(),
+		Output:               utils.NewFlushingWriter(command.OutOrStdout()),
+		Errors:               utils.NewFlushingWriter(command.ErrOrStderr()),
 	}
 
-	taskRunner := ResolveTaskRunner(builder.TaskRunnerFactory, taskDependencies)
-	fileDefinition := workflow.TaskFileDefinition{
-		PathTemplate:    targetPath,
-		ContentTemplate: trimmedContent,
-		Mode:            workflow.ParseTaskFileMode(modeValue),
-		Permissions:     defaultLicensePermissions,
+	presetCatalog := builder.resolvePresetCatalog()
+	presetConfiguration, presetFound, presetError := presetCatalog.Load("license")
+	if presetError != nil {
+		return fmt.Errorf("failed to load embedded license workflow: %w", presetError)
+	}
+	if !presetFound {
+		return errors.New("embedded license workflow not available")
 	}
 
-	taskDefinition := workflow.TaskDefinition{
-		Name:        licenseTaskName,
-		EnsureClean: requireClean,
-		Branch: workflow.TaskBranchDefinition{
-			NameTemplate:       branchTemplate,
-			StartPointTemplate: startPointTemplate,
-			PushRemote:         pushRemote,
-		},
-		Files: []workflow.TaskFileDefinition{fileDefinition},
-		Commit: workflow.TaskCommitDefinition{
-			MessageTemplate: commitMessage,
-		},
+	nodes, operationsError := workflow.BuildOperations(presetConfiguration)
+	if operationsError != nil {
+		return fmt.Errorf("unable to build workflow operations: %w", operationsError)
 	}
 
+	executorInstance := builder.resolveExecutor(nodes, workflowDependencies)
 	runtimeOptions := workflow.RuntimeOptions{
 		AssumeYes:                    assumeYes,
 		CaptureInitialWorktreeStatus: requireClean,
+		Variables:                    variables,
 	}
 
-	return taskRunner.Run(command.Context(), roots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
+	if command != nil {
+		fmt.Fprintln(command.ErrOrStderr(), "DEPRECATED: repo-license-apply will be removed; use `gix workflow license --var template=PATH --var branch=...` instead.")
+	}
+
+	return executorInstance.Execute(command.Context(), roots, runtimeOptions)
 }
 
 func (builder *LicenseCommandBuilder) resolveConfiguration() LicenseConfiguration {
@@ -281,4 +315,22 @@ func (builder *LicenseCommandBuilder) resolveConfiguration() LicenseConfiguratio
 		return DefaultToolsConfiguration().License
 	}
 	return builder.ConfigurationProvider().Sanitize()
+}
+
+func (builder *LicenseCommandBuilder) resolvePresetCatalog() workflowcmd.PresetCatalog {
+	if builder.PresetCatalogFactory != nil {
+		if catalog := builder.PresetCatalogFactory(); catalog != nil {
+			return catalog
+		}
+	}
+	return workflowcmd.NewEmbeddedPresetCatalog()
+}
+
+func (builder *LicenseCommandBuilder) resolveExecutor(nodes []*workflow.OperationNode, dependencies workflow.Dependencies) WorkflowExecutor {
+	if builder.ExecutorFactory != nil {
+		if executor := builder.ExecutorFactory(nodes, dependencies); executor != nil {
+			return executor
+		}
+	}
+	return workflow.NewExecutorFromNodes(nodes, dependencies)
 }
