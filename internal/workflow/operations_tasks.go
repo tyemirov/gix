@@ -17,15 +17,16 @@ import (
 )
 
 const (
-	optionTasksKeyConstant             = "tasks"
-	optionTaskNameKeyConstant          = "name"
-	optionTaskEnsureCleanKeyConstant   = "ensure_clean"
-	optionTaskBranchKeyConstant        = "branch"
-	optionTaskFilesKeyConstant         = "files"
-	optionTaskCommitMessageKeyConstant = "commit_message"
-	optionTaskPullRequestKeyConstant   = "pull_request"
-	optionTaskActionsKeyConstant       = "actions"
-	optionTaskSafeguardsKeyConstant    = "safeguards"
+	optionTasksKeyConstant                   = "tasks"
+	optionTaskNameKeyConstant                = "name"
+	optionTaskEnsureCleanKeyConstant         = "ensure_clean"
+	optionTaskEnsureCleanVariableKeyConstant = "ensure_clean_variable"
+	optionTaskBranchKeyConstant              = "branch"
+	optionTaskFilesKeyConstant               = "files"
+	optionTaskCommitMessageKeyConstant       = "commit_message"
+	optionTaskPullRequestKeyConstant         = "pull_request"
+	optionTaskActionsKeyConstant             = "actions"
+	optionTaskSafeguardsKeyConstant          = "safeguards"
 
 	optionTaskBranchNameKeyConstant       = "name"
 	optionTaskBranchStartPointKeyConstant = "start_point"
@@ -122,14 +123,15 @@ func (operation *TaskOperation) attachLLMConfiguration() {
 
 // TaskDefinition describes a single repository task.
 type TaskDefinition struct {
-	Name        string
-	EnsureClean bool
-	Branch      TaskBranchDefinition
-	Files       []TaskFileDefinition
-	Actions     []TaskActionDefinition
-	Commit      TaskCommitDefinition
-	PullRequest *TaskPullRequestDefinition
-	Safeguards  map[string]any
+	Name                string
+	EnsureClean         bool
+	EnsureCleanVariable string
+	Branch              TaskBranchDefinition
+	Files               []TaskFileDefinition
+	Actions             []TaskActionDefinition
+	Commit              TaskCommitDefinition
+	PullRequest         *TaskPullRequestDefinition
+	Safeguards          map[string]any
 }
 
 // TaskBranchDefinition describes branch behavior for a task.
@@ -255,6 +257,7 @@ func (operation *TaskOperation) executeTask(executionContext context.Context, en
 	if planError != nil {
 		return planError
 	}
+	plan.variables = variableSnapshot
 
 	executor := newTaskExecutor(environment, repository, plan)
 	return executor.Execute(executionContext)
@@ -313,6 +316,15 @@ func buildTaskDefinition(raw map[string]any) (TaskDefinition, error) {
 		ensureClean = true
 	}
 
+	ensureCleanVariable, ensureCleanVariableExists, ensureCleanVariableError := reader.stringValue(optionTaskEnsureCleanVariableKeyConstant)
+	if ensureCleanVariableError != nil {
+		return TaskDefinition{}, ensureCleanVariableError
+	}
+	ensureCleanVariable = strings.TrimSpace(ensureCleanVariable)
+	if ensureCleanVariableExists && len(ensureCleanVariable) == 0 {
+		return TaskDefinition{}, errors.New("ensure_clean_variable cannot be blank when provided")
+	}
+
 	branchDefinition, branchError := buildTaskBranchDefinition(reader)
 	if branchError != nil {
 		return TaskDefinition{}, branchError
@@ -346,14 +358,15 @@ func buildTaskDefinition(raw map[string]any) (TaskDefinition, error) {
 	}
 
 	return TaskDefinition{
-		Name:        name,
-		EnsureClean: ensureClean,
-		Branch:      branchDefinition,
-		Files:       files,
-		Actions:     actions,
-		Commit:      commitDefinition,
-		PullRequest: pullRequestDefinition,
-		Safeguards:  safeguards,
+		Name:                name,
+		EnsureClean:         ensureClean,
+		EnsureCleanVariable: ensureCleanVariable,
+		Branch:              branchDefinition,
+		Files:               files,
+		Actions:             actions,
+		Commit:              commitDefinition,
+		PullRequest:         pullRequestDefinition,
+		Safeguards:          safeguards,
 	}, nil
 }
 
@@ -616,6 +629,7 @@ type taskPlan struct {
 	actions       []taskAction
 	skipReason    string
 	skipped       bool
+	variables     map[string]string
 }
 
 type taskPlanPullRequest struct {
@@ -957,6 +971,7 @@ func (executor taskExecutor) Execute(executionContext context.Context) error {
 		return nil
 	}
 
+	requireClean := executor.resolveEnsureClean()
 	if executor.plan.skipped {
 		executor.plan.describe(executor.environment, taskLogPrefixNoop)
 		return nil
@@ -965,7 +980,7 @@ func (executor taskExecutor) Execute(executionContext context.Context) error {
 	hasFileChanges := hasApplicableChanges(executor.plan.fileChanges)
 	hasActions := len(executor.plan.actions) > 0
 
-	if executor.plan.task.EnsureClean {
+	if requireClean {
 		clean, cleanError := executor.environment.RepositoryManager.CheckCleanWorktree(executionContext, executor.repository.Path)
 		if cleanError != nil {
 			return cleanError
@@ -1094,6 +1109,27 @@ func (executor taskExecutor) Execute(executionContext context.Context) error {
 
 	cleanup()
 	return nil
+}
+
+func (executor taskExecutor) resolveEnsureClean() bool {
+	if executor.plan.task.EnsureCleanVariable == "" {
+		return executor.plan.task.EnsureClean
+	}
+
+	variableName := strings.TrimSpace(executor.plan.task.EnsureCleanVariable)
+	if len(variableName) == 0 {
+		return executor.plan.task.EnsureClean
+	}
+
+	value := executor.plan.variables[variableName]
+	if strings.EqualFold(value, "false") || strings.EqualFold(value, "0") || strings.EqualFold(value, "no") {
+		return false
+	}
+	if strings.EqualFold(value, "true") || strings.EqualFold(value, "1") || strings.EqualFold(value, "yes") {
+		return true
+	}
+	// Fallback to task default when variable not provided.
+	return executor.plan.task.EnsureClean
 }
 
 func (executor taskExecutor) branchExists(executionContext context.Context, branchName string) (bool, error) {

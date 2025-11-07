@@ -411,8 +411,8 @@ func TestWorkflowCommandUsageIncludesConfigurationPlaceholder(t *testing.T) {
 	workflowCommand, _, workflowError := rootCommand.Find([]string{"w"})
 	require.NoError(t, workflowError)
 
-	require.Contains(t, workflowCommand.Use, "<configuration>")
-	require.Contains(t, workflowCommand.Long, "Provide the configuration path as the first argument")
+	require.Contains(t, workflowCommand.Use, "<configuration|preset>")
+	require.Contains(t, workflowCommand.Long, "embedded presets")
 	require.Contains(t, workflowCommand.Example, "gix workflow")
 }
 
