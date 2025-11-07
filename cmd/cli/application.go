@@ -181,10 +181,11 @@ const (
 	messageNamespaceUseNameConstant                                  = "message"
 	messageNamespaceAliasConstant                                    = "msg"
 	messageNamespaceShortDescriptionConstant                         = "Message assistance commands"
-	commitNamespaceUseNameConstant                                   = "commit"
+	legacyCommitNamespaceUseNameConstant                             = "commit"
 	commitNamespaceAliasConstant                                     = "c"
 	commitNamespaceShortDescriptionConstant                          = "Commit assistance commands"
-	commitMessageUseNameConstant                                     = "message"
+	commitMessageUseNameConstant                                     = "commit"
+	legacyCommitMessageUseNameConstant                               = "message"
 	commitMessageAliasConstant                                       = "msg"
 	commitMessageLongDescriptionConstant                             = "commit message drafts Conventional Commit subjects and optional bullets using the configured language model."
 	changelogNamespaceUseNameConstant                                = "changelog"
@@ -205,7 +206,8 @@ const (
 	namespaceRewriteCommandPathKeyConstant                           = repoNamespaceRewriteNamespaceUseNameConstant + "/" + namespaceRewriteCommandUseNameConstant
 	releaseRetagCommandPathKeyConstant                               = repoReleaseCommandUseNameConstant + "/" + releaseRetagCommandUseNameConstant
 	releaseRetagCommandAliasKeyConstant                              = repoReleaseCommandUseNameConstant + " " + releaseRetagCommandUseNameConstant
-	commitMessageCommandPathKeyConstant                              = commitNamespaceUseNameConstant + "/" + commitMessageUseNameConstant
+	commitMessageCommandPathKeyConstant                              = messageNamespaceUseNameConstant + "/" + commitMessageUseNameConstant
+	legacyCommitMessageCommandPathKeyConstant                        = legacyCommitNamespaceUseNameConstant + "/" + legacyCommitMessageUseNameConstant
 	changelogMessageCommandPathKeyConstant                           = messageNamespaceUseNameConstant + "/" + changelogMessageUseNameConstant
 	legacyRepoNamespaceUseNameConstant                               = "repo"
 	legacyBranchNamespaceUseNameConstant                             = "branch"
@@ -221,6 +223,7 @@ const (
 	legacyRepoReleaseCommandKeyConstant                              = legacyRepoNamespaceUseNameConstant + " " + repoReleaseCommandUseNameConstant
 	legacyRepoReleaseRetagCommandKeyConstant                         = legacyRepoReleaseCommandKeyConstant + " " + releaseRetagCommandUseNameConstant
 	legacyRepoRmCommandKeyConstant                                   = legacyRepoNamespaceUseNameConstant + " " + removeCommandUseNameConstant
+	legacyCommitMessageCommandKeyConstant                            = legacyCommitNamespaceUseNameConstant + " " + legacyCommitMessageUseNameConstant
 	legacyChangelogMessageCommandPathKeyConstant                     = changelogNamespaceUseNameConstant + "/" + legacyChangelogMessageUseNameConstant
 	legacyChangelogMessageCommandKeyConstant                         = changelogNamespaceUseNameConstant + " " + legacyChangelogMessageUseNameConstant
 	legacyBranchDefaultCommandKeyConstant                            = legacyBranchNamespaceUseNameConstant + " " + defaultCommandUseNameConstant
@@ -271,6 +274,7 @@ var commandOperationRequirements = map[string][]string{
 	commitMessageCommandPathKeyConstant:          {commitMessageOperationNameConstant},
 	changelogMessageCommandPathKeyConstant:       {changelogMessageOperationNameConstant},
 	legacyChangelogMessageCommandPathKeyConstant: {changelogMessageOperationNameConstant},
+	legacyCommitMessageCommandPathKeyConstant:    {commitMessageOperationNameConstant},
 }
 
 var requiredOperationConfigurationNames = collectRequiredOperationConfigurationNames()
@@ -289,6 +293,7 @@ var operationNameAliases = map[string]string{
 	legacyRepoReleaseRetagCommandKeyConstant:       repoReleaseOperationNameConstant,
 	legacyRepoRmCommandKeyConstant:                 repoHistoryOperationNameConstant,
 	legacyChangelogMessageCommandKeyConstant:       changelogMessageOperationNameConstant,
+	legacyCommitMessageCommandKeyConstant:          commitMessageOperationNameConstant,
 	legacyBranchDefaultCommandKeyConstant:          defaultOperationNameConstant,
 	legacyBranchDefaultTopLevelUseNameConstant:     defaultOperationNameConstant,
 	legacyBranchChangeCommandKeyConstant:           branchChangeOperationNameConstant,
@@ -306,6 +311,7 @@ var operationAliasWarnings = map[string]string{
 	legacyBranchDefaultTopLevelUseNameConstant: "command configuration uses deprecated name \"branch-default\"; update to \"default\".",
 	legacyBranchDefaultCommandKeyConstant:      "command configuration uses deprecated name \"branch default\"; update to \"default\".",
 	legacyChangelogMessageCommandKeyConstant:   "command configuration uses deprecated name \"changelog message\"; update to \"message changelog\".",
+	legacyCommitMessageCommandKeyConstant:      "command configuration uses deprecated name \"commit message\"; update to \"message commit\".",
 }
 
 type loggerOutputsFactory interface {
@@ -845,13 +851,6 @@ func NewApplication() *Application {
 		changelogNamespaceCommand = newNamespaceCommand(changelogNamespaceUseNameConstant, changelogNamespaceShortDescriptionConstant, changelogNamespaceAliasConstant)
 		changelogNamespaceCommand.AddCommand(legacyChangelogCommand)
 	}
-	if len(messageNamespaceCommand.Commands()) > 0 {
-		cobraCommand.AddCommand(messageNamespaceCommand)
-	}
-	if changelogNamespaceCommand != nil && len(changelogNamespaceCommand.Commands()) > 0 {
-		cobraCommand.AddCommand(changelogNamespaceCommand)
-	}
-
 	commitMessageBuilder := commitcmd.MessageCommandBuilder{
 		LoggerProvider: func() *zap.Logger {
 			return application.logger
@@ -862,9 +861,16 @@ func NewApplication() *Application {
 	var commitNamespaceCommand *cobra.Command
 	commitMessageCommand, commitMessageBuildError := commitMessageBuilder.Build()
 	if commitMessageBuildError == nil {
-		commitNamespaceCommand = newNamespaceCommand(commitNamespaceUseNameConstant, commitNamespaceShortDescriptionConstant, commitNamespaceAliasConstant)
 		configureCommandMetadata(commitMessageCommand, commitMessageUseNameConstant, commitMessageCommand.Short, commitMessageLongDescriptionConstant, commitMessageAliasConstant)
-		commitNamespaceCommand.AddCommand(commitMessageCommand)
+		messageNamespaceCommand.AddCommand(commitMessageCommand)
+	}
+	if commitNamespaceCommand == nil {
+		commitNamespaceCommand = newNamespaceCommand(legacyCommitNamespaceUseNameConstant, commitNamespaceShortDescriptionConstant, commitNamespaceAliasConstant)
+	}
+	if legacyCommitMessageCommand, legacyCommitBuildError := commitMessageBuilder.Build(); legacyCommitBuildError == nil {
+		configureCommandMetadata(legacyCommitMessageCommand, legacyCommitMessageUseNameConstant, legacyCommitMessageCommand.Short, commitMessageLongDescriptionConstant, commitMessageAliasConstant)
+		legacyCommitMessageCommand.Deprecated = "command deprecated; use \"gix message commit\"."
+		commitNamespaceCommand.AddCommand(legacyCommitMessageCommand)
 	}
 
 	repoFolderCommand := newNamespaceCommand(repoFolderNamespaceUseNameConstant, repoFolderNamespaceShortDescriptionConstant, repoFolderNamespaceAliasConstant)
@@ -960,10 +966,13 @@ func NewApplication() *Application {
 		cobraCommand.AddCommand(releaseCommand)
 	}
 
-	if changelogNamespaceCommand != nil {
+	if len(messageNamespaceCommand.Commands()) > 0 {
+		cobraCommand.AddCommand(messageNamespaceCommand)
+	}
+	if changelogNamespaceCommand != nil && len(changelogNamespaceCommand.Commands()) > 0 {
 		cobraCommand.AddCommand(changelogNamespaceCommand)
 	}
-	if commitNamespaceCommand != nil {
+	if commitNamespaceCommand != nil && len(commitNamespaceCommand.Commands()) > 0 {
 		cobraCommand.AddCommand(commitNamespaceCommand)
 	}
 

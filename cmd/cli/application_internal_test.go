@@ -269,14 +269,19 @@ func TestApplicationCommandHierarchyAndAliases(t *testing.T) {
 	require.NotNil(t, branchChangeCommand.Parent())
 	require.Equal(t, applicationNameConstant, branchChangeCommand.Parent().Name())
 
-	commitMessageCommand, _, commitMessageError := rootCommand.Find([]string{"commit", "message"})
+	commitMessageCommand, _, commitMessageError := rootCommand.Find([]string{"message", "commit"})
 	require.NoError(t, commitMessageError)
-	require.Equal(t, "message", commitMessageCommand.Name())
+	require.Equal(t, "commit", commitMessageCommand.Name())
 	require.NotNil(t, commitMessageCommand.Parent())
-	require.Equal(t, "commit", commitMessageCommand.Parent().Name())
+	require.Equal(t, "message", commitMessageCommand.Parent().Name())
 	require.NotNil(t, commitMessageCommand.Parent().Parent())
 	require.Equal(t, applicationNameConstant, commitMessageCommand.Parent().Parent().Name())
 
+	legacyCommitMessageCommand, _, legacyCommitMessageError := rootCommand.Find([]string{"commit", legacyCommitMessageUseNameConstant})
+	require.NoError(t, legacyCommitMessageError)
+	require.Equal(t, legacyCommitMessageUseNameConstant, legacyCommitMessageCommand.Name())
+	require.Equal(t, legacyCommitNamespaceUseNameConstant, legacyCommitMessageCommand.Parent().Name())
+	require.NotEmpty(t, legacyCommitMessageCommand.Deprecated)
 	changelogMessageCommand, _, changelogMessageError := rootCommand.Find([]string{"message", "changelog"})
 	require.NoError(t, changelogMessageError)
 	require.Equal(t, "changelog", changelogMessageCommand.Name())
@@ -340,9 +345,13 @@ func TestApplicationHierarchicalCommandsLoadExpectedOperations(t *testing.T) {
 	require.NoError(t, branchDefaultError)
 	require.Equal(t, []string{defaultOperationNameConstant}, application.operationsRequiredForCommand(branchDefaultCommand))
 
-	commitMessageCommand, _, commitMessageError := rootCommand.Find([]string{"commit", "message"})
+	commitMessageCommand, _, commitMessageError := rootCommand.Find([]string{"message", "commit"})
 	require.NoError(t, commitMessageError)
 	require.Equal(t, []string{commitMessageOperationNameConstant}, application.operationsRequiredForCommand(commitMessageCommand))
+
+	legacyCommitMessageCommand, _, legacyCommitMessageError := rootCommand.Find([]string{"commit", legacyCommitMessageUseNameConstant})
+	require.NoError(t, legacyCommitMessageError)
+	require.Equal(t, []string{commitMessageOperationNameConstant}, application.operationsRequiredForCommand(legacyCommitMessageCommand))
 
 	changelogMessageCommand, _, changelogMessageError := rootCommand.Find([]string{"message", "changelog"})
 	require.NoError(t, changelogMessageError)

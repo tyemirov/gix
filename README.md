@@ -70,7 +70,7 @@ Capture metadata (default branches, owners, remotes, protocol mismatches) for ev
 ### Draft commit messages and changelog entries
 
 ```shell
-gix commit message --roots .
+gix message commit --roots .
 gix message changelog --since-tag v1.2.0 --version v1.3.0
 ```
 
@@ -231,7 +231,7 @@ workflow:
 Notes:
 
 - The namespace rewrite step commits and pushes changes when `push: true` is set.
-- Generating the commit message via LLM inside a workflow is not yet supported. You can either supply a static `commit_message` (as above) or generate one per repository using `gix commit message` before running the workflow. See ISSUES.md for the improvement request to support LLM in workflows and piping outputs between steps.
+- Generating the commit message via LLM inside a workflow is not yet supported. You can either supply a static `commit_message` (as above) or generate one per repository using `gix message commit` before running the workflow. See ISSUES.md for the improvement request to support LLM in workflows and piping outputs between steps.
 
 ### Apply tasks (custom sequences)
 
@@ -348,7 +348,7 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
  - Reassigns existing release tags to provided commits and force-pushes updates.
 - `gix message changelog [--version <v>] [--release-date YYYY-MM-DD] [--since-tag <ref>] [--since-date <ts>] [--max-tokens <N>] [--temperature <0-2>] [--model <id>] [--base-url <url>] [--api-key-env <NAME>] [--timeout-seconds <N>] [--roots <dir>...]` (aliases `section`)
  - Generates a changelog section from git history using the configured LLM.
-- `gix commit message [--diff-source staged|worktree] [--max-tokens <N>] [--temperature <0-2>] [--model <id>] [--base-url <url>] [--api-key-env <NAME>] [--timeout-seconds <N>] [--roots <dir>...]` (alias `msg`)
+- `gix message commit [--diff-source staged|worktree] [--max-tokens <N>] [--temperature <0-2>] [--model <id>] [--base-url <url>] [--api-key-env <NAME>] [--timeout-seconds <N>] [--roots <dir>...]` (alias `msg`)
  - Drafts Conventional Commit subjects and optional bullets using the configured LLM.
 - `gix default <target-branch> [--roots <dir>...] [-y]`
  - Promotes the default branch across repositories.

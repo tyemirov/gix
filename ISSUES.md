@@ -72,12 +72,13 @@ Summary: total.repos=0 duration_ms=0
   - Acceptance: `gix message changelog` produces identical output, CLI help/docs/default config reference the new path, integration/unit tests align with the renamed command, and legacy config entries remain functional with migration guidance.
   - Resolution: Added a `message` namespace that hosts `changelog`, moved configs/docs/tests to `["message","changelog"]`, and kept `changelog message` as a deprecated alias that logs migration warnings.
 
-- [ ] [GX-224] Move commit message generator under message commit
-  - Status: Unresolved
+- [x] [GX-224] Move commit message generator under message commit
+  - Status: Resolved
   - Category: Improvement
   - Context: Commit message generation lives under `gix commit message`, mirroring the changelog structure slated for relocation.
   - Desired: Rehome the Cobra registration for the commit message command beneath the `message` namespace, align configuration defaults, docs, workflow keys, and tests to `gix message commit`, and alias `commit message` with a deprecation warning.
   - Acceptance: `gix message commit` works end-to-end across CLI/config/workflow/test paths, help/docs/default config reflect the new command, and legacy `commit message` entries execute with a warning.
+  - Resolution: Moved the commit generator under the `message` namespace, refreshed default configuration/tests/README to the `["message","commit"]` path, and added deprecated `commit message` aliases that warn while continuing to work.
 
 - [ ] [GX-225] Replace repo-license-apply CLI with embedded workflow license
   - Status: Unresolved

@@ -60,7 +60,7 @@ operations:
         - .
       remote: origin
       branch: master
-  - command: ["commit", "message"]
+  - command: ["message", "commit"]
     with:
       roots:
         - .
