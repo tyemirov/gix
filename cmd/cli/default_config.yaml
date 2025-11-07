@@ -50,7 +50,7 @@ operations:
     with:
       roots:
         - .
-  - command: ["branch-default"]
+  - command: ["default"]
     with:
       roots:
         - .

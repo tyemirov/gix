@@ -64,7 +64,7 @@ The new CLI (working name **`git-maintenance`**) will use Cobra for command/flag
 - `git-maintenance repo-remote-update`
 - `git-maintenance repo-protocol-convert`
 - `git-maintenance repo-prs-purge`
-- `git-maintenance branch-default <target-branch>`
+- `git-maintenance default <target-branch>` (alias `branch-default`)
 - `git-maintenance repo-packages-purge`
 
 ### 3.1 Flag and Behavior Mapping

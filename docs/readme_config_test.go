@@ -37,7 +37,7 @@ var expectedCommandOperations = map[string]struct{}{
 	"remote update-protocol":     {},
 	"folder rename":              {},
 	"workflow":                   {},
-	"branch-default":             {},
+	"default":                    {},
 }
 
 type readmeApplicationConfiguration struct {

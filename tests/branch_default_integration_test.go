@@ -101,7 +101,7 @@ func TestBranchDefaultHandlesNestedRepositoriesWithMixedRemotes(testInstance *te
 		".",
 		"--log-level",
 		"error",
-		"branch-default",
+		"default",
 		branchDefaultTargetBranch,
 		"--roots",
 		parentRepositoryPath,
@@ -126,7 +126,7 @@ func TestBranchDefaultHandlesNestedRepositoriesWithMixedRemotes(testInstance *te
 		branchDefaultIntegrationTimeout,
 		commandArguments,
 	)
-	testInstance.Logf("branch default output:\n%s", output)
+	testInstance.Logf("default output:\n%s", output)
 
 	require.Contains(testInstance, output, fmt.Sprintf("WORKFLOW-DEFAULT: %s (main → master)", parentRepositoryPath))
 	require.NotContains(testInstance, output, remoteChildPath)
