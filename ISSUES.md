@@ -103,12 +103,13 @@ Summary: total.repos=0 duration_ms=0
   - Desired: Introduce a `files` namespace that hosts the history removal command as `gix files rm`, propagate the rename through configuration/workflow mappings/docs/tests, and alias `rm` with a warning for existing configs.
   - Acceptance: `gix files rm` executes the same task runner path as today's command, CLI help/docs/default config show the nested path, automated tests updated, and legacy `rm` entries map to the new command with migration guidance.
 
-- [ ] [GX-228] Extend workflow command to support invoking embedded workflows by name
-  - Status: Unresolved
+- [x] [GX-228] Extend workflow command to support invoking embedded workflows by name
+  - Status: Resolved
   - Category: Improvement
   - Context: `cmd/cli/workflow/run.go` only accepts external YAML/JSON paths and cannot surface bundled presets, yet GX-323 asks for predefined workflows (license, namespace, etc.).
   - Desired: Embed a catalog of workflow definitions in the binary, extend `gix workflow` to list and run presets (alongside existing file-based execution), document the behavior, and cover it with tests so downstream issues (GX-225, GX-226) can rely on the feature.
   - Acceptance: Users can discover and invoke built-in workflows without supplying files, legacy file-based execution continues to function, docs showcase both modes, and tests exercise preset selection plus backward compatibility.
+  - Resolution: Added an embedded preset catalog (seeded with the initial `license` workflow), introduced `gix workflow --list-presets`/`gix workflow <preset>`, updated README guidance, and expanded workflow command tests to cover preset execution and listing while keeping file-based configs untouched.
 
 - [ ] [GX-229] Modularize CLI bootstrap and shared task runner wiring
   - Status: Unresolved

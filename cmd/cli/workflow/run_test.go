@@ -187,6 +187,86 @@ func bindGlobalWorkflowFlags(command *cobra.Command) {
 	}
 }
 
+func TestWorkflowCommandRunsPreset(testInstance *testing.T) {
+	discoverer := &fakeWorkflowDiscoverer{}
+	executor := &fakeWorkflowGitExecutor{}
+	runner := &recordingTaskRunner{}
+	presetCatalog := &fakePresetCatalog{
+		metadata: []workflowcmd.PresetMetadata{
+			{Name: "license", Description: "License audit workflow"},
+		},
+		configurations: map[string]workflowpkg.Configuration{
+			"license": {
+				Steps: []workflowpkg.StepConfiguration{
+					{Command: []string{"audit", "report"}},
+				},
+			},
+		},
+	}
+
+	builder := workflowcmd.CommandBuilder{
+		LoggerProvider: func() *zap.Logger { return zap.NewNop() },
+		Discoverer:     discoverer,
+		GitExecutor:    executor,
+		ConfigurationProvider: func() workflowcmd.CommandConfiguration {
+			return workflowcmd.CommandConfiguration{
+				Roots: []string{workflowConfiguredRootConstant},
+			}
+		},
+		TaskRunnerFactory: func(workflowpkg.Dependencies) workflowcmd.TaskRunnerExecutor {
+			return runner
+		},
+		PresetCatalogFactory: func() workflowcmd.PresetCatalog {
+			return presetCatalog
+		},
+	}
+
+	command, buildError := builder.Build()
+	require.NoError(testInstance, buildError)
+	bindGlobalWorkflowFlags(command)
+
+	var outputBuffer bytes.Buffer
+	command.SetOut(&outputBuffer)
+	command.SetErr(&outputBuffer)
+	command.SetContext(context.Background())
+	command.SetArgs([]string{"license"})
+
+	require.NoError(testInstance, command.Execute())
+	require.Equal(testInstance, 1, runner.invocations)
+	require.Len(testInstance, runner.definitions, 1)
+	require.Equal(testInstance, "audit.report", runner.definitions[0].Actions[0].Type)
+}
+
+func TestWorkflowCommandListsPresets(testInstance *testing.T) {
+	builder := workflowcmd.CommandBuilder{
+		LoggerProvider: func() *zap.Logger { return zap.NewNop() },
+		PresetCatalogFactory: func() workflowcmd.PresetCatalog {
+			return &fakePresetCatalog{
+				metadata: []workflowcmd.PresetMetadata{
+					{Name: "license", Description: "License audit workflow"},
+					{Name: "namespace"},
+				},
+			}
+		},
+	}
+
+	command, buildError := builder.Build()
+	require.NoError(testInstance, buildError)
+	bindGlobalWorkflowFlags(command)
+
+	var outputBuffer bytes.Buffer
+	command.SetOut(&outputBuffer)
+	command.SetErr(&outputBuffer)
+	command.SetContext(context.Background())
+	command.SetArgs([]string{"--list-presets"})
+
+	require.NoError(testInstance, command.Execute())
+	output := outputBuffer.String()
+	require.Contains(testInstance, output, "Embedded workflows")
+	require.Contains(testInstance, output, "license")
+	require.Contains(testInstance, output, "namespace")
+}
+
 type fakeWorkflowDiscoverer struct {
 	receivedRoots []string
 	repositories  []string
@@ -223,4 +303,31 @@ func (runner *recordingTaskRunner) Run(_ context.Context, roots []string, defini
 	runner.definitions = append([]workflowpkg.TaskDefinition{}, definitions...)
 	runner.runtimeOptions = options
 	return nil
+}
+
+type fakePresetCatalog struct {
+	metadata       []workflowcmd.PresetMetadata
+	configurations map[string]workflowpkg.Configuration
+}
+
+func (catalog *fakePresetCatalog) List() []workflowcmd.PresetMetadata {
+	if catalog == nil || len(catalog.metadata) == 0 {
+		return nil
+	}
+	list := make([]workflowcmd.PresetMetadata, len(catalog.metadata))
+	copy(list, catalog.metadata)
+	return list
+}
+
+func (catalog *fakePresetCatalog) Load(name string) (workflowpkg.Configuration, bool, error) {
+	if catalog == nil || len(catalog.configurations) == 0 {
+		return workflowpkg.Configuration{}, false, nil
+	}
+	normalized := strings.ToLower(strings.TrimSpace(name))
+	for key, configuration := range catalog.configurations {
+		if strings.ToLower(key) == normalized {
+			return configuration, true, nil
+		}
+	}
+	return workflowpkg.Configuration{}, false, nil
 }

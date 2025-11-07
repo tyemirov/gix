@@ -7,10 +7,12 @@
 - Folded the `branch-refresh` behaviour into `gix cd` via `--refresh`/`--stash`/`--commit` flags and removed the standalone command while preserving migration warnings for legacy configuration.
 - Renamed the `branch-default` command to `default`, added workflow/config alias warnings, and updated CLI defaults, docs, and workflow tests to reference the new surface while keeping `branch-default` as an alias.
 - Introduced a top-level `message` namespace and moved `changelog message` to `message changelog`, keeping the legacy path as a deprecated alias with config/CLI warnings.
+- Added embedded workflow presets so `gix workflow --list-presets` and `gix workflow <preset>` can run bundled automation (initially `license`) without a separate YAML file.
 - Added explicit `make test-fast`/`test-slow` targets (with `ci` wiring) so fast unit packages can run independently of the slower `./tests` integration suite.
 
 ### Testing 🧪
 - Added unit coverage for branch change task actions to verify repository-default and configured fallback branch resolution.
+- Expanded workflow command coverage to exercise preset execution, preset listing, and the reusable configuration parser.
 - Refactored integration Git fixtures into shared helpers (stubbed GH binary builder + git repository factory), updated repos/no-remote suites to reuse them, and added tests ensuring the helpers create remotes and PATH stubs correctly.
 
 ## [v0.2.0-rc.8]

@@ -1,0 +1,6 @@
+workflow:
+  - step:
+      name: license-audit-report
+      command: ["audit", "report"]
+      with:
+        output: "./reports/license-audit.csv"

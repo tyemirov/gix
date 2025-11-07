@@ -86,6 +86,17 @@ gix workflow maintenance.yml --roots ~/Development --yes
 
 Workflows reuse repository discovery, confirmation prompts, and logging so you can hand teammates a repeatable playbook.
 
+### Embedded workflows
+
+In addition to external YAML/JSON files, you can run bundled presets:
+
+```shell
+gix workflow --list-presets
+gix workflow license --roots ~/Development --yes
+```
+
+Embedded workflows ship with the binary so you can hand teammates a stable command (for example, `license`) without distributing a separate configuration file.
+
 ### Workflow syntax
 
 Workflows are YAML or JSON files with a top-level `workflow` sequence. Each entry wraps a `step` describing one command path, optional dependencies, and command-specific options.
