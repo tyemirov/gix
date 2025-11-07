@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -28,7 +29,17 @@ func (reporter *recordingReporter) Summary() string {
 	return ""
 }
 
+func (reporter *recordingReporter) SummaryData() shared.SummaryData {
+	return shared.SummaryData{}
+}
+
 func (reporter *recordingReporter) PrintSummary() {
+}
+
+func (reporter *recordingReporter) RecordEvent(string, shared.EventLevel) {
+}
+
+func (reporter *recordingReporter) RecordOperationDuration(string, time.Duration) {
 }
 
 func TestHandleBranchChangeActionUsesRepositoryDefault(t *testing.T) {

@@ -49,7 +49,27 @@ type Reporter interface {
 type SummaryReporter interface {
 	Reporter
 	Summary() string
+	SummaryData() SummaryData
 	PrintSummary()
+	RecordEvent(code string, level EventLevel)
+	RecordOperationDuration(operationName string, duration time.Duration)
+}
+
+// SummaryData captures aggregated reporter metrics suitable for telemetry export.
+type SummaryData struct {
+	TotalRepositories    int                                 `json:"total_repositories"`
+	EventCounts          map[string]int                      `json:"event_counts"`
+	LevelCounts          map[EventLevel]int                  `json:"level_counts"`
+	DurationHuman        string                              `json:"duration_human"`
+	DurationMilliseconds int64                               `json:"duration_ms"`
+	OperationDurations   map[string]OperationDurationSummary `json:"operation_durations"`
+}
+
+// OperationDurationSummary captures aggregated timing metrics for a workflow operation.
+type OperationDurationSummary struct {
+	Count                       int   `json:"count"`
+	TotalDurationMilliseconds   int64 `json:"total_duration_ms"`
+	AverageDurationMilliseconds int64 `json:"average_duration_ms"`
 }
 
 // ReporterOption customises StructuredReporter behaviour.
@@ -79,13 +99,14 @@ type StructuredReporter struct {
 	includeRepositoryHeaders bool
 	now                      func() time.Time
 
-	mutex            sync.Mutex
-	lastRepository   string
-	startTime        time.Time
-	eventCounts      map[string]int
-	levelCounts      map[EventLevel]int
-	seenRepositories map[string]struct{}
-	columns          columnConfiguration
+	mutex              sync.Mutex
+	lastRepository     string
+	startTime          time.Time
+	eventCounts        map[string]int
+	levelCounts        map[EventLevel]int
+	seenRepositories   map[string]struct{}
+	operationDurations map[string]*operationDurationAccumulator
+	columns            columnConfiguration
 }
 
 type columnConfiguration struct {
@@ -94,6 +115,11 @@ type columnConfiguration struct {
 	repositoryWidth int
 	messageWidth    int
 	headerWidth     int
+}
+
+type operationDurationAccumulator struct {
+	count int
+	total time.Duration
 }
 
 // NewStructuredReporter constructs a StructuredReporter that writes to the provided sinks.
@@ -114,6 +140,7 @@ func NewStructuredReporter(output io.Writer, errors io.Writer, options ...Report
 		eventCounts:              make(map[string]int),
 		levelCounts:              make(map[EventLevel]int),
 		seenRepositories:         make(map[string]struct{}),
+		operationDurations:       make(map[string]*operationDurationAccumulator),
 		columns: columnConfiguration{
 			levelWidth:      defaultLevelFieldWidth,
 			codeWidth:       defaultEventFieldWidth,
@@ -145,6 +172,49 @@ func (reporter *StructuredReporter) RecordRepository(identifier string, path str
 	}
 
 	reporter.seenRepositories[key] = struct{}{}
+}
+
+// RecordEvent increments event and level counters without emitting log output.
+func (reporter *StructuredReporter) RecordEvent(code string, level EventLevel) {
+	if reporter == nil {
+		return
+	}
+
+	reporter.mutex.Lock()
+	defer reporter.mutex.Unlock()
+
+	normalizedCode := normalizeCode(code)
+	normalizedLevel := normalizeLevel(level)
+
+	reporter.eventCounts[normalizedCode]++
+	reporter.levelCounts[normalizedLevel]++
+}
+
+// RecordOperationDuration aggregates timing information for the provided operation.
+func (reporter *StructuredReporter) RecordOperationDuration(operationName string, duration time.Duration) {
+	if reporter == nil {
+		return
+	}
+
+	trimmedName := strings.TrimSpace(operationName)
+	if len(trimmedName) == 0 {
+		return
+	}
+	if duration < 0 {
+		duration = 0
+	}
+
+	reporter.mutex.Lock()
+	defer reporter.mutex.Unlock()
+
+	accumulator, exists := reporter.operationDurations[trimmedName]
+	if !exists || accumulator == nil {
+		accumulator = &operationDurationAccumulator{}
+		reporter.operationDurations[trimmedName] = accumulator
+	}
+
+	accumulator.count++
+	accumulator.total += duration
 }
 
 // Report logs the provided event using the configured formatting rules.
@@ -189,49 +259,74 @@ func (reporter *StructuredReporter) Report(event Event) {
 	fmt.Fprintf(writer, "%s | %s\n", humanPart, machinePart)
 }
 
-// Summary renders the aggregate statistics collected during reporting.
-func (reporter *StructuredReporter) Summary() string {
+// SummaryData produces a serializable snapshot of reporter metrics.
+func (reporter *StructuredReporter) SummaryData() SummaryData {
 	if reporter == nil {
-		return ""
+		return SummaryData{
+			EventCounts:        make(map[string]int),
+			LevelCounts:        make(map[EventLevel]int),
+			OperationDurations: make(map[string]OperationDurationSummary),
+			DurationHuman:      "0s",
+		}
 	}
 
 	reporter.mutex.Lock()
 	defer reporter.mutex.Unlock()
 
-	if len(reporter.eventCounts) == 0 && len(reporter.seenRepositories) == 0 {
+	duration := reporter.now().Sub(reporter.startTime)
+	if duration < 0 {
+		duration = 0
+	}
+
+	eventCounts := cloneStringIntMap(reporter.eventCounts)
+	levelCounts := cloneLevelCountMap(reporter.levelCounts)
+	operationDurations := make(map[string]OperationDurationSummary, len(reporter.operationDurations))
+
+	for name, accumulator := range reporter.operationDurations {
+		if accumulator == nil || accumulator.count == 0 {
+			continue
+		}
+		total := accumulator.total
+		operationDurations[name] = OperationDurationSummary{
+			Count:                       accumulator.count,
+			TotalDurationMilliseconds:   reporter.durationMilliseconds(total),
+			AverageDurationMilliseconds: reporter.averageDurationMilliseconds(total, accumulator.count),
+		}
+	}
+
+	return SummaryData{
+		TotalRepositories:    len(reporter.seenRepositories),
+		EventCounts:          eventCounts,
+		LevelCounts:          levelCounts,
+		DurationHuman:        reporter.formatDuration(duration),
+		DurationMilliseconds: reporter.durationMilliseconds(duration),
+		OperationDurations:   operationDurations,
+	}
+}
+
+// Summary renders the aggregate statistics collected during reporting.
+func (reporter *StructuredReporter) Summary() string {
+	data := reporter.SummaryData()
+	if data.TotalRepositories == 0 && len(data.EventCounts) == 0 {
 		return "Summary: total.repos=0 duration_human=0s duration_ms=0"
 	}
 
-	keys := make([]string, 0, len(reporter.eventCounts))
-	for key := range reporter.eventCounts {
+	keys := make([]string, 0, len(data.EventCounts))
+	for key := range data.EventCounts {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
 
 	parts := make([]string, 0, len(keys)+4)
-	parts = append(parts, fmt.Sprintf("Summary: total.repos=%d", len(reporter.seenRepositories)))
+	parts = append(parts, fmt.Sprintf("Summary: total.repos=%d", data.TotalRepositories))
 	for _, key := range keys {
-		parts = append(parts, fmt.Sprintf("%s=%d", key, reporter.eventCounts[key]))
+		parts = append(parts, fmt.Sprintf("%s=%d", key, data.EventCounts[key]))
 	}
 
-	if warningCount, exists := reporter.levelCounts[EventLevelWarn]; exists {
-		parts = append(parts, fmt.Sprintf("%s=%d", EventLevelWarn, warningCount))
-	} else {
-		parts = append(parts, fmt.Sprintf("%s=0", EventLevelWarn))
-	}
-	if errorCount, exists := reporter.levelCounts[EventLevelError]; exists {
-		parts = append(parts, fmt.Sprintf("%s=%d", EventLevelError, errorCount))
-	} else {
-		parts = append(parts, fmt.Sprintf("%s=0", EventLevelError))
-	}
-
-	duration := reporter.now().Sub(reporter.startTime)
-	if duration < 0 {
-		duration = 0
-	}
-	humanDuration := reporter.formatDuration(duration)
-	parts = append(parts, fmt.Sprintf("duration_human=%s", humanDuration))
-	parts = append(parts, fmt.Sprintf("duration_ms=%d", duration.Milliseconds()))
+	parts = append(parts, fmt.Sprintf("%s=%d", EventLevelWarn, data.LevelCounts[EventLevelWarn]))
+	parts = append(parts, fmt.Sprintf("%s=%d", EventLevelError, data.LevelCounts[EventLevelError]))
+	parts = append(parts, fmt.Sprintf("duration_human=%s", data.DurationHuman))
+	parts = append(parts, fmt.Sprintf("duration_ms=%d", data.DurationMilliseconds))
 
 	return strings.Join(parts, " ")
 }
@@ -262,6 +357,28 @@ func (reporter *StructuredReporter) computeSeenRepositoryKey(identifier string, 
 	return ""
 }
 
+func cloneStringIntMap(source map[string]int) map[string]int {
+	if len(source) == 0 {
+		return make(map[string]int)
+	}
+	target := make(map[string]int, len(source))
+	for key, value := range source {
+		target[key] = value
+	}
+	return target
+}
+
+func cloneLevelCountMap(source map[EventLevel]int) map[EventLevel]int {
+	if len(source) == 0 {
+		return make(map[EventLevel]int)
+	}
+	target := make(map[EventLevel]int, len(source))
+	for key, value := range source {
+		target[key] = value
+	}
+	return target
+}
+
 func (reporter *StructuredReporter) formatDuration(value time.Duration) string {
 	if value < 0 {
 		value = 0
@@ -285,6 +402,25 @@ func (reporter *StructuredReporter) printRepositoryHeader(writer io.Writer, repo
 	}
 	padding := strings.Repeat("-", paddingWidth)
 	fmt.Fprintf(writer, "-- %s %s\n", headerContent, padding)
+}
+
+func (reporter *StructuredReporter) durationMilliseconds(value time.Duration) int64 {
+	if value < 0 {
+		value = 0
+	}
+	rounded := value.Round(time.Millisecond)
+	if rounded == 0 && value > 0 {
+		rounded = time.Millisecond
+	}
+	return rounded.Milliseconds()
+}
+
+func (reporter *StructuredReporter) averageDurationMilliseconds(total time.Duration, count int) int64 {
+	if count <= 0 {
+		return 0
+	}
+	average := total / time.Duration(count)
+	return reporter.durationMilliseconds(average)
 }
 
 func (reporter *StructuredReporter) formatHumanPart(timestamp time.Time, level EventLevel, code string, repositoryIdentifier string, message string) string {

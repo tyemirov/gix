@@ -140,12 +140,13 @@ Summary: total.repos=0 duration_ms=0
   - Acceptance: Both generators consume the shared factory, retry/backoff policies are configurable and exercised in tests, and new unit tests validate error handling for the edge cases described in `docs/refactor_plan_GX-411.md`.
   - Resolution: Added `pkg/llm` factory with configurable retry/backoff, refactored CLI/workflow wiring to consume it, hardened commit/changelog generators against empty responses, and expanded table-driven tests plus new factory coverage; unit suite passes locally with `go test ./...` except for sandbox-blocked integration cases noted in run logs.
 
-- [ ] [GX-233] Expand structured reporter API for event counts and telemetry export
-  - Status: Unresolved
+- [x] [GX-233] Expand structured reporter API for event counts and telemetry export
+  - Status: Resolved
   - Category: Improvement
   - Context: `internal/repos/shared/reporting.go` only aggregates totals per severity and lacks simple helpers for emitting event counters or exporting telemetry objects usable by the CLI/metrics pipelines.
   - Desired: Add an ergonomic `RecordEvent(code, level)` helper, expose a serializable summary struct for CLI output, wire reporter instrumentation to surface timings per operation, and benchmark the reporter to quantify overhead after the enhancements.
   - Acceptance: Commands adopt the new helper instead of manual `Report` calls, CLI layers consume the summary struct, timing data is available for future telemetry integrations, and benchmarks demonstrate acceptable overhead.
+  - Resolution: StructuredReporter now exposes `RecordEvent`, `RecordOperationDuration`, and `SummaryData` APIs with thread-safe counters, workflow operations record per-step timings and success/failure counts while logging the serialized summary through the CLI logger, and new unit tests plus benchmarks cover the expanded reporter surface.
 
 - [ ] [GX-234] Split fast and slow test targets to improve feedback loop
   - Status: Unresolved
