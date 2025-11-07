@@ -5,6 +5,7 @@
 ### Improvements ⚙️
 - Renamed the `branch-cd` command to `cd`, added deprecation warnings when the legacy name is used, and allowed the branch argument to default to the repository's detected default or configured fallback.
 - Folded the `branch-refresh` behaviour into `gix cd` via `--refresh`/`--stash`/`--commit` flags and removed the standalone command while preserving migration warnings for legacy configuration.
+- Renamed the `branch-default` command to `default`, updated workflow/config/docs/tests to the new path, and kept `branch-default` as a deprecated alias with warnings.
 
 ### Testing 🧪
 - Added unit coverage for branch change task actions to verify repository-default and configured fallback branch resolution.

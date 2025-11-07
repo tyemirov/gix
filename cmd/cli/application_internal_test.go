@@ -259,6 +259,13 @@ func TestApplicationCommandHierarchyAndAliases(t *testing.T) {
 	require.NotNil(t, branchDefaultCommand.Parent())
 	require.Equal(t, applicationNameConstant, branchDefaultCommand.Parent().Name())
 
+	legacyBranchDefaultCommand, _, legacyBranchDefaultError := rootCommand.Find([]string{legacyBranchDefaultTopLevelUseNameConstant})
+	require.NoError(t, legacyBranchDefaultError)
+	require.Equal(t, branchDefaultTopLevelUseNameConstant, legacyBranchDefaultCommand.Name())
+	require.NotNil(t, legacyBranchDefaultCommand.Parent())
+	require.Equal(t, applicationNameConstant, legacyBranchDefaultCommand.Parent().Name())
+	require.Contains(t, legacyBranchDefaultCommand.Aliases, legacyBranchDefaultTopLevelUseNameConstant)
+
 	branchChangeCommand, _, branchChangeError := rootCommand.Find([]string{branchChangeTopLevelUseNameConstant})
 	require.NoError(t, branchChangeError)
 	require.Equal(t, branchChangeTopLevelUseNameConstant, branchChangeCommand.Name())
@@ -329,6 +336,10 @@ func TestApplicationHierarchicalCommandsLoadExpectedOperations(t *testing.T) {
 	branchDefaultCommand, _, branchDefaultError := rootCommand.Find([]string{branchDefaultTopLevelUseNameConstant})
 	require.NoError(t, branchDefaultError)
 	require.Equal(t, []string{branchDefaultOperationNameConstant}, application.operationsRequiredForCommand(branchDefaultCommand))
+
+	legacyBranchDefaultCommand, _, legacyBranchDefaultError := rootCommand.Find([]string{legacyBranchDefaultTopLevelUseNameConstant})
+	require.NoError(t, legacyBranchDefaultError)
+	require.Equal(t, []string{branchDefaultOperationNameConstant}, application.operationsRequiredForCommand(legacyBranchDefaultCommand))
 
 	commitMessageCommand, _, commitMessageError := rootCommand.Find([]string{"commit", "message"})
 	require.NoError(t, commitMessageError)

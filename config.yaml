@@ -53,7 +53,7 @@ operations:
         - ~/Development
       assume_yes: true
 
-  - command: ["branch-default"]
+  - command: ["default"]
     with: &branch_default_defaults
       debug: false
       roots:
@@ -80,7 +80,7 @@ workflow:
 
   - step:
       order: 4
-      command: ["branch-default"]
+      command: ["default"]
       with:
         <<: *branch_default_defaults
         targets:

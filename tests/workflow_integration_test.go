@@ -323,7 +323,7 @@ operations:
         - .
       assume_yes: true
       owner: canonical
-  - command: ["branch-default"]
+  - command: ["default"]
     with: &migration_defaults
       roots:
         - .
@@ -343,7 +343,7 @@ workflow:
       with:
         <<: *remote_defaults
   - step:
-      command: ["branch-default"]
+      command: ["default"]
       with:
         <<: *migration_defaults
   - step:

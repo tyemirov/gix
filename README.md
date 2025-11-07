@@ -116,7 +116,7 @@ workflow:
 
  - step:
    name: default-branch
-   command: ["branch-default"]
+   command: ["default"]
    with:
     targets:
      - remote_name: origin
@@ -149,7 +149,7 @@ Run with: `gix workflow path/to/file.yaml --roots ~/Development [-y] [--require-
 - `folder rename`
  - with: `require_clean: <bool>`, `include_owner: <bool>`
  - CLI `--require-clean` provides a default when not specified.
-- `branch-default`
+- `default` (alias `branch-default`)
  - with: `targets: [{ remote_name, source_branch, target_branch, push_to_remote, delete_source_branch }]`
  - Defaults: `remote_name: origin`, `target_branch: master`, `push_to_remote: true`, `delete_source_branch: false`; `source_branch` auto-detected from remote/local if omitted.
 - `audit report`
@@ -350,7 +350,7 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
  - Generates a changelog section from git history using the configured LLM.
 - `gix commit message [--diff-source staged|worktree] [--max-tokens <N>] [--temperature <0-2>] [--model <id>] [--base-url <url>] [--api-key-env <NAME>] [--timeout-seconds <N>] [--roots <dir>...]` (alias `msg`)
  - Drafts Conventional Commit subjects and optional bullets using the configured LLM.
-- `gix branch-default <target-branch> [--roots <dir>...] [-y]`
+- `gix default <target-branch> [--roots <dir>...] [-y]` (alias `branch-default`)
  - Promotes the default branch across repositories.
 - `gix cd [branch] [--remote <name>] [--refresh] [--stash | --commit] [--require-clean] [--roots <dir>...]` (aliases `switch`, `branch-cd`)
  - Switches repositories to the selected branch when provided, or the repository default when omitted. Creates the branch if missing, rebases onto the remote, and, when `--refresh` is enabled, fetches/pulls with optional stash/commit recovery.

@@ -107,7 +107,7 @@ const (
 	repoLicenseOperationNameConstant                                 = "license apply"
 	repoNamespaceRewriteOperationNameConstant                        = "namespace rewrite"
 	workflowCommandOperationNameConstant                             = "workflow"
-	branchDefaultOperationNameConstant                               = "branch-default"
+	branchDefaultOperationNameConstant                               = "default"
 	branchChangeOperationNameConstant                                = "cd"
 	commitMessageOperationNameConstant                               = "commit message"
 	changelogMessageOperationNameConstant                            = "changelog message"
@@ -167,7 +167,8 @@ const (
 	branchNamespaceUseNameConstant                                   = "branch"
 	branchNamespaceAliasConstant                                     = "b"
 	branchNamespaceShortDescriptionConstant                          = "Branch management commands"
-	branchDefaultTopLevelUseNameConstant                             = "branch-default"
+	branchDefaultTopLevelUseNameConstant                             = "default"
+	legacyBranchDefaultTopLevelUseNameConstant                       = "branch-default"
 	branchDefaultTopLevelUsageTemplateConstant                       = branchDefaultTopLevelUseNameConstant + " <target-branch>"
 	branchChangeLegacyTopLevelUseNameConstant                        = "branch-cd"
 	branchChangeTopLevelUseNameConstant                              = "cd"
@@ -227,7 +228,7 @@ const (
 	updateProtocolLongDescriptionConstant                            = "remote update-protocol converts origin URLs to a desired protocol."
 	prsDeleteLongDescriptionConstant                                 = "prs delete removes remote and local Git branches whose pull requests are already closed."
 	packagesDeleteLongDescriptionConstant                            = "packages delete removes untagged container versions from GitHub Packages."
-	branchDefaultNestedLongDescriptionConstant                       = "branch-default promotes a branch to the repository default, auto-detecting the current default branch before retargeting workflows and safety gates."
+	branchDefaultNestedLongDescriptionConstant                       = "default promotes a branch to the repository default, auto-detecting the current default branch before retargeting workflows and safety gates."
 	versionFlagNameConstant                                          = "version"
 	versionFlagUsageConstant                                         = "Print the application version and exit"
 	versionOutputTemplateConstant                                    = "gix version: %s\n"
@@ -246,24 +247,26 @@ const (
 )
 
 var commandOperationRequirements = map[string][]string{
-	auditOperationNameConstant:               {auditOperationNameConstant},
-	packagesDeleteCommandPathKeyConstant:     {packagesPurgeOperationNameConstant},
-	pullRequestsDeleteCommandPathKeyConstant: {branchCleanupOperationNameConstant},
-	folderRenameCommandPathKeyConstant:       {reposRenameOperationNameConstant},
-	remoteCanonicalCommandPathKeyConstant:    {reposRemotesOperationNameConstant},
-	remoteProtocolCommandPathKeyConstant:     {reposProtocolOperationNameConstant},
-	repoReleaseCommandUseNameConstant:        {repoReleaseOperationNameConstant},
-	releaseRetagCommandPathKeyConstant:       {repoReleaseOperationNameConstant},
-	removeCommandUseNameConstant:             {repoHistoryOperationNameConstant},
-	filesReplaceCommandPathKeyConstant:       {repoFilesReplaceOperationNameConstant},
-	filesAddCommandPathKeyConstant:           {repoFilesAddOperationNameConstant},
-	licenseApplyCommandPathKeyConstant:       {repoLicenseOperationNameConstant},
-	namespaceRewriteCommandPathKeyConstant:   {repoNamespaceRewriteOperationNameConstant},
-	workflowCommandOperationNameConstant:     {workflowCommandOperationNameConstant},
-	branchDefaultTopLevelUseNameConstant:     {branchDefaultOperationNameConstant},
-	branchChangeTopLevelUseNameConstant:      {branchChangeOperationNameConstant},
-	commitMessageCommandPathKeyConstant:      {commitMessageOperationNameConstant},
-	changelogMessageCommandPathKeyConstant:   {changelogMessageOperationNameConstant},
+	auditOperationNameConstant:                 {auditOperationNameConstant},
+	packagesDeleteCommandPathKeyConstant:       {packagesPurgeOperationNameConstant},
+	pullRequestsDeleteCommandPathKeyConstant:   {branchCleanupOperationNameConstant},
+	folderRenameCommandPathKeyConstant:         {reposRenameOperationNameConstant},
+	remoteCanonicalCommandPathKeyConstant:      {reposRemotesOperationNameConstant},
+	remoteProtocolCommandPathKeyConstant:       {reposProtocolOperationNameConstant},
+	repoReleaseCommandUseNameConstant:          {repoReleaseOperationNameConstant},
+	releaseRetagCommandPathKeyConstant:         {repoReleaseOperationNameConstant},
+	removeCommandUseNameConstant:               {repoHistoryOperationNameConstant},
+	filesReplaceCommandPathKeyConstant:         {repoFilesReplaceOperationNameConstant},
+	filesAddCommandPathKeyConstant:             {repoFilesAddOperationNameConstant},
+	licenseApplyCommandPathKeyConstant:         {repoLicenseOperationNameConstant},
+	namespaceRewriteCommandPathKeyConstant:     {repoNamespaceRewriteOperationNameConstant},
+	workflowCommandOperationNameConstant:       {workflowCommandOperationNameConstant},
+	branchDefaultTopLevelUseNameConstant:       {branchDefaultOperationNameConstant},
+	legacyBranchDefaultTopLevelUseNameConstant: {branchDefaultOperationNameConstant},
+	legacyBranchDefaultCommandKeyConstant:      {branchDefaultOperationNameConstant},
+	branchChangeTopLevelUseNameConstant:        {branchChangeOperationNameConstant},
+	commitMessageCommandPathKeyConstant:        {commitMessageOperationNameConstant},
+	changelogMessageCommandPathKeyConstant:     {changelogMessageOperationNameConstant},
 }
 
 var requiredOperationConfigurationNames = collectRequiredOperationConfigurationNames()
@@ -282,6 +285,7 @@ var operationNameAliases = map[string]string{
 	legacyRepoReleaseRetagCommandKeyConstant:       repoReleaseOperationNameConstant,
 	legacyRepoRmCommandKeyConstant:                 repoHistoryOperationNameConstant,
 	legacyBranchDefaultCommandKeyConstant:          branchDefaultOperationNameConstant,
+	legacyBranchDefaultTopLevelUseNameConstant:     branchDefaultOperationNameConstant,
 	legacyBranchChangeCommandKeyConstant:           branchChangeOperationNameConstant,
 	legacyBranchChangeAliasCommandKeyConstant:      branchChangeOperationNameConstant,
 	branchChangeLegacyTopLevelUseNameConstant:      branchChangeOperationNameConstant,
@@ -294,6 +298,8 @@ var operationAliasWarnings = map[string]string{
 	branchChangeLegacyTopLevelUseNameConstant:  "command configuration uses deprecated name \"branch-cd\"; update to \"cd\".",
 	branchRefreshLegacyTopLevelUseNameConstant: "command configuration uses deprecated name \"branch-refresh\"; update to \"cd\" with refresh options.",
 	legacyBranchRefreshCommandKeyConstant:      "command configuration uses deprecated name \"branch refresh\"; update to \"cd\" with refresh options.",
+	legacyBranchDefaultTopLevelUseNameConstant: "command configuration uses deprecated name \"branch-default\"; update to \"default\".",
+	legacyBranchDefaultCommandKeyConstant:      "command configuration uses deprecated name \"branch default\"; update to \"default\".",
 }
 
 type loggerOutputsFactory interface {
@@ -944,7 +950,7 @@ func NewApplication() *Application {
 	}
 
 	if branchDefaultNestedCommand, branchDefaultNestedError := branchDefaultBuilder.Build(); branchDefaultNestedError == nil {
-		configureCommandMetadata(branchDefaultNestedCommand, branchDefaultTopLevelUsageTemplateConstant, branchDefaultNestedCommand.Short, branchDefaultNestedLongDescriptionConstant)
+		configureCommandMetadata(branchDefaultNestedCommand, branchDefaultTopLevelUsageTemplateConstant, branchDefaultNestedCommand.Short, branchDefaultNestedLongDescriptionConstant, legacyBranchDefaultTopLevelUseNameConstant)
 		cobraCommand.AddCommand(branchDefaultNestedCommand)
 	}
 	if branchChangeCommand, branchChangeError := branchChangeBuilder.Build(); branchChangeError == nil {
