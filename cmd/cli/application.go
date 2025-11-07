@@ -101,7 +101,7 @@ const (
 	reposRemotesOperationNameConstant                                = "remote update-to-canonical"
 	reposProtocolOperationNameConstant                               = "remote update-protocol"
 	repoReleaseOperationNameConstant                                 = "release"
-	repoHistoryOperationNameConstant                                 = "rm"
+	repoHistoryOperationNameConstant                                 = "files rm"
 	repoFilesReplaceOperationNameConstant                            = "files replace"
 	repoFilesAddOperationNameConstant                                = "files add"
 	repoLicenseOperationNameConstant                                 = "license apply"
@@ -286,6 +286,7 @@ var operationNameAliases = map[string]string{
 	legacyRepoReleaseCommandKeyConstant:            repoReleaseOperationNameConstant,
 	legacyRepoReleaseRetagCommandKeyConstant:       repoReleaseOperationNameConstant,
 	legacyRepoRmCommandKeyConstant:                 repoHistoryOperationNameConstant,
+	removeCommandUseNameConstant:                   repoHistoryOperationNameConstant,
 	legacyBranchDefaultCommandKeyConstant:          branchDefaultOperationNameConstant,
 	legacyBranchDefaultTopLevelUseNameConstant:     branchDefaultOperationNameConstant,
 	legacyBranchChangeCommandKeyConstant:           branchChangeOperationNameConstant,
