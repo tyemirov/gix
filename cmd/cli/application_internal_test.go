@@ -247,6 +247,12 @@ func TestApplicationCommandHierarchyAndAliases(t *testing.T) {
 	require.NotNil(t, repoPackagesCommand.Parent())
 	require.Equal(t, "packages", repoPackagesCommand.Parent().Name())
 
+	filesRemoveCommand, _, filesRemoveError := rootCommand.Find([]string{"files", removeCommandUseNameConstant})
+	require.NoError(t, filesRemoveError)
+	require.Equal(t, removeCommandUseNameConstant, filesRemoveCommand.Name())
+	require.NotNil(t, filesRemoveCommand.Parent())
+	require.Equal(t, repoFilesNamespaceUseNameConstant, filesRemoveCommand.Parent().Name())
+
 	releaseCommand, _, releaseError := rootCommand.Find([]string{"release"})
 	require.NoError(t, releaseError)
 	require.Equal(t, "release", releaseCommand.Name())
@@ -272,6 +278,13 @@ func TestApplicationCommandHierarchyAndAliases(t *testing.T) {
 	require.Equal(t, "commit", commitMessageCommand.Parent().Name())
 	require.NotNil(t, commitMessageCommand.Parent().Parent())
 	require.Equal(t, applicationNameConstant, commitMessageCommand.Parent().Parent().Name())
+
+	legacyRemoveCommand, _, legacyRemoveError := rootCommand.Find([]string{removeCommandUseNameConstant})
+	require.NoError(t, legacyRemoveError)
+	require.Equal(t, removeCommandUseNameConstant, legacyRemoveCommand.Name())
+	require.NotNil(t, legacyRemoveCommand.Parent())
+	require.Equal(t, applicationNameConstant, legacyRemoveCommand.Parent().Name())
+	require.NotEmpty(t, legacyRemoveCommand.Deprecated)
 
 	changelogMessageCommand, _, changelogMessageError := rootCommand.Find([]string{"changelog", "message"})
 	require.NoError(t, changelogMessageError)
@@ -326,9 +339,17 @@ func TestApplicationHierarchicalCommandsLoadExpectedOperations(t *testing.T) {
 	require.NoError(t, packagesError)
 	require.Equal(t, []string{packagesPurgeOperationNameConstant}, application.operationsRequiredForCommand(repoPackagesCommand))
 
+	filesRemoveCommand, _, filesRemoveError := rootCommand.Find([]string{"files", removeCommandUseNameConstant})
+	require.NoError(t, filesRemoveError)
+	require.Equal(t, []string{repoHistoryOperationNameConstant}, application.operationsRequiredForCommand(filesRemoveCommand))
+
 	branchDefaultCommand, _, branchDefaultError := rootCommand.Find([]string{branchDefaultTopLevelUseNameConstant})
 	require.NoError(t, branchDefaultError)
 	require.Equal(t, []string{branchDefaultOperationNameConstant}, application.operationsRequiredForCommand(branchDefaultCommand))
+
+	legacyRemoveCommand, _, legacyRemoveError := rootCommand.Find([]string{removeCommandUseNameConstant})
+	require.NoError(t, legacyRemoveError)
+	require.Equal(t, []string{repoHistoryOperationNameConstant}, application.operationsRequiredForCommand(legacyRemoveCommand))
 
 	commitMessageCommand, _, commitMessageError := rootCommand.Find([]string{"commit", "message"})
 	require.NoError(t, commitMessageError)

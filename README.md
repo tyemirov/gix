@@ -340,7 +340,7 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
  - Writes the configured license file to every repository.
 - `gix namespace rewrite --old <module/prefix> --new <module/prefix> [--branch-prefix <prefix>] [--remote <name>] [--push] [--commit-message <text>] [--roots <dir>...] [-y]` (alias `ns`)
  - Rewrites Go module namespaces and imports.
-- `gix rm <path>... [--remote <name>] [--push] [--restore] [--push-missing] [--roots <dir>...] [-y]` (alias `purge`)
+- `gix files rm <path>... [--remote <name>] [--push] [--restore] [--push-missing] [--roots <dir>...] [-y]` (alias `purge`)
  - Purges paths from history using git-filter-repo and optionally force-pushes updates.
 - `gix release <tag> [--message <text>] [--remote <name>] [--roots <dir>...] [-y]` (alias `rel`)
  - Creates and pushes an annotated tag for each repository root.
@@ -370,7 +370,7 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
 
 - Go 1.25 or newer (matching the version pinned in CI).
 - Git 2.40+ (history rewrite features rely on modern plumbing commands).
-- [`git-filter-repo`](https://github.com/newren/git-filter-repo) installed on your `PATH`. It is required for `gix rm` and for running the repository integration tests locally (`pip install git-filter-repo` on Linux/macOS, or `brew install git-filter-repo` when using Homebrew).
+- [`git-filter-repo`](https://github.com/newren/git-filter-repo) installed on your `PATH`. It is required for `gix files rm` and for running the repository integration tests locally (`pip install git-filter-repo` on Linux/macOS, or `brew install git-filter-repo` when using Homebrew).
 
 ## Developer notes
 

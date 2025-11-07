@@ -198,6 +198,7 @@ const (
 	packagesDeleteCommandPathKeyConstant                             = repoPackagesNamespaceUseNameConstant + "/" + packagesDeleteCommandUseNameConstant
 	filesReplaceCommandPathKeyConstant                               = repoFilesNamespaceUseNameConstant + "/" + filesReplaceCommandUseNameConstant
 	filesAddCommandPathKeyConstant                                   = repoFilesNamespaceUseNameConstant + "/" + filesAddCommandUseNameConstant
+	filesRemoveCommandPathKeyConstant                                = repoFilesNamespaceUseNameConstant + "/" + removeCommandUseNameConstant
 	licenseApplyCommandPathKeyConstant                               = repoLicenseNamespaceUseNameConstant + "/" + licenseApplyCommandUseNameConstant
 	namespaceRewriteCommandPathKeyConstant                           = repoNamespaceRewriteNamespaceUseNameConstant + "/" + namespaceRewriteCommandUseNameConstant
 	releaseRetagCommandPathKeyConstant                               = repoReleaseCommandUseNameConstant + "/" + releaseRetagCommandUseNameConstant
@@ -254,6 +255,7 @@ var commandOperationRequirements = map[string][]string{
 	remoteProtocolCommandPathKeyConstant:     {reposProtocolOperationNameConstant},
 	repoReleaseCommandUseNameConstant:        {repoReleaseOperationNameConstant},
 	releaseRetagCommandPathKeyConstant:       {repoReleaseOperationNameConstant},
+	filesRemoveCommandPathKeyConstant:        {repoHistoryOperationNameConstant},
 	removeCommandUseNameConstant:             {repoHistoryOperationNameConstant},
 	filesReplaceCommandPathKeyConstant:       {repoFilesReplaceOperationNameConstant},
 	filesAddCommandPathKeyConstant:           {repoFilesAddOperationNameConstant},
@@ -294,6 +296,8 @@ var operationAliasWarnings = map[string]string{
 	branchChangeLegacyTopLevelUseNameConstant:  "command configuration uses deprecated name \"branch-cd\"; update to \"cd\".",
 	branchRefreshLegacyTopLevelUseNameConstant: "command configuration uses deprecated name \"branch-refresh\"; update to \"cd\" with refresh options.",
 	legacyBranchRefreshCommandKeyConstant:      "command configuration uses deprecated name \"branch refresh\"; update to \"cd\" with refresh options.",
+	removeCommandUseNameConstant:               "command configuration uses deprecated name \"rm\"; update to \"files rm\".",
+	legacyRepoRmCommandKeyConstant:             "command configuration uses deprecated name \"repo rm\"; update to \"files rm\".",
 }
 
 type loggerOutputsFactory interface {
@@ -892,6 +896,10 @@ func NewApplication() *Application {
 		configureCommandMetadata(filesAddCommand, filesAddCommandUseNameConstant, filesAddCommand.Short, filesAddCommandLongDescriptionConstant, filesAddCommandAliasConstant)
 		repoFilesCommand.AddCommand(filesAddCommand)
 	}
+	if filesRemoveCommand, filesRemoveBuildError := removeBuilder.Build(); filesRemoveBuildError == nil {
+		configureCommandMetadata(filesRemoveCommand, removeCommandUseNameConstant, removeCommandShortDescriptionConstant, removeCommandLongDescriptionConstant, removeCommandAliasConstant)
+		repoFilesCommand.AddCommand(filesRemoveCommand)
+	}
 	if len(repoFilesCommand.Commands()) > 0 {
 		cobraCommand.AddCommand(repoFilesCommand)
 	}
@@ -914,9 +922,10 @@ func NewApplication() *Application {
 		cobraCommand.AddCommand(repoNamespaceRewriteCommand)
 	}
 
-	if removeCommand, removeBuildError := removeBuilder.Build(); removeBuildError == nil {
-		configureCommandMetadata(removeCommand, removeCommandUseNameConstant, removeCommandShortDescriptionConstant, removeCommandLongDescriptionConstant, removeCommandAliasConstant)
-		cobraCommand.AddCommand(removeCommand)
+	if legacyRemoveCommand, legacyRemoveBuildError := removeBuilder.Build(); legacyRemoveBuildError == nil {
+		configureCommandMetadata(legacyRemoveCommand, removeCommandUseNameConstant, removeCommandShortDescriptionConstant, removeCommandLongDescriptionConstant, removeCommandAliasConstant)
+		legacyRemoveCommand.Deprecated = "command deprecated; use \"gix files rm\"."
+		cobraCommand.AddCommand(legacyRemoveCommand)
 	}
 
 	var releaseCommand *cobra.Command

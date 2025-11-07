@@ -53,6 +53,7 @@ const (
 	testWorkflowCommandKeyConstant                           = "workflow"
 	testRepoReleaseCommandKeyConstant                        = "release"
 	testBranchChangeCommandKeyConstant                       = "cd"
+	testFilesRemoveCommandKeyConstant                        = "files rm"
 	testCommitMessageCommandKeyConstant                      = "commit message"
 	testChangelogMessageCommandKeyConstant                   = "changelog message"
 	embeddedDefaultsBranchCleanupTestNameConstant            = "BranchCleanupDefaults"
@@ -104,6 +105,7 @@ var requiredCommandKeys = []string{
 	testWorkflowCommandKeyConstant,
 	testBranchDefaultCommandKeyConstant,
 	testBranchChangeCommandKeyConstant,
+	testFilesRemoveCommandKeyConstant,
 	testCommitMessageCommandKeyConstant,
 	testChangelogMessageCommandKeyConstant,
 }
