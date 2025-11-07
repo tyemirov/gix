@@ -20,10 +20,10 @@ import (
 )
 
 const (
-	commandUseConstant                  = "branch-default"
+	commandUseConstant                  = "default"
 	commandUseTemplateConstant          = commandUseConstant + " <target-branch>"
 	commandShortDescriptionConstant     = "Set the repository default branch"
-	commandLongDescriptionConstant      = "branch-default retargets workflows, updates GitHub configuration, and evaluates safety gates before promoting the requested branch, automatically detecting the current default branch."
+	commandLongDescriptionConstant      = "default retargets workflows, updates GitHub configuration, and evaluates safety gates before promoting the requested branch, automatically detecting the current default branch."
 	taskNameTemplateConstant            = "Promote default branch to %s"
 	taskActionBranchDefaultTypeConstant = "branch.default"
 	taskOptionTargetBranchKeyConstant   = "target"
@@ -38,7 +38,7 @@ type commandOptions struct {
 // LoggerProvider supplies a zap logger instance.
 type LoggerProvider func() *zap.Logger
 
-// CommandBuilder assembles the branch-default Cobra command backed by workflow tasks.
+// CommandBuilder assembles the default Cobra command backed by workflow tasks.
 type CommandBuilder struct {
 	LoggerProvider               LoggerProvider
 	Discoverer                   shared.RepositoryDiscoverer
@@ -51,7 +51,7 @@ type CommandBuilder struct {
 	TaskRunnerFactory            func(workflow.Dependencies) TaskRunnerExecutor
 }
 
-// Build constructs the branch-default command.
+// Build constructs the default command.
 func (builder *CommandBuilder) Build() (*cobra.Command, error) {
 	command := &cobra.Command{
 		Use:           commandUseTemplateConstant,

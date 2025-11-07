@@ -10,7 +10,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	changeloggen "github.com/temirov/gix/internal/changelog"
 	"github.com/temirov/gix/internal/execshell"
 	"github.com/temirov/gix/internal/gitrepo"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
@@ -31,7 +30,7 @@ func TestMessageCommandValidatesSinceInputs(t *testing.T) {
 				Model:     "mock-model",
 			}.Sanitize()
 		},
-		ClientFactory: func(config llm.Config) (changeloggen.ChatClient, error) {
+		ClientFactory: func(config llm.Config) (llm.ChatClient, error) {
 			return &fakeChatClient{}, nil
 		},
 	}
@@ -132,7 +131,7 @@ func TestMessageCommandOutputsChangelogOnce(t *testing.T) {
 				SinceReference: "",
 			}.Sanitize()
 		},
-		ClientFactory: func(config llm.Config) (changeloggen.ChatClient, error) {
+		ClientFactory: func(config llm.Config) (llm.ChatClient, error) {
 			client.config = config
 			return client, nil
 		},

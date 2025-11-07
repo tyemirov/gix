@@ -39,15 +39,10 @@ type Result struct {
 	Request llm.ChatRequest
 }
 
-// ChatClient issues chat completion requests.
-type ChatClient interface {
-	Chat(ctx context.Context, request llm.ChatRequest) (string, error)
-}
-
 // Generator produces changelog sections summarizing git history via an LLM.
 type Generator struct {
 	GitExecutor shared.GitExecutor
-	Client      ChatClient
+	Client      llm.ChatClient
 	Logger      *zap.Logger
 }
 
@@ -62,7 +57,7 @@ func (generator Generator) Generate(ctx context.Context, options Options) (Resul
 	}
 	response, llmError := generator.Client.Chat(ctx, request)
 	if llmError != nil {
-		return Result{}, llmError
+		return Result{}, fmt.Errorf("changelog generation.llm: %w", llmError)
 	}
 	section := strings.TrimSpace(response)
 	if section == "" {

@@ -8,7 +8,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	changeloggen "github.com/temirov/gix/internal/changelog"
 	"github.com/temirov/gix/internal/githubcli"
 	"github.com/temirov/gix/internal/gitrepo"
 	"github.com/temirov/gix/internal/repos/dependencies"
@@ -55,7 +54,7 @@ const (
 )
 
 // ClientFactory builds chat clients from configuration.
-type ClientFactory func(config llm.Config) (changeloggen.ChatClient, error)
+type ClientFactory func(config llm.Config) (llm.ChatClient, error)
 
 // MessageCommandBuilder assembles the changelog message command.
 type MessageCommandBuilder struct {
@@ -235,8 +234,8 @@ func (builder *MessageCommandBuilder) run(command *cobra.Command, arguments []st
 
 	clientFactory := builder.ClientFactory
 	if clientFactory == nil {
-		clientFactory = func(config llm.Config) (changeloggen.ChatClient, error) {
-			return llm.NewClient(config)
+		clientFactory = func(config llm.Config) (llm.ChatClient, error) {
+			return llm.NewFactory(config)
 		}
 	}
 

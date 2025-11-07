@@ -70,8 +70,8 @@ Capture metadata (default branches, owners, remotes, protocol mismatches) for ev
 ### Draft commit messages and changelog entries
 
 ```shell
-gix commit message --roots .
-gix changelog message --since-tag v1.2.0 --version v1.3.0
+gix message commit --roots .
+gix message changelog --since-tag v1.2.0 --version v1.3.0
 ```
 
 Use the reusable LLM client to summarise staged changes or recent history.
@@ -116,7 +116,7 @@ workflow:
 
  - step:
    name: default-branch
-   command: ["branch-default"]
+   command: ["default"]
    with:
     targets:
      - remote_name: origin
@@ -149,7 +149,7 @@ Run with: `gix workflow path/to/file.yaml --roots ~/Development [-y] [--require-
 - `folder rename`
  - with: `require_clean: <bool>`, `include_owner: <bool>`
  - CLI `--require-clean` provides a default when not specified.
-- `branch-default`
+- `default`
  - with: `targets: [{ remote_name, source_branch, target_branch, push_to_remote, delete_source_branch }]`
  - Defaults: `remote_name: origin`, `target_branch: master`, `push_to_remote: true`, `delete_source_branch: false`; `source_branch` auto-detected from remote/local if omitted.
 - `audit report`
@@ -231,7 +231,7 @@ workflow:
 Notes:
 
 - The namespace rewrite step commits and pushes changes when `push: true` is set.
-- Generating the commit message via LLM inside a workflow is not yet supported. You can either supply a static `commit_message` (as above) or generate one per repository using `gix commit message` before running the workflow. See ISSUES.md for the improvement request to support LLM in workflows and piping outputs between steps.
+- Generating the commit message via LLM inside a workflow is not yet supported. You can either supply a static `commit_message` (as above) or generate one per repository using `gix message commit` before running the workflow. See ISSUES.md for the improvement request to support LLM in workflows and piping outputs between steps.
 
 ### Apply tasks (custom sequences)
 
@@ -346,11 +346,11 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
  - Creates and pushes an annotated tag for each repository root.
 - `gix release retag --map <tag=ref> [--map <tag=ref>...] [--message-template <text>] [--remote <name>] [--roots <dir>...] [-y]` (alias `fix`)
  - Reassigns existing release tags to provided commits and force-pushes updates.
-- `gix changelog message [--version <v>] [--release-date YYYY-MM-DD] [--since-tag <ref>] [--since-date <ts>] [--max-tokens <N>] [--temperature <0-2>] [--model <id>] [--base-url <url>] [--api-key-env <NAME>] [--timeout-seconds <N>] [--roots <dir>...]` (aliases `section`, `msg`)
+- `gix message changelog [--version <v>] [--release-date YYYY-MM-DD] [--since-tag <ref>] [--since-date <ts>] [--max-tokens <N>] [--temperature <0-2>] [--model <id>] [--base-url <url>] [--api-key-env <NAME>] [--timeout-seconds <N>] [--roots <dir>...]` (aliases `section`)
  - Generates a changelog section from git history using the configured LLM.
-- `gix commit message [--diff-source staged|worktree] [--max-tokens <N>] [--temperature <0-2>] [--model <id>] [--base-url <url>] [--api-key-env <NAME>] [--timeout-seconds <N>] [--roots <dir>...]` (alias `msg`)
+- `gix message commit [--diff-source staged|worktree] [--max-tokens <N>] [--temperature <0-2>] [--model <id>] [--base-url <url>] [--api-key-env <NAME>] [--timeout-seconds <N>] [--roots <dir>...]` (alias `msg`)
  - Drafts Conventional Commit subjects and optional bullets using the configured LLM.
-- `gix branch-default <target-branch> [--roots <dir>...] [-y]`
+- `gix default <target-branch> [--roots <dir>...] [-y]`
  - Promotes the default branch across repositories.
 - `gix cd [branch] [--remote <name>] [--refresh] [--stash | --commit] [--require-clean] [--roots <dir>...]` (aliases `switch`, `branch-cd`)
  - Switches repositories to the selected branch when provided, or the repository default when omitted. Creates the branch if missing, rebases onto the remote, and, when `--refresh` is enabled, fetches/pulls with optional stash/commit recovery.

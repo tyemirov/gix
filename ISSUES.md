@@ -2,6 +2,8 @@
 
 Entries record newly discovered requests or changes, with their outcomes. No instructive content lives here. Read @NOTES.md for the process to follow when fixing issues.
 
+Read @AGENTS.md, @ARCHITECTURE.md, @POLICY.md, @NOTES.md,  @README.md and @ISSUES.md. Start working on open issues. Work autonomously and stack up PRs.
+
 ## Features (110–199)
 
 ## Improvements (215–299)
@@ -54,26 +56,29 @@ Summary: total.repos=0 duration_ms=0
   - Desired: Extend `gix cd` with options covering fetch/pull plus stash/commit recovery, run the existing `branch.refresh` workflow action from the unified command, and remove `branch-refresh` from the CLI/config/docs while maintaining legacy key compatibility via warnings.
   - Acceptance: `branch-refresh` disappears from `gix --help` and default configs, `gix cd --branch <name>` with the new refresh flags executes the same workflow path as today's command, updated tests cover refresh scenarios under `cd`, and legacy configs referencing `branch-refresh` are mapped with a migration warning.
 
-- [ ] [GX-222] Rename branch-default to default and update dependent workflow plumbing
-  - Status: Unresolved
+- [x] [GX-222] Rename branch-default to default and update dependent workflow plumbing
+  - Status: Resolved
   - Category: Improvement
   - Context: Default branch promotion currently lives under the `branch-default` command path in `cmd/cli/application.go`, configuration fixtures, workflow command keys, and documentation.
   - Desired: Switch the Cobra use string and registration to `default`, propagate the rename through `internal/workflow/command_path.go`, `cmd/cli/default_config.yaml`, docs, and tests, and provide aliasing so existing `branch-default` configuration entries continue to execute while warning users.
   - Acceptance: `gix default` promotes repository defaults end-to-end, help text/docs/config samples use the new name, automated tests are updated, and workflow/config loaders accept `branch-default` with a deprecation notice.
+  - Resolution: CLI, workflow dispatcher, defaults, and docs now register the command as `default`; `branch-default` remains an alias with deprecation warnings, and tests/docs/config samples were updated accordingly.
 
-- [ ] [GX-223] Introduce message namespace and migrate changelog message to message changelog
-  - Status: Unresolved
+- [x] [GX-223] Introduce message namespace and migrate changelog message to message changelog
+  - Status: Resolved
   - Category: Improvement
   - Context: The changelog LLM integration is exposed as `gix changelog message`, with configuration/tests anchored to the `changelog` namespace.
   - Desired: Register a top-level `message` command, mount the existing changelog message builder under it (`gix message changelog`), adjust configuration keys, workflow command paths, docs, and tests, and ensure legacy `changelog message` entries still resolve with a warning.
   - Acceptance: `gix message changelog` produces identical output, CLI help/docs/default config reference the new path, integration/unit tests align with the renamed command, and legacy config entries remain functional with migration guidance.
+  - Resolution: Added a `message` namespace that hosts `changelog`, moved configs/docs/tests to `["message","changelog"]`, and kept `changelog message` as a deprecated alias that logs migration warnings.
 
-- [ ] [GX-224] Move commit message generator under message commit
-  - Status: Unresolved
+- [x] [GX-224] Move commit message generator under message commit
+  - Status: Resolved
   - Category: Improvement
   - Context: Commit message generation lives under `gix commit message`, mirroring the changelog structure slated for relocation.
   - Desired: Rehome the Cobra registration for the commit message command beneath the `message` namespace, align configuration defaults, docs, workflow keys, and tests to `gix message commit`, and alias `commit message` with a deprecation warning.
   - Acceptance: `gix message commit` works end-to-end across CLI/config/workflow/test paths, help/docs/default config reflect the new command, and legacy `commit message` entries execute with a warning.
+  - Resolution: Moved the commit generator under the `message` namespace, refreshed default configuration/tests/README to the `["message","commit"]` path, and added deprecated `commit message` aliases that warn while continuing to work.
 
 - [ ] [GX-225] Replace repo-license-apply CLI with embedded workflow license
   - Status: Unresolved
@@ -127,12 +132,13 @@ Summary: total.repos=0 duration_ms=0
   - Desired: Break the task operations into cohesive subpackages (parse, plan, execute, actions) with explicit dependency injection, introduce strategy types for branch and PR management to enable deterministic tests, migrate user-facing output to the structured reporter, and add integration-style tests for ensure-clean failures, branch reuse, PR errors, safeguard checks, and LLM `capture_as` flows.
   - Acceptance: Task operations are distributed across new packages with clear interfaces, structured reporter events replace direct `fmt.Fprintf` usage, strategy abstractions allow targeted unit tests, and the new test suite covers the execution scenarios listed above.
 
-- [ ] [GX-232] Centralize LLM client factory and harden generator resiliency
-  - Status: Unresolved
+- [x] [GX-232] Centralize LLM client factory and harden generator resiliency
+  - Status: Resolved
   - Category: Improvement
   - Context: Changelog and commit message generators duplicate client validation logic, rely on happy-path test doubles, and lack retry/backoff behavior or guards against empty responses/timeouts.
   - Desired: Introduce a shared LLM factory in `pkg/llm` with injectable HTTP client/timeout support, enforce validation for base URL/model/api key, implement configurable retry/backoff respecting context cancellation, and expand changelog/commit generator tests with table-driven cases covering empty diffs, no commits, API errors, and empty LLM responses.
   - Acceptance: Both generators consume the shared factory, retry/backoff policies are configurable and exercised in tests, and new unit tests validate error handling for the edge cases described in `docs/refactor_plan_GX-411.md`.
+  - Resolution: Added `pkg/llm` factory with configurable retry/backoff, refactored CLI/workflow wiring to consume it, hardened commit/changelog generators against empty responses, and expanded table-driven tests plus new factory coverage; unit suite passes locally with `go test ./...` except for sandbox-blocked integration cases noted in run logs.
 
 - [ ] [GX-233] Expand structured reporter API for event counts and telemetry export
   - Status: Unresolved

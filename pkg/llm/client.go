@@ -23,6 +23,11 @@ type HTTPClient interface {
 	Do(request *http.Request) (*http.Response, error)
 }
 
+// ChatClient issues chat completion requests.
+type ChatClient interface {
+	Chat(ctx context.Context, request ChatRequest) (string, error)
+}
+
 // Config configures an LLM client.
 type Config struct {
 	BaseURL             string
@@ -32,6 +37,10 @@ type Config struct {
 	Temperature         float64
 	HTTPClient          HTTPClient
 	RequestTimeout      time.Duration
+	RetryAttempts       int
+	RetryInitialBackoff time.Duration
+	RetryMaxBackoff     time.Duration
+	RetryBackoffFactor  float64
 }
 
 // Client communicates with an LLM chat completion endpoint.
@@ -213,7 +222,7 @@ func (client *Client) Chat(ctx context.Context, request ChatRequest) (string, er
 	if refusal != "" {
 		return "", fmt.Errorf("llm refusal: %s (status=%d body=%s)", refusal, httpResponse.StatusCode, bodyPreview)
 	}
-	return "", fmt.Errorf("llm response empty (status=%d body=%s)", httpResponse.StatusCode, bodyPreview)
+	return "", fmt.Errorf("llm response empty (status=%d body=%s): %w", httpResponse.StatusCode, bodyPreview, ErrEmptyResponse)
 }
 
 func (client *Client) buildRequestPayload(request ChatRequest) chatCompletionRequest {

@@ -2,6 +2,7 @@ package changelog
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -181,6 +182,70 @@ func TestBuildRequestReturnsErrNoChanges(t *testing.T) {
 		Version:        "v0.3.0",
 	})
 	require.ErrorIs(t, err, ErrNoChanges)
+}
+
+func TestChangelogGenerateHandlesLLMResponses(t *testing.T) {
+	testCases := []struct {
+		name          string
+		client        *stubChatClient
+		expectedError string
+		expectedSec   string
+	}{
+		{
+			name:        "success trims whitespace",
+			client:      &stubChatClient{response: "  ## [v0.3.0]\n- change  "},
+			expectedSec: "## [v0.3.0]\n- change",
+		},
+		{
+			name:          "empty response",
+			client:        &stubChatClient{response: " \n "},
+			expectedError: "empty changelog section",
+		},
+		{
+			name:          "llm error surfaces",
+			client:        &stubChatClient{err: errors.New("timeout")},
+			expectedError: "timeout",
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			executor := &stubGitExecutor{
+				responses: map[string]stubResponse{
+					"describe --tags --abbrev=0": {
+						output: "v0.2.0\n",
+					},
+					"log --no-merges --date=short --pretty=format:%h %ad %an %s --max-count=200 v0.2.0..HEAD": {
+						output: "abc123 2025-10-01 Alice Add feature support\n",
+					},
+					"diff --stat v0.2.0..HEAD": {
+						output: " internal/app.go | 10 +++++-----\n",
+					},
+					"diff --unified=3 v0.2.0..HEAD": {
+						output: "diff --git a/internal/app.go b/internal/app.go\n",
+					},
+				},
+			}
+
+			generator := Generator{
+				GitExecutor: executor,
+				Client:      tc.client,
+			}
+
+			result, err := generator.Generate(context.Background(), Options{
+				RepositoryPath: "/tmp/repo",
+				Version:        "v0.3.0",
+			})
+			if tc.expectedError != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.expectedError)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedSec, result.Section)
+		})
+	}
 }
 
 type stubResponse struct {

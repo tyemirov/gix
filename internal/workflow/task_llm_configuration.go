@@ -33,7 +33,7 @@ type TaskLLMClientConfiguration struct {
 	timeout             time.Duration
 
 	clientOnce sync.Once
-	client     *llm.Client
+	client     llm.ChatClient
 	clientErr  error
 }
 
@@ -96,7 +96,7 @@ func buildTaskLLMConfiguration(reader optionReader) (*TaskLLMClientConfiguration
 }
 
 // Client returns a cached LLM client configured from the workflow options.
-func (configuration *TaskLLMClientConfiguration) Client() (*llm.Client, error) {
+func (configuration *TaskLLMClientConfiguration) Client() (llm.ChatClient, error) {
 	if configuration == nil {
 		return nil, errors.New("llm client configuration is not available")
 	}
@@ -121,7 +121,7 @@ func (configuration *TaskLLMClientConfiguration) Client() (*llm.Client, error) {
 			clientConfiguration.Temperature = configuration.temperature
 		}
 
-		client, clientErr := llm.NewClient(clientConfiguration)
+		client, clientErr := llm.NewFactory(clientConfiguration)
 		if clientErr != nil {
 			configuration.clientErr = clientErr
 			return

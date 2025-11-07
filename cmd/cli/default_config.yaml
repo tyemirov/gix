@@ -50,7 +50,7 @@ operations:
     with:
       roots:
         - .
-  - command: ["branch-default"]
+  - command: ["default"]
     with:
       roots:
         - .
@@ -60,7 +60,7 @@ operations:
         - .
       remote: origin
       branch: master
-  - command: ["commit", "message"]
+  - command: ["message", "commit"]
     with:
       roots:
         - .
@@ -70,7 +70,7 @@ operations:
       max_completion_tokens: 256
       temperature: 0.2
       timeout_seconds: 60
-  - command: ["changelog", "message"]
+  - command: ["message", "changelog"]
     with:
       roots:
         - .

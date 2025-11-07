@@ -4,7 +4,7 @@ import "strings"
 
 const (
 	commandAuditReportKey                     = "audit report"
-	commandBranchDefaultKey                   = "branch-default"
+	commandDefaultKey                         = "default"
 	commandFolderRenameKey                    = "folder rename"
 	commandRemoteCanonicalKey                 = "remote update-to-canonical"
 	commandRemoteConvertProtocolKey           = "remote update-protocol"
@@ -13,6 +13,7 @@ const (
 	legacyCommandRepoFolderRenameKey          = "repo folder rename"
 	legacyCommandRepoRemoteCanonicalKey       = "repo remote update-to-canonical"
 	legacyCommandRepoRemoteConvertProtocolKey = "repo remote update-protocol"
+	legacyCommandBranchDefaultHyphenKey       = "branch-default"
 	legacyCommandBranchDefaultKey             = "branch default"
 )
 

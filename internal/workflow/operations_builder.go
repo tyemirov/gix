@@ -12,7 +12,7 @@ const (
 	protocolConversionInvalidFromMessageConstant  = "remote update-protocol step requires a valid 'from' protocol"
 	protocolConversionInvalidToMessageConstant    = "remote update-protocol step requires a valid 'to' protocol"
 	protocolConversionSameProtocolMessageConstant = "remote update-protocol step requires distinct source and target protocols"
-	branchMigrationTargetsRequiredMessageConstant = "branch-default step requires at least one target"
+	branchMigrationTargetsRequiredMessageConstant = "default step requires at least one target"
 )
 
 // BuildOperations converts the declarative configuration into executable operations with dependency metadata.
@@ -95,7 +95,7 @@ func buildOperationFromStep(step StepConfiguration) (Operation, error) {
 		return buildCanonicalRemoteOperation(normalizedOptions)
 	case commandFolderRenameKey, legacyCommandRepoFolderRenameKey:
 		return buildRenameOperation(normalizedOptions)
-	case commandBranchDefaultKey, legacyCommandBranchDefaultKey:
+	case commandDefaultKey, legacyCommandBranchDefaultHyphenKey, legacyCommandBranchDefaultKey:
 		return buildBranchMigrationOperation(normalizedOptions)
 	case commandAuditReportKey:
 		return buildAuditReportOperation(normalizedOptions)

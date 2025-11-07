@@ -135,7 +135,7 @@ operations:
         - ~/Development
       assume_yes: false
 
-  - command: ["branch-default"]
+  - command: ["default"]
     with: &branch_default_defaults
       debug: false
       roots:
@@ -162,7 +162,7 @@ workflow:
 
   - step:
       order: 4
-      command: ["branch-default"]
+      command: ["default"]
       with:
         <<: *branch_default_defaults
         targets:

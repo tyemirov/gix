@@ -10,13 +10,12 @@ import (
 
 	"github.com/temirov/gix/internal/changelog"
 	"github.com/temirov/gix/internal/commitmsg"
+	"github.com/temirov/gix/pkg/llm"
 )
 
 const (
 	taskActionCommitMessage    = "commit.message.generate"
 	taskActionChangelog        = "changelog.message.generate"
-	commitPlanTemplate         = "%s\n\n%s\n"
-	changelogPlanTemplate      = "%s\n\n%s\n"
 	commitOptionDiffSource     = "diff_source"
 	commitOptionMaxTokens      = "max_tokens"
 	commitOptionTemperature    = "temperature"
@@ -74,14 +73,14 @@ func handleCommitMessageAction(ctx context.Context, environment *Environment, re
 		Logger:      environment.Logger,
 	}
 
-	request, requestErr := generator.BuildRequest(ctx, commitmsg.Options{
+	result, generateErr := generator.Generate(ctx, commitmsg.Options{
 		RepositoryPath: repository.Path,
 		Source:         diffSource,
 		MaxTokens:      maxTokens,
 		Temperature:    temperature,
 	})
-	if requestErr != nil {
-		return requestErr
+	if generateErr != nil {
+		return generateErr
 	}
 
 	output := environment.Output
@@ -89,14 +88,8 @@ func handleCommitMessageAction(ctx context.Context, environment *Environment, re
 		output = io.Discard
 	}
 
-	response, chatErr := client.Chat(ctx, request)
-	if chatErr != nil {
-		return chatErr
-	}
-
-	trimmedResponse := strings.TrimSpace(response)
-	fmt.Fprintln(output, trimmedResponse)
-	return captureActionOutput(environment, parameters, trimmedResponse)
+	fmt.Fprintln(output, result.Message)
+	return captureActionOutput(environment, parameters, result.Message)
 }
 
 func handleChangelogAction(ctx context.Context, environment *Environment, repository *RepositoryState, parameters map[string]any) error {
@@ -157,9 +150,9 @@ func handleChangelogAction(ctx context.Context, environment *Environment, reposi
 		Temperature:    temperature,
 	}
 
-	request, requestErr := generator.BuildRequest(ctx, options)
-	if requestErr != nil {
-		return requestErr
+	result, generateErr := generator.Generate(ctx, options)
+	if generateErr != nil {
+		return generateErr
 	}
 
 	output := environment.Output
@@ -167,23 +160,17 @@ func handleChangelogAction(ctx context.Context, environment *Environment, reposi
 		output = io.Discard
 	}
 
-	response, chatErr := client.Chat(ctx, request)
-	if chatErr != nil {
-		return chatErr
-	}
-
-	trimmedResponse := strings.TrimSpace(response)
-	fmt.Fprintln(output, trimmedResponse)
-	return captureActionOutput(environment, parameters, trimmedResponse)
+	fmt.Fprintln(output, result.Section)
+	return captureActionOutput(environment, parameters, result.Section)
 }
 
-func extractCommitClient(options map[string]any) (commitmsg.ChatClient, error) {
+func extractCommitClient(options map[string]any) (llm.ChatClient, error) {
 	rawClient, ok := options[commitOptionClient]
 	if !ok {
 		return nil, errors.New("commit message action requires client option")
 	}
 	switch typed := rawClient.(type) {
-	case commitmsg.ChatClient:
+	case llm.ChatClient:
 		return typed, nil
 	case *TaskLLMClientConfiguration:
 		if typed == nil {
@@ -199,13 +186,13 @@ func extractCommitClient(options map[string]any) (commitmsg.ChatClient, error) {
 	}
 }
 
-func extractChangelogClient(options map[string]any) (changelog.ChatClient, error) {
+func extractChangelogClient(options map[string]any) (llm.ChatClient, error) {
 	rawClient, ok := options[changelogOptionClient]
 	if !ok {
 		return nil, errors.New("changelog action requires client option")
 	}
 	switch typed := rawClient.(type) {
-	case changelog.ChatClient:
+	case llm.ChatClient:
 		return typed, nil
 	case *TaskLLMClientConfiguration:
 		if typed == nil {

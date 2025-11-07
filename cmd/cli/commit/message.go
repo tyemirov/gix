@@ -45,7 +45,7 @@ const (
 )
 
 // ClientFactory builds chat clients from configuration.
-type ClientFactory func(config llm.Config) (commitmsg.ChatClient, error)
+type ClientFactory func(config llm.Config) (llm.ChatClient, error)
 
 // MessageCommandBuilder assembles the commit message command.
 type MessageCommandBuilder struct {
@@ -184,8 +184,8 @@ func (builder *MessageCommandBuilder) run(command *cobra.Command, arguments []st
 
 	clientFactory := builder.ClientFactory
 	if clientFactory == nil {
-		clientFactory = func(config llm.Config) (commitmsg.ChatClient, error) {
-			return llm.NewClient(config)
+		clientFactory = func(config llm.Config) (llm.ChatClient, error) {
+			return llm.NewFactory(config)
 		}
 	}
 
