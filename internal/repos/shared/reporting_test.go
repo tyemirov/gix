@@ -2,6 +2,7 @@ package shared
 
 import (
 	"bytes"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -47,4 +48,56 @@ func TestStructuredReporterRecordRepositoryIncludesObservedRoots(t *testing.T) {
 	require.Contains(t, summary, "Summary: total.repos=1")
 	require.Contains(t, summary, "WARN=0")
 	require.Contains(t, summary, "ERROR=0")
+}
+
+func TestStructuredReporterRecordEventCountsWithoutEmittingLogs(t *testing.T) {
+	reporter := NewStructuredReporter(&bytes.Buffer{}, &bytes.Buffer{}, WithRepositoryHeaders(false))
+
+	reporter.RecordEvent("workflow_operation_success", EventLevelInfo)
+	reporter.RecordEvent("workflow_operation_success", EventLevelInfo)
+	reporter.RecordEvent("workflow_operation_failure", EventLevelError)
+
+	summary := reporter.Summary()
+	require.Contains(t, summary, "WORKFLOW_OPERATION_SUCCESS=2")
+	require.Contains(t, summary, "WORKFLOW_OPERATION_FAILURE=1")
+	require.Contains(t, summary, "ERROR=1")
+}
+
+func TestStructuredReporterSummaryDataIncludesOperationDurations(t *testing.T) {
+	currentTime := time.Date(2025, time.January, 5, 10, 15, 0, 0, time.UTC)
+	now := func() time.Time {
+		return currentTime
+	}
+
+	reporter := NewStructuredReporter(&bytes.Buffer{}, &bytes.Buffer{}, WithRepositoryHeaders(false), WithNowProvider(now))
+	reporter.RecordRepository("tyemirov/demo", "/tmp/repos/demo")
+
+	reporter.RecordOperationDuration("namespace", 1500*time.Millisecond)
+	reporter.RecordOperationDuration("namespace", 500*time.Millisecond)
+	reporter.RecordOperationDuration("remote", 250*time.Millisecond)
+
+	currentTime = currentTime.Add(3 * time.Second)
+
+	data := reporter.SummaryData()
+	require.Equal(t, 1, data.TotalRepositories)
+	require.EqualValues(t, 3000, data.DurationMilliseconds)
+	require.Equal(t, "3s", data.DurationHuman)
+
+	namespaceTiming, exists := data.OperationDurations["namespace"]
+	require.True(t, exists)
+	require.Equal(t, 2, namespaceTiming.Count)
+	require.EqualValues(t, 2000, namespaceTiming.TotalDurationMilliseconds)
+	require.EqualValues(t, 1000, namespaceTiming.AverageDurationMilliseconds)
+
+	remoteTiming, exists := data.OperationDurations["remote"]
+	require.True(t, exists)
+	require.Equal(t, 1, remoteTiming.Count)
+	require.EqualValues(t, 250, remoteTiming.TotalDurationMilliseconds)
+	require.EqualValues(t, 250, remoteTiming.AverageDurationMilliseconds)
+
+	require.NotNil(t, data.EventCounts)
+
+	serialized, err := json.Marshal(data)
+	require.NoError(t, err)
+	require.Contains(t, string(serialized), "\"total_repositories\":1")
 }

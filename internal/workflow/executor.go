@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -49,6 +50,7 @@ type RuntimeOptions struct {
 	CaptureInitialWorktreeStatus         bool
 	// SkipRepositoryMetadata disables GitHub metadata resolution during repository inspections.
 	SkipRepositoryMetadata bool
+	Variables              map[string]string
 }
 
 // Executor coordinates workflow operation execution.
@@ -253,6 +255,11 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 		Variables:         NewVariableStore(),
 	}
 	environment.State = state
+	if len(runtimeOptions.Variables) > 0 && environment.Variables != nil {
+		for key, value := range runtimeOptions.Variables {
+			environment.Variables.Set(VariableName(key), value)
+		}
+	}
 
 	var (
 		failureMu sync.Mutex
@@ -289,9 +296,28 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 			}
 
 			waitGroup.Add(1)
-			go func(operation Operation) {
+			go func(operationNode *OperationNode) {
 				defer waitGroup.Done()
-				if executeError := operation.Execute(executionContext, environment, state); executeError != nil {
+				operation := operationNode.Operation
+				if operation == nil {
+					return
+				}
+
+				operationLabel := strings.TrimSpace(operationNode.Name)
+				if len(operationLabel) == 0 {
+					operationLabel = strings.TrimSpace(operation.Name())
+				}
+				startTime := time.Now()
+				executeError := operation.Execute(executionContext, environment, state)
+				executionDuration := time.Since(startTime)
+				if reporter != nil {
+					reporter.RecordOperationDuration(operationLabel, executionDuration)
+				}
+
+				if executeError != nil {
+					if reporter != nil {
+						reporter.RecordEvent(shared.EventCodeWorkflowOperationFailure, shared.EventLevelError)
+					}
 					subErrors := collectOperationErrors(executeError)
 					if len(subErrors) == 0 {
 						subErrors = []error{executeError}
@@ -307,14 +333,23 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 						failures = append(failures, recordedOperationFailure{name: operation.Name(), err: failureErr, message: formatted})
 					}
 					failureMu.Unlock()
+					return
 				}
-			}(node.Operation)
+
+				if reporter != nil {
+					reporter.RecordEvent(shared.EventCodeWorkflowOperationSuccess, shared.EventLevelInfo)
+				}
+			}(node)
 		}
 
 		waitGroup.Wait()
 	}
 
 	if reporter != nil {
+		summaryData := reporter.SummaryData()
+		if executor.dependencies.Logger != nil {
+			executor.dependencies.Logger.Info("workflow_summary", zap.Any("summary", summaryData))
+		}
 		reporter.PrintSummary()
 	}
 

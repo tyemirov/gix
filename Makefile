@@ -1,12 +1,12 @@
 GO_SOURCES := $(shell find . -name '*.go' -not -path "./vendor/*" -not -path "./.git/*" -not -path "*/.git/*")
-UNIT_PACKAGES := $(shell go list ./... | grep -v '/tests$$')
+FAST_TEST_PACKAGES := $(shell go list ./... | grep -v '/tests$$')
 RELEASE_TARGETS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
 RELEASE_DIRECTORY := dist
 RELEASE_BINARY_NAME := gix
 STATICCHECK_MODULE := honnef.co/go/tools/cmd/staticcheck@master
 INEFFASSIGN_MODULE := github.com/gordonklaus/ineffassign@latest
 
-.PHONY: format check-format lint test test-unit test-integration build release ci
+.PHONY: format check-format lint test test-unit test-integration test-fast test-slow build release ci
 
 format:
 	gofmt -w $(GO_SOURCES)
@@ -24,13 +24,17 @@ lint:
 	go run $(STATICCHECK_MODULE) ./...
 	go run $(INEFFASSIGN_MODULE) ./...
 
-test-unit:
-	go test $(UNIT_PACKAGES)
+test-fast:
+	go test $(FAST_TEST_PACKAGES)
 
-test-integration:
+test-slow:
 	go test ./tests
 
-test: test-unit test-integration
+test-unit: test-fast
+
+test-integration: test-slow
+
+test: test-fast test-slow
 
 build:
 	mkdir -p bin
@@ -47,4 +51,4 @@ release:
 		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -o $$output_path .; \
 	done
 
-ci: check-format lint test
+ci: check-format lint test-fast test-slow

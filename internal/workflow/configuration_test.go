@@ -298,3 +298,13 @@ func TestLoadConfigurationMissingCommand(testInstance *testing.T) {
 	require.Error(testInstance, loadError)
 	require.ErrorContains(testInstance, loadError, "workflow step missing command path")
 }
+
+func TestParseConfiguration(t *testing.T) {
+	configuration, parseError := workflow.ParseConfiguration([]byte(inlineWorkflowConfiguration))
+	require.NoError(t, parseError)
+	require.Len(t, configuration.Steps, 1)
+	require.Equal(t, []string{"remote", "update-to-canonical"}, configuration.Steps[0].Command)
+
+	_, invalidError := workflow.ParseConfiguration([]byte(invalidWorkflowMappingConfiguration))
+	require.Error(t, invalidError)
+}

@@ -60,8 +60,8 @@ const (
 	workflowIntegrationConfigFlagCaseName         = "config_flag_without_positional"
 	workflowIntegrationRepositoryConfigCase       = "repository_root_configuration"
 	workflowIntegrationHelpCaseName               = "workflow_help_missing_configuration"
-	workflowIntegrationUsageSnippet               = "workflow <configuration>"
-	workflowIntegrationMissingConfigMessage       = "workflow configuration path required; provide a positional argument or --config flag"
+	workflowIntegrationUsageSnippet               = "workflow <configuration|preset>"
+	workflowIntegrationMissingConfigMessage       = "workflow configuration path or preset name required; provide a positional argument or --config flag"
 )
 
 func TestWorkflowRunIntegration(testInstance *testing.T) {

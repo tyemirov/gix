@@ -51,6 +51,15 @@ func LoadConfiguration(filePath string) (Configuration, error) {
 		return Configuration{}, fmt.Errorf(configurationLoadErrorTemplateConstant, readError)
 	}
 
+	return parseConfiguration(contentBytes)
+}
+
+// ParseConfiguration loads the workflow definition from raw bytes and validates its structure.
+func ParseConfiguration(contentBytes []byte) (Configuration, error) {
+	return parseConfiguration(contentBytes)
+}
+
+func parseConfiguration(contentBytes []byte) (Configuration, error) {
 	var parsedWorkflow workflowFile
 	if unmarshalError := yaml.Unmarshal(contentBytes, &parsedWorkflow); unmarshalError != nil {
 		return Configuration{}, fmt.Errorf(configurationParseErrorTemplateConstant, unmarshalError)

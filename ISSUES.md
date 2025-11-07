@@ -80,13 +80,14 @@ Summary: total.repos=0 duration_ms=0
   - Acceptance: `gix message commit` works end-to-end across CLI/config/workflow/test paths, help/docs/default config reflect the new command, and legacy `commit message` entries execute with a warning.
   - Resolution: Moved the commit generator under the `message` namespace, refreshed default configuration/tests/README to the `["message","commit"]` path, and added deprecated `commit message` aliases that warn while continuing to work.
 
-- [ ] [GX-225] Replace repo-license-apply CLI with embedded workflow license
-  - Status: Unresolved
+- [x] [GX-225] Replace repo-license-apply CLI with embedded workflow license
+  - Status: Resolved
   - Category: Improvement
   - Dependencies: Blocked by [GX-228]
   - Context: License distribution currently depends on the standalone `repo-license-apply` command (`cmd/cli/repos/license.go`) plus associated config and tests.
   - Desired: Encode the license distribution steps as an embedded workflow, expose it via the enhanced workflow command (e.g., `gix workflow license`), remove the direct CLI entry, and update docs/config/tests while mapping legacy command usage to the workflow with warnings.
   - Acceptance: Invoking the builtin workflow performs the same operations as the former command, new docs/config samples highlight the workflow, automated coverage exercises the workflow path, and legacy command/config paths delegate to the workflow with migration guidance.
+  - Resolution: Added a `license` preset driven by workflow variables (`license_content`, `license_target`, etc.), deprecated `gix repo-license-apply` so it now warns and delegates to the preset, updated README/docs with variable guidance, and ensured workflow runtime variables (GX-236) unlock the same switches as the legacy flags.
 
 - [ ] [GX-226] Replace namespace CLI command with embedded workflow namespace
   - Status: Unresolved
@@ -103,12 +104,13 @@ Summary: total.repos=0 duration_ms=0
   - Desired: Introduce a `files` namespace that hosts the history removal command as `gix files rm`, propagate the rename through configuration/workflow mappings/docs/tests, and alias `rm` with a warning for existing configs.
   - Acceptance: `gix files rm` executes the same task runner path as today's command, CLI help/docs/default config show the nested path, automated tests updated, and legacy `rm` entries map to the new command with migration guidance.
 
-- [ ] [GX-228] Extend workflow command to support invoking embedded workflows by name
-  - Status: Unresolved
+- [x] [GX-228] Extend workflow command to support invoking embedded workflows by name
+  - Status: Resolved
   - Category: Improvement
   - Context: `cmd/cli/workflow/run.go` only accepts external YAML/JSON paths and cannot surface bundled presets, yet GX-323 asks for predefined workflows (license, namespace, etc.).
   - Desired: Embed a catalog of workflow definitions in the binary, extend `gix workflow` to list and run presets (alongside existing file-based execution), document the behavior, and cover it with tests so downstream issues (GX-225, GX-226) can rely on the feature.
   - Acceptance: Users can discover and invoke built-in workflows without supplying files, legacy file-based execution continues to function, docs showcase both modes, and tests exercise preset selection plus backward compatibility.
+  - Resolution: Added an embedded preset catalog (seeded with the initial `license` workflow), introduced `gix workflow --list-presets`/`gix workflow <preset>`, updated README guidance, and expanded workflow command tests to cover preset execution and listing while keeping file-based configs untouched.
 
 - [ ] [GX-229] Modularize CLI bootstrap and shared task runner wiring
   - Status: Unresolved
@@ -140,19 +142,21 @@ Summary: total.repos=0 duration_ms=0
   - Acceptance: Both generators consume the shared factory, retry/backoff policies are configurable and exercised in tests, and new unit tests validate error handling for the edge cases described in `docs/refactor_plan_GX-411.md`.
   - Resolution: Added `pkg/llm` factory with configurable retry/backoff, refactored CLI/workflow wiring to consume it, hardened commit/changelog generators against empty responses, and expanded table-driven tests plus new factory coverage; unit suite passes locally with `go test ./...` except for sandbox-blocked integration cases noted in run logs.
 
-- [ ] [GX-233] Expand structured reporter API for event counts and telemetry export
-  - Status: Unresolved
+- [x] [GX-233] Expand structured reporter API for event counts and telemetry export
+  - Status: Resolved
   - Category: Improvement
   - Context: `internal/repos/shared/reporting.go` only aggregates totals per severity and lacks simple helpers for emitting event counters or exporting telemetry objects usable by the CLI/metrics pipelines.
   - Desired: Add an ergonomic `RecordEvent(code, level)` helper, expose a serializable summary struct for CLI output, wire reporter instrumentation to surface timings per operation, and benchmark the reporter to quantify overhead after the enhancements.
   - Acceptance: Commands adopt the new helper instead of manual `Report` calls, CLI layers consume the summary struct, timing data is available for future telemetry integrations, and benchmarks demonstrate acceptable overhead.
+  - Resolution: StructuredReporter now exposes `RecordEvent`, `RecordOperationDuration`, and `SummaryData` APIs with thread-safe counters, workflow operations record per-step timings and success/failure counts while logging the serialized summary through the CLI logger, and new unit tests plus benchmarks cover the expanded reporter surface.
 
-- [ ] [GX-234] Split fast and slow test targets to improve feedback loop
-  - Status: Unresolved
+- [x] [GX-234] Split fast and slow test targets to improve feedback loop
+  - Status: Resolved
   - Category: Improvement
   - Context: `go test ./...` approaches the 45s harness limit due to integration suites that spawn real Git repositories and redundant fixtures, reducing developer feedback speed.
   - Desired: Introduce Makefile or script targets that separate fast/unit tests from slow/integration suites, refactor shared Git fixtures into reusable helpers to cut setup time, and document the workflow so CI and developers can run the appropriate subsets.
   - Acceptance: New fast/slow targets exist with documentation, integration fixtures are consolidated into helpers reducing runtime, and CI guidance reflects the updated test workflow.
+  - Resolution: Added dedicated `make test-fast`/`test-slow` targets (reused by `test` and `ci`), introduced reusable git fixture helpers plus stubbed GH binary builders in `tests/integration_helpers_test.go`, and updated repos/no-remote suites alongside helper-focused tests to verify the new flow.
 
 ## BugFixes (320–399)
 
@@ -216,3 +220,9 @@ Let's consider each rename as a separate issue and what consequences it entails
 
 ## Planning 
 do not work on the issues below, not ready
+- [ ] [GX-236] Add workflow runtime variables for presets and file-based configs
+  - Status: Unresolved
+  - Category: Improvement
+  - Context: Workflow tasks can capture data via `capture_as`, but there is no way to inject user-provided variables at runtime. Embedded presets (e.g., `license`) need per-run values for templates, branch names, etc., and legacy commands (like `repo-license-apply`) must forward their flags into the workflow runner.
+  - Desired: Introduce CLI flags (`gix workflow --var key=value` and `--var-file path`) plus configuration support to load user variables, surface them through `workflow.RuntimeOptions`, seed `Environment.Variables` before execution, and ensure task templates (`.Environment`) merge user-provided variables with captured ones (user values winning). Update README/CHANGELOG/docs, expose the same facility to presets, and add tests covering CLI parsing, preset execution with vars, and interaction with existing `capture_as`.
+  - Acceptance: Users can supply runtime variables when running either external configs or presets; the variables are visible to task templates; `repo-license-apply` can invoke the `license` preset by passing variables instead of re-implementing logic; docs/tests cover these flows; legacy behaviour remains intact when no variables are provided.
