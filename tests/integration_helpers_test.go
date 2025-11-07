@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -179,4 +181,106 @@ func runBinaryIntegrationCommand(
 	outputBytes, runError := command.CombinedOutput()
 	outputText := string(outputBytes)
 	return outputText, runError
+}
+
+type gitRepositoryOptions struct {
+	Path          string
+	DirectoryName string
+	RemoteURL     string
+	InitialBranch string
+}
+
+func createGitRepository(testInstance *testing.T, options gitRepositoryOptions) string {
+	testInstance.Helper()
+
+	targetPath := strings.TrimSpace(options.Path)
+	directoryName := strings.TrimSpace(options.DirectoryName)
+	if len(directoryName) == 0 {
+		directoryName = "repository"
+	}
+
+	initialBranch := strings.TrimSpace(options.InitialBranch)
+	if len(initialBranch) == 0 {
+		initialBranch = "main"
+	}
+
+	var repositoryPath string
+	if len(targetPath) > 0 {
+		repositoryPath = filepath.Clean(targetPath)
+		require.NoError(testInstance, os.MkdirAll(filepath.Dir(repositoryPath), 0o755))
+	} else {
+		repositoryParent := testInstance.TempDir()
+		repositoryPath = filepath.Join(repositoryParent, directoryName)
+	}
+
+	initCommand := exec.Command("git", "init", "--initial-branch="+initialBranch, repositoryPath)
+	initCommand.Env = buildGitCommandEnvironment(nil)
+	require.NoError(testInstance, initCommand.Run())
+
+	remoteURL := strings.TrimSpace(options.RemoteURL)
+	if len(remoteURL) == 0 {
+		return repositoryPath
+	}
+
+	remoteCommand := exec.Command("git", "-C", repositoryPath, "remote", "add", "origin", remoteURL)
+	remoteCommand.Env = buildGitCommandEnvironment(nil)
+	require.NoError(testInstance, remoteCommand.Run())
+
+	return repositoryPath
+}
+
+func buildStubbedExecutablePath(testInstance *testing.T, executableName string, scriptContents string) string {
+	testInstance.Helper()
+
+	stubDirectory := testInstance.TempDir()
+	stubPath := filepath.Join(stubDirectory, executableName)
+	require.NoError(testInstance, os.WriteFile(stubPath, []byte(scriptContents), 0o755))
+
+	currentPath := os.Getenv(pathEnvironmentVariableNameConstant)
+	if len(currentPath) == 0 {
+		return stubDirectory
+	}
+	return stubDirectory + string(os.PathListSeparator) + currentPath
+}
+
+func TestCreateGitRepositoryInitializesRemote(t *testing.T) {
+	repositoryPath := createGitRepository(t, gitRepositoryOptions{
+		DirectoryName: "fixture",
+		RemoteURL:     "https://example.com/foo.git",
+		InitialBranch: "main",
+	})
+
+	require.DirExists(t, repositoryPath)
+
+	remoteCommand := exec.Command("git", "-C", repositoryPath, "remote", "get-url", "origin")
+	remoteCommand.Env = buildGitCommandEnvironment(nil)
+
+	outputBytes, commandError := remoteCommand.CombinedOutput()
+	require.NoError(t, commandError, string(outputBytes))
+	require.Equal(t, "https://example.com/foo.git\n", string(outputBytes))
+}
+
+func TestBuildStubbedExecutablePathCreatesBinary(t *testing.T) {
+	stubScript := "#!/bin/sh\necho stub\n"
+	pathValue := buildStubbedExecutablePath(t, "gh", stubScript)
+
+	require.NotEmpty(t, pathValue)
+
+	pathEntries := strings.Split(pathValue, string(os.PathListSeparator))
+	require.NotEmpty(t, pathEntries)
+
+	stubDirectory := pathEntries[0]
+	stubPath := filepath.Join(stubDirectory, "gh")
+	require.FileExists(t, stubPath)
+
+	t.Setenv(pathEnvironmentVariableNameConstant, pathValue)
+
+	resolvedPath, lookupError := exec.LookPath("gh")
+	require.NoError(t, lookupError)
+	require.Equal(t, stubPath, resolvedPath)
+
+	command := exec.Command("gh")
+	outputBytes, commandError := command.CombinedOutput()
+	require.NoError(t, commandError, string(outputBytes))
+	require.Equal(t, "stub\n", string(outputBytes))
 }

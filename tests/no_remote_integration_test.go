@@ -101,9 +101,10 @@ func TestWorkflowDefaultBranchHandlesRepositoriesWithoutRemotes(testInstance *te
 func initializeRepositoryWithoutRemote(testInstance *testing.T, repositoryPath string) {
 	testInstance.Helper()
 
-	initCommand := exec.Command("git", "init", "-b", "main", repositoryPath)
-	initCommand.Env = buildGitCommandEnvironment(nil)
-	require.NoError(testInstance, initCommand.Run())
+	repositoryPath = createGitRepository(testInstance, gitRepositoryOptions{
+		Path:          repositoryPath,
+		InitialBranch: "main",
+	})
 
 	configNameCommand := exec.Command("git", "-C", repositoryPath, "config", "user.name", "No Remote Tester")
 	configNameCommand.Env = buildGitCommandEnvironment(nil)

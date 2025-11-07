@@ -148,12 +148,13 @@ Summary: total.repos=0 duration_ms=0
   - Acceptance: Commands adopt the new helper instead of manual `Report` calls, CLI layers consume the summary struct, timing data is available for future telemetry integrations, and benchmarks demonstrate acceptable overhead.
   - Resolution: StructuredReporter now exposes `RecordEvent`, `RecordOperationDuration`, and `SummaryData` APIs with thread-safe counters, workflow operations record per-step timings and success/failure counts while logging the serialized summary through the CLI logger, and new unit tests plus benchmarks cover the expanded reporter surface.
 
-- [ ] [GX-234] Split fast and slow test targets to improve feedback loop
-  - Status: Unresolved
+- [x] [GX-234] Split fast and slow test targets to improve feedback loop
+  - Status: Resolved
   - Category: Improvement
   - Context: `go test ./...` approaches the 45s harness limit due to integration suites that spawn real Git repositories and redundant fixtures, reducing developer feedback speed.
   - Desired: Introduce Makefile or script targets that separate fast/unit tests from slow/integration suites, refactor shared Git fixtures into reusable helpers to cut setup time, and document the workflow so CI and developers can run the appropriate subsets.
   - Acceptance: New fast/slow targets exist with documentation, integration fixtures are consolidated into helpers reducing runtime, and CI guidance reflects the updated test workflow.
+  - Resolution: Added dedicated `make test-fast`/`test-slow` targets (reused by `test` and `ci`), introduced reusable git fixture helpers plus stubbed GH binary builders in `tests/integration_helpers_test.go`, and updated repos/no-remote suites alongside helper-focused tests to verify the new flow.
 
 ## BugFixes (320–399)
 

@@ -78,6 +78,17 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 	require.NoError(testInstance, workingDirectoryError)
 	repositoryRoot := filepath.Dir(workingDirectory)
 
+	stubbedPathEnv := buildStubbedExecutablePath(testInstance, reposIntegrationStubExecutableName, reposIntegrationStubScript)
+
+	createStubbedRepository := func(testInstance *testing.T) (string, string) {
+		repositoryPath := createGitRepository(testInstance, gitRepositoryOptions{
+			DirectoryName: "legacy",
+			RemoteURL:     reposIntegrationOriginURL,
+			InitialBranch: "main",
+		})
+		return repositoryPath, stubbedPathEnv
+	}
+
 	testCases := []struct {
 		name                   string
 		arguments              []string
@@ -88,10 +99,8 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 		omitRepositoryArgument bool
 	}{
 		{
-			name: reposIntegrationRenameCaseName,
-			setup: func(testInstance *testing.T) (string, string) {
-				return initializeRepositoryWithStub(testInstance)
-			},
+			name:  reposIntegrationRenameCaseName,
+			setup: createStubbedRepository,
 			arguments: []string{
 				reposIntegrationRunSubcommand,
 				reposIntegrationModulePathConstant,
@@ -119,10 +128,8 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 			},
 		},
 		{
-			name: reposIntegrationRenameOwnerPlanCaseName,
-			setup: func(testInstance *testing.T) (string, string) {
-				return initializeRepositoryWithStub(testInstance)
-			},
+			name:  reposIntegrationRenameOwnerPlanCaseName,
+			setup: createStubbedRepository,
 			arguments: []string{
 				reposIntegrationRunSubcommand,
 				reposIntegrationModulePathConstant,
@@ -155,10 +162,8 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 			},
 		},
 		{
-			name: reposIntegrationRenameOwnerExecuteCaseName,
-			setup: func(testInstance *testing.T) (string, string) {
-				return initializeRepositoryWithStub(testInstance)
-			},
+			name:  reposIntegrationRenameOwnerExecuteCaseName,
+			setup: createStubbedRepository,
 			arguments: []string{
 				reposIntegrationRunSubcommand,
 				reposIntegrationModulePathConstant,
@@ -192,7 +197,7 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 		{
 			name: reposIntegrationNestedRenameCaseName,
 			setup: func(testInstance *testing.T) (string, string) {
-				repositoryPath, extendedPath := initializeRepositoryWithStub(testInstance)
+				repositoryPath, extendedPath := createStubbedRepository(testInstance)
 				configNameCommand := exec.Command(reposIntegrationGitExecutable, "-C", repositoryPath, "config", "user.name", reposIntegrationGitUserName)
 				configNameCommand.Env = buildGitCommandEnvironment(nil)
 				require.NoError(testInstance, configNameCommand.Run())
@@ -253,7 +258,7 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 		{
 			name: reposIntegrationRemoteCaseName,
 			setup: func(testInstance *testing.T) (string, string) {
-				return initializeRepositoryWithStub(testInstance)
+				return createStubbedRepository(testInstance)
 			},
 			arguments: []string{
 				reposIntegrationRunSubcommand,
@@ -278,7 +283,7 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 		{
 			name: reposIntegrationRemoteConfigCaseName,
 			setup: func(testInstance *testing.T) (string, string) {
-				return initializeRepositoryWithStub(testInstance)
+				return createStubbedRepository(testInstance)
 			},
 			arguments: []string{
 				reposIntegrationRunSubcommand,
@@ -311,7 +316,7 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 		{
 			name: reposIntegrationRemoteTildeCaseName,
 			setup: func(testInstance *testing.T) (string, string) {
-				repositoryPath, extendedPath := initializeRepositoryWithStub(testInstance)
+				repositoryPath, extendedPath := createStubbedRepository(testInstance)
 				homeDirectory, homeError := os.UserHomeDir()
 				require.NoError(testInstance, homeError)
 				homeRoot, homeRootError := os.MkdirTemp(homeDirectory, reposIntegrationHomeRootPatternConstant)
@@ -356,7 +361,7 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 		{
 			name: reposIntegrationProtocolCaseName,
 			setup: func(testInstance *testing.T) (string, string) {
-				return initializeRepositoryWithStub(testInstance)
+				return createStubbedRepository(testInstance)
 			},
 			arguments: []string{
 				reposIntegrationRunSubcommand,
@@ -385,7 +390,7 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 		{
 			name: reposIntegrationProtocolConfigCaseName,
 			setup: func(testInstance *testing.T) (string, string) {
-				return initializeRepositoryWithStub(testInstance)
+				return createStubbedRepository(testInstance)
 			},
 			arguments: []string{
 				reposIntegrationRunSubcommand,
@@ -417,7 +422,7 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 		},
 		{
 			setup: func(testInstance *testing.T) (string, string) {
-				return initializeRepositoryWithStub(testInstance)
+				return createStubbedRepository(testInstance)
 			},
 			arguments: []string{
 				reposIntegrationRunSubcommand,
@@ -450,7 +455,7 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 		{
 			name: reposIntegrationHistoryRemoveCaseName,
 			setup: func(testInstance *testing.T) (string, string) {
-				repositoryPath, extendedPath := initializeRepositoryWithStub(testInstance)
+				repositoryPath, extendedPath := createStubbedRepository(testInstance)
 				secretFilePath := filepath.Join(repositoryPath, "secrets.txt")
 				require.NoError(testInstance, os.WriteFile(secretFilePath, []byte("classified\n"), 0o644))
 
@@ -574,27 +579,6 @@ func TestReposProtocolCommandDisplaysHelpWhenProtocolsMissing(testInstance *test
 			}
 		})
 	}
-}
-
-func initializeRepositoryWithStub(testInstance *testing.T) (string, string) {
-	tempDirectory := testInstance.TempDir()
-	repositoryPath := filepath.Join(tempDirectory, "legacy")
-
-	initCommand := exec.Command(reposIntegrationGitExecutable, reposIntegrationInitFlag, reposIntegrationInitialBranchFlag, repositoryPath)
-	initCommand.Env = buildGitCommandEnvironment(nil)
-	require.NoError(testInstance, initCommand.Run())
-
-	remoteCommand := exec.Command(reposIntegrationGitExecutable, "-C", repositoryPath, reposIntegrationRemoteSubcommand, reposIntegrationAddSubcommand, reposIntegrationOriginRemoteName, reposIntegrationOriginURL)
-	remoteCommand.Env = buildGitCommandEnvironment(nil)
-	require.NoError(testInstance, remoteCommand.Run())
-
-	stubDirectory := filepath.Join(tempDirectory, "bin")
-	require.NoError(testInstance, os.Mkdir(stubDirectory, 0o755))
-	stubPath := filepath.Join(stubDirectory, reposIntegrationStubExecutableName)
-	require.NoError(testInstance, os.WriteFile(stubPath, []byte(reposIntegrationStubScript), 0o755))
-
-	extendedPath := stubDirectory + string(os.PathListSeparator) + os.Getenv("PATH")
-	return repositoryPath, extendedPath
 }
 
 func gitFilterRepoAvailable() bool {
