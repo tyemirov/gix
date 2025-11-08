@@ -101,7 +101,7 @@ const (
 	reposRemotesOperationNameConstant                                = "remote update-to-canonical"
 	reposProtocolOperationNameConstant                               = "remote update-protocol"
 	repoReleaseOperationNameConstant                                 = "release"
-	repoHistoryOperationNameConstant                                 = "rm"
+	repoHistoryOperationNameConstant                                 = "files rm"
 	repoFilesReplaceOperationNameConstant                            = "files replace"
 	repoFilesAddOperationNameConstant                                = "files add"
 	repoLicenseOperationNameConstant                                 = "license apply"
@@ -157,7 +157,7 @@ const (
 	removeCommandUseNameConstant                                     = "rm"
 	removeCommandAliasConstant                                       = "purge"
 	removeCommandShortDescriptionConstant                            = "Rewrite history to delete selected paths"
-	removeCommandLongDescriptionConstant                             = "rm rewrites repository history to purge the specified paths using git-filter-repo. Provide one or more paths before optional repository roots or flags."
+	removeCommandLongDescriptionConstant                             = "files rm rewrites repository history to purge the specified paths using git-filter-repo. Provide one or more paths before optional repository roots or flags."
 	branchNamespaceUseNameConstant                                   = "branch"
 	branchNamespaceAliasConstant                                     = "b"
 	branchNamespaceShortDescriptionConstant                          = "Branch management commands"
@@ -195,6 +195,7 @@ const (
 	pullRequestsDeleteCommandPathKeyConstant                         = repoPullRequestsNamespaceUseNameConstant + "/" + prsDeleteCommandUseNameConstant
 	packagesDeleteCommandPathKeyConstant                             = repoPackagesNamespaceUseNameConstant + "/" + packagesDeleteCommandUseNameConstant
 	filesReplaceCommandPathKeyConstant                               = repoFilesNamespaceUseNameConstant + "/" + filesReplaceCommandUseNameConstant
+	filesRmCommandPathKeyConstant                                    = repoFilesNamespaceUseNameConstant + "/" + removeCommandUseNameConstant
 	filesAddCommandPathKeyConstant                                   = repoFilesNamespaceUseNameConstant + "/" + filesAddCommandUseNameConstant
 	licenseApplyCommandPathKeyConstant                               = repoLicenseNamespaceUseNameConstant + "/" + licenseApplyCommandUseNameConstant
 	releaseRetagCommandPathKeyConstant                               = repoReleaseCommandUseNameConstant + "/" + releaseRetagCommandUseNameConstant
@@ -255,6 +256,7 @@ var commandOperationRequirements = map[string][]string{
 	remoteProtocolCommandPathKeyConstant:         {reposProtocolOperationNameConstant},
 	repoReleaseCommandUseNameConstant:            {repoReleaseOperationNameConstant},
 	releaseRetagCommandPathKeyConstant:           {repoReleaseOperationNameConstant},
+	filesRmCommandPathKeyConstant:                {repoHistoryOperationNameConstant},
 	removeCommandUseNameConstant:                 {repoHistoryOperationNameConstant},
 	filesReplaceCommandPathKeyConstant:           {repoFilesReplaceOperationNameConstant},
 	filesAddCommandPathKeyConstant:               {repoFilesAddOperationNameConstant},
@@ -281,7 +283,6 @@ var operationNameAliases = map[string]string{
 	legacyRepoLicenseApplyCommandKeyConstant:       repoLicenseOperationNameConstant,
 	legacyRepoReleaseCommandKeyConstant:            repoReleaseOperationNameConstant,
 	legacyRepoReleaseRetagCommandKeyConstant:       repoReleaseOperationNameConstant,
-	legacyRepoRmCommandKeyConstant:                 repoHistoryOperationNameConstant,
 	legacyChangelogMessageCommandKeyConstant:       changelogMessageOperationNameConstant,
 	legacyCommitMessageCommandKeyConstant:          commitMessageOperationNameConstant,
 	legacyBranchDefaultCommandKeyConstant:          defaultOperationNameConstant,
@@ -295,6 +296,7 @@ var operationNameAliases = map[string]string{
 }
 
 var operationAliasWarnings = map[string]string{
+	removeCommandUseNameConstant:               "command configuration uses deprecated name \"rm\"; update to \"files rm\".",
 	branchChangeLegacyTopLevelUseNameConstant:  "command configuration uses deprecated name \"branch-cd\"; update to \"cd\".",
 	branchRefreshLegacyTopLevelUseNameConstant: "command configuration uses deprecated name \"branch-refresh\"; update to \"cd\" with refresh options.",
 	legacyBranchRefreshCommandKeyConstant:      "command configuration uses deprecated name \"branch refresh\"; update to \"cd\" with refresh options.",
@@ -904,6 +906,10 @@ func NewApplication() *Application {
 		configureCommandMetadata(filesAddCommand, filesAddCommandUseNameConstant, filesAddCommand.Short, filesAddCommandLongDescriptionConstant, filesAddCommandAliasConstant)
 		repoFilesCommand.AddCommand(filesAddCommand)
 	}
+	if filesRemoveCommand, filesRemoveBuildError := removeBuilder.Build(); filesRemoveBuildError == nil {
+		configureCommandMetadata(filesRemoveCommand, removeCommandUseNameConstant, removeCommandShortDescriptionConstant, removeCommandLongDescriptionConstant, removeCommandAliasConstant)
+		repoFilesCommand.AddCommand(filesRemoveCommand)
+	}
 	if len(repoFilesCommand.Commands()) > 0 {
 		cobraCommand.AddCommand(repoFilesCommand)
 	}
@@ -915,11 +921,6 @@ func NewApplication() *Application {
 	}
 	if len(repoLicenseCommand.Commands()) > 0 {
 		cobraCommand.AddCommand(repoLicenseCommand)
-	}
-
-	if removeCommand, removeBuildError := removeBuilder.Build(); removeBuildError == nil {
-		configureCommandMetadata(removeCommand, removeCommandUseNameConstant, removeCommandShortDescriptionConstant, removeCommandLongDescriptionConstant, removeCommandAliasConstant)
-		cobraCommand.AddCommand(removeCommand)
 	}
 
 	var releaseCommand *cobra.Command
