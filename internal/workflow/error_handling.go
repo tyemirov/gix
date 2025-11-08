@@ -216,7 +216,7 @@ func selectOwnerRepository(repository *RepositoryState) string {
 		}
 	}
 
-	return ""
+	return strings.TrimSpace(repository.Path)
 }
 
 func deriveOperationErrorMessage(operationError repoerrors.OperationError) string {

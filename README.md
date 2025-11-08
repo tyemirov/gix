@@ -95,7 +95,7 @@ gix workflow --list-presets
 gix workflow license --roots ~/Development --yes
 ```
 
-Embedded workflows ship with the binary so you can hand teammates a stable command (for example, `license`) without distributing a separate configuration file.
+Embedded workflows ship with the binary so you can hand teammates a stable command (for example, `license` or `namespace`) without distributing a separate configuration file.
 
 ### Workflow variables
 
@@ -103,7 +103,7 @@ Use runtime variables to parameterize presets or external configs:
 
 ```shell
 gix workflow license --var template=apache --var branch=chore/license --roots ~/Development --yes
-gix workflow namespace --var-file ./vars/license.yaml --roots ~/Research
+gix workflow namespace --var namespace_old=github.com/old/org --var namespace_new=github.com/new/org --roots ~/Research
 ```
 
 - `--var key=value` sets a single variable (repeat the flag for multiple values).
@@ -124,7 +124,19 @@ Variables appear inside task templates via `{{ index .Environment "key" }}` and 
 | `license_start_point` | Start point for the license branch (defaults to the repository default). |
 | `license_remote` | Remote used for pushes (defaults to `origin`). |
 | `license_commit_message` | Commit message template. |
-| `license_require_clean` | Set to `false` to bypass clean-worktree checks. |
+
+#### Namespace preset variables
+
+`gix workflow namespace` recognizes the following keys:
+
+| Variable | Description |
+| --- | --- |
+| `namespace_old` | Required old module prefix (e.g., `github.com/old/org`). |
+| `namespace_new` | Required new module prefix (e.g., `github.com/new/org`). |
+| `namespace_branch_prefix` | Optional branch prefix for rewrite branches (defaults to `namespace-rewrite`). |
+| `namespace_remote` | Optional push remote (defaults to `origin` when pushing). |
+| `namespace_push` | Optional boolean (`true`/`false`) controlling whether rewritten branches push. Defaults to `true`. |
+| `namespace_commit_message` | Optional commit message template for the rewrite commit. |
 
 The deprecated `gix repo-license-apply` command now prints a warning and forwards its flag values as workflow variables so you can migrate gradually.
 
@@ -380,8 +392,8 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
  - Seeds or updates files across repositories, creating branches and pushes when configured.
 - `gix repo-license-apply` (alias `inject`)
  - Deprecated alias that delegates to `gix workflow license`. Use the workflow preset instead.
-- `gix namespace rewrite --old <module/prefix> --new <module/prefix> [--branch-prefix <prefix>] [--remote <name>] [--push] [--commit-message <text>] [--roots <dir>...] [-y]` (alias `ns`)
- - Rewrites Go module namespaces and imports.
+- `gix workflow namespace --var namespace_old=... --var namespace_new=... [--roots <dir>...] [-y]`
+ - Runs the embedded namespace rewrite preset; see “Namespace preset variables” for supported options.
 - `gix rm <path>... [--remote <name>] [--push] [--restore] [--push-missing] [--roots <dir>...] [-y]` (alias `purge`)
  - Purges paths from history using git-filter-repo and optionally force-pushes updates.
 - `gix release <tag> [--message <text>] [--remote <name>] [--roots <dir>...] [-y]` (alias `rel`)

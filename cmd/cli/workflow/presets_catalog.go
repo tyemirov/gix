@@ -35,6 +35,11 @@ var embeddedPresetDefinitions = []presetDefinition{
 		Description: "Distribute a license file across repositories using tasks apply.",
 		FileName:    "presets/license.yaml",
 	},
+	{
+		Name:        "namespace",
+		Description: "Rewrite Go module namespaces via the tasks apply command.",
+		FileName:    "presets/namespace.yaml",
+	},
 }
 
 type embeddedPresetCatalog struct {
