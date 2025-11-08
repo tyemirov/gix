@@ -65,7 +65,7 @@ const (
 	reposRemotesOperationNameConstant                                = "remote update-to-canonical"
 	reposProtocolOperationNameConstant                               = "remote update-protocol"
 	repoReleaseOperationNameConstant                                 = "release"
-	repoHistoryOperationNameConstant                                 = "rm"
+	repoHistoryOperationNameConstant                                 = "files rm"
 	repoFilesReplaceOperationNameConstant                            = "files replace"
 	repoFilesAddOperationNameConstant                                = "files add"
 	repoLicenseOperationNameConstant                                 = "license apply"
@@ -166,6 +166,7 @@ const (
 	packagesDeleteCommandPathKeyConstant                             = repoPackagesNamespaceUseNameConstant + "/" + packagesDeleteCommandUseNameConstant
 	filesReplaceCommandPathKeyConstant                               = repoFilesNamespaceUseNameConstant + "/" + filesReplaceCommandUseNameConstant
 	filesAddCommandPathKeyConstant                                   = repoFilesNamespaceUseNameConstant + "/" + filesAddCommandUseNameConstant
+	filesRemoveCommandPathKeyConstant                                = repoFilesNamespaceUseNameConstant + "/" + removeCommandUseNameConstant
 	licenseApplyCommandPathKeyConstant                               = repoLicenseNamespaceUseNameConstant + "/" + licenseApplyCommandUseNameConstant
 	namespaceRewriteCommandPathKeyConstant                           = repoNamespaceRewriteNamespaceUseNameConstant + "/" + namespaceRewriteCommandUseNameConstant
 	releaseRetagCommandPathKeyConstant                               = repoReleaseCommandUseNameConstant + "/" + releaseRetagCommandUseNameConstant
@@ -182,6 +183,7 @@ const (
 	legacyRepoPackagesDeleteCommandKeyConstant                       = legacyRepoNamespaceUseNameConstant + " " + repoPackagesNamespaceUseNameConstant + " " + packagesDeleteCommandUseNameConstant
 	legacyRepoFilesReplaceCommandKeyConstant                         = legacyRepoNamespaceUseNameConstant + " " + repoFilesNamespaceUseNameConstant + " " + filesReplaceCommandUseNameConstant
 	legacyRepoFilesAddCommandKeyConstant                             = legacyRepoNamespaceUseNameConstant + " " + repoFilesNamespaceUseNameConstant + " " + filesAddCommandUseNameConstant
+	legacyRepoFilesRemoveCommandKeyConstant                          = legacyRepoNamespaceUseNameConstant + " " + repoFilesNamespaceUseNameConstant + " " + removeCommandUseNameConstant
 	legacyRepoLicenseApplyCommandKeyConstant                         = legacyRepoNamespaceUseNameConstant + " " + repoLicenseNamespaceUseNameConstant + " " + licenseApplyCommandUseNameConstant
 	legacyRepoNamespaceRewriteCommandKeyConstant                     = legacyRepoNamespaceUseNameConstant + " " + repoNamespaceRewriteNamespaceUseNameConstant + " " + namespaceRewriteCommandUseNameConstant
 	legacyRepoReleaseCommandKeyConstant                              = legacyRepoNamespaceUseNameConstant + " " + repoReleaseCommandUseNameConstant

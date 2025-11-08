@@ -256,6 +256,10 @@ func (application *Application) registerCommands(cobraCommand *cobra.Command) {
 		configureCommandMetadata(filesAddCommand, filesAddCommandUseNameConstant, filesAddCommand.Short, filesAddCommandLongDescriptionConstant, filesAddCommandAliasConstant)
 		repoFilesCommand.AddCommand(filesAddCommand)
 	}
+	if filesRemoveCommand, filesRemoveBuildError := removeBuilder.Build(); filesRemoveBuildError == nil {
+		configureCommandMetadata(filesRemoveCommand, removeCommandUseNameConstant, filesRemoveCommand.Short, removeCommandLongDescriptionConstant, removeCommandAliasConstant)
+		repoFilesCommand.AddCommand(filesRemoveCommand)
+	}
 	if len(repoFilesCommand.Commands()) > 0 {
 		cobraCommand.AddCommand(repoFilesCommand)
 	}
@@ -278,9 +282,10 @@ func (application *Application) registerCommands(cobraCommand *cobra.Command) {
 		cobraCommand.AddCommand(repoNamespaceRewriteCommand)
 	}
 
-	if removeCommand, removeBuildError := removeBuilder.Build(); removeBuildError == nil {
-		configureCommandMetadata(removeCommand, removeCommandUseNameConstant, removeCommandShortDescriptionConstant, removeCommandLongDescriptionConstant, removeCommandAliasConstant)
-		cobraCommand.AddCommand(removeCommand)
+	if legacyRemoveCommand, legacyRemoveBuildError := removeBuilder.Build(); legacyRemoveBuildError == nil {
+		configureCommandMetadata(legacyRemoveCommand, removeCommandUseNameConstant, removeCommandShortDescriptionConstant, removeCommandLongDescriptionConstant, removeCommandAliasConstant)
+		legacyRemoveCommand.Deprecated = "command deprecated; use \"gix files rm\"."
+		cobraCommand.AddCommand(legacyRemoveCommand)
 	}
 
 	var releaseCommand *cobra.Command

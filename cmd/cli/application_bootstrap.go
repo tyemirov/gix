@@ -38,6 +38,7 @@ var commandOperationRequirements = map[string][]string{
 	remoteProtocolCommandPathKeyConstant:         {reposProtocolOperationNameConstant},
 	repoReleaseCommandUseNameConstant:            {repoReleaseOperationNameConstant},
 	releaseRetagCommandPathKeyConstant:           {repoReleaseOperationNameConstant},
+	filesRemoveCommandPathKeyConstant:            {repoHistoryOperationNameConstant},
 	removeCommandUseNameConstant:                 {repoHistoryOperationNameConstant},
 	filesReplaceCommandPathKeyConstant:           {repoFilesReplaceOperationNameConstant},
 	filesAddCommandPathKeyConstant:               {repoFilesAddOperationNameConstant},
@@ -67,6 +68,8 @@ var operationNameAliases = map[string]string{
 	legacyRepoReleaseCommandKeyConstant:            repoReleaseOperationNameConstant,
 	legacyRepoReleaseRetagCommandKeyConstant:       repoReleaseOperationNameConstant,
 	legacyRepoRmCommandKeyConstant:                 repoHistoryOperationNameConstant,
+	legacyRepoFilesRemoveCommandKeyConstant:        repoHistoryOperationNameConstant,
+	removeCommandUseNameConstant:                   repoHistoryOperationNameConstant,
 	legacyChangelogMessageCommandKeyConstant:       changelogMessageOperationNameConstant,
 	legacyCommitMessageCommandKeyConstant:          commitMessageOperationNameConstant,
 	legacyBranchDefaultCommandKeyConstant:          defaultOperationNameConstant,
@@ -80,6 +83,9 @@ var operationNameAliases = map[string]string{
 }
 
 var operationAliasWarnings = map[string]string{
+	removeCommandUseNameConstant:               "command configuration uses deprecated name \"rm\"; update to \"files rm\".",
+	legacyRepoRmCommandKeyConstant:             "command configuration uses deprecated name \"repo rm\"; update to \"files rm\".",
+	legacyRepoFilesRemoveCommandKeyConstant:    "command configuration uses deprecated name \"repo files rm\"; update to \"files rm\".",
 	branchChangeLegacyTopLevelUseNameConstant:  "command configuration uses deprecated name \"branch-cd\"; update to \"cd\".",
 	branchRefreshLegacyTopLevelUseNameConstant: "command configuration uses deprecated name \"branch-refresh\"; update to \"cd\" with refresh options.",
 	legacyBranchRefreshCommandKeyConstant:      "command configuration uses deprecated name \"branch refresh\"; update to \"cd\" with refresh options.",

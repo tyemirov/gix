@@ -21,6 +21,7 @@ const (
 	reposIntegrationModulePathConstant          = "."
 	reposIntegrationFolderNamespaceCommand      = "folder"
 	reposIntegrationRemoteNamespaceCommand      = "remote"
+	reposIntegrationFilesNamespaceCommand       = "files"
 	reposIntegrationRenameActionCommand         = "rename"
 	reposIntegrationUpdateCanonicalAction       = "update-to-canonical"
 	reposIntegrationUpdateProtocolAction        = "update-protocol"
@@ -491,6 +492,7 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				reposIntegrationModulePathConstant,
 				reposIntegrationLogLevelFlag,
 				reposIntegrationErrorLevel,
+				reposIntegrationFilesNamespaceCommand,
 				reposIntegrationHistoryCommand,
 				"secrets.txt",
 				"--push", "no",

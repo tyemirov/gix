@@ -26,7 +26,7 @@ gix is a Go 1.24 command-line application built with Cobra and Viper. The binary
 
 The Cobra application (split across `cmd/cli/application_bootstrap.go`, `cmd/cli/application_commands.go`, and `cmd/cli/application_config.go`) initialises the root command and nests feature namespaces below it (`audit`, `repo`, `branch`, `commit`, `workflow`, and others). Each namespace hosts subcommands that ultimately depend on injected services from `internal/...` packages. Commands share common flag parsing helpers (`internal/utils/flags`), prompt utilities, and the central dependency builder from `pkg/taskrunner`.
 
-- `cmd/cli/repos` registers multi-command groups such as `folder rename`, `remote update-to-canonical`, `prs delete`, and `files replace`.
+- `cmd/cli/repos` registers multi-command groups such as `folder rename`, `remote update-to-canonical`, `prs delete`, and `files rm/replace/add` (history purge plus file seeding).
 - `cmd/cli/repos/release` contains the `release` tagging workflow.
 - `cmd/cli/changelog`, `cmd/cli/commit`, and `cmd/cli/workflow` expose focused entrypoints for changelog generation, AI-assisted commit messaging, and workflow execution.
 - `cmd/cli/default_configuration.go` houses the embedded default YAML used by the `gix --init` flag.
