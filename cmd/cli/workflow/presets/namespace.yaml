@@ -1,0 +1,17 @@
+workflow:
+  - step:
+      name: namespace-rewrite
+      command: ["tasks", "apply"]
+      with:
+        tasks:
+          - name: Rewrite Go namespace
+            ensure_clean: false
+            actions:
+              - type: repo.namespace.rewrite
+                options:
+                  old: '{{ .Environment.namespace_old }}'
+                  new: '{{ .Environment.namespace_new }}'
+                  push: '{{ if .Environment.namespace_push }}{{ .Environment.namespace_push }}{{ else }}true{{ end }}'
+                  branch_prefix: '{{ if .Environment.namespace_branch_prefix }}{{ .Environment.namespace_branch_prefix }}{{ else }}namespace-rewrite{{ end }}'
+                  remote: '{{ if .Environment.namespace_remote }}{{ .Environment.namespace_remote }}{{ else }}origin{{ end }}'
+                  commit_message: '{{ .Environment.namespace_commit_message }}'

@@ -30,6 +30,7 @@ The Cobra application (split across `cmd/cli/application_bootstrap.go`, `cmd/cli
 - `cmd/cli/repos/release` contains the `release` tagging workflow.
 - `cmd/cli/changelog`, `cmd/cli/commit`, and `cmd/cli/workflow` expose focused entrypoints for changelog generation, AI-assisted commit messaging, and workflow execution.
 - `cmd/cli/default_configuration.go` houses the embedded default YAML used by the `gix --init` flag.
+- `cmd/cli/workflow/presets` embeds reusable workflows (for example, license distribution and namespace rewrite) so both the `workflow` command and legacy CLI wrappers can reuse identical task graphs.
 
 All commands accept shared flags for log level, log format, previews, repository roots, and confirmation prompts. Validation occurs in Cobra `PreRunE` functions, aligning with the confident-programming rules in `POLICY.md`.
 

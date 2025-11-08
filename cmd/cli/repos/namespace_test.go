@@ -9,28 +9,109 @@ import (
 	"go.uber.org/zap"
 
 	repos "github.com/temirov/gix/cmd/cli/repos"
+	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
 	"github.com/temirov/gix/internal/repos/filesystem"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
 	"github.com/temirov/gix/internal/workflow"
 )
 
-type namespaceRecordingTaskRunner struct {
-	roots       []string
-	definitions []workflow.TaskDefinition
-	options     workflow.RuntimeOptions
+type namespaceRecordingExecutor struct {
+	roots   []string
+	options workflow.RuntimeOptions
 }
 
-func (runner *namespaceRecordingTaskRunner) Run(_ context.Context, roots []string, definitions []workflow.TaskDefinition, options workflow.RuntimeOptions) error {
-	runner.roots = append([]string{}, roots...)
-	runner.definitions = append([]workflow.TaskDefinition{}, definitions...)
-	runner.options = options
+func (executor *namespaceRecordingExecutor) Execute(_ context.Context, roots []string, options workflow.RuntimeOptions) error {
+	executor.roots = append([]string{}, roots...)
+	executor.options = options
 	return nil
+}
+
+type namespacePresetCatalog struct {
+	configuration workflow.Configuration
+}
+
+func (catalog *namespacePresetCatalog) List() []workflowcmd.PresetMetadata {
+	return nil
+}
+
+func (catalog *namespacePresetCatalog) Load(name string) (workflow.Configuration, bool, error) {
+	return catalog.configuration, true, nil
+}
+
+func minimalNamespaceWorkflow() workflow.Configuration {
+	return workflow.Configuration{
+		Steps: []workflow.StepConfiguration{
+			{
+				Name:    "namespace-rewrite",
+				Command: []string{"tasks", "apply"},
+				Options: map[string]any{
+					"tasks": []any{
+						map[string]any{
+							"name":         "Rewrite Go namespace",
+							"ensure_clean": false,
+							"actions": []any{
+								map[string]any{
+									"type": "repo.namespace.rewrite",
+									"options": map[string]any{
+										"old":            "{{ .Environment.namespace_old }}",
+										"new":            "{{ .Environment.namespace_new }}",
+										"push":           "{{ if .Environment.namespace_push }}{{ .Environment.namespace_push }}{{ else }}true{{ end }}",
+										"branch_prefix":  "{{ if .Environment.namespace_branch_prefix }}{{ .Environment.namespace_branch_prefix }}{{ else }}namespace-rewrite{{ end }}",
+										"remote":         "{{ if .Environment.namespace_remote }}{{ .Environment.namespace_remote }}{{ else }}origin{{ end }}",
+										"commit_message": "{{ .Environment.namespace_commit_message }}",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func extractNamespaceSafeguards(t *testing.T, configuration workflow.Configuration) map[string]any {
+	t.Helper()
+
+	if len(configuration.Steps) == 0 {
+		return nil
+	}
+
+	tasksValue := configuration.Steps[0].Options["tasks"]
+	taskEntries, ok := tasksValue.([]any)
+	require.True(t, ok)
+	require.NotEmpty(t, taskEntries)
+
+	taskEntry, ok := taskEntries[0].(map[string]any)
+	require.True(t, ok)
+
+	actionsValue := taskEntry["actions"]
+	actionEntries, ok := actionsValue.([]any)
+	require.True(t, ok)
+	require.NotEmpty(t, actionEntries)
+
+	actionEntry, ok := actionEntries[0].(map[string]any)
+	require.True(t, ok)
+
+	optionsValue := actionEntry["options"]
+	options, ok := optionsValue.(map[string]any)
+	require.True(t, ok)
+
+	rawSafeguards, hasSafeguards := options["safeguards"]
+	if !hasSafeguards {
+		return nil
+	}
+	safeguards, ok := rawSafeguards.(map[string]any)
+	require.True(t, ok)
+	return safeguards
 }
 
 func TestNamespaceCommandUsesConfigurationDefaults(t *testing.T) {
 	t.Parallel()
 
-	taskRunner := &namespaceRecordingTaskRunner{}
+	executor := &namespaceRecordingExecutor{}
+	presetCatalog := &namespacePresetCatalog{configuration: minimalNamespaceWorkflow()}
+
 	builder := repos.NamespaceCommandBuilder{
 		LoggerProvider: func() *zap.Logger { return zap.NewNop() },
 		Discoverer:     &fakeRepositoryDiscoverer{repositories: []string{"/tmp/cfg-root"}},
@@ -49,7 +130,14 @@ func TestNamespaceCommandUsesConfigurationDefaults(t *testing.T) {
 				Safeguards:      map[string]any{"require_clean": true},
 			}
 		},
-		TaskRunnerFactory: func(workflow.Dependencies) repos.TaskRunnerExecutor { return taskRunner },
+		PresetCatalogFactory: func() workflowcmd.PresetCatalog {
+			return presetCatalog
+		},
+		ExecutorFactory: func(nodes []*workflow.OperationNode, deps workflow.Dependencies) repos.WorkflowExecutor {
+			require.NotEmpty(t, nodes)
+			require.NotNil(t, deps.Prompter)
+			return executor
+		},
 	}
 
 	command, err := builder.Build()
@@ -62,23 +150,25 @@ func TestNamespaceCommandUsesConfigurationDefaults(t *testing.T) {
 	runErr := command.Execute()
 	require.NoError(t, runErr)
 
-	require.Equal(t, []string{"/tmp/cfg-root"}, taskRunner.roots)
-	require.True(t, taskRunner.options.AssumeYes)
-	require.Len(t, taskRunner.definitions, 1)
+	require.Equal(t, []string{"/tmp/cfg-root"}, executor.roots)
+	require.True(t, executor.options.AssumeYes)
+	require.Equal(t, "github.com/old/org", executor.options.Variables["namespace_old"])
+	require.Equal(t, "github.com/new/org", executor.options.Variables["namespace_new"])
+	require.Equal(t, "true", executor.options.Variables["namespace_push"])
+	require.Equal(t, "ns", executor.options.Variables["namespace_branch_prefix"])
+	require.Equal(t, "origin", executor.options.Variables["namespace_remote"])
+	_, commitExists := executor.options.Variables["namespace_commit_message"]
+	require.False(t, commitExists)
 
-	action := taskRunner.definitions[0].Actions[0]
-	require.Equal(t, "repo.namespace.rewrite", action.Type)
-	require.Equal(t, "github.com/old/org", action.Options["old"])
-	require.Equal(t, "github.com/new/org", action.Options["new"])
-	require.Equal(t, true, action.Options["push"])
-	require.Equal(t, "ns", action.Options["branch_prefix"])
-	require.Equal(t, map[string]any{"require_clean": true}, taskRunner.definitions[0].Safeguards)
+	require.Equal(t, map[string]any{"require_clean": true}, extractNamespaceSafeguards(t, presetCatalog.configuration))
 }
 
 func TestNamespaceCommandFlagOverrides(t *testing.T) {
 	t.Parallel()
 
-	taskRunner := &namespaceRecordingTaskRunner{}
+	executor := &namespaceRecordingExecutor{}
+	presetCatalog := &namespacePresetCatalog{configuration: minimalNamespaceWorkflow()}
+
 	builder := repos.NamespaceCommandBuilder{
 		LoggerProvider: func() *zap.Logger { return zap.NewNop() },
 		Discoverer:     &fakeRepositoryDiscoverer{repositories: []string{"/tmp/cli-root"}},
@@ -88,7 +178,12 @@ func TestNamespaceCommandFlagOverrides(t *testing.T) {
 		ConfigurationProvider: func() repos.NamespaceConfiguration {
 			return repos.NamespaceConfiguration{}
 		},
-		TaskRunnerFactory: func(workflow.Dependencies) repos.TaskRunnerExecutor { return taskRunner },
+		PresetCatalogFactory: func() workflowcmd.PresetCatalog {
+			return presetCatalog
+		},
+		ExecutorFactory: func(nodes []*workflow.OperationNode, deps workflow.Dependencies) repos.WorkflowExecutor {
+			return executor
+		},
 	}
 
 	command, err := builder.Build()
@@ -111,21 +206,22 @@ func TestNamespaceCommandFlagOverrides(t *testing.T) {
 	runErr := command.Execute()
 	require.NoError(t, runErr)
 
-	require.Equal(t, []string{"/tmp/cli-root"}, taskRunner.roots)
-	require.True(t, taskRunner.options.AssumeYes)
-	action := taskRunner.definitions[0].Actions[0]
-	require.Equal(t, "github.com/cli/old", action.Options["old"])
-	require.Equal(t, "github.com/cli/new", action.Options["new"])
-	require.Equal(t, false, action.Options["push"])
-	require.Equal(t, "rewrite", action.Options["branch_prefix"])
-	require.Equal(t, "upstream", action.Options["remote"])
-	require.Equal(t, "chore: rewrite", action.Options["commit_message"])
+	require.Equal(t, []string{"/tmp/cli-root"}, executor.roots)
+	require.True(t, executor.options.AssumeYes)
+	require.Equal(t, "github.com/cli/old", executor.options.Variables["namespace_old"])
+	require.Equal(t, "github.com/cli/new", executor.options.Variables["namespace_new"])
+	require.Equal(t, "false", executor.options.Variables["namespace_push"])
+	require.Equal(t, "rewrite", executor.options.Variables["namespace_branch_prefix"])
+	require.Equal(t, "upstream", executor.options.Variables["namespace_remote"])
+	require.Equal(t, "chore: rewrite", executor.options.Variables["namespace_commit_message"])
 }
 
 func TestNamespaceCommandRequiresPrefixes(t *testing.T) {
 	t.Parallel()
 
-	taskRunner := &namespaceRecordingTaskRunner{}
+	executor := &namespaceRecordingExecutor{}
+	presetCatalog := &namespacePresetCatalog{configuration: minimalNamespaceWorkflow()}
+
 	builder := repos.NamespaceCommandBuilder{
 		LoggerProvider:        func() *zap.Logger { return zap.NewNop() },
 		Discoverer:            &fakeRepositoryDiscoverer{repositories: []string{"/tmp/root"}},
@@ -133,7 +229,12 @@ func TestNamespaceCommandRequiresPrefixes(t *testing.T) {
 		GitManager:            &fakeGitRepositoryManager{cleanWorktree: true, cleanWorktreeSet: true, currentBranch: "main"},
 		FileSystem:            filesystem.OSFileSystem{},
 		ConfigurationProvider: func() repos.NamespaceConfiguration { return repos.NamespaceConfiguration{} },
-		TaskRunnerFactory:     func(workflow.Dependencies) repos.TaskRunnerExecutor { return taskRunner },
+		PresetCatalogFactory: func() workflowcmd.PresetCatalog {
+			return presetCatalog
+		},
+		ExecutorFactory: func(nodes []*workflow.OperationNode, deps workflow.Dependencies) repos.WorkflowExecutor {
+			return executor
+		},
 	}
 
 	command, err := builder.Build()
