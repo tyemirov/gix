@@ -116,8 +116,12 @@ Summary: total.repos=0 duration_ms=0
   - Status: Unresolved
   - Category: Improvement
   - Context: `cmd/cli/application.go` (~1.6k LOC) interleaves configuration loading, command registration, embedded default config management, and dependency wiring for subcommands, creating hard-to-test seams and duplicated `TaskRunnerFactory` setup across `cmd/cli/changelog`, `cmd/cli/commit`, and `cmd/cli/workflow`.
-  - Desired: Extract bootstrap logic into a dedicated package (e.g., `cmd/cli/bootstrap`), relocate embedded default configuration helpers into their own module with invariants tests, and introduce a shared helper that constructs task runner dependencies consumed by changelog/commit/workflow builders while centralizing alias handling.
-  - Acceptance: `cmd/cli/application.go` delegates to smaller builders, embedded config helpers live outside the application root with updated tests, subcommands reuse a single task runner wiring helper, and new unit tests verify root command wiring plus legacy alias coverage.
+  - Desired: Extract bootstrap logic into dedicated helpers (shared task runner dependency builder, embedded config accessor, alias map) and reorganize `cmd/cli/application.go` into smaller files so commands depend on centralized wiring instead of duplicating `TaskRunnerExecutor` adapters in each package.
+  - Plan:
+    1. Introduce `pkg/taskrunner` with a shared `Executor`/`Factory` + `Resolve` helper.
+    2. Update CLI packages (workflow/changelog/commit/repos/release/branch/migrate/audit/packages) to import `pkg/taskrunner`, deleting their local `task_runner_support.go` files and adjusting builders/tests accordingly.
+    3. Split `cmd/cli/application.go` into logical files: configuration types/constants, initialization/bootstrap, and command wiring; add a helper that constructs workflow dependencies so all command builders call the same function.
+  - Acceptance: `cmd/cli/application.go` delegates to smaller helpers, all CLI builders reuse the shared task runner package, redundant adapter files/tests disappear, and application/unit tests verify the refactored wiring plus legacy alias coverage.
 
 - [ ] [GX-230] Refactor workflow executor into planner, runner, and reporting units
   - Status: Unresolved
