@@ -1,7 +1,6 @@
 package branches
 
 import (
-	"context"
 	"errors"
 	"strconv"
 	"strings"
@@ -9,13 +8,11 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
-	"github.com/temirov/gix/internal/gitrepo"
-	"github.com/temirov/gix/internal/repos/dependencies"
-	"github.com/temirov/gix/internal/repos/prompt"
 	"github.com/temirov/gix/internal/repos/shared"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
 	rootutils "github.com/temirov/gix/internal/utils/roots"
 	"github.com/temirov/gix/internal/workflow"
+	"github.com/temirov/gix/pkg/taskrunner"
 )
 
 const (
@@ -50,19 +47,6 @@ type CommandBuilder struct {
 	TaskRunnerFactory            func(workflow.Dependencies) TaskRunnerExecutor
 }
 
-// TaskRunnerExecutor coordinates workflow task execution.
-type TaskRunnerExecutor interface {
-	Run(ctx context.Context, roots []string, definitions []workflow.TaskDefinition, options workflow.RuntimeOptions) error
-}
-
-type taskRunnerAdapter struct {
-	runner workflow.TaskRunner
-}
-
-func (adapter taskRunnerAdapter) Run(ctx context.Context, roots []string, definitions []workflow.TaskDefinition, options workflow.RuntimeOptions) error {
-	return adapter.runner.Run(ctx, roots, definitions, options)
-}
-
 // Build constructs the repo-prs-purge command.
 func (builder *CommandBuilder) Build() (*cobra.Command, error) {
 	command := &cobra.Command{
@@ -84,48 +68,25 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 		return optionsError
 	}
 
-	logger := builder.resolveLogger()
-	humanReadable := false
-	if builder.HumanReadableLoggingProvider != nil {
-		humanReadable = builder.HumanReadableLoggingProvider()
+	dependencyResult, dependencyError := taskrunner.BuildDependencies(
+		taskrunner.DependenciesConfig{
+			LoggerProvider:               builder.LoggerProvider,
+			HumanReadableLoggingProvider: builder.HumanReadableLoggingProvider,
+			RepositoryDiscoverer:         builder.Discoverer,
+			GitExecutor:                  builder.GitExecutor,
+			GitRepositoryManager:         builder.GitManager,
+			FileSystem:                   builder.FileSystem,
+			PrompterFactory:              builder.PrompterFactory,
+		},
+		taskrunner.DependenciesOptions{
+			Command: command,
+		},
+	)
+	if dependencyError != nil {
+		return dependencyError
 	}
 
-	gitExecutor, executorError := dependencies.ResolveGitExecutor(builder.GitExecutor, logger, humanReadable)
-	if executorError != nil {
-		return executorError
-	}
-
-	gitManager, managerError := dependencies.ResolveGitRepositoryManager(builder.GitManager, gitExecutor)
-	if managerError != nil {
-		return managerError
-	}
-
-	repositoryManager, ok := gitManager.(*gitrepo.RepositoryManager)
-	if !ok {
-		constructedManager, constructedManagerError := gitrepo.NewRepositoryManager(gitExecutor)
-		if constructedManagerError != nil {
-			return constructedManagerError
-		}
-		repositoryManager = constructedManager
-	}
-
-	repositoryDiscoverer := dependencies.ResolveRepositoryDiscoverer(builder.Discoverer)
-	fileSystem := dependencies.ResolveFileSystem(builder.FileSystem)
-	prompter := builder.resolvePrompter(command)
-
-	taskDependencies := workflow.Dependencies{
-		Logger:               logger,
-		RepositoryDiscoverer: repositoryDiscoverer,
-		GitExecutor:          gitExecutor,
-		RepositoryManager:    repositoryManager,
-		GitHubClient:         nil,
-		FileSystem:           fileSystem,
-		Prompter:             prompter,
-		Output:               command.OutOrStdout(),
-		Errors:               command.ErrOrStderr(),
-	}
-
-	taskRunner := builder.resolveTaskRunner(taskDependencies)
+	taskRunner := resolveTaskRunner(builder.TaskRunnerFactory, dependencyResult.Workflow)
 
 	actionOptions := map[string]any{
 		"remote": options.CleanupOptions.RemoteName,
@@ -213,33 +174,6 @@ func (builder *CommandBuilder) parseOptions(command *cobra.Command, arguments []
 	return commandOptions{CleanupOptions: cleanupOptions, RepositoryRoots: repositoryRoots}, nil
 }
 
-func (builder *CommandBuilder) resolveLogger() *zap.Logger {
-	if builder.LoggerProvider == nil {
-		return zap.NewNop()
-	}
-
-	logger := builder.LoggerProvider()
-	if logger == nil {
-		return zap.NewNop()
-	}
-
-	return logger
-}
-
-func (builder *CommandBuilder) resolvePrompter(command *cobra.Command) shared.ConfirmationPrompter {
-	if builder.PrompterFactory != nil {
-		if prompter := builder.PrompterFactory(command); prompter != nil {
-			return prompter
-		}
-	}
-
-	if command == nil {
-		return nil
-	}
-
-	return prompt.NewIOConfirmationPrompter(command.InOrStdin(), command.OutOrStdout())
-}
-
 func (builder *CommandBuilder) resolveConfiguration() CommandConfiguration {
 	if builder.ConfigurationProvider == nil {
 		return DefaultCommandConfiguration()
@@ -247,11 +181,4 @@ func (builder *CommandBuilder) resolveConfiguration() CommandConfiguration {
 
 	provided := builder.ConfigurationProvider()
 	return provided.Sanitize()
-}
-
-func (builder *CommandBuilder) resolveTaskRunner(dependencies workflow.Dependencies) TaskRunnerExecutor {
-	if builder.TaskRunnerFactory != nil {
-		return builder.TaskRunnerFactory(dependencies)
-	}
-	return taskRunnerAdapter{runner: workflow.NewTaskRunner(dependencies)}
 }

@@ -114,8 +114,8 @@ Summary: total.repos=0 duration_ms=0
   - Acceptance: Users can discover and invoke built-in workflows without supplying files, legacy file-based execution continues to function, docs showcase both modes, and tests exercise preset selection plus backward compatibility.
   - Resolution: Added an embedded preset catalog (seeded with the initial `license` workflow), introduced `gix workflow --list-presets`/`gix workflow <preset>`, updated README guidance, and expanded workflow command tests to cover preset execution and listing while keeping file-based configs untouched.
 
-- [ ] [GX-229] Modularize CLI bootstrap and shared task runner wiring
-  - Status: Unresolved
+- [x] [GX-229] Modularize CLI bootstrap and shared task runner wiring
+  - Status: Resolved
   - Category: Improvement
   - Context: `cmd/cli/application.go` (~1.6k LOC) interleaves configuration loading, command registration, embedded default config management, and dependency wiring for subcommands, creating hard-to-test seams and duplicated `TaskRunnerFactory` setup across `cmd/cli/changelog`, `cmd/cli/commit`, and `cmd/cli/workflow`.
   - Desired: Extract bootstrap logic into dedicated helpers (shared task runner dependency builder, embedded config accessor, alias map) and reorganize `cmd/cli/application.go` into smaller files so commands depend on centralized wiring instead of duplicating `TaskRunnerExecutor` adapters in each package.
@@ -124,6 +124,7 @@ Summary: total.repos=0 duration_ms=0
     2. Update CLI packages (workflow/changelog/commit/repos/release/branch/migrate/audit/packages) to import `pkg/taskrunner`, deleting their local `task_runner_support.go` files and adjusting builders/tests accordingly.
     3. Split `cmd/cli/application.go` into logical files: configuration types/constants, initialization/bootstrap, and command wiring; add a helper that constructs workflow dependencies so all command builders call the same function.
   - Acceptance: `cmd/cli/application.go` delegates to smaller helpers, all CLI builders reuse the shared task runner package, redundant adapter files/tests disappear, and application/unit tests verify the refactored wiring plus legacy alias coverage.
+  - Resolution: All remaining command builders (audit, packages, migrate, branches/cd, release/license) now rely on `pkg/taskrunner` for dependency wiring, the custom adapters/prompter helpers were dropped in favor of the shared factory, and workflow configs/tests continue to pass under the split bootstrap files with lint/go test as verification.
 
 - [ ] [GX-230] Refactor workflow executor into planner, runner, and reporting units
   - Status: Unresolved

@@ -8,12 +8,10 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/temirov/gix/internal/audit"
-	"github.com/temirov/gix/internal/githubcli"
-	"github.com/temirov/gix/internal/gitrepo"
-	"github.com/temirov/gix/internal/repos/dependencies"
 	"github.com/temirov/gix/internal/utils"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
 	"github.com/temirov/gix/internal/workflow"
+	"github.com/temirov/gix/pkg/taskrunner"
 )
 
 const (
@@ -77,60 +75,25 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 		assumeYes = executionFlags.AssumeYes
 	}
 
-	logger := builder.resolveLogger()
-	humanReadable := false
-	if builder.HumanReadableLoggingProvider != nil {
-		humanReadable = builder.HumanReadableLoggingProvider()
+	dependencyResult, dependencyError := taskrunner.BuildDependencies(
+		taskrunner.DependenciesConfig{
+			LoggerProvider:               builder.LoggerProvider,
+			HumanReadableLoggingProvider: builder.HumanReadableLoggingProvider,
+			RepositoryDiscoverer:         builder.Discoverer,
+			GitExecutor:                  builder.GitExecutor,
+			GitRepositoryManager:         builder.GitManager,
+			GitHubResolver:               builder.GitHubResolver,
+		},
+		taskrunner.DependenciesOptions{
+			Command:         command,
+			DisablePrompter: true,
+		},
+	)
+	if dependencyError != nil {
+		return dependencyError
 	}
 
-	gitExecutor, executorError := dependencies.ResolveGitExecutor(builder.GitExecutor, logger, humanReadable)
-	if executorError != nil {
-		return executorError
-	}
-
-	gitManager, managerError := dependencies.ResolveGitRepositoryManager(builder.GitManager, gitExecutor)
-	if managerError != nil {
-		return managerError
-	}
-
-	repositoryManager, managerCastError := gitManager.(*gitrepo.RepositoryManager)
-	if !managerCastError {
-		constructedManager, constructedManagerError := gitrepo.NewRepositoryManager(gitExecutor)
-		if constructedManagerError != nil {
-			return constructedManagerError
-		}
-		repositoryManager = constructedManager
-	}
-
-	gitHubClient, githubError := dependencies.ResolveGitHubResolver(builder.GitHubResolver, gitExecutor)
-	if githubError != nil {
-		return githubError
-	}
-
-	client, ok := gitHubClient.(*githubcli.Client)
-	if !ok {
-		constructedClient, constructedClientError := githubcli.NewClient(gitExecutor)
-		if constructedClientError != nil {
-			return constructedClientError
-		}
-		client = constructedClient
-	}
-
-	repositoryDiscoverer := dependencies.ResolveRepositoryDiscoverer(builder.Discoverer)
-
-	taskDependencies := workflow.Dependencies{
-		Logger:               logger,
-		RepositoryDiscoverer: repositoryDiscoverer,
-		GitExecutor:          gitExecutor,
-		RepositoryManager:    repositoryManager,
-		GitHubClient:         client,
-		FileSystem:           dependencies.ResolveFileSystem(nil),
-		Prompter:             nil,
-		Output:               command.OutOrStdout(),
-		Errors:               command.ErrOrStderr(),
-	}
-
-	taskRunner := resolveTaskRunner(builder.TaskRunnerFactory, taskDependencies)
+	taskRunner := resolveTaskRunner(builder.TaskRunnerFactory, dependencyResult.Workflow)
 
 	actionOptions := map[string]any{
 		"include_all": options.includeAllFolders,
@@ -193,17 +156,6 @@ func (builder *CommandBuilder) parseOptions(command *cobra.Command) (commandOpti
 		includeAllFolders: includeAll,
 		debugOutput:       debugMode,
 	}, nil
-}
-
-func (builder *CommandBuilder) resolveLogger() *zap.Logger {
-	if builder.LoggerProvider == nil {
-		return zap.NewNop()
-	}
-	logger := builder.LoggerProvider()
-	if logger == nil {
-		return zap.NewNop()
-	}
-	return logger
 }
 
 func (builder *CommandBuilder) resolveConfiguration() audit.CommandConfiguration {

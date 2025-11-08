@@ -12,13 +12,11 @@ import (
 	"github.com/spf13/cobra"
 
 	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
-	"github.com/temirov/gix/internal/githubcli"
-	"github.com/temirov/gix/internal/gitrepo"
-	"github.com/temirov/gix/internal/repos/dependencies"
 	"github.com/temirov/gix/internal/repos/shared"
 	"github.com/temirov/gix/internal/utils"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
 	"github.com/temirov/gix/internal/workflow"
+	"github.com/temirov/gix/pkg/taskrunner"
 )
 
 const (
@@ -180,40 +178,32 @@ func (builder *LicenseCommandBuilder) run(command *cobra.Command, arguments []st
 		return rootsError
 	}
 
-	logger := resolveLogger(builder.LoggerProvider)
-	humanReadableLogging := false
-	if builder.HumanReadableLoggingProvider != nil {
-		humanReadableLogging = builder.HumanReadableLoggingProvider()
+	dependencyOptions := taskrunner.DependenciesOptions{
+		Command:         command,
+		DisablePrompter: true,
+	}
+	if command != nil {
+		dependencyOptions.Output = utils.NewFlushingWriter(command.OutOrStdout())
+		dependencyOptions.Errors = utils.NewFlushingWriter(command.ErrOrStderr())
 	}
 
-	gitExecutor, executorError := dependencies.ResolveGitExecutor(builder.GitExecutor, logger, humanReadableLogging)
-	if executorError != nil {
-		return executorError
+	dependencyResult, dependencyError := taskrunner.BuildDependencies(
+		taskrunner.DependenciesConfig{
+			LoggerProvider:               builder.LoggerProvider,
+			HumanReadableLoggingProvider: builder.HumanReadableLoggingProvider,
+			RepositoryDiscoverer:         builder.Discoverer,
+			GitExecutor:                  builder.GitExecutor,
+			GitRepositoryManager:         builder.GitManager,
+			FileSystem:                   builder.FileSystem,
+		},
+		dependencyOptions,
+	)
+	if dependencyError != nil {
+		return dependencyError
 	}
 
-	gitManager, managerError := dependencies.ResolveGitRepositoryManager(builder.GitManager, gitExecutor)
-	if managerError != nil {
-		return managerError
-	}
-
-	var repositoryManager *gitrepo.RepositoryManager
-	if concrete, ok := gitManager.(*gitrepo.RepositoryManager); ok {
-		repositoryManager = concrete
-	} else {
-		constructed, constructedErr := gitrepo.NewRepositoryManager(gitExecutor)
-		if constructedErr != nil {
-			return constructedErr
-		}
-		repositoryManager = constructed
-	}
-
-	repositoryDiscoverer := dependencies.ResolveRepositoryDiscoverer(builder.Discoverer)
-	fileSystem := dependencies.ResolveFileSystem(builder.FileSystem)
-
-	githubClient, githubClientError := githubcli.NewClient(gitExecutor)
-	if githubClientError != nil {
-		return githubClientError
-	}
+	fileSystem := dependencyResult.FileSystem
+	workflowDependencies := dependencyResult.Workflow
 
 	trimmedContent := strings.TrimSpace(content)
 	if len(trimmedContent) == 0 {
@@ -264,17 +254,6 @@ func (builder *LicenseCommandBuilder) run(command *cobra.Command, arguments []st
 	}
 	if len(commitMessage) > 0 {
 		variables["license_commit_message"] = commitMessage
-	}
-
-	workflowDependencies := workflow.Dependencies{
-		Logger:               logger,
-		RepositoryDiscoverer: repositoryDiscoverer,
-		GitExecutor:          gitExecutor,
-		RepositoryManager:    repositoryManager,
-		GitHubClient:         githubClient,
-		FileSystem:           fileSystem,
-		Output:               utils.NewFlushingWriter(command.OutOrStdout()),
-		Errors:               utils.NewFlushingWriter(command.ErrOrStderr()),
 	}
 
 	presetCatalog := builder.resolvePresetCatalog()

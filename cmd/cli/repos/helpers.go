@@ -67,17 +67,6 @@ func requireRepositoryRoots(command *cobra.Command, arguments []string, configur
 	return roots, nil
 }
 
-func resolveLogger(provider LoggerProvider) *zap.Logger {
-	if provider == nil {
-		return zap.NewNop()
-	}
-	logger := provider()
-	if logger == nil {
-		return zap.NewNop()
-	}
-	return logger
-}
-
 // cascadingConfirmationPrompter forwards confirmations while tracking apply-to-all decisions.
 type cascadingConfirmationPrompter struct {
 	basePrompter shared.ConfirmationPrompter
