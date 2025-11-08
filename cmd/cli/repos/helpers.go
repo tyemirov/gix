@@ -7,6 +7,8 @@ import (
 	"github.com/temirov/gix/internal/repos/prompt"
 	"github.com/temirov/gix/internal/repos/shared"
 	rootutils "github.com/temirov/gix/internal/utils/roots"
+	"github.com/temirov/gix/internal/workflow"
+	"github.com/temirov/gix/pkg/taskrunner"
 )
 
 // LoggerProvider yields a zap logger for command execution.
@@ -14,6 +16,49 @@ type LoggerProvider func() *zap.Logger
 
 // PrompterFactory creates confirmation prompters scoped to a Cobra command.
 type PrompterFactory func(*cobra.Command) shared.ConfirmationPrompter
+
+// TaskRunnerExecutor represents a workflow task runner.
+type TaskRunnerExecutor = taskrunner.Executor
+
+// TaskRunnerFactory constructs workflow executors.
+type TaskRunnerFactory = taskrunner.Factory
+
+type dependencyInputs struct {
+	LoggerProvider               LoggerProvider
+	HumanReadableLoggingProvider func() bool
+	Discoverer                   shared.RepositoryDiscoverer
+	GitExecutor                  shared.GitExecutor
+	GitManager                   shared.GitRepositoryManager
+	GitHubResolver               shared.GitHubMetadataResolver
+	FileSystem                   shared.FileSystem
+	PrompterFactory              PrompterFactory
+}
+
+func buildDependencies(
+	command *cobra.Command,
+	inputs dependencyInputs,
+	options taskrunner.DependenciesOptions,
+) (taskrunner.DependenciesResult, error) {
+	if options.Command == nil {
+		options.Command = command
+	}
+	config := taskrunner.DependenciesConfig{
+		LoggerProvider:               inputs.LoggerProvider,
+		HumanReadableLoggingProvider: inputs.HumanReadableLoggingProvider,
+		RepositoryDiscoverer:         inputs.Discoverer,
+		GitExecutor:                  inputs.GitExecutor,
+		GitRepositoryManager:         inputs.GitManager,
+		GitHubResolver:               inputs.GitHubResolver,
+		FileSystem:                   inputs.FileSystem,
+		PrompterFactory:              inputs.PrompterFactory,
+	}
+	return taskrunner.BuildDependencies(config, options)
+}
+
+// ResolveTaskRunner returns either the provided executor or a default workflow runner.
+func ResolveTaskRunner(factory TaskRunnerFactory, dependencies workflow.Dependencies) TaskRunnerExecutor {
+	return taskrunner.Resolve(factory, dependencies)
+}
 
 func requireRepositoryRoots(command *cobra.Command, arguments []string, configuredRoots []string) ([]string, error) {
 	roots, resolveError := rootutils.Resolve(command, arguments, configuredRoots)

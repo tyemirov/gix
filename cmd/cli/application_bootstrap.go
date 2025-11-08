@@ -1,0 +1,1046 @@
+package cli
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"syscall"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
+	"go.uber.org/zap"
+
+	changelogcmd "github.com/temirov/gix/cmd/cli/changelog"
+	commitcmd "github.com/temirov/gix/cmd/cli/commit"
+	"github.com/temirov/gix/cmd/cli/repos"
+	releasecmd "github.com/temirov/gix/cmd/cli/repos/release"
+	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
+	"github.com/temirov/gix/internal/audit"
+	"github.com/temirov/gix/internal/branches"
+	branchcdcmd "github.com/temirov/gix/internal/branches/cd"
+	"github.com/temirov/gix/internal/migrate"
+	"github.com/temirov/gix/internal/packages"
+	reposdeps "github.com/temirov/gix/internal/repos/dependencies"
+	"github.com/temirov/gix/internal/utils"
+	flagutils "github.com/temirov/gix/internal/utils/flags"
+	"github.com/temirov/gix/internal/version"
+)
+
+var commandOperationRequirements = map[string][]string{
+	auditOperationNameConstant:                   {auditOperationNameConstant},
+	packagesDeleteCommandPathKeyConstant:         {packagesPurgeOperationNameConstant},
+	pullRequestsDeleteCommandPathKeyConstant:     {branchCleanupOperationNameConstant},
+	folderRenameCommandPathKeyConstant:           {reposRenameOperationNameConstant},
+	remoteCanonicalCommandPathKeyConstant:        {reposRemotesOperationNameConstant},
+	remoteProtocolCommandPathKeyConstant:         {reposProtocolOperationNameConstant},
+	repoReleaseCommandUseNameConstant:            {repoReleaseOperationNameConstant},
+	releaseRetagCommandPathKeyConstant:           {repoReleaseOperationNameConstant},
+	removeCommandUseNameConstant:                 {repoHistoryOperationNameConstant},
+	filesReplaceCommandPathKeyConstant:           {repoFilesReplaceOperationNameConstant},
+	filesAddCommandPathKeyConstant:               {repoFilesAddOperationNameConstant},
+	licenseApplyCommandPathKeyConstant:           {repoLicenseOperationNameConstant},
+	namespaceRewriteCommandPathKeyConstant:       {repoNamespaceRewriteOperationNameConstant},
+	workflowCommandOperationNameConstant:         {workflowCommandOperationNameConstant},
+	defaultCommandUseNameConstant:                {defaultOperationNameConstant},
+	branchChangeTopLevelUseNameConstant:          {branchChangeOperationNameConstant},
+	commitMessageCommandPathKeyConstant:          {commitMessageOperationNameConstant},
+	changelogMessageCommandPathKeyConstant:       {changelogMessageOperationNameConstant},
+	legacyChangelogMessageCommandPathKeyConstant: {changelogMessageOperationNameConstant},
+	legacyCommitMessageCommandPathKeyConstant:    {commitMessageOperationNameConstant},
+}
+
+var requiredOperationConfigurationNames = collectRequiredOperationConfigurationNames()
+
+var operationNameAliases = map[string]string{
+	legacyRepoFolderRenameCommandKeyConstant:       reposRenameOperationNameConstant,
+	legacyRepoRemoteCanonicalCommandKeyConstant:    reposRemotesOperationNameConstant,
+	legacyRepoRemoteProtocolCommandKeyConstant:     reposProtocolOperationNameConstant,
+	legacyRepoPullRequestsDeleteCommandKeyConstant: branchCleanupOperationNameConstant,
+	legacyRepoPackagesDeleteCommandKeyConstant:     packagesPurgeOperationNameConstant,
+	legacyRepoFilesReplaceCommandKeyConstant:       repoFilesReplaceOperationNameConstant,
+	legacyRepoFilesAddCommandKeyConstant:           repoFilesAddOperationNameConstant,
+	legacyRepoLicenseApplyCommandKeyConstant:       repoLicenseOperationNameConstant,
+	legacyRepoNamespaceRewriteCommandKeyConstant:   repoNamespaceRewriteOperationNameConstant,
+	legacyRepoReleaseCommandKeyConstant:            repoReleaseOperationNameConstant,
+	legacyRepoReleaseRetagCommandKeyConstant:       repoReleaseOperationNameConstant,
+	legacyRepoRmCommandKeyConstant:                 repoHistoryOperationNameConstant,
+	legacyChangelogMessageCommandKeyConstant:       changelogMessageOperationNameConstant,
+	legacyCommitMessageCommandKeyConstant:          commitMessageOperationNameConstant,
+	legacyBranchDefaultCommandKeyConstant:          defaultOperationNameConstant,
+	legacyBranchDefaultTopLevelUseNameConstant:     defaultOperationNameConstant,
+	legacyBranchChangeCommandKeyConstant:           branchChangeOperationNameConstant,
+	legacyBranchChangeAliasCommandKeyConstant:      branchChangeOperationNameConstant,
+	branchChangeLegacyTopLevelUseNameConstant:      branchChangeOperationNameConstant,
+	branchRefreshLegacyTopLevelUseNameConstant:     branchChangeOperationNameConstant,
+	legacyBranchRefreshCommandKeyConstant:          branchChangeOperationNameConstant,
+	releaseRetagCommandAliasKeyConstant:            repoReleaseOperationNameConstant,
+}
+
+var operationAliasWarnings = map[string]string{
+	branchChangeLegacyTopLevelUseNameConstant:  "command configuration uses deprecated name \"branch-cd\"; update to \"cd\".",
+	branchRefreshLegacyTopLevelUseNameConstant: "command configuration uses deprecated name \"branch-refresh\"; update to \"cd\" with refresh options.",
+	legacyBranchRefreshCommandKeyConstant:      "command configuration uses deprecated name \"branch refresh\"; update to \"cd\" with refresh options.",
+	legacyBranchDefaultTopLevelUseNameConstant: "command configuration uses deprecated name \"branch-default\"; update to \"default\".",
+	legacyBranchDefaultCommandKeyConstant:      "command configuration uses deprecated name \"branch default\"; update to \"default\".",
+	legacyChangelogMessageCommandKeyConstant:   "command configuration uses deprecated name \"changelog message\"; update to \"message changelog\".",
+	legacyCommitMessageCommandKeyConstant:      "command configuration uses deprecated name \"commit message\"; update to \"message commit\".",
+}
+
+type loggerOutputsFactory interface {
+	CreateLoggerOutputs(utils.LogLevel, utils.LogFormat) (utils.LoggerOutputs, error)
+}
+
+// Application wires the Cobra root command, configuration loader, and structured logger.
+type Application struct {
+	rootCommand                       *cobra.Command
+	configurationLoader               *utils.ConfigurationLoader
+	loggerFactory                     loggerOutputsFactory
+	logger                            *zap.Logger
+	consoleLogger                     *zap.Logger
+	configuration                     ApplicationConfiguration
+	configurationMetadata             utils.LoadedConfiguration
+	configurationFilePath             string
+	logLevelFlagValue                 string
+	logFormatFlagValue                string
+	commandContextAccessor            utils.CommandContextAccessor
+	operationConfigurations           OperationConfigurations
+	embeddedOperationConfigurations   OperationConfigurations
+	rootFlagValues                    *flagutils.RootFlagValues
+	configurationInitializationScope  string
+	configurationInitializationForced bool
+	versionFlag                       bool
+	versionResolver                   func(context.Context) string
+	exitFunction                      func(int)
+}
+
+// NewApplication assembles a fully wired CLI application instance.
+func NewApplication() *Application {
+	application := &Application{
+		loggerFactory:          utils.NewLoggerFactory(),
+		logger:                 zap.NewNop(),
+		consoleLogger:          zap.NewNop(),
+		commandContextAccessor: utils.NewCommandContextAccessor(),
+	}
+	application.versionResolver = application.resolveVersion
+	application.exitFunction = os.Exit
+
+	application.configurationLoader = utils.NewConfigurationLoader(
+		configurationNameConstant,
+		configurationTypeConstant,
+		environmentPrefixConstant,
+		application.resolveConfigurationSearchPaths(),
+	)
+
+	embeddedConfigurationData, embeddedConfigurationType := EmbeddedDefaultConfiguration()
+	application.configurationLoader.SetEmbeddedConfiguration(embeddedConfigurationData, embeddedConfigurationType)
+	application.embeddedOperationConfigurations = loadEmbeddedOperationConfigurations()
+
+	cobraCommand := &cobra.Command{
+		Use:           applicationNameConstant,
+		Short:         applicationShortDescriptionConstant,
+		Long:          applicationLongDescriptionConstant,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		PersistentPreRunE: func(command *cobra.Command, arguments []string) error {
+			if initializationError := application.initializeConfiguration(command); initializationError != nil {
+				return initializationError
+			}
+
+			versionRequested := application.versionFlag
+			if command != nil {
+				if flagValue, flagChanged, flagError := flagutils.BoolFlag(command, versionFlagNameConstant); flagError == nil && flagChanged {
+					versionRequested = flagValue
+				}
+			}
+
+			if versionRequested {
+				application.printVersion(command.Context())
+				application.exitFunction(0)
+			}
+
+			return nil
+		},
+		RunE: func(command *cobra.Command, arguments []string) error {
+			return application.runRootCommand(command, arguments)
+		},
+	}
+
+	cobraCommand.SetContext(context.Background())
+	cobraCommand.PersistentFlags().StringVar(&application.configurationFilePath, configFileFlagNameConstant, "", configFileFlagUsageConstant)
+	cobraCommand.PersistentFlags().StringVar(&application.logLevelFlagValue, logLevelFlagNameConstant, "", logLevelFlagUsageConstant)
+	cobraCommand.PersistentFlags().StringVar(&application.logFormatFlagValue, logFormatFlagNameConstant, "", logFormatFlagUsageConstant)
+	cobraCommand.PersistentFlags().StringVar(
+		&application.configurationInitializationScope,
+		configurationInitializationFlagNameConstant,
+		configurationInitializationDefaultScopeConstant,
+		configurationInitializationFlagUsageConstant,
+	)
+	initializationFlag := cobraCommand.PersistentFlags().Lookup(configurationInitializationFlagNameConstant)
+	if initializationFlag != nil {
+		initializationFlag.Usage = flagutils.FormatChoiceUsage(
+			configurationInitializationDefaultScopeConstant,
+			[]string{
+				configurationInitializationScopeLocalConstant,
+				configurationInitializationScopeUserConstant,
+			},
+			configurationInitializationFlagUsageConstant,
+		)
+	}
+	cobraCommand.PersistentFlags().BoolVar(
+		&application.configurationInitializationForced,
+		configurationInitializationForceFlagNameConstant,
+		false,
+		configurationInitializationForceFlagUsageConstant,
+	)
+
+	application.rootFlagValues = flagutils.BindRootFlags(
+		cobraCommand,
+		flagutils.RootFlagValues{},
+		flagutils.RootFlagDefinition{Name: flagutils.DefaultRootFlagName, Usage: flagutils.DefaultRootFlagUsage, Enabled: true, Persistent: true},
+	)
+
+	flagutils.BindExecutionFlags(
+		cobraCommand,
+		flagutils.ExecutionDefaults{},
+		flagutils.ExecutionFlagDefinitions{
+			AssumeYes: flagutils.ExecutionFlagDefinition{Name: flagutils.AssumeYesFlagName, Usage: flagutils.AssumeYesFlagUsage, Shorthand: flagutils.AssumeYesFlagShorthand, Enabled: true},
+		},
+	)
+
+	cobraCommand.PersistentFlags().String(flagutils.RemoteFlagName, "", flagutils.RemoteFlagUsage)
+
+	cobraCommand.PersistentFlags().BoolVar(&application.versionFlag, versionFlagNameConstant, false, versionFlagUsageConstant)
+
+	versionCommand := &cobra.Command{
+		Use:           versionCommandUseNameConstant,
+		Short:         versionCommandShortDescriptionConstant,
+		Long:          versionCommandLongDescriptionConstant,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(command *cobra.Command, arguments []string) error {
+			application.printVersion(command.Context())
+			return nil
+		},
+	}
+	cobraCommand.AddCommand(versionCommand)
+
+	application.registerCommands(cobraCommand)
+
+	application.rootCommand = cobraCommand
+
+	return application
+}
+
+// Execute runs the configured Cobra command hierarchy and ensures logger flushing.
+func (application *Application) Execute() error {
+	normalizedArguments := flagutils.NormalizeToggleArguments(os.Args[1:])
+	normalizedArguments = normalizeInitializationScopeArguments(normalizedArguments)
+	application.rootCommand.SetArgs(normalizedArguments)
+
+	executionError := application.rootCommand.Execute()
+	if syncError := application.flushLogger(); syncError != nil {
+		return fmt.Errorf(loggerSyncErrorTemplateConstant, syncError)
+	}
+	return executionError
+}
+
+// Execute builds a fresh application instance and executes the root command hierarchy.
+func Execute() error {
+	return NewApplication().Execute()
+}
+
+func normalizeInitializationScopeArguments(arguments []string) []string {
+	if len(arguments) == 0 {
+		return nil
+	}
+
+	normalizedArguments := make([]string, 0, len(arguments))
+	flagPrefix := "--" + configurationInitializationFlagNameConstant
+
+	for index := 0; index < len(arguments); index++ {
+		currentArgument := arguments[index]
+
+		if strings.HasPrefix(currentArgument, flagPrefix+"=") {
+			value := strings.TrimSpace(strings.TrimPrefix(currentArgument, flagPrefix+"="))
+			if len(value) == 0 {
+				normalizedArguments = append(
+					normalizedArguments,
+					fmt.Sprintf("%s=%s", flagPrefix, configurationInitializationDefaultScopeConstant),
+				)
+				continue
+			}
+			normalizedArguments = append(normalizedArguments, currentArgument)
+			continue
+		}
+
+		if currentArgument == flagPrefix {
+			nextIndex := index + 1
+			if nextIndex >= len(arguments) || strings.HasPrefix(arguments[nextIndex], "-") {
+				normalizedArguments = append(
+					normalizedArguments,
+					fmt.Sprintf("%s=%s", flagPrefix, configurationInitializationDefaultScopeConstant),
+				)
+				continue
+			}
+		}
+
+		normalizedArguments = append(normalizedArguments, currentArgument)
+	}
+
+	return normalizedArguments
+}
+
+func (application *Application) resolveConfigurationSearchPaths() []string {
+	overrideValue := strings.TrimSpace(os.Getenv(configurationSearchPathEnvironmentVariableConstant))
+	if len(overrideValue) == 0 {
+		defaultSearchPaths := []string{defaultConfigurationSearchPathConstant}
+		userConfigurationDirectoryPaths := application.resolveUserConfigurationDirectoryPaths()
+		if len(userConfigurationDirectoryPaths) > 0 {
+			defaultSearchPaths = append(defaultSearchPaths, userConfigurationDirectoryPaths...)
+		}
+
+		return defaultSearchPaths
+	}
+
+	overridePaths := strings.FieldsFunc(overrideValue, func(candidate rune) bool {
+		return candidate == os.PathListSeparator
+	})
+
+	cleanedPaths := make([]string, 0, len(overridePaths))
+	for _, pathCandidate := range overridePaths {
+		trimmedCandidate := strings.TrimSpace(pathCandidate)
+		if len(trimmedCandidate) == 0 {
+			continue
+		}
+		cleanedPaths = append(cleanedPaths, trimmedCandidate)
+	}
+
+	if len(cleanedPaths) == 0 {
+		return []string{defaultConfigurationSearchPathConstant}
+	}
+
+	return cleanedPaths
+}
+
+func (application *Application) resolveUserConfigurationDirectoryPaths() []string {
+	userConfigurationDirectoryPaths := make([]string, 0, 3)
+
+	appendConfigurationDirectory := func(baseDirectoryPath string) {
+		trimmedBaseDirectoryPath := strings.TrimSpace(baseDirectoryPath)
+		if len(trimmedBaseDirectoryPath) == 0 {
+			return
+		}
+
+		candidateDirectoryPath := filepath.Join(trimmedBaseDirectoryPath, userConfigurationDirectoryNameConstant)
+		for _, existingDirectoryPath := range userConfigurationDirectoryPaths {
+			if existingDirectoryPath == candidateDirectoryPath {
+				return
+			}
+		}
+
+		userConfigurationDirectoryPaths = append(userConfigurationDirectoryPaths, candidateDirectoryPath)
+	}
+
+	appendConfigurationDirectory(os.Getenv(xdgConfigHomeEnvironmentVariableConstant))
+
+	userConfigurationBaseDirectoryPath, userConfigurationDirectoryError := os.UserConfigDir()
+	if userConfigurationDirectoryError == nil {
+		appendConfigurationDirectory(userConfigurationBaseDirectoryPath)
+	}
+
+	userHomeDirectoryPath, userHomeDirectoryError := os.UserHomeDir()
+	if userHomeDirectoryError == nil {
+		appendConfigurationDirectory(userHomeDirectoryPath)
+	}
+
+	return userConfigurationDirectoryPaths
+}
+
+func (application *Application) initializeConfiguration(command *cobra.Command) error {
+	defaultValues := map[string]any{
+		commonLogLevelConfigKeyConstant:     string(utils.LogLevelError),
+		commonLogFormatConfigKeyConstant:    string(utils.LogFormatStructured),
+		commonAssumeYesConfigKeyConstant:    false,
+		commonRequireCleanConfigKeyConstant: false,
+	}
+
+	loadedConfiguration, loadError := application.configurationLoader.LoadConfiguration(application.configurationFilePath, defaultValues, &application.configuration)
+	if loadError != nil {
+		return fmt.Errorf(configurationLoadErrorTemplateConstant, loadError)
+	}
+
+	application.configurationMetadata = loadedConfiguration
+	legacyOperationKeys := application.collectLegacyOperationUsage(application.configuration.Operations)
+
+	operationConfigurations, configurationBuildError := newOperationConfigurations(application.configuration.Operations)
+	if configurationBuildError != nil {
+		return configurationBuildError
+	}
+	application.operationConfigurations = operationConfigurations
+
+	if validationError := application.validateOperationConfigurations(command); validationError != nil {
+		return validationError
+	}
+	application.operationConfigurations = application.operationConfigurations.MergeDefaults(application.embeddedOperationConfigurations)
+
+	if application.persistentFlagChanged(command, logLevelFlagNameConstant) {
+		application.configuration.Common.LogLevel = application.logLevelFlagValue
+	}
+
+	if application.persistentFlagChanged(command, logFormatFlagNameConstant) {
+		application.configuration.Common.LogFormat = application.logFormatFlagValue
+	}
+
+	loggerOutputs, loggerCreationError := application.loggerFactory.CreateLoggerOutputs(
+		utils.LogLevel(application.configuration.Common.LogLevel),
+		utils.LogFormat(application.configuration.Common.LogFormat),
+	)
+	if loggerCreationError != nil {
+		return fmt.Errorf(loggerCreationErrorTemplateConstant, loggerCreationError)
+	}
+
+	application.logger = loggerOutputs.DiagnosticLogger
+	if application.logger == nil {
+		application.logger = zap.NewNop()
+	}
+
+	application.consoleLogger = loggerOutputs.ConsoleLogger
+	if application.consoleLogger == nil {
+		application.consoleLogger = zap.NewNop()
+	}
+
+	application.logConfigurationInitialization()
+	application.emitLegacyOperationWarnings(legacyOperationKeys)
+
+	if command != nil {
+		updatedContext := application.commandContextAccessor.WithConfigurationFilePath(
+			command.Context(),
+			application.configurationMetadata.ConfigFileUsed,
+		)
+
+		executionFlags := application.collectExecutionFlags(command)
+		updatedContext = application.commandContextAccessor.WithExecutionFlags(updatedContext, executionFlags)
+		updatedContext = application.commandContextAccessor.WithLogLevel(updatedContext, application.configuration.Common.LogLevel)
+
+		updatedContext = application.commandContextAccessor.WithBranchContext(updatedContext, utils.BranchContext{RequireClean: true})
+
+		command.SetContext(updatedContext)
+		if rootCommand := command.Root(); rootCommand != nil {
+			rootCommand.SetContext(updatedContext)
+		}
+	}
+
+	return nil
+}
+
+// InitializeForCommand prepares application state for the provided command name without executing command logic.
+func (application *Application) InitializeForCommand(commandUse string) error {
+	command := &cobra.Command{Use: commandUse}
+	return application.initializeConfiguration(command)
+}
+
+// ConfigFileUsed returns the configuration file path used during initialization.
+func (application *Application) ConfigFileUsed() string {
+	return application.configurationMetadata.ConfigFileUsed
+}
+
+func (application *Application) humanReadableLoggingEnabled() bool {
+	logFormatValue := strings.TrimSpace(application.configuration.Common.LogFormat)
+	return strings.EqualFold(logFormatValue, string(utils.LogFormatConsole))
+}
+
+func (application *Application) logConfigurationInitialization() {
+	if !strings.EqualFold(strings.TrimSpace(application.configuration.Common.LogLevel), string(utils.LogLevelDebug)) {
+		return
+	}
+
+	if application.humanReadableLoggingEnabled() {
+		bannerMessage := fmt.Sprintf(
+			configurationInitializedConsoleTemplateConstant,
+			configurationInitializedMessageConstant,
+			application.configuration.Common.LogLevel,
+			application.configuration.Common.LogFormat,
+			application.configurationMetadata.ConfigFileUsed,
+		)
+		application.consoleLogger.Debug(bannerMessage)
+		return
+	}
+
+	application.logger.Debug(
+		configurationInitializedMessageConstant,
+		zap.String(configurationLogLevelFieldConstant, application.configuration.Common.LogLevel),
+		zap.String(configurationLogFormatFieldConstant, application.configuration.Common.LogFormat),
+		zap.String(configurationFileFieldConstant, application.configurationMetadata.ConfigFileUsed),
+	)
+}
+
+func (application *Application) collectExecutionFlags(command *cobra.Command) utils.ExecutionFlags {
+	executionFlags := utils.ExecutionFlags{}
+	if command == nil {
+		return executionFlags
+	}
+
+	if assumeYesValue, assumeYesChanged, assumeYesError := flagutils.BoolFlag(command, flagutils.AssumeYesFlagName); assumeYesError == nil {
+		executionFlags.AssumeYes = assumeYesValue
+		executionFlags.AssumeYesSet = assumeYesChanged
+	}
+
+	if remoteValue, remoteChanged, remoteError := flagutils.StringFlag(command, flagutils.RemoteFlagName); remoteError == nil {
+		trimmedRemote := strings.TrimSpace(remoteValue)
+		executionFlags.Remote = trimmedRemote
+		executionFlags.RemoteSet = remoteChanged && len(trimmedRemote) > 0
+	}
+
+	return executionFlags
+}
+
+func (application *Application) auditCommandConfiguration() audit.CommandConfiguration {
+	var configuration audit.CommandConfiguration
+	application.decodeOperationConfiguration(auditOperationNameConstant, &configuration)
+	if strings.EqualFold(application.configuration.Common.LogLevel, string(utils.LogLevelDebug)) {
+		configuration.Debug = true
+	}
+	return configuration
+}
+
+func (application *Application) packagesConfiguration() packages.Configuration {
+	configuration := packages.DefaultConfiguration()
+	application.decodeOperationConfiguration(packagesPurgeOperationNameConstant, &configuration.Purge)
+
+	return configuration
+}
+
+func (application *Application) branchCleanupConfiguration() branches.CommandConfiguration {
+	configuration := branches.DefaultCommandConfiguration()
+	application.decodeOperationConfiguration(branchCleanupOperationNameConstant, &configuration)
+
+	options, optionsExist := application.lookupOperationOptions(branchCleanupOperationNameConstant)
+	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
+		configuration.AssumeYes = application.configuration.Common.AssumeYes
+	}
+
+	return configuration
+}
+
+func (application *Application) branchChangeConfiguration() branchcdcmd.CommandConfiguration {
+	configuration := branchcdcmd.DefaultCommandConfiguration()
+	application.decodeOperationConfiguration(branchChangeOperationNameConstant, &configuration)
+
+	options, optionsExist := application.lookupOperationOptions(branchChangeOperationNameConstant)
+	if !optionsExist || !optionExists(options, requireCleanOptionKeyConstant) {
+		configuration.RequireClean = application.configuration.Common.RequireClean
+	}
+
+	return configuration.Sanitize()
+}
+
+func (application *Application) repoReleaseConfiguration() releasecmd.CommandConfiguration {
+	configuration := releasecmd.DefaultCommandConfiguration()
+	application.decodeOperationConfiguration(repoReleaseOperationNameConstant, &configuration)
+	return configuration.Sanitize()
+}
+
+func (application *Application) resolveVersion(executionContext context.Context) string {
+	dependencies := version.Dependencies{}
+	gitExecutor, executorError := reposdeps.ResolveGitExecutor(nil, application.logger, application.humanReadableLoggingEnabled())
+	if executorError == nil {
+		dependencies.GitExecutor = gitExecutor
+	}
+
+	resolved := version.Detect(executionContext, dependencies)
+	trimmed := strings.TrimSpace(resolved)
+	if len(trimmed) == 0 {
+		return resolved
+	}
+	return trimmed
+}
+
+func (application *Application) printVersion(executionContext context.Context) {
+	versionString := application.versionResolver(executionContext)
+	fmt.Printf(versionOutputTemplateConstant, versionString)
+}
+
+func (application *Application) reposRenameConfiguration() repos.RenameConfiguration {
+	configuration := repos.DefaultToolsConfiguration().Rename
+	application.decodeOperationConfiguration(reposRenameOperationNameConstant, &configuration)
+
+	options, optionsExist := application.lookupOperationOptions(reposRenameOperationNameConstant)
+	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
+		configuration.AssumeYes = application.configuration.Common.AssumeYes
+	}
+	if !optionsExist || !optionExists(options, requireCleanOptionKeyConstant) {
+		configuration.RequireCleanWorktree = application.configuration.Common.RequireClean
+	}
+
+	return configuration
+}
+
+func (application *Application) reposRemotesConfiguration() repos.RemotesConfiguration {
+	configuration := repos.DefaultToolsConfiguration().Remotes
+	application.decodeOperationConfiguration(reposRemotesOperationNameConstant, &configuration)
+
+	options, optionsExist := application.lookupOperationOptions(reposRemotesOperationNameConstant)
+	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
+		configuration.AssumeYes = application.configuration.Common.AssumeYes
+	}
+
+	return configuration
+}
+
+func (application *Application) reposProtocolConfiguration() repos.ProtocolConfiguration {
+	configuration := repos.DefaultToolsConfiguration().Protocol
+	application.decodeOperationConfiguration(reposProtocolOperationNameConstant, &configuration)
+
+	options, optionsExist := application.lookupOperationOptions(reposProtocolOperationNameConstant)
+	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
+		configuration.AssumeYes = application.configuration.Common.AssumeYes
+	}
+
+	return configuration
+}
+
+func (application *Application) reposRemoveConfiguration() repos.RemoveConfiguration {
+	configuration := repos.DefaultToolsConfiguration().Remove
+	application.decodeOperationConfiguration(repoHistoryOperationNameConstant, &configuration)
+
+	options, optionsExist := application.lookupOperationOptions(repoHistoryOperationNameConstant)
+	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
+		configuration.AssumeYes = application.configuration.Common.AssumeYes
+	}
+
+	return configuration.Sanitize()
+}
+
+func (application *Application) reposReplaceConfiguration() repos.ReplaceConfiguration {
+	configuration := repos.DefaultToolsConfiguration().Replace
+	application.decodeOperationConfiguration(repoFilesReplaceOperationNameConstant, &configuration)
+
+	options, optionsExist := application.lookupOperationOptions(repoFilesReplaceOperationNameConstant)
+	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
+		configuration.AssumeYes = application.configuration.Common.AssumeYes
+	}
+
+	return configuration.Sanitize()
+}
+
+func (application *Application) reposLicenseConfiguration() repos.LicenseConfiguration {
+	configuration := repos.DefaultToolsConfiguration().License
+	application.decodeOperationConfiguration(repoLicenseOperationNameConstant, &configuration)
+
+	options, optionsExist := application.lookupOperationOptions(repoLicenseOperationNameConstant)
+	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
+		configuration.AssumeYes = application.configuration.Common.AssumeYes
+	}
+	if !optionsExist || !optionExists(options, requireCleanOptionKeyConstant) {
+		configuration.RequireClean = application.configuration.Common.RequireClean
+	}
+
+	return configuration.Sanitize()
+}
+
+func (application *Application) reposFilesAddConfiguration() repos.AddConfiguration {
+	configuration := repos.DefaultToolsConfiguration().Add
+	application.decodeOperationConfiguration(repoFilesAddOperationNameConstant, &configuration)
+
+	options, optionsExist := application.lookupOperationOptions(repoFilesAddOperationNameConstant)
+	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
+		configuration.AssumeYes = application.configuration.Common.AssumeYes
+	}
+
+	return configuration.Sanitize()
+}
+
+func (application *Application) reposNamespaceConfiguration() repos.NamespaceConfiguration {
+	configuration := repos.DefaultToolsConfiguration().Namespace
+	application.decodeOperationConfiguration(repoNamespaceRewriteOperationNameConstant, &configuration)
+
+	options, optionsExist := application.lookupOperationOptions(repoNamespaceRewriteOperationNameConstant)
+	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
+		configuration.AssumeYes = application.configuration.Common.AssumeYes
+	}
+
+	return configuration.Sanitize()
+}
+
+func (application *Application) workflowCommandConfiguration() workflowcmd.CommandConfiguration {
+	configuration := workflowcmd.DefaultCommandConfiguration()
+	application.decodeOperationConfiguration(workflowCommandOperationNameConstant, &configuration)
+
+	options, optionsExist := application.lookupOperationOptions(workflowCommandOperationNameConstant)
+	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
+		configuration.AssumeYes = application.configuration.Common.AssumeYes
+	}
+	if !optionsExist || !optionExists(options, requireCleanOptionKeyConstant) {
+		configuration.RequireClean = application.configuration.Common.RequireClean
+	}
+
+	return configuration
+}
+
+func (application *Application) changelogMessageConfiguration() changelogcmd.MessageConfiguration {
+	configuration := changelogcmd.DefaultMessageConfiguration()
+	application.decodeOperationConfiguration(changelogMessageOperationNameConstant, &configuration)
+	return configuration.Sanitize()
+}
+
+func (application *Application) commitMessageConfiguration() commitcmd.MessageConfiguration {
+	configuration := commitcmd.DefaultMessageConfiguration()
+	application.decodeOperationConfiguration(commitMessageOperationNameConstant, &configuration)
+	return configuration.Sanitize()
+}
+
+func (application *Application) defaultCommandConfiguration() migrate.CommandConfiguration {
+	configuration := migrate.DefaultCommandConfiguration()
+	application.decodeOperationConfiguration(defaultOperationNameConstant, &configuration)
+	if strings.EqualFold(application.configuration.Common.LogLevel, string(utils.LogLevelDebug)) {
+		configuration.EnableDebugLogging = true
+	}
+	return configuration
+}
+
+func (application *Application) decodeOperationConfiguration(operationName string, target any) {
+	if decodeError := application.operationConfigurations.decode(operationName, target); decodeError != nil {
+		if application.logger == nil {
+			return
+		}
+		application.logger.Warn(
+			operationDecodeErrorMessageConstant,
+			zap.String(operationNameLogFieldConstant, operationName),
+			zap.Error(decodeError),
+		)
+	}
+}
+
+func (application *Application) lookupOperationOptions(operationName string) (map[string]any, bool) {
+	options, lookupError := application.operationConfigurations.Lookup(operationName)
+	if lookupError != nil {
+		return nil, false
+	}
+	return options, true
+}
+
+func optionExists(options map[string]any, optionKey string) bool {
+	if len(options) == 0 {
+		return false
+	}
+
+	normalizedOptionKey := strings.ToLower(strings.TrimSpace(optionKey))
+	for candidateKey := range options {
+		if strings.ToLower(strings.TrimSpace(candidateKey)) == normalizedOptionKey {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (application *Application) validateOperationConfigurations(command *cobra.Command) error {
+	if len(application.configuration.Operations) == 0 {
+		return nil
+	}
+
+	requiredOperations := application.operationsRequiredForCommand(command)
+	if len(requiredOperations) == 0 {
+		return nil
+	}
+
+	for operationIndex := range requiredOperations {
+		operationName := requiredOperations[operationIndex]
+		_, lookupError := application.operationConfigurations.Lookup(operationName)
+		if lookupError == nil {
+			continue
+		}
+
+		var missingConfigurationError MissingOperationConfigurationError
+		if errors.As(lookupError, &missingConfigurationError) && command != nil {
+			commandName := strings.TrimSpace(command.Name())
+			if len(commandName) == 0 && command.HasParent() {
+				parentCommand := command.Parent()
+				commandName = strings.TrimSpace(parentCommand.Name())
+			}
+
+			application.logMissingOperationConfiguration(commandName, operationName)
+			continue
+		}
+
+		return lookupError
+	}
+
+	return nil
+}
+
+func (application *Application) logMissingOperationConfiguration(commandName string, operationName string) {
+	if application.logger == nil {
+		return
+	}
+
+	normalizedCommandName := strings.TrimSpace(commandName)
+	if len(normalizedCommandName) == 0 {
+		normalizedCommandName = unknownCommandNamePlaceholderConstant
+	}
+
+	application.logger.Info(
+		missingOperationConfigurationSkippedMessageConstant,
+		zap.String(logFieldCommandNameConstant, normalizedCommandName),
+		zap.String(operationNameLogFieldConstant, operationName),
+	)
+}
+
+func (application *Application) operationsRequiredForCommand(command *cobra.Command) []string {
+	if command == nil {
+		return requiredOperationConfigurationNames
+	}
+
+	commandName := strings.TrimSpace(command.Name())
+	if len(commandName) == 0 {
+		return requiredOperationConfigurationNames
+	}
+
+	if requiredOperations, exists := commandOperationRequirements[commandName]; exists {
+		return requiredOperations
+	}
+
+	if parentCommand := command.Parent(); parentCommand != nil {
+		parentName := strings.TrimSpace(parentCommand.Name())
+		if len(parentName) > 0 {
+			compositeKey := parentName + "/" + commandName
+			if requiredOperations, exists := commandOperationRequirements[compositeKey]; exists {
+				return requiredOperations
+			}
+		}
+		return application.operationsRequiredForCommand(parentCommand)
+	}
+
+	return nil
+}
+func (application *Application) handleConfigurationInitialization(command *cobra.Command) (bool, error) {
+	if !application.configurationInitializationRequested(command) {
+		return false, nil
+	}
+
+	initializationScope := strings.TrimSpace(application.configurationInitializationScope)
+	if len(initializationScope) == 0 {
+		initializationScope = configurationInitializationDefaultScopeConstant
+	}
+
+	initializationPlan, planError := application.resolveConfigurationInitializationPlan(initializationScope)
+	if planError != nil {
+		return true, planError
+	}
+
+	configurationContent, _ := EmbeddedDefaultConfiguration()
+	if len(configurationContent) == 0 {
+		return true, errors.New(configurationInitializationContentUnavailableErrorConstant)
+	}
+
+	if writeError := application.writeConfigurationFile(initializationPlan, configurationContent); writeError != nil {
+		return true, writeError
+	}
+
+	application.logger.Info(
+		configurationInitializationSuccessMessageConstant,
+		zap.String(configurationFileFieldConstant, initializationPlan.FilePath),
+	)
+
+	return true, nil
+}
+
+func (application *Application) configurationInitializationRequested(command *cobra.Command) bool {
+	return application.persistentFlagChanged(command, configurationInitializationFlagNameConstant)
+}
+
+func (application *Application) resolveConfigurationInitializationPlan(initializationScope string) (configurationInitializationPlan, error) {
+	normalizedScope := strings.ToLower(strings.TrimSpace(initializationScope))
+	switch normalizedScope {
+	case "", configurationInitializationScopeLocalConstant:
+		workingDirectoryPath, workingDirectoryError := os.Getwd()
+		if workingDirectoryError != nil {
+			return configurationInitializationPlan{}, fmt.Errorf(configurationInitializationWorkingDirectoryErrorTemplateConstant, workingDirectoryError)
+		}
+
+		trimmedWorkingDirectoryPath := strings.TrimSpace(workingDirectoryPath)
+		if len(trimmedWorkingDirectoryPath) == 0 {
+			return configurationInitializationPlan{}, fmt.Errorf(
+				configurationInitializationWorkingDirectoryErrorTemplateConstant,
+				errors.New(configurationInitializationWorkingDirectoryEmptyErrorConstant),
+			)
+		}
+
+		return configurationInitializationPlan{
+			DirectoryPath: trimmedWorkingDirectoryPath,
+			FilePath:      filepath.Join(trimmedWorkingDirectoryPath, configurationFileNameConstant),
+		}, nil
+	case configurationInitializationScopeUserConstant:
+		userHomeDirectoryPath, userHomeDirectoryError := os.UserHomeDir()
+		if userHomeDirectoryError != nil {
+			return configurationInitializationPlan{}, fmt.Errorf(configurationInitializationHomeDirectoryErrorTemplateConstant, userHomeDirectoryError)
+		}
+
+		trimmedHomeDirectoryPath := strings.TrimSpace(userHomeDirectoryPath)
+		if len(trimmedHomeDirectoryPath) == 0 {
+			return configurationInitializationPlan{}, fmt.Errorf(
+				configurationInitializationHomeDirectoryErrorTemplateConstant,
+				errors.New(configurationInitializationHomeDirectoryEmptyErrorConstant),
+			)
+		}
+
+		configurationDirectoryPath := filepath.Join(trimmedHomeDirectoryPath, userConfigurationDirectoryNameConstant)
+
+		return configurationInitializationPlan{
+			DirectoryPath: configurationDirectoryPath,
+			FilePath:      filepath.Join(configurationDirectoryPath, configurationFileNameConstant),
+		}, nil
+	default:
+		trimmedScope := strings.TrimSpace(initializationScope)
+		if len(trimmedScope) == 0 {
+			trimmedScope = initializationScope
+		}
+		return configurationInitializationPlan{}, fmt.Errorf(configurationInitializationUnsupportedScopeTemplateConstant, trimmedScope)
+	}
+}
+
+func (application *Application) writeConfigurationFile(initializationPlan configurationInitializationPlan, configurationContent []byte) error {
+	if len(configurationContent) == 0 {
+		return errors.New(configurationInitializationContentUnavailableErrorConstant)
+	}
+
+	directoryPath := strings.TrimSpace(initializationPlan.DirectoryPath)
+	if len(directoryPath) == 0 {
+		return fmt.Errorf(
+			configurationInitializationDirectoryErrorTemplateConstant,
+			initializationPlan.DirectoryPath,
+			errors.New(configurationInitializationWorkingDirectoryEmptyErrorConstant),
+		)
+	}
+
+	directoryInfo, directoryStatError := os.Stat(directoryPath)
+	switch {
+	case directoryStatError == nil:
+		if !directoryInfo.IsDir() {
+			return fmt.Errorf(configurationInitializationDirectoryConflictTemplateConstant, directoryPath)
+		}
+	case errors.Is(directoryStatError, os.ErrNotExist):
+		if createError := os.MkdirAll(directoryPath, configurationDirectoryPermissionConstant); createError != nil {
+			return fmt.Errorf(configurationInitializationDirectoryErrorTemplateConstant, directoryPath, createError)
+		}
+	default:
+		return fmt.Errorf(configurationInitializationDirectoryErrorTemplateConstant, directoryPath, directoryStatError)
+	}
+
+	fileInfo, fileStatError := os.Stat(initializationPlan.FilePath)
+	switch {
+	case fileStatError == nil:
+		if fileInfo.IsDir() {
+			return fmt.Errorf(configurationInitializationExistingDirectoryTemplateConstant, initializationPlan.FilePath)
+		}
+		if !application.configurationInitializationForced {
+			return fmt.Errorf(configurationInitializationExistingFileTemplateConstant, initializationPlan.FilePath)
+		}
+	case errors.Is(fileStatError, os.ErrNotExist):
+	default:
+		return fmt.Errorf(configurationInitializationWriteErrorTemplateConstant, initializationPlan.FilePath, fileStatError)
+	}
+
+	writeError := os.WriteFile(initializationPlan.FilePath, configurationContent, configurationFilePermissionConstant)
+	if writeError != nil {
+		return fmt.Errorf(configurationInitializationWriteErrorTemplateConstant, initializationPlan.FilePath, writeError)
+	}
+
+	return nil
+}
+
+func (application *Application) runRootCommand(command *cobra.Command, arguments []string) error {
+	if application.logger == nil {
+		return errors.New(loggerNotInitializedMessageConstant)
+	}
+
+	initializationHandled, initializationError := application.handleConfigurationInitialization(command)
+	if initializationError != nil {
+		return initializationError
+	}
+	if initializationHandled {
+		return nil
+	}
+
+	application.logger.Info(
+		rootCommandInfoMessageConstant,
+		zap.String(logFieldCommandNameConstant, command.Name()),
+		zap.Int(logFieldArgumentCountConstant, len(arguments)),
+	)
+
+	application.logger.Debug(
+		rootCommandDebugMessageConstant,
+		zap.Strings(logFieldArgumentsConstant, arguments),
+	)
+
+	if len(arguments) == 0 {
+		return command.Help()
+	}
+
+	return nil
+}
+
+func (application *Application) flushLogger() error {
+	if syncError := application.syncLoggerInstance(application.logger); syncError != nil {
+		return syncError
+	}
+
+	if syncError := application.syncLoggerInstance(application.consoleLogger); syncError != nil {
+		return syncError
+	}
+
+	return nil
+}
+
+func (application *Application) syncLoggerInstance(logger *zap.Logger) error {
+	if logger == nil {
+		return nil
+	}
+
+	syncError := logger.Sync()
+	switch {
+	case syncError == nil:
+		return nil
+	case errors.Is(syncError, syscall.ENOTSUP):
+		return nil
+	case errors.Is(syncError, syscall.EINVAL):
+		return nil
+	case errors.Is(syncError, syscall.EBADF):
+		return nil
+	case errors.Is(syncError, syscall.ENOTTY):
+		return nil
+	default:
+		return syncError
+	}
+}
+
+func (application *Application) persistentFlagChanged(command *cobra.Command, flagName string) bool {
+	if command == nil {
+		return false
+	}
+
+	flagSetsToInspect := []*pflag.FlagSet{
+		command.PersistentFlags(),
+		command.InheritedFlags(),
+	}
+
+	rootCommand := command.Root()
+	if rootCommand != nil {
+		flagSetsToInspect = append(flagSetsToInspect, rootCommand.PersistentFlags())
+	}
+
+	for _, flagSet := range flagSetsToInspect {
+		if flagSet == nil {
+			continue
+		}
+
+		if flagSet.Changed(flagName) {
+			return true
+		}
+	}
+
+	return false
+}

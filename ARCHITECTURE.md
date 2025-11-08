@@ -16,15 +16,15 @@ gix is a Go 1.24 command-line application built with Cobra and Viper. The binary
 
 ## Execution Flow
 
-1. The binary entrypoint (`main.go`) invokes `cli.Execute`, which builds the Cobra root command inside `cmd/cli/application.go`.
+1. The binary entrypoint (`main.go`) invokes `cli.Execute`, which builds the Cobra root command through `cmd/cli/application_bootstrap.go` (composition/flags) and `cmd/cli/application_commands.go` (command registration) after loading config from `cmd/cli/application_config.go`.
 2. `cmd/cli` initialises Viper, loads configuration files via `internal/utils/flags`, and prepares a structured Zap logger.
-3. Each namespace (`audit`, `repo`, `branch`, `commit`, `workflow`, etc.) registers subcommands that accept shared flags (`--roots`, ``, `--yes`) before delegating to domain services.
+3. Each namespace (`audit`, `repo`, `branch`, `commit`, `workflow`, etc.) registers subcommands via `registerCommands`, reusing shared task-runner wiring provided by `pkg/taskrunner`.
 4. Domain services resolve their collaborators through `internal/repos/dependencies`, which supplies defaults for repository discovery, filesystem access, Git execution, and GitHub metadata unless tests inject fakes.
 5. Commands perform work through `internal/...` packages (for example, `internal/repos/rename.Run`), returning contextual errors that bubble back to Cobra for consistent exit handling.
 
 ## Command Surface
 
-The Cobra application (`cmd/cli/application.go`) initialises the root command and nests feature namespaces below it (`audit`, `repo`, `branch`, `commit`, `workflow`, and others). Each namespace hosts subcommands that ultimately depend on injected services from `internal/...` packages. Commands share common flag parsing helpers (`internal/utils/flags`) and prompt utilities.
+The Cobra application (split across `cmd/cli/application_bootstrap.go`, `cmd/cli/application_commands.go`, and `cmd/cli/application_config.go`) initialises the root command and nests feature namespaces below it (`audit`, `repo`, `branch`, `commit`, `workflow`, and others). Each namespace hosts subcommands that ultimately depend on injected services from `internal/...` packages. Commands share common flag parsing helpers (`internal/utils/flags`), prompt utilities, and the central dependency builder from `pkg/taskrunner`.
 
 - `cmd/cli/repos` registers multi-command groups such as `folder rename`, `remote update-to-canonical`, `prs delete`, and `files replace`.
 - `cmd/cli/repos/release` contains the `release` tagging workflow.
@@ -180,7 +180,7 @@ workflow:
 
 ## Reusable Packages
 
-`pkg/llm` contains the reusable client abstractions for LLM-backed features such as commit message and changelog generators. The package exposes an interface-based design so that other programs can reuse the same client without duplicating API plumbing.
+`pkg/llm` contains the reusable client abstractions for LLM-backed features such as commit message and changelog generators. The package exposes an interface-based design so that other programs can reuse the same client without duplicating API plumbing. `pkg/taskrunner` hosts the shared workflow dependency resolver and task-runner adapter used by CLI commands and tests to consistently wire Git, GitHub, filesystem, and confirmation collaborators.
 
 ## Testing Strategy
 

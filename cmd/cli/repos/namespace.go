@@ -8,12 +8,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/temirov/gix/internal/githubcli"
-	"github.com/temirov/gix/internal/gitrepo"
-	"github.com/temirov/gix/internal/repos/dependencies"
 	"github.com/temirov/gix/internal/repos/shared"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
 	"github.com/temirov/gix/internal/workflow"
+	"github.com/temirov/gix/pkg/taskrunner"
 )
 
 const (
@@ -135,54 +133,28 @@ func (builder *NamespaceCommandBuilder) run(command *cobra.Command, arguments []
 		return rootsError
 	}
 
-	logger := resolveLogger(builder.LoggerProvider)
-	humanReadableLogging := false
-	if builder.HumanReadableLoggingProvider != nil {
-		humanReadableLogging = builder.HumanReadableLoggingProvider()
+	dependencyResult, dependencyError := buildDependencies(
+		command,
+		dependencyInputs{
+			LoggerProvider:               builder.LoggerProvider,
+			HumanReadableLoggingProvider: builder.HumanReadableLoggingProvider,
+			Discoverer:                   builder.Discoverer,
+			GitExecutor:                  builder.GitExecutor,
+			GitManager:                   builder.GitManager,
+			FileSystem:                   builder.FileSystem,
+			PrompterFactory:              builder.PrompterFactory,
+		},
+		taskrunner.DependenciesOptions{},
+	)
+	if dependencyError != nil {
+		return dependencyError
 	}
 
-	gitExecutor, executorError := dependencies.ResolveGitExecutor(builder.GitExecutor, logger, humanReadableLogging)
-	if executorError != nil {
-		return executorError
-	}
-
-	gitManager, managerError := dependencies.ResolveGitRepositoryManager(builder.GitManager, gitExecutor)
-	if managerError != nil {
-		return managerError
-	}
-
-	repositoryDiscoverer := dependencies.ResolveRepositoryDiscoverer(builder.Discoverer)
-	fileSystem := dependencies.ResolveFileSystem(builder.FileSystem)
-	githubClient, githubClientError := githubcli.NewClient(gitExecutor)
-	if githubClientError != nil {
-		return githubClientError
-	}
-
-	prompter := resolvePrompter(builder.PrompterFactory, command)
-	trackingPrompter := newCascadingConfirmationPrompter(prompter, assumeYes)
-
-	var repositoryManager *gitrepo.RepositoryManager
-	if concrete, ok := gitManager.(*gitrepo.RepositoryManager); ok {
-		repositoryManager = concrete
-	} else {
-		constructedManager, constructedErr := gitrepo.NewRepositoryManager(gitExecutor)
-		if constructedErr != nil {
-			return constructedErr
-		}
-		repositoryManager = constructedManager
-	}
-
-	dependenciesSet := workflow.Dependencies{
-		Logger:               logger,
-		RepositoryDiscoverer: repositoryDiscoverer,
-		GitExecutor:          gitExecutor,
-		RepositoryManager:    repositoryManager,
-		GitHubClient:         githubClient,
-		FileSystem:           fileSystem,
-		Prompter:             trackingPrompter,
-		Output:               command.OutOrStdout(),
-		Errors:               command.ErrOrStderr(),
-	}
+	dependenciesSet := dependencyResult.Workflow
+	trackingPrompter := newCascadingConfirmationPrompter(dependenciesSet.Prompter, assumeYes)
+	dependenciesSet.Prompter = trackingPrompter
+	dependenciesSet.Output = command.OutOrStdout()
+	dependenciesSet.Errors = command.ErrOrStderr()
 
 	taskRunner := ResolveTaskRunner(builder.TaskRunnerFactory, dependenciesSet)
 
