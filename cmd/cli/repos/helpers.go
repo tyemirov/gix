@@ -4,7 +4,6 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
-	"github.com/temirov/gix/internal/repos/prompt"
 	"github.com/temirov/gix/internal/repos/shared"
 	rootutils "github.com/temirov/gix/internal/utils/roots"
 	"github.com/temirov/gix/internal/workflow"
@@ -77,16 +76,6 @@ func resolveLogger(provider LoggerProvider) *zap.Logger {
 		return zap.NewNop()
 	}
 	return logger
-}
-
-func resolvePrompter(factory PrompterFactory, command *cobra.Command) shared.ConfirmationPrompter {
-	if factory != nil {
-		prompter := factory(command)
-		if prompter != nil {
-			return prompter
-		}
-	}
-	return prompt.NewIOConfirmationPrompter(command.InOrStdin(), command.OutOrStdout())
 }
 
 // cascadingConfirmationPrompter forwards confirmations while tracking apply-to-all decisions.

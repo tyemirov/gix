@@ -6,7 +6,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/temirov/gix/internal/workflow"
 	"github.com/temirov/gix/pkg/taskrunner"
 )
 
@@ -19,22 +18,7 @@ type TaskRunnerExecutor = taskrunner.Executor
 // TaskRunnerFactory constructs workflow runners.
 type TaskRunnerFactory = taskrunner.Factory
 
-func resolveLogger(provider LoggerProvider) *zap.Logger {
-	if provider == nil {
-		return zap.NewNop()
-	}
-	logger := provider()
-	if logger == nil {
-		return zap.NewNop()
-	}
-	return logger
-}
-
 func lookupEnvironmentValue(name string) (string, bool) {
 	value, ok := os.LookupEnv(name)
 	return strings.TrimSpace(value), ok
-}
-
-func resolveTaskRunner(factory TaskRunnerFactory, dependencies workflow.Dependencies) TaskRunnerExecutor {
-	return taskrunner.Resolve(factory, dependencies)
 }
