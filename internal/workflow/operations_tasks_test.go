@@ -201,6 +201,73 @@ func TestCommitMessageActionPreservesUserProvidedVariable(t *testing.T) {
 	require.Equal(t, "feat: user provided", value)
 }
 
+func TestTaskExecutorSkipsPushWhenRemoteMissing(t *testing.T) {
+	gitExecutor := &recordingGitExecutor{
+		remoteURLs: map[string]string{"origin": ""},
+	}
+	repositoryManager, managerErr := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(t, managerErr)
+
+	repository := NewRepositoryState(audit.RepositoryInspection{Path: "/repositories/sample"})
+	plan := taskPlan{
+		task: TaskDefinition{
+			Branch: TaskBranchDefinition{PushRemote: "origin"},
+		},
+		branchName: "feature-license",
+	}
+	output := &bytes.Buffer{}
+	reporter := shared.NewStructuredReporter(output, output, shared.WithRepositoryHeaders(false))
+	environment := &Environment{
+		GitExecutor:       gitExecutor,
+		RepositoryManager: repositoryManager,
+		Reporter:          reporter,
+	}
+
+	executor := taskExecutor{environment: environment, repository: repository, plan: plan}
+	require.NoError(t, executor.pushBranch(context.Background()))
+
+	for _, command := range gitExecutor.commands {
+		require.NotEqual(t, "push", firstArgument(command.Arguments))
+	}
+	require.Contains(t, output.String(), "remote missing")
+}
+
+func TestTaskExecutorSkipsPushWhenRemoteLookupFails(t *testing.T) {
+	gitExecutor := &recordingGitExecutor{
+		remoteErrors: map[string]error{
+			"origin": execshell.CommandFailedError{
+				Command: execshell.ShellCommand{Name: execshell.CommandGit},
+				Result:  execshell.ExecutionResult{ExitCode: 128},
+			},
+		},
+	}
+	repositoryManager, managerErr := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(t, managerErr)
+
+	repository := NewRepositoryState(audit.RepositoryInspection{Path: "/repositories/sample"})
+	plan := taskPlan{
+		task: TaskDefinition{
+			Branch: TaskBranchDefinition{PushRemote: "origin"},
+		},
+		branchName: "feature-license",
+	}
+	output := &bytes.Buffer{}
+	reporter := shared.NewStructuredReporter(output, output, shared.WithRepositoryHeaders(false))
+	environment := &Environment{
+		GitExecutor:       gitExecutor,
+		RepositoryManager: repositoryManager,
+		Reporter:          reporter,
+	}
+
+	executor := taskExecutor{environment: environment, repository: repository, plan: plan}
+	require.NoError(t, executor.pushBranch(context.Background()))
+
+	for _, command := range gitExecutor.commands {
+		require.NotEqual(t, "push", firstArgument(command.Arguments))
+	}
+	require.Contains(t, output.String(), "remote lookup failed")
+}
+
 func TestTaskOperationSkipsDuplicateRepositories(t *testing.T) {
 	t.Parallel()
 
@@ -887,6 +954,8 @@ type recordingGitExecutor struct {
 	worktreeClean  bool
 	currentBranch  string
 	existingRefs   map[string]bool
+	remoteURLs     map[string]string
+	remoteErrors   map[string]error
 }
 
 func (executor *recordingGitExecutor) ExecuteGit(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
@@ -937,6 +1006,21 @@ func (executor *recordingGitExecutor) ExecuteGit(_ context.Context, details exec
 		}
 	case "remote":
 		if len(details.Arguments) >= 3 && details.Arguments[1] == "get-url" {
+			remoteName := details.Arguments[2]
+			if executor.remoteErrors != nil {
+				if remoteError, exists := executor.remoteErrors[remoteName]; exists {
+					return execshell.ExecutionResult{}, remoteError
+				}
+			}
+			if executor.remoteURLs != nil {
+				if remoteURL, exists := executor.remoteURLs[remoteName]; exists {
+					return execshell.ExecutionResult{StandardOutput: remoteURL + "\n"}, nil
+				}
+				return execshell.ExecutionResult{}, execshell.CommandFailedError{
+					Command: execshell.ShellCommand{Name: execshell.CommandGit, Details: details},
+					Result:  execshell.ExecutionResult{ExitCode: 1},
+				}
+			}
 			return execshell.ExecutionResult{StandardOutput: "git@github.com:example/repo.git\n"}, nil
 		}
 	}

@@ -240,6 +240,28 @@ func (executor taskExecutor) pushBranch(executionContext context.Context) error 
 		return nil
 	}
 
+	if executor.environment != nil && executor.environment.RepositoryManager != nil {
+		remoteURL, remoteError := executor.environment.RepositoryManager.GetRemoteURL(executionContext, executor.repository.Path, remote)
+		if remoteError != nil {
+			executor.report(
+				shared.EventCodeTaskSkip,
+				shared.EventLevelWarn,
+				"remote lookup failed",
+				map[string]string{"remote": remote, "error": remoteError.Error()},
+			)
+			return nil
+		}
+		if len(strings.TrimSpace(remoteURL)) == 0 {
+			executor.report(
+				shared.EventCodeTaskSkip,
+				shared.EventLevelWarn,
+				"remote missing",
+				map[string]string{"remote": remote},
+			)
+			return nil
+		}
+	}
+
 	arguments := []string{"push", "--set-upstream", remote, executor.plan.branchName}
 	_, err := executor.environment.GitExecutor.ExecuteGit(executionContext, execshell.CommandDetails{Arguments: arguments, WorkingDirectory: executor.repository.Path})
 	return err
