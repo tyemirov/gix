@@ -93,6 +93,8 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 		return dependencyError
 	}
 
+	dependencyResult.Workflow.DisableWorkflowLogging = true
+
 	taskRunner := resolveTaskRunner(builder.TaskRunnerFactory, dependencyResult.Workflow)
 
 	actionOptions := map[string]any{

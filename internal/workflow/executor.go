@@ -30,15 +30,17 @@ const (
 
 // Dependencies configures shared collaborators for workflow execution.
 type Dependencies struct {
-	Logger               *zap.Logger
-	RepositoryDiscoverer shared.RepositoryDiscoverer
-	GitExecutor          shared.GitExecutor
-	RepositoryManager    *gitrepo.RepositoryManager
-	GitHubClient         *githubcli.Client
-	FileSystem           shared.FileSystem
-	Prompter             shared.ConfirmationPrompter
-	Output               io.Writer
-	Errors               io.Writer
+	Logger                 *zap.Logger
+	RepositoryDiscoverer   shared.RepositoryDiscoverer
+	GitExecutor            shared.GitExecutor
+	RepositoryManager      *gitrepo.RepositoryManager
+	GitHubClient           *githubcli.Client
+	FileSystem             shared.FileSystem
+	Prompter               shared.ConfirmationPrompter
+	Output                 io.Writer
+	Errors                 io.Writer
+	HumanReadableLogging   bool
+	DisableWorkflowLogging bool
 }
 
 // RuntimeOptions captures user-provided execution modifiers.
@@ -240,10 +242,24 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 	dispatchingPrompter := newPromptDispatcher(executor.dependencies.Prompter, promptState)
 
 	state := &State{Roots: sanitizedRoots, Repositories: repositoryStates}
+	reporterOutput := executor.dependencies.Output
+	errorWriter := executor.dependencies.Errors
+	if errorWriter == nil {
+		errorWriter = reporterOutput
+	}
+	if executor.dependencies.Errors != nil {
+		reporterOutput = executor.dependencies.Errors
+	}
+	if !executor.dependencies.HumanReadableLogging || executor.dependencies.DisableWorkflowLogging {
+		reporterOutput = io.Discard
+	}
+	if executor.dependencies.DisableWorkflowLogging {
+		errorWriter = io.Discard
+	}
 	reporter := shared.NewStructuredReporter(
-		executor.dependencies.Output,
-		executor.dependencies.Errors,
-		shared.WithRepositoryHeaders(true),
+		reporterOutput,
+		errorWriter,
+		shared.WithRepositoryHeaders(executor.dependencies.HumanReadableLogging),
 	)
 	environment := &Environment{
 		AuditService:      auditService,

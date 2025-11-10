@@ -134,13 +134,14 @@ Summary: total.repos=0 duration_ms=0
   - Acceptance: Executor package exposes modular components with an `ExecutionOutcome` result, CLI layers consume the new return value, instrumentation emits stage completion events, and new tests exercise the scenarios outlined in `docs/refactor_plan_GX-411.md`.
   - Resolution: Introduced `execution_outcome.go` and `executor_runner.go`, updated the executor/task runner/CLI interfaces to return `ExecutionOutcome`, recorded per-stage/per-operation durations via the structured reporter, taught the workflow CLI to print stage summaries, and refreshed Go/unit/integration tests plus documentation to cover the new behaviour.
 
-- [ ] [GX-231] Layer workflow task operations into parse/plan/execute packages with structured reporting
-  - Status: Unresolved
+- [x] [GX-231] Layer workflow task operations into parse/plan/execute packages with structured reporting
+  - Status: Resolved
   - Category: Improvement
   - Dependencies: Blocked by [GX-230]
   - Context: `internal/workflow/operations_tasks.go` (~1.3k LOC) combines parsing, templating, execution, LLM wiring, and GitHub interactions while emitting direct `fmt.Fprintf` logs, leaving execution paths under-tested.
   - Desired: Break the task operations into cohesive subpackages (parse, plan, execute, actions) with explicit dependency injection, introduce strategy types for branch and PR management to enable deterministic tests, migrate user-facing output to the structured reporter, and add integration-style tests for ensure-clean failures, branch reuse, PR errors, safeguard checks, and LLM `capture_as` flows.
   - Acceptance: Task operations are distributed across new packages with clear interfaces, structured reporter events replace direct `fmt.Fprintf` usage, strategy abstractions allow targeted unit tests, and the new test suite covers the execution scenarios listed above.
+  - Resolution: Replaced `operations_tasks.go` with `task_parser`, `task_plan`, `task_execute`, `task_operation`, and `task_types` modules, tightened safeguard/ensure-clean handling, routed all output through `shared.StructuredReporter` (which now honors `io.Discard` for audit flows), documented the layering in `ARCHITECTURE.md`, and refreshed unit/integration tests plus lint/staticcheck to cover the refactor.
 
 - [x] [GX-232] Centralize LLM client factory and harden generator resiliency
   - Status: Resolved
