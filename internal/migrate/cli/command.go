@@ -93,7 +93,8 @@ func (builder *CommandBuilder) runDefault(command *cobra.Command, arguments []st
 			PrompterFactory:              builder.PrompterFactory,
 		},
 		taskrunner.DependenciesOptions{
-			Command: command,
+			Command:            command,
+			SkipGitHubResolver: true,
 		},
 	)
 	if dependencyError != nil {

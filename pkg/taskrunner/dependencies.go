@@ -30,11 +30,12 @@ type DependenciesConfig struct {
 
 // DependenciesOptions allows per-command overrides when resolving workflow dependencies.
 type DependenciesOptions struct {
-	Command         *cobra.Command
-	Output          io.Writer
-	Errors          io.Writer
-	Prompter        shared.ConfirmationPrompter
-	DisablePrompter bool
+	Command            *cobra.Command
+	Output             io.Writer
+	Errors             io.Writer
+	Prompter           shared.ConfirmationPrompter
+	DisablePrompter    bool
+	SkipGitHubResolver bool
 }
 
 // DependenciesResult exposes resolved collaborators along with their workflow wrapper.
@@ -77,21 +78,29 @@ func BuildDependencies(config DependenciesConfig, options DependenciesOptions) (
 		resolvedManager = repositoryManager
 	}
 
-	resolvedGitHubResolver, resolverError := dependencies.ResolveGitHubResolver(config.GitHubResolver, gitExecutor)
-	if resolverError != nil {
-		return DependenciesResult{}, fmt.Errorf("taskrunner.dependencies.github_resolver: %w", resolverError)
-	}
-
+	resolvedGitHubResolver := config.GitHubResolver
 	var githubClient *githubcli.Client
-	if typedClient, ok := resolvedGitHubResolver.(*githubcli.Client); ok && typedClient != nil {
-		githubClient = typedClient
-	} else {
-		constructedClient, constructedClientError := githubcli.NewClient(gitExecutor)
-		if constructedClientError != nil {
-			return DependenciesResult{}, fmt.Errorf("taskrunner.dependencies.github_client: %w", constructedClientError)
+	if options.SkipGitHubResolver {
+		if typedClient, ok := resolvedGitHubResolver.(*githubcli.Client); ok && typedClient != nil {
+			githubClient = typedClient
 		}
-		githubClient = constructedClient
-		resolvedGitHubResolver = githubClient
+	} else {
+		var resolverError error
+		resolvedGitHubResolver, resolverError = dependencies.ResolveGitHubResolver(config.GitHubResolver, gitExecutor)
+		if resolverError != nil {
+			return DependenciesResult{}, fmt.Errorf("taskrunner.dependencies.github_resolver: %w", resolverError)
+		}
+
+		if typedClient, ok := resolvedGitHubResolver.(*githubcli.Client); ok && typedClient != nil {
+			githubClient = typedClient
+		} else {
+			constructedClient, constructedClientError := githubcli.NewClient(gitExecutor)
+			if constructedClientError != nil {
+				return DependenciesResult{}, fmt.Errorf("taskrunner.dependencies.github_client: %w", constructedClientError)
+			}
+			githubClient = constructedClient
+			resolvedGitHubResolver = githubClient
+		}
 	}
 
 	repositoryDiscoverer := dependencies.ResolveRepositoryDiscoverer(config.RepositoryDiscoverer)
