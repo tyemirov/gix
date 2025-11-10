@@ -33,6 +33,21 @@ Workflow orchestration (`internal/workflow`) now splits planning, runner orchest
 
 CLI builders run their workflows through `pkg/taskrunner`, which adapts the outcome: legacy commands drop the metrics, while the `workflow` command prints a stage-by-stage summary (duration and operation list) after the reporter writes its structured log.
 
+## Workflow Task Operations
+
+Declarative repository tasks are layered across dedicated modules inside `internal/workflow`:
+
+- `task_parser.go` converts YAML/JSON options into strongly typed `TaskDefinition` values (files, actions, commit metadata, pull request templates, safeguards, and optional LLM configuration).
+- `task_plan.go` renders templates against repository + environment data, plans file writes/actions, and records the resulting DAG as `taskPlan` instances that report intent through the structured reporter.
+- `task_execute.go` applies the plan: it evaluates safeguards, guards against dirty worktrees (respecting per-task overrides), manages branch checkout/push lifecycles, executes task actions, and emits structured events only (no `fmt.Fprintf` calls).
+- `task_operation.go` stitches the lifecycle together so the workflow executor can run the parsed tasks across every discovered repository.
+
+This separation keeps parsing/templating logic pure, isolates Git/GitHub side effects, and guarantees that every user-facing log flows through `shared.StructuredReporter`, which now also records per-stage durations for telemetry and CLI summaries. Audit-mode consumers (for example `gix audit`) set `Dependencies.DisableWorkflowLogging` so the executor instantiates reporters that write to `io.Discard`, preserving raw CSV output for integration tests.
+
+### Workflow Runtime Variables
+
+`gix workflow` (and legacy preset wrappers such as `repo-license-apply`) accept runtime variables via `--var key=value`, `--var-file path.yaml`, and configuration defaults. The CLI normalizes keys, merges them (configuration → var-files → CLI flags), and passes the resulting map through `workflow.RuntimeOptions`. The executor seeds those variables into `Environment.Variables` before any task plans execute, marking them as user-provided so downstream actions (for example, LLM `capture_as`) cannot overwrite them. Captured values can still populate new keys or override previously captured ones, but seeded entries always win, ensuring preset templates always honor operator-specified values.
+
 ## Command Surface
 
 The Cobra application (split across `cmd/cli/application_bootstrap.go`, `cmd/cli/application_commands.go`, and `cmd/cli/application_config.go`) initialises the root command and nests feature namespaces below it (`audit`, `repo`, `branch`, `commit`, `workflow`, and others). Each namespace hosts subcommands that ultimately depend on injected services from `internal/...` packages. Commands share common flag parsing helpers (`internal/utils/flags`), prompt utilities, and the central dependency builder from `pkg/taskrunner`.

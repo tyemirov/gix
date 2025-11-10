@@ -73,7 +73,6 @@ func TestExecutorDeduplicatesRelativeRoots(testInstance *testing.T) {
 	require.NoError(testInstance, clientError)
 
 	outputBuffer := &bytes.Buffer{}
-	errorBuffer := &bytes.Buffer{}
 
 	dependencies := Dependencies{
 		RepositoryDiscoverer: executorStubRepositoryDiscoverer{repositories: []string{repositoryPath}},
@@ -81,7 +80,8 @@ func TestExecutorDeduplicatesRelativeRoots(testInstance *testing.T) {
 		RepositoryManager:    repositoryManager,
 		GitHubClient:         githubClient,
 		Output:               outputBuffer,
-		Errors:               errorBuffer,
+		Errors:               outputBuffer,
+		HumanReadableLogging: true,
 	}
 
 	executor := NewExecutor([]Operation{repoSwitchOperation{}}, dependencies)
@@ -150,7 +150,8 @@ func TestExecutorSummaryCountsRepositoriesWithoutEmittedEvents(testInstance *tes
 		GitExecutor:          gitExecutor,
 		RepositoryManager:    repositoryManager,
 		Output:               outputBuffer,
-		Errors:               &bytes.Buffer{},
+		Errors:               outputBuffer,
+		HumanReadableLogging: true,
 	}
 
 	executor := NewExecutor([]Operation{noopOperation{}}, dependencies)
@@ -273,6 +274,7 @@ func TestExecutorContinuesExecutingOperationsAfterFailure(testInstance *testing.
 		RepositoryManager:    repositoryManager,
 		Output:               buffer,
 		Errors:               buffer,
+		HumanReadableLogging: true,
 	}
 
 	executor := NewExecutor([]Operation{failingOperation{}, recorder}, dependencies)
@@ -304,6 +306,7 @@ func TestExecutorLogsAllErrorsFromJoinedOperationFailures(testInstance *testing.
 		Output:               outputBuffer,
 		Errors:               outputBuffer,
 		Logger:               nil,
+		HumanReadableLogging: true,
 	}
 
 	executor := NewExecutor([]Operation{joinFailOperation{}}, dependencies)
@@ -318,6 +321,36 @@ func TestExecutorLogsAllErrorsFromJoinedOperationFailures(testInstance *testing.
 	require.Contains(testInstance, output, "NAMESPACE_REWRITE_FAILED")
 	require.Contains(testInstance, output, "ORIGIN_OWNER_MISSING")
 	require.Contains(testInstance, output, "Summary: total.repos=1")
+}
+
+func TestExecutorSuppressesWorkflowLogsWhenDisabled(t *testing.T) {
+	tempDirectory := t.TempDir()
+	repositoryPath := filepath.Join(tempDirectory, "sample")
+	require.NoError(t, os.Mkdir(repositoryPath, 0o755))
+
+	gitExecutor := newStubWorkflowGitExecutor()
+	repositoryManager, managerErr := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(t, managerErr)
+
+	output := &bytes.Buffer{}
+	dependencies := Dependencies{
+		RepositoryDiscoverer:   executorStubRepositoryDiscoverer{repositories: []string{repositoryPath}},
+		GitExecutor:            gitExecutor,
+		RepositoryManager:      repositoryManager,
+		Output:                 output,
+		Errors:                 output,
+		HumanReadableLogging:   true,
+		DisableWorkflowLogging: true,
+	}
+
+	executor := NewExecutor([]Operation{noopOperation{}}, dependencies)
+	_, err := executor.Execute(
+		context.Background(),
+		[]string{repositoryPath},
+		RuntimeOptions{SkipRepositoryMetadata: true},
+	)
+	require.NoError(t, err)
+	require.Empty(t, output.String())
 }
 
 type executorStubRepositoryDiscoverer struct {

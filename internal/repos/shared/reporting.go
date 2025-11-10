@@ -127,10 +127,10 @@ type operationDurationAccumulator struct {
 
 // NewStructuredReporter constructs a StructuredReporter that writes to the provided sinks.
 func NewStructuredReporter(output io.Writer, errors io.Writer, options ...ReporterOption) *StructuredReporter {
-	if output == nil || output == io.Discard {
+	if output == nil {
 		output = os.Stdout
 	}
-	if errors == nil || errors == io.Discard {
+	if errors == nil {
 		errors = output
 	}
 

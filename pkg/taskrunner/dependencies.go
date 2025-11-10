@@ -111,6 +111,7 @@ func BuildDependencies(config DependenciesConfig, options DependenciesOptions) (
 		Prompter:             prompter,
 		Output:               outputWriter,
 		Errors:               errorWriter,
+		HumanReadableLogging: humanReadable,
 	}
 
 	return DependenciesResult{

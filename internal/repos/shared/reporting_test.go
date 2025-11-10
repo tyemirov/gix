@@ -3,6 +3,8 @@ package shared
 import (
 	"bytes"
 	"encoding/json"
+	"io"
+	"os"
 	"testing"
 	"time"
 
@@ -121,4 +123,28 @@ func TestStructuredReporterSummaryDataIncludesStageDurations(t *testing.T) {
 	require.Equal(t, 1, secondStage.Count)
 	require.EqualValues(t, 500, secondStage.TotalDurationMilliseconds)
 	require.EqualValues(t, 500, secondStage.AverageDurationMilliseconds)
+}
+
+func TestStructuredReporterHonorsDiscardWriters(t *testing.T) {
+	originalStdout := os.Stdout
+	reader, writer, pipeErr := os.Pipe()
+	require.NoError(t, pipeErr)
+	os.Stdout = writer
+	t.Cleanup(func() {
+		writer.Close()
+		reader.Close()
+		os.Stdout = originalStdout
+	})
+
+	reporter := NewStructuredReporter(io.Discard, io.Discard, WithRepositoryHeaders(false))
+	reporter.Report(Event{
+		Code:           "TASK_PLAN",
+		RepositoryPath: "/tmp/repos/sample",
+		Message:        "noop",
+	})
+
+	require.NoError(t, writer.Close())
+	output, readErr := io.ReadAll(reader)
+	require.NoError(t, readErr)
+	require.Len(t, output, 0)
 }
