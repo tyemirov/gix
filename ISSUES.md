@@ -126,12 +126,13 @@ Summary: total.repos=0 duration_ms=0
   - Acceptance: `cmd/cli/application.go` delegates to smaller helpers, all CLI builders reuse the shared task runner package, redundant adapter files/tests disappear, and application/unit tests verify the refactored wiring plus legacy alias coverage.
   - Resolution: All remaining command builders (audit, packages, migrate, branches/cd, release/license) now rely on `pkg/taskrunner` for dependency wiring, the custom adapters/prompter helpers were dropped in favor of the shared factory, and workflow configs/tests continue to pass under the split bootstrap files with lint/go test as verification.
 
-- [ ] [GX-230] Refactor workflow executor into planner, runner, and reporting units
-  - Status: Unresolved
+- [x] [GX-230] Refactor workflow executor into planner, runner, and reporting units
+  - Status: Resolved
   - Category: Improvement
   - Context: `internal/workflow/executor.go` still couples planning, execution, reporting, and error formatting despite GX-322 improvements, lacks table-driven coverage for mixed outcomes, and makes it difficult to extend context/telemetry handling.
   - Desired: Split the executor into focused files (planner, runner, reporting), introduce an `ExecutionOutcome` aggregate returned to callers, add stage-level metrics/events to the reporter hooks, and expand tests to cover mixed success/failure runs, nested repository ordering, prompt state transitions, and reporter count accuracy.
   - Acceptance: Executor package exposes modular components with an `ExecutionOutcome` result, CLI layers consume the new return value, instrumentation emits stage completion events, and new tests exercise the scenarios outlined in `docs/refactor_plan_GX-411.md`.
+  - Resolution: Introduced `execution_outcome.go` and `executor_runner.go`, updated the executor/task runner/CLI interfaces to return `ExecutionOutcome`, recorded per-stage/per-operation durations via the structured reporter, taught the workflow CLI to print stage summaries, and refreshed Go/unit/integration tests plus documentation to cover the new behaviour.
 
 - [ ] [GX-231] Layer workflow task operations into parse/plan/execute packages with structured reporting
   - Status: Unresolved

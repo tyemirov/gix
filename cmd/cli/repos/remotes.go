@@ -117,7 +117,8 @@ func (builder *RemotesCommandBuilder) run(command *cobra.Command, arguments []st
 
 	runtimeOptions := workflow.RuntimeOptions{AssumeYes: trackingPrompter.AssumeYes()}
 
-	return taskRunner.Run(command.Context(), roots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
+	_, runErr := taskRunner.Run(command.Context(), roots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
+	return runErr
 }
 
 func (builder *RemotesCommandBuilder) resolveConfiguration() RemotesConfiguration {

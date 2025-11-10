@@ -156,7 +156,8 @@ func (builder *CommandBuilder) runPurge(command *cobra.Command, arguments []stri
 
 	runtimeOptions := workflow.RuntimeOptions{AssumeYes: executionFlags.AssumeYes}
 
-	return taskRunner.Run(command.Context(), executionOptions.RepositoryRoots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
+	_, runErr := taskRunner.Run(command.Context(), executionOptions.RepositoryRoots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
+	return runErr
 }
 
 func (builder *CommandBuilder) parseCommandOptions(command *cobra.Command, arguments []string, executionFlags utils.ExecutionFlags, executionFlagsAvailable bool) (commandExecutionOptions, error) {

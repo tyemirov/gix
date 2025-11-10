@@ -111,7 +111,8 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 
 	runtimeOptions := workflow.RuntimeOptions{AssumeYes: assumeYes}
 
-	return taskRunner.Run(command.Context(), options.repositoryRoots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
+	_, runErr := taskRunner.Run(command.Context(), options.repositoryRoots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
+	return runErr
 }
 
 func (builder *CommandBuilder) parseOptions(command *cobra.Command) (commandOptions, error) {

@@ -9,7 +9,6 @@ import (
 	"runtime"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -149,17 +148,21 @@ func NewExecutorFromNodes(nodes []*OperationNode, dependencies Dependencies) *Ex
 }
 
 // Execute orchestrates workflow operations across discovered repositories.
-func (executor *Executor) Execute(executionContext context.Context, roots []string, runtimeOptions RuntimeOptions) error {
+func (executor *Executor) Execute(executionContext context.Context, roots []string, runtimeOptions RuntimeOptions) (ExecutionOutcome, error) {
+	outcome := ExecutionOutcome{
+		StartTime: time.Now(),
+	}
+
 	requireGitHubClient := !runtimeOptions.SkipRepositoryMetadata
 	if executor.dependencies.RepositoryDiscoverer == nil || executor.dependencies.GitExecutor == nil || executor.dependencies.RepositoryManager == nil || (requireGitHubClient && executor.dependencies.GitHubClient == nil) {
-		return errors.New(workflowExecutorDependenciesMessage)
+		return outcome, errors.New(workflowExecutorDependenciesMessage)
 	}
 
 	sanitizerConfiguration := pathutils.RepositoryPathSanitizerConfiguration{PruneNestedPaths: !runtimeOptions.IncludeNestedRepositories}
 	repositoryPathSanitizer := pathutils.NewRepositoryPathSanitizerWithConfiguration(nil, sanitizerConfiguration)
 	sanitizedRoots := repositoryPathSanitizer.Sanitize(roots)
 	if len(sanitizedRoots) == 0 {
-		return errors.New(workflowExecutorMissingRootsMessage)
+		return outcome, errors.New(workflowExecutorMissingRootsMessage)
 	}
 
 	var metadataResolver audit.GitHubMetadataResolver
@@ -178,7 +181,7 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 
 	inspections, inspectionError := auditService.DiscoverInspections(executionContext, sanitizedRoots, false, false, audit.InspectionDepthFull)
 	if inspectionError != nil {
-		return fmt.Errorf(workflowRepositoryLoadErrorTemplate, inspectionError)
+		return outcome, fmt.Errorf(workflowRepositoryLoadErrorTemplate, inspectionError)
 	}
 
 	repositoryStates := make([]*RepositoryState, 0, len(inspections))
@@ -219,6 +222,8 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 	if runtimeOptions.CaptureInitialWorktreeStatus {
 		captureInitialCleanStatuses(executionContext, executor.dependencies.RepositoryManager, repositoryStates)
 	}
+
+	outcome.RepositoryCount = len(repositoryStates)
 
 	if runtimeOptions.ProcessRepositoriesByDescendingDepth {
 		sort.SliceStable(repositoryStates, func(firstIndex int, secondIndex int) bool {
@@ -261,11 +266,6 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 		}
 	}
 
-	var (
-		failureMu sync.Mutex
-		failures  []recordedOperationFailure
-	)
-
 	for _, repository := range repositoryStates {
 		if repository == nil {
 			continue
@@ -274,104 +274,68 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 		if identifier == "" {
 			identifier = strings.TrimSpace(repository.Inspection.CanonicalOwnerRepo)
 		}
-		reporter.RecordRepository(identifier, repository.Path)
+		if reporter != nil {
+			reporter.RecordRepository(identifier, repository.Path)
+		}
 	}
 
 	stages, planError := planOperationStages(executor.nodes)
 	if planError != nil {
-		return planError
+		return outcome, planError
 	}
 
-	for stageIndex := range stages {
-		stage := stages[stageIndex]
-		if len(stage.Operations) == 0 {
-			continue
-		}
+	stageResults := runOperationStages(executionContext, stages, environment, state, reporter, executor.dependencies.Logger)
+	stageFailures := stageResults.failures
 
-		var waitGroup sync.WaitGroup
+	outcome.StageOutcomes = append(outcome.StageOutcomes, stageResults.stageOutcomes...)
 
-		for _, node := range stage.Operations {
-			if node == nil || node.Operation == nil {
-				continue
+	orderedOperationOutcomes := make([]OperationOutcome, 0, len(stageResults.operationOutcomes))
+	for _, stage := range stageResults.stageOutcomes {
+		for _, operationName := range stage.Operations {
+			if result, exists := stageResults.operationOutcomes[operationName]; exists {
+				orderedOperationOutcomes = append(orderedOperationOutcomes, result)
 			}
-
-			waitGroup.Add(1)
-			go func(operationNode *OperationNode) {
-				defer waitGroup.Done()
-				operation := operationNode.Operation
-				if operation == nil {
-					return
-				}
-
-				operationLabel := strings.TrimSpace(operationNode.Name)
-				if len(operationLabel) == 0 {
-					operationLabel = strings.TrimSpace(operation.Name())
-				}
-				startTime := time.Now()
-				executeError := operation.Execute(executionContext, environment, state)
-				executionDuration := time.Since(startTime)
-				if reporter != nil {
-					reporter.RecordOperationDuration(operationLabel, executionDuration)
-				}
-
-				if executeError != nil {
-					if reporter != nil {
-						reporter.RecordEvent(shared.EventCodeWorkflowOperationFailure, shared.EventLevelError)
-					}
-					subErrors := collectOperationErrors(executeError)
-					if len(subErrors) == 0 {
-						subErrors = []error{executeError}
-					}
-					failureMu.Lock()
-					for _, failureErr := range subErrors {
-						formatted := formatOperationFailure(environment, failureErr, operation.Name())
-						if !logRepositoryOperationError(environment, failureErr) {
-							if environment != nil && environment.Errors != nil {
-								fmt.Fprintln(environment.Errors, formatted)
-							}
-						}
-						failures = append(failures, recordedOperationFailure{name: operation.Name(), err: failureErr, message: formatted})
-					}
-					failureMu.Unlock()
-					return
-				}
-
-				if reporter != nil {
-					reporter.RecordEvent(shared.EventCodeWorkflowOperationSuccess, shared.EventLevelInfo)
-				}
-			}(node)
 		}
-
-		waitGroup.Wait()
 	}
+	outcome.OperationOutcomes = orderedOperationOutcomes
 
 	if reporter != nil {
 		summaryData := reporter.SummaryData()
+		outcome.ReporterSummaryData = summaryData
 		if executor.dependencies.Logger != nil {
 			executor.dependencies.Logger.Info("workflow_summary", zap.Any("summary", summaryData))
 		}
 		reporter.PrintSummary()
 	}
 
-	if len(failures) == 0 {
-		return nil
+	outcome.EndTime = time.Now()
+	outcome.Duration = outcome.EndTime.Sub(outcome.StartTime)
+
+	if len(stageFailures) == 0 {
+		return outcome, nil
 	}
 
-	distinctErrors := make([]error, 0, len(failures))
-	for _, failure := range failures {
+	distinctErrors := make([]error, 0, len(stageFailures))
+	failuresExport := make([]OperationFailure, 0, len(stageFailures))
+	for _, failure := range stageFailures {
 		distinctErrors = append(distinctErrors, failure.err)
+		failuresExport = append(failuresExport, OperationFailure{
+			Name:    failure.name,
+			Error:   failure.err,
+			Message: failure.message,
+		})
+	}
+	outcome.Failures = failuresExport
+
+	message := stageFailures[0].message
+	if len(stageFailures) > 1 {
+		message = fmt.Sprintf("%s (and %d more failures)", message, len(stageFailures)-1)
 	}
 
-	message := failures[0].message
-	if len(failures) > 1 {
-		message = fmt.Sprintf("%s (and %d more failures)", message, len(failures)-1)
-	}
-
-	return operationFailureError{
+	return outcome, operationFailureError{
 		message: message,
 		cause:   errors.Join(distinctErrors...),
 	}
-
 }
 
 func canonicalRepositoryIdentifier(path string) string {

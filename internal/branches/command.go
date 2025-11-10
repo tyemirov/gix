@@ -106,7 +106,8 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 		AssumeYes:              options.CleanupOptions.AssumeYes,
 		SkipRepositoryMetadata: true,
 	}
-	return taskRunner.Run(command.Context(), options.RepositoryRoots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
+	_, runErr := taskRunner.Run(command.Context(), options.RepositoryRoots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
+	return runErr
 }
 
 type commandOptions struct {

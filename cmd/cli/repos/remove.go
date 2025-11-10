@@ -175,7 +175,8 @@ func (builder *RemoveCommandBuilder) run(command *cobra.Command, arguments []str
 
 	runtimeOptions := workflow.RuntimeOptions{AssumeYes: assumeYes}
 
-	return taskRunner.Run(command.Context(), roots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
+	_, runErr := taskRunner.Run(command.Context(), roots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
+	return runErr
 }
 
 func (builder *RemoveCommandBuilder) resolveConfiguration() RemoveConfiguration {

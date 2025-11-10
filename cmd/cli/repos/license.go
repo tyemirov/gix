@@ -281,7 +281,8 @@ func (builder *LicenseCommandBuilder) run(command *cobra.Command, arguments []st
 		fmt.Fprintln(command.ErrOrStderr(), "DEPRECATED: repo-license-apply will be removed; use `gix workflow license --var template=PATH --var branch=...` instead.")
 	}
 
-	return executorInstance.Execute(command.Context(), roots, runtimeOptions)
+	_, execErr := executorInstance.Execute(command.Context(), roots, runtimeOptions)
+	return execErr
 }
 
 func (builder *LicenseCommandBuilder) resolveConfiguration() LicenseConfiguration {

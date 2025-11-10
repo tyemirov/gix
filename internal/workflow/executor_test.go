@@ -45,7 +45,7 @@ func TestExecutorReturnsStructuredErrorMessage(testInstance *testing.T) {
 	operation := failingOperation{}
 	executor := NewExecutor([]Operation{operation}, dependencies)
 
-	executionError := executor.Execute(
+	outcome, executionError := executor.Execute(
 		context.Background(),
 		[]string{repositoryPath},
 		RuntimeOptions{SkipRepositoryMetadata: true},
@@ -57,6 +57,7 @@ func TestExecutorReturnsStructuredErrorMessage(testInstance *testing.T) {
 		repositoryPath,
 	)
 	require.EqualError(testInstance, executionError, expectedMessage)
+	require.Equal(testInstance, 1, outcome.RepositoryCount)
 }
 
 func TestExecutorDeduplicatesRelativeRoots(testInstance *testing.T) {
@@ -90,7 +91,7 @@ func TestExecutorDeduplicatesRelativeRoots(testInstance *testing.T) {
 	require.NoError(testInstance, os.Chdir(repositoryPath))
 	testInstance.Cleanup(func() { _ = os.Chdir(workingDirectory) })
 
-	executionError := executor.Execute(
+	outcome, executionError := executor.Execute(
 		context.Background(),
 		[]string{"."},
 		RuntimeOptions{SkipRepositoryMetadata: true},
@@ -102,6 +103,7 @@ func TestExecutorDeduplicatesRelativeRoots(testInstance *testing.T) {
 		testInstance.Logf("executor output:\n%s", outputBuffer.String())
 	}
 	require.Equal(testInstance, 1, occurrences)
+	require.Equal(testInstance, 1, outcome.RepositoryCount)
 }
 
 func TestExecutorSkipsMetadataWhenGitHubClientMissing(testInstance *testing.T) {
@@ -123,12 +125,13 @@ func TestExecutorSkipsMetadataWhenGitHubClientMissing(testInstance *testing.T) {
 
 	executor := NewExecutor([]Operation{repoSwitchOperation{}}, dependencies)
 
-	executionError := executor.Execute(
+	outcome, executionError := executor.Execute(
 		context.Background(),
 		[]string{repositoryPath},
 		RuntimeOptions{SkipRepositoryMetadata: true},
 	)
 	require.NoError(testInstance, executionError)
+	require.Equal(testInstance, 1, outcome.RepositoryCount)
 }
 
 func TestExecutorSummaryCountsRepositoriesWithoutEmittedEvents(testInstance *testing.T) {
@@ -152,7 +155,7 @@ func TestExecutorSummaryCountsRepositoriesWithoutEmittedEvents(testInstance *tes
 
 	executor := NewExecutor([]Operation{noopOperation{}}, dependencies)
 
-	executionError := executor.Execute(
+	outcome, executionError := executor.Execute(
 		context.Background(),
 		[]string{repositoryPath},
 		RuntimeOptions{SkipRepositoryMetadata: true},
@@ -161,6 +164,7 @@ func TestExecutorSummaryCountsRepositoriesWithoutEmittedEvents(testInstance *tes
 
 	summary := outputBuffer.String()
 	require.Contains(testInstance, summary, "Summary: total.repos=1")
+	require.Equal(testInstance, 1, outcome.RepositoryCount)
 }
 
 func TestExecutorSeedsVariablesFromRuntimeOptions(testInstance *testing.T) {
@@ -186,7 +190,7 @@ func TestExecutorSeedsVariablesFromRuntimeOptions(testInstance *testing.T) {
 	}
 
 	executor := NewExecutor([]Operation{recording}, dependencies)
-	executionError := executor.Execute(
+	outcome, executionError := executor.Execute(
 		context.Background(),
 		[]string{repositoryPath},
 		RuntimeOptions{
@@ -198,8 +202,57 @@ func TestExecutorSeedsVariablesFromRuntimeOptions(testInstance *testing.T) {
 		},
 	)
 	require.NoError(testInstance, executionError)
+	require.Equal(testInstance, 1, outcome.RepositoryCount)
 	require.Equal(testInstance, "apache", recording.variables["license_template"])
 	require.Equal(testInstance, "demo", recording.variables["scope"])
+}
+
+func TestExecutorRecordsStageAndOperationOutcomes(testInstance *testing.T) {
+	tempDirectory := testInstance.TempDir()
+	repositoryPath := filepath.Join(tempDirectory, "sample")
+	require.NoError(testInstance, os.Mkdir(repositoryPath, 0o755))
+
+	gitExecutor := newStubWorkflowGitExecutor()
+	repositoryManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(testInstance, managerError)
+
+	githubClient, clientError := githubcli.NewClient(gitExecutor)
+	require.NoError(testInstance, clientError)
+
+	dependencies := Dependencies{
+		RepositoryDiscoverer: executorStubRepositoryDiscoverer{repositories: []string{repositoryPath}},
+		GitExecutor:          gitExecutor,
+		RepositoryManager:    repositoryManager,
+		GitHubClient:         githubClient,
+		Output:               &bytes.Buffer{},
+		Errors:               &bytes.Buffer{},
+	}
+
+	operations := []Operation{
+		namedOperation{operationName: "alpha"},
+		namedOperation{operationName: "beta"},
+	}
+
+	executor := NewExecutor(operations, dependencies)
+	outcome, executionError := executor.Execute(
+		context.Background(),
+		[]string{repositoryPath},
+		RuntimeOptions{SkipRepositoryMetadata: true},
+	)
+	require.NoError(testInstance, executionError)
+	require.Equal(testInstance, 1, outcome.RepositoryCount)
+
+	require.Len(testInstance, outcome.StageOutcomes, 2)
+	require.Equal(testInstance, []string{"alpha-1"}, outcome.StageOutcomes[0].Operations)
+	require.Equal(testInstance, []string{"beta-2"}, outcome.StageOutcomes[1].Operations)
+
+	require.Len(testInstance, outcome.OperationOutcomes, 2)
+	require.Equal(testInstance, "alpha-1", outcome.OperationOutcomes[0].Name)
+	require.False(testInstance, outcome.OperationOutcomes[0].Failed)
+	require.Equal(testInstance, "beta-2", outcome.OperationOutcomes[1].Name)
+	require.False(testInstance, outcome.OperationOutcomes[1].Failed)
+
+	require.Equal(testInstance, 1, outcome.ReporterSummaryData.TotalRepositories)
 }
 
 func TestExecutorContinuesExecutingOperationsAfterFailure(testInstance *testing.T) {
@@ -224,7 +277,7 @@ func TestExecutorContinuesExecutingOperationsAfterFailure(testInstance *testing.
 
 	executor := NewExecutor([]Operation{failingOperation{}, recorder}, dependencies)
 
-	executionError := executor.Execute(
+	_, executionError := executor.Execute(
 		context.Background(),
 		[]string{repositoryPath},
 		RuntimeOptions{SkipRepositoryMetadata: true},
@@ -255,7 +308,7 @@ func TestExecutorLogsAllErrorsFromJoinedOperationFailures(testInstance *testing.
 
 	executor := NewExecutor([]Operation{joinFailOperation{}}, dependencies)
 
-	executionError := executor.Execute(
+	_, executionError := executor.Execute(
 		context.Background(),
 		[]string{repositoryPath},
 		RuntimeOptions{SkipRepositoryMetadata: true},
@@ -315,6 +368,18 @@ func (operation *variableRecordingOperation) Execute(ctx context.Context, enviro
 			operation.variables[key] = value
 		}
 	}
+	return nil
+}
+
+type namedOperation struct {
+	operationName string
+}
+
+func (operation namedOperation) Name() string {
+	return operation.operationName
+}
+
+func (operation namedOperation) Execute(context.Context, *Environment, *State) error {
 	return nil
 }
 

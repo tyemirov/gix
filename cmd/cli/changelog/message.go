@@ -263,12 +263,13 @@ func (builder *MessageCommandBuilder) run(command *cobra.Command, arguments []st
 
 	runtimeOptions := workflow.RuntimeOptions{AssumeYes: executionFlags.AssumeYes}
 
-	return taskRunner.Run(
+	_, runErr := taskRunner.Run(
 		command.Context(),
 		[]string{repositoryPath},
 		[]workflow.TaskDefinition{taskDefinition},
 		runtimeOptions,
 	)
+	return runErr
 }
 
 func (builder *MessageCommandBuilder) resolveConfiguration() MessageConfiguration {

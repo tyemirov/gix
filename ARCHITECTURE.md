@@ -22,6 +22,17 @@ gix is a Go 1.24 command-line application built with Cobra and Viper. The binary
 4. Domain services resolve their collaborators through `internal/repos/dependencies`, which supplies defaults for repository discovery, filesystem access, Git execution, and GitHub metadata unless tests inject fakes.
 5. Commands perform work through `internal/...` packages (for example, `internal/repos/rename.Run`), returning contextual errors that bubble back to Cobra for consistent exit handling.
 
+## Workflow Execution Outcomes
+
+Workflow orchestration (`internal/workflow`) now splits planning, runner orchestration, and reporting and returns an `ExecutionOutcome` to every caller. The outcome captures:
+
+- Temporal data (start, end, duration) plus the number of repositories inspected.
+- Stage outcomes that list the operations executed in each DAG stage and their elapsed time. Stages are also recorded via the structured reporter’s `RecordStageDuration` API so summary data includes per-stage timings.
+- Operation outcomes/failures, which the CLI surfaces as needed while still emitting the structured reporter summary to stderr.
+- Snapshot of reporter summary data (`shared.SummaryData`) so automation layers (e.g., `pkg/taskrunner`, CLI commands, integration tests) can make decisions without re-parsing logs.
+
+CLI builders run their workflows through `pkg/taskrunner`, which adapts the outcome: legacy commands drop the metrics, while the `workflow` command prints a stage-by-stage summary (duration and operation list) after the reporter writes its structured log.
+
 ## Command Surface
 
 The Cobra application (split across `cmd/cli/application_bootstrap.go`, `cmd/cli/application_commands.go`, and `cmd/cli/application_config.go`) initialises the root command and nests feature namespaces below it (`audit`, `repo`, `branch`, `commit`, `workflow`, and others). Each namespace hosts subcommands that ultimately depend on injected services from `internal/...` packages. Commands share common flag parsing helpers (`internal/utils/flags`), prompt utilities, and the central dependency builder from `pkg/taskrunner`.
