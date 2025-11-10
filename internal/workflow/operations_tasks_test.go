@@ -172,6 +172,35 @@ func TestCommitMessageActionCapturesOutput(t *testing.T) {
 	require.Equal(t, "feat: capture commit", value)
 }
 
+func TestCommitMessageActionPreservesUserProvidedVariable(t *testing.T) {
+	executor := &stubLLMGitExecutor{responses: map[string]string{
+		"status --short":                   " M main.go\n",
+		"diff --unified=3 --stat --cached": " main.go | 1 +\n",
+		"diff --unified=3 --cached":        "diff --git a/main.go b/main.go\n",
+	}}
+	environment := &Environment{
+		GitExecutor: executor,
+		Output:      &bytes.Buffer{},
+		Variables:   NewVariableStore(),
+	}
+	name, err := NewVariableName("generated_commit")
+	require.NoError(t, err)
+	environment.Variables.Seed(name, "feat: user provided")
+
+	parameters := map[string]any{
+		commitOptionDiffSource:     string(commitmsg.DiffSourceStaged),
+		commitOptionClient:         &stubCommitChatClient{response: "feat: capture commit"},
+		taskActionCaptureOptionKey: "generated_commit",
+	}
+
+	executionErr := handleCommitMessageAction(context.Background(), environment, &RepositoryState{Path: "/tmp/repos/demo"}, parameters)
+	require.NoError(t, executionErr)
+
+	value, exists := environment.Variables.Get(name)
+	require.True(t, exists)
+	require.Equal(t, "feat: user provided", value)
+}
+
 func TestTaskOperationSkipsDuplicateRepositories(t *testing.T) {
 	t.Parallel()
 

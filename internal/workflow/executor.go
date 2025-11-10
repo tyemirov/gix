@@ -278,7 +278,7 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 	environment.State = state
 	if len(runtimeOptions.Variables) > 0 && environment.Variables != nil {
 		for key, value := range runtimeOptions.Variables {
-			environment.Variables.Set(VariableName(key), value)
+			environment.Variables.Seed(VariableName(key), value)
 		}
 	}
 
