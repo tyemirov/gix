@@ -334,12 +334,12 @@ func TestExecutorSuppressesWorkflowLogsWhenDisabled(t *testing.T) {
 
 	output := &bytes.Buffer{}
 	dependencies := Dependencies{
-		RepositoryDiscoverer: executorStubRepositoryDiscoverer{repositories: []string{repositoryPath}},
-		GitExecutor:          gitExecutor,
-		RepositoryManager:    repositoryManager,
-		Output:               output,
-		Errors:               output,
-		HumanReadableLogging: true,
+		RepositoryDiscoverer:   executorStubRepositoryDiscoverer{repositories: []string{repositoryPath}},
+		GitExecutor:            gitExecutor,
+		RepositoryManager:      repositoryManager,
+		Output:                 output,
+		Errors:                 output,
+		HumanReadableLogging:   true,
 		DisableWorkflowLogging: true,
 	}
 
