@@ -37,11 +37,11 @@ type renameRecordingTaskRunner struct {
 	runtimeOptions workflow.RuntimeOptions
 }
 
-func (runner *renameRecordingTaskRunner) Run(_ context.Context, roots []string, definitions []workflow.TaskDefinition, options workflow.RuntimeOptions) error {
+func (runner *renameRecordingTaskRunner) Run(_ context.Context, roots []string, definitions []workflow.TaskDefinition, options workflow.RuntimeOptions) (workflow.ExecutionOutcome, error) {
 	runner.roots = append([]string{}, roots...)
 	runner.definitions = append([]workflow.TaskDefinition{}, definitions...)
 	runner.runtimeOptions = options
-	return nil
+	return workflow.ExecutionOutcome{}, nil
 }
 
 func TestRenameCommandConfigurationPrecedence(testInstance *testing.T) {

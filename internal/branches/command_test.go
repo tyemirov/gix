@@ -35,14 +35,14 @@ type recordingTaskRunner struct {
 	dependencies   workflow.Dependencies
 }
 
-func (runner *recordingTaskRunner) Run(_ context.Context, roots []string, definitions []workflow.TaskDefinition, options workflow.RuntimeOptions) error {
+func (runner *recordingTaskRunner) Run(_ context.Context, roots []string, definitions []workflow.TaskDefinition, options workflow.RuntimeOptions) (workflow.ExecutionOutcome, error) {
 	runner.roots = append([]string{}, roots...)
 	runner.definitions = append([]workflow.TaskDefinition{}, definitions...)
 	runner.runtimeOptions = options
 	if runner.dependencies.RepositoryDiscoverer != nil {
 		_, _ = runner.dependencies.RepositoryDiscoverer.DiscoverRepositories(roots)
 	}
-	return nil
+	return workflow.ExecutionOutcome{}, nil
 }
 
 type fakeRepositoryDiscoverer struct {

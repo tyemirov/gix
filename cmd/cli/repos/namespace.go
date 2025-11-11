@@ -204,7 +204,8 @@ func (builder *NamespaceCommandBuilder) run(command *cobra.Command, arguments []
 		fmt.Fprintln(command.ErrOrStderr(), "DEPRECATED: repo-namespace-rewrite will be removed; use `gix workflow namespace --var old=github.com/old/org --var new=github.com/new/org` instead.")
 	}
 
-	return executor.Execute(command.Context(), roots, runtimeOptions)
+	_, execErr := executor.Execute(command.Context(), roots, runtimeOptions)
+	return execErr
 }
 
 func (builder *NamespaceCommandBuilder) resolveConfiguration() NamespaceConfiguration {

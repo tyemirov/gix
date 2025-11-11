@@ -8,5 +8,5 @@ import (
 
 // WorkflowExecutor runs compiled workflow operation graphs.
 type WorkflowExecutor interface {
-	Execute(ctx context.Context, roots []string, options workflow.RuntimeOptions) error
+	Execute(ctx context.Context, roots []string, options workflow.RuntimeOptions) (workflow.ExecutionOutcome, error)
 }

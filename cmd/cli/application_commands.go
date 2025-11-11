@@ -26,7 +26,7 @@ func (application *Application) registerCommands(cobraCommand *cobra.Command) {
 		LoggerProvider: func() *zap.Logger {
 			return application.logger
 		},
-		HumanReadableLoggingProvider: application.humanReadableLoggingEnabled,
+		HumanReadableLoggingProvider: func() bool { return false },
 		ConfigurationProvider:        application.auditCommandConfiguration,
 	}
 	auditCommand, auditBuildError := auditBuilder.Build()

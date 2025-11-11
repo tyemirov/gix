@@ -126,20 +126,22 @@ Summary: total.repos=0 duration_ms=0
   - Acceptance: `cmd/cli/application.go` delegates to smaller helpers, all CLI builders reuse the shared task runner package, redundant adapter files/tests disappear, and application/unit tests verify the refactored wiring plus legacy alias coverage.
   - Resolution: All remaining command builders (audit, packages, migrate, branches/cd, release/license) now rely on `pkg/taskrunner` for dependency wiring, the custom adapters/prompter helpers were dropped in favor of the shared factory, and workflow configs/tests continue to pass under the split bootstrap files with lint/go test as verification.
 
-- [ ] [GX-230] Refactor workflow executor into planner, runner, and reporting units
-  - Status: Unresolved
+- [x] [GX-230] Refactor workflow executor into planner, runner, and reporting units
+  - Status: Resolved
   - Category: Improvement
   - Context: `internal/workflow/executor.go` still couples planning, execution, reporting, and error formatting despite GX-322 improvements, lacks table-driven coverage for mixed outcomes, and makes it difficult to extend context/telemetry handling.
   - Desired: Split the executor into focused files (planner, runner, reporting), introduce an `ExecutionOutcome` aggregate returned to callers, add stage-level metrics/events to the reporter hooks, and expand tests to cover mixed success/failure runs, nested repository ordering, prompt state transitions, and reporter count accuracy.
   - Acceptance: Executor package exposes modular components with an `ExecutionOutcome` result, CLI layers consume the new return value, instrumentation emits stage completion events, and new tests exercise the scenarios outlined in `docs/refactor_plan_GX-411.md`.
+  - Resolution: Introduced `execution_outcome.go` and `executor_runner.go`, updated the executor/task runner/CLI interfaces to return `ExecutionOutcome`, recorded per-stage/per-operation durations via the structured reporter, taught the workflow CLI to print stage summaries, and refreshed Go/unit/integration tests plus documentation to cover the new behaviour.
 
-- [ ] [GX-231] Layer workflow task operations into parse/plan/execute packages with structured reporting
-  - Status: Unresolved
+- [x] [GX-231] Layer workflow task operations into parse/plan/execute packages with structured reporting
+  - Status: Resolved
   - Category: Improvement
   - Dependencies: Blocked by [GX-230]
   - Context: `internal/workflow/operations_tasks.go` (~1.3k LOC) combines parsing, templating, execution, LLM wiring, and GitHub interactions while emitting direct `fmt.Fprintf` logs, leaving execution paths under-tested.
   - Desired: Break the task operations into cohesive subpackages (parse, plan, execute, actions) with explicit dependency injection, introduce strategy types for branch and PR management to enable deterministic tests, migrate user-facing output to the structured reporter, and add integration-style tests for ensure-clean failures, branch reuse, PR errors, safeguard checks, and LLM `capture_as` flows.
   - Acceptance: Task operations are distributed across new packages with clear interfaces, structured reporter events replace direct `fmt.Fprintf` usage, strategy abstractions allow targeted unit tests, and the new test suite covers the execution scenarios listed above.
+  - Resolution: Replaced `operations_tasks.go` with `task_parser`, `task_plan`, `task_execute`, `task_operation`, and `task_types` modules, tightened safeguard/ensure-clean handling, routed all output through `shared.StructuredReporter` (which now honors `io.Discard` for audit flows), documented the layering in `ARCHITECTURE.md`, and refreshed unit/integration tests plus lint/staticcheck to cover the refactor.
 
 - [x] [GX-232] Centralize LLM client factory and harden generator resiliency
   - Status: Resolved
@@ -227,9 +229,10 @@ Let's consider each rename as a separate issue and what consequences it entails
 
 ## Planning 
 do not work on the issues below, not ready
-- [ ] [GX-236] Add workflow runtime variables for presets and file-based configs
-  - Status: Unresolved
+- [x] [GX-236] Add workflow runtime variables for presets and file-based configs
+  - Status: Resolved
   - Category: Improvement
   - Context: Workflow tasks can capture data via `capture_as`, but there is no way to inject user-provided variables at runtime. Embedded presets (e.g., `license`) need per-run values for templates, branch names, etc., and legacy commands (like `repo-license-apply`) must forward their flags into the workflow runner.
   - Desired: Introduce CLI flags (`gix workflow --var key=value` and `--var-file path`) plus configuration support to load user variables, surface them through `workflow.RuntimeOptions`, seed `Environment.Variables` before execution, and ensure task templates (`.Environment`) merge user-provided variables with captured ones (user values winning). Update README/CHANGELOG/docs, expose the same facility to presets, and add tests covering CLI parsing, preset execution with vars, and interaction with existing `capture_as`.
   - Acceptance: Users can supply runtime variables when running either external configs or presets; the variables are visible to task templates; `repo-license-apply` can invoke the `license` preset by passing variables instead of re-implementing logic; docs/tests cover these flows; legacy behaviour remains intact when no variables are provided.
+  - Resolution: Added locked seeding semantics to `VariableStore` so runtime inputs stay authoritative, taught the executor to seed via the new API, documented the precedence rules in `ARCHITECTURE.md`, and expanded workflow tests (store unit tests + commit-message capture coverage) to prove `.Environment` sees user values while capture outputs only fill unset keys.

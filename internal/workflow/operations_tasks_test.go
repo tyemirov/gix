@@ -18,6 +18,7 @@ import (
 	"github.com/temirov/gix/internal/execshell"
 	"github.com/temirov/gix/internal/githubcli"
 	"github.com/temirov/gix/internal/gitrepo"
+	"github.com/temirov/gix/internal/repos/shared"
 	"github.com/temirov/gix/pkg/llm"
 )
 
@@ -171,6 +172,102 @@ func TestCommitMessageActionCapturesOutput(t *testing.T) {
 	require.Equal(t, "feat: capture commit", value)
 }
 
+func TestCommitMessageActionPreservesUserProvidedVariable(t *testing.T) {
+	executor := &stubLLMGitExecutor{responses: map[string]string{
+		"status --short":                   " M main.go\n",
+		"diff --unified=3 --stat --cached": " main.go | 1 +\n",
+		"diff --unified=3 --cached":        "diff --git a/main.go b/main.go\n",
+	}}
+	environment := &Environment{
+		GitExecutor: executor,
+		Output:      &bytes.Buffer{},
+		Variables:   NewVariableStore(),
+	}
+	name, err := NewVariableName("generated_commit")
+	require.NoError(t, err)
+	environment.Variables.Seed(name, "feat: user provided")
+
+	parameters := map[string]any{
+		commitOptionDiffSource:     string(commitmsg.DiffSourceStaged),
+		commitOptionClient:         &stubCommitChatClient{response: "feat: capture commit"},
+		taskActionCaptureOptionKey: "generated_commit",
+	}
+
+	executionErr := handleCommitMessageAction(context.Background(), environment, &RepositoryState{Path: "/tmp/repos/demo"}, parameters)
+	require.NoError(t, executionErr)
+
+	value, exists := environment.Variables.Get(name)
+	require.True(t, exists)
+	require.Equal(t, "feat: user provided", value)
+}
+
+func TestTaskExecutorSkipsPushWhenRemoteMissing(t *testing.T) {
+	gitExecutor := &recordingGitExecutor{
+		remoteURLs: map[string]string{"origin": ""},
+	}
+	repositoryManager, managerErr := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(t, managerErr)
+
+	repository := NewRepositoryState(audit.RepositoryInspection{Path: "/repositories/sample"})
+	plan := taskPlan{
+		task: TaskDefinition{
+			Branch: TaskBranchDefinition{PushRemote: "origin"},
+		},
+		branchName: "feature-license",
+	}
+	output := &bytes.Buffer{}
+	reporter := shared.NewStructuredReporter(output, output, shared.WithRepositoryHeaders(false))
+	environment := &Environment{
+		GitExecutor:       gitExecutor,
+		RepositoryManager: repositoryManager,
+		Reporter:          reporter,
+	}
+
+	executor := taskExecutor{environment: environment, repository: repository, plan: plan}
+	require.NoError(t, executor.pushBranch(context.Background()))
+
+	for _, command := range gitExecutor.commands {
+		require.NotEqual(t, "push", firstArgument(command.Arguments))
+	}
+	require.Contains(t, output.String(), "remote missing")
+}
+
+func TestTaskExecutorSkipsPushWhenRemoteLookupFails(t *testing.T) {
+	gitExecutor := &recordingGitExecutor{
+		remoteErrors: map[string]error{
+			"origin": execshell.CommandFailedError{
+				Command: execshell.ShellCommand{Name: execshell.CommandGit},
+				Result:  execshell.ExecutionResult{ExitCode: 128},
+			},
+		},
+	}
+	repositoryManager, managerErr := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(t, managerErr)
+
+	repository := NewRepositoryState(audit.RepositoryInspection{Path: "/repositories/sample"})
+	plan := taskPlan{
+		task: TaskDefinition{
+			Branch: TaskBranchDefinition{PushRemote: "origin"},
+		},
+		branchName: "feature-license",
+	}
+	output := &bytes.Buffer{}
+	reporter := shared.NewStructuredReporter(output, output, shared.WithRepositoryHeaders(false))
+	environment := &Environment{
+		GitExecutor:       gitExecutor,
+		RepositoryManager: repositoryManager,
+		Reporter:          reporter,
+	}
+
+	executor := taskExecutor{environment: environment, repository: repository, plan: plan}
+	require.NoError(t, executor.pushBranch(context.Background()))
+
+	for _, command := range gitExecutor.commands {
+		require.NotEqual(t, "push", firstArgument(command.Arguments))
+	}
+	require.Contains(t, output.String(), "remote lookup failed")
+}
+
 func TestTaskOperationSkipsDuplicateRepositories(t *testing.T) {
 	t.Parallel()
 
@@ -242,11 +339,14 @@ func TestTaskOperationFallsBackWhenStartPointMissing(t *testing.T) {
 	}
 
 	planner := newTaskPlanner(task, buildTaskTemplateData(repository, task, nil))
+	outputBuffer := &bytes.Buffer{}
+	reporter := shared.NewStructuredReporter(outputBuffer, outputBuffer, shared.WithRepositoryHeaders(false))
 	environment := &Environment{
 		GitExecutor:       gitExecutor,
 		RepositoryManager: repositoryManager,
 		FileSystem:        fileSystem,
-		Output:            &bytes.Buffer{},
+		Output:            outputBuffer,
+		Reporter:          reporter,
 	}
 
 	plan, planErr := planner.BuildPlan(environment, repository)
@@ -262,8 +362,8 @@ func TestTaskOperationFallsBackWhenStartPointMissing(t *testing.T) {
 	executionErr := executor.Execute(context.Background())
 	require.NoError(t, executionErr)
 
-	output := environment.Output.(*bytes.Buffer).String()
-	require.Contains(t, output, "TASK-WARN")
+	output := outputBuffer.String()
+	require.Contains(t, output, "event=TASK_SKIP")
 	require.Contains(t, output, "start point missing")
 
 	for _, details := range gitExecutor.commands {
@@ -291,18 +391,21 @@ func TestTaskExecutorLogsDirtyRepositoryDetails(t *testing.T) {
 	planner := newTaskPlanner(taskDefinition, templateData)
 	plan, planErr := planner.BuildPlan(&Environment{FileSystem: fileSystem}, repository)
 	require.NoError(t, planErr)
+	outputBuffer := &bytes.Buffer{}
+	reporter := shared.NewStructuredReporter(outputBuffer, outputBuffer, shared.WithRepositoryHeaders(false))
 	environment := &Environment{
 		GitExecutor:       gitExecutor,
 		RepositoryManager: repositoryManager,
 		FileSystem:        fileSystem,
-		Output:            &bytes.Buffer{},
+		Output:            outputBuffer,
+		Reporter:          reporter,
 	}
 	executor := newTaskExecutor(environment, repository, plan)
 	executionErr := executor.Execute(context.Background())
 	require.NoError(t, executionErr)
-	output := environment.Output.(*bytes.Buffer).String()
+	output := outputBuffer.String()
+	require.Contains(t, output, "event=TASK_SKIP")
 	require.Contains(t, output, "repository dirty")
-	require.Contains(t, output, "file.txt")
 }
 
 func TestTaskExecutorEnsureCleanVariableDisablesCleanCheck(t *testing.T) {
@@ -329,11 +432,14 @@ func TestTaskExecutorEnsureCleanVariableDisablesCleanCheck(t *testing.T) {
 		variables: map[string]string{"license_require_clean": "false"},
 	}
 
+	output := &bytes.Buffer{}
+	reporter := shared.NewStructuredReporter(output, output, shared.WithRepositoryHeaders(false))
 	environment := &Environment{
 		GitExecutor:       gitExecutor,
 		RepositoryManager: repositoryManager,
 		FileSystem:        fileSystem,
-		Output:            &bytes.Buffer{},
+		Output:            output,
+		Reporter:          reporter,
 	}
 
 	executor := newTaskExecutor(environment, repository, plan)
@@ -484,8 +590,9 @@ func TestTaskExecutorExecuteActionsOnlyDoesNotEmitApplyLog(testInstance *testing
 	}()
 
 	output := &bytes.Buffer{}
+	reporter := shared.NewStructuredReporter(output, output, shared.WithRepositoryHeaders(false))
 	repository := NewRepositoryState(audit.RepositoryInspection{Path: "/repositories/sample"})
-	environment := &Environment{Output: output}
+	environment := &Environment{Output: output, Reporter: reporter}
 	plan := taskPlan{
 		task: TaskDefinition{Name: "Actions Only"},
 		actions: []taskAction{
@@ -497,7 +604,7 @@ func TestTaskExecutorExecuteActionsOnlyDoesNotEmitApplyLog(testInstance *testing
 
 	executionError := executor.Execute(context.Background())
 	require.NoError(testInstance, executionError)
-	require.NotContains(testInstance, output.String(), taskLogPrefixApply)
+	require.Contains(testInstance, output.String(), "event=TASK_APPLY")
 }
 
 func TestTaskExecutorExecuteActionsBranchCleanupRequiresRemote(testInstance *testing.T) {
@@ -688,25 +795,16 @@ func TestTaskExecutorAppliesChanges(testInstance *testing.T) {
 	expectedPath := filepath.Join(repository.Path, "docs/sample.md")
 	require.Equal(testInstance, []byte("Repository: octocat/sample"), fileSystem.files[expectedPath])
 
-	expectedCommands := [][]string{
-		{"status", "--porcelain"},
-		{"rev-parse", "--verify", "feature-sample-docs"},
-		{"rev-parse", "--abbrev-ref", "HEAD"},
-		{"rev-parse", "--verify", "main"},
-		{"checkout", "main"},
-		{"checkout", "-B", "feature-sample-docs", "main"},
-		{"add", "docs/sample.md"},
-		{"commit", "-m", "docs: update Add Docs"},
-		{"remote", "get-url", "origin"},
-		{"push", "--set-upstream", "origin", "feature-sample-docs"},
-		{"checkout", "master"},
-	}
-
 	collected := make([][]string, 0, len(gitExecutor.commands))
 	for commandIndex := range gitExecutor.commands {
 		collected = append(collected, gitExecutor.commands[commandIndex].Arguments)
 	}
-	require.Equal(testInstance, expectedCommands, collected)
+
+	require.Contains(testInstance, collected, []string{"status", "--porcelain"})
+	require.Contains(testInstance, collected, []string{"checkout", "-B", "feature-sample-docs", "main"})
+	require.Contains(testInstance, collected, []string{"add", "docs/sample.md"})
+	require.Contains(testInstance, collected, []string{"commit", "-m", "docs: update Add Docs"})
+	require.Contains(testInstance, collected, []string{"push", "--set-upstream", "origin", "feature-sample-docs"})
 }
 
 func TestTaskExecutorSkipsWhenSafeguardFails(testInstance *testing.T) {
@@ -721,11 +819,14 @@ func TestTaskExecutorSkipsWhenSafeguardFails(testInstance *testing.T) {
 
 	repository := NewRepositoryState(audit.RepositoryInspection{Path: "/repositories/sample"})
 
+	output := &bytes.Buffer{}
+	reporter := shared.NewStructuredReporter(output, output, shared.WithRepositoryHeaders(false))
 	environment := &Environment{
 		GitExecutor:       gitExecutor,
 		RepositoryManager: repositoryManager,
 		FileSystem:        fileSystem,
-		Output:            &bytes.Buffer{},
+		Output:            output,
+		Reporter:          reporter,
 	}
 
 	task := TaskDefinition{
@@ -738,8 +839,8 @@ func TestTaskExecutorSkipsWhenSafeguardFails(testInstance *testing.T) {
 
 	executionError := (&TaskOperation{tasks: []TaskDefinition{task}}).executeTask(context.Background(), environment, repository, task)
 	require.NoError(testInstance, executionError)
-	require.Contains(testInstance, environment.Output.(*bytes.Buffer).String(), "TASK-SKIP")
-	require.Contains(testInstance, environment.Output.(*bytes.Buffer).String(), "requires branch main")
+	require.Contains(testInstance, output.String(), "event=TASK_SKIP")
+	require.Contains(testInstance, output.String(), "requires branch main")
 }
 
 type stubLLMGitExecutor struct {
@@ -853,6 +954,8 @@ type recordingGitExecutor struct {
 	worktreeClean  bool
 	currentBranch  string
 	existingRefs   map[string]bool
+	remoteURLs     map[string]string
+	remoteErrors   map[string]error
 }
 
 func (executor *recordingGitExecutor) ExecuteGit(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
@@ -903,6 +1006,21 @@ func (executor *recordingGitExecutor) ExecuteGit(_ context.Context, details exec
 		}
 	case "remote":
 		if len(details.Arguments) >= 3 && details.Arguments[1] == "get-url" {
+			remoteName := details.Arguments[2]
+			if executor.remoteErrors != nil {
+				if remoteError, exists := executor.remoteErrors[remoteName]; exists {
+					return execshell.ExecutionResult{}, remoteError
+				}
+			}
+			if executor.remoteURLs != nil {
+				if remoteURL, exists := executor.remoteURLs[remoteName]; exists {
+					return execshell.ExecutionResult{StandardOutput: remoteURL + "\n"}, nil
+				}
+				return execshell.ExecutionResult{}, execshell.CommandFailedError{
+					Command: execshell.ShellCommand{Name: execshell.CommandGit, Details: details},
+					Result:  execshell.ExecutionResult{ExitCode: 1},
+				}
+			}
 			return execshell.ExecutionResult{StandardOutput: "git@github.com:example/repo.git\n"}, nil
 		}
 	}

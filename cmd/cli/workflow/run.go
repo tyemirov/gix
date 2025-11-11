@@ -207,7 +207,31 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 		Variables:                            variableAssignments,
 	}
 
-	return taskRunner.Run(command.Context(), roots, taskDefinitions, runtimeOptions)
+	outcome, runErr := taskRunner.Run(command.Context(), roots, taskDefinitions, runtimeOptions)
+	if runErr != nil {
+		return runErr
+	}
+
+	if command != nil && len(outcome.StageOutcomes) > 0 {
+		writer := command.ErrOrStderr()
+		fmt.Fprintf(
+			writer,
+			"workflow completed in %s across %d repositories\n",
+			outcome.Duration,
+			outcome.RepositoryCount,
+		)
+		for _, stage := range outcome.StageOutcomes {
+			fmt.Fprintf(
+				writer,
+				"  stage %d (%s): %s\n",
+				stage.Index+1,
+				stage.Duration,
+				formatStageOperations(stage.Operations),
+			)
+		}
+	}
+
+	return nil
 }
 
 func (builder *CommandBuilder) resolveConfiguration() CommandConfiguration {
@@ -294,4 +318,22 @@ func (builder *CommandBuilder) printPresetList(command *cobra.Command, catalog P
 		}
 		fmt.Fprintf(output, "  - %s: %s\n", preset.Name, description)
 	}
+}
+
+func formatStageOperations(operations []string) string {
+	if len(operations) == 0 {
+		return "(no operations)"
+	}
+	cleaned := make([]string, 0, len(operations))
+	for _, operation := range operations {
+		trimmed := strings.TrimSpace(operation)
+		if len(trimmed) == 0 {
+			continue
+		}
+		cleaned = append(cleaned, trimmed)
+	}
+	if len(cleaned) == 0 {
+		return "(no operations)"
+	}
+	return strings.Join(cleaned, ", ")
 }

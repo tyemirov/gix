@@ -158,7 +158,8 @@ func (builder *RetagCommandBuilder) run(command *cobra.Command, _ []string) erro
 
 	runtimeOptions := workflow.RuntimeOptions{AssumeYes: assumeYes}
 
-	return taskRunner.Run(command.Context(), repositoryRoots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
+	_, runErr := taskRunner.Run(command.Context(), repositoryRoots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
+	return runErr
 }
 
 func (builder *RetagCommandBuilder) resolveConfiguration() CommandConfiguration {

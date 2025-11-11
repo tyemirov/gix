@@ -42,6 +42,7 @@ type CommandBuilder struct {
 	Discoverer                   shared.RepositoryDiscoverer
 	GitExecutor                  shared.GitExecutor
 	GitRepositoryManager         shared.GitRepositoryManager
+	GitHubResolver               shared.GitHubMetadataResolver
 	FileSystem                   shared.FileSystem
 	PrompterFactory              func(*cobra.Command) shared.ConfirmationPrompter
 	HumanReadableLoggingProvider func() bool
@@ -88,7 +89,7 @@ func (builder *CommandBuilder) runDefault(command *cobra.Command, arguments []st
 			RepositoryDiscoverer:         builder.Discoverer,
 			GitExecutor:                  builder.GitExecutor,
 			GitRepositoryManager:         builder.GitRepositoryManager,
-			GitHubResolver:               nil,
+			GitHubResolver:               builder.GitHubResolver,
 			FileSystem:                   builder.FileSystem,
 			PrompterFactory:              builder.PrompterFactory,
 		},
@@ -118,7 +119,8 @@ func (builder *CommandBuilder) runDefault(command *cobra.Command, arguments []st
 		AssumeYes: assumeYes,
 	}
 
-	return taskRunner.Run(command.Context(), options.repositoryRoots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
+	_, runErr := taskRunner.Run(command.Context(), options.repositoryRoots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
+	return runErr
 }
 
 func (builder *CommandBuilder) parseOptions(command *cobra.Command, arguments []string) (commandOptions, error) {

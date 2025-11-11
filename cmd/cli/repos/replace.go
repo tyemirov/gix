@@ -207,7 +207,8 @@ func (builder *ReplaceCommandBuilder) run(command *cobra.Command, _ []string) er
 
 	runtimeOptions := workflow.RuntimeOptions{AssumeYes: assumeYes}
 
-	return taskRunner.Run(command.Context(), roots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
+	_, runErr := taskRunner.Run(command.Context(), roots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
+	return runErr
 }
 
 func (builder *ReplaceCommandBuilder) resolveConfiguration() ReplaceConfiguration {

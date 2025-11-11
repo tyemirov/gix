@@ -186,12 +186,13 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 		AssumeYes: false,
 	}
 
-	return taskRunner.Run(
+	_, runErr := taskRunner.Run(
 		command.Context(),
 		repositoryRoots,
 		[]workflow.TaskDefinition{taskDefinition},
 		runtimeOptions,
 	)
+	return runErr
 }
 
 func (builder *CommandBuilder) resolveConfiguration() CommandConfiguration {

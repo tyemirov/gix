@@ -152,7 +152,8 @@ func (builder *ProtocolCommandBuilder) run(command *cobra.Command, arguments []s
 
 	runtimeOptions := workflow.RuntimeOptions{AssumeYes: trackingPrompter.AssumeYes()}
 
-	return taskRunner.Run(command.Context(), roots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
+	_, runErr := taskRunner.Run(command.Context(), roots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
+	return runErr
 }
 
 func (builder *ProtocolCommandBuilder) resolveConfiguration() ProtocolConfiguration {

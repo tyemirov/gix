@@ -134,7 +134,8 @@ func (builder *RenameCommandBuilder) run(command *cobra.Command, arguments []str
 		CaptureInitialWorktreeStatus:         requireClean,
 	}
 
-	return taskRunner.Run(command.Context(), roots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
+	_, runErr := taskRunner.Run(command.Context(), roots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
+	return runErr
 }
 
 func (builder *RenameCommandBuilder) resolveConfiguration() RenameConfiguration {
