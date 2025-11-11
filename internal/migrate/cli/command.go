@@ -42,6 +42,7 @@ type CommandBuilder struct {
 	Discoverer                   shared.RepositoryDiscoverer
 	GitExecutor                  shared.GitExecutor
 	GitRepositoryManager         shared.GitRepositoryManager
+	GitHubResolver               shared.GitHubMetadataResolver
 	FileSystem                   shared.FileSystem
 	PrompterFactory              func(*cobra.Command) shared.ConfirmationPrompter
 	HumanReadableLoggingProvider func() bool
@@ -88,13 +89,12 @@ func (builder *CommandBuilder) runDefault(command *cobra.Command, arguments []st
 			RepositoryDiscoverer:         builder.Discoverer,
 			GitExecutor:                  builder.GitExecutor,
 			GitRepositoryManager:         builder.GitRepositoryManager,
-			GitHubResolver:               nil,
+			GitHubResolver:               builder.GitHubResolver,
 			FileSystem:                   builder.FileSystem,
 			PrompterFactory:              builder.PrompterFactory,
 		},
 		taskrunner.DependenciesOptions{
-			Command:            command,
-			SkipGitHubResolver: true,
+			Command: command,
 		},
 	)
 	if dependencyError != nil {
