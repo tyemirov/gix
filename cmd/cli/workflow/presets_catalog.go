@@ -37,7 +37,7 @@ var embeddedPresetDefinitions = []presetDefinition{
 	},
 	{
 		Name:        "namespace",
-		Description: "Rewrite Go module namespaces via the tasks apply command.",
+		Description: "Rewrite Go module namespaces using tasks apply.",
 		FileName:    "presets/namespace.yaml",
 	},
 }

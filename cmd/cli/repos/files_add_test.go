@@ -38,11 +38,11 @@ type filesAddRecordingTaskRunner struct {
 	runtimeOptions workflow.RuntimeOptions
 }
 
-func (runner *filesAddRecordingTaskRunner) Run(_ context.Context, roots []string, definitions []workflow.TaskDefinition, options workflow.RuntimeOptions) error {
+func (runner *filesAddRecordingTaskRunner) Run(_ context.Context, roots []string, definitions []workflow.TaskDefinition, options workflow.RuntimeOptions) (workflow.ExecutionOutcome, error) {
 	runner.roots = append([]string{}, roots...)
 	runner.definitions = append([]workflow.TaskDefinition{}, definitions...)
 	runner.runtimeOptions = options
-	return nil
+	return workflow.ExecutionOutcome{}, nil
 }
 
 func TestFilesAddCommandUsesConfigurationDefaults(t *testing.T) {

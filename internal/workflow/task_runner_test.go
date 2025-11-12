@@ -30,8 +30,9 @@ func (emptyDiscoverer) DiscoverRepositories(_ []string) ([]string, error) {
 
 func TestTaskRunnerRunSkipsWithoutTasks(testInstance *testing.T) {
 	runner := NewTaskRunner(Dependencies{})
-	err := runner.Run(context.Background(), []string{"/tmp"}, nil, RuntimeOptions{})
+	outcome, err := runner.Run(context.Background(), []string{"/tmp"}, nil, RuntimeOptions{})
 	require.NoError(testInstance, err)
+	require.Zero(testInstance, outcome.RepositoryCount)
 }
 
 func TestTaskRunnerRunWithTasksNoRepositories(testInstance *testing.T) {
@@ -59,8 +60,9 @@ func TestTaskRunnerRunWithTasksNoRepositories(testInstance *testing.T) {
 		Commit:  TaskCommitDefinition{},
 	}}
 
-	err := runner.Run(context.Background(), []string{"/tmp"}, definitions, RuntimeOptions{})
+	outcome, err := runner.Run(context.Background(), []string{"/tmp"}, definitions, RuntimeOptions{})
 	require.NoError(testInstance, err)
+	require.Equal(testInstance, 0, outcome.RepositoryCount)
 }
 
 func TestTaskRunnerRunSkipsGitHubMetadataRequirement(testInstance *testing.T) {
@@ -84,11 +86,12 @@ func TestTaskRunnerRunSkipsGitHubMetadataRequirement(testInstance *testing.T) {
 		Commit:  TaskCommitDefinition{},
 	}}
 
-	err := runner.Run(
+	outcome, err := runner.Run(
 		context.Background(),
 		[]string{"/tmp"},
 		definitions,
 		RuntimeOptions{SkipRepositoryMetadata: true},
 	)
 	require.NoError(testInstance, err)
+	require.Equal(testInstance, 0, outcome.RepositoryCount)
 }

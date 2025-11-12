@@ -42,6 +42,9 @@ func (reporter *recordingReporter) RecordEvent(string, shared.EventLevel) {
 func (reporter *recordingReporter) RecordOperationDuration(string, time.Duration) {
 }
 
+func (reporter *recordingReporter) RecordStageDuration(string, time.Duration) {
+}
+
 func TestHandleBranchChangeActionUsesRepositoryDefault(t *testing.T) {
 	executor := &stubGitExecutor{
 		responses: []stubGitResponse{

@@ -5,6 +5,7 @@ workflow:
       with:
         tasks:
           - name: Rewrite module namespace
+            ensure_clean: false
             actions:
               - type: repo.namespace.rewrite
                 options:

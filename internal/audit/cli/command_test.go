@@ -132,10 +132,10 @@ type recordingTaskRunner struct {
 	runtimeOptions workflow.RuntimeOptions
 }
 
-func (runner *recordingTaskRunner) Run(_ context.Context, _ []string, definitions []workflow.TaskDefinition, options workflow.RuntimeOptions) error {
+func (runner *recordingTaskRunner) Run(_ context.Context, _ []string, definitions []workflow.TaskDefinition, options workflow.RuntimeOptions) (workflow.ExecutionOutcome, error) {
 	runner.definitions = append([]workflow.TaskDefinition{}, definitions...)
 	runner.runtimeOptions = options
-	return nil
+	return workflow.ExecutionOutcome{}, nil
 }
 
 type fakeRepositoryDiscoverer struct {
