@@ -1,5 +1,25 @@
 # Changelog
 
+## [v0.2.0-rc.10]
+
+### Features ✨
+- _No changes._
+
+### Improvements ⚙️
+- Removed all legacy CLI command wrappers including `gix commit`, `gix changelog`, and `gix repo-license-apply`; only canonical namespaces remain.
+- Replaced deprecated `repo-license-apply` command with the `workflow license` preset using runtime variables.
+- Simplified configuration by dropping alias normalization and warning layers related to removed commands.
+
+### Bug Fixes 🐛
+- _No changes._
+
+### Testing 🧪
+- _No changes._
+
+### Docs 📚
+- Updated README and ARCHITECTURE.md to remove references to legacy commands and promote workflow presets.
+- Revised command tables and help output to reflect streamlined CLI surface without deprecated wrappers.
+
 ## [v0.2.0-rc.9]
 
 ### Improvements ⚙️
