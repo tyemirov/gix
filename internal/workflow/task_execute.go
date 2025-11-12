@@ -1,9 +1,11 @@
 package workflow
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"path/filepath"
 	"strings"
 
@@ -231,6 +233,13 @@ func (executor taskExecutor) applyFileChanges() error {
 			continue
 		}
 
+		if change.mode == taskFileModeEnsureLines {
+			if err := executor.applyEnsureLinesChange(change); err != nil {
+				return err
+			}
+			continue
+		}
+
 		directory := filepath.Dir(change.absolutePath)
 		if err := executor.environment.FileSystem.MkdirAll(directory, 0o755); err != nil {
 			return err
@@ -240,6 +249,60 @@ func (executor taskExecutor) applyFileChanges() error {
 		}
 	}
 	return nil
+}
+
+func (executor taskExecutor) applyEnsureLinesChange(change taskFileChange) error {
+	if executor.environment == nil || executor.environment.FileSystem == nil {
+		return errors.New("filesystem not configured for task execution")
+	}
+
+	directory := filepath.Dir(change.absolutePath)
+	if err := executor.environment.FileSystem.MkdirAll(directory, 0o755); err != nil {
+		return err
+	}
+
+	existingContent, readError := executor.environment.FileSystem.ReadFile(change.absolutePath)
+	if readError != nil && !errors.Is(readError, fs.ErrNotExist) {
+		return readError
+	}
+
+	desiredLines := parseEnsureLines(change.content)
+	if len(desiredLines) == 0 {
+		return nil
+	}
+
+	existingSet := buildEnsureLineSet(existingContent)
+	buffer := bytes.NewBuffer(nil)
+	if len(existingContent) > 0 {
+		buffer.Write(existingContent)
+	}
+
+	appendNewline := func() {
+		if buffer.Len() == 0 {
+			return
+		}
+		if buffer.Bytes()[buffer.Len()-1] != '\n' {
+			buffer.WriteByte('\n')
+		}
+	}
+
+	added := false
+	for _, line := range desiredLines {
+		if _, exists := existingSet[line]; exists {
+			continue
+		}
+		appendNewline()
+		buffer.WriteString(line)
+		buffer.WriteByte('\n')
+		existingSet[line] = struct{}{}
+		added = true
+	}
+
+	if !added && readError == nil {
+		return nil
+	}
+
+	return executor.environment.FileSystem.WriteFile(change.absolutePath, buffer.Bytes(), change.permissions)
 }
 
 func (executor taskExecutor) stageChanges(executionContext context.Context) error {

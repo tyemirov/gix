@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
@@ -154,14 +155,24 @@ func (planner taskPlanner) planFileChanges(environment *Environment, repository 
 			existingContent, readError := environment.FileSystem.ReadFile(fileChange.absolutePath)
 			switch {
 			case readError == nil:
-				if fileDefinition.Mode == TaskFileModeSkipIfExists {
+				switch fileDefinition.Mode {
+				case TaskFileModeSkipIfExists:
 					fileChange.apply = false
 					fileChange.skipReason = "exists"
-				} else if bytes.Equal(existingContent, fileChange.content) {
-					fileChange.apply = false
-					fileChange.skipReason = "unchanged"
-				} else {
-					fileChange.apply = true
+				case TaskFileModeEnsureLines:
+					if ensureLinesSatisfied(existingContent, fileChange.content) {
+						fileChange.apply = false
+						fileChange.skipReason = "lines-present"
+					} else {
+						fileChange.apply = true
+					}
+				default:
+					if bytes.Equal(existingContent, fileChange.content) {
+						fileChange.apply = false
+						fileChange.skipReason = "unchanged"
+					} else {
+						fileChange.apply = true
+					}
 				}
 			case errors.Is(readError, fs.ErrNotExist):
 				fileChange.apply = true
@@ -180,6 +191,41 @@ func (planner taskPlanner) planFileChanges(environment *Environment, repository 
 	})
 
 	return changes, nil
+}
+
+func ensureLinesSatisfied(existingContent []byte, desired []byte) bool {
+	desiredLines := parseEnsureLines(desired)
+	if len(desiredLines) == 0 {
+		return true
+	}
+	existingSet := buildEnsureLineSet(existingContent)
+	for _, line := range desiredLines {
+		if _, ok := existingSet[line]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func parseEnsureLines(content []byte) []string {
+	scanner := bufio.NewScanner(bytes.NewReader(content))
+	lines := make([]string, 0)
+	for scanner.Scan() {
+		trimmed := strings.TrimSpace(scanner.Text())
+		if trimmed == "" {
+			continue
+		}
+		lines = append(lines, trimmed)
+	}
+	return lines
+}
+
+func buildEnsureLineSet(content []byte) map[string]struct{} {
+	set := make(map[string]struct{})
+	for _, line := range parseEnsureLines(content) {
+		set[line] = struct{}{}
+	}
+	return set
 }
 
 func (planner taskPlanner) planActions() ([]taskAction, error) {

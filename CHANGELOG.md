@@ -29,6 +29,7 @@
 - Introduced a top-level `message` namespace and moved `changelog message` to `message changelog`, keeping the legacy path as a deprecated alias with config/CLI warnings.
 - Added embedded workflow presets so `gix workflow --list-presets` and `gix workflow <preset>` can run bundled automation (initially `license`) without a separate YAML file.
 - Added workflow runtime variables (`gix workflow --var key=value` / `--var-file path.yaml`) so presets and file-based configs can consume user-supplied values.
+- Added an `ensure-lines` file mode for workflow-managed files so recipes like the gitignore preset can append missing entries without overwriting existing content.
 - Deprecated `gix repo-license-apply` in favor of the `workflow license` preset; the CLI prints a warning and forwards legacy flags as workflow variables.
 - Removed the remaining legacy CLI wrappers (`gix commit`, `gix changelog`, and `gix repo-license-apply`) along with the configuration alias/warning layer so only the canonical namespaces remain.
 - Moved history purge under `gix files rm` and removed the legacy `gix rm` command, updating configuration defaults/docs/tests to the new namespace.

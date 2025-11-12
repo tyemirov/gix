@@ -41,6 +41,7 @@ type taskFileExistsMode string
 const (
 	taskFileModeOverwrite    taskFileExistsMode = "overwrite"
 	taskFileModeSkipIfExists taskFileExistsMode = "skip-if-exists"
+	taskFileModeEnsureLines  taskFileExistsMode = "ensure-lines"
 )
 
 // TaskFileMode enumerates file handling semantics for task-managed files.
@@ -51,6 +52,8 @@ const (
 	TaskFileModeOverwrite TaskFileMode = taskFileModeOverwrite
 	// TaskFileModeSkipIfExists preserves existing files by skipping writes.
 	TaskFileModeSkipIfExists TaskFileMode = taskFileModeSkipIfExists
+	// TaskFileModeEnsureLines appends any missing lines from the provided content while preserving existing entries.
+	TaskFileModeEnsureLines TaskFileMode = taskFileModeEnsureLines
 )
 
 // TaskDefinition describes a single repository task.

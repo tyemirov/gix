@@ -752,6 +752,71 @@ func TestTaskPlannerSkipWhenFileUnchanged(testInstance *testing.T) {
 	require.Equal(testInstance, "unchanged", plan.fileChanges[0].skipReason)
 }
 
+func TestTaskPlannerSkipEnsureLinesWhenAlreadyPresent(t *testing.T) {
+	repositoryPath := "/repositories/ensure"
+	fileSystem := newFakeFileSystem(map[string][]byte{
+		filepath.Join(repositoryPath, ".gitignore"): []byte("# existing\n.env\n"),
+	})
+	environment := &Environment{FileSystem: fileSystem}
+
+	repository := NewRepositoryState(audit.RepositoryInspection{Path: repositoryPath})
+	taskDefinition := TaskDefinition{
+		Name: "Ensure gitignore",
+		Files: []TaskFileDefinition{{
+			PathTemplate:    ".gitignore",
+			ContentTemplate: "# existing\n.env\n",
+			Mode:            TaskFileModeEnsureLines,
+			Permissions:     defaultTaskFilePermissions,
+		}},
+	}
+
+	planner := newTaskPlanner(taskDefinition, buildTaskTemplateData(repository, taskDefinition, nil))
+	plan, planError := planner.BuildPlan(environment, repository)
+	require.NoError(t, planError)
+	require.True(t, plan.skipped)
+	require.Equal(t, "no changes", plan.skipReason)
+	require.Len(t, plan.fileChanges, 1)
+	require.False(t, plan.fileChanges[0].apply)
+	require.Equal(t, "lines-present", plan.fileChanges[0].skipReason)
+}
+
+func TestTaskExecutorApplyEnsureLines(t *testing.T) {
+	repositoryPath := "/repositories/ensure"
+	fileSystem := newFakeFileSystem(map[string][]byte{
+		filepath.Join(repositoryPath, ".gitignore"): []byte("# existing\n.env\n"),
+	})
+	environment := &Environment{FileSystem: fileSystem}
+	repository := NewRepositoryState(audit.RepositoryInspection{Path: repositoryPath})
+
+	taskDefinition := TaskDefinition{
+		Name: "Ensure gitignore",
+		Files: []TaskFileDefinition{{
+			PathTemplate:    ".gitignore",
+			ContentTemplate: "# existing\n.env\nbin/\n",
+			Mode:            TaskFileModeEnsureLines,
+			Permissions:     defaultTaskFilePermissions,
+		}},
+	}
+
+	planner := newTaskPlanner(taskDefinition, buildTaskTemplateData(repository, taskDefinition, nil))
+	plan, planError := planner.BuildPlan(environment, repository)
+	require.NoError(t, planError)
+	require.False(t, plan.skipped)
+	require.Len(t, plan.fileChanges, 1)
+	require.True(t, plan.fileChanges[0].apply)
+
+	executor := newTaskExecutor(environment, repository, plan)
+	require.NoError(t, executor.applyFileChanges())
+
+	updated, readErr := fileSystem.ReadFile(filepath.Join(repositoryPath, ".gitignore"))
+	require.NoError(t, readErr)
+	contents := string(updated)
+	require.Contains(t, contents, "bin/")
+	require.Equal(t, 1, strings.Count(contents, "bin/"))
+	require.Contains(t, contents, "# existing")
+	require.Contains(t, contents, ".env")
+}
+
 func TestTaskExecutorSkipsWhenBranchExists(testInstance *testing.T) {
 	gitExecutor := &recordingGitExecutor{
 		branchExists:  true,
