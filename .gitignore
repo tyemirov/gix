@@ -1,8 +1,4 @@
-.idea/
-*.csv
-bin/
-dist/
+# Managed by gix gitignore workflow
+.env
 tools/
-configs/
-
-PLAN.md
+bin/
