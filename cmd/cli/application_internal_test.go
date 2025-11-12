@@ -99,7 +99,7 @@ func TestApplicationOperationOverridesTakePriority(t *testing.T) {
 	require.False(t, workflowConfiguration.RequireClean)
 }
 
-func TestOperationConfigurationsNormalizeLegacyCommandNames(t *testing.T) {
+func TestOperationConfigurationsErrorOnLegacyCommandNames(t *testing.T) {
 	operations, buildError := newOperationConfigurations([]ApplicationOperationConfiguration{
 		{
 			Command: []string{"repo", "remote", "update-to-canonical"},
@@ -110,22 +110,10 @@ func TestOperationConfigurationsNormalizeLegacyCommandNames(t *testing.T) {
 	})
 	require.NoError(t, buildError)
 
-	options, lookupError := operations.Lookup(reposRemotesOperationNameConstant)
-	require.NoError(t, lookupError)
-	roots, rootsCast := options["roots"].([]string)
-	require.True(t, rootsCast)
-	require.Equal(t, []string{"/tmp/legacy"}, roots)
-}
-
-func TestOperationConfigurationsRejectDuplicateLegacyAndCanonicalNames(t *testing.T) {
-	_, buildError := newOperationConfigurations([]ApplicationOperationConfiguration{
-		{Command: []string{"repo", "folder", "rename"}},
-		{Command: []string{"folder", "rename"}},
-	})
-
-	var duplicateError DuplicateOperationConfigurationError
-	require.ErrorAs(t, buildError, &duplicateError)
-	require.Equal(t, reposRenameOperationNameConstant, duplicateError.OperationName)
+	_, lookupError := operations.Lookup(reposRemotesOperationNameConstant)
+	var missing MissingOperationConfigurationError
+	require.ErrorAs(t, lookupError, &missing)
+	require.Equal(t, reposRemotesOperationNameConstant, missing.OperationName)
 }
 
 func TestInitializeConfigurationAttachesBranchContext(t *testing.T) {
@@ -277,11 +265,6 @@ func TestApplicationCommandHierarchyAndAliases(t *testing.T) {
 	require.NotNil(t, commitMessageCommand.Parent().Parent())
 	require.Equal(t, applicationNameConstant, commitMessageCommand.Parent().Parent().Name())
 
-	legacyCommitMessageCommand, _, legacyCommitMessageError := rootCommand.Find([]string{"commit", legacyCommitMessageUseNameConstant})
-	require.NoError(t, legacyCommitMessageError)
-	require.Equal(t, legacyCommitMessageUseNameConstant, legacyCommitMessageCommand.Name())
-	require.Equal(t, legacyCommitNamespaceUseNameConstant, legacyCommitMessageCommand.Parent().Name())
-	require.NotEmpty(t, legacyCommitMessageCommand.Deprecated)
 	changelogMessageCommand, _, changelogMessageError := rootCommand.Find([]string{"message", "changelog"})
 	require.NoError(t, changelogMessageError)
 	require.Equal(t, "changelog", changelogMessageCommand.Name())
@@ -289,12 +272,6 @@ func TestApplicationCommandHierarchyAndAliases(t *testing.T) {
 	require.Equal(t, "message", changelogMessageCommand.Parent().Name())
 	require.NotNil(t, changelogMessageCommand.Parent().Parent())
 	require.Equal(t, applicationNameConstant, changelogMessageCommand.Parent().Parent().Name())
-
-	legacyChangelogMessageCommand, _, legacyChangelogError := rootCommand.Find([]string{"changelog", legacyChangelogMessageUseNameConstant})
-	require.NoError(t, legacyChangelogError)
-	require.Equal(t, legacyChangelogMessageUseNameConstant, legacyChangelogMessageCommand.Name())
-	require.Equal(t, changelogNamespaceUseNameConstant, legacyChangelogMessageCommand.Parent().Name())
-	require.NotEmpty(t, legacyChangelogMessageCommand.Deprecated)
 
 	_, _, legacyRenameError := rootCommand.Find([]string{"repo-folders-rename"})
 	require.Error(t, legacyRenameError)
@@ -349,33 +326,9 @@ func TestApplicationHierarchicalCommandsLoadExpectedOperations(t *testing.T) {
 	require.NoError(t, commitMessageError)
 	require.Equal(t, []string{commitMessageOperationNameConstant}, application.operationsRequiredForCommand(commitMessageCommand))
 
-	legacyCommitMessageCommand, _, legacyCommitMessageError := rootCommand.Find([]string{"commit", legacyCommitMessageUseNameConstant})
-	require.NoError(t, legacyCommitMessageError)
-	require.Equal(t, []string{commitMessageOperationNameConstant}, application.operationsRequiredForCommand(legacyCommitMessageCommand))
-
 	changelogMessageCommand, _, changelogMessageError := rootCommand.Find([]string{"message", "changelog"})
 	require.NoError(t, changelogMessageError)
 	require.Equal(t, []string{changelogMessageOperationNameConstant}, application.operationsRequiredForCommand(changelogMessageCommand))
-
-	legacyChangelogMessageCommand, _, legacyChangelogMessageError := rootCommand.Find([]string{"changelog", legacyChangelogMessageUseNameConstant})
-	require.NoError(t, legacyChangelogMessageError)
-	require.Equal(t, []string{changelogMessageOperationNameConstant}, application.operationsRequiredForCommand(legacyChangelogMessageCommand))
-}
-
-func TestApplicationCollectLegacyOperationUsageFlagsDefaultAliases(t *testing.T) {
-	application := &Application{}
-	definitions := []ApplicationOperationConfiguration{
-		{Command: []string{legacyBranchDefaultTopLevelUseNameConstant}},
-		{Command: []string{"branch", defaultCommandUseNameConstant}},
-		{Command: []string{changelogNamespaceUseNameConstant, legacyChangelogMessageUseNameConstant}},
-	}
-
-	legacyKeys := application.collectLegacyOperationUsage(definitions)
-	require.Equal(t, []string{
-		legacyBranchDefaultCommandKeyConstant,
-		legacyBranchDefaultTopLevelUseNameConstant,
-		legacyChangelogMessageCommandKeyConstant,
-	}, legacyKeys)
 }
 
 func TestReleaseCommandUsageIncludesTagPlaceholder(t *testing.T) {

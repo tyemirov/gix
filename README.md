@@ -138,7 +138,7 @@ Variables appear inside task templates via `{{ index .Environment "key" }}` and 
 | `namespace_push` | Optional boolean (`true`/`false`) controlling whether rewritten branches push. Defaults to `true`. |
 | `namespace_commit_message` | Optional commit message template for the rewrite commit. |
 
-The deprecated `gix repo-license-apply` command now prints a warning and forwards its flag values as workflow variables so you can migrate gradually.
+Use the `gix workflow license` preset (with `--var template=...`, `--var license_branch=...`, etc.) to distribute license content; the old `gix repo-license-apply` wrapper has been removed.
 
 ### Workflow syntax
 
@@ -390,8 +390,8 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
  - Performs text substitutions across matched files with optional safeguards.
 - `gix files add --template <path> [--content <text>] [--mode overwrite|skip-if-exists] [--branch <template>] [--remote <name>] [--commit-message <text>] [--roots <dir>...] [-y]` (alias `seed`)
  - Seeds or updates files across repositories, creating branches and pushes when configured.
-- `gix repo-license-apply` (alias `inject`)
- - Deprecated alias that delegates to `gix workflow license`. Use the workflow preset instead.
+- `gix workflow license --var template=LICENSE --var license_branch=chore/license --roots <dir>... [-y]`
+ - Runs the embedded license preset; see “License preset variables” for supported options.
 - `gix workflow namespace --var namespace_old=... --var namespace_new=... [--roots <dir>...] [-y]`
  - Runs the embedded namespace rewrite preset; see “Namespace preset variables” for supported options.
 - `gix files rm <path>... [--remote <name>] [--push] [--restore] [--push-missing] [--roots <dir>...] [-y]` (alias `purge`)
@@ -406,7 +406,7 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
  - Drafts Conventional Commit subjects and optional bullets using the configured LLM.
 - `gix default <target-branch> [--roots <dir>...] [-y]`
  - Promotes the default branch across repositories.
-- `gix cd [branch] [--remote <name>] [--refresh] [--stash | --commit] [--require-clean] [--roots <dir>...]` (aliases `switch`, `branch-cd`)
+- `gix cd [branch] [--remote <name>] [--refresh] [--stash | --commit] [--require-clean] [--roots <dir>...]` (alias `switch`)
  - Switches repositories to the selected branch when provided, or the repository default when omitted. Creates the branch if missing, rebases onto the remote, and, when `--refresh` is enabled, fetches/pulls with optional stash/commit recovery.
 ## Configuration essentials
 

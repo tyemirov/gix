@@ -15,7 +15,6 @@ type ToolsConfiguration struct {
 	Rename   RenameConfiguration   `mapstructure:"rename"`
 	Remove   RemoveConfiguration   `mapstructure:"remove"`
 	Replace  ReplaceConfiguration  `mapstructure:"replace"`
-	License  LicenseConfiguration  `mapstructure:"license"`
 	Add      AddConfiguration      `mapstructure:"add"`
 }
 
@@ -63,21 +62,6 @@ type ReplaceConfiguration struct {
 	RequireClean    bool     `mapstructure:"require_clean"`
 	Branch          string   `mapstructure:"branch"`
 	RequirePaths    []string `mapstructure:"paths"`
-}
-
-// LicenseConfiguration describes configuration values for license distribution.
-type LicenseConfiguration struct {
-	AssumeYes       bool     `mapstructure:"assume_yes"`
-	RepositoryRoots []string `mapstructure:"roots"`
-	TemplatePath    string   `mapstructure:"template_path"`
-	Content         string   `mapstructure:"content"`
-	TargetPath      string   `mapstructure:"target_path"`
-	Mode            string   `mapstructure:"mode"`
-	RequireClean    bool     `mapstructure:"require_clean"`
-	Branch          string   `mapstructure:"branch"`
-	StartPoint      string   `mapstructure:"start_point"`
-	PushRemote      string   `mapstructure:"push_remote"`
-	CommitMessage   string   `mapstructure:"commit_message"`
 }
 
 // AddConfiguration describes configuration values for repo files add.
@@ -135,19 +119,6 @@ func DefaultToolsConfiguration() ToolsConfiguration {
 			RequireClean:    false,
 			Branch:          "",
 			RequirePaths:    nil,
-		},
-		License: LicenseConfiguration{
-			AssumeYes:       false,
-			RepositoryRoots: nil,
-			TemplatePath:    "",
-			Content:         "",
-			TargetPath:      "LICENSE",
-			Mode:            "skip-if-exists",
-			RequireClean:    true,
-			Branch:          "license/{{ .Repository.Name }}",
-			StartPoint:      "",
-			PushRemote:      "origin",
-			CommitMessage:   "",
 		},
 		Add: AddConfiguration{
 			AssumeYes:       false,
@@ -219,60 +190,6 @@ func (configuration ReplaceConfiguration) sanitize() ReplaceConfiguration {
 
 // Sanitize normalizes replace configuration values.
 func (configuration ReplaceConfiguration) Sanitize() ReplaceConfiguration {
-	return configuration.sanitize()
-}
-
-// sanitize normalizes namespace configuration values.
-// sanitize normalizes license configuration values.
-func (configuration LicenseConfiguration) sanitize() LicenseConfiguration {
-	sanitized := configuration
-	sanitized.RepositoryRoots = rootutils.SanitizeConfigured(configuration.RepositoryRoots)
-	sanitized.TemplatePath = strings.TrimSpace(configuration.TemplatePath)
-	sanitized.Content = configuration.Content
-
-	targetPath := strings.TrimSpace(configuration.TargetPath)
-	if len(targetPath) == 0 {
-		targetPath = "LICENSE"
-	}
-	cleanedTarget := filepath.Clean(targetPath)
-	if cleanedTarget == "." {
-		cleanedTarget = "LICENSE"
-	}
-	sanitized.TargetPath = cleanedTarget
-
-	modeValue := strings.TrimSpace(strings.ToLower(configuration.Mode))
-	if len(modeValue) == 0 {
-		modeValue = "skip-if-exists"
-	}
-	sanitized.Mode = modeValue
-
-	sanitized.RequireClean = configuration.RequireClean
-
-	if len(strings.TrimSpace(configuration.Branch)) == 0 {
-		sanitized.Branch = "license/{{ .Repository.Name }}"
-	} else {
-		sanitized.Branch = strings.TrimSpace(configuration.Branch)
-	}
-
-	sanitized.StartPoint = strings.TrimSpace(configuration.StartPoint)
-
-	if len(strings.TrimSpace(configuration.PushRemote)) == 0 {
-		sanitized.PushRemote = "origin"
-	} else {
-		sanitized.PushRemote = strings.TrimSpace(configuration.PushRemote)
-	}
-
-	commitMessage := strings.TrimSpace(configuration.CommitMessage)
-	if len(commitMessage) == 0 {
-		commitMessage = fmt.Sprintf("docs: add %s", sanitized.TargetPath)
-	}
-	sanitized.CommitMessage = commitMessage
-
-	return sanitized
-}
-
-// Sanitize normalizes license configuration values.
-func (configuration LicenseConfiguration) Sanitize() LicenseConfiguration {
 	return configuration.sanitize()
 }
 

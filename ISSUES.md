@@ -236,3 +236,10 @@ do not work on the issues below, not ready
   - Desired: Introduce CLI flags (`gix workflow --var key=value` and `--var-file path`) plus configuration support to load user variables, surface them through `workflow.RuntimeOptions`, seed `Environment.Variables` before execution, and ensure task templates (`.Environment`) merge user-provided variables with captured ones (user values winning). Update README/CHANGELOG/docs, expose the same facility to presets, and add tests covering CLI parsing, preset execution with vars, and interaction with existing `capture_as`.
   - Acceptance: Users can supply runtime variables when running either external configs or presets; the variables are visible to task templates; `repo-license-apply` can invoke the `license` preset by passing variables instead of re-implementing logic; docs/tests cover these flows; legacy behaviour remains intact when no variables are provided.
   - Resolution: Added locked seeding semantics to `VariableStore` so runtime inputs stay authoritative, taught the executor to seed via the new API, documented the precedence rules in `ARCHITECTURE.md`, and expanded workflow tests (store unit tests + commit-message capture coverage) to prove `.Environment` sees user values while capture outputs only fill unset keys.
+
+- [x] [GX-237] Remove legacy CLI wrappers and configuration aliases
+  - Status: Resolved
+  - Category: Improvement
+  - Context: Deprecated command wrappers (`gix commit`, `gix changelog`, `gix repo-license-apply`, and the top-level `gix rm`) plus the configuration alias/warning layer were still shipping in the CLI, producing warnings while continuing to run outdated entry points.
+  - Desired: Drop the wrappers entirely so only the canonical namespaces remain, remove the alias normalization/warning layer from configuration loading, and update documentation/help output to reflect the streamlined command surface.
+  - Resolution: Deleted the legacy command builders, removed their configuration types/tests, stripped alias handling/warnings, and refreshed README/ARCHITECTURE/command tables so only the supported `message` and workflow presets are advertised.

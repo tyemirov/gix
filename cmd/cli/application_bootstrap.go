@@ -30,68 +30,29 @@ import (
 )
 
 var commandOperationRequirements = map[string][]string{
-	auditOperationNameConstant:                   {auditOperationNameConstant},
-	packagesDeleteCommandPathKeyConstant:         {packagesPurgeOperationNameConstant},
-	pullRequestsDeleteCommandPathKeyConstant:     {branchCleanupOperationNameConstant},
-	folderRenameCommandPathKeyConstant:           {reposRenameOperationNameConstant},
-	remoteCanonicalCommandPathKeyConstant:        {reposRemotesOperationNameConstant},
-	remoteProtocolCommandPathKeyConstant:         {reposProtocolOperationNameConstant},
-	repoReleaseCommandUseNameConstant:            {repoReleaseOperationNameConstant},
-	releaseRetagCommandPathKeyConstant:           {repoReleaseOperationNameConstant},
-	filesRemoveCommandPathKeyConstant:            {repoHistoryOperationNameConstant},
-	removeCommandUseNameConstant:                 {repoHistoryOperationNameConstant},
-	filesReplaceCommandPathKeyConstant:           {repoFilesReplaceOperationNameConstant},
-	filesAddCommandPathKeyConstant:               {repoFilesAddOperationNameConstant},
-	licenseApplyCommandPathKeyConstant:           {repoLicenseOperationNameConstant},
-	workflowCommandOperationNameConstant:         {workflowCommandOperationNameConstant},
-	defaultCommandUseNameConstant:                {defaultOperationNameConstant},
-	branchChangeTopLevelUseNameConstant:          {branchChangeOperationNameConstant},
-	commitMessageCommandPathKeyConstant:          {commitMessageOperationNameConstant},
-	changelogMessageCommandPathKeyConstant:       {changelogMessageOperationNameConstant},
-	legacyChangelogMessageCommandPathKeyConstant: {changelogMessageOperationNameConstant},
-	legacyCommitMessageCommandPathKeyConstant:    {commitMessageOperationNameConstant},
+	auditOperationNameConstant:           {auditOperationNameConstant},
+	packagesDeleteCommandPathKeyConstant: {packagesPurgeOperationNameConstant},
+	pullRequestsDeleteCommandPathKeyConstant: {
+		branchCleanupOperationNameConstant,
+	},
+	folderRenameCommandPathKeyConstant:    {reposRenameOperationNameConstant},
+	remoteCanonicalCommandPathKeyConstant: {reposRemotesOperationNameConstant},
+	remoteProtocolCommandPathKeyConstant:  {reposProtocolOperationNameConstant},
+	repoReleaseCommandUseNameConstant:     {repoReleaseOperationNameConstant},
+	releaseRetagCommandPathKeyConstant:    {repoReleaseOperationNameConstant},
+	filesRemoveCommandPathKeyConstant:     {repoHistoryOperationNameConstant},
+	filesReplaceCommandPathKeyConstant:    {repoFilesReplaceOperationNameConstant},
+	filesAddCommandPathKeyConstant:        {repoFilesAddOperationNameConstant},
+	workflowCommandOperationNameConstant:  {workflowCommandOperationNameConstant},
+	defaultCommandUseNameConstant:         {defaultOperationNameConstant},
+	branchChangeTopLevelUseNameConstant:   {branchChangeOperationNameConstant},
+	commitMessageCommandPathKeyConstant:   {commitMessageOperationNameConstant},
+	changelogMessageCommandPathKeyConstant: {
+		changelogMessageOperationNameConstant,
+	},
 }
 
 var requiredOperationConfigurationNames = collectRequiredOperationConfigurationNames()
-
-var operationNameAliases = map[string]string{
-	legacyRepoFolderRenameCommandKeyConstant:       reposRenameOperationNameConstant,
-	legacyRepoRemoteCanonicalCommandKeyConstant:    reposRemotesOperationNameConstant,
-	legacyRepoRemoteProtocolCommandKeyConstant:     reposProtocolOperationNameConstant,
-	legacyRepoPullRequestsDeleteCommandKeyConstant: branchCleanupOperationNameConstant,
-	legacyRepoPackagesDeleteCommandKeyConstant:     packagesPurgeOperationNameConstant,
-	legacyRepoFilesReplaceCommandKeyConstant:       repoFilesReplaceOperationNameConstant,
-	legacyRepoFilesAddCommandKeyConstant:           repoFilesAddOperationNameConstant,
-	legacyRepoLicenseApplyCommandKeyConstant:       repoLicenseOperationNameConstant,
-	legacyRepoReleaseCommandKeyConstant:            repoReleaseOperationNameConstant,
-	legacyRepoReleaseRetagCommandKeyConstant:       repoReleaseOperationNameConstant,
-	legacyRepoRmCommandKeyConstant:                 repoHistoryOperationNameConstant,
-	legacyRepoFilesRemoveCommandKeyConstant:        repoHistoryOperationNameConstant,
-	removeCommandUseNameConstant:                   repoHistoryOperationNameConstant,
-	legacyChangelogMessageCommandKeyConstant:       changelogMessageOperationNameConstant,
-	legacyCommitMessageCommandKeyConstant:          commitMessageOperationNameConstant,
-	legacyBranchDefaultCommandKeyConstant:          defaultOperationNameConstant,
-	legacyBranchDefaultTopLevelUseNameConstant:     defaultOperationNameConstant,
-	legacyBranchChangeCommandKeyConstant:           branchChangeOperationNameConstant,
-	legacyBranchChangeAliasCommandKeyConstant:      branchChangeOperationNameConstant,
-	branchChangeLegacyTopLevelUseNameConstant:      branchChangeOperationNameConstant,
-	branchRefreshLegacyTopLevelUseNameConstant:     branchChangeOperationNameConstant,
-	legacyBranchRefreshCommandKeyConstant:          branchChangeOperationNameConstant,
-	releaseRetagCommandAliasKeyConstant:            repoReleaseOperationNameConstant,
-}
-
-var operationAliasWarnings = map[string]string{
-	removeCommandUseNameConstant:               "command configuration uses deprecated name \"rm\"; update to \"files rm\".",
-	legacyRepoRmCommandKeyConstant:             "command configuration uses deprecated name \"repo rm\"; update to \"files rm\".",
-	legacyRepoFilesRemoveCommandKeyConstant:    "command configuration uses deprecated name \"repo files rm\"; update to \"files rm\".",
-	branchChangeLegacyTopLevelUseNameConstant:  "command configuration uses deprecated name \"branch-cd\"; update to \"cd\".",
-	branchRefreshLegacyTopLevelUseNameConstant: "command configuration uses deprecated name \"branch-refresh\"; update to \"cd\" with refresh options.",
-	legacyBranchRefreshCommandKeyConstant:      "command configuration uses deprecated name \"branch refresh\"; update to \"cd\" with refresh options.",
-	legacyBranchDefaultTopLevelUseNameConstant: "command configuration uses deprecated name \"branch-default\"; update to \"default\".",
-	legacyBranchDefaultCommandKeyConstant:      "command configuration uses deprecated name \"branch default\"; update to \"default\".",
-	legacyChangelogMessageCommandKeyConstant:   "command configuration uses deprecated name \"changelog message\"; update to \"message changelog\".",
-	legacyCommitMessageCommandKeyConstant:      "command configuration uses deprecated name \"commit message\"; update to \"message commit\".",
-}
 
 type loggerOutputsFactory interface {
 	CreateLoggerOutputs(utils.LogLevel, utils.LogFormat) (utils.LoggerOutputs, error)
@@ -377,8 +338,6 @@ func (application *Application) initializeConfiguration(command *cobra.Command) 
 	}
 
 	application.configurationMetadata = loadedConfiguration
-	legacyOperationKeys := application.collectLegacyOperationUsage(application.configuration.Operations)
-
 	operationConfigurations, configurationBuildError := newOperationConfigurations(application.configuration.Operations)
 	if configurationBuildError != nil {
 		return configurationBuildError
@@ -417,8 +376,6 @@ func (application *Application) initializeConfiguration(command *cobra.Command) 
 	}
 
 	application.logConfigurationInitialization()
-	application.emitLegacyOperationWarnings(legacyOperationKeys)
-
 	if command != nil {
 		updatedContext := application.commandContextAccessor.WithConfigurationFilePath(
 			command.Context(),
@@ -625,21 +582,6 @@ func (application *Application) reposReplaceConfiguration() repos.ReplaceConfigu
 	options, optionsExist := application.lookupOperationOptions(repoFilesReplaceOperationNameConstant)
 	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
 		configuration.AssumeYes = application.configuration.Common.AssumeYes
-	}
-
-	return configuration.Sanitize()
-}
-
-func (application *Application) reposLicenseConfiguration() repos.LicenseConfiguration {
-	configuration := repos.DefaultToolsConfiguration().License
-	application.decodeOperationConfiguration(repoLicenseOperationNameConstant, &configuration)
-
-	options, optionsExist := application.lookupOperationOptions(repoLicenseOperationNameConstant)
-	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
-		configuration.AssumeYes = application.configuration.Common.AssumeYes
-	}
-	if !optionsExist || !optionExists(options, requireCleanOptionKeyConstant) {
-		configuration.RequireClean = application.configuration.Common.RequireClean
 	}
 
 	return configuration.Sanitize()

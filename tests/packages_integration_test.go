@@ -23,7 +23,7 @@ const (
 	packagesIntegrationTokenValueConstant               = "packages-token-value"
 	packagesIntegrationBaseURLEnvironmentNameConstant   = "GIX_REPO_PACKAGES_PURGE_BASE_URL"
 	packagesIntegrationConfigFileNameConstant           = "config.yaml"
-	packagesIntegrationConfigTemplateConstant           = "common:\n  log_level: error\noperations:\n  - command: [\"repo\", \"packages\", \"delete\"]\n    with:\n%s      assume_yes: true\n      roots:\n        - %s\nworkflow: []\n"
+	packagesIntegrationConfigTemplateConstant           = "common:\n  log_level: error\noperations:\n  - command: [\"packages\", \"delete\"]\n    with:\n%s      assume_yes: true\n      roots:\n        - %s\nworkflow: []\n"
 	packagesIntegrationPackageLineTemplateConstant      = "      package: %s\n"
 	packagesIntegrationSubtestNameTemplateConstant      = "%d_%s"
 	packagesIntegrationRunSubcommandConstant            = "run"

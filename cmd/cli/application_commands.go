@@ -136,14 +136,6 @@ func (application *Application) registerCommands(cobraCommand *cobra.Command) {
 		ConfigurationProvider:        application.reposFilesAddConfiguration,
 	}
 
-	licenseBuilder := repos.LicenseCommandBuilder{
-		LoggerProvider: func() *zap.Logger {
-			return application.logger
-		},
-		HumanReadableLoggingProvider: application.humanReadableLoggingEnabled,
-		ConfigurationProvider:        application.reposLicenseConfiguration,
-	}
-
 	workflowBuilder := workflowcmd.CommandBuilder{
 		LoggerProvider: func() *zap.Logger {
 			return application.logger
@@ -165,17 +157,10 @@ func (application *Application) registerCommands(cobraCommand *cobra.Command) {
 		ConfigurationProvider:        application.changelogMessageConfiguration,
 	}
 	messageNamespaceCommand := newNamespaceCommand(messageNamespaceUseNameConstant, messageNamespaceShortDescriptionConstant, messageNamespaceAliasConstant)
-	var changelogNamespaceCommand *cobra.Command
 	changelogMessageCommand, changelogMessageBuildError := changelogMessageBuilder.Build()
 	if changelogMessageBuildError == nil {
 		configureCommandMetadata(changelogMessageCommand, changelogMessageUseNameConstant, changelogMessageCommand.Short, changelogMessageLongDescriptionConstant, changelogMessageAliasConstant)
 		messageNamespaceCommand.AddCommand(changelogMessageCommand)
-	}
-	if legacyChangelogCommand, legacyChangelogBuildError := changelogMessageBuilder.Build(); legacyChangelogBuildError == nil {
-		configureCommandMetadata(legacyChangelogCommand, legacyChangelogMessageUseNameConstant, legacyChangelogCommand.Short, changelogMessageLongDescriptionConstant, changelogMessageAliasConstant)
-		legacyChangelogCommand.Deprecated = legacyChangelogMessageDeprecatedMessageConstant
-		changelogNamespaceCommand = newNamespaceCommand(changelogNamespaceUseNameConstant, changelogNamespaceShortDescriptionConstant, changelogNamespaceAliasConstant)
-		changelogNamespaceCommand.AddCommand(legacyChangelogCommand)
 	}
 	commitMessageBuilder := commitcmd.MessageCommandBuilder{
 		LoggerProvider: func() *zap.Logger {
@@ -184,19 +169,10 @@ func (application *Application) registerCommands(cobraCommand *cobra.Command) {
 		HumanReadableLoggingProvider: application.humanReadableLoggingEnabled,
 		ConfigurationProvider:        application.commitMessageConfiguration,
 	}
-	var commitNamespaceCommand *cobra.Command
 	commitMessageCommand, commitMessageBuildError := commitMessageBuilder.Build()
 	if commitMessageBuildError == nil {
 		configureCommandMetadata(commitMessageCommand, commitMessageUseNameConstant, commitMessageCommand.Short, commitMessageLongDescriptionConstant, commitMessageAliasConstant)
 		messageNamespaceCommand.AddCommand(commitMessageCommand)
-	}
-	if commitNamespaceCommand == nil {
-		commitNamespaceCommand = newNamespaceCommand(legacyCommitNamespaceUseNameConstant, commitNamespaceShortDescriptionConstant, commitNamespaceAliasConstant)
-	}
-	if legacyCommitMessageCommand, legacyCommitBuildError := commitMessageBuilder.Build(); legacyCommitBuildError == nil {
-		configureCommandMetadata(legacyCommitMessageCommand, legacyCommitMessageUseNameConstant, legacyCommitMessageCommand.Short, commitMessageLongDescriptionConstant, commitMessageAliasConstant)
-		legacyCommitMessageCommand.Deprecated = "command deprecated; use \"gix message commit\"."
-		commitNamespaceCommand.AddCommand(legacyCommitMessageCommand)
 	}
 
 	repoFolderCommand := newNamespaceCommand(repoFolderNamespaceUseNameConstant, repoFolderNamespaceShortDescriptionConstant, repoFolderNamespaceAliasConstant)
@@ -256,21 +232,6 @@ func (application *Application) registerCommands(cobraCommand *cobra.Command) {
 		cobraCommand.AddCommand(repoFilesCommand)
 	}
 
-	repoLicenseCommand := newNamespaceCommand(repoLicenseNamespaceUseNameConstant, repoLicenseNamespaceShortDescriptionConstant)
-	if licenseApplyCommand, licenseBuildError := licenseBuilder.Build(); licenseBuildError == nil {
-		configureCommandMetadata(licenseApplyCommand, licenseApplyCommandUseNameConstant, licenseApplyCommand.Short, licenseApplyCommandLongDescriptionConstant, licenseApplyCommandAliasConstant)
-		repoLicenseCommand.AddCommand(licenseApplyCommand)
-	}
-	if len(repoLicenseCommand.Commands()) > 0 {
-		cobraCommand.AddCommand(repoLicenseCommand)
-	}
-
-	if legacyRemoveCommand, legacyRemoveBuildError := removeBuilder.Build(); legacyRemoveBuildError == nil {
-		configureCommandMetadata(legacyRemoveCommand, removeCommandUseNameConstant, removeCommandShortDescriptionConstant, removeCommandLongDescriptionConstant, removeCommandAliasConstant)
-		legacyRemoveCommand.Deprecated = "command deprecated; use \"gix files rm\"."
-		cobraCommand.AddCommand(legacyRemoveCommand)
-	}
-
 	var releaseCommand *cobra.Command
 	if builtReleaseCommand, releaseBuildError := releaseBuilder.Build(); releaseBuildError == nil {
 		configureCommandMetadata(builtReleaseCommand, repoReleaseCommandUsageTemplateConstant, builtReleaseCommand.Short, repoReleaseCommandLongDescriptionConstant, repoReleaseCommandAliasConstant)
@@ -291,15 +252,9 @@ func (application *Application) registerCommands(cobraCommand *cobra.Command) {
 	if len(messageNamespaceCommand.Commands()) > 0 {
 		cobraCommand.AddCommand(messageNamespaceCommand)
 	}
-	if changelogNamespaceCommand != nil && len(changelogNamespaceCommand.Commands()) > 0 {
-		cobraCommand.AddCommand(changelogNamespaceCommand)
-	}
-	if commitNamespaceCommand != nil && len(commitNamespaceCommand.Commands()) > 0 {
-		cobraCommand.AddCommand(commitNamespaceCommand)
-	}
 
 	if defaultCommand, defaultCommandError := defaultCommandBuilder.Build(); defaultCommandError == nil {
-		configureCommandMetadata(defaultCommand, defaultCommandUsageTemplateConstant, defaultCommand.Short, defaultCommandLongDescriptionConstant, legacyBranchDefaultTopLevelUseNameConstant)
+		configureCommandMetadata(defaultCommand, defaultCommandUsageTemplateConstant, defaultCommand.Short, defaultCommandLongDescriptionConstant)
 		cobraCommand.AddCommand(defaultCommand)
 	}
 	if branchChangeCommand, branchChangeError := branchChangeBuilder.Build(); branchChangeError == nil {
@@ -309,7 +264,6 @@ func (application *Application) registerCommands(cobraCommand *cobra.Command) {
 			branchChangeCommand.Short,
 			branchChangeLongDescriptionConstant,
 			branchChangeCommandAliasConstant,
-			branchChangeLegacyTopLevelUseNameConstant,
 		)
 		cobraCommand.AddCommand(branchChangeCommand)
 	}

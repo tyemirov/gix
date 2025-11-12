@@ -2,11 +2,9 @@ package cli
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 
 	mapstructure "github.com/go-viper/mapstructure/v2"
-	"go.uber.org/zap"
 
 	"github.com/temirov/gix/internal/utils"
 	workflowpkg "github.com/temirov/gix/internal/workflow"
@@ -92,11 +90,6 @@ func newOperationConfigurations(definitions []ApplicationOperationConfiguration)
 			continue
 		}
 
-		originalName := normalizedName
-		if canonicalName, exists := operationNameAliases[normalizedName]; exists {
-			normalizedName = canonicalName
-		}
-
 		if _, exists := seenOperations[normalizedName]; exists {
 			return OperationConfigurations{}, DuplicateOperationConfigurationError{OperationName: normalizedName}
 		}
@@ -105,16 +98,6 @@ func newOperationConfigurations(definitions []ApplicationOperationConfiguration)
 		options := make(map[string]any)
 		for optionKey, optionValue := range definitions[definitionIndex].Options {
 			options[optionKey] = optionValue
-		}
-
-		if normalizedName == branchChangeOperationNameConstant &&
-			(originalName == branchRefreshLegacyTopLevelUseNameConstant || originalName == legacyBranchRefreshCommandKeyConstant) {
-			if _, exists := options["refresh"]; !exists {
-				options["refresh"] = true
-			}
-			if _, exists := options["require_clean"]; !exists {
-				options["require_clean"] = true
-			}
 		}
 
 		entries[normalizedName] = options
@@ -175,55 +158,6 @@ func (configurations OperationConfigurations) decode(operationName string, targe
 
 func normalizeOperationName(raw string) string {
 	return strings.ToLower(strings.TrimSpace(raw))
-}
-
-func (application *Application) collectLegacyOperationUsage(definitions []ApplicationOperationConfiguration) []string {
-	if len(definitions) == 0 {
-		return nil
-	}
-
-	legacyKeys := make(map[string]struct{})
-	for index := range definitions {
-		commandKey := workflowpkg.CommandPathKey(definitions[index].Command)
-		if len(commandKey) == 0 {
-			continue
-		}
-		if _, exists := operationAliasWarnings[commandKey]; exists {
-			legacyKeys[commandKey] = struct{}{}
-		}
-	}
-
-	if len(legacyKeys) == 0 {
-		return nil
-	}
-
-	collected := make([]string, 0, len(legacyKeys))
-	for key := range legacyKeys {
-		collected = append(collected, key)
-	}
-	sort.Strings(collected)
-	return collected
-}
-
-func (application *Application) emitLegacyOperationWarnings(legacyKeys []string) {
-	if len(legacyKeys) == 0 {
-		return
-	}
-
-	for _, key := range legacyKeys {
-		warningMessage, exists := operationAliasWarnings[key]
-		if !exists {
-			continue
-		}
-		application.consoleLogger.Warn(
-			warningMessage,
-			zap.String(operationNameLogFieldConstant, key),
-		)
-		application.logger.Warn(
-			warningMessage,
-			zap.String(operationNameLogFieldConstant, key),
-		)
-	}
 }
 
 func loadEmbeddedOperationConfigurations() OperationConfigurations {

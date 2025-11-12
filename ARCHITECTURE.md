@@ -31,7 +31,7 @@ Workflow orchestration (`internal/workflow`) now splits planning, runner orchest
 - Operation outcomes/failures, which the CLI surfaces as needed while still emitting the structured reporter summary to stderr.
 - Snapshot of reporter summary data (`shared.SummaryData`) so automation layers (e.g., `pkg/taskrunner`, CLI commands, integration tests) can make decisions without re-parsing logs.
 
-CLI builders run their workflows through `pkg/taskrunner`, which adapts the outcome: legacy commands drop the metrics, while the `workflow` command prints a stage-by-stage summary (duration and operation list) after the reporter writes its structured log.
+CLI builders run their workflows through `pkg/taskrunner`, which adapts the outcome: commands other than `gix workflow` drop the metrics, while the `workflow` command prints a stage-by-stage summary (duration and operation list) after the reporter writes its structured log.
 
 ## Workflow Task Operations
 
@@ -46,7 +46,7 @@ This separation keeps parsing/templating logic pure, isolates Git/GitHub side ef
 
 ### Workflow Runtime Variables
 
-`gix workflow` (and legacy preset wrappers such as `repo-license-apply`) accept runtime variables via `--var key=value`, `--var-file path.yaml`, and configuration defaults. The CLI normalizes keys, merges them (configuration → var-files → CLI flags), and passes the resulting map through `workflow.RuntimeOptions`. The executor seeds those variables into `Environment.Variables` before any task plans execute, marking them as user-provided so downstream actions (for example, LLM `capture_as`) cannot overwrite them. Captured values can still populate new keys or override previously captured ones, but seeded entries always win, ensuring preset templates always honor operator-specified values.
+`gix workflow` (and embedded presets such as `license` or `namespace`) accept runtime variables via `--var key=value`, `--var-file path.yaml`, and configuration defaults. The CLI normalizes keys, merges them (configuration → var-files → CLI flags), and passes the resulting map through `workflow.RuntimeOptions`. The executor seeds those variables into `Environment.Variables` before any task plans execute, marking them as user-provided so downstream actions (for example, LLM `capture_as`) cannot overwrite them. Captured values can still populate new keys or override previously captured ones, but seeded entries always win, ensuring preset templates always honor operator-specified values.
 
 ## Command Surface
 
