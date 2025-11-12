@@ -1,0 +1,64 @@
+workflow:
+  - step:
+      name: remotes
+      command: ["remote", "update-to-canonical"]
+
+  - step:
+      name: folders
+      after: ["remotes"]
+      command: ["folder", "rename"]
+      with:
+        include_owner: true
+        require_clean: false
+
+  - step:
+      name: protocol-to-git-https
+      after: ["folders"]
+      command: ["remote", "update-protocol"]
+      with:
+        from: https
+        to: git
+
+  - step:
+      name: protocol-to-git-ssh
+      after: ["folders"]
+      command: ["remote", "update-protocol"]
+      with:
+        from: ssh
+        to: git
+
+  - step:
+      name: switch-branch
+      after: ["protocol-to-git-https", "protocol-to-git-ssh"]
+      command: ["tasks", "apply"]
+      with:
+        tasks:
+          - name: "Switch to master if clean"
+            actions:
+              - type: branch.change
+                options:
+                  branch: master
+                  remote: origin
+                  create_if_missing: false
+            safeguards:
+              require_clean: true
+
+  - step:
+      name: rewrite-go-namespace
+      after: ["switch-branch"]
+      command: ["tasks", "apply"]
+      with:
+        tasks:
+          - name: "Rewrite module namespace"
+            actions:
+              - type: repo.namespace.rewrite
+                options:
+                  old: github.com/temirov
+                  new: github.com/tyemirov
+                  branch_prefix: chore/ns-rename
+                  push: true
+                  remote: origin
+                  commit_message: "refactor: rewrite module namespace after owner rename"
+            safeguards:
+              branch_in: [ master ]
+              paths: [ go.mod ]

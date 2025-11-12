@@ -43,7 +43,6 @@ var commandOperationRequirements = map[string][]string{
 	filesReplaceCommandPathKeyConstant:           {repoFilesReplaceOperationNameConstant},
 	filesAddCommandPathKeyConstant:               {repoFilesAddOperationNameConstant},
 	licenseApplyCommandPathKeyConstant:           {repoLicenseOperationNameConstant},
-	namespaceRewriteCommandPathKeyConstant:       {repoNamespaceRewriteOperationNameConstant},
 	workflowCommandOperationNameConstant:         {workflowCommandOperationNameConstant},
 	defaultCommandUseNameConstant:                {defaultOperationNameConstant},
 	branchChangeTopLevelUseNameConstant:          {branchChangeOperationNameConstant},
@@ -64,7 +63,6 @@ var operationNameAliases = map[string]string{
 	legacyRepoFilesReplaceCommandKeyConstant:       repoFilesReplaceOperationNameConstant,
 	legacyRepoFilesAddCommandKeyConstant:           repoFilesAddOperationNameConstant,
 	legacyRepoLicenseApplyCommandKeyConstant:       repoLicenseOperationNameConstant,
-	legacyRepoNamespaceRewriteCommandKeyConstant:   repoNamespaceRewriteOperationNameConstant,
 	legacyRepoReleaseCommandKeyConstant:            repoReleaseOperationNameConstant,
 	legacyRepoReleaseRetagCommandKeyConstant:       repoReleaseOperationNameConstant,
 	legacyRepoRmCommandKeyConstant:                 repoHistoryOperationNameConstant,
@@ -652,18 +650,6 @@ func (application *Application) reposFilesAddConfiguration() repos.AddConfigurat
 	application.decodeOperationConfiguration(repoFilesAddOperationNameConstant, &configuration)
 
 	options, optionsExist := application.lookupOperationOptions(repoFilesAddOperationNameConstant)
-	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
-		configuration.AssumeYes = application.configuration.Common.AssumeYes
-	}
-
-	return configuration.Sanitize()
-}
-
-func (application *Application) reposNamespaceConfiguration() repos.NamespaceConfiguration {
-	configuration := repos.DefaultToolsConfiguration().Namespace
-	application.decodeOperationConfiguration(repoNamespaceRewriteOperationNameConstant, &configuration)
-
-	options, optionsExist := application.lookupOperationOptions(repoNamespaceRewriteOperationNameConstant)
 	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
 		configuration.AssumeYes = application.configuration.Common.AssumeYes
 	}

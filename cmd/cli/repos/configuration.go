@@ -10,14 +10,13 @@ import (
 
 // ToolsConfiguration captures repository command configuration sections.
 type ToolsConfiguration struct {
-	Remotes   RemotesConfiguration   `mapstructure:"remotes"`
-	Protocol  ProtocolConfiguration  `mapstructure:"protocol"`
-	Rename    RenameConfiguration    `mapstructure:"rename"`
-	Remove    RemoveConfiguration    `mapstructure:"remove"`
-	Replace   ReplaceConfiguration   `mapstructure:"replace"`
-	Namespace NamespaceConfiguration `mapstructure:"namespace"`
-	License   LicenseConfiguration   `mapstructure:"license"`
-	Add       AddConfiguration       `mapstructure:"add"`
+	Remotes  RemotesConfiguration  `mapstructure:"remotes"`
+	Protocol ProtocolConfiguration `mapstructure:"protocol"`
+	Rename   RenameConfiguration   `mapstructure:"rename"`
+	Remove   RemoveConfiguration   `mapstructure:"remove"`
+	Replace  ReplaceConfiguration  `mapstructure:"replace"`
+	License  LicenseConfiguration  `mapstructure:"license"`
+	Add      AddConfiguration      `mapstructure:"add"`
 }
 
 // RemotesConfiguration describes configuration values for repo-remote-update.
@@ -64,19 +63,6 @@ type ReplaceConfiguration struct {
 	RequireClean    bool     `mapstructure:"require_clean"`
 	Branch          string   `mapstructure:"branch"`
 	RequirePaths    []string `mapstructure:"paths"`
-}
-
-// NamespaceConfiguration describes configuration values for namespace rewrite.
-type NamespaceConfiguration struct {
-	AssumeYes       bool           `mapstructure:"assume_yes"`
-	RepositoryRoots []string       `mapstructure:"roots"`
-	OldPrefix       string         `mapstructure:"old"`
-	NewPrefix       string         `mapstructure:"new"`
-	Push            bool           `mapstructure:"push"`
-	Remote          string         `mapstructure:"remote"`
-	BranchPrefix    string         `mapstructure:"branch_prefix"`
-	CommitMessage   string         `mapstructure:"commit_message"`
-	Safeguards      map[string]any `mapstructure:"safeguards"`
 }
 
 // LicenseConfiguration describes configuration values for license distribution.
@@ -149,16 +135,6 @@ func DefaultToolsConfiguration() ToolsConfiguration {
 			RequireClean:    false,
 			Branch:          "",
 			RequirePaths:    nil,
-		},
-		Namespace: NamespaceConfiguration{
-			AssumeYes:       false,
-			RepositoryRoots: nil,
-			OldPrefix:       "",
-			NewPrefix:       "",
-			Remote:          "origin",
-			BranchPrefix:    "namespace-rewrite",
-			CommitMessage:   "",
-			Safeguards:      nil,
 		},
 		License: LicenseConfiguration{
 			AssumeYes:       false,
@@ -247,30 +223,6 @@ func (configuration ReplaceConfiguration) Sanitize() ReplaceConfiguration {
 }
 
 // sanitize normalizes namespace configuration values.
-func (configuration NamespaceConfiguration) sanitize() NamespaceConfiguration {
-	sanitized := configuration
-	sanitized.RepositoryRoots = rootutils.SanitizeConfigured(configuration.RepositoryRoots)
-	sanitized.OldPrefix = strings.TrimSpace(configuration.OldPrefix)
-	sanitized.NewPrefix = strings.TrimSpace(configuration.NewPrefix)
-	sanitized.Remote = strings.TrimSpace(configuration.Remote)
-	sanitized.BranchPrefix = strings.TrimSpace(configuration.BranchPrefix)
-	sanitized.CommitMessage = strings.TrimSpace(configuration.CommitMessage)
-	if len(configuration.Safeguards) > 0 {
-		sanitized.Safeguards = make(map[string]any, len(configuration.Safeguards))
-		for key, value := range configuration.Safeguards {
-			sanitized.Safeguards[key] = value
-		}
-	} else {
-		sanitized.Safeguards = nil
-	}
-	return sanitized
-}
-
-// Sanitize normalizes namespace configuration values.
-func (configuration NamespaceConfiguration) Sanitize() NamespaceConfiguration {
-	return configuration.sanitize()
-}
-
 // sanitize normalizes license configuration values.
 func (configuration LicenseConfiguration) sanitize() LicenseConfiguration {
 	sanitized := configuration

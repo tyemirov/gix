@@ -69,7 +69,6 @@ const (
 	repoFilesReplaceOperationNameConstant                            = "files replace"
 	repoFilesAddOperationNameConstant                                = "files add"
 	repoLicenseOperationNameConstant                                 = "license apply"
-	repoNamespaceRewriteOperationNameConstant                        = "namespace rewrite"
 	workflowCommandOperationNameConstant                             = "workflow"
 	defaultOperationNameConstant                                     = "default"
 	branchChangeOperationNameConstant                                = "cd"
@@ -106,11 +105,6 @@ const (
 	filesAddCommandUseNameConstant                                   = "add"
 	filesAddCommandAliasConstant                                     = "seed"
 	filesAddCommandLongDescriptionConstant                           = "repo files add writes or seeds files across repositories."
-	repoNamespaceRewriteNamespaceUseNameConstant                     = "namespace"
-	repoNamespaceRewriteNamespaceShortDescriptionConstant            = "Namespace rewrite commands"
-	namespaceRewriteCommandUseNameConstant                           = "rewrite"
-	namespaceRewriteCommandAliasConstant                             = "ns"
-	namespaceRewriteCommandLongDescriptionConstant                   = "Rewrite Go module namespaces across repositories."
 	filesReplaceCommandUseNameConstant                               = "replace"
 	filesReplaceCommandAliasConstant                                 = "sub"
 	filesReplaceCommandLongDescriptionConstant                       = "files replace applies string substitutions to files matched by glob patterns, optionally enforcing safeguards and running a follow-up command."
@@ -168,7 +162,6 @@ const (
 	filesAddCommandPathKeyConstant                                   = repoFilesNamespaceUseNameConstant + "/" + filesAddCommandUseNameConstant
 	filesRemoveCommandPathKeyConstant                                = repoFilesNamespaceUseNameConstant + "/" + removeCommandUseNameConstant
 	licenseApplyCommandPathKeyConstant                               = repoLicenseNamespaceUseNameConstant + "/" + licenseApplyCommandUseNameConstant
-	namespaceRewriteCommandPathKeyConstant                           = repoNamespaceRewriteNamespaceUseNameConstant + "/" + namespaceRewriteCommandUseNameConstant
 	releaseRetagCommandPathKeyConstant                               = repoReleaseCommandUseNameConstant + "/" + releaseRetagCommandUseNameConstant
 	releaseRetagCommandAliasKeyConstant                              = repoReleaseCommandUseNameConstant + " " + releaseRetagCommandUseNameConstant
 	commitMessageCommandPathKeyConstant                              = messageNamespaceUseNameConstant + "/" + commitMessageUseNameConstant
@@ -185,7 +178,6 @@ const (
 	legacyRepoFilesAddCommandKeyConstant                             = legacyRepoNamespaceUseNameConstant + " " + repoFilesNamespaceUseNameConstant + " " + filesAddCommandUseNameConstant
 	legacyRepoFilesRemoveCommandKeyConstant                          = legacyRepoNamespaceUseNameConstant + " " + repoFilesNamespaceUseNameConstant + " " + removeCommandUseNameConstant
 	legacyRepoLicenseApplyCommandKeyConstant                         = legacyRepoNamespaceUseNameConstant + " " + repoLicenseNamespaceUseNameConstant + " " + licenseApplyCommandUseNameConstant
-	legacyRepoNamespaceRewriteCommandKeyConstant                     = legacyRepoNamespaceUseNameConstant + " " + repoNamespaceRewriteNamespaceUseNameConstant + " " + namespaceRewriteCommandUseNameConstant
 	legacyRepoReleaseCommandKeyConstant                              = legacyRepoNamespaceUseNameConstant + " " + repoReleaseCommandUseNameConstant
 	legacyRepoReleaseRetagCommandKeyConstant                         = legacyRepoReleaseCommandKeyConstant + " " + releaseRetagCommandUseNameConstant
 	legacyRepoRmCommandKeyConstant                                   = legacyRepoNamespaceUseNameConstant + " " + removeCommandUseNameConstant

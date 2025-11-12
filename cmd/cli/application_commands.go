@@ -136,14 +136,6 @@ func (application *Application) registerCommands(cobraCommand *cobra.Command) {
 		ConfigurationProvider:        application.reposFilesAddConfiguration,
 	}
 
-	namespaceBuilder := repos.NamespaceCommandBuilder{
-		LoggerProvider: func() *zap.Logger {
-			return application.logger
-		},
-		HumanReadableLoggingProvider: application.humanReadableLoggingEnabled,
-		ConfigurationProvider:        application.reposNamespaceConfiguration,
-	}
-
 	licenseBuilder := repos.LicenseCommandBuilder{
 		LoggerProvider: func() *zap.Logger {
 			return application.logger
@@ -271,15 +263,6 @@ func (application *Application) registerCommands(cobraCommand *cobra.Command) {
 	}
 	if len(repoLicenseCommand.Commands()) > 0 {
 		cobraCommand.AddCommand(repoLicenseCommand)
-	}
-
-	repoNamespaceRewriteCommand := newNamespaceCommand(repoNamespaceRewriteNamespaceUseNameConstant, repoNamespaceRewriteNamespaceShortDescriptionConstant)
-	if namespaceRewriteCommand, namespaceBuildError := namespaceBuilder.Build(); namespaceBuildError == nil {
-		configureCommandMetadata(namespaceRewriteCommand, namespaceRewriteCommandUseNameConstant, namespaceRewriteCommand.Short, namespaceRewriteCommandLongDescriptionConstant, namespaceRewriteCommandAliasConstant)
-		repoNamespaceRewriteCommand.AddCommand(namespaceRewriteCommand)
-	}
-	if len(repoNamespaceRewriteCommand.Commands()) > 0 {
-		cobraCommand.AddCommand(repoNamespaceRewriteCommand)
 	}
 
 	if legacyRemoveCommand, legacyRemoveBuildError := removeBuilder.Build(); legacyRemoveBuildError == nil {
