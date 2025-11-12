@@ -1,6 +1,9 @@
 package workflow
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // TaskRunner orchestrates task execution for imperative callers.
 type TaskRunner struct {
@@ -13,9 +16,10 @@ func NewTaskRunner(dependencies Dependencies) TaskRunner {
 }
 
 // Run executes the supplied task definitions across the provided repository roots.
-func (runner TaskRunner) Run(ctx context.Context, roots []string, definitions []TaskDefinition, options RuntimeOptions) error {
+func (runner TaskRunner) Run(ctx context.Context, roots []string, definitions []TaskDefinition, options RuntimeOptions) (ExecutionOutcome, error) {
 	if len(definitions) == 0 {
-		return nil
+		now := time.Now()
+		return ExecutionOutcome{StartTime: now, EndTime: now}, nil
 	}
 
 	tasks := make([]TaskDefinition, len(definitions))

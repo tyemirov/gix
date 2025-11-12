@@ -53,6 +53,7 @@ type SummaryReporter interface {
 	PrintSummary()
 	RecordEvent(code string, level EventLevel)
 	RecordOperationDuration(operationName string, duration time.Duration)
+	RecordStageDuration(stageName string, duration time.Duration)
 }
 
 // SummaryData captures aggregated reporter metrics suitable for telemetry export.
@@ -63,6 +64,7 @@ type SummaryData struct {
 	DurationHuman        string                              `json:"duration_human"`
 	DurationMilliseconds int64                               `json:"duration_ms"`
 	OperationDurations   map[string]OperationDurationSummary `json:"operation_durations"`
+	StageDurations       map[string]OperationDurationSummary `json:"stage_durations"`
 }
 
 // OperationDurationSummary captures aggregated timing metrics for a workflow operation.
@@ -106,6 +108,7 @@ type StructuredReporter struct {
 	levelCounts        map[EventLevel]int
 	seenRepositories   map[string]struct{}
 	operationDurations map[string]*operationDurationAccumulator
+	stageDurations     map[string]*operationDurationAccumulator
 	columns            columnConfiguration
 }
 
@@ -124,10 +127,10 @@ type operationDurationAccumulator struct {
 
 // NewStructuredReporter constructs a StructuredReporter that writes to the provided sinks.
 func NewStructuredReporter(output io.Writer, errors io.Writer, options ...ReporterOption) *StructuredReporter {
-	if output == nil || output == io.Discard {
+	if output == nil {
 		output = os.Stdout
 	}
-	if errors == nil || errors == io.Discard {
+	if errors == nil {
 		errors = output
 	}
 
@@ -141,6 +144,7 @@ func NewStructuredReporter(output io.Writer, errors io.Writer, options ...Report
 		levelCounts:              make(map[EventLevel]int),
 		seenRepositories:         make(map[string]struct{}),
 		operationDurations:       make(map[string]*operationDurationAccumulator),
+		stageDurations:           make(map[string]*operationDurationAccumulator),
 		columns: columnConfiguration{
 			levelWidth:      defaultLevelFieldWidth,
 			codeWidth:       defaultEventFieldWidth,
@@ -217,6 +221,29 @@ func (reporter *StructuredReporter) RecordOperationDuration(operationName string
 	accumulator.total += duration
 }
 
+// RecordStageDuration aggregates timing information for a workflow stage.
+func (reporter *StructuredReporter) RecordStageDuration(stageName string, duration time.Duration) {
+	if reporter == nil {
+		return
+	}
+
+	trimmedName := strings.TrimSpace(stageName)
+	if len(trimmedName) == 0 {
+		return
+	}
+
+	reporter.mutex.Lock()
+	defer reporter.mutex.Unlock()
+
+	accumulator, exists := reporter.stageDurations[trimmedName]
+	if !exists {
+		accumulator = &operationDurationAccumulator{}
+		reporter.stageDurations[trimmedName] = accumulator
+	}
+	accumulator.count++
+	accumulator.total += duration
+}
+
 // Report logs the provided event using the configured formatting rules.
 func (reporter *StructuredReporter) Report(event Event) {
 	if reporter == nil {
@@ -266,6 +293,7 @@ func (reporter *StructuredReporter) SummaryData() SummaryData {
 			EventCounts:        make(map[string]int),
 			LevelCounts:        make(map[EventLevel]int),
 			OperationDurations: make(map[string]OperationDurationSummary),
+			StageDurations:     make(map[string]OperationDurationSummary),
 			DurationHuman:      "0s",
 		}
 	}
@@ -281,6 +309,7 @@ func (reporter *StructuredReporter) SummaryData() SummaryData {
 	eventCounts := cloneStringIntMap(reporter.eventCounts)
 	levelCounts := cloneLevelCountMap(reporter.levelCounts)
 	operationDurations := make(map[string]OperationDurationSummary, len(reporter.operationDurations))
+	stageDurations := make(map[string]OperationDurationSummary, len(reporter.stageDurations))
 
 	for name, accumulator := range reporter.operationDurations {
 		if accumulator == nil || accumulator.count == 0 {
@@ -294,6 +323,18 @@ func (reporter *StructuredReporter) SummaryData() SummaryData {
 		}
 	}
 
+	for name, accumulator := range reporter.stageDurations {
+		if accumulator == nil || accumulator.count == 0 {
+			continue
+		}
+		total := accumulator.total
+		stageDurations[name] = OperationDurationSummary{
+			Count:                       accumulator.count,
+			TotalDurationMilliseconds:   reporter.durationMilliseconds(total),
+			AverageDurationMilliseconds: reporter.averageDurationMilliseconds(total, accumulator.count),
+		}
+	}
+
 	return SummaryData{
 		TotalRepositories:    len(reporter.seenRepositories),
 		EventCounts:          eventCounts,
@@ -301,6 +342,7 @@ func (reporter *StructuredReporter) SummaryData() SummaryData {
 		DurationHuman:        reporter.formatDuration(duration),
 		DurationMilliseconds: reporter.durationMilliseconds(duration),
 		OperationDurations:   operationDurations,
+		StageDurations:       stageDurations,
 	}
 }
 

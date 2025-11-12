@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
@@ -346,6 +347,52 @@ func TestWorkflowCommandLoadsVariablesFromFile(testInstance *testing.T) {
 	require.Equal(testInstance, "overwrite", runner.runtimeOptions.Variables["mode"])
 }
 
+func TestWorkflowCommandPrintsStageSummary(testInstance *testing.T) {
+	tempDirectory := testInstance.TempDir()
+	configPath := filepath.Join(tempDirectory, workflowConfigFileNameConstant)
+	require.NoError(testInstance, os.WriteFile(configPath, []byte(workflowConfigContentConstant), 0o644))
+
+	runner := &recordingTaskRunner{
+		outcome: workflowpkg.ExecutionOutcome{
+			RepositoryCount: 2,
+			Duration:        1500 * time.Millisecond,
+			StageOutcomes: []workflowpkg.StageOutcome{
+				{Index: 0, Operations: []string{"audit.report-1", "tasks.apply-1"}, Duration: 500 * time.Millisecond},
+				{Index: 1, Operations: []string{"tasks.apply-2"}, Duration: 250 * time.Millisecond},
+			},
+		},
+	}
+
+	builder := workflowcmd.CommandBuilder{
+		LoggerProvider: func() *zap.Logger { return zap.NewNop() },
+		Discoverer:     &fakeWorkflowDiscoverer{},
+		GitExecutor:    &fakeWorkflowGitExecutor{},
+		ConfigurationProvider: func() workflowcmd.CommandConfiguration {
+			return workflowcmd.CommandConfiguration{Roots: []string{workflowConfiguredRootConstant}}
+		},
+		TaskRunnerFactory: func(workflowpkg.Dependencies) workflowcmd.TaskRunnerExecutor {
+			return runner
+		},
+	}
+
+	command, buildError := builder.Build()
+	require.NoError(testInstance, buildError)
+	bindGlobalWorkflowFlags(command)
+
+	var outputBuffer bytes.Buffer
+	var errorBuffer bytes.Buffer
+	command.SetOut(&outputBuffer)
+	command.SetErr(&errorBuffer)
+	command.SetContext(context.Background())
+	command.SetArgs([]string{configPath})
+
+	require.NoError(testInstance, command.Execute())
+	errorText := errorBuffer.String()
+	require.Contains(testInstance, errorText, "workflow completed in 1.5s across 2 repositories")
+	require.Contains(testInstance, errorText, "stage 1 (500ms): audit.report-1, tasks.apply-1")
+	require.Contains(testInstance, errorText, "stage 2 (250ms): tasks.apply-2")
+}
+
 type fakeWorkflowDiscoverer struct {
 	receivedRoots []string
 	repositories  []string
@@ -374,14 +421,16 @@ type recordingTaskRunner struct {
 	definitions    []workflowpkg.TaskDefinition
 	runtimeOptions workflowpkg.RuntimeOptions
 	invocations    int
+	outcome        workflowpkg.ExecutionOutcome
+	runError       error
 }
 
-func (runner *recordingTaskRunner) Run(_ context.Context, roots []string, definitions []workflowpkg.TaskDefinition, options workflowpkg.RuntimeOptions) error {
+func (runner *recordingTaskRunner) Run(_ context.Context, roots []string, definitions []workflowpkg.TaskDefinition, options workflowpkg.RuntimeOptions) (workflowpkg.ExecutionOutcome, error) {
 	runner.invocations++
 	runner.roots = append([]string{}, roots...)
 	runner.definitions = append([]workflowpkg.TaskDefinition{}, definitions...)
 	runner.runtimeOptions = options
-	return nil
+	return runner.outcome, runner.runError
 }
 
 type fakePresetCatalog struct {

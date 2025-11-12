@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -99,4 +100,32 @@ func (reader optionReader) mapValue(key string) (map[string]any, bool, error) {
 		return nil, true, fmt.Errorf("option %s must be a map", key)
 	}
 	return typed, true, nil
+}
+
+func (reader optionReader) intValue(key string) (int, bool, error) {
+	value, exists := reader.entries[key]
+	if !exists {
+		return 0, false, nil
+	}
+
+	switch typed := value.(type) {
+	case int:
+		return typed, true, nil
+	case int64:
+		return int(typed), true, nil
+	case float64:
+		return int(typed), true, nil
+	case string:
+		trimmed := strings.TrimSpace(typed)
+		if len(trimmed) == 0 {
+			return 0, true, fmt.Errorf("option %s must be an integer", key)
+		}
+		parsed, err := strconv.Atoi(trimmed)
+		if err != nil {
+			return 0, true, fmt.Errorf("option %s must be an integer", key)
+		}
+		return parsed, true, nil
+	default:
+		return 0, true, fmt.Errorf("option %s must be an integer", key)
+	}
 }

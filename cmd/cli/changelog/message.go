@@ -8,14 +8,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/temirov/gix/internal/githubcli"
-	"github.com/temirov/gix/internal/gitrepo"
-	"github.com/temirov/gix/internal/repos/dependencies"
 	"github.com/temirov/gix/internal/repos/shared"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
 	rootutils "github.com/temirov/gix/internal/utils/roots"
 	"github.com/temirov/gix/internal/workflow"
 	"github.com/temirov/gix/pkg/llm"
+	"github.com/temirov/gix/pkg/taskrunner"
 )
 
 const (
@@ -67,7 +65,7 @@ type MessageCommandBuilder struct {
 	ConfigurationProvider        func() MessageConfiguration
 	HumanReadableLoggingProvider func() bool
 	ClientFactory                ClientFactory
-	TaskRunnerFactory            func(workflow.Dependencies) TaskRunnerExecutor
+	TaskRunnerFactory            taskrunner.Factory
 }
 
 // Build constructs the changelog message command.
@@ -197,40 +195,25 @@ func (builder *MessageCommandBuilder) run(command *cobra.Command, arguments []st
 		}
 	}
 
-	logger := resolveLogger(builder.LoggerProvider)
-	humanReadable := false
-	if builder.HumanReadableLoggingProvider != nil {
-		humanReadable = builder.HumanReadableLoggingProvider()
+	dependencyResult, dependencyError := taskrunner.BuildDependencies(
+		taskrunner.DependenciesConfig{
+			LoggerProvider:               builder.LoggerProvider,
+			HumanReadableLoggingProvider: builder.HumanReadableLoggingProvider,
+			RepositoryDiscoverer:         builder.Discoverer,
+			GitExecutor:                  builder.GitExecutor,
+			GitRepositoryManager:         builder.GitManager,
+			GitHubResolver:               builder.GitHubResolver,
+			FileSystem:                   builder.FileSystem,
+		},
+		taskrunner.DependenciesOptions{
+			Command:         command,
+			DisablePrompter: true,
+		},
+	)
+	if dependencyError != nil {
+		return dependencyError
 	}
-
-	gitExecutor, executorError := dependencies.ResolveGitExecutor(builder.GitExecutor, logger, humanReadable)
-	if executorError != nil {
-		return executorError
-	}
-
-	gitManager, managerError := dependencies.ResolveGitRepositoryManager(builder.GitManager, gitExecutor)
-	if managerError != nil {
-		return managerError
-	}
-
-	var repositoryManager *gitrepo.RepositoryManager
-	if concrete, ok := gitManager.(*gitrepo.RepositoryManager); ok {
-		repositoryManager = concrete
-	} else {
-		constructedManager, constructedManagerError := gitrepo.NewRepositoryManager(gitExecutor)
-		if constructedManagerError != nil {
-			return constructedManagerError
-		}
-		repositoryManager = constructedManager
-	}
-
-	githubClient, githubClientError := githubcli.NewClient(gitExecutor)
-	if githubClientError != nil {
-		return githubClientError
-	}
-
-	repositoryDiscoverer := dependencies.ResolveRepositoryDiscoverer(builder.Discoverer)
-	fileSystem := dependencies.ResolveFileSystem(builder.FileSystem)
+	taskDependencies := dependencyResult.Workflow
 
 	clientFactory := builder.ClientFactory
 	if clientFactory == nil {
@@ -251,19 +234,10 @@ func (builder *MessageCommandBuilder) run(command *cobra.Command, arguments []st
 		return clientError
 	}
 
-	taskDependencies := workflow.Dependencies{
-		Logger:               logger,
-		RepositoryDiscoverer: repositoryDiscoverer,
-		GitExecutor:          gitExecutor,
-		RepositoryManager:    repositoryManager,
-		GitHubClient:         githubClient,
-		FileSystem:           fileSystem,
-		Prompter:             nil,
-		Output:               command.OutOrStdout(),
-		Errors:               command.ErrOrStderr(),
-	}
+	taskDependencies.Output = command.OutOrStdout()
+	taskDependencies.Errors = command.ErrOrStderr()
 
-	taskRunner := resolveTaskRunner(builder.TaskRunnerFactory, taskDependencies)
+	taskRunner := taskrunner.Resolve(builder.TaskRunnerFactory, taskDependencies)
 
 	actionOptions := map[string]any{
 		taskOptionChangelogVersion:     version,
@@ -289,12 +263,13 @@ func (builder *MessageCommandBuilder) run(command *cobra.Command, arguments []st
 
 	runtimeOptions := workflow.RuntimeOptions{AssumeYes: executionFlags.AssumeYes}
 
-	return taskRunner.Run(
+	_, runErr := taskRunner.Run(
 		command.Context(),
 		[]string{repositoryPath},
 		[]workflow.TaskDefinition{taskDefinition},
 		runtimeOptions,
 	)
+	return runErr
 }
 
 func (builder *MessageCommandBuilder) resolveConfiguration() MessageConfiguration {

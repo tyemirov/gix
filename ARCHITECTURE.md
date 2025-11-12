@@ -16,20 +16,47 @@ gix is a Go 1.24 command-line application built with Cobra and Viper. The binary
 
 ## Execution Flow
 
-1. The binary entrypoint (`main.go`) invokes `cli.Execute`, which builds the Cobra root command inside `cmd/cli/application.go`.
+1. The binary entrypoint (`main.go`) invokes `cli.Execute`, which builds the Cobra root command through `cmd/cli/application_bootstrap.go` (composition/flags) and `cmd/cli/application_commands.go` (command registration) after loading config from `cmd/cli/application_config.go`.
 2. `cmd/cli` initialises Viper, loads configuration files via `internal/utils/flags`, and prepares a structured Zap logger.
-3. Each namespace (`audit`, `repo`, `branch`, `commit`, `workflow`, etc.) registers subcommands that accept shared flags (`--roots`, ``, `--yes`) before delegating to domain services.
+3. Each namespace (`audit`, `repo`, `branch`, `commit`, `workflow`, etc.) registers subcommands via `registerCommands`, reusing shared task-runner wiring provided by `pkg/taskrunner`.
 4. Domain services resolve their collaborators through `internal/repos/dependencies`, which supplies defaults for repository discovery, filesystem access, Git execution, and GitHub metadata unless tests inject fakes.
 5. Commands perform work through `internal/...` packages (for example, `internal/repos/rename.Run`), returning contextual errors that bubble back to Cobra for consistent exit handling.
 
+## Workflow Execution Outcomes
+
+Workflow orchestration (`internal/workflow`) now splits planning, runner orchestration, and reporting and returns an `ExecutionOutcome` to every caller. The outcome captures:
+
+- Temporal data (start, end, duration) plus the number of repositories inspected.
+- Stage outcomes that list the operations executed in each DAG stage and their elapsed time. Stages are also recorded via the structured reporter’s `RecordStageDuration` API so summary data includes per-stage timings.
+- Operation outcomes/failures, which the CLI surfaces as needed while still emitting the structured reporter summary to stderr.
+- Snapshot of reporter summary data (`shared.SummaryData`) so automation layers (e.g., `pkg/taskrunner`, CLI commands, integration tests) can make decisions without re-parsing logs.
+
+CLI builders run their workflows through `pkg/taskrunner`, which adapts the outcome: legacy commands drop the metrics, while the `workflow` command prints a stage-by-stage summary (duration and operation list) after the reporter writes its structured log.
+
+## Workflow Task Operations
+
+Declarative repository tasks are layered across dedicated modules inside `internal/workflow`:
+
+- `task_parser.go` converts YAML/JSON options into strongly typed `TaskDefinition` values (files, actions, commit metadata, pull request templates, safeguards, and optional LLM configuration).
+- `task_plan.go` renders templates against repository + environment data, plans file writes/actions, and records the resulting DAG as `taskPlan` instances that report intent through the structured reporter.
+- `task_execute.go` applies the plan: it evaluates safeguards, guards against dirty worktrees (respecting per-task overrides), manages branch checkout/push lifecycles, executes task actions, and emits structured events only (no `fmt.Fprintf` calls).
+- `task_operation.go` stitches the lifecycle together so the workflow executor can run the parsed tasks across every discovered repository.
+
+This separation keeps parsing/templating logic pure, isolates Git/GitHub side effects, and guarantees that every user-facing log flows through `shared.StructuredReporter`, which now also records per-stage durations for telemetry and CLI summaries. Audit-mode consumers (for example `gix audit`) set `Dependencies.DisableWorkflowLogging` so the executor instantiates reporters that write to `io.Discard`, preserving raw CSV output for integration tests.
+
+### Workflow Runtime Variables
+
+`gix workflow` (and legacy preset wrappers such as `repo-license-apply`) accept runtime variables via `--var key=value`, `--var-file path.yaml`, and configuration defaults. The CLI normalizes keys, merges them (configuration → var-files → CLI flags), and passes the resulting map through `workflow.RuntimeOptions`. The executor seeds those variables into `Environment.Variables` before any task plans execute, marking them as user-provided so downstream actions (for example, LLM `capture_as`) cannot overwrite them. Captured values can still populate new keys or override previously captured ones, but seeded entries always win, ensuring preset templates always honor operator-specified values.
+
 ## Command Surface
 
-The Cobra application (`cmd/cli/application.go`) initialises the root command and nests feature namespaces below it (`audit`, `repo`, `branch`, `commit`, `workflow`, and others). Each namespace hosts subcommands that ultimately depend on injected services from `internal/...` packages. Commands share common flag parsing helpers (`internal/utils/flags`) and prompt utilities.
+The Cobra application (split across `cmd/cli/application_bootstrap.go`, `cmd/cli/application_commands.go`, and `cmd/cli/application_config.go`) initialises the root command and nests feature namespaces below it (`audit`, `repo`, `branch`, `commit`, `workflow`, and others). Each namespace hosts subcommands that ultimately depend on injected services from `internal/...` packages. Commands share common flag parsing helpers (`internal/utils/flags`), prompt utilities, and the central dependency builder from `pkg/taskrunner`.
 
-- `cmd/cli/repos` registers multi-command groups such as `folder rename`, `remote update-to-canonical`, `prs delete`, and `files replace`.
+- `cmd/cli/repos` registers multi-command groups such as `folder rename`, `remote update-to-canonical`, `prs delete`, and `files rm/replace/add` (history purge plus file seeding).
 - `cmd/cli/repos/release` contains the `release` tagging workflow.
 - `cmd/cli/changelog`, `cmd/cli/commit`, and `cmd/cli/workflow` expose focused entrypoints for changelog generation, AI-assisted commit messaging, and workflow execution.
 - `cmd/cli/default_configuration.go` houses the embedded default YAML used by the `gix --init` flag.
+- `cmd/cli/workflow/presets` embeds reusable workflows (for example, license distribution and namespace rewrite) so both the `workflow` command and legacy CLI wrappers can reuse identical task graphs.
 
 All commands accept shared flags for log level, log format, previews, repository roots, and confirmation prompts. Validation occurs in Cobra `PreRunE` functions, aligning with the confident-programming rules in `POLICY.md`.
 
@@ -180,7 +207,7 @@ workflow:
 
 ## Reusable Packages
 
-`pkg/llm` contains the reusable client abstractions for LLM-backed features such as commit message and changelog generators. The package exposes an interface-based design so that other programs can reuse the same client without duplicating API plumbing.
+`pkg/llm` contains the reusable client abstractions for LLM-backed features such as commit message and changelog generators. The package exposes an interface-based design so that other programs can reuse the same client without duplicating API plumbing. `pkg/taskrunner` hosts the shared workflow dependency resolver and task-runner adapter used by CLI commands and tests to consistently wire Git, GitHub, filesystem, and confirmation collaborators.
 
 ## Testing Strategy
 

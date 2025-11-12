@@ -5,21 +5,18 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
+
+	"github.com/temirov/gix/pkg/taskrunner"
 )
 
 // LoggerProvider yields a zap logger for command execution.
 type LoggerProvider func() *zap.Logger
 
-func resolveLogger(provider LoggerProvider) *zap.Logger {
-	if provider == nil {
-		return zap.NewNop()
-	}
-	logger := provider()
-	if logger == nil {
-		return zap.NewNop()
-	}
-	return logger
-}
+// TaskRunnerExecutor represents a workflow runner.
+type TaskRunnerExecutor = taskrunner.Executor
+
+// TaskRunnerFactory constructs workflow runners.
+type TaskRunnerFactory = taskrunner.Factory
 
 func lookupEnvironmentValue(name string) (string, bool) {
 	value, ok := os.LookupEnv(name)

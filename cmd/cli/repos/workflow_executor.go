@@ -6,7 +6,7 @@ import (
 	"github.com/temirov/gix/internal/workflow"
 )
 
-// WorkflowExecutor executes workflow operation nodes across repositories.
+// WorkflowExecutor runs compiled workflow operation graphs.
 type WorkflowExecutor interface {
-	Execute(ctx context.Context, roots []string, options workflow.RuntimeOptions) error
+	Execute(ctx context.Context, roots []string, options workflow.RuntimeOptions) (workflow.ExecutionOutcome, error)
 }

@@ -10,12 +10,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/temirov/gix/internal/githubcli"
-	"github.com/temirov/gix/internal/gitrepo"
-	"github.com/temirov/gix/internal/repos/dependencies"
 	"github.com/temirov/gix/internal/repos/shared"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
 	"github.com/temirov/gix/internal/workflow"
+	"github.com/temirov/gix/pkg/taskrunner"
 )
 
 const (
@@ -132,8 +130,24 @@ func (builder *FilesAddCommandBuilder) run(command *cobra.Command, arguments []s
 		return errors.New(filesAddMissingContentError)
 	}
 
+	dependencyResult, dependencyError := buildDependencies(
+		command,
+		dependencyInputs{
+			LoggerProvider:               builder.LoggerProvider,
+			HumanReadableLoggingProvider: builder.HumanReadableLoggingProvider,
+			Discoverer:                   builder.Discoverer,
+			GitExecutor:                  builder.GitExecutor,
+			GitManager:                   builder.GitManager,
+			FileSystem:                   builder.FileSystem,
+		},
+		taskrunner.DependenciesOptions{},
+	)
+	if dependencyError != nil {
+		return dependencyError
+	}
+
+	fileSystem := dependencyResult.FileSystem
 	fileContent := contentValue
-	fileSystem := dependencies.ResolveFileSystem(builder.FileSystem)
 	if len(strings.TrimSpace(contentFilePath)) > 0 {
 		data, readError := fileSystem.ReadFile(contentFilePath)
 		if readError != nil {
@@ -239,50 +253,10 @@ func (builder *FilesAddCommandBuilder) run(command *cobra.Command, arguments []s
 		return rootsError
 	}
 
-	logger := resolveLogger(builder.LoggerProvider)
-	humanReadable := false
-	if builder.HumanReadableLoggingProvider != nil {
-		humanReadable = builder.HumanReadableLoggingProvider()
-	}
-
-	gitExecutor, executorError := dependencies.ResolveGitExecutor(builder.GitExecutor, logger, humanReadable)
-	if executorError != nil {
-		return executorError
-	}
-
-	gitManager, managerError := dependencies.ResolveGitRepositoryManager(builder.GitManager, gitExecutor)
-	if managerError != nil {
-		return managerError
-	}
-
-	var repositoryManager *gitrepo.RepositoryManager
-	if concreteManager, ok := gitManager.(*gitrepo.RepositoryManager); ok {
-		repositoryManager = concreteManager
-	} else {
-		constructedManager, err := gitrepo.NewRepositoryManager(gitExecutor)
-		if err != nil {
-			return err
-		}
-		repositoryManager = constructedManager
-	}
-
-	repositoryDiscoverer := dependencies.ResolveRepositoryDiscoverer(builder.Discoverer)
-
-	githubClient, githubClientError := githubcli.NewClient(gitExecutor)
-	if githubClientError != nil {
-		return githubClientError
-	}
-
-	taskDependencies := workflow.Dependencies{
-		Logger:               logger,
-		RepositoryDiscoverer: repositoryDiscoverer,
-		GitExecutor:          gitExecutor,
-		RepositoryManager:    repositoryManager,
-		GitHubClient:         githubClient,
-		FileSystem:           fileSystem,
-		Output:               command.OutOrStdout(),
-		Errors:               command.ErrOrStderr(),
-	}
+	taskDependencies := dependencyResult.Workflow
+	taskDependencies.Output = command.OutOrStdout()
+	taskDependencies.Errors = command.ErrOrStderr()
+	taskDependencies.FileSystem = fileSystem
 
 	taskRunner := ResolveTaskRunner(builder.TaskRunnerFactory, taskDependencies)
 
@@ -316,7 +290,8 @@ func (builder *FilesAddCommandBuilder) run(command *cobra.Command, arguments []s
 		CaptureInitialWorktreeStatus: requireClean,
 	}
 
-	return taskRunner.Run(command.Context(), roots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
+	_, runErr := taskRunner.Run(command.Context(), roots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
+	return runErr
 }
 
 func (builder *FilesAddCommandBuilder) resolveConfiguration() AddConfiguration {
