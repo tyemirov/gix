@@ -451,6 +451,34 @@ func TestTaskExecutorEnsureCleanVariableDisablesCleanCheck(t *testing.T) {
 	}
 }
 
+func TestTaskExecutorResolveEnsureCleanRecognizesTrueValues(t *testing.T) {
+	executor := taskExecutor{
+		plan: taskPlan{
+			task: TaskDefinition{
+				EnsureClean:         false,
+				EnsureCleanVariable: "require_clean",
+			},
+			variables: map[string]string{"require_clean": "YES"},
+		},
+	}
+
+	require.True(t, executor.resolveEnsureClean())
+}
+
+func TestTaskExecutorResolveEnsureCleanIgnoresUnknownValues(t *testing.T) {
+	executor := taskExecutor{
+		plan: taskPlan{
+			task: TaskDefinition{
+				EnsureClean:         true,
+				EnsureCleanVariable: "require_clean",
+			},
+			variables: map[string]string{"require_clean": "maybe"},
+		},
+	}
+
+	require.True(t, executor.resolveEnsureClean())
+}
+
 func TestTaskPlannerBuildPlanSupportsActions(testInstance *testing.T) {
 	fileSystem := newFakeFileSystem(nil)
 	environment := &Environment{FileSystem: fileSystem}
