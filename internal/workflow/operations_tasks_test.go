@@ -479,6 +479,59 @@ func TestTaskExecutorResolveEnsureCleanIgnoresUnknownValues(t *testing.T) {
 	require.True(t, executor.resolveEnsureClean())
 }
 
+func TestTaskExecutorRestoresOriginalBranchAfterApply(t *testing.T) {
+	fileSystem := newFakeFileSystem(map[string][]byte{
+		"/repositories/sample/README.md": []byte("original"),
+	})
+	repository := NewRepositoryState(audit.RepositoryInspection{Path: "/repositories/sample"})
+	gitExecutor := &recordingGitExecutor{
+		worktreeClean: true,
+		currentBranch: "main",
+	}
+	repositoryManager, managerErr := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(t, managerErr)
+
+	plan := taskPlan{
+		task: TaskDefinition{
+			Name:        "Apply Task",
+			EnsureClean: true,
+		},
+		repository:    repository,
+		branchName:    "feature/apply-task",
+		startPoint:    "main",
+		commitMessage: "apply task",
+		fileChanges: []taskFileChange{{
+			relativePath: "README.md",
+			absolutePath: "/repositories/sample/README.md",
+			content:      []byte("updated"),
+			permissions:  defaultTaskFilePermissions,
+			apply:        true,
+		}},
+	}
+
+	output := &bytes.Buffer{}
+	reporter := shared.NewStructuredReporter(output, output, shared.WithRepositoryHeaders(false))
+	environment := &Environment{
+		GitExecutor:       gitExecutor,
+		RepositoryManager: repositoryManager,
+		FileSystem:        fileSystem,
+		Output:            output,
+		Reporter:          reporter,
+	}
+
+	executor := newTaskExecutor(environment, repository, plan)
+	require.NoError(t, executor.Execute(context.Background()))
+
+	foundRestore := false
+	for _, command := range gitExecutor.commands {
+		if len(command.Arguments) == 2 && command.Arguments[0] == "checkout" && command.Arguments[1] == "main" {
+			foundRestore = true
+			break
+		}
+	}
+	require.True(t, foundRestore, "expected checkout main command to restore original branch")
+}
+
 func TestTaskPlannerBuildPlanSupportsActions(testInstance *testing.T) {
 	fileSystem := newFakeFileSystem(nil)
 	environment := &Environment{FileSystem: fileSystem}

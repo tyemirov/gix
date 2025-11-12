@@ -205,14 +205,22 @@ func (executor taskExecutor) branchExists(executionContext context.Context, bran
 }
 
 func (executor taskExecutor) checkoutBranch(executionContext context.Context, branchName string) error {
-	if len(strings.TrimSpace(branchName)) == 0 {
+	trimmedName := strings.TrimSpace(branchName)
+	if len(trimmedName) == 0 {
 		return nil
 	}
 
-	arguments := []string{"checkout", "-B", executor.plan.branchName}
-	if len(strings.TrimSpace(executor.plan.startPoint)) > 0 {
-		arguments = append(arguments, executor.plan.startPoint)
+	planBranch := strings.TrimSpace(executor.plan.branchName)
+	startPoint := strings.TrimSpace(executor.plan.startPoint)
+
+	arguments := []string{"checkout", trimmedName}
+	if strings.EqualFold(trimmedName, planBranch) {
+		arguments = []string{"checkout", "-B", planBranch}
+		if len(startPoint) > 0 {
+			arguments = append(arguments, startPoint)
+		}
 	}
+
 	_, err := executor.environment.GitExecutor.ExecuteGit(executionContext, execshell.CommandDetails{Arguments: arguments, WorkingDirectory: executor.repository.Path})
 	return err
 }
