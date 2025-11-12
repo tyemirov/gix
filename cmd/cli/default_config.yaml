@@ -28,7 +28,7 @@ operations:
     with:
       roots:
         - .
-  - command: ["rm"]
+  - command: ["files", "rm"]
     with:
       roots:
         - .

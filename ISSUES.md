@@ -89,20 +89,22 @@ Summary: total.repos=0 duration_ms=0
   - Acceptance: Invoking the builtin workflow performs the same operations as the former command, new docs/config samples highlight the workflow, automated coverage exercises the workflow path, and legacy command/config paths delegate to the workflow with migration guidance.
   - Resolution: Added a `license` preset driven by workflow variables (`license_content`, `license_target`, etc.), deprecated `gix repo-license-apply` so it now warns and delegates to the preset, updated README/docs with variable guidance, and ensured workflow runtime variables (GX-236) unlock the same switches as the legacy flags.
 
-- [ ] [GX-226] Replace namespace CLI command with embedded workflow namespace
-  - Status: Unresolved
+- [x] [GX-226] Replace namespace CLI command with embedded workflow namespace
+  - Status: Resolved
   - Category: Improvement
   - Dependencies: Blocked by [GX-228]
   - Context: Namespace rewrites rely on the standalone `namespace` command (`cmd/cli/repos/namespace.go`) referenced throughout config, docs, and tests.
   - Desired: Move the namespace rewrite tasks into an embedded workflow surfaced through the workflow command (e.g., `gix workflow namespace`), retire the direct CLI command, and update docs/config/tests while mapping legacy usage to the workflow with warnings.
   - Acceptance: The builtin workflow reproduces the namespace rewrite behavior (including task runner options and reporting), documentation and configuration samples reference the workflow, automated coverage exercises the new path, and legacy command/config invocations delegate with migration guidance.
+  - Resolution: Added a `namespace` preset with runtime variables, updated README/docs, and removed the legacy CLI command so workflows are the sole entrypoint for namespace rewrites.
 
-- [ ] [GX-227] Nest repo-history-remove under files rm
-  - Status: Unresolved
+- [x] [GX-227] Nest repo-history-remove under files rm
+  - Status: Resolved
   - Category: Improvement
   - Context: History rewriting currently uses the top-level `rm` command bound to `repo-history-remove` in `cmd/cli/repos/remove.go`, and the name appears across configs/docs/tests.
   - Desired: Introduce a `files` namespace that hosts the history removal command as `gix files rm`, propagate the rename through configuration/workflow mappings/docs/tests, and alias `rm` with a warning for existing configs.
   - Acceptance: `gix files rm` executes the same task runner path as today's command, CLI help/docs/default config show the nested path, automated tests updated, and legacy `rm` entries map to the new command with migration guidance.
+  - Resolution: Nested the history purge command under `gix files rm`, updated configuration/doc/test references, and removed the legacy `gix rm` command entirely.
 
 - [x] [GX-228] Extend workflow command to support invoking embedded workflows by name
   - Status: Resolved

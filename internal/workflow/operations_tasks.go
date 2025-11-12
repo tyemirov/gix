@@ -14,6 +14,7 @@ import (
 
 	"github.com/temirov/gix/internal/execshell"
 	"github.com/temirov/gix/internal/githubcli"
+	"github.com/temirov/gix/internal/repos/shared"
 )
 
 const (
@@ -234,11 +235,12 @@ func (operation *TaskOperation) executeTask(executionContext context.Context, en
 			return evalError
 		}
 		if !pass {
+			trimmedReason := strings.TrimSpace(reason)
+			if len(trimmedReason) == 0 {
+				trimmedReason = "safeguard failed"
+			}
+			emitTaskSkipEvent(environment, repository, task.Name, trimmedReason)
 			if environment != nil && environment.Output != nil {
-				trimmedReason := strings.TrimSpace(reason)
-				if len(trimmedReason) == 0 {
-					trimmedReason = "safeguard failed"
-				}
 				fmt.Fprintf(environment.Output, "%s: %s %s %s\n", taskLogPrefixSkip, task.Name, repository.Path, trimmedReason)
 			}
 			return nil
@@ -1247,6 +1249,10 @@ func (executor taskExecutor) logf(prefix string, message string, fields map[stri
 		return
 	}
 
+	if prefix == taskLogPrefixSkip {
+		emitTaskSkipEvent(executor.environment, executor.repository, executor.plan.task.Name, message)
+	}
+
 	if len(fields) == 0 {
 		fmt.Fprintf(executor.environment.Output, "%s: %s %s %s\n", prefix, executor.plan.task.Name, executor.repository.Path, message)
 		return
@@ -1258,6 +1264,20 @@ func (executor taskExecutor) logf(prefix string, message string, fields map[stri
 	}
 	sort.Strings(pairs)
 	fmt.Fprintf(executor.environment.Output, "%s: %s %s %s %s\n", prefix, executor.plan.task.Name, executor.repository.Path, message, strings.Join(pairs, " "))
+}
+
+func emitTaskSkipEvent(environment *Environment, repository *RepositoryState, taskName string, reason string) {
+	if environment == nil {
+		return
+	}
+
+	details := map[string]string{}
+	trimmedTask := strings.TrimSpace(taskName)
+	if len(trimmedTask) > 0 {
+		details["task"] = trimmedTask
+	}
+
+	environment.ReportRepositoryEvent(repository, shared.EventLevelWarn, shared.EventCodeTaskSkip, reason, details)
 }
 
 type githubPullRequestOptions struct {

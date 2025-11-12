@@ -1,7 +1,6 @@
 package repos
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -38,10 +37,6 @@ const (
 	defaultLicensePermissions      = 0o644
 	relativePathValidationErrorMsg = "license target path must be a relative path"
 )
-
-type WorkflowExecutor interface {
-	Execute(ctx context.Context, roots []string, options workflow.RuntimeOptions) error
-}
 
 // LicenseCommandBuilder assembles the repo-license-apply command.
 type LicenseCommandBuilder struct {

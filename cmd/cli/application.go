@@ -101,11 +101,10 @@ const (
 	reposRemotesOperationNameConstant                                = "remote update-to-canonical"
 	reposProtocolOperationNameConstant                               = "remote update-protocol"
 	repoReleaseOperationNameConstant                                 = "release"
-	repoHistoryOperationNameConstant                                 = "rm"
+	repoHistoryOperationNameConstant                                 = "files rm"
 	repoFilesReplaceOperationNameConstant                            = "files replace"
 	repoFilesAddOperationNameConstant                                = "files add"
 	repoLicenseOperationNameConstant                                 = "license apply"
-	repoNamespaceRewriteOperationNameConstant                        = "namespace rewrite"
 	workflowCommandOperationNameConstant                             = "workflow"
 	defaultOperationNameConstant                                     = "default"
 	branchChangeOperationNameConstant                                = "cd"
@@ -142,11 +141,6 @@ const (
 	filesAddCommandUseNameConstant                                   = "add"
 	filesAddCommandAliasConstant                                     = "seed"
 	filesAddCommandLongDescriptionConstant                           = "repo files add writes or seeds files across repositories."
-	repoNamespaceRewriteNamespaceUseNameConstant                     = "namespace"
-	repoNamespaceRewriteNamespaceShortDescriptionConstant            = "Namespace rewrite commands"
-	namespaceRewriteCommandUseNameConstant                           = "rewrite"
-	namespaceRewriteCommandAliasConstant                             = "ns"
-	namespaceRewriteCommandLongDescriptionConstant                   = "Rewrite Go module namespaces across repositories."
 	filesReplaceCommandUseNameConstant                               = "replace"
 	filesReplaceCommandAliasConstant                                 = "sub"
 	filesReplaceCommandLongDescriptionConstant                       = "files replace applies string substitutions to files matched by glob patterns, optionally enforcing safeguards and running a follow-up command."
@@ -163,7 +157,7 @@ const (
 	removeCommandUseNameConstant                                     = "rm"
 	removeCommandAliasConstant                                       = "purge"
 	removeCommandShortDescriptionConstant                            = "Rewrite history to delete selected paths"
-	removeCommandLongDescriptionConstant                             = "rm rewrites repository history to purge the specified paths using git-filter-repo. Provide one or more paths before optional repository roots or flags."
+	removeCommandLongDescriptionConstant                             = "files rm rewrites repository history to purge the specified paths using git-filter-repo. Provide one or more paths before optional repository roots or flags."
 	branchNamespaceUseNameConstant                                   = "branch"
 	branchNamespaceAliasConstant                                     = "b"
 	branchNamespaceShortDescriptionConstant                          = "Branch management commands"
@@ -201,9 +195,9 @@ const (
 	pullRequestsDeleteCommandPathKeyConstant                         = repoPullRequestsNamespaceUseNameConstant + "/" + prsDeleteCommandUseNameConstant
 	packagesDeleteCommandPathKeyConstant                             = repoPackagesNamespaceUseNameConstant + "/" + packagesDeleteCommandUseNameConstant
 	filesReplaceCommandPathKeyConstant                               = repoFilesNamespaceUseNameConstant + "/" + filesReplaceCommandUseNameConstant
+	filesRmCommandPathKeyConstant                                    = repoFilesNamespaceUseNameConstant + "/" + removeCommandUseNameConstant
 	filesAddCommandPathKeyConstant                                   = repoFilesNamespaceUseNameConstant + "/" + filesAddCommandUseNameConstant
 	licenseApplyCommandPathKeyConstant                               = repoLicenseNamespaceUseNameConstant + "/" + licenseApplyCommandUseNameConstant
-	namespaceRewriteCommandPathKeyConstant                           = repoNamespaceRewriteNamespaceUseNameConstant + "/" + namespaceRewriteCommandUseNameConstant
 	releaseRetagCommandPathKeyConstant                               = repoReleaseCommandUseNameConstant + "/" + releaseRetagCommandUseNameConstant
 	releaseRetagCommandAliasKeyConstant                              = repoReleaseCommandUseNameConstant + " " + releaseRetagCommandUseNameConstant
 	commitMessageCommandPathKeyConstant                              = messageNamespaceUseNameConstant + "/" + commitMessageUseNameConstant
@@ -219,7 +213,6 @@ const (
 	legacyRepoFilesReplaceCommandKeyConstant                         = legacyRepoNamespaceUseNameConstant + " " + repoFilesNamespaceUseNameConstant + " " + filesReplaceCommandUseNameConstant
 	legacyRepoFilesAddCommandKeyConstant                             = legacyRepoNamespaceUseNameConstant + " " + repoFilesNamespaceUseNameConstant + " " + filesAddCommandUseNameConstant
 	legacyRepoLicenseApplyCommandKeyConstant                         = legacyRepoNamespaceUseNameConstant + " " + repoLicenseNamespaceUseNameConstant + " " + licenseApplyCommandUseNameConstant
-	legacyRepoNamespaceRewriteCommandKeyConstant                     = legacyRepoNamespaceUseNameConstant + " " + repoNamespaceRewriteNamespaceUseNameConstant + " " + namespaceRewriteCommandUseNameConstant
 	legacyRepoReleaseCommandKeyConstant                              = legacyRepoNamespaceUseNameConstant + " " + repoReleaseCommandUseNameConstant
 	legacyRepoReleaseRetagCommandKeyConstant                         = legacyRepoReleaseCommandKeyConstant + " " + releaseRetagCommandUseNameConstant
 	legacyRepoRmCommandKeyConstant                                   = legacyRepoNamespaceUseNameConstant + " " + removeCommandUseNameConstant
@@ -263,11 +256,11 @@ var commandOperationRequirements = map[string][]string{
 	remoteProtocolCommandPathKeyConstant:         {reposProtocolOperationNameConstant},
 	repoReleaseCommandUseNameConstant:            {repoReleaseOperationNameConstant},
 	releaseRetagCommandPathKeyConstant:           {repoReleaseOperationNameConstant},
+	filesRmCommandPathKeyConstant:                {repoHistoryOperationNameConstant},
 	removeCommandUseNameConstant:                 {repoHistoryOperationNameConstant},
 	filesReplaceCommandPathKeyConstant:           {repoFilesReplaceOperationNameConstant},
 	filesAddCommandPathKeyConstant:               {repoFilesAddOperationNameConstant},
 	licenseApplyCommandPathKeyConstant:           {repoLicenseOperationNameConstant},
-	namespaceRewriteCommandPathKeyConstant:       {repoNamespaceRewriteOperationNameConstant},
 	workflowCommandOperationNameConstant:         {workflowCommandOperationNameConstant},
 	defaultCommandUseNameConstant:                {defaultOperationNameConstant},
 	branchChangeTopLevelUseNameConstant:          {branchChangeOperationNameConstant},
@@ -288,10 +281,8 @@ var operationNameAliases = map[string]string{
 	legacyRepoFilesReplaceCommandKeyConstant:       repoFilesReplaceOperationNameConstant,
 	legacyRepoFilesAddCommandKeyConstant:           repoFilesAddOperationNameConstant,
 	legacyRepoLicenseApplyCommandKeyConstant:       repoLicenseOperationNameConstant,
-	legacyRepoNamespaceRewriteCommandKeyConstant:   repoNamespaceRewriteOperationNameConstant,
 	legacyRepoReleaseCommandKeyConstant:            repoReleaseOperationNameConstant,
 	legacyRepoReleaseRetagCommandKeyConstant:       repoReleaseOperationNameConstant,
-	legacyRepoRmCommandKeyConstant:                 repoHistoryOperationNameConstant,
 	legacyChangelogMessageCommandKeyConstant:       changelogMessageOperationNameConstant,
 	legacyCommitMessageCommandKeyConstant:          commitMessageOperationNameConstant,
 	legacyBranchDefaultCommandKeyConstant:          defaultOperationNameConstant,
@@ -305,6 +296,7 @@ var operationNameAliases = map[string]string{
 }
 
 var operationAliasWarnings = map[string]string{
+	removeCommandUseNameConstant:               "command configuration uses deprecated name \"rm\"; update to \"files rm\".",
 	branchChangeLegacyTopLevelUseNameConstant:  "command configuration uses deprecated name \"branch-cd\"; update to \"cd\".",
 	branchRefreshLegacyTopLevelUseNameConstant: "command configuration uses deprecated name \"branch-refresh\"; update to \"cd\" with refresh options.",
 	legacyBranchRefreshCommandKeyConstant:      "command configuration uses deprecated name \"branch refresh\"; update to \"cd\" with refresh options.",
@@ -802,14 +794,6 @@ func NewApplication() *Application {
 		ConfigurationProvider:        application.reposFilesAddConfiguration,
 	}
 
-	namespaceBuilder := repos.NamespaceCommandBuilder{
-		LoggerProvider: func() *zap.Logger {
-			return application.logger
-		},
-		HumanReadableLoggingProvider: application.humanReadableLoggingEnabled,
-		ConfigurationProvider:        application.reposNamespaceConfiguration,
-	}
-
 	licenseBuilder := repos.LicenseCommandBuilder{
 		LoggerProvider: func() *zap.Logger {
 			return application.logger
@@ -922,6 +906,10 @@ func NewApplication() *Application {
 		configureCommandMetadata(filesAddCommand, filesAddCommandUseNameConstant, filesAddCommand.Short, filesAddCommandLongDescriptionConstant, filesAddCommandAliasConstant)
 		repoFilesCommand.AddCommand(filesAddCommand)
 	}
+	if filesRemoveCommand, filesRemoveBuildError := removeBuilder.Build(); filesRemoveBuildError == nil {
+		configureCommandMetadata(filesRemoveCommand, removeCommandUseNameConstant, removeCommandShortDescriptionConstant, removeCommandLongDescriptionConstant, removeCommandAliasConstant)
+		repoFilesCommand.AddCommand(filesRemoveCommand)
+	}
 	if len(repoFilesCommand.Commands()) > 0 {
 		cobraCommand.AddCommand(repoFilesCommand)
 	}
@@ -933,20 +921,6 @@ func NewApplication() *Application {
 	}
 	if len(repoLicenseCommand.Commands()) > 0 {
 		cobraCommand.AddCommand(repoLicenseCommand)
-	}
-
-	repoNamespaceRewriteCommand := newNamespaceCommand(repoNamespaceRewriteNamespaceUseNameConstant, repoNamespaceRewriteNamespaceShortDescriptionConstant)
-	if namespaceRewriteCommand, namespaceBuildError := namespaceBuilder.Build(); namespaceBuildError == nil {
-		configureCommandMetadata(namespaceRewriteCommand, namespaceRewriteCommandUseNameConstant, namespaceRewriteCommand.Short, namespaceRewriteCommandLongDescriptionConstant, namespaceRewriteCommandAliasConstant)
-		repoNamespaceRewriteCommand.AddCommand(namespaceRewriteCommand)
-	}
-	if len(repoNamespaceRewriteCommand.Commands()) > 0 {
-		cobraCommand.AddCommand(repoNamespaceRewriteCommand)
-	}
-
-	if removeCommand, removeBuildError := removeBuilder.Build(); removeBuildError == nil {
-		configureCommandMetadata(removeCommand, removeCommandUseNameConstant, removeCommandShortDescriptionConstant, removeCommandLongDescriptionConstant, removeCommandAliasConstant)
-		cobraCommand.AddCommand(removeCommand)
 	}
 
 	var releaseCommand *cobra.Command
@@ -1409,18 +1383,6 @@ func (application *Application) reposFilesAddConfiguration() repos.AddConfigurat
 	application.decodeOperationConfiguration(repoFilesAddOperationNameConstant, &configuration)
 
 	options, optionsExist := application.lookupOperationOptions(repoFilesAddOperationNameConstant)
-	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
-		configuration.AssumeYes = application.configuration.Common.AssumeYes
-	}
-
-	return configuration.Sanitize()
-}
-
-func (application *Application) reposNamespaceConfiguration() repos.NamespaceConfiguration {
-	configuration := repos.DefaultToolsConfiguration().Namespace
-	application.decodeOperationConfiguration(repoNamespaceRewriteOperationNameConstant, &configuration)
-
-	options, optionsExist := application.lookupOperationOptions(repoNamespaceRewriteOperationNameConstant)
 	if !optionsExist || !optionExists(options, assumeYesOptionKeyConstant) {
 		configuration.AssumeYes = application.configuration.Common.AssumeYes
 	}
