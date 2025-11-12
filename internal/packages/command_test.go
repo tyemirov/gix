@@ -22,11 +22,11 @@ type recordingTaskRunner struct {
 	options      workflow.RuntimeOptions
 }
 
-func (runner *recordingTaskRunner) Run(ctx context.Context, roots []string, definitions []workflow.TaskDefinition, options workflow.RuntimeOptions) error {
+func (runner *recordingTaskRunner) Run(ctx context.Context, roots []string, definitions []workflow.TaskDefinition, options workflow.RuntimeOptions) (workflow.ExecutionOutcome, error) {
 	runner.roots = append([]string{}, roots...)
 	runner.definitions = append([]workflow.TaskDefinition{}, definitions...)
 	runner.options = options
-	return nil
+	return workflow.ExecutionOutcome{}, nil
 }
 
 type stubServiceResolver struct {

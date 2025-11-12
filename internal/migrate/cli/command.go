@@ -8,15 +8,13 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
-	"github.com/temirov/gix/internal/githubcli"
-	"github.com/temirov/gix/internal/gitrepo"
 	"github.com/temirov/gix/internal/migrate"
-	"github.com/temirov/gix/internal/repos/dependencies"
 	"github.com/temirov/gix/internal/repos/shared"
 	"github.com/temirov/gix/internal/utils"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
 	rootutils "github.com/temirov/gix/internal/utils/roots"
 	"github.com/temirov/gix/internal/workflow"
+	"github.com/temirov/gix/pkg/taskrunner"
 )
 
 const (
@@ -44,6 +42,7 @@ type CommandBuilder struct {
 	Discoverer                   shared.RepositoryDiscoverer
 	GitExecutor                  shared.GitExecutor
 	GitRepositoryManager         shared.GitRepositoryManager
+	GitHubResolver               shared.GitHubMetadataResolver
 	FileSystem                   shared.FileSystem
 	PrompterFactory              func(*cobra.Command) shared.ConfirmationPrompter
 	HumanReadableLoggingProvider func() bool
@@ -80,54 +79,29 @@ func (builder *CommandBuilder) runDefault(command *cobra.Command, arguments []st
 	}
 
 	logger := builder.resolveLogger(options.debugLoggingEnabled)
-	humanReadable := false
-	if builder.HumanReadableLoggingProvider != nil {
-		humanReadable = builder.HumanReadableLoggingProvider()
+
+	dependencyResult, dependencyError := taskrunner.BuildDependencies(
+		taskrunner.DependenciesConfig{
+			LoggerProvider: func() *zap.Logger {
+				return logger
+			},
+			HumanReadableLoggingProvider: builder.HumanReadableLoggingProvider,
+			RepositoryDiscoverer:         builder.Discoverer,
+			GitExecutor:                  builder.GitExecutor,
+			GitRepositoryManager:         builder.GitRepositoryManager,
+			GitHubResolver:               builder.GitHubResolver,
+			FileSystem:                   builder.FileSystem,
+			PrompterFactory:              builder.PrompterFactory,
+		},
+		taskrunner.DependenciesOptions{
+			Command: command,
+		},
+	)
+	if dependencyError != nil {
+		return dependencyError
 	}
 
-	gitExecutor, executorError := dependencies.ResolveGitExecutor(builder.GitExecutor, logger, humanReadable)
-	if executorError != nil {
-		return executorError
-	}
-
-	resolvedManager, managerError := dependencies.ResolveGitRepositoryManager(builder.GitRepositoryManager, gitExecutor)
-	if managerError != nil {
-		return managerError
-	}
-
-	var repositoryManager *gitrepo.RepositoryManager
-	if concrete, ok := resolvedManager.(*gitrepo.RepositoryManager); ok {
-		repositoryManager = concrete
-	} else {
-		constructedManager, constructedManagerError := gitrepo.NewRepositoryManager(gitExecutor)
-		if constructedManagerError != nil {
-			return constructedManagerError
-		}
-		repositoryManager = constructedManager
-	}
-
-	githubClient, clientError := githubcli.NewClient(gitExecutor)
-	if clientError != nil {
-		return clientError
-	}
-
-	repositoryDiscoverer := dependencies.ResolveRepositoryDiscoverer(builder.Discoverer)
-	fileSystem := dependencies.ResolveFileSystem(builder.FileSystem)
-	prompter := resolvePrompter(builder.PrompterFactory, command)
-
-	taskDependencies := workflow.Dependencies{
-		Logger:               logger,
-		RepositoryDiscoverer: repositoryDiscoverer,
-		GitExecutor:          gitExecutor,
-		RepositoryManager:    repositoryManager,
-		GitHubClient:         githubClient,
-		FileSystem:           fileSystem,
-		Prompter:             prompter,
-		Output:               command.OutOrStdout(),
-		Errors:               command.ErrOrStderr(),
-	}
-
-	taskRunner := resolveTaskRunner(builder.TaskRunnerFactory, taskDependencies)
+	taskRunner := resolveTaskRunner(builder.TaskRunnerFactory, dependencyResult.Workflow)
 
 	actionOptions := map[string]any{
 		taskOptionTargetBranchKeyConstant: string(options.targetBranch),
@@ -145,7 +119,8 @@ func (builder *CommandBuilder) runDefault(command *cobra.Command, arguments []st
 		AssumeYes: assumeYes,
 	}
 
-	return taskRunner.Run(command.Context(), options.repositoryRoots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
+	_, runErr := taskRunner.Run(command.Context(), options.repositoryRoots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
+	return runErr
 }
 
 func (builder *CommandBuilder) parseOptions(command *cobra.Command, arguments []string) (commandOptions, error) {
@@ -205,11 +180,4 @@ func (builder *CommandBuilder) resolveConfiguration() migrate.CommandConfigurati
 
 	provided := builder.ConfigurationProvider()
 	return provided.Sanitize()
-}
-
-func resolvePrompter(factory func(*cobra.Command) shared.ConfirmationPrompter, command *cobra.Command) shared.ConfirmationPrompter {
-	if factory == nil {
-		return nil
-	}
-	return factory(command)
 }

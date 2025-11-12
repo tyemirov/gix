@@ -35,10 +35,10 @@ type recordingWorkflowExecutor struct {
 	options workflow.RuntimeOptions
 }
 
-func (executor *recordingWorkflowExecutor) Execute(_ context.Context, roots []string, options workflow.RuntimeOptions) error {
+func (executor *recordingWorkflowExecutor) Execute(_ context.Context, roots []string, options workflow.RuntimeOptions) (workflow.ExecutionOutcome, error) {
 	executor.roots = append([]string{}, roots...)
 	executor.options = options
-	return nil
+	return workflow.ExecutionOutcome{}, nil
 }
 
 type stubPresetCatalog struct {

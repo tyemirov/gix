@@ -9,38 +9,35 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/temirov/gix/internal/ghcr"
-	"github.com/temirov/gix/internal/githubcli"
-	"github.com/temirov/gix/internal/gitrepo"
-	"github.com/temirov/gix/internal/repos/dependencies"
 	"github.com/temirov/gix/internal/repos/shared"
 	"github.com/temirov/gix/internal/utils"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
 	rootutils "github.com/temirov/gix/internal/utils/roots"
 	"github.com/temirov/gix/internal/workflow"
+	"github.com/temirov/gix/pkg/taskrunner"
 )
 
 const (
-	packagesPurgeCommandUseConstant                           = "repo-packages-purge"
-	packagesPurgeCommandShortDescriptionConstant              = "Delete untagged GHCR versions"
-	packagesPurgeCommandLongDescriptionConstant               = "repo-packages-purge removes untagged container versions from GitHub Container Registry."
-	unexpectedArgumentsErrorMessageConstant                   = "repo-packages-purge does not accept positional arguments"
-	commandExecutionErrorTemplateConstant                     = "repo-packages-purge failed: %w"
-	packageFlagNameConstant                                   = "package"
-	packageFlagDescriptionConstant                            = "Container package name in GHCR"
-	tokenSourceParseErrorTemplateConstant                     = "invalid token source: %w"
-	workingDirectoryResolutionErrorTemplateConstant           = "unable to determine working directory: %w"
-	workingDirectoryEmptyErrorMessageConstant                 = "working directory not provided"
-	gitExecutorResolutionErrorTemplateConstant                = "unable to resolve git executor: %w"
-	gitRepositoryManagerResolutionErrorTemplateConstant       = "unable to resolve repository manager: %w"
-	gitHubResolverResolutionErrorTemplateConstant             = "unable to resolve github metadata resolver: %w"
-	repositoryMetadataResolverResolutionErrorTemplateConstant = "unable to resolve repository metadata resolver: %w"
-	repositoryDiscoveryErrorTemplateConstant                  = "unable to discover repositories: %w"
-	repositoryDiscoveryFailedMessageConstant                  = "Failed to discover repositories"
-	repositoryRootsLogFieldNameConstant                       = "repository_roots"
-	repositoryPathLogFieldNameConstant                        = "repository_path"
-	repositoryMetadataFailedMessageConstant                   = "Failed to resolve repository metadata"
-	repositoryPurgeFailedMessageConstant                      = "repo-packages-purge failed for repository"
-	ownerRepoSeparatorConstant                                = "/"
+	packagesPurgeCommandUseConstant                     = "repo-packages-purge"
+	packagesPurgeCommandShortDescriptionConstant        = "Delete untagged GHCR versions"
+	packagesPurgeCommandLongDescriptionConstant         = "repo-packages-purge removes untagged container versions from GitHub Container Registry."
+	unexpectedArgumentsErrorMessageConstant             = "repo-packages-purge does not accept positional arguments"
+	commandExecutionErrorTemplateConstant               = "repo-packages-purge failed: %w"
+	packageFlagNameConstant                             = "package"
+	packageFlagDescriptionConstant                      = "Container package name in GHCR"
+	tokenSourceParseErrorTemplateConstant               = "invalid token source: %w"
+	workingDirectoryResolutionErrorTemplateConstant     = "unable to determine working directory: %w"
+	workingDirectoryEmptyErrorMessageConstant           = "working directory not provided"
+	gitExecutorResolutionErrorTemplateConstant          = "unable to resolve git executor: %w"
+	gitRepositoryManagerResolutionErrorTemplateConstant = "unable to resolve repository manager: %w"
+	gitHubResolverResolutionErrorTemplateConstant       = "unable to resolve github metadata resolver: %w"
+	repositoryDiscoveryErrorTemplateConstant            = "unable to discover repositories: %w"
+	repositoryDiscoveryFailedMessageConstant            = "Failed to discover repositories"
+	repositoryRootsLogFieldNameConstant                 = "repository_roots"
+	repositoryPathLogFieldNameConstant                  = "repository_path"
+	repositoryMetadataFailedMessageConstant             = "Failed to resolve repository metadata"
+	repositoryPurgeFailedMessageConstant                = "repo-packages-purge failed for repository"
+	ownerRepoSeparatorConstant                          = "/"
 )
 
 // LoggerProvider supplies a zap logger instance.
@@ -113,65 +110,34 @@ func (builder *CommandBuilder) runPurge(command *cobra.Command, arguments []stri
 		return serviceError
 	}
 
-	repositoryMetadataResolver, metadataResolverError := builder.resolveRepositoryMetadataResolver(logger)
+	dependencyResult, dependencyError := taskrunner.BuildDependencies(
+		taskrunner.DependenciesConfig{
+			LoggerProvider:       func() *zap.Logger { return logger },
+			RepositoryDiscoverer: builder.RepositoryDiscoverer,
+			GitExecutor:          builder.GitExecutor,
+			GitRepositoryManager: builder.RepositoryManager,
+			GitHubResolver:       builder.GitHubResolver,
+			FileSystem:           nil,
+		},
+		taskrunner.DependenciesOptions{
+			Command:         command,
+			DisablePrompter: true,
+		},
+	)
+	if dependencyError != nil {
+		return dependencyError
+	}
+
+	repositoryMetadataResolver, metadataResolverError := builder.resolveRepositoryMetadataResolver(
+		logger,
+		dependencyResult.RepositoryManager,
+		dependencyResult.GitHubResolver,
+	)
 	if metadataResolverError != nil {
 		return metadataResolverError
 	}
 
-	humanReadable := false
-	gitExecutor, executorError := dependencies.ResolveGitExecutor(builder.GitExecutor, logger, humanReadable)
-	if executorError != nil {
-		return executorError
-	}
-
-	resolvedRepositoryManager, managerError := dependencies.ResolveGitRepositoryManager(builder.RepositoryManager, gitExecutor)
-	if managerError != nil {
-		return managerError
-	}
-
-	var repositoryManager *gitrepo.RepositoryManager
-	if typedManager, ok := resolvedRepositoryManager.(*gitrepo.RepositoryManager); ok {
-		repositoryManager = typedManager
-	} else {
-		constructedManager, constructedManagerError := gitrepo.NewRepositoryManager(gitExecutor)
-		if constructedManagerError != nil {
-			return constructedManagerError
-		}
-		repositoryManager = constructedManager
-	}
-
-	resolvedGitHubResolver, resolverError := dependencies.ResolveGitHubResolver(builder.GitHubResolver, gitExecutor)
-	if resolverError != nil {
-		return resolverError
-	}
-
-	var githubClient *githubcli.Client
-	if typedClient, ok := resolvedGitHubResolver.(*githubcli.Client); ok {
-		githubClient = typedClient
-	} else {
-		constructedClient, constructedClientError := githubcli.NewClient(gitExecutor)
-		if constructedClientError != nil {
-			return constructedClientError
-		}
-		githubClient = constructedClient
-	}
-
-	repositoryDiscoverer := dependencies.ResolveRepositoryDiscoverer(builder.RepositoryDiscoverer)
-	fileSystem := dependencies.ResolveFileSystem(nil)
-
-	taskDependencies := workflow.Dependencies{
-		Logger:               logger,
-		RepositoryDiscoverer: repositoryDiscoverer,
-		GitExecutor:          gitExecutor,
-		RepositoryManager:    repositoryManager,
-		GitHubClient:         githubClient,
-		FileSystem:           fileSystem,
-		Prompter:             nil,
-		Output:               command.OutOrStdout(),
-		Errors:               command.ErrOrStderr(),
-	}
-
-	taskRunner := resolveTaskRunner(builder.TaskRunnerFactory, taskDependencies)
+	taskRunner := resolveTaskRunner(builder.TaskRunnerFactory, dependencyResult.Workflow)
 
 	actionOptions := map[string]any{
 		"service":           purgeService,
@@ -190,7 +156,8 @@ func (builder *CommandBuilder) runPurge(command *cobra.Command, arguments []stri
 
 	runtimeOptions := workflow.RuntimeOptions{AssumeYes: executionFlags.AssumeYes}
 
-	return taskRunner.Run(command.Context(), executionOptions.RepositoryRoots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
+	_, runErr := taskRunner.Run(command.Context(), executionOptions.RepositoryRoots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
+	return runErr
 }
 
 func (builder *CommandBuilder) parseCommandOptions(command *cobra.Command, arguments []string, executionFlags utils.ExecutionFlags, executionFlagsAvailable bool) (commandExecutionOptions, error) {
@@ -267,37 +234,17 @@ func selectOptionalStringValue(flagValue string, configurationValue string) stri
 	return strings.TrimSpace(configurationValue)
 }
 
-func (builder *CommandBuilder) resolveRepositoryMetadataResolver(logger *zap.Logger) (RepositoryMetadataResolver, error) {
+func (builder *CommandBuilder) resolveRepositoryMetadataResolver(
+	logger *zap.Logger,
+	repositoryManager shared.GitRepositoryManager,
+	githubResolver shared.GitHubMetadataResolver,
+) (RepositoryMetadataResolver, error) {
 	if builder.RepositoryMetadataResolver != nil {
 		return builder.RepositoryMetadataResolver, nil
-	}
-
-	repositoryManager, githubResolver, dependenciesError := builder.resolveRepositoryDependencies(logger)
-	if dependenciesError != nil {
-		return nil, fmt.Errorf(repositoryMetadataResolverResolutionErrorTemplateConstant, dependenciesError)
 	}
 
 	return &DefaultRepositoryMetadataResolver{
 		RepositoryManager: repositoryManager,
 		GitHubResolver:    githubResolver,
 	}, nil
-}
-
-func (builder *CommandBuilder) resolveRepositoryDependencies(logger *zap.Logger) (shared.GitRepositoryManager, shared.GitHubMetadataResolver, error) {
-	gitExecutor, executorError := dependencies.ResolveGitExecutor(builder.GitExecutor, logger, false)
-	if executorError != nil {
-		return nil, nil, fmt.Errorf(gitExecutorResolutionErrorTemplateConstant, executorError)
-	}
-
-	repositoryManager, managerError := dependencies.ResolveGitRepositoryManager(builder.RepositoryManager, gitExecutor)
-	if managerError != nil {
-		return nil, nil, fmt.Errorf(gitRepositoryManagerResolutionErrorTemplateConstant, managerError)
-	}
-
-	githubResolver, resolverError := dependencies.ResolveGitHubResolver(builder.GitHubResolver, gitExecutor)
-	if resolverError != nil {
-		return nil, nil, fmt.Errorf(gitHubResolverResolutionErrorTemplateConstant, resolverError)
-	}
-
-	return repositoryManager, githubResolver, nil
 }

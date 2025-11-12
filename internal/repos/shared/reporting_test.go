@@ -3,6 +3,8 @@ package shared
 import (
 	"bytes"
 	"encoding/json"
+	"io"
+	"os"
 	"testing"
 	"time"
 
@@ -100,4 +102,49 @@ func TestStructuredReporterSummaryDataIncludesOperationDurations(t *testing.T) {
 	serialized, err := json.Marshal(data)
 	require.NoError(t, err)
 	require.Contains(t, string(serialized), "\"total_repositories\":1")
+}
+
+func TestStructuredReporterSummaryDataIncludesStageDurations(t *testing.T) {
+	reporter := NewStructuredReporter(&bytes.Buffer{}, &bytes.Buffer{}, WithRepositoryHeaders(false))
+
+	reporter.RecordStageDuration("stage-1", 2*time.Second)
+	reporter.RecordStageDuration("stage-1", 1*time.Second)
+	reporter.RecordStageDuration("stage-2", 500*time.Millisecond)
+
+	data := reporter.SummaryData()
+	firstStage, exists := data.StageDurations["stage-1"]
+	require.True(t, exists)
+	require.Equal(t, 2, firstStage.Count)
+	require.EqualValues(t, 3000, firstStage.TotalDurationMilliseconds)
+	require.EqualValues(t, 1500, firstStage.AverageDurationMilliseconds)
+
+	secondStage, exists := data.StageDurations["stage-2"]
+	require.True(t, exists)
+	require.Equal(t, 1, secondStage.Count)
+	require.EqualValues(t, 500, secondStage.TotalDurationMilliseconds)
+	require.EqualValues(t, 500, secondStage.AverageDurationMilliseconds)
+}
+
+func TestStructuredReporterHonorsDiscardWriters(t *testing.T) {
+	originalStdout := os.Stdout
+	reader, writer, pipeErr := os.Pipe()
+	require.NoError(t, pipeErr)
+	os.Stdout = writer
+	t.Cleanup(func() {
+		writer.Close()
+		reader.Close()
+		os.Stdout = originalStdout
+	})
+
+	reporter := NewStructuredReporter(io.Discard, io.Discard, WithRepositoryHeaders(false))
+	reporter.Report(Event{
+		Code:           "TASK_PLAN",
+		RepositoryPath: "/tmp/repos/sample",
+		Message:        "noop",
+	})
+
+	require.NoError(t, writer.Close())
+	output, readErr := io.ReadAll(reader)
+	require.NoError(t, readErr)
+	require.Len(t, output, 0)
 }

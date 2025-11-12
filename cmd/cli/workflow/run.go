@@ -7,36 +7,32 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/temirov/gix/internal/githubcli"
-	"github.com/temirov/gix/internal/gitrepo"
-	"github.com/temirov/gix/internal/repos/dependencies"
 	"github.com/temirov/gix/internal/repos/shared"
 	"github.com/temirov/gix/internal/utils"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
 	rootutils "github.com/temirov/gix/internal/utils/roots"
 	"github.com/temirov/gix/internal/workflow"
+	"github.com/temirov/gix/pkg/taskrunner"
 )
 
 const (
-	commandUseConstant                        = "workflow <configuration|preset>"
-	commandShortDescriptionConstant           = "Run a workflow configuration file or embedded preset"
-	commandLongDescriptionConstant            = "workflow executes operations defined in a YAML/JSON configuration or runs embedded presets (see --list-presets) across discovered repositories."
-	commandExampleConstant                    = "gix workflow ./workflow.yaml --roots ~/Development\n  gix workflow license --roots ~/Development --yes"
-	requireCleanFlagNameConstant              = "require-clean"
-	requireCleanFlagDescriptionConstant       = "Require clean worktrees for rename operations"
-	variableFlagNameConstant                  = "var"
-	variableFlagDescriptionConstant           = "Set workflow variable (key=value). Repeatable."
-	variableFileFlagNameConstant              = "var-file"
-	variableFileFlagDescriptionConstant       = "Load workflow variables from a YAML/JSON file. Repeatable."
-	listPresetsFlagNameConstant               = "list-presets"
-	listPresetsFlagDescriptionConstant        = "List embedded workflow presets and exit"
-	configurationPathRequiredMessageConstant  = "workflow configuration path or preset name required; provide a positional argument or --config flag"
-	loadConfigurationErrorTemplateConstant    = "unable to load workflow configuration: %w"
-	loadPresetErrorTemplateConstant           = "unable to load embedded workflow %q: %w"
-	buildOperationsErrorTemplateConstant      = "unable to build workflow operations: %w"
-	buildTasksErrorTemplateConstant           = "unable to build workflow tasks: %w"
-	gitRepositoryManagerErrorTemplateConstant = "unable to construct repository manager: %w"
-	gitHubClientErrorTemplateConstant         = "unable to construct GitHub client: %w"
+	commandUseConstant                       = "workflow <configuration|preset>"
+	commandShortDescriptionConstant          = "Run a workflow configuration file or embedded preset"
+	commandLongDescriptionConstant           = "workflow executes operations defined in a YAML/JSON configuration or runs embedded presets (see --list-presets) across discovered repositories."
+	commandExampleConstant                   = "gix workflow ./workflow.yaml --roots ~/Development\n  gix workflow license --roots ~/Development --yes"
+	requireCleanFlagNameConstant             = "require-clean"
+	requireCleanFlagDescriptionConstant      = "Require clean worktrees for rename operations"
+	variableFlagNameConstant                 = "var"
+	variableFlagDescriptionConstant          = "Set workflow variable (key=value). Repeatable."
+	variableFileFlagNameConstant             = "var-file"
+	variableFileFlagDescriptionConstant      = "Load workflow variables from a YAML/JSON file. Repeatable."
+	listPresetsFlagNameConstant              = "list-presets"
+	listPresetsFlagDescriptionConstant       = "List embedded workflow presets and exit"
+	configurationPathRequiredMessageConstant = "workflow configuration path or preset name required; provide a positional argument or --config flag"
+	loadConfigurationErrorTemplateConstant   = "unable to load workflow configuration: %w"
+	loadPresetErrorTemplateConstant          = "unable to load embedded workflow %q: %w"
+	buildOperationsErrorTemplateConstant     = "unable to build workflow operations: %w"
+	buildTasksErrorTemplateConstant          = "unable to build workflow tasks: %w"
 )
 
 // CommandBuilder assembles the workflow command.
@@ -48,7 +44,7 @@ type CommandBuilder struct {
 	PrompterFactory              PrompterFactory
 	HumanReadableLoggingProvider func() bool
 	ConfigurationProvider        func() CommandConfiguration
-	TaskRunnerFactory            func(workflow.Dependencies) TaskRunnerExecutor
+	TaskRunnerFactory            taskrunner.Factory
 	PresetCatalogFactory         func() PresetCatalog
 }
 
@@ -168,43 +164,30 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 		return nil
 	}
 
-	logger := resolveLogger(builder.LoggerProvider)
-	humanReadableLogging := false
-	if builder.HumanReadableLoggingProvider != nil {
-		humanReadableLogging = builder.HumanReadableLoggingProvider()
-	}
-	gitExecutor, executorError := dependencies.ResolveGitExecutor(builder.GitExecutor, logger, humanReadableLogging)
-	if executorError != nil {
-		return executorError
+	dependencyOptions := taskrunner.DependenciesOptions{Command: command}
+	if command != nil {
+		dependencyOptions.Output = utils.NewFlushingWriter(command.OutOrStdout())
+		dependencyOptions.Errors = utils.NewFlushingWriter(command.ErrOrStderr())
 	}
 
-	repositoryManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
-	if managerError != nil {
-		return fmt.Errorf(gitRepositoryManagerErrorTemplateConstant, managerError)
+	dependencyResult, dependencyError := taskrunner.BuildDependencies(
+		taskrunner.DependenciesConfig{
+			LoggerProvider:               builder.LoggerProvider,
+			HumanReadableLoggingProvider: builder.HumanReadableLoggingProvider,
+			RepositoryDiscoverer:         builder.Discoverer,
+			GitExecutor:                  builder.GitExecutor,
+			FileSystem:                   builder.FileSystem,
+			PrompterFactory:              builder.PrompterFactory,
+		},
+		dependencyOptions,
+	)
+	if dependencyError != nil {
+		return dependencyError
 	}
 
-	gitHubClient, clientError := githubcli.NewClient(gitExecutor)
-	if clientError != nil {
-		return fmt.Errorf(gitHubClientErrorTemplateConstant, clientError)
-	}
+	workflowDependencies := dependencyResult.Workflow
 
-	repositoryDiscoverer := dependencies.ResolveRepositoryDiscoverer(builder.Discoverer)
-	fileSystem := dependencies.ResolveFileSystem(builder.FileSystem)
-	prompter := resolvePrompter(builder.PrompterFactory, command)
-
-	workflowDependencies := workflow.Dependencies{
-		Logger:               logger,
-		RepositoryDiscoverer: repositoryDiscoverer,
-		GitExecutor:          gitExecutor,
-		RepositoryManager:    repositoryManager,
-		GitHubClient:         gitHubClient,
-		FileSystem:           fileSystem,
-		Prompter:             prompter,
-		Output:               utils.NewFlushingWriter(command.OutOrStdout()),
-		Errors:               utils.NewFlushingWriter(command.ErrOrStderr()),
-	}
-
-	taskRunner := resolveTaskRunner(builder.TaskRunnerFactory, workflowDependencies)
+	taskRunner := taskrunner.Resolve(builder.TaskRunnerFactory, workflowDependencies)
 
 	roots, rootsError := rootutils.Resolve(command, remainingArguments, commandConfiguration.Roots)
 	if rootsError != nil {
@@ -224,7 +207,31 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 		Variables:                            variableAssignments,
 	}
 
-	return taskRunner.Run(command.Context(), roots, taskDefinitions, runtimeOptions)
+	outcome, runErr := taskRunner.Run(command.Context(), roots, taskDefinitions, runtimeOptions)
+	if runErr != nil {
+		return runErr
+	}
+
+	if command != nil && len(outcome.StageOutcomes) > 0 {
+		writer := command.ErrOrStderr()
+		fmt.Fprintf(
+			writer,
+			"workflow completed in %s across %d repositories\n",
+			outcome.Duration,
+			outcome.RepositoryCount,
+		)
+		for _, stage := range outcome.StageOutcomes {
+			fmt.Fprintf(
+				writer,
+				"  stage %d (%s): %s\n",
+				stage.Index+1,
+				stage.Duration,
+				formatStageOperations(stage.Operations),
+			)
+		}
+	}
+
+	return nil
 }
 
 func (builder *CommandBuilder) resolveConfiguration() CommandConfiguration {
@@ -311,4 +318,22 @@ func (builder *CommandBuilder) printPresetList(command *cobra.Command, catalog P
 		}
 		fmt.Fprintf(output, "  - %s: %s\n", preset.Name, description)
 	}
+}
+
+func formatStageOperations(operations []string) string {
+	if len(operations) == 0 {
+		return "(no operations)"
+	}
+	cleaned := make([]string, 0, len(operations))
+	for _, operation := range operations {
+		trimmed := strings.TrimSpace(operation)
+		if len(trimmed) == 0 {
+			continue
+		}
+		cleaned = append(cleaned, trimmed)
+	}
+	if len(cleaned) == 0 {
+		return "(no operations)"
+	}
+	return strings.Join(cleaned, ", ")
 }

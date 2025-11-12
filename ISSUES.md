@@ -96,14 +96,15 @@ Summary: total.repos=0 duration_ms=0
   - Context: Namespace rewrites rely on the standalone `namespace` command (`cmd/cli/repos/namespace.go`) referenced throughout config, docs, and tests.
   - Desired: Move the namespace rewrite tasks into an embedded workflow surfaced through the workflow command (e.g., `gix workflow namespace`), retire the direct CLI command, and update docs/config/tests while mapping legacy usage to the workflow with warnings.
   - Acceptance: The builtin workflow reproduces the namespace rewrite behavior (including task runner options and reporting), documentation and configuration samples reference the workflow, automated coverage exercises the new path, and legacy command/config invocations delegate with migration guidance.
-  - Resolution: Added a `namespace` preset with runtime variables, updated README/docs, and removed the legacy CLI command so workflows are the sole entrypoint for namespace rewrites.
+  - Resolution: Embedded a `namespace` preset, taught `gix repo-namespace-rewrite` to warn and delegate to that workflow while piping safeguards through, added catalog coverage/tests for the preset, and documented the reusable workflows in `ARCHITECTURE.md`.
 
-- [ ] [GX-227] Nest repo-history-remove under files rm
-  - Status: Unresolved
+- [x] [GX-227] Nest repo-history-remove under files rm
+  - Status: Resolved
   - Category: Improvement
   - Context: History rewriting currently uses the top-level `rm` command bound to `repo-history-remove` in `cmd/cli/repos/remove.go`, and the name appears across configs/docs/tests.
   - Desired: Introduce a `files` namespace that hosts the history removal command as `gix files rm`, propagate the rename through configuration/workflow mappings/docs/tests, and alias `rm` with a warning for existing configs.
   - Acceptance: `gix files rm` executes the same task runner path as today's command, CLI help/docs/default config show the nested path, automated tests updated, and legacy `rm` entries map to the new command with migration guidance.
+  - Resolution: History purges now live under `gix files rm`, default/config docs reference the nested command, the workflow requirements map points to the new path, integration tests cover it, and the legacy `gix rm`/`repo rm` entries emit warnings while continuing to work.
 
 - [x] [GX-228] Extend workflow command to support invoking embedded workflows by name
   - Status: Resolved
@@ -113,27 +114,34 @@ Summary: total.repos=0 duration_ms=0
   - Acceptance: Users can discover and invoke built-in workflows without supplying files, legacy file-based execution continues to function, docs showcase both modes, and tests exercise preset selection plus backward compatibility.
   - Resolution: Added an embedded preset catalog (seeded with the initial `license` workflow), introduced `gix workflow --list-presets`/`gix workflow <preset>`, updated README guidance, and expanded workflow command tests to cover preset execution and listing while keeping file-based configs untouched.
 
-- [ ] [GX-229] Modularize CLI bootstrap and shared task runner wiring
-  - Status: Unresolved
+- [x] [GX-229] Modularize CLI bootstrap and shared task runner wiring
+  - Status: Resolved
   - Category: Improvement
   - Context: `cmd/cli/application.go` (~1.6k LOC) interleaves configuration loading, command registration, embedded default config management, and dependency wiring for subcommands, creating hard-to-test seams and duplicated `TaskRunnerFactory` setup across `cmd/cli/changelog`, `cmd/cli/commit`, and `cmd/cli/workflow`.
-  - Desired: Extract bootstrap logic into a dedicated package (e.g., `cmd/cli/bootstrap`), relocate embedded default configuration helpers into their own module with invariants tests, and introduce a shared helper that constructs task runner dependencies consumed by changelog/commit/workflow builders while centralizing alias handling.
-  - Acceptance: `cmd/cli/application.go` delegates to smaller builders, embedded config helpers live outside the application root with updated tests, subcommands reuse a single task runner wiring helper, and new unit tests verify root command wiring plus legacy alias coverage.
+  - Desired: Extract bootstrap logic into dedicated helpers (shared task runner dependency builder, embedded config accessor, alias map) and reorganize `cmd/cli/application.go` into smaller files so commands depend on centralized wiring instead of duplicating `TaskRunnerExecutor` adapters in each package.
+  - Plan:
+    1. Introduce `pkg/taskrunner` with a shared `Executor`/`Factory` + `Resolve` helper.
+    2. Update CLI packages (workflow/changelog/commit/repos/release/branch/migrate/audit/packages) to import `pkg/taskrunner`, deleting their local `task_runner_support.go` files and adjusting builders/tests accordingly.
+    3. Split `cmd/cli/application.go` into logical files: configuration types/constants, initialization/bootstrap, and command wiring; add a helper that constructs workflow dependencies so all command builders call the same function.
+  - Acceptance: `cmd/cli/application.go` delegates to smaller helpers, all CLI builders reuse the shared task runner package, redundant adapter files/tests disappear, and application/unit tests verify the refactored wiring plus legacy alias coverage.
+  - Resolution: All remaining command builders (audit, packages, migrate, branches/cd, release/license) now rely on `pkg/taskrunner` for dependency wiring, the custom adapters/prompter helpers were dropped in favor of the shared factory, and workflow configs/tests continue to pass under the split bootstrap files with lint/go test as verification.
 
-- [ ] [GX-230] Refactor workflow executor into planner, runner, and reporting units
-  - Status: Unresolved
+- [x] [GX-230] Refactor workflow executor into planner, runner, and reporting units
+  - Status: Resolved
   - Category: Improvement
   - Context: `internal/workflow/executor.go` still couples planning, execution, reporting, and error formatting despite GX-322 improvements, lacks table-driven coverage for mixed outcomes, and makes it difficult to extend context/telemetry handling.
   - Desired: Split the executor into focused files (planner, runner, reporting), introduce an `ExecutionOutcome` aggregate returned to callers, add stage-level metrics/events to the reporter hooks, and expand tests to cover mixed success/failure runs, nested repository ordering, prompt state transitions, and reporter count accuracy.
   - Acceptance: Executor package exposes modular components with an `ExecutionOutcome` result, CLI layers consume the new return value, instrumentation emits stage completion events, and new tests exercise the scenarios outlined in `docs/refactor_plan_GX-411.md`.
+  - Resolution: Introduced `execution_outcome.go` and `executor_runner.go`, updated the executor/task runner/CLI interfaces to return `ExecutionOutcome`, recorded per-stage/per-operation durations via the structured reporter, taught the workflow CLI to print stage summaries, and refreshed Go/unit/integration tests plus documentation to cover the new behaviour.
 
-- [ ] [GX-231] Layer workflow task operations into parse/plan/execute packages with structured reporting
-  - Status: Unresolved
+- [x] [GX-231] Layer workflow task operations into parse/plan/execute packages with structured reporting
+  - Status: Resolved
   - Category: Improvement
   - Dependencies: Blocked by [GX-230]
   - Context: `internal/workflow/operations_tasks.go` (~1.3k LOC) combines parsing, templating, execution, LLM wiring, and GitHub interactions while emitting direct `fmt.Fprintf` logs, leaving execution paths under-tested.
   - Desired: Break the task operations into cohesive subpackages (parse, plan, execute, actions) with explicit dependency injection, introduce strategy types for branch and PR management to enable deterministic tests, migrate user-facing output to the structured reporter, and add integration-style tests for ensure-clean failures, branch reuse, PR errors, safeguard checks, and LLM `capture_as` flows.
   - Acceptance: Task operations are distributed across new packages with clear interfaces, structured reporter events replace direct `fmt.Fprintf` usage, strategy abstractions allow targeted unit tests, and the new test suite covers the execution scenarios listed above.
+  - Resolution: Replaced `operations_tasks.go` with `task_parser`, `task_plan`, `task_execute`, `task_operation`, and `task_types` modules, tightened safeguard/ensure-clean handling, routed all output through `shared.StructuredReporter` (which now honors `io.Discard` for audit flows), documented the layering in `ARCHITECTURE.md`, and refreshed unit/integration tests plus lint/staticcheck to cover the refactor.
 
 - [x] [GX-232] Centralize LLM client factory and harden generator resiliency
   - Status: Resolved
@@ -221,9 +229,10 @@ Let's consider each rename as a separate issue and what consequences it entails
 
 ## Planning 
 do not work on the issues below, not ready
-- [ ] [GX-236] Add workflow runtime variables for presets and file-based configs
-  - Status: Unresolved
+- [x] [GX-236] Add workflow runtime variables for presets and file-based configs
+  - Status: Resolved
   - Category: Improvement
   - Context: Workflow tasks can capture data via `capture_as`, but there is no way to inject user-provided variables at runtime. Embedded presets (e.g., `license`) need per-run values for templates, branch names, etc., and legacy commands (like `repo-license-apply`) must forward their flags into the workflow runner.
   - Desired: Introduce CLI flags (`gix workflow --var key=value` and `--var-file path`) plus configuration support to load user variables, surface them through `workflow.RuntimeOptions`, seed `Environment.Variables` before execution, and ensure task templates (`.Environment`) merge user-provided variables with captured ones (user values winning). Update README/CHANGELOG/docs, expose the same facility to presets, and add tests covering CLI parsing, preset execution with vars, and interaction with existing `capture_as`.
   - Acceptance: Users can supply runtime variables when running either external configs or presets; the variables are visible to task templates; `repo-license-apply` can invoke the `license` preset by passing variables instead of re-implementing logic; docs/tests cover these flows; legacy behaviour remains intact when no variables are provided.
+  - Resolution: Added locked seeding semantics to `VariableStore` so runtime inputs stay authoritative, taught the executor to seed via the new API, documented the precedence rules in `ARCHITECTURE.md`, and expanded workflow tests (store unit tests + commit-message capture coverage) to prove `.Environment` sees user values while capture outputs only fill unset keys.
