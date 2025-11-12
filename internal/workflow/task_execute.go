@@ -150,14 +150,34 @@ func (executor taskExecutor) Execute(executionContext context.Context) error {
 }
 
 func (executor taskExecutor) resolveEnsureClean() bool {
+	defaultValue := executor.plan.task.EnsureClean
 	variableName := strings.TrimSpace(executor.plan.task.EnsureCleanVariable)
-	if len(variableName) > 0 && len(executor.plan.variables) > 0 {
-		value := strings.TrimSpace(executor.plan.variables[variableName])
-		if len(value) > 0 {
-			return strings.EqualFold(value, "true")
-		}
+	if len(variableName) == 0 || len(executor.plan.variables) == 0 {
+		return defaultValue
 	}
-	return executor.plan.task.EnsureClean
+
+	rawValue, exists := executor.plan.variables[variableName]
+	if !exists {
+		return defaultValue
+	}
+
+	if parsedValue, parsed := parseEnsureCleanValue(rawValue); parsed {
+		return parsedValue
+	}
+
+	return defaultValue
+}
+
+func parseEnsureCleanValue(raw string) (bool, bool) {
+	normalized := strings.TrimSpace(strings.ToLower(raw))
+	switch normalized {
+	case "true", "1", "yes":
+		return true, true
+	case "false", "0", "no":
+		return false, true
+	default:
+		return false, false
+	}
 }
 
 func (executor taskExecutor) branchExists(executionContext context.Context, branchName string) (bool, error) {
