@@ -97,6 +97,19 @@ gix workflow license --roots ~/Development --yes
 
 Embedded workflows ship with the binary so you can hand teammates a stable command (for example, `license` or `namespace`) without distributing a separate configuration file.
 
+### Atomic git helpers
+
+Workflows can now compose individual git/file operations as standalone steps:
+
+- `git branch-prepare` — checkout (or create) a working branch with optional start point and clean-worktree guard.
+- `tasks apply` with `steps: ["files.apply"]` — perform only the file mutation stage (no automatic stage/commit/push); add `safeguards.paths` to insist the file already exists.
+- `git stage-commit` — run `git add` for templated paths and immediately commit with a templated message (optionally `allow_empty`).
+- `git push` — push a templated branch to a templated remote with remote validation (useful when you truly need a push without a PR).
+- `pull-request open` — push (warning when no remote) and open a PR in one step, using templated title/body/base/head values.
+- `pull-request create` — open a PR without touching remotes (legacy behavior).
+
+Combine these steps to build fully custom git flows without relying on one monolithic `tasks apply`. See `configs/gitignore.yaml` for a concrete example that splits branch creation, file editing, staging, commit, push, and PR creation into discrete workflow steps.
+
 ### Workflow variables
 
 Use runtime variables to parameterize presets or external configs:
@@ -305,6 +318,8 @@ Schema highlights:
 - Commit: `{ message }` (templated). Defaults to `Apply task <name>` when empty.
 - Pull request: `{ title, body, base, draft }` (templated; optional).
 - Safeguards: map of conditions that skip the task when unmet; see below.
+- Steps: optional ordered list (`branch.prepare`, `files.apply`, `git.stage`, `git.commit`, `git.push`, `pull-request.create`, `actions`) that restricts which internal actions run. When omitted, file-backed tasks run the entire branch/commit/push pipeline by default.
+- Execution steps are now explicit actions: `git.branch.prepare` (creates the work branch), `files.apply`, `git.stage`, `git.commit`, `git.push`, and `pull-request.create`. Each action evaluates its own safeguards so workflows fail fast with actionable errors (for example, dirty worktrees or missing remotes).
 
 Example task-only workflow step:
 

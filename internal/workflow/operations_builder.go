@@ -101,6 +101,20 @@ func buildOperationFromStep(step StepConfiguration) (Operation, error) {
 		return buildAuditReportOperation(normalizedOptions)
 	case commandTasksApplyKey, legacyCommandRepoTasksApplyKey:
 		return buildTaskOperation(normalizedOptions)
+	case commandGitBranchPrepareKey:
+		return buildGitBranchPrepareOperation(normalizedOptions)
+	case commandGitStageKey:
+		return buildGitStageOperation(normalizedOptions)
+	case commandGitCommitKey:
+		return buildGitCommitOperation(normalizedOptions)
+	case commandGitStageCommitKey:
+		return buildGitStageCommitOperation(normalizedOptions)
+	case commandGitPushKey:
+		return buildGitPushOperation(normalizedOptions)
+	case commandPullRequestCreateKey:
+		return buildPullRequestCreateOperation(normalizedOptions)
+	case commandPullRequestOpenKey:
+		return buildPullRequestOpenOperation(normalizedOptions)
 	default:
 		return nil, fmt.Errorf("unsupported workflow command: %s", commandKey)
 	}

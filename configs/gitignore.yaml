@@ -1,0 +1,50 @@
+workflow:
+  - step:
+      name: gitignore-branch
+      command: ["git", "branch-prepare"]
+      with:
+        branch: "automation/gitignore/{{ .Repository.Name }}"
+        start_point: "{{ .Repository.DefaultBranch }}"
+        ensure_clean: true
+
+  - step:
+      name: gitignore-apply
+      after: ["gitignore-branch"]
+      command: ["tasks", "apply"]
+      with:
+        tasks:
+          - name: "Ensure gitignore entries"
+            safeguards:
+              paths:
+                - ".gitignore"
+            steps:
+              - files.apply
+            files:
+              - path: .gitignore
+                content: |
+                  # Managed by gix gitignore workflow
+                  .env
+                  tools/
+                  bin/
+                mode: append-if-missing
+
+  - step:
+      name: gitignore-stage-commit
+      after: ["gitignore-apply"]
+      command: ["git", "stage-commit"]
+      with:
+        paths:
+          - ".gitignore"
+        commit_message: "chore: ensure gitignore entries"
+
+  - step:
+      name: gitignore-open-pr
+      after: ["gitignore-stage-commit"]
+      command: ["pull-request", "open"]
+      with:
+        branch: "automation/gitignore/{{ .Repository.Name }}"
+        title: "chore({{ .Repository.Name }}): ensure gitignore entries"
+        body: |
+          Ensure `.gitignore` contains the standard secrets/tooling entries (.env, tools/, bin/).
+        base: "{{ .Repository.DefaultBranch }}"
+        push_remote: origin

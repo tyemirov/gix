@@ -237,13 +237,13 @@ func TestCommandFailedErrorIncludesArgumentsAndStandardError(testInstance *testi
 		},
 		Result: execshell.ExecutionResult{
 			ExitCode:      1,
-			StandardError: "fatal: unable to access 'https://example.com/repo.git/': Could not resolve host: example.com\nhint: check your DNS\n",
+			StandardError: "fatal: unable to access 'https://example.com/repo.git/': Could not resolve host: example.com\nhint: check your DNS\nretrying after 2 seconds\n",
 		},
 	}
 
 	require.Equal(
 		testInstance,
-		"git command exited with code 1 (push --set-upstream origin feature/docs): fatal: unable to access 'https://example.com/repo.git/': Could not resolve host: example.com",
+		"git command exited with code 1 (push --set-upstream origin feature/docs): fatal: unable to access 'https://example.com/repo.git/': Could not resolve host: example.com | hint: check your DNS | retrying after 2 seconds",
 		commandError.Error(),
 	)
 }
