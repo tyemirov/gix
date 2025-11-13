@@ -121,7 +121,7 @@ func (action gitStageAction) Name() string {
 }
 
 func (action gitStageAction) Guards() []actionGuard {
-	return nil
+	return []actionGuard{newCleanWorktreeGuard()}
 }
 
 func (action gitStageAction) Execute(ctx context.Context, execCtx *ExecutionContext) error {
@@ -154,7 +154,7 @@ func (action gitCommitAction) Name() string {
 }
 
 func (action gitCommitAction) Guards() []actionGuard {
-	return nil
+	return []actionGuard{newCleanWorktreeGuard()}
 }
 
 func (action gitCommitAction) Execute(ctx context.Context, execCtx *ExecutionContext) error {
@@ -195,7 +195,7 @@ func (action gitStageCommitAction) Name() string {
 }
 
 func (action gitStageCommitAction) Guards() []actionGuard {
-	return nil
+	return []actionGuard{newCleanWorktreeGuard()}
 }
 
 func (action gitStageCommitAction) Execute(ctx context.Context, execCtx *ExecutionContext) error {

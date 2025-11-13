@@ -35,6 +35,31 @@ func TestGitStageOperationStagesPaths(t *testing.T) {
 	require.True(t, commandArgumentsExist(gitExecutor.commands, []string{"add", "README.md"}))
 }
 
+func TestGitStageOperationRequiresCleanWorktree(t *testing.T) {
+	gitExecutor := &recordingGitExecutor{
+		worktreeClean: false,
+		currentBranch: "main",
+	}
+	repoManager, managerErr := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(t, managerErr)
+
+	op, buildErr := buildGitStageOperation(map[string]any{
+		"paths":        []any{"README.md"},
+		"ensure_clean": true,
+	})
+	require.NoError(t, buildErr)
+
+	repository := NewRepositoryState(audit.RepositoryInspection{Path: "/repositories/sample"})
+	state := &State{Repositories: []*RepositoryState{repository}}
+	env := &Environment{
+		GitExecutor:       gitExecutor,
+		RepositoryManager: repoManager,
+	}
+
+	require.NoError(t, op.Execute(context.Background(), env, state))
+	require.False(t, commandArgumentsExist(gitExecutor.commands, []string{"add", "README.md"}))
+}
+
 func TestGitCommitOperationCommitsWithMessage(t *testing.T) {
 	gitExecutor := &recordingGitExecutor{}
 	op, buildErr := buildGitCommitOperation(map[string]any{
@@ -199,4 +224,30 @@ func commandArgumentsExist(commands []execshell.CommandDetails, expected []strin
 		}
 	}
 	return false
+}
+func TestGitStageCommitOperationRequiresCleanWorktree(t *testing.T) {
+	gitExecutor := &recordingGitExecutor{
+		worktreeClean: false,
+		currentBranch: "main",
+	}
+	repoManager, managerErr := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(t, managerErr)
+
+	op, buildErr := buildGitStageCommitOperation(map[string]any{
+		"paths":          []any{"README.md"},
+		"commit_message": "docs: update",
+		"ensure_clean":   true,
+	})
+	require.NoError(t, buildErr)
+
+	repository := NewRepositoryState(audit.RepositoryInspection{Path: "/repositories/sample"})
+	state := &State{Repositories: []*RepositoryState{repository}}
+	env := &Environment{
+		GitExecutor:       gitExecutor,
+		RepositoryManager: repoManager,
+	}
+
+	require.NoError(t, op.Execute(context.Background(), env, state))
+	require.False(t, commandArgumentsExist(gitExecutor.commands, []string{"add", "README.md"}))
+	require.False(t, commandArgumentsExist(gitExecutor.commands, []string{"commit", "-m", "docs: update"}))
 }
