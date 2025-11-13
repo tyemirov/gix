@@ -159,7 +159,7 @@ func (planner taskPlanner) planFileChanges(environment *Environment, repository 
 				case TaskFileModeSkipIfExists:
 					fileChange.apply = false
 					fileChange.skipReason = "exists"
-				case TaskFileModeLineEdit:
+				case TaskFileModeAppendIfMissing:
 					if ensureLinesSatisfied(existingContent, fileChange.content) {
 						fileChange.apply = false
 						fileChange.skipReason = "lines-present"
