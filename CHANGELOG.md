@@ -19,6 +19,7 @@
 
 ### Bug Fixes 🐛
 - Fixed legacy mode acceptance issues by supporting the renamed `append-if-missing` mode in parser and executor components.
+- `gix workflow` now executes workflow operations directly, so git action steps such as `git stage-commit` run without triggering “unsupported workflow command” errors (the gitignore preset works again).
 
 ### Testing 🧪
 - Added comprehensive unit tests for parsing task file modes including the new `append-if-missing`.

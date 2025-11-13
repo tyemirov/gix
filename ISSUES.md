@@ -233,7 +233,9 @@ workflow       => shall allow invoking various predefined workflows or specify t
 
 Let's consider each rename as a separate issue and what consequences it entails
 
-- [ ] [GX-324] Seems like a lot of code is missing. Check if either we've lost it in one of tghe unmerged branchesm or if we need to write and test it first
+- [x] [GX-324] Seems like a lot of code is missing. Check if either we've lost it in one of tghe unmerged branchesm or if we need to write and test it first
+  - Status: Resolved
+  - Resolution: Rewired `gix workflow` to execute workflow operations directly (no more task-definition shim), added runtime option aggregation helpers/tests, and confirmed configs like `configs/gitignore.yaml` run the `git stage-commit` step instead of failing with “unsupported workflow command”.
 ```
 14:20:08 tyemirov@Vadyms-MacBook-Pro:~/Development/tyemirov/gix - [master] $ go run ./...  w configs/gitignore.yaml --roots /tmp/repos/
 unable to build workflow tasks: unsupported workflow command: git stage-commit

@@ -32,7 +32,6 @@ const (
 	loadConfigurationErrorTemplateConstant   = "unable to load workflow configuration: %w"
 	loadPresetErrorTemplateConstant          = "unable to load embedded workflow %q: %w"
 	buildOperationsErrorTemplateConstant     = "unable to build workflow operations: %w"
-	buildTasksErrorTemplateConstant          = "unable to build workflow tasks: %w"
 )
 
 // CommandBuilder assembles the workflow command.
@@ -44,7 +43,7 @@ type CommandBuilder struct {
 	PrompterFactory              PrompterFactory
 	HumanReadableLoggingProvider func() bool
 	ConfigurationProvider        func() CommandConfiguration
-	TaskRunnerFactory            taskrunner.Factory
+	OperationExecutorFactory     OperationExecutorFactory
 	PresetCatalogFactory         func() PresetCatalog
 }
 
@@ -155,14 +154,7 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 	}
 
 	workflow.ApplyDefaults(nodes, workflow.OperationDefaults{RequireClean: requireCleanDefault})
-
-	taskDefinitions, taskRuntimeOptions, taskBuildError := buildWorkflowTasks(nodes)
-	if taskBuildError != nil {
-		return fmt.Errorf(buildTasksErrorTemplateConstant, taskBuildError)
-	}
-	if len(taskDefinitions) == 0 {
-		return nil
-	}
+	runtimeRequirements := deriveRuntimeRequirements(nodes)
 
 	dependencyOptions := taskrunner.DependenciesOptions{Command: command}
 	if command != nil {
@@ -187,8 +179,6 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 
 	workflowDependencies := dependencyResult.Workflow
 
-	taskRunner := taskrunner.Resolve(builder.TaskRunnerFactory, workflowDependencies)
-
 	roots, rootsError := rootutils.Resolve(command, remainingArguments, commandConfiguration.Roots)
 	if rootsError != nil {
 		return rootsError
@@ -201,13 +191,14 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 
 	runtimeOptions := workflow.RuntimeOptions{
 		AssumeYes:                            assumeYes,
-		IncludeNestedRepositories:            taskRuntimeOptions.IncludeNestedRepositories,
-		ProcessRepositoriesByDescendingDepth: taskRuntimeOptions.ProcessRepositoriesByDescendingDepth,
-		CaptureInitialWorktreeStatus:         taskRuntimeOptions.CaptureInitialWorktreeStatus,
+		IncludeNestedRepositories:            runtimeRequirements.includeNestedRepositories,
+		ProcessRepositoriesByDescendingDepth: runtimeRequirements.processRepositoriesByDescendingDepth,
+		CaptureInitialWorktreeStatus:         runtimeRequirements.captureInitialWorktreeStatus,
 		Variables:                            variableAssignments,
 	}
 
-	outcome, runErr := taskRunner.Run(command.Context(), roots, taskDefinitions, runtimeOptions)
+	executor := resolveOperationExecutor(builder.OperationExecutorFactory, nodes, workflowDependencies)
+	outcome, runErr := executor.Execute(command.Context(), roots, runtimeOptions)
 	if runErr != nil {
 		return runErr
 	}
