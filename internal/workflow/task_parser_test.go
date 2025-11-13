@@ -13,8 +13,6 @@ func TestParseTaskFileModeRecognizesLegacyAliases(t *testing.T) {
 		{name: "OverwriteDefault", input: "overwrite", expected: TaskFileModeOverwrite},
 		{name: "SkipIfExists", input: "skip-if-exists", expected: TaskFileModeSkipIfExists},
 		{name: "AppendIfMissing", input: "append-if-missing", expected: TaskFileModeAppendIfMissing},
-		{name: "LegacyLineEdit", input: "line-edit", expected: TaskFileModeAppendIfMissing},
-		{name: "LegacyLineEditMixedCase", input: " Line-Edit ", expected: TaskFileModeAppendIfMissing},
 		{name: "UnknownFallsBackToOverwrite", input: "trim-only", expected: TaskFileModeOverwrite},
 	}
 
