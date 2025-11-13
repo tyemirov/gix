@@ -242,6 +242,12 @@ unable to build workflow tasks: unsupported workflow command: git stage-commit
 exit status 1
 ```
 
+- [x] [GX-325] `branch.change` fails to create new automation branches when the remote ref does not yet exist
+  - Status: Resolved
+  - Context: Running `gix workflow configs/gitignore.yaml --roots /tmp/repos/` now reaches the pull-request step, but every repository fails earlier when `branch.change` tries to create `automation/gitignore/<repo>-<runid>`. The branch action invokes `git switch -c <branch> --track origin/<branch>`, and Git exits with `fatal: invalid reference: origin/<branch>` because the remote ref has not been pushed yet. As a result, subsequent `pull-request open` steps also fail to push because the local branch never existed.
+  - Desired: When `branch.change` has `create_if_missing: true`, only track `origin/branch` if that remote ref exists; otherwise create the local branch without `--track` and let later pushes set the upstream. Add regression tests for both scenarios (remote branch present vs. absent).
+  - Resolution: `internal/branches/cd.Service` now verifies whether `origin/<branch>` exists before appending `--track`; new unit tests cover both cases (remote branch present vs. absent) so workflows can create fresh automation branches and let later push steps set the upstream.
+
 ## Maintenance (410–499)
 
 - [x] [GX-411] Review @POLICY.md and verify what code areas need improvements and refactoring. Prepare a detailed plan of refactoring. Check for bugs, missing tests, poor coding practices, uplication and slop. Ensure strong encapsulation and following the principles og @AGENTS.md and policies of @POLICY.md
