@@ -233,8 +233,8 @@ func (executor taskExecutor) applyFileChanges() error {
 			continue
 		}
 
-		if change.mode == taskFileModeLineEdit {
-			if err := executor.applyEnsureLinesChange(change); err != nil {
+		if change.mode == taskFileModeAppendIfMissing {
+			if err := executor.applyAppendIfMissingChange(change); err != nil {
 				return err
 			}
 			continue
@@ -251,7 +251,7 @@ func (executor taskExecutor) applyFileChanges() error {
 	return nil
 }
 
-func (executor taskExecutor) applyEnsureLinesChange(change taskFileChange) error {
+func (executor taskExecutor) applyAppendIfMissingChange(change taskFileChange) error {
 	if executor.environment == nil || executor.environment.FileSystem == nil {
 		return errors.New("filesystem not configured for task execution")
 	}
