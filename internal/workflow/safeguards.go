@@ -98,6 +98,10 @@ func EvaluateSafeguards(ctx context.Context, environment *Environment, repositor
 
 pathsCheck:
 	requiredPaths := parseSafeguardPaths(raw["paths"])
+	fileExistsPaths := parseSafeguardPaths(raw["file_exists"])
+	if len(fileExistsPaths) > 0 {
+		requiredPaths = append(requiredPaths, fileExistsPaths...)
+	}
 	if len(requiredPaths) > 0 {
 		if environment.FileSystem == nil {
 			return false, "", errSafeguardFileSystem

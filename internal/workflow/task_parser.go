@@ -106,6 +106,25 @@ func buildTaskDefinition(raw map[string]any) (TaskDefinition, error) {
 		return TaskDefinition{}, safeguardsError
 	}
 
+	stepValues, stepsExists, stepsError := reader.stringSlice(optionTaskStepsKeyConstant)
+	if stepsError != nil {
+		return TaskDefinition{}, stepsError
+	}
+	var executionSteps []taskExecutionStep
+	if stepsExists {
+		executionSteps = make([]taskExecutionStep, 0, len(stepValues))
+		for _, rawStep := range stepValues {
+			if len(rawStep) == 0 {
+				continue
+			}
+			step, parseError := parseTaskExecutionStep(rawStep)
+			if parseError != nil {
+				return TaskDefinition{}, parseError
+			}
+			executionSteps = append(executionSteps, step)
+		}
+	}
+
 	return TaskDefinition{
 		Name:                name,
 		EnsureClean:         ensureClean,
@@ -116,6 +135,7 @@ func buildTaskDefinition(raw map[string]any) (TaskDefinition, error) {
 		Commit:              commitDefinition,
 		PullRequest:         pullRequestDefinition,
 		Safeguards:          safeguards,
+		Steps:               executionSteps,
 	}, nil
 }
 
@@ -292,5 +312,30 @@ func parseTaskFileMode(raw string) TaskFileMode {
 		return TaskFileModeAppendIfMissing
 	default:
 		return TaskFileModeOverwrite
+	}
+}
+
+func parseTaskExecutionStep(raw string) (taskExecutionStep, error) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case string(taskExecutionStepBranchPrepare):
+		return taskExecutionStepBranchPrepare, nil
+	case string(taskExecutionStepFilesApply):
+		return taskExecutionStepFilesApply, nil
+	case string(taskExecutionStepGitStage):
+		return taskExecutionStepGitStage, nil
+	case string(taskExecutionStepGitCommit):
+		return taskExecutionStepGitCommit, nil
+	case string(taskExecutionStepGitStageCommit):
+		return taskExecutionStepGitStageCommit, nil
+	case string(taskExecutionStepGitPush):
+		return taskExecutionStepGitPush, nil
+	case string(taskExecutionStepPullRequest):
+		return taskExecutionStepPullRequest, nil
+	case string(taskExecutionStepPullRequestOpen):
+		return taskExecutionStepPullRequestOpen, nil
+	case string(taskExecutionStepCustomActions):
+		return taskExecutionStepCustomActions, nil
+	default:
+		return "", fmt.Errorf("invalid task step %q", raw)
 	}
 }

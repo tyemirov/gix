@@ -13,6 +13,8 @@
 - Removed legacy `line-edit` mode references and replaced with `append-if-missing` and `ensure-lines` naming for clarity.
 - Enhanced testing coverage for task planning and execution of the new file modes, ensuring correct behavior and idempotence.
 - Added detailed documentation for `pkg/llm` explaining configuration, usage, and design principles.
+- Decomposed the workflow executor into discrete actions (`git.branch.prepare`, `files.apply`, `git.stage`, `git.commit`, `git.push`, `pull-request.create`) with reusable guard helpers so file edits, commits, and pushes run independently and emit precise failures.
+- Added first-class workflow commands for each action (`git stage`, `git commit`, `git stage-commit`, `git push`, `pull-request create`, `pull-request open`) plus per-task `steps` configuration, enabling workflows to orchestrate small git/file operations explicitly (see the updated gitignore workflow).
 - Shell command failures now report the invoked arguments and the first line of stderr, making `git`/`gh` workflow errors actionable.
 
 ### Bug Fixes 🐛

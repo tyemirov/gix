@@ -13,6 +13,7 @@ const (
 	optionTaskPullRequestKeyConstant         = "pull_request"
 	optionTaskActionsKeyConstant             = "actions"
 	optionTaskSafeguardsKeyConstant          = "safeguards"
+	optionTaskStepsKeyConstant               = "steps"
 
 	optionTaskBranchNameKeyConstant       = "name"
 	optionTaskBranchStartPointKeyConstant = "start_point"
@@ -44,6 +45,20 @@ const (
 	taskFileModeAppendIfMissing taskFileExistsMode = "append-if-missing"
 )
 
+type taskExecutionStep string
+
+const (
+	taskExecutionStepBranchPrepare   taskExecutionStep = "branch.prepare"
+	taskExecutionStepFilesApply      taskExecutionStep = "files.apply"
+	taskExecutionStepGitStage        taskExecutionStep = "git.stage"
+	taskExecutionStepGitCommit       taskExecutionStep = "git.commit"
+	taskExecutionStepGitStageCommit  taskExecutionStep = "git.stage-commit"
+	taskExecutionStepGitPush         taskExecutionStep = "git.push"
+	taskExecutionStepPullRequest     taskExecutionStep = "pull-request.create"
+	taskExecutionStepPullRequestOpen taskExecutionStep = "pull-request.open"
+	taskExecutionStepCustomActions   taskExecutionStep = "actions"
+)
+
 // TaskFileMode enumerates file handling semantics for task-managed files.
 type TaskFileMode = taskFileExistsMode
 
@@ -67,6 +82,7 @@ type TaskDefinition struct {
 	Commit              TaskCommitDefinition
 	PullRequest         *TaskPullRequestDefinition
 	Safeguards          map[string]any
+	Steps               []taskExecutionStep
 }
 
 // TaskBranchDefinition describes branch behavior for a task.

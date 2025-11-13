@@ -99,12 +99,20 @@ func (commandError CommandFailedError) Error() string {
 		baseMessage = fmt.Sprintf("%s (%s)", baseMessage, strings.Join(commandError.Command.Details.Arguments, " "))
 	}
 
-	if trimmed := strings.TrimSpace(commandError.Result.StandardError); len(trimmed) > 0 {
-		firstLine := trimmed
-		if newlineIndex := strings.Index(firstLine, "\n"); newlineIndex >= 0 {
-			firstLine = firstLine[:newlineIndex]
+	detail := strings.TrimSpace(commandError.Result.StandardError)
+	if len(detail) == 0 {
+		detail = strings.TrimSpace(commandError.Result.StandardOutput)
+	}
+	if len(detail) > 0 {
+		lines := strings.Split(detail, "\n")
+		maxLines := 3
+		if len(lines) > maxLines {
+			lines = lines[:maxLines]
 		}
-		baseMessage = fmt.Sprintf("%s: %s", baseMessage, firstLine)
+		for index := range lines {
+			lines[index] = strings.TrimSpace(lines[index])
+		}
+		baseMessage = fmt.Sprintf("%s: %s", baseMessage, strings.Join(lines, " | "))
 	}
 
 	return baseMessage

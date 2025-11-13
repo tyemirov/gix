@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"text/template"
 
 	"github.com/temirov/gix/internal/repos/shared"
 )
@@ -26,6 +25,7 @@ type taskPlan struct {
 	skipReason    string
 	skipped       bool
 	variables     map[string]string
+	workflowSteps []workflowAction
 }
 
 type taskPlanPullRequest struct {
@@ -108,12 +108,120 @@ func (planner taskPlanner) BuildPlan(environment *Environment, repository *Repos
 		plan.pullRequest = pr
 	}
 
-	if !hasApplicableChanges(plan.fileChanges) && len(plan.actions) == 0 {
+	workSteps, stepsError := planner.buildWorkflowSteps(plan)
+	if stepsError != nil {
+		return taskPlan{}, stepsError
+	}
+	plan.workflowSteps = workSteps
+	if len(plan.workflowSteps) == 0 {
 		plan.skipped = true
 		plan.skipReason = "no changes"
 	}
 
 	return plan, nil
+}
+
+func (planner taskPlanner) buildWorkflowSteps(plan taskPlan) ([]workflowAction, error) {
+	if len(planner.task.Steps) > 0 {
+		return planner.buildExplicitWorkflowSteps(plan)
+	}
+	return planner.buildDefaultWorkflowSteps(plan), nil
+}
+
+func (planner taskPlanner) buildDefaultWorkflowSteps(plan taskPlan) []workflowAction {
+	steps := make([]workflowAction, 0)
+	hasChanges := hasApplicableChanges(plan.fileChanges)
+
+	if hasChanges {
+		steps = append(steps, branchPrepareAction{
+			branchName: plan.branchName,
+			startPoint: plan.startPoint,
+		})
+		steps = append(steps, filesApplyAction{changes: plan.fileChanges})
+		steps = append(steps, gitStageCommitAction{
+			changes:    plan.fileChanges,
+			message:    plan.commitMessage,
+			allowEmpty: false,
+		})
+		steps = append(steps, gitPushAction{
+			branch: plan.branchName,
+			remote: plan.task.Branch.PushRemote,
+		})
+		if plan.pullRequest != nil {
+			steps = append(steps, pullRequestAction{
+				title: plan.pullRequest.title,
+				body:  plan.pullRequest.body,
+				base:  plan.pullRequest.base,
+			})
+		}
+	}
+
+	for _, action := range plan.actions {
+		steps = append(steps, customTaskAction{task: action})
+	}
+
+	return steps
+}
+
+func (planner taskPlanner) buildExplicitWorkflowSteps(plan taskPlan) ([]workflowAction, error) {
+	steps := make([]workflowAction, 0, len(planner.task.Steps))
+	for _, step := range planner.task.Steps {
+		switch step {
+		case taskExecutionStepBranchPrepare:
+			steps = append(steps, branchPrepareAction{
+				branchName: plan.branchName,
+				startPoint: plan.startPoint,
+			})
+		case taskExecutionStepFilesApply:
+			steps = append(steps, filesApplyAction{changes: plan.fileChanges})
+		case taskExecutionStepGitStage:
+			steps = append(steps, gitStageAction{changes: plan.fileChanges})
+		case taskExecutionStepGitCommit:
+			steps = append(steps, gitCommitAction{message: plan.commitMessage})
+		case taskExecutionStepGitStageCommit:
+			steps = append(steps, gitStageCommitAction{
+				changes:    plan.fileChanges,
+				message:    plan.commitMessage,
+				allowEmpty: false,
+			})
+		case taskExecutionStepGitPush:
+			if len(strings.TrimSpace(plan.branchName)) == 0 {
+				return nil, fmt.Errorf("task %s requires branch when using git.push step", plan.task.Name)
+			}
+			steps = append(steps, gitPushAction{
+				branch: plan.branchName,
+				remote: plan.task.Branch.PushRemote,
+			})
+		case taskExecutionStepPullRequest:
+			if plan.pullRequest == nil {
+				return nil, fmt.Errorf("task %s requested pull-request.create step without pull_request configuration", plan.task.Name)
+			}
+			steps = append(steps, pullRequestAction{
+				title: plan.pullRequest.title,
+				body:  plan.pullRequest.body,
+				base:  plan.pullRequest.base,
+			})
+		case taskExecutionStepPullRequestOpen:
+			if plan.pullRequest == nil {
+				return nil, fmt.Errorf("task %s requested pull-request.open step without pull_request configuration", plan.task.Name)
+			}
+			steps = append(steps, pullRequestOpenAction{
+				branch: plan.branchName,
+				remote: plan.task.Branch.PushRemote,
+				title:  plan.pullRequest.title,
+				body:   plan.pullRequest.body,
+				base:   plan.pullRequest.base,
+				draft:  plan.pullRequest.draft,
+			})
+		case taskExecutionStepCustomActions:
+			for _, action := range plan.actions {
+				steps = append(steps, customTaskAction{task: action})
+			}
+		default:
+			return nil, fmt.Errorf("unsupported task step %q", step)
+		}
+	}
+	return steps, nil
 }
 
 func (planner taskPlanner) planFileChanges(environment *Environment, repository *RepositoryState) ([]taskFileChange, error) {
@@ -289,21 +397,7 @@ func (planner taskPlanner) planPullRequest(definition TaskPullRequestDefinition)
 }
 
 func (planner taskPlanner) renderTemplate(rawTemplate string, fallback string) (string, error) {
-	trimmed := strings.TrimSpace(rawTemplate)
-	if len(trimmed) == 0 {
-		return fallback, nil
-	}
-
-	tmpl, parseError := template.New("task").Parse(trimmed)
-	if parseError != nil {
-		return "", parseError
-	}
-
-	var buffer bytes.Buffer
-	if executeError := tmpl.Execute(&buffer, planner.templateData); executeError != nil {
-		return "", executeError
-	}
-	return buffer.String(), nil
+	return renderTemplateValue(rawTemplate, fallback, planner.templateData)
 }
 
 func (planner taskPlanner) defaultBranchName() string {

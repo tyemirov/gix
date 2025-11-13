@@ -1,16 +1,11 @@
 package workflow
 
 import (
-	"bytes"
 	"context"
-	"errors"
 	"fmt"
-	"io/fs"
-	"path/filepath"
 	"strings"
 
 	"github.com/temirov/gix/internal/execshell"
-	"github.com/temirov/gix/internal/githubcli"
 	"github.com/temirov/gix/internal/repos/shared"
 )
 
@@ -31,118 +26,54 @@ func (executor taskExecutor) Execute(executionContext context.Context) error {
 
 	executor.plan.reportPlan(executor.environment)
 
-	requireClean := executor.resolveEnsureClean()
 	if executor.plan.skipped {
 		executor.report(shared.EventCodeTaskSkip, shared.EventLevelInfo, "task has no changes", nil)
 		return nil
 	}
 
-	hasFileChanges := hasApplicableChanges(executor.plan.fileChanges)
-	hasActions := len(executor.plan.actions) > 0
-
-	if requireClean {
-		clean, cleanError := executor.environment.RepositoryManager.CheckCleanWorktree(executionContext, executor.repository.Path)
-		if cleanError != nil {
-			return cleanError
-		}
-		if !clean {
-			fields := map[string]string{}
-			statusEntries, statusError := executor.environment.RepositoryManager.WorktreeStatus(executionContext, executor.repository.Path)
-			if statusError != nil {
-				fields["status_error"] = statusError.Error()
-			} else if len(statusEntries) > 0 {
-				fields["status"] = strings.Join(statusEntries, ", ")
-			}
-			if len(fields) == 0 {
-				fields = nil
-			}
-			executor.report(shared.EventCodeTaskSkip, shared.EventLevelWarn, "repository dirty", fields)
-			return nil
-		}
+	execCtx := &ExecutionContext{
+		Environment:  executor.environment,
+		Repository:   executor.repository,
+		Plan:         &executor.plan,
+		requireClean: executor.resolveEnsureClean(),
 	}
 
-	if hasFileChanges {
-		startPoint := strings.TrimSpace(executor.plan.startPoint)
-		if len(startPoint) > 0 {
-			exists, existsError := executor.branchExists(executionContext, startPoint)
-			if existsError != nil {
-				return existsError
-			}
-			if !exists {
-				executor.report(shared.EventCodeTaskSkip, shared.EventLevelWarn, "start point missing", map[string]string{"start_point": startPoint})
-				executor.plan.startPoint = ""
-			}
-		}
-
-		if branchExists, existsError := executor.branchExists(executionContext, executor.plan.branchName); existsError != nil {
-			return existsError
-		} else if branchExists {
-			executor.report(shared.EventCodeTaskSkip, shared.EventLevelWarn, "branch exists", map[string]string{"branch": executor.plan.branchName})
-			return nil
-		}
-
-		var branchError error
+	hasFileChanges := hasApplicableChanges(executor.plan.fileChanges)
+	if hasFileChanges && executor.environment.RepositoryManager != nil {
 		originalBranch, branchError := executor.environment.RepositoryManager.GetCurrentBranch(executionContext, executor.repository.Path)
 		if branchError != nil {
 			return branchError
 		}
+		execCtx.setOriginalBranch(originalBranch)
+		defer executor.restoreBranch(executionContext, execCtx)
+	}
 
-		if branchToRestore := strings.TrimSpace(originalBranch); len(branchToRestore) > 0 {
-			defer func(branch string) {
-				_ = executor.checkoutBranch(executionContext, branch)
-			}(branchToRestore)
-		}
-
-		if err := executor.checkoutBranch(executionContext, executor.plan.branchName); err != nil {
-			startPoint := strings.TrimSpace(executor.plan.startPoint)
-			if len(startPoint) > 0 {
-				executor.report(shared.EventCodeTaskSkip, shared.EventLevelWarn, "start point missing", map[string]string{"start_point": startPoint})
-				executor.plan.startPoint = ""
-				if retryErr := executor.checkoutBranch(executionContext, executor.plan.branchName); retryErr != nil {
-					return retryErr
-				}
-			} else {
-				return err
+	for _, action := range executor.plan.workflowSteps {
+		for _, guard := range action.Guards() {
+			skipped, guardError := execCtx.handleActionError(action, guard.Check(executionContext, execCtx))
+			if guardError != nil {
+				return guardError
+			}
+			if skipped {
+				return nil
 			}
 		}
-	}
 
-	if hasFileChanges {
-		if err := executor.applyFileChanges(); err != nil {
-			return err
+		skipped, actionError := execCtx.handleActionError(action, action.Execute(executionContext, execCtx))
+		if actionError != nil {
+			return actionError
 		}
-		if err := executor.stageChanges(executionContext); err != nil {
-			return err
-		}
-		if err := executor.commitChanges(executionContext); err != nil {
-			return err
-		}
-	}
-
-	if hasFileChanges {
-		if err := executor.pushBranch(executionContext); err != nil {
-			return err
-		}
-	}
-
-	if hasActions {
-		if err := executor.executeActions(executionContext); err != nil {
-			return err
-		}
-	}
-
-	if executor.plan.pullRequest != nil {
-		if err := executor.createPullRequest(executionContext); err != nil {
-			return err
+		if skipped {
+			return nil
 		}
 	}
 
 	fields := map[string]string{}
-	if hasFileChanges {
+	if execCtx.filesApplied {
 		fields["branch"] = executor.plan.branchName
 	}
-	if hasActions {
-		fields["actions"] = fmt.Sprintf("%d", len(executor.plan.actions))
+	if execCtx.customActionsApplied > 0 {
+		fields["actions"] = fmt.Sprintf("%d", execCtx.customActionsApplied)
 	}
 	if len(fields) == 0 {
 		fields = nil
@@ -182,212 +113,18 @@ func parseEnsureCleanValue(raw string) (bool, bool) {
 	}
 }
 
-func (executor taskExecutor) branchExists(executionContext context.Context, branchName string) (bool, error) {
-	branchName = strings.TrimSpace(branchName)
-	if len(branchName) == 0 {
-		return false, nil
+func (executor taskExecutor) restoreBranch(executionContext context.Context, execCtx *ExecutionContext) {
+	if execCtx == nil || !execCtx.branchWasPrepared() {
+		return
 	}
-
-	arguments := []string{"rev-parse", "--verify", branchName}
-	_, err := executor.environment.GitExecutor.ExecuteGit(executionContext, execshell.CommandDetails{Arguments: arguments, WorkingDirectory: executor.repository.Path})
-	if err == nil {
-		return true, nil
+	branch := strings.TrimSpace(execCtx.originalBranch)
+	if len(branch) == 0 || executor.environment == nil || executor.environment.GitExecutor == nil {
+		return
 	}
-
-	var commandErr execshell.CommandFailedError
-	if errors.As(err, &commandErr) {
-		return false, nil
-	}
-
-	if strings.Contains(err.Error(), "unknown revision") || strings.Contains(err.Error(), "Needed a single revision") {
-		return false, nil
-	}
-
-	return false, err
-}
-
-func (executor taskExecutor) checkoutBranch(executionContext context.Context, branchName string) error {
-	trimmedName := strings.TrimSpace(branchName)
-	if len(trimmedName) == 0 {
-		return nil
-	}
-
-	planBranch := strings.TrimSpace(executor.plan.branchName)
-	startPoint := strings.TrimSpace(executor.plan.startPoint)
-
-	arguments := []string{"checkout", trimmedName}
-	if strings.EqualFold(trimmedName, planBranch) {
-		arguments = []string{"checkout", "-B", planBranch}
-		if len(startPoint) > 0 {
-			arguments = append(arguments, startPoint)
-		}
-	}
-
-	_, err := executor.environment.GitExecutor.ExecuteGit(executionContext, execshell.CommandDetails{Arguments: arguments, WorkingDirectory: executor.repository.Path})
-	return err
-}
-
-func (executor taskExecutor) applyFileChanges() error {
-	for _, change := range executor.plan.fileChanges {
-		if !change.apply {
-			continue
-		}
-
-		if change.mode == taskFileModeAppendIfMissing {
-			if err := executor.applyAppendIfMissingChange(change); err != nil {
-				return err
-			}
-			continue
-		}
-
-		directory := filepath.Dir(change.absolutePath)
-		if err := executor.environment.FileSystem.MkdirAll(directory, 0o755); err != nil {
-			return err
-		}
-		if err := executor.environment.FileSystem.WriteFile(change.absolutePath, change.content, change.permissions); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (executor taskExecutor) applyAppendIfMissingChange(change taskFileChange) error {
-	if executor.environment == nil || executor.environment.FileSystem == nil {
-		return errors.New("filesystem not configured for task execution")
-	}
-
-	directory := filepath.Dir(change.absolutePath)
-	if err := executor.environment.FileSystem.MkdirAll(directory, 0o755); err != nil {
-		return err
-	}
-
-	existingContent, readError := executor.environment.FileSystem.ReadFile(change.absolutePath)
-	if readError != nil && !errors.Is(readError, fs.ErrNotExist) {
-		return readError
-	}
-
-	desiredLines := parseEnsureLines(change.content)
-	if len(desiredLines) == 0 {
-		return nil
-	}
-
-	existingSet := buildEnsureLineSet(existingContent)
-	buffer := bytes.NewBuffer(nil)
-	if len(existingContent) > 0 {
-		buffer.Write(existingContent)
-	}
-
-	appendNewline := func() {
-		if buffer.Len() == 0 {
-			return
-		}
-		if buffer.Bytes()[buffer.Len()-1] != '\n' {
-			buffer.WriteByte('\n')
-		}
-	}
-
-	added := false
-	for _, line := range desiredLines {
-		if _, exists := existingSet[line]; exists {
-			continue
-		}
-		appendNewline()
-		buffer.WriteString(line)
-		buffer.WriteByte('\n')
-		existingSet[line] = struct{}{}
-		added = true
-	}
-
-	if !added && readError == nil {
-		return nil
-	}
-
-	return executor.environment.FileSystem.WriteFile(change.absolutePath, buffer.Bytes(), change.permissions)
-}
-
-func (executor taskExecutor) stageChanges(executionContext context.Context) error {
-	for _, change := range executor.plan.fileChanges {
-		if !change.apply {
-			continue
-		}
-		_, err := executor.environment.GitExecutor.ExecuteGit(executionContext, execshell.CommandDetails{Arguments: []string{"add", change.relativePath}, WorkingDirectory: executor.repository.Path})
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (executor taskExecutor) commitChanges(executionContext context.Context) error {
-	arguments := []string{"commit", "-m", executor.plan.commitMessage}
-	_, err := executor.environment.GitExecutor.ExecuteGit(executionContext, execshell.CommandDetails{Arguments: arguments, WorkingDirectory: executor.repository.Path})
-	return err
-}
-
-func (executor taskExecutor) pushBranch(executionContext context.Context) error {
-	remote := strings.TrimSpace(executor.plan.task.Branch.PushRemote)
-	if len(remote) == 0 {
-		executor.report(shared.EventCodeTaskSkip, shared.EventLevelWarn, "push remote not configured (set task.branch.push_remote)", nil)
-		return nil
-	}
-
-	if executor.environment != nil && executor.environment.RepositoryManager != nil {
-		remoteURL, remoteError := executor.environment.RepositoryManager.GetRemoteURL(executionContext, executor.repository.Path, remote)
-		if remoteError != nil {
-			executor.report(
-				shared.EventCodeTaskSkip,
-				shared.EventLevelWarn,
-				"remote lookup failed",
-				map[string]string{"remote": remote, "error": remoteError.Error()},
-			)
-			return nil
-		}
-		if len(strings.TrimSpace(remoteURL)) == 0 {
-			executor.report(
-				shared.EventCodeTaskSkip,
-				shared.EventLevelWarn,
-				"remote missing",
-				map[string]string{"remote": remote},
-			)
-			return nil
-		}
-	}
-
-	arguments := []string{"push", "--set-upstream", remote, executor.plan.branchName}
-	_, err := executor.environment.GitExecutor.ExecuteGit(executionContext, execshell.CommandDetails{Arguments: arguments, WorkingDirectory: executor.repository.Path})
-	return err
-}
-
-func (executor taskExecutor) createPullRequest(executionContext context.Context) error {
-	pr := executor.plan.pullRequest
-	if pr == nil {
-		return nil
-	}
-
-	repository := executor.repository.Inspection.FinalOwnerRepo
-	if len(strings.TrimSpace(repository)) == 0 {
-		return errors.New("unable to determine repository owner/name for pull request")
-	}
-
-	options := githubPullRequestOptions{
-		Repository: repository,
-		Title:      pr.title,
-		Body:       pr.body,
-		Base:       pr.base,
-		Head:       executor.plan.branchName,
-		Draft:      pr.draft,
-	}
-	return createPullRequest(executionContext, executor.environment, options)
-}
-
-func (executor taskExecutor) executeActions(executionContext context.Context) error {
-	actionExecutor := newTaskActionExecutor(executor.environment)
-	for _, action := range executor.plan.actions {
-		if err := actionExecutor.execute(executionContext, executor.repository, action); err != nil {
-			return err
-		}
-	}
-	return nil
+	_, _ = executor.environment.GitExecutor.ExecuteGit(executionContext, execshell.CommandDetails{
+		Arguments:        []string{"checkout", branch},
+		WorkingDirectory: executor.repository.Path,
+	})
 }
 
 func (executor taskExecutor) report(eventCode string, level shared.EventLevel, message string, fields map[string]string) {
@@ -395,28 +132,4 @@ func (executor taskExecutor) report(eventCode string, level shared.EventLevel, m
 		return
 	}
 	executor.environment.ReportRepositoryEvent(executor.repository, level, eventCode, message, fields)
-}
-
-type githubPullRequestOptions struct {
-	Repository string
-	Title      string
-	Body       string
-	Base       string
-	Head       string
-	Draft      bool
-}
-
-func createPullRequest(executionContext context.Context, environment *Environment, options githubPullRequestOptions) error {
-	if environment == nil || environment.GitHubClient == nil {
-		return errors.New("GitHub client not configured for task execution")
-	}
-
-	return environment.GitHubClient.CreatePullRequest(executionContext, githubcli.PullRequestCreateOptions{
-		Repository: options.Repository,
-		Title:      options.Title,
-		Body:       options.Body,
-		Base:       options.Base,
-		Head:       options.Head,
-		Draft:      options.Draft,
-	})
 }

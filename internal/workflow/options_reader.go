@@ -12,6 +12,7 @@ const (
 	optionRequireCleanKeyConstant       = "require_clean"
 	optionIncludeOwnerKeyConstant       = "include_owner"
 	optionOwnerKeyConstant              = "owner"
+	optionPathsKeyConstant              = "paths"
 	optionTargetsKeyConstant            = "targets"
 	optionRemoteNameKeyConstant         = "remote_name"
 	optionSourceBranchKeyConstant       = "source_branch"
@@ -100,6 +101,37 @@ func (reader optionReader) mapValue(key string) (map[string]any, bool, error) {
 		return nil, true, fmt.Errorf("option %s must be a map", key)
 	}
 	return typed, true, nil
+}
+
+func (reader optionReader) stringSlice(key string) ([]string, bool, error) {
+	value, exists := reader.entries[key]
+	if !exists {
+		return nil, false, nil
+	}
+	listValue, ok := value.([]any)
+	if ok {
+		values := make([]string, 0, len(listValue))
+		for _, entry := range listValue {
+			switch typed := entry.(type) {
+			case string:
+				values = append(values, strings.TrimSpace(typed))
+			default:
+				return nil, true, fmt.Errorf("option %s entries must be strings", key)
+			}
+		}
+		return values, true, nil
+	}
+
+	stringList, ok := value.([]string)
+	if ok {
+		values := make([]string, len(stringList))
+		for index := range stringList {
+			values[index] = strings.TrimSpace(stringList[index])
+		}
+		return values, true, nil
+	}
+
+	return nil, true, fmt.Errorf("option %s must be a list of strings", key)
 }
 
 func (reader optionReader) intValue(key string) (int, bool, error) {

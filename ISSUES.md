@@ -8,6 +8,18 @@ Read @AGENTS.md, @ARCHITECTURE.md, @POLICY.md, @NOTES.md,  @README.md and @ISSUE
 
 ## Improvements (215–299)
 
+- [x] [GX-238] Decompose workflow task execution into discrete actions
+  - Status: Resolved
+  - Category: Improvement
+  - Context: `internal/workflow/task_executor` currently intertwines file edits, git staging, commits, pushes, pull requests, and safeguards inside one monolithic function, making it hard to reason about failures (e.g., gitignore workflow) and to extend behavior without adding more conditional branches.
+  - Desired: Model each effectful step (file mutation, git stage, git commit, git push, pull-request creation) as independent workflow actions with their own safeguards, so workflows can compose sequences like `files.append`, `git.stage`, `git.commit`, `git.push` explicitly. Introduce guard helpers for clean worktree/branch/remotes, maintain a repository execution context for state sharing, and keep the planner declarative so no git/filesystem access happens before execution.
+  - Plan: 
+    1. Draft new action interfaces, guard helpers, and an ExecutionContext state struct; define built-in actions for `files.apply`, `git.stage`, `git.commit`, `git.push`, and `pull-request.create`, each with typed inputs and per-action safeguards.
+    2. Teach the executor to iterate over declared action steps rather than hard-coded phases, invoking the registered handlers while guard helpers enforce cleanliness/branch/remote requirements.
+    3. Migrate existing workflows (starting with gitignore) onto the new primitives, removing the monolithic executor path entirely with no backward-compatibility shims.
+  - Acceptance: Workflows express file edits, commits, pushes, and PRs via discrete actions; executor code shrinks and eliminates nested conditionals; guard violations surface per-action; updated tests cover new actions and legacy workflows remain supported during migration.
+  - Resolution: Added workflow action/guard infrastructure, rewrote the planner/executor to emit the discrete action pipeline, ported gitignore + custom actions onto the new primitives (no legacy path), documented the architecture, and expanded workflow tests to cover guards, branch restoration, and action-only tasks.
+
 - [x] [GX-215] Enable LLM actions in workflows and output piping between steps
   - Status: Resolved
   - Category: Improvement

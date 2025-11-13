@@ -56,6 +56,7 @@ func TestTaskPlannerBuildPlanRendersTemplates(testInstance *testing.T) {
 
 	plan, planError := planner.BuildPlan(environment, repository)
 	require.NoError(testInstance, planError)
+	testInstance.Logf("plan branch=%q", plan.branchName)
 
 	require.False(testInstance, plan.skipped)
 	require.Equal(testInstance, "feature-sample-docs-update", plan.branchName)
@@ -203,28 +204,46 @@ func TestCommitMessageActionPreservesUserProvidedVariable(t *testing.T) {
 
 func TestTaskExecutorSkipsPushWhenRemoteMissing(t *testing.T) {
 	gitExecutor := &recordingGitExecutor{
-		remoteURLs: map[string]string{"origin": ""},
+		remoteURLs:    map[string]string{"origin": ""},
+		worktreeClean: true,
+		currentBranch: "main",
+		existingRefs:  map[string]bool{"main": true},
 	}
 	repositoryManager, managerErr := gitrepo.NewRepositoryManager(gitExecutor)
 	require.NoError(t, managerErr)
 
-	repository := NewRepositoryState(audit.RepositoryInspection{Path: "/repositories/sample"})
-	plan := taskPlan{
-		task: TaskDefinition{
-			Branch: TaskBranchDefinition{PushRemote: "origin"},
+	repository := NewRepositoryState(audit.RepositoryInspection{
+		Path:                "/repositories/sample",
+		RemoteDefaultBranch: "main",
+	})
+
+	fileSystem := newFakeFileSystem(nil)
+	plan := planForTask(t, &Environment{FileSystem: fileSystem}, repository, TaskDefinition{
+		Name: "Apply file",
+		Branch: TaskBranchDefinition{
+			NameTemplate: "feature/{{ .Repository.Name }}",
+			PushRemote:   "origin",
 		},
-		branchName: "feature-license",
-	}
+		Files: []TaskFileDefinition{{
+			PathTemplate:    "docs/sample.md",
+			ContentTemplate: "Hello world",
+			Mode:            TaskFileModeOverwrite,
+			Permissions:     defaultTaskFilePermissions,
+		}},
+		Commit: TaskCommitDefinition{MessageTemplate: "docs: seed"},
+	})
+
 	output := &bytes.Buffer{}
 	reporter := shared.NewStructuredReporter(output, output, shared.WithRepositoryHeaders(false))
 	environment := &Environment{
 		GitExecutor:       gitExecutor,
 		RepositoryManager: repositoryManager,
+		FileSystem:        fileSystem,
 		Reporter:          reporter,
 	}
 
-	executor := taskExecutor{environment: environment, repository: repository, plan: plan}
-	require.NoError(t, executor.pushBranch(context.Background()))
+	executor := newTaskExecutor(environment, repository, plan)
+	require.NoError(t, executor.Execute(context.Background()))
 
 	for _, command := range gitExecutor.commands {
 		require.NotEqual(t, "push", firstArgument(command.Arguments))
@@ -240,27 +259,45 @@ func TestTaskExecutorSkipsPushWhenRemoteLookupFails(t *testing.T) {
 				Result:  execshell.ExecutionResult{ExitCode: 128},
 			},
 		},
+		worktreeClean: true,
+		currentBranch: "main",
+		existingRefs:  map[string]bool{"main": true},
 	}
 	repositoryManager, managerErr := gitrepo.NewRepositoryManager(gitExecutor)
 	require.NoError(t, managerErr)
 
-	repository := NewRepositoryState(audit.RepositoryInspection{Path: "/repositories/sample"})
-	plan := taskPlan{
-		task: TaskDefinition{
-			Branch: TaskBranchDefinition{PushRemote: "origin"},
+	repository := NewRepositoryState(audit.RepositoryInspection{
+		Path:                "/repositories/sample",
+		RemoteDefaultBranch: "main",
+	})
+
+	fileSystem := newFakeFileSystem(nil)
+	plan := planForTask(t, &Environment{FileSystem: fileSystem}, repository, TaskDefinition{
+		Name: "Apply file",
+		Branch: TaskBranchDefinition{
+			NameTemplate: "feature/{{ .Repository.Name }}",
+			PushRemote:   "origin",
 		},
-		branchName: "feature-license",
-	}
+		Files: []TaskFileDefinition{{
+			PathTemplate:    "docs/sample.md",
+			ContentTemplate: "Hello world",
+			Mode:            TaskFileModeOverwrite,
+			Permissions:     defaultTaskFilePermissions,
+		}},
+		Commit: TaskCommitDefinition{MessageTemplate: "docs: seed"},
+	})
+
 	output := &bytes.Buffer{}
 	reporter := shared.NewStructuredReporter(output, output, shared.WithRepositoryHeaders(false))
 	environment := &Environment{
 		GitExecutor:       gitExecutor,
 		RepositoryManager: repositoryManager,
+		FileSystem:        fileSystem,
 		Reporter:          reporter,
 	}
 
-	executor := taskExecutor{environment: environment, repository: repository, plan: plan}
-	require.NoError(t, executor.pushBranch(context.Background()))
+	executor := newTaskExecutor(environment, repository, plan)
+	require.NoError(t, executor.Execute(context.Background()))
 
 	for _, command := range gitExecutor.commands {
 		require.NotEqual(t, "push", firstArgument(command.Arguments))
@@ -491,23 +528,22 @@ func TestTaskExecutorRestoresOriginalBranchAfterApply(t *testing.T) {
 	repositoryManager, managerErr := gitrepo.NewRepositoryManager(gitExecutor)
 	require.NoError(t, managerErr)
 
-	plan := taskPlan{
-		task: TaskDefinition{
-			Name:        "Apply Task",
-			EnsureClean: true,
+	taskDefinition := TaskDefinition{
+		Name:        "Apply Task",
+		EnsureClean: true,
+		Branch: TaskBranchDefinition{
+			NameTemplate:       "feature/apply-task",
+			StartPointTemplate: "main",
 		},
-		repository:    repository,
-		branchName:    "feature/apply-task",
-		startPoint:    "main",
-		commitMessage: "apply task",
-		fileChanges: []taskFileChange{{
-			relativePath: "README.md",
-			absolutePath: "/repositories/sample/README.md",
-			content:      []byte("updated"),
-			permissions:  defaultTaskFilePermissions,
-			apply:        true,
+		Files: []TaskFileDefinition{{
+			PathTemplate:    "README.md",
+			ContentTemplate: "updated",
+			Mode:            TaskFileModeOverwrite,
+			Permissions:     defaultTaskFilePermissions,
 		}},
+		Commit: TaskCommitDefinition{MessageTemplate: "apply task"},
 	}
+	plan := planForTask(t, &Environment{FileSystem: fileSystem}, repository, taskDefinition)
 
 	output := &bytes.Buffer{}
 	reporter := shared.NewStructuredReporter(output, output, shared.WithRepositoryHeaders(false))
@@ -573,10 +609,10 @@ func TestTaskPlannerBuildPlanSupportsActions(testInstance *testing.T) {
 func TestTaskExecutorExecuteActionsUnknownType(testInstance *testing.T) {
 	repository := NewRepositoryState(audit.RepositoryInspection{Path: "/repositories/sample"})
 	environment := &Environment{}
-	plan := taskPlan{actions: []taskAction{{actionType: "unknown.action", parameters: map[string]any{}}}}
+	plan := planForActions(testInstance, repository, []TaskActionDefinition{{Type: "unknown.action"}})
 	executor := newTaskExecutor(environment, repository, plan)
 
-	executionError := executor.executeActions(context.Background())
+	executionError := executor.Execute(context.Background())
 	require.Error(testInstance, executionError)
 }
 
@@ -588,10 +624,10 @@ func TestTaskExecutorExecuteActionsCanonicalRemote(testInstance *testing.T) {
 		RemoteDefaultBranch: "main",
 	})
 	environment := &Environment{}
-	plan := taskPlan{actions: []taskAction{{actionType: taskActionCanonicalRemote, parameters: map[string]any{}}}}
+	plan := planForActions(testInstance, repository, []TaskActionDefinition{{Type: taskActionCanonicalRemote}})
 	executor := newTaskExecutor(environment, repository, plan)
 
-	executionError := executor.executeActions(context.Background())
+	executionError := executor.Execute(context.Background())
 	require.NoError(testInstance, executionError)
 }
 
@@ -605,10 +641,13 @@ func TestTaskExecutorExecuteActionsRelease(testInstance *testing.T) {
 		"message": "Release v1.2.3",
 		"remote":  "origin",
 	}
-	plan := taskPlan{actions: []taskAction{{actionType: taskActionReleaseTag, parameters: actionParameters}}}
+	plan := planForActions(testInstance, repository, []TaskActionDefinition{{
+		Type:    taskActionReleaseTag,
+		Options: actionParameters,
+	}})
 	executor := newTaskExecutor(environment, repository, plan)
 
-	executionError := executor.executeActions(context.Background())
+	executionError := executor.Execute(context.Background())
 	require.NoError(testInstance, executionError)
 	require.Len(testInstance, gitExecutor.commands, 2)
 	expectedMessage := fmt.Sprintf(releaseActionMessageTemplate+"\n", repository.Path, "v1.2.3")
@@ -618,10 +657,13 @@ func TestTaskExecutorExecuteActionsRelease(testInstance *testing.T) {
 func TestTaskExecutorExecuteActionsReleaseRequiresTag(testInstance *testing.T) {
 	repository := NewRepositoryState(audit.RepositoryInspection{Path: "/repositories/sample"})
 	environment := &Environment{}
-	plan := taskPlan{actions: []taskAction{{actionType: taskActionReleaseTag, parameters: map[string]any{}}}}
+	plan := planForActions(testInstance, repository, []TaskActionDefinition{{
+		Type:    taskActionReleaseTag,
+		Options: map[string]any{},
+	}})
 	executor := newTaskExecutor(environment, repository, plan)
 
-	executionError := executor.executeActions(context.Background())
+	executionError := executor.Execute(context.Background())
 	require.Error(testInstance, executionError)
 	require.Contains(testInstance, executionError.Error(), "release action requires 'tag'")
 }
@@ -644,10 +686,13 @@ func TestTaskExecutorExecuteActionsBranchCleanup(testInstance *testing.T) {
 		"remote": "origin",
 		"limit":  "25",
 	}
-	plan := taskPlan{actions: []taskAction{{actionType: "repo.branches.cleanup", parameters: actionParameters}}}
+	plan := planForActions(testInstance, repository, []TaskActionDefinition{{
+		Type:    "repo.branches.cleanup",
+		Options: actionParameters,
+	}})
 	taskExecutor := newTaskExecutor(environment, repository, plan)
 
-	executionError := taskExecutor.executeActions(context.Background())
+	executionError := taskExecutor.Execute(context.Background())
 	require.NoError(testInstance, executionError)
 	require.NotEmpty(testInstance, executor.gitCommands)
 	require.NotEmpty(testInstance, executor.githubCommands)
@@ -674,13 +719,7 @@ func TestTaskExecutorExecuteActionsOnlyDoesNotEmitApplyLog(testInstance *testing
 	reporter := shared.NewStructuredReporter(output, output, shared.WithRepositoryHeaders(false))
 	repository := NewRepositoryState(audit.RepositoryInspection{Path: "/repositories/sample"})
 	environment := &Environment{Output: output, Reporter: reporter}
-	plan := taskPlan{
-		task: TaskDefinition{Name: "Actions Only"},
-		actions: []taskAction{
-			{actionType: actionType, parameters: map[string]any{}},
-		},
-		repository: repository,
-	}
+	plan := planForActions(testInstance, repository, []TaskActionDefinition{{Type: actionType}})
 	executor := newTaskExecutor(environment, repository, plan)
 
 	executionError := executor.Execute(context.Background())
@@ -702,10 +741,13 @@ func TestTaskExecutorExecuteActionsBranchCleanupRequiresRemote(testInstance *tes
 	executor := &branchCleanupExecutor{}
 	repository := NewRepositoryState(audit.RepositoryInspection{Path: "/repositories/sample"})
 	environment := &Environment{GitExecutor: executor}
-	plan := taskPlan{actions: []taskAction{{actionType: "repo.branches.cleanup", parameters: map[string]any{}}}}
+	plan := planForActions(testInstance, repository, []TaskActionDefinition{{
+		Type:    "repo.branches.cleanup",
+		Options: map[string]any{},
+	}})
 	taskExecutor := newTaskExecutor(environment, repository, plan)
 
-	executionError := taskExecutor.executeActions(context.Background())
+	executionError := taskExecutor.Execute(context.Background())
 	require.Error(testInstance, executionError)
 	require.Contains(testInstance, executionError.Error(), "branch cleanup action requires 'remote'")
 }
@@ -780,6 +822,56 @@ func TestTaskPlannerSkipAppendIfMissingWhenAlreadyPresent(t *testing.T) {
 	require.Equal(t, "lines-present", plan.fileChanges[0].skipReason)
 }
 
+func TestTaskPlannerExecutionStepsRestrictActions(t *testing.T) {
+	repository := NewRepositoryState(audit.RepositoryInspection{
+		Path:                "/repositories/sample",
+		FinalOwnerRepo:      "octocat/sample",
+		RemoteDefaultBranch: "main",
+	})
+	fileSystem := newFakeFileSystem(nil)
+	environment := &Environment{FileSystem: fileSystem}
+
+	taskDefinition := TaskDefinition{
+		Name: "Append gitignore",
+		Steps: []taskExecutionStep{
+			taskExecutionStepFilesApply,
+		},
+		Files: []TaskFileDefinition{{
+			PathTemplate:    ".gitignore",
+			ContentTemplate: ".env",
+			Mode:            TaskFileModeAppendIfMissing,
+			Permissions:     defaultTaskFilePermissions,
+		}},
+	}
+
+	planner := newTaskPlanner(taskDefinition, buildTaskTemplateData(repository, taskDefinition, nil))
+	plan, planErr := planner.BuildPlan(environment, repository)
+	require.NoError(t, planErr)
+	require.False(t, plan.skipped)
+	require.Len(t, plan.workflowSteps, 1)
+	require.Equal(t, "files.apply", plan.workflowSteps[0].Name())
+}
+
+func TestTaskPlannerExecutionStepsRequirePullRequestConfig(t *testing.T) {
+	repository := NewRepositoryState(audit.RepositoryInspection{
+		Path:                "/repositories/sample",
+		FinalOwnerRepo:      "octocat/sample",
+		RemoteDefaultBranch: "main",
+	})
+	fileSystem := newFakeFileSystem(nil)
+	environment := &Environment{FileSystem: fileSystem}
+
+	taskDefinition := TaskDefinition{
+		Name:  "Pull Request",
+		Steps: []taskExecutionStep{taskExecutionStepPullRequest},
+	}
+
+	planner := newTaskPlanner(taskDefinition, buildTaskTemplateData(repository, taskDefinition, nil))
+	_, planErr := planner.BuildPlan(environment, repository)
+	require.Error(t, planErr)
+	require.Contains(t, planErr.Error(), "pull_request configuration")
+}
+
 func TestTaskExecutorApplyAppendIfMissing(t *testing.T) {
 	repositoryPath := "/repositories/ensure"
 	fileSystem := newFakeFileSystem(map[string][]byte{
@@ -805,8 +897,13 @@ func TestTaskExecutorApplyAppendIfMissing(t *testing.T) {
 	require.Len(t, plan.fileChanges, 1)
 	require.True(t, plan.fileChanges[0].apply)
 
-	executor := newTaskExecutor(environment, repository, plan)
-	require.NoError(t, executor.applyFileChanges())
+	execCtx := &ExecutionContext{
+		Environment: environment,
+		Repository:  repository,
+		Plan:        &plan,
+	}
+	action := filesApplyAction{changes: plan.fileChanges}
+	require.NoError(t, action.Execute(context.Background(), execCtx))
 
 	updated, readErr := fileSystem.ReadFile(filepath.Join(repositoryPath, ".gitignore"))
 	require.NoError(t, readErr)
@@ -1224,4 +1321,26 @@ func testBranchCleanupHandler(ctx context.Context, environment *Environment, rep
 	}
 
 	return nil
+}
+
+func planForTask(t *testing.T, environment *Environment, repository *RepositoryState, definition TaskDefinition) taskPlan {
+	t.Helper()
+
+	templateData := buildTaskTemplateData(repository, definition, nil)
+	planner := newTaskPlanner(definition, templateData)
+	plan, err := planner.BuildPlan(environment, repository)
+	require.NoError(t, err)
+	return plan
+}
+
+func planForActions(t *testing.T, repository *RepositoryState, actions []TaskActionDefinition) taskPlan {
+	t.Helper()
+
+	definition := TaskDefinition{
+		Name:        "Actions Only",
+		EnsureClean: false,
+		Actions:     actions,
+		Commit:      TaskCommitDefinition{},
+	}
+	return planForTask(t, nil, repository, definition)
 }
