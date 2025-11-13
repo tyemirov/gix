@@ -13,6 +13,7 @@
 - Removed legacy `line-edit` mode references and replaced with `append-if-missing` and `ensure-lines` naming for clarity.
 - Enhanced testing coverage for task planning and execution of the new file modes, ensuring correct behavior and idempotence.
 - Added detailed documentation for `pkg/llm` explaining configuration, usage, and design principles.
+- Shell command failures now report the invoked arguments and the first line of stderr, making `git`/`gh` workflow errors actionable.
 
 ### Bug Fixes 🐛
 - Fixed legacy mode acceptance issues by supporting the renamed `append-if-missing` mode in parser and executor components.

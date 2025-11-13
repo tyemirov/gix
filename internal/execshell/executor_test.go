@@ -227,6 +227,36 @@ func TestShellExecutorHumanReadableLogging(testInstance *testing.T) {
 	}
 }
 
+func TestCommandFailedErrorIncludesArgumentsAndStandardError(testInstance *testing.T) {
+	commandError := execshell.CommandFailedError{
+		Command: execshell.ShellCommand{
+			Name: execshell.CommandGit,
+			Details: execshell.CommandDetails{
+				Arguments: []string{"push", "--set-upstream", "origin", "feature/docs"},
+			},
+		},
+		Result: execshell.ExecutionResult{
+			ExitCode:      1,
+			StandardError: "fatal: unable to access 'https://example.com/repo.git/': Could not resolve host: example.com\nhint: check your DNS\n",
+		},
+	}
+
+	require.Equal(
+		testInstance,
+		"git command exited with code 1 (push --set-upstream origin feature/docs): fatal: unable to access 'https://example.com/repo.git/': Could not resolve host: example.com",
+		commandError.Error(),
+	)
+}
+
+func TestCommandFailedErrorOmitsOptionalDetailsWhenUnavailable(testInstance *testing.T) {
+	commandError := execshell.CommandFailedError{
+		Command: execshell.ShellCommand{Name: execshell.CommandGit},
+		Result:  execshell.ExecutionResult{ExitCode: 2},
+	}
+
+	require.Equal(testInstance, "git command exited with code 2", commandError.Error())
+}
+
 func TestShellExecutorInjectsGitHubTokenFromEnvironment(testInstance *testing.T) {
 	testInstance.Setenv(githubauth.EnvGitHubCLIToken, "")
 	testInstance.Setenv(githubauth.EnvGitHubToken, "")

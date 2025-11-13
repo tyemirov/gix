@@ -93,7 +93,21 @@ const commandFailureErrorMessageTemplateConstant = "%s command exited with code 
 
 // Error describes the failure in a readable format.
 func (commandError CommandFailedError) Error() string {
-	return fmt.Sprintf(commandFailureErrorMessageTemplateConstant, commandError.Command.Name, commandError.Result.ExitCode)
+	baseMessage := fmt.Sprintf(commandFailureErrorMessageTemplateConstant, commandError.Command.Name, commandError.Result.ExitCode)
+
+	if len(commandError.Command.Details.Arguments) > 0 {
+		baseMessage = fmt.Sprintf("%s (%s)", baseMessage, strings.Join(commandError.Command.Details.Arguments, " "))
+	}
+
+	if trimmed := strings.TrimSpace(commandError.Result.StandardError); len(trimmed) > 0 {
+		firstLine := trimmed
+		if newlineIndex := strings.Index(firstLine, "\n"); newlineIndex >= 0 {
+			firstLine = firstLine[:newlineIndex]
+		}
+		baseMessage = fmt.Sprintf("%s: %s", baseMessage, firstLine)
+	}
+
+	return baseMessage
 }
 
 // CommandExecutionError wraps unexpected execution failures from the runner.
