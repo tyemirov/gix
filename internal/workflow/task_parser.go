@@ -288,8 +288,8 @@ func parseTaskFileMode(raw string) TaskFileMode {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case string(taskFileModeSkipIfExists):
 		return TaskFileModeSkipIfExists
-	case string(taskFileModeEnsureLines):
-		return TaskFileModeEnsureLines
+	case string(taskFileModeLineEdit):
+		return TaskFileModeLineEdit
 	default:
 		return TaskFileModeOverwrite
 	}

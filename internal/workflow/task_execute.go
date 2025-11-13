@@ -233,7 +233,7 @@ func (executor taskExecutor) applyFileChanges() error {
 			continue
 		}
 
-		if change.mode == taskFileModeEnsureLines {
+		if change.mode == taskFileModeLineEdit {
 			if err := executor.applyEnsureLinesChange(change); err != nil {
 				return err
 			}

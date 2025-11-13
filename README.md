@@ -119,7 +119,7 @@ Variables appear inside task templates via `{{ index .Environment "key" }}` and 
 | --- | --- |
 | `license_content` | Required license text (inline or loaded from `--var template=...`). |
 | `license_target` | Relative path for the output file (defaults to `LICENSE`). |
-| `license_mode` | File handling mode (`overwrite`, `skip-if-exists`, or `ensure-lines`). |
+| `license_mode` | File handling mode (`overwrite`, `skip-if-exists`, or `line-edit`). |
 | `license_branch` | Branch name template for the license changes. |
 | `license_start_point` | Start point for the license branch (defaults to the repository default). |
 | `license_remote` | Remote used for pushes (defaults to `origin`). |
@@ -295,10 +295,10 @@ Schema highlights:
 
 - Task: `{ name, ensure_clean, branch, files[], actions[], commit, pull_request, safeguards }`
 - Branch: `{ name, start_point, push_remote }` where `name`/`start_point` are Go text/templates rendered with repository data; default `push_remote: origin`.
-- Files: `{ path, content, mode: overwrite|skip-if-exists|ensure-lines, permissions }` with templated `path`/`content`.
+- Files: `{ path, content, mode: overwrite|skip-if-exists|line-edit, permissions }` with templated `path`/`content`.
   - `mode: overwrite` rewrites the entire file.
   - `mode: skip-if-exists` leaves existing files untouched.
-  - `mode: ensure-lines` preserves existing content and appends each missing line from `content`, making it ideal for `.gitignore`-style enforcement.
+  - `mode: line-edit` preserves existing content and appends each missing line from `content`, making it ideal for `.gitignore`-style enforcement.
 - Actions: `{ type, options }` where `type` is one of:
  - `repo.remote.update`, `repo.remote.convert-protocol`, `repo.folder.rename`, `branch.default`, `repo.release.tag`, `audit.report`, `repo.history.purge`, `repo.files.replace`, `repo.namespace.rewrite`
 - LLM: optional `{ model, base_url, api_key_env, timeout_seconds, max_completion_tokens, temperature }` block. When present, commit/changelog actions reuse the configured client instead of requiring a programmatic injector.
@@ -391,7 +391,7 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
  - Removes untagged GHCR versions. Flag: `--package` for the container name.
 - `gix files replace --find <string> [--replace <string>] [--pattern <glob>...] [--command "<shell>"] [--require-clean] [--branch <name>] [--require-path <rel>...] [--roots <dir>...] [-y]` (alias `sub`)
  - Performs text substitutions across matched files with optional safeguards.
-- `gix files add --template <path> [--content <text>] [--mode overwrite|skip-if-exists|ensure-lines] [--branch <template>] [--remote <name>] [--commit-message <text>] [--roots <dir>...] [-y]` (alias `seed`)
+- `gix files add --template <path> [--content <text>] [--mode overwrite|skip-if-exists|line-edit] [--branch <template>] [--remote <name>] [--commit-message <text>] [--roots <dir>...] [-y]` (alias `seed`)
  - Seeds or updates files across repositories, creating branches and pushes when configured.
 - `gix workflow license --var template=LICENSE --var license_branch=chore/license --roots <dir>... [-y]`
  - Runs the embedded license preset; see “License preset variables” for supported options.
@@ -435,3 +435,4 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
 - Executor errors surface via the contextual catalog in `internal/repos/errors`, which prints `PLAN-*`, `*-DONE`, and `*-SKIP` banners through the shared reporter.
 - Confirmation prompts respect the `[a/N/y]` contract everywhere; passing `--yes` (or setting `assume_yes: true` in workflows) flips the shared confirmation policy to auto-accept.
 - Run `make ci` before submitting patches; it enforces formatting plus `go vet`, `staticcheck`, `ineffassign`, and the unit/integration test suites. At minimum, run `go run honnef.co/go/tools/cmd/staticcheck@master ./...` so lint blocks (SA1006, etc.) surface before you commit.
+    - `mode: line-edit` preserves existing content and appends each missing line from `content`, making it ideal for `.gitignore` enforcement.

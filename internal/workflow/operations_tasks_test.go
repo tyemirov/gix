@@ -752,7 +752,7 @@ func TestTaskPlannerSkipWhenFileUnchanged(testInstance *testing.T) {
 	require.Equal(testInstance, "unchanged", plan.fileChanges[0].skipReason)
 }
 
-func TestTaskPlannerSkipEnsureLinesWhenAlreadyPresent(t *testing.T) {
+func TestTaskPlannerSkipLineEditWhenAlreadyPresent(t *testing.T) {
 	repositoryPath := "/repositories/ensure"
 	fileSystem := newFakeFileSystem(map[string][]byte{
 		filepath.Join(repositoryPath, ".gitignore"): []byte("# existing\n.env\n"),
@@ -765,7 +765,7 @@ func TestTaskPlannerSkipEnsureLinesWhenAlreadyPresent(t *testing.T) {
 		Files: []TaskFileDefinition{{
 			PathTemplate:    ".gitignore",
 			ContentTemplate: "# existing\n.env\n",
-			Mode:            TaskFileModeEnsureLines,
+			Mode:            TaskFileModeLineEdit,
 			Permissions:     defaultTaskFilePermissions,
 		}},
 	}
@@ -780,7 +780,7 @@ func TestTaskPlannerSkipEnsureLinesWhenAlreadyPresent(t *testing.T) {
 	require.Equal(t, "lines-present", plan.fileChanges[0].skipReason)
 }
 
-func TestTaskExecutorApplyEnsureLines(t *testing.T) {
+func TestTaskExecutorApplyLineEdit(t *testing.T) {
 	repositoryPath := "/repositories/ensure"
 	fileSystem := newFakeFileSystem(map[string][]byte{
 		filepath.Join(repositoryPath, ".gitignore"): []byte("# existing\n.env\n"),
@@ -793,7 +793,7 @@ func TestTaskExecutorApplyEnsureLines(t *testing.T) {
 		Files: []TaskFileDefinition{{
 			PathTemplate:    ".gitignore",
 			ContentTemplate: "# existing\n.env\nbin/\n",
-			Mode:            TaskFileModeEnsureLines,
+			Mode:            TaskFileModeLineEdit,
 			Permissions:     defaultTaskFilePermissions,
 		}},
 	}
