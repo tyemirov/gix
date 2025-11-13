@@ -119,7 +119,7 @@ Variables appear inside task templates via `{{ index .Environment "key" }}` and 
 | --- | --- |
 | `license_content` | Required license text (inline or loaded from `--var template=...`). |
 | `license_target` | Relative path for the output file (defaults to `LICENSE`). |
-| `license_mode` | File handling mode (`overwrite`, `skip-if-exists`, or `append-if-missing`). |
+| `license_mode` | File handling mode (`overwrite`, `skip-if-exists`, or `append-if-missing`, with `line-edit` accepted as a legacy alias). |
 | `license_branch` | Branch name template for the license changes. |
 | `license_start_point` | Start point for the license branch (defaults to the repository default). |
 | `license_remote` | Remote used for pushes (defaults to `origin`). |
@@ -298,7 +298,7 @@ Schema highlights:
 - Files: `{ path, content, mode: overwrite|skip-if-exists|append-if-missing, permissions }` with templated `path`/`content`.
   - `mode: overwrite` rewrites the entire file.
   - `mode: skip-if-exists` leaves existing files untouched.
-  - `mode: append-if-missing` preserves existing content and appends each missing line from `content`, making it ideal for `.gitignore`-style enforcement.
+  - `mode: append-if-missing` preserves existing content and appends each missing line from `content`, making it ideal for `.gitignore`-style enforcement. The legacy keyword `line-edit` is still accepted for backward compatibility.
 - Actions: `{ type, options }` where `type` is one of:
  - `repo.remote.update`, `repo.remote.convert-protocol`, `repo.folder.rename`, `branch.default`, `repo.release.tag`, `audit.report`, `repo.history.purge`, `repo.files.replace`, `repo.namespace.rewrite`
 - LLM: optional `{ model, base_url, api_key_env, timeout_seconds, max_completion_tokens, temperature }` block. When present, commit/changelog actions reuse the configured client instead of requiring a programmatic injector.

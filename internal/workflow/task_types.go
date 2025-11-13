@@ -42,6 +42,7 @@ const (
 	taskFileModeOverwrite       taskFileExistsMode = "overwrite"
 	taskFileModeSkipIfExists    taskFileExistsMode = "skip-if-exists"
 	taskFileModeAppendIfMissing taskFileExistsMode = "append-if-missing"
+	taskFileModeLegacyLineEdit  taskFileExistsMode = "line-edit"
 )
 
 // TaskFileMode enumerates file handling semantics for task-managed files.

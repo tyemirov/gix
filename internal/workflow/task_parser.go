@@ -290,6 +290,8 @@ func parseTaskFileMode(raw string) TaskFileMode {
 		return TaskFileModeSkipIfExists
 	case string(taskFileModeAppendIfMissing):
 		return TaskFileModeAppendIfMissing
+	case string(taskFileModeLegacyLineEdit):
+		return TaskFileModeAppendIfMissing
 	default:
 		return TaskFileModeOverwrite
 	}
