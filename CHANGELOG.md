@@ -1,5 +1,32 @@
 # Changelog
 
+## [v0.2.0-rc.11]
+
+### Features ✨
+- Added `append-if-missing` file mode for workflow-managed files to append missing lines without overwriting existing content, ideal for `.gitignore` enforcement.
+- Renamed legacy `line-edit` mode to `append-if-missing` with backward compatibility acceptance and new `ensure-lines` file mode added.
+- Introduced reusable `pkg/llm` package for large language model integrations with lightweight interfaces and configurable HTTP plumbing.
+
+### Improvements ⚙️
+- Refactored workflow tasks and task executor to support the new `append-if-missing` mode with proper planning and applying logic.
+- Updated CLI options and documentation to include the new file mode `append-if-missing` for commands like `gix files add` and workflow license preset.
+- Removed legacy `line-edit` mode references and replaced with `append-if-missing` and `ensure-lines` naming for clarity.
+- Enhanced testing coverage for task planning and execution of the new file modes, ensuring correct behavior and idempotence.
+- Added detailed documentation for `pkg/llm` explaining configuration, usage, and design principles.
+
+### Bug Fixes 🐛
+- Fixed legacy mode acceptance issues by supporting the renamed `append-if-missing` mode in parser and executor components.
+
+### Testing 🧪
+- Added comprehensive unit tests for parsing task file modes including the new `append-if-missing`.
+- Added tests verifying task planner skips when lines are already present and executor correctly appends missing lines only.
+- Expanded integration tests for task executor's append-if-missing functionality in workflow-managed files.
+
+### Docs 📚
+- Documented `append-if-missing` mode in README, schema highlights, and CLI command descriptions with examples.
+- Created detailed `pkg/llm` integration guide with overview, configuration, and usage instructions.
+- Updated workflow packages documentation reflecting new file modes and usage patterns.
+
 ## [v0.2.0-rc.10]
 
 ### Features ✨
