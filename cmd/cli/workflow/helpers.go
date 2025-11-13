@@ -1,11 +1,13 @@
 package workflow
 
 import (
+	"context"
+
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
 	"github.com/temirov/gix/internal/repos/shared"
-	"github.com/temirov/gix/pkg/taskrunner"
+	workflowpkg "github.com/temirov/gix/internal/workflow"
 )
 
 // LoggerProvider yields a zap logger for command execution.
@@ -14,11 +16,30 @@ type LoggerProvider func() *zap.Logger
 // PrompterFactory constructs confirmation prompters scoped to a command.
 type PrompterFactory func(*cobra.Command) shared.ConfirmationPrompter
 
-// TaskRunnerExecutor represents a workflow runner.
-type TaskRunnerExecutor = taskrunner.Executor
+// OperationExecutor coordinates workflow execution.
+type OperationExecutor interface {
+	Execute(ctx context.Context, roots []string, options workflowpkg.RuntimeOptions) (workflowpkg.ExecutionOutcome, error)
+}
 
-// TaskRunnerFactory constructs workflow runners.
-type TaskRunnerFactory = taskrunner.Factory
+// OperationExecutorFactory constructs workflow executors.
+type OperationExecutorFactory func(nodes []*workflowpkg.OperationNode, dependencies workflowpkg.Dependencies) OperationExecutor
+
+func resolveOperationExecutor(factory OperationExecutorFactory, nodes []*workflowpkg.OperationNode, dependencies workflowpkg.Dependencies) OperationExecutor {
+	if factory != nil {
+		if executor := factory(nodes, dependencies); executor != nil {
+			return executor
+		}
+	}
+	return operationExecutorAdapter{executor: workflowpkg.NewExecutorFromNodes(nodes, dependencies)}
+}
+
+type operationExecutorAdapter struct {
+	executor *workflowpkg.Executor
+}
+
+func (adapter operationExecutorAdapter) Execute(ctx context.Context, roots []string, options workflowpkg.RuntimeOptions) (workflowpkg.ExecutionOutcome, error) {
+	return adapter.executor.Execute(ctx, roots, options)
+}
 
 func displayCommandHelp(command *cobra.Command) error {
 	if command == nil {

@@ -112,18 +112,19 @@ func TestWorkflowCommandConfigurationPrecedence(testInstance *testing.T) {
 			require.NoError(subtest, writeError)
 
 			discoverer := &fakeWorkflowDiscoverer{}
-			executor := &fakeWorkflowGitExecutor{}
-			runner := &recordingTaskRunner{}
+			gitExecutor := &fakeWorkflowGitExecutor{}
+			executorRecorder := &recordingExecutor{}
 
 			builder := workflowcmd.CommandBuilder{
 				LoggerProvider: func() *zap.Logger { return zap.NewNop() },
 				Discoverer:     discoverer,
-				GitExecutor:    executor,
+				GitExecutor:    gitExecutor,
 				ConfigurationProvider: func() workflowcmd.CommandConfiguration {
 					return testCase.configuration
 				},
-				TaskRunnerFactory: func(workflowpkg.Dependencies) workflowcmd.TaskRunnerExecutor {
-					return runner
+				OperationExecutorFactory: func(nodes []*workflowpkg.OperationNode, dependencies workflowpkg.Dependencies) workflowcmd.OperationExecutor {
+					executorRecorder.captureOperations(nodes)
+					return executorRecorder
 				},
 			}
 
@@ -148,7 +149,7 @@ func TestWorkflowCommandConfigurationPrecedence(testInstance *testing.T) {
 				require.Error(subtest, executionError)
 				require.EqualError(subtest, executionError, testCase.expectedErrorMessage)
 				require.Nil(subtest, discoverer.receivedRoots)
-				require.Equal(subtest, 0, runner.invocations)
+				require.Equal(subtest, 0, executorRecorder.invocations)
 
 				outputText := outputBuffer.String()
 				require.Contains(subtest, outputText, workflowUsageSnippet)
@@ -157,10 +158,10 @@ func TestWorkflowCommandConfigurationPrecedence(testInstance *testing.T) {
 
 			require.NoError(subtest, executionError)
 
-			require.Equal(subtest, 1, runner.invocations)
-			require.Equal(subtest, testCase.expectedRoots, runner.roots)
-			require.NotEmpty(subtest, runner.definitions)
-			require.Equal(subtest, "audit.report", runner.definitions[0].Actions[0].Type)
+			require.Equal(subtest, 1, executorRecorder.invocations)
+			require.Equal(subtest, testCase.expectedRoots, executorRecorder.roots)
+			require.NotEmpty(subtest, executorRecorder.operations)
+			require.Equal(subtest, "audit report", executorRecorder.operations[0])
 		})
 	}
 }
@@ -190,8 +191,8 @@ func bindGlobalWorkflowFlags(command *cobra.Command) {
 
 func TestWorkflowCommandRunsPreset(testInstance *testing.T) {
 	discoverer := &fakeWorkflowDiscoverer{}
-	executor := &fakeWorkflowGitExecutor{}
-	runner := &recordingTaskRunner{}
+	gitExecutor := &fakeWorkflowGitExecutor{}
+	executorRecorder := &recordingExecutor{}
 	presetCatalog := &fakePresetCatalog{
 		metadata: []workflowcmd.PresetMetadata{
 			{Name: "license", Description: "License audit workflow"},
@@ -208,14 +209,15 @@ func TestWorkflowCommandRunsPreset(testInstance *testing.T) {
 	builder := workflowcmd.CommandBuilder{
 		LoggerProvider: func() *zap.Logger { return zap.NewNop() },
 		Discoverer:     discoverer,
-		GitExecutor:    executor,
+		GitExecutor:    gitExecutor,
 		ConfigurationProvider: func() workflowcmd.CommandConfiguration {
 			return workflowcmd.CommandConfiguration{
 				Roots: []string{workflowConfiguredRootConstant},
 			}
 		},
-		TaskRunnerFactory: func(workflowpkg.Dependencies) workflowcmd.TaskRunnerExecutor {
-			return runner
+		OperationExecutorFactory: func(nodes []*workflowpkg.OperationNode, dependencies workflowpkg.Dependencies) workflowcmd.OperationExecutor {
+			executorRecorder.captureOperations(nodes)
+			return executorRecorder
 		},
 		PresetCatalogFactory: func() workflowcmd.PresetCatalog {
 			return presetCatalog
@@ -233,9 +235,9 @@ func TestWorkflowCommandRunsPreset(testInstance *testing.T) {
 	command.SetArgs([]string{"license"})
 
 	require.NoError(testInstance, command.Execute())
-	require.Equal(testInstance, 1, runner.invocations)
-	require.Len(testInstance, runner.definitions, 1)
-	require.Equal(testInstance, "audit.report", runner.definitions[0].Actions[0].Type)
+	require.Equal(testInstance, 1, executorRecorder.invocations)
+	require.Len(testInstance, executorRecorder.operations, 1)
+	require.Equal(testInstance, "audit report", executorRecorder.operations[0])
 }
 
 func TestWorkflowCommandListsPresets(testInstance *testing.T) {
@@ -275,7 +277,7 @@ func TestWorkflowCommandPassesVariablesFromFlags(testInstance *testing.T) {
 
 	discoverer := &fakeWorkflowDiscoverer{}
 	executor := &fakeWorkflowGitExecutor{}
-	runner := &recordingTaskRunner{}
+	executorRecorder := &recordingExecutor{}
 
 	builder := workflowcmd.CommandBuilder{
 		LoggerProvider: func() *zap.Logger { return zap.NewNop() },
@@ -286,8 +288,9 @@ func TestWorkflowCommandPassesVariablesFromFlags(testInstance *testing.T) {
 				Roots: []string{workflowConfiguredRootConstant},
 			}
 		},
-		TaskRunnerFactory: func(workflowpkg.Dependencies) workflowcmd.TaskRunnerExecutor {
-			return runner
+		OperationExecutorFactory: func(nodes []*workflowpkg.OperationNode, dependencies workflowpkg.Dependencies) workflowcmd.OperationExecutor {
+			executorRecorder.captureOperations(nodes)
+			return executorRecorder
 		},
 	}
 
@@ -302,8 +305,8 @@ func TestWorkflowCommandPassesVariablesFromFlags(testInstance *testing.T) {
 	command.SetArgs([]string{configPath, "--var", "template=apache", "--var", "scope=demo"})
 
 	require.NoError(testInstance, command.Execute())
-	require.Equal(testInstance, "apache", runner.runtimeOptions.Variables["template"])
-	require.Equal(testInstance, "demo", runner.runtimeOptions.Variables["scope"])
+	require.Equal(testInstance, "apache", executorRecorder.runtimeOptions.Variables["template"])
+	require.Equal(testInstance, "demo", executorRecorder.runtimeOptions.Variables["scope"])
 }
 
 func TestWorkflowCommandLoadsVariablesFromFile(testInstance *testing.T) {
@@ -316,7 +319,7 @@ func TestWorkflowCommandLoadsVariablesFromFile(testInstance *testing.T) {
 
 	discoverer := &fakeWorkflowDiscoverer{}
 	executor := &fakeWorkflowGitExecutor{}
-	runner := &recordingTaskRunner{}
+	executorRecorder := &recordingExecutor{}
 
 	builder := workflowcmd.CommandBuilder{
 		LoggerProvider: func() *zap.Logger { return zap.NewNop() },
@@ -327,8 +330,9 @@ func TestWorkflowCommandLoadsVariablesFromFile(testInstance *testing.T) {
 				Roots: []string{workflowConfiguredRootConstant},
 			}
 		},
-		TaskRunnerFactory: func(workflowpkg.Dependencies) workflowcmd.TaskRunnerExecutor {
-			return runner
+		OperationExecutorFactory: func(nodes []*workflowpkg.OperationNode, dependencies workflowpkg.Dependencies) workflowcmd.OperationExecutor {
+			executorRecorder.captureOperations(nodes)
+			return executorRecorder
 		},
 	}
 
@@ -343,8 +347,8 @@ func TestWorkflowCommandLoadsVariablesFromFile(testInstance *testing.T) {
 	command.SetArgs([]string{configPath, "--var-file", varFilePath})
 
 	require.NoError(testInstance, command.Execute())
-	require.Equal(testInstance, "feature/license", runner.runtimeOptions.Variables["branch"])
-	require.Equal(testInstance, "overwrite", runner.runtimeOptions.Variables["mode"])
+	require.Equal(testInstance, "feature/license", executorRecorder.runtimeOptions.Variables["branch"])
+	require.Equal(testInstance, "overwrite", executorRecorder.runtimeOptions.Variables["mode"])
 }
 
 func TestWorkflowCommandPrintsStageSummary(testInstance *testing.T) {
@@ -352,7 +356,7 @@ func TestWorkflowCommandPrintsStageSummary(testInstance *testing.T) {
 	configPath := filepath.Join(tempDirectory, workflowConfigFileNameConstant)
 	require.NoError(testInstance, os.WriteFile(configPath, []byte(workflowConfigContentConstant), 0o644))
 
-	runner := &recordingTaskRunner{
+	executorRecorder := &recordingExecutor{
 		outcome: workflowpkg.ExecutionOutcome{
 			RepositoryCount: 2,
 			Duration:        1500 * time.Millisecond,
@@ -370,8 +374,9 @@ func TestWorkflowCommandPrintsStageSummary(testInstance *testing.T) {
 		ConfigurationProvider: func() workflowcmd.CommandConfiguration {
 			return workflowcmd.CommandConfiguration{Roots: []string{workflowConfiguredRootConstant}}
 		},
-		TaskRunnerFactory: func(workflowpkg.Dependencies) workflowcmd.TaskRunnerExecutor {
-			return runner
+		OperationExecutorFactory: func(nodes []*workflowpkg.OperationNode, dependencies workflowpkg.Dependencies) workflowcmd.OperationExecutor {
+			executorRecorder.captureOperations(nodes)
+			return executorRecorder
 		},
 	}
 
@@ -416,21 +421,30 @@ func (executor *fakeWorkflowGitExecutor) ExecuteGitHubCLI(context.Context, execs
 	return execshell.ExecutionResult{StandardOutput: ""}, nil
 }
 
-type recordingTaskRunner struct {
+type recordingExecutor struct {
 	roots          []string
-	definitions    []workflowpkg.TaskDefinition
 	runtimeOptions workflowpkg.RuntimeOptions
+	operations     []string
 	invocations    int
 	outcome        workflowpkg.ExecutionOutcome
-	runError       error
+	executeError   error
 }
 
-func (runner *recordingTaskRunner) Run(_ context.Context, roots []string, definitions []workflowpkg.TaskDefinition, options workflowpkg.RuntimeOptions) (workflowpkg.ExecutionOutcome, error) {
-	runner.invocations++
-	runner.roots = append([]string{}, roots...)
-	runner.definitions = append([]workflowpkg.TaskDefinition{}, definitions...)
-	runner.runtimeOptions = options
-	return runner.outcome, runner.runError
+func (executor *recordingExecutor) captureOperations(nodes []*workflowpkg.OperationNode) {
+	executor.operations = executor.operations[:0]
+	for _, node := range nodes {
+		if node == nil || node.Operation == nil {
+			continue
+		}
+		executor.operations = append(executor.operations, node.Operation.Name())
+	}
+}
+
+func (executor *recordingExecutor) Execute(_ context.Context, roots []string, options workflowpkg.RuntimeOptions) (workflowpkg.ExecutionOutcome, error) {
+	executor.invocations++
+	executor.roots = append([]string{}, roots...)
+	executor.runtimeOptions = options
+	return executor.outcome, executor.executeError
 }
 
 type fakePresetCatalog struct {
