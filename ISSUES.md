@@ -233,6 +233,13 @@ workflow       => shall allow invoking various predefined workflows or specify t
 
 Let's consider each rename as a separate issue and what consequences it entails
 
+- [ ] [GX-324] Seems like a lot of code is missing. Check if either we've lost it in one of tghe unmerged branchesm or if we need to write and test it first
+```
+14:20:08 tyemirov@Vadyms-MacBook-Pro:~/Development/tyemirov/gix - [master] $ go run ./...  w configs/gitignore.yaml --roots /tmp/repos/
+unable to build workflow tasks: unsupported workflow command: git stage-commit
+exit status 1
+```
+
 ## Maintenance (410–499)
 
 - [x] [GX-411] Review @POLICY.md and verify what code areas need improvements and refactoring. Prepare a detailed plan of refactoring. Check for bugs, missing tests, poor coding practices, uplication and slop. Ensure strong encapsulation and following the principles og @AGENTS.md and policies of @POLICY.md
