@@ -12,39 +12,6 @@ import (
 	"github.com/temirov/gix/internal/gitrepo"
 )
 
-func TestGitBranchPrepareOperationCreatesBranch(t *testing.T) {
-	gitExecutor := &recordingGitExecutor{
-		worktreeClean: true,
-		currentBranch: "main",
-		existingRefs: map[string]bool{
-			"main": true,
-		},
-	}
-	repoManager, managerErr := gitrepo.NewRepositoryManager(gitExecutor)
-	require.NoError(t, managerErr)
-
-	op, buildErr := buildGitBranchPrepareOperation(map[string]any{
-		"branch":      "feature/{{ .Repository.Name }}",
-		"start_point": "{{ .Repository.DefaultBranch }}",
-	})
-	require.NoError(t, buildErr)
-
-	repository := NewRepositoryState(audit.RepositoryInspection{
-		Path:                "/repositories/sample",
-		FinalOwnerRepo:      "octocat/sample",
-		RemoteDefaultBranch: "main",
-	})
-	state := &State{Repositories: []*RepositoryState{repository}}
-	env := &Environment{
-		GitExecutor:       gitExecutor,
-		RepositoryManager: repoManager,
-	}
-
-	require.NoError(t, op.Execute(context.Background(), env, state))
-
-	require.True(t, commandArgumentsExist(gitExecutor.commands, []string{"checkout", "-B", "feature-sample", "main"}))
-}
-
 func TestGitStageOperationStagesPaths(t *testing.T) {
 	gitExecutor := &recordingGitExecutor{worktreeClean: true}
 	op, buildErr := buildGitStageOperation(map[string]any{

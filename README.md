@@ -101,7 +101,6 @@ Embedded workflows ship with the binary so you can hand teammates a stable comma
 
 Workflows can now compose individual git/file operations as standalone steps:
 
-- `git branch-prepare` — checkout (or create) a working branch with optional start point and clean-worktree guard.
 - `tasks apply` with `steps: ["files.apply"]` — perform only the file mutation stage (no automatic stage/commit/push); add `safeguards.paths` to insist the file already exists.
 - `git stage-commit` — run `git add` for templated paths and immediately commit with a templated message (optionally `allow_empty`).
 - `git push` — push a templated branch to a templated remote with remote validation (useful when you truly need a push without a PR).

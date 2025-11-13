@@ -77,11 +77,10 @@ files.apply  -> git.stage -> git.commit -> git.push -> pull-request.create
   ```
 
 - New top-level commands expose the same actions as discrete workflow steps:
-  - `["git", "branch-prepare"]` with `branch`, `start_point`, `ensure_clean`.
   - `["git", "stage"]` with `paths`.
-  - `["git", "commit"]` with `commit_message`, optional `allow_empty`.
+  - `["git", "commit"]` with `commit_message`, optional `allow_empty`, and `["git", "stage-commit"]` for the combined flow.
   - `["git", "push"]` with `branch`, `push_remote`.
-  - `["pull-request", "create"]` with `branch`, `title`, `body`, `base`, optional `draft`.
+  - `["pull-request", "create"]` or `["pull-request", "open"]` with `branch`, `title`, `body`, `base`, optional `draft`.
 
 ## Migration Strategy
 
