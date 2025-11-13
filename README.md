@@ -106,6 +106,7 @@ Workflows can now compose individual git/file operations as standalone steps:
 - `git push` — push a templated branch to a templated remote with remote validation (useful when you truly need a push without a PR).
 - `pull-request open` — push (warning when no remote) and open a PR in one step, using templated title/body/base/head values.
 - `pull-request create` — open a PR without touching remotes (legacy behavior).
+- Every workflow automatically exposes `.Environment.workflow_run_id` (UTC `YYYYMMDDHHMMSS`) so you can build unique branch names like `automation/{{ .Repository.Name }}-{{ index .Environment "workflow_run_id" }}` without passing extra variables.
 
 Combine these steps to build fully custom git flows without relying on one monolithic `tasks apply`. See `configs/gitignore.yaml` for a concrete example that splits branch creation, file editing, staging, commit, push, and PR creation into discrete workflow steps.
 

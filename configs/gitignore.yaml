@@ -15,8 +15,24 @@ workflow:
               require_clean: true
 
   - step:
-      name: gitignore-apply
+      name: gitignore-branch
       after: ["switch-master"]
+      command: ["tasks", "apply"]
+      with:
+        tasks:
+          - name: "Create automation branch"
+            actions:
+              - type: branch.change
+                options:
+                  branch: "automation/gitignore/{{ .Repository.Name }}-{{ index .Environment \"workflow_run_id\" }}"
+                  remote: origin
+                  create_if_missing: true
+            safeguards:
+              require_clean: true
+
+  - step:
+      name: gitignore-apply
+      after: ["gitignore-branch"]
       command: ["tasks", "apply"]
       with:
         tasks:
@@ -49,8 +65,9 @@ workflow:
       after: ["gitignore-stage-commit"]
       command: ["pull-request", "open"]
       with:
-        branch: "master"
+        branch: "automation/gitignore/{{ .Repository.Name }}-{{ index .Environment \"workflow_run_id\" }}"
         title: "chore({{ .Repository.Name }}): ensure gitignore entries"
         body: |
           Ensure `.gitignore` contains the standard secrets/tooling entries (.env, tools/, bin/).
         base: "{{ .Repository.DefaultBranch }}"
+        push_remote: origin

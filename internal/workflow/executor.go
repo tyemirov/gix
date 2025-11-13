@@ -276,6 +276,11 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 		Variables:         NewVariableStore(),
 	}
 	environment.State = state
+	if environment.Variables != nil {
+		if runID, err := NewVariableName("workflow_run_id"); err == nil {
+			environment.Variables.Seed(runID, time.Now().UTC().Format("20060102T150405"))
+		}
+	}
 	if len(runtimeOptions.Variables) > 0 && environment.Variables != nil {
 		for key, value := range runtimeOptions.Variables {
 			environment.Variables.Seed(VariableName(key), value)

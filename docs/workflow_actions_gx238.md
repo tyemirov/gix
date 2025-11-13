@@ -81,6 +81,7 @@ files.apply  -> git.stage -> git.commit -> git.push -> pull-request.create
   - `["git", "commit"]` with `commit_message`, optional `allow_empty`, and `["git", "stage-commit"]` for the combined flow.
   - `["git", "push"]` with `branch`, `push_remote`.
   - `["pull-request", "create"]` or `["pull-request", "open"]` with `branch`, `title`, `body`, `base`, optional `draft`.
+- Each workflow run exposes `.Environment.workflow_run_id` (UTC `YYYYMMDDHHMMSS`). Use it inside templates to generate unique branch names without shell scripting, e.g. `automation/{{ .Repository.Name }}-{{ index .Environment "workflow_run_id" }}`.
 
 ## Migration Strategy
 
