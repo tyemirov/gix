@@ -60,7 +60,6 @@ func (operation *TaskOperation) Execute(executionContext context.Context, enviro
 	}
 
 	seen := make(map[string]struct{}, len(state.Repositories))
-
 	var executionErrors []error
 
 	for _, repository := range state.Repositories {
@@ -74,13 +73,29 @@ func (operation *TaskOperation) Execute(executionContext context.Context, enviro
 			}
 			seen[pathKey] = struct{}{}
 		}
-		for _, task := range operation.tasks {
-			if err := operation.executeTask(executionContext, environment, repository, task); err != nil {
-				executionErrors = append(executionErrors, err)
-			}
+		if err := operation.ExecuteForRepository(executionContext, environment, repository); err != nil {
+			executionErrors = append(executionErrors, err)
 		}
 	}
 
+	if len(executionErrors) > 0 {
+		return errors.Join(executionErrors...)
+	}
+	return nil
+}
+
+// ExecuteForRepository runs the configured tasks against a single repository.
+func (operation *TaskOperation) ExecuteForRepository(executionContext context.Context, environment *Environment, repository *RepositoryState) error {
+	if operation == nil || environment == nil || repository == nil {
+		return nil
+	}
+
+	var executionErrors []error
+	for _, task := range operation.tasks {
+		if err := operation.executeTask(executionContext, environment, repository, task); err != nil {
+			executionErrors = append(executionErrors, err)
+		}
+	}
 	if len(executionErrors) > 0 {
 		return errors.Join(executionErrors...)
 	}
