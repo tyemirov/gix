@@ -42,5 +42,5 @@ Read @AGENTS.md, @ARCHITECTURE.md, @POLICY.md, @NOTES.md,  @README.md and @ISSUE
 ## Planning 
 do not work on the issues below, not ready
 
-- [ ] Make flows and complex commands transactional to allow for rollback when a flow that changes things fails
+- [ ] Add an ability to rollback changes. Make flows and complex commands transactional to allow for rollback when a flow that changes things fails
 
