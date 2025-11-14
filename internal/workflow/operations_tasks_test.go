@@ -243,7 +243,7 @@ func TestTaskExecutorSkipsPushWhenRemoteMissing(t *testing.T) {
 	}
 
 	executor := newTaskExecutor(environment, repository, plan)
-	require.NoError(t, executor.Execute(context.Background()))
+	require.ErrorIs(t, executor.Execute(context.Background()), errRepositorySkipped)
 
 	for _, command := range gitExecutor.commands {
 		require.NotEqual(t, "push", firstArgument(command.Arguments))
@@ -297,7 +297,7 @@ func TestTaskExecutorSkipsPushWhenRemoteLookupFails(t *testing.T) {
 	}
 
 	executor := newTaskExecutor(environment, repository, plan)
-	require.NoError(t, executor.Execute(context.Background()))
+	require.ErrorIs(t, executor.Execute(context.Background()), errRepositorySkipped)
 
 	for _, command := range gitExecutor.commands {
 		require.NotEqual(t, "push", firstArgument(command.Arguments))
@@ -397,7 +397,7 @@ func TestTaskOperationFallsBackWhenStartPointMissing(t *testing.T) {
 
 	executor := newTaskExecutor(environment, repository, plan)
 	executionErr := executor.Execute(context.Background())
-	require.NoError(t, executionErr)
+	require.ErrorIs(t, executionErr, errRepositorySkipped)
 
 	output := outputBuffer.String()
 	require.Contains(t, output, "event=TASK_SKIP")
@@ -439,7 +439,7 @@ func TestTaskExecutorLogsDirtyRepositoryDetails(t *testing.T) {
 	}
 	executor := newTaskExecutor(environment, repository, plan)
 	executionErr := executor.Execute(context.Background())
-	require.NoError(t, executionErr)
+	require.ErrorIs(t, executionErr, errRepositorySkipped)
 	output := outputBuffer.String()
 	require.Contains(t, output, "event=TASK_SKIP")
 	require.Contains(t, output, "repository dirty")
@@ -556,7 +556,7 @@ func TestTaskExecutorRestoresOriginalBranchAfterApply(t *testing.T) {
 	}
 
 	executor := newTaskExecutor(environment, repository, plan)
-	require.NoError(t, executor.Execute(context.Background()))
+	require.ErrorIs(t, executor.Execute(context.Background()), errRepositorySkipped)
 
 	foundRestore := false
 	for _, command := range gitExecutor.commands {
@@ -1037,7 +1037,7 @@ func TestTaskExecutorSkipsWhenBranchExists(testInstance *testing.T) {
 	executor := newTaskExecutor(environment, repository, plan)
 
 	executionError := executor.Execute(context.Background())
-	require.NoError(testInstance, executionError)
+	require.ErrorIs(testInstance, executionError, errRepositorySkipped)
 
 	require.Len(testInstance, fileSystem.files, 0)
 	for commandIndex := range gitExecutor.commands {

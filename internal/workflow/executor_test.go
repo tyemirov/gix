@@ -264,6 +264,38 @@ func TestExecutorRecordsStageAndOperationOutcomes(testInstance *testing.T) {
 	require.Equal(testInstance, 1, outcome.ReporterSummaryData.TotalRepositories)
 }
 
+func TestRepositorySkipPreventsSubsequentOperations(testInstance *testing.T) {
+	tempDirectory := testInstance.TempDir()
+	repositoryPath := filepath.Join(tempDirectory, "sample")
+	require.NoError(testInstance, os.Mkdir(repositoryPath, 0o755))
+
+	gitExecutor := newStubWorkflowGitExecutor()
+	repositoryManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(testInstance, managerError)
+
+	githubClient, clientError := githubcli.NewClient(gitExecutor)
+	require.NoError(testInstance, clientError)
+
+	tracker := &trackingRepositoryOperation{}
+	dependencies := Dependencies{
+		RepositoryDiscoverer: executorStubRepositoryDiscoverer{repositories: []string{repositoryPath}},
+		GitExecutor:          gitExecutor,
+		RepositoryManager:    repositoryManager,
+		GitHubClient:         githubClient,
+		Output:               &bytes.Buffer{},
+		Errors:               &bytes.Buffer{},
+	}
+
+	executor := NewExecutor([]Operation{repositorySkipOperation{}, tracker}, dependencies)
+	_, executionError := executor.Execute(
+		context.Background(),
+		[]string{repositoryPath},
+		RuntimeOptions{SkipRepositoryMetadata: true},
+	)
+	require.NoError(testInstance, executionError)
+	require.Equal(testInstance, 0, tracker.executions)
+}
+
 func TestExecutorContinuesExecutingOperationsAfterFailure(testInstance *testing.T) {
 	tempDirectory := testInstance.TempDir()
 	repositoryPath := filepath.Join(tempDirectory, "sample")
@@ -449,6 +481,45 @@ func (operation joinFailOperation) Execute(ctx context.Context, environment *Env
 		"rewrite skipped",
 	)
 	return errors.Join(errOne, errTwo)
+}
+
+type repositorySkipOperation struct{}
+
+func (repositorySkipOperation) Name() string {
+	return "repository-skip"
+}
+
+func (repositorySkipOperation) Execute(ctx context.Context, environment *Environment, state *State) error {
+	return nil
+}
+
+func (repositorySkipOperation) ExecuteForRepository(ctx context.Context, environment *Environment, repository *RepositoryState) error {
+	return repositorySkipError{reason: "repository dirty"}
+}
+
+func (repositorySkipOperation) IsRepositoryScoped() bool {
+	return true
+}
+
+type trackingRepositoryOperation struct {
+	executions int
+}
+
+func (operation *trackingRepositoryOperation) Name() string {
+	return "tracking"
+}
+
+func (operation *trackingRepositoryOperation) Execute(ctx context.Context, environment *Environment, state *State) error {
+	return nil
+}
+
+func (operation *trackingRepositoryOperation) ExecuteForRepository(ctx context.Context, environment *Environment, repository *RepositoryState) error {
+	operation.executions++
+	return nil
+}
+
+func (operation *trackingRepositoryOperation) IsRepositoryScoped() bool {
+	return true
 }
 
 type stubWorkflowGitExecutor struct {

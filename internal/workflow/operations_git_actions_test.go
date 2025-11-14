@@ -56,7 +56,7 @@ func TestGitStageOperationRequiresCleanWorktree(t *testing.T) {
 		RepositoryManager: repoManager,
 	}
 
-	require.NoError(t, op.Execute(context.Background(), env, state))
+	require.ErrorIs(t, op.Execute(context.Background(), env, state), errRepositorySkipped)
 	require.False(t, commandArgumentsExist(gitExecutor.commands, []string{"add", "README.md"}))
 }
 
@@ -247,7 +247,7 @@ func TestGitStageCommitOperationRequiresCleanWorktree(t *testing.T) {
 		RepositoryManager: repoManager,
 	}
 
-	require.NoError(t, op.Execute(context.Background(), env, state))
+	require.ErrorIs(t, op.Execute(context.Background(), env, state), errRepositorySkipped)
 	require.False(t, commandArgumentsExist(gitExecutor.commands, []string{"add", "README.md"}))
 	require.False(t, commandArgumentsExist(gitExecutor.commands, []string{"commit", "-m", "docs: update"}))
 }
