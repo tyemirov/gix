@@ -196,7 +196,7 @@ func executeRepositoryStageForRepository(
 
 		if errors.Is(executeError, errRepositorySkipped) {
 			repositoryFailed = true
-			continue
+			break
 		}
 
 		subErrors := collectOperationErrors(executeError)
