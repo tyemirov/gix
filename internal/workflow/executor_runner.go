@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -193,6 +194,11 @@ func executeRepositoryStageForRepository(
 			continue
 		}
 
+		if errors.Is(executeError, errRepositorySkipped) {
+			repositoryFailed = true
+			break
+		}
+
 		subErrors := collectOperationErrors(executeError)
 		if len(subErrors) == 0 {
 			subErrors = []error{executeError}
@@ -290,6 +296,10 @@ func executeGlobalStage(
 		}
 
 		if executeError == nil {
+			continue
+		}
+
+		if errors.Is(executeError, errRepositorySkipped) {
 			continue
 		}
 

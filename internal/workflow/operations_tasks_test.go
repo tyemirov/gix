@@ -243,7 +243,7 @@ func TestTaskExecutorSkipsPushWhenRemoteMissing(t *testing.T) {
 	}
 
 	executor := newTaskExecutor(environment, repository, plan)
-	require.NoError(t, executor.Execute(context.Background()))
+	require.ErrorIs(t, executor.Execute(context.Background()), errRepositorySkipped)
 
 	for _, command := range gitExecutor.commands {
 		require.NotEqual(t, "push", firstArgument(command.Arguments))
@@ -297,7 +297,7 @@ func TestTaskExecutorSkipsPushWhenRemoteLookupFails(t *testing.T) {
 	}
 
 	executor := newTaskExecutor(environment, repository, plan)
-	require.NoError(t, executor.Execute(context.Background()))
+	require.ErrorIs(t, executor.Execute(context.Background()), errRepositorySkipped)
 
 	for _, command := range gitExecutor.commands {
 		require.NotEqual(t, "push", firstArgument(command.Arguments))
@@ -397,7 +397,7 @@ func TestTaskOperationFallsBackWhenStartPointMissing(t *testing.T) {
 
 	executor := newTaskExecutor(environment, repository, plan)
 	executionErr := executor.Execute(context.Background())
-	require.NoError(t, executionErr)
+	require.ErrorIs(t, executionErr, errRepositorySkipped)
 
 	output := outputBuffer.String()
 	require.Contains(t, output, "event=TASK_SKIP")
@@ -439,7 +439,7 @@ func TestTaskExecutorLogsDirtyRepositoryDetails(t *testing.T) {
 	}
 	executor := newTaskExecutor(environment, repository, plan)
 	executionErr := executor.Execute(context.Background())
-	require.NoError(t, executionErr)
+	require.ErrorIs(t, executionErr, errRepositorySkipped)
 	output := outputBuffer.String()
 	require.Contains(t, output, "event=TASK_SKIP")
 	require.Contains(t, output, "repository dirty")
@@ -556,7 +556,7 @@ func TestTaskExecutorRestoresOriginalBranchAfterApply(t *testing.T) {
 	}
 
 	executor := newTaskExecutor(environment, repository, plan)
-	require.NoError(t, executor.Execute(context.Background()))
+	require.ErrorIs(t, executor.Execute(context.Background()), errRepositorySkipped)
 
 	foundRestore := false
 	for _, command := range gitExecutor.commands {
@@ -914,6 +914,82 @@ func TestTaskExecutorApplyAppendIfMissing(t *testing.T) {
 	require.Contains(t, contents, ".env")
 }
 
+func TestTaskExecutorAppendIfMissingAddsAllLinesWhenNoneExist(t *testing.T) {
+	repositoryPath := "/repositories/ensure-all"
+	fileSystem := newFakeFileSystem(map[string][]byte{
+		filepath.Join(repositoryPath, ".gitignore"): []byte(""),
+	})
+	environment := &Environment{FileSystem: fileSystem}
+	repository := NewRepositoryState(audit.RepositoryInspection{Path: repositoryPath})
+
+	taskDefinition := TaskDefinition{
+		Name: "Ensure gitignore block",
+		Files: []TaskFileDefinition{{
+			PathTemplate:    ".gitignore",
+			ContentTemplate: "# Managed by gix gitignore workflow\n.env\ntools/\nbin/\n",
+			Mode:            TaskFileModeAppendIfMissing,
+			Permissions:     defaultTaskFilePermissions,
+		}},
+	}
+
+	planner := newTaskPlanner(taskDefinition, buildTaskTemplateData(repository, taskDefinition, nil))
+	plan, planError := planner.BuildPlan(environment, repository)
+	require.NoError(t, planError)
+	require.False(t, plan.skipped)
+	require.Len(t, plan.fileChanges, 1)
+	require.True(t, plan.fileChanges[0].apply)
+
+	execCtx := &ExecutionContext{
+		Environment: environment,
+		Repository:  repository,
+		Plan:        &plan,
+	}
+	action := filesApplyAction{changes: plan.fileChanges}
+	require.NoError(t, action.Execute(context.Background(), execCtx))
+
+	updated, readErr := fileSystem.ReadFile(filepath.Join(repositoryPath, ".gitignore"))
+	require.NoError(t, readErr)
+	require.Equal(t, "# Managed by gix gitignore workflow\n.env\ntools/\nbin/\n", string(updated))
+}
+
+func TestTaskExecutorAppendIfMissingHandlesCarriageReturns(t *testing.T) {
+	repositoryPath := "/repositories/ensure-carriage"
+	fileSystem := newFakeFileSystem(map[string][]byte{
+		filepath.Join(repositoryPath, ".gitignore"): []byte(""),
+	})
+	environment := &Environment{FileSystem: fileSystem}
+	repository := NewRepositoryState(audit.RepositoryInspection{Path: repositoryPath})
+
+	taskDefinition := TaskDefinition{
+		Name: "Ensure gitignore CR block",
+		Files: []TaskFileDefinition{{
+			PathTemplate:    ".gitignore",
+			ContentTemplate: "# Managed by gix gitignore workflow\r.env\rtools/\rbin/\r",
+			Mode:            TaskFileModeAppendIfMissing,
+			Permissions:     defaultTaskFilePermissions,
+		}},
+	}
+
+	planner := newTaskPlanner(taskDefinition, buildTaskTemplateData(repository, taskDefinition, nil))
+	plan, planError := planner.BuildPlan(environment, repository)
+	require.NoError(t, planError)
+	require.False(t, plan.skipped)
+	require.Len(t, plan.fileChanges, 1)
+	require.True(t, plan.fileChanges[0].apply)
+
+	execCtx := &ExecutionContext{
+		Environment: environment,
+		Repository:  repository,
+		Plan:        &plan,
+	}
+	action := filesApplyAction{changes: plan.fileChanges}
+	require.NoError(t, action.Execute(context.Background(), execCtx))
+
+	updated, readErr := fileSystem.ReadFile(filepath.Join(repositoryPath, ".gitignore"))
+	require.NoError(t, readErr)
+	require.Equal(t, "# Managed by gix gitignore workflow\n.env\ntools/\nbin/\n", string(updated))
+}
+
 func TestTaskExecutorSkipsWhenBranchExists(testInstance *testing.T) {
 	gitExecutor := &recordingGitExecutor{
 		branchExists:  true,
@@ -961,7 +1037,7 @@ func TestTaskExecutorSkipsWhenBranchExists(testInstance *testing.T) {
 	executor := newTaskExecutor(environment, repository, plan)
 
 	executionError := executor.Execute(context.Background())
-	require.NoError(testInstance, executionError)
+	require.ErrorIs(testInstance, executionError, errRepositorySkipped)
 
 	require.Len(testInstance, fileSystem.files, 0)
 	for commandIndex := range gitExecutor.commands {

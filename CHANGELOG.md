@@ -21,6 +21,8 @@
 - Fixed legacy mode acceptance issues by supporting the renamed `append-if-missing` mode in parser and executor components.
 - `gix workflow` now executes workflow operations directly, so git action steps such as `git stage-commit` run without triggering “unsupported workflow command” errors (the gitignore preset works again).
 - `branch.change` no longer attempts to create new automation branches with `--track origin/<branch>` when the remote ref does not exist, allowing presets like `gitignore` to create/push fresh branches without invalid reference errors.
+- `append-if-missing` now normalizes carriage-return line endings before evaluating and applying changes so templates written on Windows append every line instead of collapsing into a single entry.
+- Repository-scoped `TASK_SKIP` events (for example, dirty worktrees) now propagate a skip sentinel so later workflow steps stop executing against that repository instead of running `git stage-commit`/push commands on a repo that was already skipped.
 
 ### Testing 🧪
 - Added comprehensive unit tests for parsing task file modes including the new `append-if-missing`.

@@ -55,7 +55,7 @@ func (executor taskExecutor) Execute(executionContext context.Context) error {
 				return guardError
 			}
 			if skipped {
-				return nil
+				return execCtx.skipError()
 			}
 		}
 
@@ -64,7 +64,7 @@ func (executor taskExecutor) Execute(executionContext context.Context) error {
 			return actionError
 		}
 		if skipped {
-			return nil
+			return execCtx.skipError()
 		}
 	}
 

@@ -316,7 +316,10 @@ func ensureLinesSatisfied(existingContent []byte, desired []byte) bool {
 }
 
 func parseEnsureLines(content []byte) []string {
-	scanner := bufio.NewScanner(bytes.NewReader(content))
+	normalized := bytes.ReplaceAll(content, []byte("\r\n"), []byte("\n"))
+	normalized = bytes.ReplaceAll(normalized, []byte("\r"), []byte("\n"))
+
+	scanner := bufio.NewScanner(bytes.NewReader(normalized))
 	lines := make([]string, 0)
 	for scanner.Scan() {
 		trimmed := strings.TrimSpace(scanner.Text())
