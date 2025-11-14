@@ -65,6 +65,7 @@ func TestChangeCreatesBranchWhenMissing(t *testing.T) {
 		{result: execshell.ExecutionResult{StandardOutput: "upstream\n"}},
 		{},
 		{err: commandFailedError("error: pathspec 'feature' did not match any file(s) known to git")},
+		{err: commandFailedError("fatal: Needed a single revision")},
 	}}
 	service, err := NewService(ServiceDependencies{GitExecutor: executor})
 	require.NoError(t, err)
@@ -74,8 +75,27 @@ func TestChangeCreatesBranchWhenMissing(t *testing.T) {
 	require.True(t, result.BranchCreated)
 	require.Empty(t, result.Warnings)
 
-	require.Len(t, executor.recorded, 5)
-	require.Equal(t, []string{"switch", "-c", "feature", "--track", "upstream/feature"}, executor.recorded[3].Arguments)
+	require.Len(t, executor.recorded, 6)
+	require.Equal(t, []string{"rev-parse", "--verify", "upstream/feature"}, executor.recorded[3].Arguments)
+	require.Equal(t, []string{"switch", "-c", "feature"}, executor.recorded[4].Arguments)
+}
+
+func TestChangeCreatesBranchFromRemoteWhenAvailable(t *testing.T) {
+	executor := &stubGitExecutor{responses: []stubGitResponse{
+		{result: execshell.ExecutionResult{StandardOutput: "origin\n"}},
+		{},
+		{err: commandFailedError("error: pathspec 'feature' did not match any file(s) known to git")},
+	}}
+	service, err := NewService(ServiceDependencies{GitExecutor: executor})
+	require.NoError(t, err)
+
+	result, changeError := service.Change(context.Background(), Options{RepositoryPath: "/tmp/repo", BranchName: "feature", RemoteName: "origin", CreateIfMissing: true})
+	require.NoError(t, changeError)
+	require.True(t, result.BranchCreated)
+
+	require.Len(t, executor.recorded, 6)
+	require.Equal(t, []string{"rev-parse", "--verify", "origin/feature"}, executor.recorded[3].Arguments)
+	require.Equal(t, []string{"switch", "-c", "feature", "--track", "origin/feature"}, executor.recorded[4].Arguments)
 }
 
 func TestChangeValidatesInputs(t *testing.T) {
@@ -274,6 +294,7 @@ func TestChangeIncludesDetailsWhenBranchCreationFails(t *testing.T) {
 		{result: execshell.ExecutionResult{StandardOutput: "origin\n"}},
 		{result: execshell.ExecutionResult{}},
 		{err: commandFailedError("error: pathspec 'feature' did not match any file(s) known to git")},
+		{},
 		{err: commandFailedError("fatal: a branch named 'feature' already exists")},
 	}}
 	service, err := NewService(ServiceDependencies{GitExecutor: executor})
@@ -288,7 +309,7 @@ func TestChangeIncludesDetailsWhenBranchCreationFails(t *testing.T) {
 	require.Error(t, changeError)
 	require.Contains(t, changeError.Error(), "failed to create branch \"feature\" from origin")
 	require.Contains(t, changeError.Error(), "a branch named 'feature' already exists")
-	require.Len(t, executor.recorded, 4)
+	require.Len(t, executor.recorded, 5)
 }
 
 func commandFailedError(message string) error {

@@ -242,6 +242,27 @@ unable to build workflow tasks: unsupported workflow command: git stage-commit
 exit status 1
 ```
 
+- [x] [GX-325] `branch.change` fails to create new automation branches when the remote ref does not yet exist
+  - Status: Resolved
+  - Context: Running `gix workflow configs/gitignore.yaml --roots /tmp/repos/` now reaches the pull-request step, but every repository fails earlier when `branch.change` tries to create `automation/gitignore/<repo>-<runid>`. The branch action invokes `git switch -c <branch> --track origin/<branch>`, and Git exits with `fatal: invalid reference: origin/<branch>` because the remote ref has not been pushed yet. As a result, subsequent `pull-request open` steps also fail to push because the local branch never existed.
+  - Desired: When `branch.change` has `create_if_missing: true`, only track `origin/branch` if that remote ref exists; otherwise create the local branch without `--track` and let later pushes set the upstream. Add regression tests for both scenarios (remote branch present vs. absent).
+  - Resolution: `internal/branches/cd.Service` now verifies whether `origin/<branch>` exists before appending `--track`; new unit tests cover both cases (remote branch present vs. absent) so workflows can create fresh automation branches and let later push steps set the upstream.
+```
+21:09:10 INFO  TASK_PLAN          tyemirov/scheduler                 task plan ready                          | actions=count=1 branch=automation-Create-automation-branch event=TASK_PLAN path=/tmp/repos/scheduler repo=tyemirov/scheduler start_point=master task=Create automation branch
+tasks apply: git command exited with code 128 (rev-parse --verify origin/automation/gitignore/TAuth-20251114T050858): fatal: Needed a single revision
+```
+
+- [x] [GX-326] `branch.change` still aborts automation branch creation because remote verification treats “Needed a single revision” as a fatal error
+  - Status: Resolved
+  - Context: After the rev-parse-based verification landed, running `gix workflow configs/gitignore.yaml --roots /tmp/repos/` now fails earlier: every repository logs `rev-parse --verify origin/automation/gitignore/<repo> ... fatal: Needed a single revision`, so the branch never gets created and downstream push/PR steps still crash with “src refspec … does not match any”.
+  - Desired: Treat “Needed a single revision” (and similar rev-parse diagnostics) as “remote branch missing”, so we skip tracking but still create the local branch; add regression coverage for this rev-parse output to prevent regressions.
+  - Resolution: Added “needed a single revision” to the branch-missing indicator list and updated the branch-change tests to simulate that rev-parse output, so automation branches fall back to local creation when the remote ref is absent.
+
+- [ ] [GX-327] Workflow execution reports/logs operations interleaved across repositories instead of finishing all steps per repository
+  - Status: Unresolved
+  - Context: The gitignore preset output shows step-by-step interleaving across GAuss, TAuth, ghttp, etc. (one step across every repo before moving to the next). This makes logs unreadable, complicates recovery, and contradicts the desired UX (“All workflow steps must be happening in a one repository consequently … aggregate/report per repository”).
+  - Desired: Refactor workflow execution so each repository runs the full operation list (branch checkout → files.apply → stage/commit → push/PR) before moving to the next repo, while still allowing parallelism internally if needed. Reporting should emit per-repo summaries instead of global interleaving.
+
 ## Maintenance (410–499)
 
 - [x] [GX-411] Review @POLICY.md and verify what code areas need improvements and refactoring. Prepare a detailed plan of refactoring. Check for bugs, missing tests, poor coding practices, uplication and slop. Ensure strong encapsulation and following the principles og @AGENTS.md and policies of @POLICY.md

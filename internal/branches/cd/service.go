@@ -44,6 +44,8 @@ const (
 	gitTrackFlagConstant                      = "--track"
 	gitPullSubcommandConstant                 = "pull"
 	gitPullRebaseFlagConstant                 = "--rebase"
+	gitRevParseSubcommandConstant             = "rev-parse"
+	gitVerifyFlagConstant                     = "--verify"
 	gitTerminalPromptEnvironmentNameConstant  = "GIT_TERMINAL_PROMPT"
 	gitTerminalPromptEnvironmentDisableValue  = "0"
 )
@@ -195,8 +197,17 @@ func (service *Service) Change(executionContext context.Context, options Options
 		if !options.CreateIfMissing || !branchMissing {
 			return Result{}, fmt.Errorf(gitSwitchFailureTemplateConstant, trimmedBranchName, switchSummary, switchResultErr)
 		}
-		switchArguments := []string{gitSwitchSubcommandConstant, gitCreateBranchFlagConstant, trimmedBranchName}
+		useRemoteTracking := false
 		if shouldTrackRemote {
+			remoteExists, remoteCheckErr := service.remoteBranchExists(executionContext, trimmedRepositoryPath, remoteName, trimmedBranchName, environment)
+			if remoteCheckErr != nil {
+				return Result{}, fmt.Errorf("failed to verify remote branch %q: %w", trimmedBranchName, remoteCheckErr)
+			}
+			useRemoteTracking = remoteExists
+		}
+
+		switchArguments := []string{gitSwitchSubcommandConstant, gitCreateBranchFlagConstant, trimmedBranchName}
+		if useRemoteTracking {
 			trackReference := fmt.Sprintf("%s/%s", remoteName, trimmedBranchName)
 			switchArguments = append(switchArguments, gitTrackFlagConstant, trackReference)
 		}
@@ -283,6 +294,7 @@ var missingBranchIndicators = []string{
 	"invalid reference",
 	"no such ref was found",
 	"matches none of the refs",
+	"needed a single revision",
 }
 
 var missingRemoteErrorIndicators = []string{
@@ -305,6 +317,25 @@ func isBranchMissingError(err error) bool {
 		}
 	}
 	return false
+}
+
+func (service *Service) remoteBranchExists(executionContext context.Context, repositoryPath string, remoteName string, branchName string, environment map[string]string) (bool, error) {
+	reference := fmt.Sprintf("%s/%s", strings.TrimSpace(remoteName), strings.TrimSpace(branchName))
+	if len(strings.TrimSpace(reference)) == 0 {
+		return false, nil
+	}
+	_, err := service.executor.ExecuteGit(executionContext, execshell.CommandDetails{
+		Arguments:            []string{gitRevParseSubcommandConstant, gitVerifyFlagConstant, reference},
+		WorkingDirectory:     repositoryPath,
+		EnvironmentVariables: environment,
+	})
+	if err == nil {
+		return true, nil
+	}
+	if isBranchMissingError(err) {
+		return false, nil
+	}
+	return false, err
 }
 
 func summarizeCommandError(err error) string {
