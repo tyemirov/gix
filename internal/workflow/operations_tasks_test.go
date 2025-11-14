@@ -914,6 +914,82 @@ func TestTaskExecutorApplyAppendIfMissing(t *testing.T) {
 	require.Contains(t, contents, ".env")
 }
 
+func TestTaskExecutorAppendIfMissingAddsAllLinesWhenNoneExist(t *testing.T) {
+	repositoryPath := "/repositories/ensure-all"
+	fileSystem := newFakeFileSystem(map[string][]byte{
+		filepath.Join(repositoryPath, ".gitignore"): []byte(""),
+	})
+	environment := &Environment{FileSystem: fileSystem}
+	repository := NewRepositoryState(audit.RepositoryInspection{Path: repositoryPath})
+
+	taskDefinition := TaskDefinition{
+		Name: "Ensure gitignore block",
+		Files: []TaskFileDefinition{{
+			PathTemplate:    ".gitignore",
+			ContentTemplate: "# Managed by gix gitignore workflow\n.env\ntools/\nbin/\n",
+			Mode:            TaskFileModeAppendIfMissing,
+			Permissions:     defaultTaskFilePermissions,
+		}},
+	}
+
+	planner := newTaskPlanner(taskDefinition, buildTaskTemplateData(repository, taskDefinition, nil))
+	plan, planError := planner.BuildPlan(environment, repository)
+	require.NoError(t, planError)
+	require.False(t, plan.skipped)
+	require.Len(t, plan.fileChanges, 1)
+	require.True(t, plan.fileChanges[0].apply)
+
+	execCtx := &ExecutionContext{
+		Environment: environment,
+		Repository:  repository,
+		Plan:        &plan,
+	}
+	action := filesApplyAction{changes: plan.fileChanges}
+	require.NoError(t, action.Execute(context.Background(), execCtx))
+
+	updated, readErr := fileSystem.ReadFile(filepath.Join(repositoryPath, ".gitignore"))
+	require.NoError(t, readErr)
+	require.Equal(t, "# Managed by gix gitignore workflow\n.env\ntools/\nbin/\n", string(updated))
+}
+
+func TestTaskExecutorAppendIfMissingHandlesCarriageReturns(t *testing.T) {
+	repositoryPath := "/repositories/ensure-carriage"
+	fileSystem := newFakeFileSystem(map[string][]byte{
+		filepath.Join(repositoryPath, ".gitignore"): []byte(""),
+	})
+	environment := &Environment{FileSystem: fileSystem}
+	repository := NewRepositoryState(audit.RepositoryInspection{Path: repositoryPath})
+
+	taskDefinition := TaskDefinition{
+		Name: "Ensure gitignore CR block",
+		Files: []TaskFileDefinition{{
+			PathTemplate:    ".gitignore",
+			ContentTemplate: "# Managed by gix gitignore workflow\r.env\rtools/\rbin/\r",
+			Mode:            TaskFileModeAppendIfMissing,
+			Permissions:     defaultTaskFilePermissions,
+		}},
+	}
+
+	planner := newTaskPlanner(taskDefinition, buildTaskTemplateData(repository, taskDefinition, nil))
+	plan, planError := planner.BuildPlan(environment, repository)
+	require.NoError(t, planError)
+	require.False(t, plan.skipped)
+	require.Len(t, plan.fileChanges, 1)
+	require.True(t, plan.fileChanges[0].apply)
+
+	execCtx := &ExecutionContext{
+		Environment: environment,
+		Repository:  repository,
+		Plan:        &plan,
+	}
+	action := filesApplyAction{changes: plan.fileChanges}
+	require.NoError(t, action.Execute(context.Background(), execCtx))
+
+	updated, readErr := fileSystem.ReadFile(filepath.Join(repositoryPath, ".gitignore"))
+	require.NoError(t, readErr)
+	require.Equal(t, "# Managed by gix gitignore workflow\n.env\ntools/\nbin/\n", string(updated))
+}
+
 func TestTaskExecutorSkipsWhenBranchExists(testInstance *testing.T) {
 	gitExecutor := &recordingGitExecutor{
 		branchExists:  true,
