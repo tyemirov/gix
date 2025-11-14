@@ -73,7 +73,7 @@ func TestRunOperationStagesCancelsRepositoryAfterSafeguardFailure(t *testing.T) 
 		},
 	}}
 
-	result := runOperationStages(context.Background(), stages, environment, state, nil, nil)
+	result := runOperationStages(context.Background(), stages, environment, state, nil)
 
 	require.Equal(t, 0, followUpExecuted, "follow-up operation should not run after safeguard failure")
 	require.Len(t, result.stageOutcomes, 1)
@@ -131,7 +131,7 @@ func TestRunOperationStagesSkipsLaterStagesAfterSafeguardFailure(t *testing.T) {
 		},
 	}
 
-	result := runOperationStages(context.Background(), stages, environment, state, nil, nil)
+	result := runOperationStages(context.Background(), stages, environment, state, nil)
 
 	require.Equal(t, 0, stageOneFollowExecuted, "stage one follow-up should not run")
 	require.Equal(t, 0, stageTwoExecuted, "stage two should not run after safeguard failure")

@@ -77,10 +77,22 @@ type OperationDurationSummary struct {
 // ReporterOption customises StructuredReporter behaviour.
 type ReporterOption func(*StructuredReporter)
 
+// EventFormatter customises how human-readable events are rendered.
+type EventFormatter interface {
+	HandleEvent(event Event, writer io.Writer)
+}
+
 // WithRepositoryHeaders toggles per-repository headers.
 func WithRepositoryHeaders(enabled bool) ReporterOption {
 	return func(reporter *StructuredReporter) {
 		reporter.includeRepositoryHeaders = enabled
+	}
+}
+
+// WithEventFormatter installs a custom event formatter for human-readable output.
+func WithEventFormatter(formatter EventFormatter) ReporterOption {
+	return func(reporter *StructuredReporter) {
+		reporter.eventFormatter = formatter
 	}
 }
 
@@ -110,6 +122,7 @@ type StructuredReporter struct {
 	operationDurations map[string]*operationDurationAccumulator
 	stageDurations     map[string]*operationDurationAccumulator
 	columns            columnConfiguration
+	eventFormatter     EventFormatter
 }
 
 type columnConfiguration struct {
@@ -274,6 +287,11 @@ func (reporter *StructuredReporter) Report(event Event) {
 	}
 	reporter.eventCounts[code]++
 	reporter.levelCounts[level]++
+
+	if reporter.eventFormatter != nil {
+		reporter.eventFormatter.HandleEvent(event, writer)
+		return
+	}
 
 	if reporter.includeRepositoryHeaders && len(repositoryIdentifier) > 0 && repositoryIdentifier != reporter.lastRepository {
 		reporter.printRepositoryHeader(writer, repositoryIdentifier)

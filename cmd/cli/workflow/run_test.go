@@ -392,10 +392,8 @@ func TestWorkflowCommandPrintsStageSummary(testInstance *testing.T) {
 	command.SetArgs([]string{configPath})
 
 	require.NoError(testInstance, command.Execute())
-	errorText := errorBuffer.String()
-	require.Contains(testInstance, errorText, "workflow completed in 1.5s across 2 repositories")
-	require.Contains(testInstance, errorText, "stage 1 (500ms): audit.report-1, tasks.apply-1")
-	require.Contains(testInstance, errorText, "stage 2 (250ms): tasks.apply-2")
+	errorText := strings.TrimSpace(errorBuffer.String())
+	require.Equal(testInstance, "", errorText)
 }
 
 type fakeWorkflowDiscoverer struct {

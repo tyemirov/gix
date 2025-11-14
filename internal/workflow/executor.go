@@ -41,6 +41,7 @@ type Dependencies struct {
 	Errors                 io.Writer
 	HumanReadableLogging   bool
 	DisableWorkflowLogging bool
+	ReporterOptions        []shared.ReporterOption
 }
 
 // RuntimeOptions captures user-provided execution modifiers.
@@ -256,10 +257,16 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 	if executor.dependencies.DisableWorkflowLogging {
 		errorWriter = io.Discard
 	}
+	reporterOptions := []shared.ReporterOption{
+		shared.WithRepositoryHeaders(executor.dependencies.HumanReadableLogging),
+	}
+	if len(executor.dependencies.ReporterOptions) > 0 {
+		reporterOptions = append(reporterOptions, executor.dependencies.ReporterOptions...)
+	}
 	reporter := shared.NewStructuredReporter(
 		reporterOutput,
 		errorWriter,
-		shared.WithRepositoryHeaders(executor.dependencies.HumanReadableLogging),
+		reporterOptions...,
 	)
 	environment := &Environment{
 		AuditService:      auditService,
@@ -305,7 +312,7 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 		return outcome, planError
 	}
 
-	stageResults := runOperationStages(executionContext, stages, environment, state, reporter, executor.dependencies.Logger)
+	stageResults := runOperationStages(executionContext, stages, environment, state, reporter)
 	stageFailures := stageResults.failures
 
 	outcome.StageOutcomes = append(outcome.StageOutcomes, stageResults.stageOutcomes...)
