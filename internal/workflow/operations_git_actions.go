@@ -12,6 +12,8 @@ type gitStageOperation struct {
 	ensureClean bool
 }
 
+var _ RepositoryScopedOperation = (*gitStageOperation)(nil)
+
 func buildGitStageOperation(options map[string]any) (Operation, error) {
 	reader := newOptionReader(options)
 	pathValues, pathExists, pathErr := reader.stringSlice(optionPathsKeyConstant)
@@ -35,48 +37,58 @@ func (operation *gitStageOperation) Name() string {
 }
 
 func (operation *gitStageOperation) Execute(ctx context.Context, environment *Environment, state *State) error {
-	variableSnapshot := snapshotVariables(environment)
 	return iterateRepositories(state, func(repository *RepositoryState) error {
-		templateData := buildTaskTemplateData(repository, TaskDefinition{Name: "Git Stage"}, variableSnapshot)
-		changes := make([]taskFileChange, 0, len(operation.paths))
-		for _, rawPath := range operation.paths {
-			rendered, renderErr := renderTemplateValue(rawPath, "", templateData)
-			if renderErr != nil {
-				return renderErr
-			}
-			if len(strings.TrimSpace(rendered)) == 0 {
-				continue
-			}
-			cleanPath := strings.TrimSpace(rendered)
-			changes = append(changes, taskFileChange{
-				relativePath: cleanPath,
-				absolutePath: filepath.Join(repository.Path, cleanPath),
-				apply:        true,
-			})
-		}
-
-		if len(changes) == 0 {
-			return nil
-		}
-
-		plan := taskPlan{
-			task: TaskDefinition{
-				Name:        "Git Stage",
-				EnsureClean: operation.ensureClean,
-			},
-			repository:    repository,
-			fileChanges:   changes,
-			workflowSteps: []workflowAction{gitStageAction{changes: changes}},
-			variables:     variableSnapshot,
-		}
-		return newTaskExecutor(environment, repository, plan).Execute(ctx)
+		return operation.ExecuteForRepository(ctx, environment, repository)
 	})
+}
+
+func (operation *gitStageOperation) ExecuteForRepository(ctx context.Context, environment *Environment, repository *RepositoryState) error {
+	variableSnapshot := snapshotVariables(environment)
+	templateData := buildTaskTemplateData(repository, TaskDefinition{Name: "Git Stage"}, variableSnapshot)
+	changes := make([]taskFileChange, 0, len(operation.paths))
+	for _, rawPath := range operation.paths {
+		rendered, renderErr := renderTemplateValue(rawPath, "", templateData)
+		if renderErr != nil {
+			return renderErr
+		}
+		if len(strings.TrimSpace(rendered)) == 0 {
+			continue
+		}
+		cleanPath := strings.TrimSpace(rendered)
+		changes = append(changes, taskFileChange{
+			relativePath: cleanPath,
+			absolutePath: filepath.Join(repository.Path, cleanPath),
+			apply:        true,
+		})
+	}
+
+	if len(changes) == 0 {
+		return nil
+	}
+
+	plan := taskPlan{
+		task: TaskDefinition{
+			Name:        "Git Stage",
+			EnsureClean: operation.ensureClean,
+		},
+		repository:    repository,
+		fileChanges:   changes,
+		workflowSteps: []workflowAction{gitStageAction{changes: changes}},
+		variables:     variableSnapshot,
+	}
+	return newTaskExecutor(environment, repository, plan).Execute(ctx)
+}
+
+func (operation *gitStageOperation) IsRepositoryScoped() bool {
+	return true
 }
 
 type gitCommitOperation struct {
 	messageTemplate string
 	allowEmpty      bool
 }
+
+var _ RepositoryScopedOperation = (*gitCommitOperation)(nil)
 
 func buildGitCommitOperation(options map[string]any) (Operation, error) {
 	reader := newOptionReader(options)
@@ -104,26 +116,34 @@ func (operation *gitCommitOperation) Name() string {
 }
 
 func (operation *gitCommitOperation) Execute(ctx context.Context, environment *Environment, state *State) error {
-	variableSnapshot := snapshotVariables(environment)
 	return iterateRepositories(state, func(repository *RepositoryState) error {
-		templateData := buildTaskTemplateData(repository, TaskDefinition{Name: "Git Commit"}, variableSnapshot)
-		message, messageErr := renderTemplateValue(operation.messageTemplate, "", templateData)
-		if messageErr != nil {
-			return messageErr
-		}
-		if len(strings.TrimSpace(message)) == 0 {
-			return errors.New("commit message resolved to empty value")
-		}
-
-		plan := taskPlan{
-			task:          TaskDefinition{Name: "Git Commit"},
-			repository:    repository,
-			commitMessage: message,
-			workflowSteps: []workflowAction{gitCommitAction{message: message, allowEmpty: operation.allowEmpty}},
-			variables:     variableSnapshot,
-		}
-		return newTaskExecutor(environment, repository, plan).Execute(ctx)
+		return operation.ExecuteForRepository(ctx, environment, repository)
 	})
+}
+
+func (operation *gitCommitOperation) ExecuteForRepository(ctx context.Context, environment *Environment, repository *RepositoryState) error {
+	variableSnapshot := snapshotVariables(environment)
+	templateData := buildTaskTemplateData(repository, TaskDefinition{Name: "Git Commit"}, variableSnapshot)
+	message, messageErr := renderTemplateValue(operation.messageTemplate, "", templateData)
+	if messageErr != nil {
+		return messageErr
+	}
+	if len(strings.TrimSpace(message)) == 0 {
+		return errors.New("commit message resolved to empty value")
+	}
+
+	plan := taskPlan{
+		task:          TaskDefinition{Name: "Git Commit"},
+		repository:    repository,
+		commitMessage: message,
+		workflowSteps: []workflowAction{gitCommitAction{message: message, allowEmpty: operation.allowEmpty}},
+		variables:     variableSnapshot,
+	}
+	return newTaskExecutor(environment, repository, plan).Execute(ctx)
+}
+
+func (operation *gitCommitOperation) IsRepositoryScoped() bool {
+	return true
 }
 
 type gitStageCommitOperation struct {
@@ -132,6 +152,8 @@ type gitStageCommitOperation struct {
 	allowEmpty      bool
 	ensureClean     bool
 }
+
+var _ RepositoryScopedOperation = (*gitStageCommitOperation)(nil)
 
 func buildGitStageCommitOperation(options map[string]any) (Operation, error) {
 	reader := newOptionReader(options)
@@ -174,63 +196,73 @@ func (operation *gitStageCommitOperation) Name() string {
 }
 
 func (operation *gitStageCommitOperation) Execute(ctx context.Context, environment *Environment, state *State) error {
-	variableSnapshot := snapshotVariables(environment)
 	return iterateRepositories(state, func(repository *RepositoryState) error {
-		templateData := buildTaskTemplateData(repository, TaskDefinition{Name: "Git Stage Commit"}, variableSnapshot)
-		changes := make([]taskFileChange, 0, len(operation.paths))
-		for _, rawPath := range operation.paths {
-			rendered, renderErr := renderTemplateValue(rawPath, "", templateData)
-			if renderErr != nil {
-				return renderErr
-			}
-			if len(strings.TrimSpace(rendered)) == 0 {
-				continue
-			}
-			cleanPath := strings.TrimSpace(rendered)
-			changes = append(changes, taskFileChange{
-				relativePath: cleanPath,
-				absolutePath: filepath.Join(repository.Path, cleanPath),
-				apply:        true,
-			})
-		}
-		if len(changes) == 0 {
-			return nil
-		}
-
-		message, messageErr := renderTemplateValue(operation.messageTemplate, "", templateData)
-		if messageErr != nil {
-			return messageErr
-		}
-		if len(strings.TrimSpace(message)) == 0 {
-			return errors.New("commit message resolved to empty value")
-		}
-
-		plan := taskPlan{
-			task: TaskDefinition{
-				Name:        "Git Stage Commit",
-				EnsureClean: operation.ensureClean,
-			},
-			repository:    repository,
-			fileChanges:   changes,
-			commitMessage: message,
-			workflowSteps: []workflowAction{
-				gitStageCommitAction{
-					changes:    changes,
-					message:    message,
-					allowEmpty: operation.allowEmpty,
-				},
-			},
-			variables: variableSnapshot,
-		}
-
-		return newTaskExecutor(environment, repository, plan).Execute(ctx)
+		return operation.ExecuteForRepository(ctx, environment, repository)
 	})
+}
+
+func (operation *gitStageCommitOperation) ExecuteForRepository(ctx context.Context, environment *Environment, repository *RepositoryState) error {
+	variableSnapshot := snapshotVariables(environment)
+	templateData := buildTaskTemplateData(repository, TaskDefinition{Name: "Git Stage Commit"}, variableSnapshot)
+	changes := make([]taskFileChange, 0, len(operation.paths))
+	for _, rawPath := range operation.paths {
+		rendered, renderErr := renderTemplateValue(rawPath, "", templateData)
+		if renderErr != nil {
+			return renderErr
+		}
+		if len(strings.TrimSpace(rendered)) == 0 {
+			continue
+		}
+		cleanPath := strings.TrimSpace(rendered)
+		changes = append(changes, taskFileChange{
+			relativePath: cleanPath,
+			absolutePath: filepath.Join(repository.Path, cleanPath),
+			apply:        true,
+		})
+	}
+	if len(changes) == 0 {
+		return nil
+	}
+
+	message, messageErr := renderTemplateValue(operation.messageTemplate, "", templateData)
+	if messageErr != nil {
+		return messageErr
+	}
+	if len(strings.TrimSpace(message)) == 0 {
+		return errors.New("commit message resolved to empty value")
+	}
+
+	plan := taskPlan{
+		task: TaskDefinition{
+			Name:        "Git Stage Commit",
+			EnsureClean: operation.ensureClean,
+		},
+		repository:    repository,
+		fileChanges:   changes,
+		commitMessage: message,
+		workflowSteps: []workflowAction{
+			gitStageCommitAction{
+				changes:    changes,
+				message:    message,
+				allowEmpty: operation.allowEmpty,
+			},
+		},
+		variables: variableSnapshot,
+	}
+
+	return newTaskExecutor(environment, repository, plan).Execute(ctx)
+}
+
+func (operation *gitStageCommitOperation) IsRepositoryScoped() bool {
+	return true
 }
 
 type gitPushOperation struct {
 	branchTemplate string
 	remoteName     string
 }
+
+var _ RepositoryScopedOperation = (*gitPushOperation)(nil)
 
 func buildGitPushOperation(options map[string]any) (Operation, error) {
 	reader := newOptionReader(options)
@@ -259,38 +291,49 @@ func (operation *gitPushOperation) Name() string {
 
 func (operation *gitPushOperation) Execute(ctx context.Context, environment *Environment, state *State) error {
 	return iterateRepositories(state, func(repository *RepositoryState) error {
-		var variableSnapshot map[string]string
-		if environment != nil && environment.Variables != nil {
-			variableSnapshot = environment.Variables.Snapshot()
-		}
-		templateData := buildTaskTemplateData(repository, TaskDefinition{Name: "Git Push"}, variableSnapshot)
-		branchName, branchErr := renderTemplateValue(operation.branchTemplate, "", templateData)
-		if branchErr != nil {
-			return branchErr
-		}
-		if len(strings.TrimSpace(branchName)) == 0 {
-			return errors.New("branch resolved to empty value")
-		}
-
-		remoteName, remoteErr := renderTemplateValue(operation.remoteName, defaultTaskPushRemote, templateData)
-		if remoteErr != nil {
-			return remoteErr
-		}
-
-		plan := taskPlan{
-			task: TaskDefinition{
-				Name: "Git Push",
-				Branch: TaskBranchDefinition{
-					PushRemote: strings.TrimSpace(remoteName),
-				},
-			},
-			repository:    repository,
-			branchName:    strings.TrimSpace(branchName),
-			workflowSteps: []workflowAction{gitPushAction{branch: strings.TrimSpace(branchName), remote: strings.TrimSpace(remoteName)}},
-			variables:     variableSnapshot,
-		}
-		return newTaskExecutor(environment, repository, plan).Execute(ctx)
+		return operation.ExecuteForRepository(ctx, environment, repository)
 	})
+}
+
+func (operation *gitPushOperation) ExecuteForRepository(ctx context.Context, environment *Environment, repository *RepositoryState) error {
+	if repository == nil {
+		return nil
+	}
+	var variableSnapshot map[string]string
+	if environment != nil && environment.Variables != nil {
+		variableSnapshot = environment.Variables.Snapshot()
+	}
+	templateData := buildTaskTemplateData(repository, TaskDefinition{Name: "Git Push"}, variableSnapshot)
+	branchName, branchErr := renderTemplateValue(operation.branchTemplate, "", templateData)
+	if branchErr != nil {
+		return branchErr
+	}
+	if len(strings.TrimSpace(branchName)) == 0 {
+		return errors.New("branch resolved to empty value")
+	}
+
+	remoteName, remoteErr := renderTemplateValue(operation.remoteName, defaultTaskPushRemote, templateData)
+	if remoteErr != nil {
+		return remoteErr
+	}
+
+	plan := taskPlan{
+		task: TaskDefinition{
+			Name: "Git Push",
+			Branch: TaskBranchDefinition{
+				PushRemote: strings.TrimSpace(remoteName),
+			},
+		},
+		repository:    repository,
+		branchName:    strings.TrimSpace(branchName),
+		workflowSteps: []workflowAction{gitPushAction{branch: strings.TrimSpace(branchName), remote: strings.TrimSpace(remoteName)}},
+		variables:     variableSnapshot,
+	}
+	return newTaskExecutor(environment, repository, plan).Execute(ctx)
+}
+
+func (operation *gitPushOperation) IsRepositoryScoped() bool {
+	return true
 }
 
 type pullRequestCreateOperation struct {
@@ -300,6 +343,8 @@ type pullRequestCreateOperation struct {
 	baseTemplate   string
 	draft          bool
 }
+
+var _ RepositoryScopedOperation = (*pullRequestCreateOperation)(nil)
 
 func buildPullRequestCreateOperation(options map[string]any) (Operation, error) {
 	reader := newOptionReader(options)
@@ -354,48 +399,59 @@ func (operation *pullRequestCreateOperation) Name() string {
 }
 
 func (operation *pullRequestCreateOperation) Execute(ctx context.Context, environment *Environment, state *State) error {
-	variableSnapshot := snapshotVariables(environment)
 	return iterateRepositories(state, func(repository *RepositoryState) error {
-		templateData := buildTaskTemplateData(repository, TaskDefinition{Name: "Pull Request"}, variableSnapshot)
-		branchName, branchErr := renderTemplateValue(operation.branchTemplate, "", templateData)
-		if branchErr != nil {
-			return branchErr
-		}
-		branchName = sanitizeBranchName(branchName)
-		if len(branchName) == 0 {
-			return errors.New("pull request branch resolved to empty value")
-		}
-
-		title, titleErr := renderTemplateValue(operation.titleTemplate, "", templateData)
-		if titleErr != nil {
-			return titleErr
-		}
-		body, bodyErr := renderTemplateValue(operation.bodyTemplate, "", templateData)
-		if bodyErr != nil {
-			return bodyErr
-		}
-		base, baseErr := renderTemplateValue(operation.baseTemplate, "", templateData)
-		if baseErr != nil {
-			return baseErr
-		}
-
-		pullRequest := &taskPlanPullRequest{
-			title: title,
-			body:  body,
-			base:  base,
-			draft: operation.draft,
-		}
-
-		plan := taskPlan{
-			task:          TaskDefinition{Name: "Create Pull Request"},
-			repository:    repository,
-			branchName:    strings.TrimSpace(branchName),
-			pullRequest:   pullRequest,
-			workflowSteps: []workflowAction{pullRequestAction{title: title, body: body, base: base}},
-			variables:     variableSnapshot,
-		}
-		return newTaskExecutor(environment, repository, plan).Execute(ctx)
+		return operation.ExecuteForRepository(ctx, environment, repository)
 	})
+}
+
+func (operation *pullRequestCreateOperation) ExecuteForRepository(ctx context.Context, environment *Environment, repository *RepositoryState) error {
+	if repository == nil {
+		return nil
+	}
+	variableSnapshot := snapshotVariables(environment)
+	templateData := buildTaskTemplateData(repository, TaskDefinition{Name: "Pull Request"}, variableSnapshot)
+	branchName, branchErr := renderTemplateValue(operation.branchTemplate, "", templateData)
+	if branchErr != nil {
+		return branchErr
+	}
+	branchName = sanitizeBranchName(branchName)
+	if len(branchName) == 0 {
+		return errors.New("pull request branch resolved to empty value")
+	}
+
+	title, titleErr := renderTemplateValue(operation.titleTemplate, "", templateData)
+	if titleErr != nil {
+		return titleErr
+	}
+	body, bodyErr := renderTemplateValue(operation.bodyTemplate, "", templateData)
+	if bodyErr != nil {
+		return bodyErr
+	}
+	base, baseErr := renderTemplateValue(operation.baseTemplate, "", templateData)
+	if baseErr != nil {
+		return baseErr
+	}
+
+	pullRequest := &taskPlanPullRequest{
+		title: title,
+		body:  body,
+		base:  base,
+		draft: operation.draft,
+	}
+
+	plan := taskPlan{
+		task:          TaskDefinition{Name: "Create Pull Request"},
+		repository:    repository,
+		branchName:    strings.TrimSpace(branchName),
+		pullRequest:   pullRequest,
+		workflowSteps: []workflowAction{pullRequestAction{title: title, body: body, base: base}},
+		variables:     variableSnapshot,
+	}
+	return newTaskExecutor(environment, repository, plan).Execute(ctx)
+}
+
+func (operation *pullRequestCreateOperation) IsRepositoryScoped() bool {
+	return true
 }
 
 type pullRequestOpenOperation struct {
@@ -406,6 +462,8 @@ type pullRequestOpenOperation struct {
 	remoteTemplate string
 	draft          bool
 }
+
+var _ RepositoryScopedOperation = (*pullRequestOpenOperation)(nil)
 
 func buildPullRequestOpenOperation(options map[string]any) (Operation, error) {
 	reader := newOptionReader(options)
@@ -469,65 +527,73 @@ func (operation *pullRequestOpenOperation) Name() string {
 }
 
 func (operation *pullRequestOpenOperation) Execute(ctx context.Context, environment *Environment, state *State) error {
-	variableSnapshot := snapshotVariables(environment)
 	return iterateRepositories(state, func(repository *RepositoryState) error {
-		templateData := buildTaskTemplateData(repository, TaskDefinition{Name: "Pull Request"}, variableSnapshot)
-		branchName, branchErr := renderTemplateValue(operation.branchTemplate, "", templateData)
-		if branchErr != nil {
-			return branchErr
-		}
-		if len(strings.TrimSpace(branchName)) == 0 {
-			return errors.New("pull request branch resolved to empty value")
-		}
-
-		title, titleErr := renderTemplateValue(operation.titleTemplate, "", templateData)
-		if titleErr != nil {
-			return titleErr
-		}
-		body, bodyErr := renderTemplateValue(operation.bodyTemplate, "", templateData)
-		if bodyErr != nil {
-			return bodyErr
-		}
-		base, baseErr := renderTemplateValue(operation.baseTemplate, repository.Inspection.RemoteDefaultBranch, templateData)
-		if baseErr != nil {
-			return baseErr
-		}
-		remoteName, remoteErr := renderTemplateValue(operation.remoteTemplate, defaultTaskPushRemote, templateData)
-		if remoteErr != nil {
-			return remoteErr
-		}
-
-		pullRequest := &taskPlanPullRequest{
-			title: title,
-			body:  body,
-			base:  base,
-			draft: operation.draft,
-		}
-
-		plan := taskPlan{
-			task: TaskDefinition{
-				Name: "Open Pull Request",
-				Branch: TaskBranchDefinition{
-					PushRemote: strings.TrimSpace(remoteName),
-				},
-			},
-			repository:  repository,
-			branchName:  strings.TrimSpace(branchName),
-			pullRequest: pullRequest,
-			workflowSteps: []workflowAction{
-				pullRequestOpenAction{
-					branch: strings.TrimSpace(branchName),
-					remote: strings.TrimSpace(remoteName),
-					title:  title,
-					body:   body,
-					base:   base,
-					draft:  operation.draft,
-				},
-			},
-			variables: variableSnapshot,
-		}
-		return newTaskExecutor(environment, repository, plan).Execute(ctx)
+		return operation.ExecuteForRepository(ctx, environment, repository)
 	})
+}
+
+func (operation *pullRequestOpenOperation) ExecuteForRepository(ctx context.Context, environment *Environment, repository *RepositoryState) error {
+	variableSnapshot := snapshotVariables(environment)
+	templateData := buildTaskTemplateData(repository, TaskDefinition{Name: "Pull Request"}, variableSnapshot)
+	branchName, branchErr := renderTemplateValue(operation.branchTemplate, "", templateData)
+	if branchErr != nil {
+		return branchErr
+	}
+	if len(strings.TrimSpace(branchName)) == 0 {
+		return errors.New("pull request branch resolved to empty value")
+	}
+
+	title, titleErr := renderTemplateValue(operation.titleTemplate, "", templateData)
+	if titleErr != nil {
+		return titleErr
+	}
+	body, bodyErr := renderTemplateValue(operation.bodyTemplate, "", templateData)
+	if bodyErr != nil {
+		return bodyErr
+	}
+	base, baseErr := renderTemplateValue(operation.baseTemplate, repository.Inspection.RemoteDefaultBranch, templateData)
+	if baseErr != nil {
+		return baseErr
+	}
+	remoteName, remoteErr := renderTemplateValue(operation.remoteTemplate, defaultTaskPushRemote, templateData)
+	if remoteErr != nil {
+		return remoteErr
+	}
+
+	pullRequest := &taskPlanPullRequest{
+		title: title,
+		body:  body,
+		base:  base,
+		draft: operation.draft,
+	}
+
+	plan := taskPlan{
+		task: TaskDefinition{
+			Name: "Open Pull Request",
+			Branch: TaskBranchDefinition{
+				PushRemote: strings.TrimSpace(remoteName),
+			},
+		},
+		repository:  repository,
+		branchName:  strings.TrimSpace(branchName),
+		pullRequest: pullRequest,
+		workflowSteps: []workflowAction{
+			pullRequestOpenAction{
+				branch: strings.TrimSpace(branchName),
+				remote: strings.TrimSpace(remoteName),
+				title:  title,
+				body:   body,
+				base:   base,
+				draft:  operation.draft,
+			},
+		},
+		variables: variableSnapshot,
+	}
+	return newTaskExecutor(environment, repository, plan).Execute(ctx)
+}
+
+func (operation *pullRequestOpenOperation) IsRepositoryScoped() bool {
+	return true
 }
 
 func snapshotVariables(environment *Environment) map[string]string {
