@@ -25,6 +25,7 @@
 - Repository-scoped `TASK_SKIP` events (for example, dirty worktrees) now propagate a skip sentinel so later workflow steps stop executing against that repository instead of running `git stage-commit`/push commands on a repo that was already skipped.
 - Removed verbose per-stage workflow logging so only the final summary is printed when running `gix workflow`.
 - Added concise workflow logging that groups events per repository, collapses `TASK_PLAN`/`TASK_APPLY` noise, and highlights warnings/errors without the previous wall of text.
+- `branch.change` no longer runs `git pull --rebase` immediately after creating a brand new local branch without a tracking remote, eliminating spurious `PULL-SKIP` warnings during workflows.
 
 ### Testing 🧪
 - Added comprehensive unit tests for parsing task file modes including the new `append-if-missing`.

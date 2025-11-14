@@ -189,6 +189,7 @@ func (service *Service) Change(executionContext context.Context, options Options
 	}
 
 	branchCreated := false
+	useRemoteTracking := false
 	switchResultErr := service.trySwitch(executionContext, trimmedRepositoryPath, trimmedBranchName, environment)
 	branchMissing := isBranchMissingError(switchResultErr)
 	switchSummary := summarizeCommandError(switchResultErr)
@@ -197,7 +198,6 @@ func (service *Service) Change(executionContext context.Context, options Options
 		if !options.CreateIfMissing || !branchMissing {
 			return Result{}, fmt.Errorf(gitSwitchFailureTemplateConstant, trimmedBranchName, switchSummary, switchResultErr)
 		}
-		useRemoteTracking := false
 		if shouldTrackRemote {
 			remoteExists, remoteCheckErr := service.remoteBranchExists(executionContext, trimmedRepositoryPath, remoteName, trimmedBranchName, environment)
 			if remoteCheckErr != nil {
@@ -223,6 +223,9 @@ func (service *Service) Change(executionContext context.Context, options Options
 			return Result{}, fmt.Errorf(gitCreateBranchLocalFailureTemplate, trimmedBranchName, createSummary, err)
 		}
 		branchCreated = true
+	}
+	if branchCreated && !useRemoteTracking {
+		shouldPull = false
 	}
 
 	if shouldPull {

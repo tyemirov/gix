@@ -75,9 +75,14 @@ func TestChangeCreatesBranchWhenMissing(t *testing.T) {
 	require.True(t, result.BranchCreated)
 	require.Empty(t, result.Warnings)
 
-	require.Len(t, executor.recorded, 6)
+	require.Len(t, executor.recorded, 5)
 	require.Equal(t, []string{"rev-parse", "--verify", "upstream/feature"}, executor.recorded[3].Arguments)
 	require.Equal(t, []string{"switch", "-c", "feature"}, executor.recorded[4].Arguments)
+	for _, command := range executor.recorded {
+		if len(command.Arguments) > 0 {
+			require.NotEqual(t, "pull", command.Arguments[0])
+		}
+	}
 }
 
 func TestChangeCreatesBranchFromRemoteWhenAvailable(t *testing.T) {
