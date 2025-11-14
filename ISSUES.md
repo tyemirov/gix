@@ -258,6 +258,33 @@ tasks apply: git command exited with code 128 (rev-parse --verify origin/automat
   - Desired: Treat “Needed a single revision” (and similar rev-parse diagnostics) as “remote branch missing”, so we skip tracking but still create the local branch; add regression coverage for this rev-parse output to prevent regressions.
   - Resolution: Added “needed a single revision” to the branch-missing indicator list and updated the branch-change tests to simulate that rev-parse output, so automation branches fall back to local creation when the remote ref is absent.
 
+- [ ] [GX-328] Restructure workflow executor so each repository runs the entire workflow sequentially
+  - Status: Unresolved
+  - Context: Even after the repository-scoped stage prototype, `gix workflow configs/gitignore.yaml` still interleaves repositories (one stage across all repos before moving on), making logs noisy and leaving partial work behind (branch creation happens without staging/commit/push on the same repo in one go). The executor currently iterates DAG stages first, then repositories.
+  - Desired: Rework `runOperationStages` to drive the repository loop outermost: once we start executing stages for a repository, we run every repository-scoped operation (branch change, files.apply, git stage/commit/push, pull-request steps) before touching the next repository. Global operations (like `audit.report`) should still run once across all repositories. Logging/reporting must emit per-repo stages.
+  - Plan:
+    1. Update `stageExecutionResult` and `runOperationStages` to iterate `state.Repositories` outermost, keeping a repository-local `State` but restoring the global state for shared operations.
+    2. Introduce `RepositoryScopedOperation` (with `ExecuteForRepository` + `IsRepositoryScoped`) and implement it on every workflow operation that mutates a single repo (TaskOperation, git stage/commit/stage-commit/push, pull-request create/open, custom repo actions, etc.).
+    3. Ensure global operations (`audit.report`, future aggregate actions) run once by checking `IsRepositoryScoped` before per-repo execution.
+
+- [ ] [GX-329] Teach git action operations to implement per-repository execution
+  - Status: Unresolved
+  - Context: `git stage`, `git commit`, `git stage-commit`, `git push`, `pull-request create`, and `pull-request open` are still global operations that iterate repositories internally, so the executor can’t sequence them per repo even after GX-328. This causes branch creation/push steps to interleave repositories.
+  - Desired: Add `ExecuteForRepository` implementations to each git action operation so they use the per-repo workflow plan (one `taskPlan` per repository) and mark them as `RepositoryScopedOperation`. Reuse existing logic but move the repository loop outside the operation.
+  - Plan:
+    1. For each git action struct, split `Execute` into `executeForRepository` helpers (already structured) and expose `ExecuteForRepository`.
+    2. Have `Execute` simply call `iterateRepositories` and delegate to `ExecuteForRepository`.
+    3. Implement `IsRepositoryScoped() bool` returning true so the executor can treat these stages as repo-scoped.
+
+- [ ] [GX-330] Update workflow tests and CLI reporter expectations for per-repository stages
+  - Status: Unresolved
+  - Context: Once operations run per repo, stage/operation labels change (e.g., `tyemirov/TAuth:git.stage-1`). Existing tests (`internal/workflow/executor_test.go`, `cmd/cli/workflow/run_test.go`, integration tests) still assert the old stage naming and ordering, so they fail when we change the executor.
+  - Desired: Refresh tests/docs to match the new behavior: stage outcomes per repo, repository labels in logging, global operations only once, and audit tests still confirming non-git directories appear when `--all` is set.
+  - Plan:
+    1. Update workflow unit tests to expect repo-labeled stages/operations and to confirm global stages only appear once.
+    2. Adjust CLI workflow tests to assert the new stage summaries and verify `recordingExecutor` sees repo-first execution.
+    3. Ensure integration tests like `tests/audit_integration_test.go` still pass by running the global operation once and verifying non-git rows are present; add new regression test that demonstrates full per-repo sequencing on a sample workflow.
+
 - [ ] [GX-327] Workflow execution reports/logs operations interleaved across repositories instead of finishing all steps per repository
   - Status: Unresolved
   - Context: The gitignore preset output shows step-by-step interleaving across GAuss, TAuth, ghttp, etc. (one step across every repo before moving to the next). This makes logs unreadable, complicates recovery, and contradicts the desired UX (“All workflow steps must be happening in a one repository consequently … aggregate/report per repository”).

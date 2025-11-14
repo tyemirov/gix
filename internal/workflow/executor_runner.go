@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/temirov/gix/internal/repos/shared"
@@ -25,146 +24,8 @@ func runOperationStages(
 	reporter shared.SummaryReporter,
 	logger *zap.Logger,
 ) stageExecutionResult {
-	if stagesAreRepositoryScoped(stages) {
-		return runRepositoryScopedStages(ctx, stages, environment, state, reporter, logger)
-	}
-
 	result := stageExecutionResult{
-		stageOutcomes:     make([]StageOutcome, 0, len(stages)),
-		operationOutcomes: make(map[string]OperationOutcome),
-	}
-
-	var failureMu sync.Mutex
-	var failures []recordedOperationFailure
-
-	var resultMu sync.Mutex
-
-	for stageIndex := range stages {
-		stage := stages[stageIndex]
-		if len(stage.Operations) == 0 {
-			continue
-		}
-
-		stageStart := time.Now()
-		var waitGroup sync.WaitGroup
-
-		for _, node := range stage.Operations {
-			if node == nil || node.Operation == nil {
-				continue
-			}
-
-			waitGroup.Add(1)
-			go func(operationNode *OperationNode) {
-				defer waitGroup.Done()
-
-				operation := operationNode.Operation
-				operationName := strings.TrimSpace(operationNode.Name)
-				if len(operationName) == 0 {
-					operationName = strings.TrimSpace(operation.Name())
-				}
-				if len(operationName) == 0 {
-					operationName = "operation"
-				}
-
-				startTime := time.Now()
-				executeError := operation.Execute(ctx, environment, state)
-				executionDuration := time.Since(startTime)
-				if reporter != nil {
-					reporter.RecordOperationDuration(operationName, executionDuration)
-				}
-
-				outcome := OperationOutcome{
-					Name:     operationName,
-					Duration: executionDuration,
-					Failed:   executeError != nil,
-					Error:    executeError,
-				}
-
-				resultMu.Lock()
-				result.operationOutcomes[operationNode.Name] = outcome
-				resultMu.Unlock()
-
-				if executeError == nil {
-					if reporter != nil {
-						reporter.RecordEvent(shared.EventCodeWorkflowOperationSuccess, shared.EventLevelInfo)
-					}
-					return
-				}
-
-				if reporter != nil {
-					reporter.RecordEvent(shared.EventCodeWorkflowOperationFailure, shared.EventLevelError)
-				}
-
-				subErrors := collectOperationErrors(executeError)
-				if len(subErrors) == 0 {
-					subErrors = []error{executeError}
-				}
-
-				failureMu.Lock()
-				for _, failureErr := range subErrors {
-					formatted := formatOperationFailure(environment, failureErr, operation.Name())
-					if !logRepositoryOperationError(environment, failureErr) {
-						if environment != nil && environment.Errors != nil {
-							fmt.Fprintln(environment.Errors, formatted)
-						}
-					}
-					failures = append(failures, recordedOperationFailure{
-						name:    operation.Name(),
-						err:     failureErr,
-						message: formatted,
-					})
-				}
-				failureMu.Unlock()
-			}(node)
-		}
-
-		waitGroup.Wait()
-
-		stageDuration := time.Since(stageStart)
-		stageOutcome := StageOutcome{
-			Index:    stageIndex,
-			Duration: stageDuration,
-			Operations: func() []string {
-				names := make([]string, 0, len(stage.Operations))
-				for _, node := range stage.Operations {
-					if node == nil {
-						continue
-					}
-					names = append(names, node.Name)
-				}
-				return names
-			}(),
-		}
-
-		if reporter != nil {
-			reporter.RecordStageDuration(fmt.Sprintf("stage-%d", stageIndex+1), stageDuration)
-		}
-
-		if logger != nil {
-			logger.Info(
-				"workflow_stage_complete",
-				zap.Int("stage_index", stageIndex),
-				zap.Duration("duration", stageDuration),
-			)
-		}
-
-		result.stageOutcomes = append(result.stageOutcomes, stageOutcome)
-	}
-
-	result.failures = failures
-	return result
-}
-
-func runRepositoryScopedStages(
-	ctx context.Context,
-	stages []OperationStage,
-	environment *Environment,
-	state *State,
-	reporter shared.SummaryReporter,
-	logger *zap.Logger,
-) stageExecutionResult {
-	result := stageExecutionResult{
-		stageOutcomes:     make([]StageOutcome, 0, len(stages)),
+		stageOutcomes:     make([]StageOutcome, 0),
 		operationOutcomes: make(map[string]OperationOutcome),
 	}
 
@@ -172,15 +33,22 @@ func runRepositoryScopedStages(
 		return result
 	}
 
+	originalState := environment.State
+	defer func() {
+		environment.State = originalState
+	}()
+
 	var failures []recordedOperationFailure
 	stageCounter := 0
-
+	globalStageExecuted := make([]bool, len(stages))
 	seenRepositories := make(map[string]struct{}, len(state.Repositories))
+	repositoryOrderIndex := 0
 
 	for _, repository := range state.Repositories {
 		if repository == nil {
 			continue
 		}
+
 		repositoryPath := strings.TrimSpace(repository.Path)
 		if repositoryPath != "" {
 			if _, exists := seenRepositories[repositoryPath]; exists {
@@ -188,7 +56,10 @@ func runRepositoryScopedStages(
 			}
 			seenRepositories[repositoryPath] = struct{}{}
 		}
+
 		repoLabel := repositoryLabel(repository)
+		repoState := &State{Repositories: []*RepositoryState{repository}}
+		environment.State = repoState
 
 		for stageIndex := range stages {
 			stage := stages[stageIndex]
@@ -196,111 +67,285 @@ func runRepositoryScopedStages(
 				continue
 			}
 
-			stageStart := time.Now()
-			stageOperationNames := make([]string, 0, len(stage.Operations))
-
-			for _, node := range stage.Operations {
-				if node == nil || node.Operation == nil {
-					continue
-				}
-
-				repositoryOperation, scoped := node.Operation.(RepositoryScopedOperation)
-				if !scoped {
-					continue
-				}
-
-				operationName := strings.TrimSpace(node.Name)
-				if len(operationName) == 0 {
-					operationName = strings.TrimSpace(node.Operation.Name())
-				}
-				if len(operationName) == 0 {
-					operationName = "operation"
-				}
-				compositeName := fmt.Sprintf("%s:%s", repoLabel, operationName)
-				stageOperationNames = append(stageOperationNames, compositeName)
-
-				startTime := time.Now()
-				executeError := repositoryOperation.ExecuteForRepository(ctx, environment, repository)
-				executionDuration := time.Since(startTime)
-
-				if reporter != nil {
-					reporter.RecordOperationDuration(compositeName, executionDuration)
-					if executeError == nil {
-						reporter.RecordEvent(shared.EventCodeWorkflowOperationSuccess, shared.EventLevelInfo)
-					} else {
-						reporter.RecordEvent(shared.EventCodeWorkflowOperationFailure, shared.EventLevelError)
+			if !stageIsRepositoryScoped(stage) {
+				if repositoryOrderIndex == 0 && !globalStageExecuted[stageIndex] {
+					environment.State = state
+					outcome, stageFailures := executeGlobalStage(
+						ctx,
+						stage,
+						environment,
+						state,
+						reporter,
+						logger,
+						stageIndex,
+						&result,
+						stageCounter,
+					)
+					if outcome != nil {
+						result.stageOutcomes = append(result.stageOutcomes, *outcome)
+						stageCounter++
 					}
+					failures = append(failures, stageFailures...)
+					globalStageExecuted[stageIndex] = true
+					environment.State = repoState
 				}
-
-				result.operationOutcomes[compositeName] = OperationOutcome{
-					Name:     compositeName,
-					Duration: executionDuration,
-					Failed:   executeError != nil,
-					Error:    executeError,
-				}
-
-				if executeError == nil {
-					continue
-				}
-
-				subErrors := collectOperationErrors(executeError)
-				if len(subErrors) == 0 {
-					subErrors = []error{executeError}
-				}
-
-				for _, failureErr := range subErrors {
-					formatted := formatOperationFailure(environment, failureErr, node.Operation.Name())
-					if !logRepositoryOperationError(environment, failureErr) {
-						if environment != nil && environment.Errors != nil {
-							fmt.Fprintln(environment.Errors, formatted)
-						}
-					}
-					failures = append(failures, recordedOperationFailure{
-						name:    node.Operation.Name(),
-						err:     failureErr,
-						message: formatted,
-					})
-				}
+				continue
 			}
 
-			stageDuration := time.Since(stageStart)
-			if reporter != nil {
-				reporter.RecordStageDuration(fmt.Sprintf("%s-stage-%d", repoLabel, stageIndex+1), stageDuration)
-			}
-			if logger != nil {
-				logger.Info(
-					"workflow_stage_complete",
-					zap.Int("stage_index", stageCounter),
-					zap.Duration("duration", stageDuration),
-					zap.String("repository", repoLabel),
-				)
-			}
+			stageOutcome, stageFailures, stageFailed := executeRepositoryStageForRepository(
+				ctx,
+				stage,
+				repository,
+				repoLabel,
+				repoState,
+				environment,
+				reporter,
+				logger,
+				stageIndex,
+				stageCounter,
+				&result,
+			)
 
-			result.stageOutcomes = append(result.stageOutcomes, StageOutcome{
-				Index:      stageCounter,
-				Duration:   stageDuration,
-				Operations: stageOperationNames,
-			})
-			stageCounter++
+			if stageOutcome != nil {
+				result.stageOutcomes = append(result.stageOutcomes, *stageOutcome)
+				stageCounter++
+			}
+			failures = append(failures, stageFailures...)
+			if stageFailed {
+				// stop executing further stages for this repository
+				break
+			}
 		}
+
+		repositoryOrderIndex++
 	}
 
 	result.failures = failures
 	return result
 }
 
-func stagesAreRepositoryScoped(stages []OperationStage) bool {
-	for _, stage := range stages {
-		for _, node := range stage.Operations {
-			if node == nil || node.Operation == nil {
-				continue
-			}
-			if _, scoped := node.Operation.(RepositoryScopedOperation); !scoped {
-				return false
+func executeRepositoryStageForRepository(
+	ctx context.Context,
+	stage OperationStage,
+	repository *RepositoryState,
+	repoLabel string,
+	repoState *State,
+	environment *Environment,
+	reporter shared.SummaryReporter,
+	logger *zap.Logger,
+	stageIndex int,
+	stageCounter int,
+	result *stageExecutionResult,
+) (*StageOutcome, []recordedOperationFailure, bool) {
+	if repository == nil || repoState == nil {
+		return nil, nil, false
+	}
+
+	stageStart := time.Now()
+	stageOperationNames := make([]string, 0, len(stage.Operations))
+	var failures []recordedOperationFailure
+	repositoryFailed := false
+
+	for _, node := range stage.Operations {
+		if node == nil || node.Operation == nil {
+			continue
+		}
+
+		repoOperation, ok := node.Operation.(RepositoryScopedOperation)
+		if !ok || !repoOperation.IsRepositoryScoped() {
+			continue
+		}
+
+		environment.State = repoState
+
+		operationName := strings.TrimSpace(node.Name)
+		if len(operationName) == 0 {
+			operationName = strings.TrimSpace(node.Operation.Name())
+		}
+		if len(operationName) == 0 {
+			operationName = "operation"
+		}
+
+		compositeName := fmt.Sprintf("%s:%s", repoLabel, operationName)
+		stageOperationNames = append(stageOperationNames, compositeName)
+
+		startTime := time.Now()
+		executeError := repoOperation.ExecuteForRepository(ctx, environment, repository)
+		executionDuration := time.Since(startTime)
+
+		if reporter != nil {
+			reporter.RecordOperationDuration(compositeName, executionDuration)
+			if executeError == nil {
+				reporter.RecordEvent(shared.EventCodeWorkflowOperationSuccess, shared.EventLevelInfo)
+			} else {
+				reporter.RecordEvent(shared.EventCodeWorkflowOperationFailure, shared.EventLevelError)
 			}
 		}
+
+		result.operationOutcomes[fmt.Sprintf("%s@%s", node.Name, repoLabel)] = OperationOutcome{
+			Name:     compositeName,
+			Duration: executionDuration,
+			Failed:   executeError != nil,
+			Error:    executeError,
+		}
+
+		if executeError == nil {
+			continue
+		}
+
+		subErrors := collectOperationErrors(executeError)
+		if len(subErrors) == 0 {
+			subErrors = []error{executeError}
+		}
+
+		for _, failureErr := range subErrors {
+			formatted := formatOperationFailure(environment, failureErr, node.Operation.Name())
+			if !logRepositoryOperationError(environment, failureErr) {
+				if environment != nil && environment.Errors != nil {
+					fmt.Fprintln(environment.Errors, formatted)
+				}
+			}
+			failures = append(failures, recordedOperationFailure{
+				name:    node.Operation.Name(),
+				err:     failureErr,
+				message: formatted,
+			})
+		}
+		repositoryFailed = true
 	}
-	return len(stages) > 0
+
+	if len(stageOperationNames) == 0 {
+		return nil, failures, repositoryFailed
+	}
+
+	stageDuration := time.Since(stageStart)
+	if reporter != nil {
+		reporter.RecordStageDuration(fmt.Sprintf("%s-stage-%d", repoLabel, stageIndex+1), stageDuration)
+	}
+	if logger != nil {
+		logger.Info(
+			"workflow_stage_complete",
+			zap.Int("stage_index", stageCounter),
+			zap.Duration("duration", stageDuration),
+			zap.String("repository", repoLabel),
+		)
+	}
+
+	return &StageOutcome{
+		Index:      stageCounter,
+		Duration:   stageDuration,
+		Operations: stageOperationNames,
+	}, failures, repositoryFailed
+}
+
+func executeGlobalStage(
+	ctx context.Context,
+	stage OperationStage,
+	environment *Environment,
+	state *State,
+	reporter shared.SummaryReporter,
+	logger *zap.Logger,
+	stageIndex int,
+	result *stageExecutionResult,
+	stageCounter int,
+) (*StageOutcome, []recordedOperationFailure) {
+	environment.State = state
+
+	stageStart := time.Now()
+	stageOperationNames := make([]string, 0, len(stage.Operations))
+	var failures []recordedOperationFailure
+
+	for _, node := range stage.Operations {
+		if node == nil || node.Operation == nil {
+			continue
+		}
+
+		operationName := strings.TrimSpace(node.Name)
+		if len(operationName) == 0 {
+			operationName = strings.TrimSpace(node.Operation.Name())
+		}
+		if len(operationName) == 0 {
+			operationName = "operation"
+		}
+		stageOperationNames = append(stageOperationNames, operationName)
+
+		startTime := time.Now()
+		executeError := node.Operation.Execute(ctx, environment, state)
+		executionDuration := time.Since(startTime)
+
+		if reporter != nil {
+			reporter.RecordOperationDuration(operationName, executionDuration)
+			if executeError == nil {
+				reporter.RecordEvent(shared.EventCodeWorkflowOperationSuccess, shared.EventLevelInfo)
+			} else {
+				reporter.RecordEvent(shared.EventCodeWorkflowOperationFailure, shared.EventLevelError)
+			}
+		}
+
+		result.operationOutcomes[node.Name] = OperationOutcome{
+			Name:     operationName,
+			Duration: executionDuration,
+			Failed:   executeError != nil,
+			Error:    executeError,
+		}
+
+		if executeError == nil {
+			continue
+		}
+
+		subErrors := collectOperationErrors(executeError)
+		if len(subErrors) == 0 {
+			subErrors = []error{executeError}
+		}
+
+		for _, failureErr := range subErrors {
+			formatted := formatOperationFailure(environment, failureErr, node.Operation.Name())
+			if !logRepositoryOperationError(environment, failureErr) {
+				if environment != nil && environment.Errors != nil {
+					fmt.Fprintln(environment.Errors, formatted)
+				}
+			}
+			failures = append(failures, recordedOperationFailure{
+				name:    node.Operation.Name(),
+				err:     failureErr,
+				message: formatted,
+			})
+		}
+	}
+
+	stageDuration := time.Since(stageStart)
+	if reporter != nil {
+		reporter.RecordStageDuration(fmt.Sprintf("stage-%d", stageIndex+1), stageDuration)
+	}
+	if logger != nil {
+		logger.Info(
+			"workflow_stage_complete",
+			zap.Int("stage_index", stageCounter),
+			zap.Duration("duration", stageDuration),
+		)
+	}
+
+	return &StageOutcome{
+		Index:      stageCounter,
+		Duration:   stageDuration,
+		Operations: stageOperationNames,
+	}, failures
+}
+
+func stageIsRepositoryScoped(stage OperationStage) bool {
+	if len(stage.Operations) == 0 {
+		return false
+	}
+	for _, node := range stage.Operations {
+		if node == nil || node.Operation == nil {
+			continue
+		}
+		repoOperation, ok := node.Operation.(RepositoryScopedOperation)
+		if !ok || !repoOperation.IsRepositoryScoped() {
+			return false
+		}
+	}
+	return true
 }
 
 func repositoryLabel(repository *RepositoryState) string {

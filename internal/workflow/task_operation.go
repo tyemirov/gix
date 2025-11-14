@@ -12,6 +12,7 @@ import (
 type TaskOperation struct {
 	tasks            []TaskDefinition
 	llmConfiguration *TaskLLMClientConfiguration
+	repositoryScoped bool
 }
 
 // Definitions returns a copy of the task definitions associated with the operation.
@@ -51,6 +52,14 @@ func (operation *TaskOperation) attachLLMConfiguration() {
 // Name identifies the workflow command handled by this operation.
 func (operation *TaskOperation) Name() string {
 	return commandTasksApplyKey
+}
+
+// IsRepositoryScoped reports whether the operation should execute per repository.
+func (operation *TaskOperation) IsRepositoryScoped() bool {
+	if operation == nil {
+		return false
+	}
+	return operation.repositoryScoped
 }
 
 // Execute runs the configured tasks across repositories.
@@ -134,4 +143,43 @@ func (operation *TaskOperation) executeTask(executionContext context.Context, en
 
 	executor := newTaskExecutor(environment, repository, plan)
 	return executor.Execute(executionContext)
+}
+
+func isRepositoryScopedTaskOperation(tasks []TaskDefinition) bool {
+	for _, task := range tasks {
+		if taskDefinitionIsRepositoryScoped(task) {
+			return true
+		}
+	}
+	return false
+}
+
+func taskDefinitionIsRepositoryScoped(task TaskDefinition) bool {
+	if len(task.Files) > 0 {
+		return true
+	}
+	if len(strings.TrimSpace(task.Branch.NameTemplate)) > 0 || len(strings.TrimSpace(task.Branch.StartPointTemplate)) > 0 {
+		return true
+	}
+	if len(strings.TrimSpace(task.Commit.MessageTemplate)) > 0 {
+		return true
+	}
+	if task.PullRequest != nil {
+		return true
+	}
+	for _, action := range task.Actions {
+		if !isGlobalTaskAction(action.Type) {
+			return true
+		}
+	}
+	return false
+}
+
+func isGlobalTaskAction(actionType string) bool {
+	switch strings.ToLower(strings.TrimSpace(actionType)) {
+	case taskActionAuditReport:
+		return true
+	default:
+		return false
+	}
 }

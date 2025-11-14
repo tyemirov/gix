@@ -41,6 +41,7 @@ func buildTaskOperation(options map[string]any) (Operation, error) {
 	operation := &TaskOperation{
 		tasks:            tasks,
 		llmConfiguration: llmConfiguration,
+		repositoryScoped: isRepositoryScopedTaskOperation(tasks),
 	}
 	operation.attachLLMConfiguration()
 	return operation, nil

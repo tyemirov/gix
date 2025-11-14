@@ -18,10 +18,11 @@ type Operation interface {
 	Execute(executionContext context.Context, environment *Environment, state *State) error
 }
 
-// RepositoryScopedOperation can execute work for a single repository at a time.
+// RepositoryScopedOperation executes work for a single repository at a time.
 type RepositoryScopedOperation interface {
 	Operation
 	ExecuteForRepository(executionContext context.Context, environment *Environment, repository *RepositoryState) error
+	IsRepositoryScoped() bool
 }
 
 // Environment exposes shared dependencies for workflow operations.

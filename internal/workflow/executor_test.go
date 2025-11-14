@@ -244,8 +244,16 @@ func TestExecutorRecordsStageAndOperationOutcomes(testInstance *testing.T) {
 	require.Equal(testInstance, 1, outcome.RepositoryCount)
 
 	require.Len(testInstance, outcome.StageOutcomes, 2)
-	require.Equal(testInstance, []string{"alpha-1"}, outcome.StageOutcomes[0].Operations)
-	require.Equal(testInstance, []string{"beta-2"}, outcome.StageOutcomes[1].Operations)
+	require.Equal(
+		testInstance,
+		[]string{"alpha-1"},
+		outcome.StageOutcomes[0].Operations,
+	)
+	require.Equal(
+		testInstance,
+		[]string{"beta-2"},
+		outcome.StageOutcomes[1].Operations,
+	)
 
 	require.Len(testInstance, outcome.OperationOutcomes, 2)
 	require.Equal(testInstance, "alpha-1", outcome.OperationOutcomes[0].Name)
