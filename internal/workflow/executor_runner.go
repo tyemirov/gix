@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/temirov/gix/internal/repos/shared"
-	"go.uber.org/zap"
 )
 
 type stageExecutionResult struct {
@@ -23,7 +22,6 @@ func runOperationStages(
 	environment *Environment,
 	state *State,
 	reporter shared.SummaryReporter,
-	logger *zap.Logger,
 ) stageExecutionResult {
 	result := stageExecutionResult{
 		stageOutcomes:     make([]StageOutcome, 0),
@@ -77,7 +75,6 @@ func runOperationStages(
 						environment,
 						state,
 						reporter,
-						logger,
 						stageIndex,
 						&result,
 						stageCounter,
@@ -101,7 +98,6 @@ func runOperationStages(
 				repoState,
 				environment,
 				reporter,
-				logger,
 				stageIndex,
 				stageCounter,
 				&result,
@@ -133,7 +129,6 @@ func executeRepositoryStageForRepository(
 	repoState *State,
 	environment *Environment,
 	reporter shared.SummaryReporter,
-	logger *zap.Logger,
 	stageIndex int,
 	stageCounter int,
 	result *stageExecutionResult,
@@ -228,14 +223,6 @@ func executeRepositoryStageForRepository(
 	if reporter != nil {
 		reporter.RecordStageDuration(fmt.Sprintf("%s-stage-%d", repoLabel, stageIndex+1), stageDuration)
 	}
-	if logger != nil {
-		logger.Info(
-			"workflow_stage_complete",
-			zap.Int("stage_index", stageCounter),
-			zap.Duration("duration", stageDuration),
-			zap.String("repository", repoLabel),
-		)
-	}
 
 	return &StageOutcome{
 		Index:      stageCounter,
@@ -250,7 +237,6 @@ func executeGlobalStage(
 	environment *Environment,
 	state *State,
 	reporter shared.SummaryReporter,
-	logger *zap.Logger,
 	stageIndex int,
 	result *stageExecutionResult,
 	stageCounter int,
@@ -326,13 +312,6 @@ func executeGlobalStage(
 	stageDuration := time.Since(stageStart)
 	if reporter != nil {
 		reporter.RecordStageDuration(fmt.Sprintf("stage-%d", stageIndex+1), stageDuration)
-	}
-	if logger != nil {
-		logger.Info(
-			"workflow_stage_complete",
-			zap.Int("stage_index", stageCounter),
-			zap.Duration("duration", stageDuration),
-		)
 	}
 
 	return &StageOutcome{

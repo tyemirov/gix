@@ -305,7 +305,7 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 		return outcome, planError
 	}
 
-	stageResults := runOperationStages(executionContext, stages, environment, state, reporter, executor.dependencies.Logger)
+	stageResults := runOperationStages(executionContext, stages, environment, state, reporter)
 	stageFailures := stageResults.failures
 
 	outcome.StageOutcomes = append(outcome.StageOutcomes, stageResults.stageOutcomes...)
