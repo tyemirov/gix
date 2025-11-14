@@ -131,6 +131,9 @@ func (formatter *workflowHumanFormatter) buildDetailSegments(event shared.Event)
 	if len(message) > 0 {
 		segments = append(segments, message)
 	}
+	if path := strings.TrimSpace(event.RepositoryPath); len(path) > 0 {
+		segments = append(segments, fmt.Sprintf("path=%s", path))
+	}
 	if len(event.Details) == 0 {
 		return segments
 	}
