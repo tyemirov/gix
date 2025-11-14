@@ -6,3 +6,5 @@ tools/
 configs/
 
 PLAN.md
+# Managed by gix gitignore workflow
+.env
