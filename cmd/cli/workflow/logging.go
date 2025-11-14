@@ -118,12 +118,11 @@ func (formatter *workflowHumanFormatter) writeEventSummary(writer io.Writer, eve
 		return
 	}
 	detailSegments := formatter.buildDetailSegments(event)
-	payload := strings.Join(detailSegments, " ")
-	if len(payload) > 0 {
-		fmt.Fprintf(writer, "  event=%s %s\n", event.Code, payload)
+	if len(detailSegments) > 0 {
+		fmt.Fprintf(writer, "event=%s %s\n", event.Code, strings.Join(detailSegments, " "))
 		return
 	}
-	fmt.Fprintf(writer, "  event=%s\n", event.Code)
+	fmt.Fprintf(writer, "event=%s\n", event.Code)
 }
 
 func (formatter *workflowHumanFormatter) buildDetailSegments(event shared.Event) []string {
