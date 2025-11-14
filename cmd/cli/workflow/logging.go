@@ -127,12 +127,12 @@ func (formatter *workflowHumanFormatter) writeEventSummary(writer io.Writer, eve
 
 func (formatter *workflowHumanFormatter) buildDetailSegments(event shared.Event) []string {
 	segments := make([]string, 0)
+	if path := strings.TrimSpace(event.RepositoryPath); len(path) > 0 {
+		segments = append(segments, fmt.Sprintf("path=%s", path))
+	}
 	message := strings.TrimSpace(event.Message)
 	if len(message) > 0 {
 		segments = append(segments, message)
-	}
-	if path := strings.TrimSpace(event.RepositoryPath); len(path) > 0 {
-		segments = append(segments, fmt.Sprintf("path=%s", path))
 	}
 	if len(event.Details) == 0 {
 		return segments
