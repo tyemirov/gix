@@ -2,7 +2,9 @@ package workflow
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/temirov/gix/internal/repos/shared"
 )
@@ -54,6 +56,8 @@ type ExecutionContext struct {
 	customActionsApplied int
 	originalBranch       string
 	branchPrepared       bool
+	skipRequested        bool
+	skipReason           string
 }
 
 func (execCtx *ExecutionContext) recordFilesApplied() {
@@ -73,6 +77,9 @@ func (execCtx *ExecutionContext) reportSkip(message string, fields map[string]st
 		return
 	}
 	execCtx.Environment.ReportRepositoryEvent(execCtx.Repository, shared.EventLevelWarn, shared.EventCodeTaskSkip, message, fields)
+	if len(strings.TrimSpace(message)) > 0 {
+		execCtx.recordSkip(message)
+	}
 }
 
 func (execCtx *ExecutionContext) setOriginalBranch(name string) {
@@ -139,4 +146,40 @@ func (execCtx *ExecutionContext) handleActionError(action workflowAction, err er
 	}
 
 	return false, fmt.Errorf("%s action failed: %w", action.Name(), err)
+}
+
+func (execCtx *ExecutionContext) recordSkip(reason string) {
+	if execCtx == nil {
+		return
+	}
+	if execCtx.skipRequested {
+		return
+	}
+	execCtx.skipRequested = true
+	execCtx.skipReason = strings.TrimSpace(reason)
+}
+
+func (execCtx *ExecutionContext) skipError() error {
+	if execCtx == nil {
+		return repositorySkipError{reason: ""}
+	}
+	return repositorySkipError{reason: execCtx.skipReason}
+}
+
+var errRepositorySkipped = errors.New("repository skipped")
+
+type repositorySkipError struct {
+	reason string
+}
+
+func (err repositorySkipError) Error() string {
+	trimmed := strings.TrimSpace(err.reason)
+	if len(trimmed) == 0 {
+		return errRepositorySkipped.Error()
+	}
+	return trimmed
+}
+
+func (err repositorySkipError) Unwrap() error {
+	return errRepositorySkipped
 }
