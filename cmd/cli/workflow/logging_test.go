@@ -77,3 +77,25 @@ func TestWorkflowHumanFormatterHandlesMultipleRepositories(t *testing.T) {
 	require.Contains(t, output, "  ✓ Switch to master")
 	require.Contains(t, output, "  ✓ Open Pull Request")
 }
+
+func TestWorkflowHumanFormatterWritesEventSummary(t *testing.T) {
+	formatter := newWorkflowHumanFormatter()
+	var buffer bytes.Buffer
+
+	formatter.HandleEvent(shared.Event{
+		Code:                 "PROTOCOL_UPDATE",
+		RepositoryIdentifier: "canonical/example",
+		Details:              map[string]string{"path": "/tmp/repo"},
+	}, &buffer)
+
+	lines := strings.Split(strings.TrimSpace(buffer.String()), "\n")
+	require.Contains(t, lines, "-- canonical/example --")
+	found := false
+	for _, line := range lines {
+		if strings.Contains(line, "event=PROTOCOL_UPDATE path=/tmp/repo") {
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "expected protocol update summary")
+}

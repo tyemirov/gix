@@ -3,6 +3,7 @@ package workflow
 import (
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 
 	"github.com/temirov/gix/internal/repos/shared"
@@ -76,6 +77,8 @@ func (formatter *workflowHumanFormatter) HandleEvent(event shared.Event, writer 
 				message = "error"
 			}
 			fmt.Fprintf(writer, "  ✖ %s\n", message)
+		default:
+			formatter.writeEventSummary(writer, event)
 		}
 	}
 }
@@ -108,4 +111,43 @@ func (formatter *workflowHumanFormatter) writeWarning(writer io.Writer, message 
 		return
 	}
 	fmt.Fprintf(writer, "  ⚠ %s\n", message)
+}
+
+func (formatter *workflowHumanFormatter) writeEventSummary(writer io.Writer, event shared.Event) {
+	if event.Code == "" {
+		return
+	}
+	detailSegments := formatter.buildDetailSegments(event)
+	if len(detailSegments) > 0 {
+		fmt.Fprintf(writer, "event=%s %s\n", event.Code, strings.Join(detailSegments, " "))
+		return
+	}
+	fmt.Fprintf(writer, "event=%s\n", event.Code)
+}
+
+func (formatter *workflowHumanFormatter) buildDetailSegments(event shared.Event) []string {
+	segments := make([]string, 0)
+	if path := strings.TrimSpace(event.RepositoryPath); len(path) > 0 {
+		segments = append(segments, fmt.Sprintf("path=%s", path))
+	}
+	message := strings.TrimSpace(event.Message)
+	if len(message) > 0 {
+		segments = append(segments, message)
+	}
+	if len(event.Details) == 0 {
+		return segments
+	}
+	keys := make([]string, 0, len(event.Details))
+	for key := range event.Details {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		value := strings.TrimSpace(event.Details[key])
+		if len(value) == 0 {
+			continue
+		}
+		segments = append(segments, fmt.Sprintf("%s=%s", key, value))
+	}
+	return segments
 }
