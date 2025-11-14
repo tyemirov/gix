@@ -65,7 +65,7 @@ func TestChangeCreatesBranchWhenMissing(t *testing.T) {
 		{result: execshell.ExecutionResult{StandardOutput: "upstream\n"}},
 		{},
 		{err: commandFailedError("error: pathspec 'feature' did not match any file(s) known to git")},
-		{err: commandFailedError("fatal: ambiguous argument 'upstream/feature': unknown revision or path not in the working tree.")},
+		{err: commandFailedError("fatal: Needed a single revision")},
 	}}
 	service, err := NewService(ServiceDependencies{GitExecutor: executor})
 	require.NoError(t, err)

@@ -294,6 +294,7 @@ var missingBranchIndicators = []string{
 	"invalid reference",
 	"no such ref was found",
 	"matches none of the refs",
+	"needed a single revision",
 }
 
 var missingRemoteErrorIndicators = []string{
