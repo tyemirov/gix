@@ -178,6 +178,12 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 	}
 
 	workflowDependencies := dependencyResult.Workflow
+	if workflowDependencies.HumanReadableLogging && !workflowDependencies.DisableWorkflowLogging {
+		workflowDependencies.ReporterOptions = append(
+			workflowDependencies.ReporterOptions,
+			shared.WithEventFormatter(newWorkflowHumanFormatter()),
+		)
+	}
 
 	roots, rootsError := rootutils.Resolve(command, remainingArguments, commandConfiguration.Roots)
 	if rootsError != nil {
