@@ -175,9 +175,18 @@ func runRepositoryScopedStages(
 	var failures []recordedOperationFailure
 	stageCounter := 0
 
+	seenRepositories := make(map[string]struct{}, len(state.Repositories))
+
 	for _, repository := range state.Repositories {
 		if repository == nil {
 			continue
+		}
+		repositoryPath := strings.TrimSpace(repository.Path)
+		if repositoryPath != "" {
+			if _, exists := seenRepositories[repositoryPath]; exists {
+				continue
+			}
+			seenRepositories[repositoryPath] = struct{}{}
 		}
 		repoLabel := repositoryLabel(repository)
 
