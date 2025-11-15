@@ -1,5 +1,41 @@
 # Changelog
 
+## [v0.2.0-rc.12]
+
+### Features ✨
+- Execute workflow tasks per repository with repository-scoped stages and deduplication.
+- Added atomic git command steps and first-class workflow commands for fine-grained git/file operations.
+- Seed run IDs for branch templates enable improved workflow tracking.
+
+### Improvements ⚙️
+- Decomposed workflow executor into discrete actions with reusable guard helpers for better independence and failure reporting.
+- Enhanced workflow logging with concise summaries per repository; eliminated verbose per-stage logs.
+- Command failures now include invoked arguments and first stderr line for improved error clarity.
+- Added support for normalized carriage-return line endings in append-if-missing mode.
+- Removed legacy preview mode and improved configuration namespaces for commit and changelog message generation.
+- Legacy commands and configuration keys now alias to new workflows with deprecation warnings.
+- Improved safeguard and skip logic to halt workflow execution on repository skips.
+- Normalized and renamed modes from line-edit to append-if-missing.
+
+### Bug Fixes 🐛
+- Fix append-if-missing mode to append all lines, not just the first, with regression tests.
+- Prevent running unnecessary git pulls on new branches without remotes.
+- Stop workflow execution after repository-scoped TASK_SKIP events to avoid failed operations on skipped repos.
+- Correct branch change logic to avoid tracking remote refs for new automation branches.
+- Workflow commands now execute directly, removing unsupported command errors.
+- Fixed output path order and included path in workflow event summaries.
+- Fixed literal line matching for append-if-missing to prevent incorrect line omission.
+- Fixed log formatter to include event summaries properly.
+
+### Testing 🧪
+- Added comprehensive tests for append-if-missing mode and task planning/execution.
+- Enhanced executor and workflow command unit tests to cover new action decompositions and skipping behavior.
+
+### Docs 📚
+- Updated documentation for pkg/llm usage and workflow command orchestration.
+- Added detailed design notes in ARCHITECTURE.md regarding embedded workflows.
+- Refactored plans and improved README to explain new workflow capabilities and logging improvements.
+
 ## [v0.2.0-rc.11]
 
 ### Features ✨
