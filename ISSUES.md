@@ -16,6 +16,7 @@ Read @AGENTS.md, @ARCHITECTURE.md, @POLICY.md, @NOTES.md,  @README.md and @ISSUE
 - [ ] [GX-341] Convert `repo-files-add` into a workflow preset (with variables for path/content/mode/branch/push). Update the CLI to load template content and pass it into workflow variables before executing.
 - [ ] [GX-342] Convert `repo release`/`repo release retag` commands into workflow presets so tagging logic, remote selection, and messages flow through the standard workflow executor and task actions.
 - [ ] [GX-343] After the command-specific presets land, delete the bespoke task-runner plumbing in `cmd/cli/repos` (helpers, dependency builders, TaskDefinition construction) so repo commands are thin shims over workflow presets, and update docs/config to reflect the new preset catalog.
+- [ ] [GX-344] Convert `repo-files-replace` into a workflow preset so pattern/find/replace/command/safeguard logic is expressed declaratively and the CLI simply maps flags to workflow variables before invoking the standard executor.
 
 ## BugFixes (330–399)
 
