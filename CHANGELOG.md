@@ -22,6 +22,7 @@
 - `gix workflow` now executes workflow operations directly, so git action steps such as `git stage-commit` run without triggering “unsupported workflow command” errors (the gitignore preset works again).
 - `branch.change` no longer attempts to create new automation branches with `--track origin/<branch>` when the remote ref does not exist, allowing presets like `gitignore` to create/push fresh branches without invalid reference errors.
 - `append-if-missing` now normalizes carriage-return line endings before evaluating and applying changes so templates written on Windows append every line instead of collapsing into a single entry.
+- `append-if-missing` now compares literal line content (whitespace intact) so `.envrc`, `*.env`, or indented variants no longer satisfy the `.env` check and prevent the line from being appended.
 - Repository-scoped `TASK_SKIP` events (for example, dirty worktrees) now propagate a skip sentinel so later workflow steps stop executing against that repository instead of running `git stage-commit`/push commands on a repo that was already skipped.
 - Removed verbose per-stage workflow logging so only the final summary is printed when running `gix workflow`.
 - Added concise workflow logging that groups events per repository, collapses `TASK_PLAN`/`TASK_APPLY` noise, and highlights warnings/errors without the previous wall of text.
