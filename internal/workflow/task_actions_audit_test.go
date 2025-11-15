@@ -101,7 +101,7 @@ func TestHandleAuditReportActionUsesUpdatedRepositoryPaths(testInstance *testing
 
 	executionError := handleAuditReportAction(executionContext, environment, repository, parameters)
 	require.NoError(testInstance, executionError)
-	require.True(testInstance, environment.auditReportExecuted)
+	require.True(testInstance, environment.auditReportHasExecuted())
 	require.Len(testInstance, discoverer.recordedRoots, 1)
 	require.Equal(testInstance, []string{renamedPath}, discoverer.recordedRoots[0])
 }

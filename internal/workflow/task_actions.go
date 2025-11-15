@@ -332,7 +332,7 @@ func handleAuditReportAction(ctx context.Context, environment *Environment, repo
 		return nil
 	}
 
-	if environment.auditReportExecuted {
+	if environment.auditReportHasExecuted() {
 		return nil
 	}
 
@@ -357,7 +357,7 @@ func handleAuditReportAction(ctx context.Context, environment *Environment, repo
 
 	roots := collectAuditRoots(environment.State, repository)
 	if len(roots) == 0 {
-		environment.auditReportExecuted = true
+		environment.markAuditReportExecuted()
 		return nil
 	}
 
@@ -371,19 +371,19 @@ func handleAuditReportAction(ctx context.Context, environment *Environment, repo
 	if writeToFile {
 		inspections, discoveryError := environment.AuditService.DiscoverInspections(ctx, roots, includeAll, debugOutput, depth)
 		if discoveryError != nil {
-			environment.auditReportExecuted = true
+			environment.markAuditReportExecuted()
 			return discoveryError
 		}
 
 		if writeError := writeAuditReportFile(sanitizedOutput, inspections); writeError != nil {
-			environment.auditReportExecuted = true
+			environment.markAuditReportExecuted()
 			return writeError
 		}
 
 		if environment.Output != nil {
 			fmt.Fprintf(environment.Output, auditWriteMessageTemplateConstant, sanitizedOutput)
 		}
-		environment.auditReportExecuted = true
+		environment.markAuditReportExecuted()
 		return nil
 	}
 
@@ -395,11 +395,11 @@ func handleAuditReportAction(ctx context.Context, environment *Environment, repo
 	}
 
 	if runError := environment.AuditService.Run(ctx, commandOptions); runError != nil {
-		environment.auditReportExecuted = true
+		environment.markAuditReportExecuted()
 		return runError
 	}
 
-	environment.auditReportExecuted = true
+	environment.markAuditReportExecuted()
 	return nil
 }
 

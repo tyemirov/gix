@@ -50,6 +50,7 @@ type RuntimeOptions struct {
 	IncludeNestedRepositories            bool
 	ProcessRepositoriesByDescendingDepth bool
 	CaptureInitialWorktreeStatus         bool
+	RepositoryParallelism                int
 	// SkipRepositoryMetadata disables GitHub metadata resolution during repository inspections.
 	SkipRepositoryMetadata bool
 	Variables              map[string]string
@@ -281,6 +282,7 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 		Reporter:          reporter,
 		Logger:            executor.dependencies.Logger,
 		Variables:         NewVariableStore(),
+		sharedState:       &environmentSharedState{},
 	}
 	environment.State = state
 	if environment.Variables != nil {
@@ -312,7 +314,14 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 		return outcome, planError
 	}
 
-	stageResults := runOperationStages(executionContext, stages, environment, state, reporter)
+	stageResults := runOperationStages(
+		executionContext,
+		stages,
+		environment,
+		state,
+		reporter,
+		runtimeOptions.RepositoryParallelism,
+	)
 	stageFailures := stageResults.failures
 
 	outcome.StageOutcomes = append(outcome.StageOutcomes, stageResults.stageOutcomes...)

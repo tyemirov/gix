@@ -2,6 +2,8 @@ package workflow
 
 import (
 	"context"
+	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -73,7 +75,7 @@ func TestRunOperationStagesCancelsRepositoryAfterSafeguardFailure(t *testing.T) 
 		},
 	}}
 
-	result := runOperationStages(context.Background(), stages, environment, state, nil)
+	result := runOperationStages(context.Background(), stages, environment, state, nil, 1)
 
 	require.Equal(t, 0, followUpExecuted, "follow-up operation should not run after safeguard failure")
 	require.Len(t, result.stageOutcomes, 1)
@@ -131,7 +133,7 @@ func TestRunOperationStagesSkipsLaterStagesAfterSafeguardFailure(t *testing.T) {
 		},
 	}
 
-	result := runOperationStages(context.Background(), stages, environment, state, nil)
+	result := runOperationStages(context.Background(), stages, environment, state, nil, 1)
 
 	require.Equal(t, 0, stageOneFollowExecuted, "stage one follow-up should not run")
 	require.Equal(t, 0, stageTwoExecuted, "stage two should not run after safeguard failure")
@@ -140,4 +142,48 @@ func TestRunOperationStagesSkipsLaterStagesAfterSafeguardFailure(t *testing.T) {
 	require.Contains(t, result.operationOutcomes, "clean-worktree-guard@octocat/example")
 	require.NotContains(t, result.operationOutcomes, "mutating-step@octocat/example")
 	require.NotContains(t, result.operationOutcomes, "post-guard@octocat/example")
+}
+
+func TestRunOperationStagesSupportsParallelRepositories(t *testing.T) {
+	t.Helper()
+
+	repositoryOne := NewRepositoryState(audit.RepositoryInspection{
+		Path:           "/repositories/one",
+		FinalOwnerRepo: "octocat/one",
+	})
+	repositoryTwo := NewRepositoryState(audit.RepositoryInspection{
+		Path:           "/repositories/two",
+		FinalOwnerRepo: "octocat/two",
+	})
+	environment := &Environment{}
+	state := &State{Repositories: []*RepositoryState{repositoryOne, repositoryTwo}}
+
+	var recorded []string
+	var recordMutex sync.Mutex
+	operation := &stubRepositoryOperation{
+		name: "parallel-step",
+		executeFunc: func(_ context.Context, _ *Environment, repository *RepositoryState) error {
+			recordMutex.Lock()
+			recorded = append(recorded, repository.Path)
+			recordMutex.Unlock()
+			return nil
+		},
+	}
+
+	stages := []OperationStage{{
+		Operations: []*OperationNode{{Name: "parallel-step", Operation: operation}},
+	}}
+
+	result := runOperationStages(context.Background(), stages, environment, state, nil, 2)
+
+	require.ElementsMatch(t, []string{repositoryOne.Path, repositoryTwo.Path}, recorded)
+	require.Len(t, result.stageOutcomes, 2)
+	require.Equal(t,
+		[]string{fmt.Sprintf("%s:%s", repositoryLabel(repositoryOne), "parallel-step")},
+		result.stageOutcomes[0].Operations,
+	)
+	require.Equal(t,
+		[]string{fmt.Sprintf("%s:%s", repositoryLabel(repositoryTwo), "parallel-step")},
+		result.stageOutcomes[1].Operations,
+	)
 }

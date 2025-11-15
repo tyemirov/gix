@@ -8,7 +8,14 @@ Read @AGENTS.md, @ARCHITECTURE.md, @POLICY.md, @NOTES.md,  @README.md and @ISSUE
 
 ## Improvements (235–299)
 - [x] [GX-333] Rethink human-readable workflow logging: collapse repetitive `TASK_PLAN/TASK_APPLY` spam into concise task summaries, retain only essential branch/PR status lines, and surface warnings/errors in a structured “issues” section so the log is useful at a glance.
-- [ ] [GX-336] Parallelize workflow runner so repository-scoped operations are queued and processed concurrently (e.g., up to 10 repos at a time) instead of strictly sequential; enumerate roots up front, build a task queue, and stream results while respecting per-repo isolation and existing safeguards.
+- [x] [GX-336] Parallelize workflow runner so repository-scoped operations are queued and processed concurrently (e.g., up to 10 repos at a time) instead of strictly sequential; enumerate roots up front, build a task queue, and stream results while respecting per-repo isolation and existing safeguards. — Repository-scoped workflow stages now execute through a configurable worker pool (`--repo-workers`/`repository_workers`), defaulting to automatic sizing; global steps still run once with ordered stage summaries preserved.
+- [ ] [GX-337] Convert `repo-folders-rename` into an embedded workflow preset: encode the current task definition as YAML, teach the CLI command to translate flags/config into workflow variables, and execute via the workflow runtime instead of hand-rolled task runner wiring.
+- [ ] [GX-338] Convert `repo-remote-update` (canonical remotes) into a workflow preset/CLI shim so owner constraints, prompts, and logging flow entirely through the workflow executor.
+- [ ] [GX-339] Convert `repo-protocol-convert` into a workflow preset that validates `from`/`to` in the CLI layer, pushes options via variables, and delegates execution to workflow operations.
+- [ ] [GX-340] Convert `repo-history-remove` into a preset-driven workflow step covering path lists, remote/push/restore flags, and ensure the CLI simply maps arguments to preset variables.
+- [ ] [GX-341] Convert `repo-files-add` into a workflow preset (with variables for path/content/mode/branch/push). Update the CLI to load template content and pass it into workflow variables before executing.
+- [ ] [GX-342] Convert `repo release`/`repo release retag` commands into workflow presets so tagging logic, remote selection, and messages flow through the standard workflow executor and task actions.
+- [ ] [GX-343] After the command-specific presets land, delete the bespoke task-runner plumbing in `cmd/cli/repos` (helpers, dependency builders, TaskDefinition construction) so repo commands are thin shims over workflow presets, and update docs/config to reflect the new preset catalog.
 
 ## BugFixes (330–399)
 

@@ -207,6 +207,8 @@ workflow:
 
 Run with: `gix workflow path/to/file.yaml --roots ~/Development [-y] [--require-clean]`.
 
+- Repository-scoped steps execute concurrently; pass `--repo-workers <N>` (or set `repository_workers` in configuration) to cap the number of simultaneous repositories. Use `0` to let gix pick a sensible default based on the host CPU count.
+
 ### Built-in workflow commands
 
 - `remote update-protocol`

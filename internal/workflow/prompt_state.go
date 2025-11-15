@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"sync"
 	"sync/atomic"
 
 	"github.com/temirov/gix/internal/repos/shared"
@@ -37,6 +38,7 @@ func (state *PromptState) EnableAssumeYes() {
 type promptDispatcher struct {
 	basePrompter shared.ConfirmationPrompter
 	promptState  *PromptState
+	mutex        sync.Mutex
 }
 
 func newPromptDispatcher(base shared.ConfirmationPrompter, state *PromptState) shared.ConfirmationPrompter {
@@ -50,6 +52,8 @@ func (dispatcher *promptDispatcher) Confirm(prompt string) (shared.ConfirmationR
 	if dispatcher.basePrompter == nil {
 		return shared.ConfirmationResult{}, nil
 	}
+	dispatcher.mutex.Lock()
+	defer dispatcher.mutex.Unlock()
 	result, confirmError := dispatcher.basePrompter.Confirm(prompt)
 	if confirmError != nil {
 		return shared.ConfirmationResult{}, confirmError

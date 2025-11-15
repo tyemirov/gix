@@ -26,6 +26,8 @@ const (
 	variableFlagDescriptionConstant          = "Set workflow variable (key=value). Repeatable."
 	variableFileFlagNameConstant             = "var-file"
 	variableFileFlagDescriptionConstant      = "Load workflow variables from a YAML/JSON file. Repeatable."
+	repositoryWorkersFlagNameConstant        = "repo-workers"
+	repositoryWorkersFlagDescriptionConstant = "Maximum number of repositories to process concurrently (0=auto)"
 	listPresetsFlagNameConstant              = "list-presets"
 	listPresetsFlagDescriptionConstant       = "List embedded workflow presets and exit"
 	configurationPathRequiredMessageConstant = "workflow configuration path or preset name required; provide a positional argument or --config flag"
@@ -61,6 +63,7 @@ func (builder *CommandBuilder) Build() (*cobra.Command, error) {
 	flagutils.AddToggleFlag(command.Flags(), nil, listPresetsFlagNameConstant, "", false, listPresetsFlagDescriptionConstant)
 	command.Flags().StringArray(variableFlagNameConstant, nil, variableFlagDescriptionConstant)
 	command.Flags().StringArray(variableFileFlagNameConstant, nil, variableFileFlagDescriptionConstant)
+	command.Flags().Int(repositoryWorkersFlagNameConstant, 0, repositoryWorkersFlagDescriptionConstant)
 
 	return command, nil
 }
@@ -195,11 +198,23 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 		assumeYes = executionFlags.AssumeYes
 	}
 
+	repositoryWorkers := commandConfiguration.RepositoryWorkers
+	if command != nil {
+		workerValue, workerErr := command.Flags().GetInt(repositoryWorkersFlagNameConstant)
+		if workerErr != nil {
+			return workerErr
+		}
+		if command.Flags().Changed(repositoryWorkersFlagNameConstant) {
+			repositoryWorkers = workerValue
+		}
+	}
+
 	runtimeOptions := workflow.RuntimeOptions{
 		AssumeYes:                            assumeYes,
 		IncludeNestedRepositories:            runtimeRequirements.includeNestedRepositories,
 		ProcessRepositoriesByDescendingDepth: runtimeRequirements.processRepositoriesByDescendingDepth,
 		CaptureInitialWorktreeStatus:         runtimeRequirements.captureInitialWorktreeStatus,
+		RepositoryParallelism:                repositoryWorkers,
 		Variables:                            variableAssignments,
 	}
 

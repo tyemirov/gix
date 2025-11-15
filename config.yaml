@@ -52,6 +52,7 @@ operations:
       roots:
         - ~/Development
       assume_yes: true
+      repository_workers: 4
 
   - command: ["branch-default"]
     with: &branch_default_defaults

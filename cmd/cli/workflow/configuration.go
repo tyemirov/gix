@@ -8,17 +8,19 @@ var workflowConfigurationRepositoryPathSanitizer = pathutils.NewRepositoryPathSa
 
 // CommandConfiguration captures configuration values for workflow.
 type CommandConfiguration struct {
-	Roots        []string          `mapstructure:"roots"`
-	AssumeYes    bool              `mapstructure:"assume_yes"`
-	RequireClean bool              `mapstructure:"require_clean"`
-	Variables    map[string]string `mapstructure:"variables"`
+	Roots             []string          `mapstructure:"roots"`
+	AssumeYes         bool              `mapstructure:"assume_yes"`
+	RequireClean      bool              `mapstructure:"require_clean"`
+	RepositoryWorkers int               `mapstructure:"repository_workers"`
+	Variables         map[string]string `mapstructure:"variables"`
 }
 
 // DefaultCommandConfiguration provides default workflow command settings for workflow.
 func DefaultCommandConfiguration() CommandConfiguration {
 	return CommandConfiguration{
-		AssumeYes:    false,
-		RequireClean: false,
+		AssumeYes:         false,
+		RequireClean:      false,
+		RepositoryWorkers: 0,
 	}
 }
 
@@ -26,5 +28,8 @@ func DefaultCommandConfiguration() CommandConfiguration {
 func (configuration CommandConfiguration) Sanitize() CommandConfiguration {
 	sanitized := configuration
 	sanitized.Roots = workflowConfigurationRepositoryPathSanitizer.Sanitize(configuration.Roots)
+	if sanitized.RepositoryWorkers < 0 {
+		sanitized.RepositoryWorkers = 0
+	}
 	return sanitized
 }
