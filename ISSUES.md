@@ -7,7 +7,8 @@ Read @AGENTS.md, @ARCHITECTURE.md, @POLICY.md, @NOTES.md,  @README.md and @ISSUE
 ## Features (110–199)
 
 ## Improvements (235–299)
-- [ ] [GX-333] Rethink human-readable workflow logging: collapse repetitive `TASK_PLAN/TASK_APPLY` spam into concise task summaries, retain only essential branch/PR status lines, and surface warnings/errors in a structured “issues” section so the log is useful at a glance.
+- [x] [GX-333] Rethink human-readable workflow logging: collapse repetitive `TASK_PLAN/TASK_APPLY` spam into concise task summaries, retain only essential branch/PR status lines, and surface warnings/errors in a structured “issues” section so the log is useful at a glance.
+- [ ] [GX-336] Parallelize workflow runner so repository-scoped operations are queued and processed concurrently (e.g., up to 10 repos at a time) instead of strictly sequential; enumerate roots up front, build a task queue, and stream results while respecting per-repo isolation and existing safeguards.
 
 ## BugFixes (330–399)
 
