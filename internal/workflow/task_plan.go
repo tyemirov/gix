@@ -322,11 +322,11 @@ func parseEnsureLines(content []byte) []string {
 	scanner := bufio.NewScanner(bytes.NewReader(normalized))
 	lines := make([]string, 0)
 	for scanner.Scan() {
-		trimmed := strings.TrimSpace(scanner.Text())
-		if trimmed == "" {
+		raw := scanner.Text()
+		if len(strings.TrimSpace(raw)) == 0 {
 			continue
 		}
-		lines = append(lines, trimmed)
+		lines = append(lines, raw)
 	}
 	return lines
 }

@@ -40,7 +40,7 @@ Read @AGENTS.md, @ARCHITECTURE.md, @POLICY.md, @NOTES.md,  @README.md and @ISSUE
 - [x] [GX-333] Rethink human-readable workflow logging: collapse repetitive `TASK_PLAN/TASK_APPLY` spam into concise task summaries, retain only essential branch/PR status lines, and surface warnings/errors in a structured “issues” section so the log is useful at a glance. — Added a workflow-specific event formatter that groups logs per repository, prints single-line task results, and highlights warnings/errors without overwhelming noise.
 - [x] [GX-334] `branch.change` still runs `git pull --rebase` after creating a brand new local branch without a tracking remote, producing noisy `PULL-SKIP` warnings during workflows (there’s nothing to pull, so we should skip automatically). — Skip the pull step when a branch is created without remote tracking so new automation branches no longer emit useless warnings.
 
-- [ ] [GX-335] the content of the action in @configs/gitignore.yaml   says
+- [x] [GX-335] the content of the action in @configs/gitignore.yaml   says
 ```yaml
     content: |
                       # Managed by gix gitignore workflow
@@ -50,6 +50,7 @@ Read @AGENTS.md, @ARCHITECTURE.md, @POLICY.md, @NOTES.md,  @README.md and @ISSUE
 ```
 
     but after running the workflow the line that says `.env` never gets into the diffs (PRs). I suspect that instead of string matching for appending them, we use regex, and we shall not use regex in this case. We match on the entire line, whatever it is (probably trimming)
+— Append-if-missing now compares literal line content (whitespace intact) so substrings like `.envrc` or indented variants no longer satisfy `.env`; added tests covering those scenarios.
 
 ## Maintenance (410–499)
 
