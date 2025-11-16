@@ -1,0 +1,7 @@
+workflow:
+  - step:
+      name: folder-rename
+      command: ["folder", "rename"]
+      with:
+        require_clean: '{{ index .Environment "folder_require_clean" }}'
+        include_owner: '{{ index .Environment "folder_include_owner" }}'

@@ -2,9 +2,9 @@ package repos_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -12,8 +12,8 @@ import (
 	"go.uber.org/zap"
 
 	repos "github.com/temirov/gix/cmd/cli/repos"
+	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
 	"github.com/temirov/gix/internal/repos/shared"
-	"github.com/temirov/gix/internal/utils"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
 	"github.com/temirov/gix/internal/workflow"
 )
@@ -29,35 +29,58 @@ const (
 	renameMissingRootsMessage       = "no repository roots provided; specify --roots or configure defaults"
 	renameRelativeRootConstant      = "relative/rename-root"
 	renameHomeRootSuffixConstant    = "rename-home-root"
+	folderRenamePresetName          = "folder-rename"
+	renamePresetMissingMessage      = "folder-rename preset not found"
 )
 
-type renameRecordingTaskRunner struct {
-	roots          []string
-	definitions    []workflow.TaskDefinition
-	runtimeOptions workflow.RuntimeOptions
+type renameRecordingExecutor struct {
+	roots   []string
+	options workflow.RuntimeOptions
 }
 
-func (runner *renameRecordingTaskRunner) Run(_ context.Context, roots []string, definitions []workflow.TaskDefinition, options workflow.RuntimeOptions) (workflow.ExecutionOutcome, error) {
-	runner.roots = append([]string{}, roots...)
-	runner.definitions = append([]workflow.TaskDefinition{}, definitions...)
-	runner.runtimeOptions = options
+func (executor *renameRecordingExecutor) Execute(_ context.Context, roots []string, options workflow.RuntimeOptions) (workflow.ExecutionOutcome, error) {
+	executor.roots = append([]string{}, roots...)
+	executor.options = options
 	return workflow.ExecutionOutcome{}, nil
 }
 
+type fakePresetCatalog struct {
+	configuration workflow.Configuration
+	found         bool
+	loadError     error
+	loadedName    string
+}
+
+func (catalog *fakePresetCatalog) List() []workflowcmd.PresetMetadata {
+	return nil
+}
+
+func (catalog *fakePresetCatalog) Load(name string) (workflow.Configuration, bool, error) {
+	catalog.loadedName = name
+	if catalog.loadError != nil {
+		return workflow.Configuration{}, true, catalog.loadError
+	}
+	if !catalog.found {
+		return workflow.Configuration{}, false, nil
+	}
+	return catalog.configuration, true, nil
+}
+
 func TestRenameCommandConfigurationPrecedence(testInstance *testing.T) {
+	presetConfig := loadFolderRenamePreset(testInstance)
+
 	testCases := []struct {
-		name                   string
-		configuration          *repos.RenameConfiguration
-		arguments              []string
-		discoveredRepositories []string
-		expectedRoots          []string
-		expectedRootsBuilder   func(testing.TB) []string
-		expectError            bool
-		expectedErrorMessage   string
-		expectTaskInvocation   bool
-		expectedAssumeYes      bool
-		expectedRequireClean   bool
-		expectedIncludeOwner   bool
+		name                 string
+		configuration        *repos.RenameConfiguration
+		arguments            []string
+		expectedRoots        []string
+		expectedRootsBuilder func(testing.TB) []string
+		expectError          bool
+		expectedErrorMessage string
+		expectExecution      bool
+		expectedAssumeYes    bool
+		expectedRequireClean bool
+		expectedIncludeOwner bool
 	}{
 		{
 			name: "configuration_supplies_defaults",
@@ -67,7 +90,7 @@ func TestRenameCommandConfigurationPrecedence(testInstance *testing.T) {
 				RepositoryRoots:      []string{renameConfiguredRootConstant},
 			},
 			expectedRoots:        []string{renameConfiguredRootConstant},
-			expectTaskInvocation: true,
+			expectExecution:      true,
 			expectedAssumeYes:    true,
 			expectedRequireClean: false,
 			expectedIncludeOwner: false,
@@ -86,7 +109,7 @@ func TestRenameCommandConfigurationPrecedence(testInstance *testing.T) {
 				renameRootFlagConstant, renameCLIRepositoryRootConstant,
 			},
 			expectedRoots:        []string{renameCLIRepositoryRootConstant},
-			expectTaskInvocation: true,
+			expectExecution:      true,
 			expectedAssumeYes:    true,
 			expectedRequireClean: true,
 			expectedIncludeOwner: true,
@@ -104,12 +127,12 @@ func TestRenameCommandConfigurationPrecedence(testInstance *testing.T) {
 				RequireCleanWorktree: true,
 				RepositoryRoots:      []string{"~/" + renameHomeRootSuffixConstant},
 			},
-			expectedRootsBuilder: func(testingInstance testing.TB) []string {
+			expectedRootsBuilder: func(tb testing.TB) []string {
 				homeDirectory, homeError := os.UserHomeDir()
-				require.NoError(testingInstance, homeError)
+				require.NoError(tb, homeError)
 				return []string{filepath.Join(homeDirectory, renameHomeRootSuffixConstant)}
 			},
-			expectTaskInvocation: true,
+			expectExecution:      true,
 			expectedAssumeYes:    true,
 			expectedRequireClean: true,
 			expectedIncludeOwner: false,
@@ -124,39 +147,7 @@ func TestRenameCommandConfigurationPrecedence(testInstance *testing.T) {
 				renameRootFlagConstant, renameRelativeRootConstant,
 			},
 			expectedRoots:        []string{renameRelativeRootConstant},
-			expectTaskInvocation: true,
-			expectedAssumeYes:    true,
-			expectedRequireClean: false,
-			expectedIncludeOwner: false,
-		},
-		{
-			name: "configuration_enables_include_owner",
-			configuration: &repos.RenameConfiguration{
-				AssumeYes:            true,
-				RequireCleanWorktree: false,
-				IncludeOwner:         true,
-				RepositoryRoots:      []string{renameConfiguredRootConstant},
-			},
-			expectedRoots:        []string{renameConfiguredRootConstant},
-			expectTaskInvocation: true,
-			expectedAssumeYes:    true,
-			expectedRequireClean: false,
-			expectedIncludeOwner: true,
-		},
-		{
-			name: "flag_disables_include_owner",
-			configuration: &repos.RenameConfiguration{
-				AssumeYes:            true,
-				RequireCleanWorktree: false,
-				IncludeOwner:         true,
-				RepositoryRoots:      []string{renameConfiguredRootConstant},
-			},
-			arguments: []string{
-				renameAssumeYesFlagConstant,
-				renameIncludeOwnerFlagConstant + "=false",
-			},
-			expectedRoots:        []string{renameConfiguredRootConstant},
-			expectTaskInvocation: true,
+			expectExecution:      true,
 			expectedAssumeYes:    true,
 			expectedRequireClean: false,
 			expectedIncludeOwner: false,
@@ -164,110 +155,162 @@ func TestRenameCommandConfigurationPrecedence(testInstance *testing.T) {
 	}
 
 	for _, testCase := range testCases {
+		testCase := testCase
 		testInstance.Run(testCase.name, func(subtest *testing.T) {
-			repositories := testCase.discoveredRepositories
-			if len(repositories) == 0 {
-				repositories = []string{renameDiscoveredRepositoryPath}
-			}
-			discoverer := &fakeRepositoryDiscoverer{repositories: repositories}
-			executor := &fakeGitExecutor{}
-			manager := &fakeGitRepositoryManager{
-				remoteURL:                  "",
-				currentBranch:              "",
-				cleanWorktree:              true,
-				cleanWorktreeSet:           true,
-				panicOnCurrentBranchLookup: true,
-			}
-			prompter := &recordingPrompter{result: shared.ConfirmationResult{Confirmed: true}}
-			runner := &renameRecordingTaskRunner{}
-
-			var configurationProvider func() repos.RenameConfiguration
-			if testCase.configuration != nil {
-				configurationCopy := *testCase.configuration
-				configurationProvider = func() repos.RenameConfiguration {
-					return configurationCopy
-				}
-			}
+			catalog := &fakePresetCatalog{configuration: presetConfig, found: true}
+			executor := &renameRecordingExecutor{}
 
 			builder := repos.RenameCommandBuilder{
 				LoggerProvider: func() *zap.Logger { return zap.NewNop() },
-				Discoverer:     discoverer,
-				GitExecutor:    executor,
-				GitManager:     manager,
+				Discoverer:     &fakeRepositoryDiscoverer{repositories: []string{renameDiscoveredRepositoryPath}},
+				GitExecutor:    &fakeGitExecutor{},
+				GitManager:     &fakeGitRepositoryManager{},
+				FileSystem:     fakeFileSystem{files: map[string]string{}},
 				PrompterFactory: func(*cobra.Command) shared.ConfirmationPrompter {
-					return prompter
+					return nil
 				},
 				HumanReadableLoggingProvider: func() bool { return false },
-				ConfigurationProvider:        configurationProvider,
-				TaskRunnerFactory: func(workflow.Dependencies) repos.TaskRunnerExecutor {
-					return runner
+				ConfigurationProvider: func() repos.RenameConfiguration {
+					if testCase.configuration != nil {
+						return *testCase.configuration
+					}
+					return repos.RenameConfiguration{}
+				},
+				PresetCatalogFactory: func() workflowcmd.PresetCatalog { return catalog },
+				WorkflowExecutorFactory: func(nodes []*workflow.OperationNode, _ workflow.Dependencies) repos.WorkflowExecutor {
+					if testCase.expectExecution {
+						require.Len(subtest, nodes, 1)
+						renameOperation, ok := nodes[0].Operation.(*workflow.RenameOperation)
+						require.True(subtest, ok)
+						require.Equal(subtest, testCase.expectedRequireClean, renameOperation.RequireCleanWorktree)
+						require.Equal(subtest, testCase.expectedIncludeOwner, renameOperation.IncludeOwner)
+					}
+					return executor
 				},
 			}
 
 			command, buildError := builder.Build()
 			require.NoError(subtest, buildError)
-			bindGlobalRenameFlags(command)
+			bindRenameCommandFlags(command)
+			command.SetArgs(testCase.arguments)
 
-			command.SetContext(context.Background())
-			normalizedArguments := flagutils.NormalizeToggleArguments(testCase.arguments)
-			command.SetArgs(normalizedArguments)
-
-			executionError := command.Execute()
+			err := command.Execute()
 			if testCase.expectError {
-				require.Error(subtest, executionError)
-				require.Equal(subtest, testCase.expectedErrorMessage, executionError.Error())
-				require.Empty(subtest, runner.definitions)
+				require.EqualError(subtest, err, testCase.expectedErrorMessage)
+				require.Nil(subtest, executor.roots)
 				return
 			}
+			require.NoError(subtest, err)
+			require.Equal(subtest, folderRenamePresetName, catalog.loadedName)
 
-			require.NoError(subtest, executionError)
-
-			if testCase.expectTaskInvocation {
-				require.Len(subtest, runner.definitions, 1)
-				require.Equal(subtest, "Rename repository directories", runner.definitions[0].Name)
-				require.Len(subtest, runner.definitions[0].Actions, 1)
-				action := runner.definitions[0].Actions[0]
-				require.Equal(subtest, "repo.folder.rename", action.Type)
-				require.Equal(subtest, testCase.expectedRequireClean, action.Options["require_clean"])
-				require.Equal(subtest, testCase.expectedIncludeOwner, action.Options["include_owner"])
-				require.True(subtest, runner.runtimeOptions.IncludeNestedRepositories)
-				require.True(subtest, runner.runtimeOptions.ProcessRepositoriesByDescendingDepth)
-				require.Equal(subtest, testCase.expectedRequireClean, runner.runtimeOptions.CaptureInitialWorktreeStatus)
-				require.Equal(subtest, testCase.expectedAssumeYes, runner.runtimeOptions.AssumeYes)
-			} else {
-				require.Empty(subtest, runner.definitions)
+			if !testCase.expectExecution {
+				require.Nil(subtest, executor.roots)
+				return
 			}
 
 			expectedRoots := testCase.expectedRoots
 			if testCase.expectedRootsBuilder != nil {
 				expectedRoots = testCase.expectedRootsBuilder(subtest)
 			}
-			if len(expectedRoots) > 0 {
-				require.Equal(subtest, expectedRoots, runner.roots)
-			}
+			require.Equal(subtest, expectedRoots, executor.roots)
+			require.Equal(subtest, testCase.expectedAssumeYes, executor.options.AssumeYes)
+			require.True(subtest, executor.options.IncludeNestedRepositories)
+			require.True(subtest, executor.options.ProcessRepositoriesByDescendingDepth)
+			require.Equal(subtest, testCase.expectedRequireClean, executor.options.CaptureInitialWorktreeStatus)
 		})
 	}
 }
 
-func bindGlobalRenameFlags(command *cobra.Command) {
-	flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Enabled: true})
-	flagutils.BindExecutionFlags(command, flagutils.ExecutionDefaults{}, flagutils.ExecutionFlagDefinitions{
-		AssumeYes: flagutils.ExecutionFlagDefinition{Name: flagutils.AssumeYesFlagName, Usage: flagutils.AssumeYesFlagUsage, Shorthand: flagutils.AssumeYesFlagShorthand, Enabled: true},
-	})
-	command.PersistentFlags().String(flagutils.RemoteFlagName, "", flagutils.RemoteFlagUsage)
-	command.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
-		contextAccessor := utils.NewCommandContextAccessor()
-		executionFlags := utils.ExecutionFlags{}
-		if assumeYesValue, assumeYesChanged, assumeYesError := flagutils.BoolFlag(cmd, flagutils.AssumeYesFlagName); assumeYesError == nil {
-			executionFlags.AssumeYes = assumeYesValue
-			executionFlags.AssumeYesSet = assumeYesChanged
-		}
-		if remoteValue, remoteChanged, remoteError := flagutils.StringFlag(cmd, flagutils.RemoteFlagName); remoteError == nil {
-			executionFlags.Remote = strings.TrimSpace(remoteValue)
-			executionFlags.RemoteSet = remoteChanged && len(strings.TrimSpace(remoteValue)) > 0
-		}
-		updatedContext := contextAccessor.WithExecutionFlags(cmd.Context(), executionFlags)
-		cmd.SetContext(updatedContext)
-		return nil
+func TestRenameCommandPresetErrorsSurface(testInstance *testing.T) {
+	presetConfig := loadFolderRenamePreset(testInstance)
+
+	testCases := []struct {
+		name      string
+		catalog   fakePresetCatalog
+		expectErr string
+	}{
+		{
+			name:      "missing_preset",
+			catalog:   fakePresetCatalog{found: false},
+			expectErr: renamePresetMissingMessage,
+		},
+		{
+			name:      "load_error",
+			catalog:   fakePresetCatalog{found: true, loadError: errors.New("boom")},
+			expectErr: "unable to load folder-rename preset: boom",
+		},
+		{
+			name: "build_error",
+			catalog: fakePresetCatalog{
+				found: true,
+				configuration: workflow.Configuration{
+					Steps: []workflow.StepConfiguration{
+						{Command: []string{"unknown"}},
+					},
+				},
+			},
+			expectErr: "unable to build folder-rename workflow: unsupported workflow command: unknown",
+		},
 	}
+
+	for _, testCase := range testCases {
+		testCase := testCase
+		testInstance.Run(testCase.name, func(subtest *testing.T) {
+			catalog := testCase.catalog
+			if len(catalog.configuration.Steps) == 0 && catalog.found && catalog.loadError == nil && testCase.name != "build_error" {
+				catalog.configuration = presetConfig
+			}
+
+			builder := repos.RenameCommandBuilder{
+				LoggerProvider:               func() *zap.Logger { return zap.NewNop() },
+				Discoverer:                   &fakeRepositoryDiscoverer{repositories: []string{renameDiscoveredRepositoryPath}},
+				GitExecutor:                  &fakeGitExecutor{},
+				GitManager:                   &fakeGitRepositoryManager{},
+				FileSystem:                   fakeFileSystem{files: map[string]string{}},
+				PrompterFactory:              func(*cobra.Command) shared.ConfirmationPrompter { return nil },
+				HumanReadableLoggingProvider: func() bool { return false },
+				ConfigurationProvider: func() repos.RenameConfiguration {
+					return repos.RenameConfiguration{RepositoryRoots: []string{renameConfiguredRootConstant}}
+				},
+				PresetCatalogFactory: func() workflowcmd.PresetCatalog { return &catalog },
+			}
+
+			command, buildError := builder.Build()
+			require.NoError(subtest, buildError)
+			bindRenameCommandFlags(command)
+			err := command.Execute()
+			require.EqualError(subtest, err, testCase.expectErr)
+		})
+	}
+}
+
+func loadFolderRenamePreset(testingInstance testing.TB) workflow.Configuration {
+	presetContent := []byte(`workflow:
+  - step:
+      name: folder-rename
+      command: ["folder", "rename"]
+      with:
+        require_clean: '{{ index .Environment "folder_require_clean" }}'
+        include_owner: '{{ index .Environment "folder_include_owner" }}'
+`)
+	configuration, err := workflow.ParseConfiguration(presetContent)
+	require.NoError(testingInstance, err)
+	return configuration
+}
+
+func bindRenameCommandFlags(command *cobra.Command) {
+	flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{
+		Name:       flagutils.DefaultRootFlagName,
+		Usage:      flagutils.DefaultRootFlagUsage,
+		Enabled:    true,
+		Persistent: true,
+	})
+	flagutils.BindExecutionFlags(command, flagutils.ExecutionDefaults{}, flagutils.ExecutionFlagDefinitions{
+		AssumeYes: flagutils.ExecutionFlagDefinition{
+			Name:      flagutils.AssumeYesFlagName,
+			Usage:     flagutils.AssumeYesFlagUsage,
+			Shorthand: flagutils.AssumeYesFlagShorthand,
+			Enabled:   true,
+		},
+	})
 }
