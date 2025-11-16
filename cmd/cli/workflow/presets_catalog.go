@@ -40,6 +40,11 @@ var embeddedPresetDefinitions = []presetDefinition{
 		Description: "Rewrite Go module namespaces using tasks apply.",
 		FileName:    "presets/namespace.yaml",
 	},
+	{
+		Name:        "folder-rename",
+		Description: "Normalize repository folders so directories match canonical GitHub names.",
+		FileName:    "presets/folder-rename.yaml",
+	},
 }
 
 type embeddedPresetCatalog struct {

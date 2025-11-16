@@ -2,9 +2,11 @@ package repos
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/spf13/cobra"
 
+	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
 	"github.com/temirov/gix/internal/repos/shared"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
 	"github.com/temirov/gix/internal/workflow"
@@ -19,6 +21,11 @@ const (
 	renameRequireCleanDescription = "Require clean worktrees before applying renames"
 	renameIncludeOwnerFlagName    = "owner"
 	renameIncludeOwnerDescription = "Include repository owner in the target directory path"
+	folderRenamePresetName        = "folder-rename"
+	folderRenameCommandKey        = "folder rename"
+	renamePresetLoadErrorTemplate = "unable to load folder-rename preset: %w"
+	renamePresetMissingMessage    = "folder-rename preset not found"
+	renameBuildOperationsError    = "unable to build folder-rename workflow: %w"
 )
 
 // RenameCommandBuilder assembles the repo-folders-rename command.
@@ -32,7 +39,8 @@ type RenameCommandBuilder struct {
 	PrompterFactory              PrompterFactory
 	HumanReadableLoggingProvider func() bool
 	ConfigurationProvider        func() RenameConfiguration
-	TaskRunnerFactory            func(workflow.Dependencies) TaskRunnerExecutor
+	PresetCatalogFactory         func() workflowcmd.PresetCatalog
+	WorkflowExecutorFactory      WorkflowExecutorFactory
 }
 
 // Build constructs the repo-folders-rename command.
@@ -105,36 +113,47 @@ func (builder *RenameCommandBuilder) run(command *cobra.Command, arguments []str
 		return dependencyError
 	}
 
-	taskDependencies := dependencyResult.Workflow
-	trackingPrompter := newCascadingConfirmationPrompter(taskDependencies.Prompter, assumeYes)
-	taskDependencies.Prompter = trackingPrompter
-	taskDependencies.Output = command.OutOrStdout()
-	taskDependencies.Errors = command.ErrOrStderr()
+	workflowDependencies := dependencyResult.Workflow
+	workflowDependencies.Output = command.OutOrStdout()
+	workflowDependencies.Errors = command.ErrOrStderr()
 
-	taskRunner := ResolveTaskRunner(builder.TaskRunnerFactory, taskDependencies)
-
-	actionOptions := map[string]any{
-		"require_clean": requireClean,
-		"include_owner": includeOwner,
+	presetCatalog := builder.resolvePresetCatalog()
+	presetConfiguration, presetFound, presetError := presetCatalog.Load(folderRenamePresetName)
+	if presetError != nil {
+		return fmt.Errorf(renamePresetLoadErrorTemplate, presetError)
+	}
+	if !presetFound {
+		return errors.New(renamePresetMissingMessage)
 	}
 
-	taskDefinition := workflow.TaskDefinition{
-		Name:        "Rename repository directories",
-		EnsureClean: false,
-		Actions: []workflow.TaskActionDefinition{
-			{Type: "repo.folder.rename", Options: actionOptions},
-		},
-		Commit: workflow.TaskCommitDefinition{},
+	for index := range presetConfiguration.Steps {
+		if workflow.CommandPathKey(presetConfiguration.Steps[index].Command) != folderRenameCommandKey {
+			continue
+		}
+		if presetConfiguration.Steps[index].Options == nil {
+			presetConfiguration.Steps[index].Options = make(map[string]any)
+		}
+		presetConfiguration.Steps[index].Options["require_clean"] = requireClean
+		presetConfiguration.Steps[index].Options["include_owner"] = includeOwner
 	}
+
+	nodes, operationsError := workflow.BuildOperations(presetConfiguration)
+	if operationsError != nil {
+		return fmt.Errorf(renameBuildOperationsError, operationsError)
+	}
+	workflow.ApplyDefaults(nodes, workflow.OperationDefaults{RequireClean: requireClean})
 
 	runtimeOptions := workflow.RuntimeOptions{
-		AssumeYes:                            trackingPrompter.AssumeYes(),
+		AssumeYes:                            assumeYes,
 		IncludeNestedRepositories:            true,
 		ProcessRepositoriesByDescendingDepth: true,
-		CaptureInitialWorktreeStatus:         requireClean,
+	}
+	if requireClean {
+		runtimeOptions.CaptureInitialWorktreeStatus = true
 	}
 
-	_, runErr := taskRunner.Run(command.Context(), roots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
+	executor := resolveWorkflowExecutor(builder.WorkflowExecutorFactory, nodes, workflowDependencies)
+	_, runErr := executor.Execute(command.Context(), roots, runtimeOptions)
 	return runErr
 }
 
@@ -146,4 +165,13 @@ func (builder *RenameCommandBuilder) resolveConfiguration() RenameConfiguration 
 
 	provided := builder.ConfigurationProvider()
 	return provided.sanitize()
+}
+
+func (builder *RenameCommandBuilder) resolvePresetCatalog() workflowcmd.PresetCatalog {
+	if builder.PresetCatalogFactory != nil {
+		if catalog := builder.PresetCatalogFactory(); catalog != nil {
+			return catalog
+		}
+	}
+	return workflowcmd.NewEmbeddedPresetCatalog()
 }
