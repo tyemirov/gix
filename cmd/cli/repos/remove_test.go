@@ -10,22 +10,19 @@ import (
 	"go.uber.org/zap"
 
 	repos "github.com/temirov/gix/cmd/cli/repos"
+	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
 	"github.com/temirov/gix/internal/workflow"
 )
 
-type recordingHistoryTaskRunner struct {
-	roots          []string
-	definitions    []workflow.TaskDefinition
-	runtimeOptions workflow.RuntimeOptions
-	invocations    int
+type historyRecordingExecutor struct {
+	roots   []string
+	options workflow.RuntimeOptions
 }
 
-func (runner *recordingHistoryTaskRunner) Run(_ context.Context, roots []string, definitions []workflow.TaskDefinition, options workflow.RuntimeOptions) (workflow.ExecutionOutcome, error) {
-	runner.invocations++
-	runner.roots = append([]string{}, roots...)
-	runner.definitions = append([]workflow.TaskDefinition{}, definitions...)
-	runner.runtimeOptions = options
+func (executor *historyRecordingExecutor) Execute(_ context.Context, roots []string, options workflow.RuntimeOptions) (workflow.ExecutionOutcome, error) {
+	executor.roots = append([]string{}, roots...)
+	executor.options = options
 	return workflow.ExecutionOutcome{}, nil
 }
 
@@ -110,10 +107,11 @@ func TestRemoveCommandConfigurationPrecedence(testInstance *testing.T) {
 
 	for _, testCase := range testCases {
 		testInstance.Run(testCase.name, func(subtest *testing.T) {
+			presetConfig := loadHistoryPreset(subtest)
 			discoverer := &fakeRepositoryDiscoverer{repositories: []string{configuredRoot}}
 			executor := &fakeGitExecutor{}
 			manager := &fakeGitRepositoryManager{}
-			runner := &recordingHistoryTaskRunner{}
+			recording := &historyRecordingExecutor{}
 
 			configCopy := testCase.configuration
 			builder := repos.RemoveCommandBuilder{
@@ -125,8 +123,41 @@ func TestRemoveCommandConfigurationPrecedence(testInstance *testing.T) {
 				ConfigurationProvider: func() repos.RemoveConfiguration {
 					return configCopy
 				},
-				TaskRunnerFactory: func(workflow.Dependencies) repos.TaskRunnerExecutor {
-					return runner
+				PresetCatalogFactory: func() workflowcmd.PresetCatalog {
+					return &fakePresetCatalog{configuration: presetConfig, found: true}
+				},
+				WorkflowExecutorFactory: func(nodes []*workflow.OperationNode, _ workflow.Dependencies) repos.WorkflowExecutor {
+					require.Len(subtest, nodes, 1)
+					taskOp, ok := nodes[0].Operation.(*workflow.TaskOperation)
+					require.True(subtest, ok)
+					definitions := taskOp.Definitions()
+					require.Len(subtest, definitions, 1)
+					task := definitions[0]
+					require.True(subtest, task.EnsureClean)
+					require.Len(subtest, task.Actions, 1)
+					action := task.Actions[0]
+					require.Equal(subtest, "repo.history.purge", action.Type)
+					actionOptions := action.Options
+					require.NotNil(subtest, actionOptions)
+					pathsValue, ok := actionOptions["paths"].([]string)
+					require.True(subtest, ok)
+					require.ElementsMatch(subtest, testCase.expectedPaths, pathsValue)
+					if len(testCase.expectedRemote) > 0 {
+						require.Equal(subtest, testCase.expectedRemote, actionOptions["remote"])
+					} else {
+						_, exists := actionOptions["remote"]
+						require.False(subtest, exists)
+					}
+					pushValue, ok := actionOptions["push"].(bool)
+					require.True(subtest, ok)
+					require.Equal(subtest, testCase.expectPush, pushValue)
+					restoreValue, ok := actionOptions["restore"].(bool)
+					require.True(subtest, ok)
+					require.Equal(subtest, testCase.expectRestore, restoreValue)
+					pushMissingValue, ok := actionOptions["push_missing"].(bool)
+					require.True(subtest, ok)
+					require.Equal(subtest, testCase.expectPushMissing, pushMissingValue)
+					return recording
 				},
 			}
 
@@ -143,45 +174,34 @@ func TestRemoveCommandConfigurationPrecedence(testInstance *testing.T) {
 			require.NoError(subtest, executionError)
 
 			if testCase.expectTaskInvocation {
-				require.Equal(subtest, 1, runner.invocations)
-				require.Equal(subtest, testCase.expectedRoots, runner.roots)
-				require.Len(subtest, runner.definitions, 1)
-
-				task := runner.definitions[0]
-				require.Equal(subtest, "Remove repository history paths", task.Name)
-				require.True(subtest, task.EnsureClean)
-				require.Len(subtest, task.Actions, 1)
-
-				action := task.Actions[0]
-				require.Equal(subtest, "repo.history.purge", action.Type)
-
-				pathsValue, ok := action.Options["paths"].([]string)
-				require.True(subtest, ok)
-				require.ElementsMatch(subtest, testCase.expectedPaths, pathsValue)
-
-				remoteValue, remoteExists := action.Options["remote"].(string)
-				if remoteExists {
-					require.Equal(subtest, testCase.expectedRemote, remoteValue)
-				} else {
-					require.Empty(subtest, testCase.expectedRemote)
-				}
-
-				pushValue, ok := action.Options["push"].(bool)
-				require.True(subtest, ok)
-				require.Equal(subtest, testCase.expectPush, pushValue)
-
-				restoreValue, ok := action.Options["restore"].(bool)
-				require.True(subtest, ok)
-				require.Equal(subtest, testCase.expectRestore, restoreValue)
-
-				pushMissingValue, ok := action.Options["push_missing"].(bool)
-				require.True(subtest, ok)
-				require.Equal(subtest, testCase.expectPushMissing, pushMissingValue)
-
-				require.Equal(subtest, testCase.expectAssumeYes, runner.runtimeOptions.AssumeYes)
+				require.Equal(subtest, testCase.expectedRoots, recording.roots)
+				require.Equal(subtest, testCase.expectAssumeYes, recording.options.AssumeYes)
 			} else {
-				require.Equal(subtest, 0, runner.invocations)
+				require.Empty(subtest, recording.roots)
 			}
 		})
 	}
+}
+
+func loadHistoryPreset(testingInstance testing.TB) workflow.Configuration {
+	presetContent := []byte(`workflow:
+  - step:
+      name: history-remove
+      command: ["tasks", "apply"]
+      with:
+        tasks:
+          - name: Remove repository history paths
+            ensure_clean: true
+            actions:
+              - type: repo.history.purge
+                options:
+                  paths: []
+                  remote: ""
+                  push: true
+                  restore: true
+                  push_missing: false
+`)
+	configuration, err := workflow.ParseConfiguration(presetContent)
+	require.NoError(testingInstance, err)
+	return configuration
 }

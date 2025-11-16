@@ -51,9 +51,19 @@ var embeddedPresetDefinitions = []presetDefinition{
 		FileName:    "presets/remote-update-to-canonical.yaml",
 	},
 	{
+		Name:        "remote-update-protocol",
+		Description: "Convert repository remotes between git/ssh/https protocols.",
+		FileName:    "presets/remote-update-protocol.yaml",
+	},
+	{
 		Name:        "files-add",
 		Description: "Seed repository files via tasks apply.",
 		FileName:    "presets/files-add.yaml",
+	},
+	{
+		Name:        "history-remove",
+		Description: "Rewrite repository history to remove sensitive paths.",
+		FileName:    "presets/history-remove.yaml",
 	},
 	{
 		Name:        "release-tag",

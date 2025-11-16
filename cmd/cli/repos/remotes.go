@@ -10,6 +10,7 @@ import (
 	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
 	"github.com/temirov/gix/internal/repos/shared"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
+	rootutils "github.com/temirov/gix/internal/utils/roots"
 	"github.com/temirov/gix/internal/workflow"
 	"github.com/temirov/gix/pkg/taskrunner"
 )
@@ -76,23 +77,22 @@ func (builder *RemotesCommandBuilder) run(command *cobra.Command, arguments []st
 		}
 	}
 
-	roots, rootsError := requireRepositoryRoots(command, arguments, configuration.RepositoryRoots)
+	roots, rootsError := rootutils.Resolve(command, arguments, configuration.RepositoryRoots)
 	if rootsError != nil {
 		return rootsError
 	}
 
-	dependencyResult, dependencyError := buildDependencies(
-		command,
-		dependencyInputs{
+	dependencyResult, dependencyError := taskrunner.BuildDependencies(
+		taskrunner.DependenciesConfig{
 			LoggerProvider:               builder.LoggerProvider,
 			HumanReadableLoggingProvider: builder.HumanReadableLoggingProvider,
-			Discoverer:                   builder.Discoverer,
+			RepositoryDiscoverer:         builder.Discoverer,
 			GitExecutor:                  builder.GitExecutor,
-			GitManager:                   builder.GitManager,
+			GitRepositoryManager:         builder.GitManager,
 			GitHubResolver:               builder.GitHubResolver,
 			PrompterFactory:              builder.PrompterFactory,
 		},
-		taskrunner.DependenciesOptions{},
+		taskrunner.DependenciesOptions{Command: command},
 	)
 	if dependencyError != nil {
 		return dependencyError

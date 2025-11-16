@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	repos "github.com/temirov/gix/cmd/cli/repos"
+	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
 	"github.com/temirov/gix/internal/repos/shared"
 	"github.com/temirov/gix/internal/utils"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
@@ -31,6 +32,8 @@ const (
 )
 
 func TestProtocolCommandConfigurationPrecedence(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	testCases := []struct {
 		name                 string
 		configuration        repos.ProtocolConfiguration
@@ -157,25 +160,33 @@ func TestProtocolCommandConfigurationPrecedence(testInstance *testing.T) {
 
 	for _, testCase := range testCases {
 		testInstance.Run(testCase.name, func(subtest *testing.T) {
+			presetConfig := loadProtocolPreset(subtest)
 			discoverer := &fakeRepositoryDiscoverer{repositories: []string{remotesDiscoveredRepository}}
 			executor := &fakeGitExecutor{}
 			manager := &fakeGitRepositoryManager{remoteURL: "", currentBranch: remotesMetadataDefaultBranch, panicOnCurrentBranchLookup: true}
-			prompter := &recordingPrompter{result: shared.ConfirmationResult{Confirmed: true}}
-			runner := &recordingTaskRunner{}
+			recording := &protocolRecordingExecutor{}
 
 			builder := repos.ProtocolCommandBuilder{
 				LoggerProvider: func() *zap.Logger { return zap.NewNop() },
 				Discoverer:     discoverer,
 				GitExecutor:    executor,
 				GitManager:     manager,
-				PrompterFactory: func(*cobra.Command) shared.ConfirmationPrompter {
-					return prompter
-				},
 				ConfigurationProvider: func() repos.ProtocolConfiguration {
 					return testCase.configuration
 				},
-				TaskRunnerFactory: func(workflow.Dependencies) repos.TaskRunnerExecutor {
-					return runner
+				PresetCatalogFactory: func() workflowcmd.PresetCatalog {
+					return &fakePresetCatalog{configuration: presetConfig, found: true}
+				},
+				WorkflowExecutorFactory: func(nodes []*workflow.OperationNode, _ workflow.Dependencies) repos.WorkflowExecutor {
+					if !testCase.expectTaskInvocation {
+						return recording
+					}
+					require.Len(subtest, nodes, 1)
+					conversionOp, ok := nodes[0].Operation.(*workflow.ProtocolConversionOperation)
+					require.True(subtest, ok)
+					require.Equal(subtest, shared.RemoteProtocol(testCase.expectedFrom), conversionOp.FromProtocol)
+					require.Equal(subtest, shared.RemoteProtocol(testCase.expectedTo), conversionOp.ToProtocol)
+					return recording
 				},
 			}
 
@@ -194,8 +205,6 @@ func TestProtocolCommandConfigurationPrecedence(testInstance *testing.T) {
 			if testCase.expectError {
 				require.Error(subtest, executionError)
 				require.Equal(subtest, testCase.expectedErrorMessage, executionError.Error())
-				require.Zero(subtest, prompter.calls)
-				require.Empty(subtest, runner.definitions)
 				return
 			}
 
@@ -207,19 +216,38 @@ func TestProtocolCommandConfigurationPrecedence(testInstance *testing.T) {
 			}
 
 			if testCase.expectTaskInvocation {
-				require.Equal(subtest, expectedRoots, runner.roots)
-				require.Len(subtest, runner.definitions, 1)
-				require.Len(subtest, runner.definitions[0].Actions, 1)
-				action := runner.definitions[0].Actions[0]
-				require.Equal(subtest, "repo.remote.convert-protocol", action.Type)
-				require.Equal(subtest, testCase.expectedFrom, action.Options["from"])
-				require.Equal(subtest, testCase.expectedTo, action.Options["to"])
-				require.Equal(subtest, testCase.expectedAssumeYes, runner.runtimeOptions.AssumeYes)
+				require.Equal(subtest, expectedRoots, recording.roots)
+				require.Equal(subtest, testCase.expectedAssumeYes, recording.options.AssumeYes)
 			} else {
-				require.Empty(subtest, runner.definitions)
+				require.Empty(subtest, recording.roots)
 			}
 		})
 	}
+}
+
+type protocolRecordingExecutor struct {
+	roots   []string
+	options workflow.RuntimeOptions
+}
+
+func (executor *protocolRecordingExecutor) Execute(_ context.Context, roots []string, options workflow.RuntimeOptions) (workflow.ExecutionOutcome, error) {
+	executor.roots = append([]string{}, roots...)
+	executor.options = options
+	return workflow.ExecutionOutcome{}, nil
+}
+
+func loadProtocolPreset(testingInstance testing.TB) workflow.Configuration {
+	presetContent := []byte(`workflow:
+  - step:
+      name: remote-update-protocol
+      command: ["remote", "update-protocol"]
+      with:
+        from: ""
+        to: ""
+`)
+	configuration, err := workflow.ParseConfiguration(presetContent)
+	require.NoError(testingInstance, err)
+	return configuration
 }
 
 func bindGlobalProtocolFlags(command *cobra.Command) {
