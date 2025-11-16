@@ -1,6 +1,7 @@
 package repos_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -248,6 +249,8 @@ func TestRemotesCommandPresetErrorsSurface(testInstance *testing.T) {
 			command, buildError := builder.Build()
 			require.NoError(subtest, buildError)
 			bindRemotesCommandFlags(command)
+			command.SetOut(&bytes.Buffer{})
+			command.SetErr(&bytes.Buffer{})
 			err := command.Execute()
 			require.EqualError(subtest, err, testCase.expectErr)
 		})

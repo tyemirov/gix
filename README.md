@@ -97,7 +97,7 @@ gix workflow folder-rename --var folder_require_clean=true --var folder_include_
 gix workflow remote-update-to-canonical --var owner=canonical --roots ~/Development --yes
 ```
 
-Embedded workflows ship with the binary so you can hand teammates a stable command (for example, `license`, `namespace`, `folder-rename`, or `remote-update-to-canonical`) without distributing a separate configuration file.
+Embedded workflows ship with the binary so you can hand teammates a stable command (for example, `license`, `namespace`, `folder-rename`, `remote-update-to-canonical`, or `files-add`) without distributing a separate configuration file.
 
 ### Atomic git helpers
 

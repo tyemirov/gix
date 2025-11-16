@@ -50,6 +50,11 @@ var embeddedPresetDefinitions = []presetDefinition{
 		Description: "Update origin remotes to match canonical GitHub repositories.",
 		FileName:    "presets/remote-update-to-canonical.yaml",
 	},
+	{
+		Name:        "files-add",
+		Description: "Seed repository files via tasks apply.",
+		FileName:    "presets/files-add.yaml",
+	},
 }
 
 type embeddedPresetCatalog struct {

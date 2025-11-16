@@ -2,6 +2,7 @@ package repos_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 
@@ -9,6 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	repos "github.com/temirov/gix/cmd/cli/repos"
+	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
 	rootutils "github.com/temirov/gix/internal/utils/roots"
 	"github.com/temirov/gix/internal/workflow"
@@ -32,23 +34,11 @@ const (
 	filesAddCliRoot           = "/tmp/file-add-cli-root"
 )
 
-type filesAddRecordingTaskRunner struct {
-	roots          []string
-	definitions    []workflow.TaskDefinition
-	runtimeOptions workflow.RuntimeOptions
-}
-
-func (runner *filesAddRecordingTaskRunner) Run(_ context.Context, roots []string, definitions []workflow.TaskDefinition, options workflow.RuntimeOptions) (workflow.ExecutionOutcome, error) {
-	runner.roots = append([]string{}, roots...)
-	runner.definitions = append([]workflow.TaskDefinition{}, definitions...)
-	runner.runtimeOptions = options
-	return workflow.ExecutionOutcome{}, nil
-}
-
 func TestFilesAddCommandUsesConfigurationDefaults(t *testing.T) {
 	t.Parallel()
 
-	taskRunner := &filesAddRecordingTaskRunner{}
+	presetConfig := loadFilesAddPreset(t)
+	recording := &filesAddRecordingExecutor{}
 	builder := repos.FilesAddCommandBuilder{
 		LoggerProvider:               func() *zap.Logger { return zap.NewNop() },
 		Discoverer:                   &fakeRepositoryDiscoverer{repositories: []string{filesAddConfiguredRoot}},
@@ -72,7 +62,27 @@ func TestFilesAddCommandUsesConfigurationDefaults(t *testing.T) {
 				CommitMessage:   "docs: add POLICY",
 			}
 		},
-		TaskRunnerFactory: func(workflow.Dependencies) repos.TaskRunnerExecutor { return taskRunner },
+		PresetCatalogFactory: func() workflowcmd.PresetCatalog { return &fakePresetCatalog{configuration: presetConfig, found: true} },
+		WorkflowExecutorFactory: func(nodes []*workflow.OperationNode, _ workflow.Dependencies) repos.WorkflowExecutor {
+			require.Len(t, nodes, 1)
+			taskOp, ok := nodes[0].Operation.(*workflow.TaskOperation)
+			require.True(t, ok)
+			definitions := taskOp.Definitions()
+			require.Len(t, definitions, 1)
+			task := definitions[0]
+			require.Equal(t, "Add repository file docs/POLICY.md", task.Name)
+			require.True(t, task.EnsureClean)
+			require.Equal(t, "docs/add", task.Branch.NameTemplate)
+			require.Equal(t, "main", task.Branch.StartPointTemplate)
+			require.Equal(t, "origin", task.Branch.PushRemote)
+			require.Len(t, task.Files, 1)
+			fileDef := task.Files[0]
+			require.Equal(t, "docs/POLICY.md", fileDef.PathTemplate)
+			require.Equal(t, "Example", fileDef.ContentTemplate)
+			require.Equal(t, workflow.TaskFileModeSkipIfExists, fileDef.Mode)
+			require.Equal(t, "docs: add POLICY", task.Commit.MessageTemplate)
+			return recording
+		},
 	}
 
 	command, buildError := builder.Build()
@@ -82,30 +92,16 @@ func TestFilesAddCommandUsesConfigurationDefaults(t *testing.T) {
 	command.SetContext(context.Background())
 	require.NoError(t, command.Execute())
 
-	require.Equal(t, []string{filesAddConfiguredRoot}, taskRunner.roots)
-	require.True(t, taskRunner.runtimeOptions.AssumeYes)
-	require.True(t, taskRunner.runtimeOptions.CaptureInitialWorktreeStatus)
-	require.Len(t, taskRunner.definitions, 1)
-
-	definition := taskRunner.definitions[0]
-	require.Equal(t, "Add repository file docs/POLICY.md", definition.Name)
-	require.True(t, definition.EnsureClean)
-	require.Equal(t, "docs/add", definition.Branch.NameTemplate)
-	require.Equal(t, "main", definition.Branch.StartPointTemplate)
-	require.Equal(t, "origin", definition.Branch.PushRemote)
-	require.Len(t, definition.Files, 1)
-
-	fileDefinition := definition.Files[0]
-	require.Equal(t, "docs/POLICY.md", fileDefinition.PathTemplate)
-	require.Equal(t, "Example", fileDefinition.ContentTemplate)
-	require.Equal(t, workflow.TaskFileModeSkipIfExists, fileDefinition.Mode)
-	require.Equal(t, "docs: add POLICY", definition.Commit.MessageTemplate)
+	require.Equal(t, []string{filesAddConfiguredRoot}, recording.roots)
+	require.True(t, recording.options.AssumeYes)
+	require.True(t, recording.options.CaptureInitialWorktreeStatus)
 }
 
 func TestFilesAddCommandFlagOverrides(t *testing.T) {
 	t.Parallel()
 
-	taskRunner := &filesAddRecordingTaskRunner{}
+	presetConfig := loadFilesAddPreset(t)
+	recording := &filesAddRecordingExecutor{}
 	fs := fakeFileSystem{files: map[string]string{"content.txt": "From file"}}
 	builder := repos.FilesAddCommandBuilder{
 		LoggerProvider:               func() *zap.Logger { return zap.NewNop() },
@@ -117,7 +113,28 @@ func TestFilesAddCommandFlagOverrides(t *testing.T) {
 		ConfigurationProvider: func() repos.AddConfiguration {
 			return repos.AddConfiguration{RepositoryRoots: []string{filesAddConfiguredRoot}}
 		},
-		TaskRunnerFactory: func(workflow.Dependencies) repos.TaskRunnerExecutor { return taskRunner },
+		PresetCatalogFactory: func() workflowcmd.PresetCatalog { return &fakePresetCatalog{configuration: presetConfig, found: true} },
+		WorkflowExecutorFactory: func(nodes []*workflow.OperationNode, _ workflow.Dependencies) repos.WorkflowExecutor {
+			require.Len(t, nodes, 1)
+			taskOp, ok := nodes[0].Operation.(*workflow.TaskOperation)
+			require.True(t, ok)
+			definitions := taskOp.Definitions()
+			require.Len(t, definitions, 1)
+			task := definitions[0]
+			require.True(t, task.EnsureClean)
+			require.Equal(t, "automation/docs", task.Branch.NameTemplate)
+			require.Equal(t, "develop", task.Branch.StartPointTemplate)
+			require.Equal(t, "", task.Branch.PushRemote)
+			require.Len(t, task.Files, 1)
+
+			fileDef := task.Files[0]
+			require.Equal(t, "docs/POLICY.md", fileDef.PathTemplate)
+			require.Equal(t, "From file", fileDef.ContentTemplate)
+			require.Equal(t, workflow.TaskFileModeOverwrite, fileDef.Mode)
+			require.Equal(t, os.FileMode(0o600), fileDef.Permissions)
+			require.Equal(t, "docs: seed policy", task.Commit.MessageTemplate)
+			return recording
+		},
 	}
 
 	command, buildError := builder.Build()
@@ -143,28 +160,14 @@ func TestFilesAddCommandFlagOverrides(t *testing.T) {
 	command.SetArgs(args)
 
 	require.NoError(t, command.Execute())
-	require.Equal(t, []string{filesAddCliRoot}, taskRunner.roots)
-	require.True(t, taskRunner.runtimeOptions.AssumeYes)
-
-	definition := taskRunner.definitions[0]
-	require.True(t, definition.EnsureClean)
-	require.Equal(t, "automation/docs", definition.Branch.NameTemplate)
-	require.Equal(t, "develop", definition.Branch.StartPointTemplate)
-	require.Equal(t, "", definition.Branch.PushRemote)
-	require.Len(t, definition.Files, 1)
-
-	fileDefinition := definition.Files[0]
-	require.Equal(t, "docs/POLICY.md", fileDefinition.PathTemplate)
-	require.Equal(t, "From file", fileDefinition.ContentTemplate)
-	require.Equal(t, workflow.TaskFileModeOverwrite, fileDefinition.Mode)
-	require.Equal(t, os.FileMode(0o600), fileDefinition.Permissions)
-	require.Equal(t, "docs: seed policy", definition.Commit.MessageTemplate)
+	require.Equal(t, []string{filesAddCliRoot}, recording.roots)
+	require.True(t, recording.options.AssumeYes)
 }
 
 func TestFilesAddCommandRequiresContent(t *testing.T) {
 	t.Parallel()
 
-	taskRunner := &filesAddRecordingTaskRunner{}
+	presetConfig := loadFilesAddPreset(t)
 	builder := repos.FilesAddCommandBuilder{
 		LoggerProvider:               func() *zap.Logger { return zap.NewNop() },
 		Discoverer:                   &fakeRepositoryDiscoverer{repositories: []string{filesAddConfiguredRoot}},
@@ -175,7 +178,7 @@ func TestFilesAddCommandRequiresContent(t *testing.T) {
 		ConfigurationProvider: func() repos.AddConfiguration {
 			return repos.AddConfiguration{}
 		},
-		TaskRunnerFactory: func(workflow.Dependencies) repos.TaskRunnerExecutor { return taskRunner },
+		PresetCatalogFactory: func() workflowcmd.PresetCatalog { return &fakePresetCatalog{configuration: presetConfig, found: true} },
 	}
 
 	command, buildError := builder.Build()
@@ -192,7 +195,7 @@ func TestFilesAddCommandRequiresContent(t *testing.T) {
 func TestFilesAddCommandRejectsPositionalRoots(t *testing.T) {
 	t.Parallel()
 
-	taskRunner := &filesAddRecordingTaskRunner{}
+	presetConfig := loadFilesAddPreset(t)
 	builder := repos.FilesAddCommandBuilder{
 		LoggerProvider:               func() *zap.Logger { return zap.NewNop() },
 		Discoverer:                   &fakeRepositoryDiscoverer{repositories: []string{filesAddConfiguredRoot}},
@@ -207,7 +210,7 @@ func TestFilesAddCommandRejectsPositionalRoots(t *testing.T) {
 				Content:         "Example",
 			}
 		},
-		TaskRunnerFactory: func(workflow.Dependencies) repos.TaskRunnerExecutor { return taskRunner },
+		PresetCatalogFactory: func() workflowcmd.PresetCatalog { return &fakePresetCatalog{configuration: presetConfig, found: true} },
 	}
 
 	command, buildError := builder.Build()
@@ -220,5 +223,110 @@ func TestFilesAddCommandRejectsPositionalRoots(t *testing.T) {
 	err := command.Execute()
 	require.Error(t, err)
 	require.Equal(t, rootutils.PositionalRootsUnsupportedMessage(), err.Error())
-	require.Empty(t, taskRunner.roots)
+}
+
+func TestFilesAddCommandPresetErrorsSurface(t *testing.T) {
+	t.Parallel()
+
+	presetConfig := loadFilesAddPreset(t)
+
+	testCases := []struct {
+		name      string
+		catalog   fakePresetCatalog
+		expectErr string
+	}{
+		{
+			name:      "missing_preset",
+			catalog:   fakePresetCatalog{found: false},
+			expectErr: "files-add preset not found",
+		},
+		{
+			name:      "load_error",
+			catalog:   fakePresetCatalog{found: true, loadError: errors.New("boom")},
+			expectErr: "unable to load files-add preset: boom",
+		},
+		{
+			name: "build_error",
+			catalog: fakePresetCatalog{
+				found: true,
+				configuration: workflow.Configuration{
+					Steps: []workflow.StepConfiguration{
+						{Command: []string{"unknown"}},
+					},
+				},
+			},
+			expectErr: "unable to build files-add workflow: unsupported workflow command: unknown",
+		},
+	}
+
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run(testCase.name, func(subtest *testing.T) {
+			catalog := testCase.catalog
+			if len(catalog.configuration.Steps) == 0 && catalog.found && catalog.loadError == nil && testCase.name != "build_error" {
+				catalog.configuration = presetConfig
+			}
+
+			builder := repos.FilesAddCommandBuilder{
+				LoggerProvider:               func() *zap.Logger { return zap.NewNop() },
+				Discoverer:                   &fakeRepositoryDiscoverer{repositories: []string{filesAddConfiguredRoot}},
+				GitExecutor:                  &fakeGitExecutor{},
+				GitManager:                   &fakeGitRepositoryManager{cleanWorktree: true, cleanWorktreeSet: true, currentBranch: "main"},
+				FileSystem:                   fakeFileSystem{},
+				HumanReadableLoggingProvider: func() bool { return false },
+				ConfigurationProvider: func() repos.AddConfiguration {
+					return repos.AddConfiguration{
+						RepositoryRoots: []string{filesAddConfiguredRoot},
+						Path:            "docs/POLICY.md",
+						Content:         "Example",
+					}
+				},
+				PresetCatalogFactory: func() workflowcmd.PresetCatalog { return &catalog },
+			}
+
+			command, buildError := builder.Build()
+			require.NoError(subtest, buildError)
+			bindGlobalReplaceFlags(command)
+			command.SetContext(context.Background())
+			err := command.Execute()
+			require.EqualError(subtest, err, testCase.expectErr)
+		})
+	}
+}
+
+type filesAddRecordingExecutor struct {
+	roots   []string
+	options workflow.RuntimeOptions
+}
+
+func (executor *filesAddRecordingExecutor) Execute(_ context.Context, roots []string, options workflow.RuntimeOptions) (workflow.ExecutionOutcome, error) {
+	executor.roots = append([]string{}, roots...)
+	executor.options = options
+	return workflow.ExecutionOutcome{}, nil
+}
+
+func loadFilesAddPreset(testingInstance testing.TB) workflow.Configuration {
+	presetContent := []byte(`workflow:
+  - step:
+      name: files-add
+      command: ["tasks", "apply"]
+      with:
+        tasks:
+          - name: Add repository file
+            ensure_clean: true
+            branch:
+              name: ""
+              start_point: ""
+              push_remote: ""
+            files:
+              - path: ""
+                content: ""
+                mode: skip-if-exists
+                permissions: 420
+            commit:
+              message: ""
+`)
+	configuration, err := workflow.ParseConfiguration(presetContent)
+	require.NoError(testingInstance, err)
+	return configuration
 }
