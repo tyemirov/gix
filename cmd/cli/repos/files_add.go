@@ -304,7 +304,7 @@ func (builder *FilesAddCommandBuilder) run(command *cobra.Command, arguments []s
 		CaptureInitialWorktreeStatus: requireClean,
 	}
 
-	executor := resolveWorkflowExecutor(builder.WorkflowExecutorFactory, nodes, workflowDependencies)
+	executor := ResolveWorkflowExecutor(builder.WorkflowExecutorFactory, nodes, workflowDependencies)
 	_, runErr := executor.Execute(command.Context(), roots, runtimeOptions)
 	return runErr
 }

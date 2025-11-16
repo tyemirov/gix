@@ -14,7 +14,7 @@ type WorkflowExecutor interface {
 // WorkflowExecutorFactory constructs workflow executors.
 type WorkflowExecutorFactory func(nodes []*workflow.OperationNode, dependencies workflow.Dependencies) WorkflowExecutor
 
-func resolveWorkflowExecutor(factory WorkflowExecutorFactory, nodes []*workflow.OperationNode, dependencies workflow.Dependencies) WorkflowExecutor {
+func ResolveWorkflowExecutor(factory WorkflowExecutorFactory, nodes []*workflow.OperationNode, dependencies workflow.Dependencies) WorkflowExecutor {
 	if factory != nil {
 		if executor := factory(nodes, dependencies); executor != nil {
 			return executor

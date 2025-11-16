@@ -1,0 +1,13 @@
+workflow:
+  - step:
+      name: release-retag
+      command: ["tasks", "apply"]
+      with:
+        tasks:
+          - name: Retag release tags
+            ensure_clean: false
+            actions:
+              - type: repo.release.retag
+                options:
+                  mappings: []
+                  remote: ""
