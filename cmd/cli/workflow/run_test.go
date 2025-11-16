@@ -15,6 +15,7 @@ import (
 
 	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
 	"github.com/temirov/gix/internal/execshell"
+	"github.com/temirov/gix/internal/repos/shared"
 	"github.com/temirov/gix/internal/utils"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
 	rootutils "github.com/temirov/gix/internal/utils/roots"
@@ -360,6 +361,60 @@ func TestWorkflowCommandAppliesOwnerVariableToCanonicalRemote(testInstance *test
 		require.Equal(testInstance, "canonical", canonicalOperation.OwnerConstraint)
 	}
 	require.True(testInstance, found, "expected canonical remote operation to be built")
+}
+
+func TestWorkflowCommandAppliesProtocolVariablesToPreset(testInstance *testing.T) {
+	discoverer := &fakeWorkflowDiscoverer{}
+	executor := &fakeWorkflowGitExecutor{}
+	executorRecorder := &recordingExecutor{}
+	protocolPreset := workflowpkg.Configuration{
+		Steps: []workflowpkg.StepConfiguration{
+			{
+				Command: []string{"remote", "update-protocol"},
+				Options: map[string]any{"from": "", "to": ""},
+			},
+		},
+	}
+	var capturedNodes []*workflowpkg.OperationNode
+
+	builder := workflowcmd.CommandBuilder{
+		LoggerProvider: func() *zap.Logger { return zap.NewNop() },
+		Discoverer:     discoverer,
+		GitExecutor:    executor,
+		ConfigurationProvider: func() workflowcmd.CommandConfiguration {
+			return workflowcmd.CommandConfiguration{Roots: []string{workflowConfiguredRootConstant}}
+		},
+		OperationExecutorFactory: func(nodes []*workflowpkg.OperationNode, dependencies workflowpkg.Dependencies) workflowcmd.OperationExecutor {
+			capturedNodes = nodes
+			executorRecorder.captureOperations(nodes)
+			return executorRecorder
+		},
+		PresetCatalogFactory: func() workflowcmd.PresetCatalog {
+			return &fakePresetCatalog{configurations: map[string]workflowpkg.Configuration{"remote-update-protocol": protocolPreset}}
+		},
+	}
+
+	command, buildError := builder.Build()
+	require.NoError(testInstance, buildError)
+	bindGlobalWorkflowFlags(command)
+
+	command.SetArgs([]string{"remote-update-protocol", "--roots", workflowConfiguredRootConstant, "--var", "from=https", "--var", "to=ssh"})
+	command.SetContext(context.Background())
+
+	require.NoError(testInstance, command.Execute())
+	require.NotNil(testInstance, capturedNodes)
+	found := false
+	for index := range capturedNodes {
+		node := capturedNodes[index]
+		protocolOperation, castSucceeded := node.Operation.(*workflowpkg.ProtocolConversionOperation)
+		if !castSucceeded {
+			continue
+		}
+		found = true
+		require.Equal(testInstance, shared.RemoteProtocolHTTPS, protocolOperation.FromProtocol)
+		require.Equal(testInstance, shared.RemoteProtocolSSH, protocolOperation.ToProtocol)
+	}
+	require.True(testInstance, found, "expected protocol conversion operation to be built")
 }
 
 func TestWorkflowCommandLoadsVariablesFromFile(testInstance *testing.T) {

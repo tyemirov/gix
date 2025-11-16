@@ -285,18 +285,34 @@ func applyVariableOverrides(configuration *workflow.Configuration, variables map
 	}
 
 	ownerValue := strings.TrimSpace(variables["owner"])
-	if len(ownerValue) == 0 {
-		return
-	}
+	fromProtocol := strings.TrimSpace(variables["from"])
+	toProtocol := strings.TrimSpace(variables["to"])
 
 	for stepIndex := range configuration.Steps {
-		if workflow.CommandPathKey(configuration.Steps[stepIndex].Command) != "remote update-to-canonical" {
-			continue
+		commandKey := workflow.CommandPathKey(configuration.Steps[stepIndex].Command)
+		switch commandKey {
+		case "remote update-to-canonical":
+			if len(ownerValue) == 0 {
+				continue
+			}
+			if configuration.Steps[stepIndex].Options == nil {
+				configuration.Steps[stepIndex].Options = make(map[string]any)
+			}
+			configuration.Steps[stepIndex].Options["owner"] = ownerValue
+		case "remote update-protocol":
+			if len(fromProtocol) == 0 && len(toProtocol) == 0 {
+				continue
+			}
+			if configuration.Steps[stepIndex].Options == nil {
+				configuration.Steps[stepIndex].Options = make(map[string]any)
+			}
+			if len(fromProtocol) > 0 {
+				configuration.Steps[stepIndex].Options["from"] = fromProtocol
+			}
+			if len(toProtocol) > 0 {
+				configuration.Steps[stepIndex].Options["to"] = toProtocol
+			}
 		}
-		if configuration.Steps[stepIndex].Options == nil {
-			configuration.Steps[stepIndex].Options = make(map[string]any)
-		}
-		configuration.Steps[stepIndex].Options["owner"] = ownerValue
 	}
 }
 
