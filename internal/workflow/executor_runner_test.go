@@ -187,3 +187,80 @@ func TestRunOperationStagesSupportsParallelRepositories(t *testing.T) {
 		result.stageOutcomes[1].Operations,
 	)
 }
+
+func TestRunOperationStagesExecutesFullPipelinePerRepository(t *testing.T) {
+	t.Helper()
+
+	repositoryOne := NewRepositoryState(audit.RepositoryInspection{
+		Path:           "/repositories/one",
+		FinalOwnerRepo: "octocat/one",
+	})
+	repositoryTwo := NewRepositoryState(audit.RepositoryInspection{
+		Path:           "/repositories/two",
+		FinalOwnerRepo: "octocat/two",
+	})
+
+	environment := &Environment{}
+	state := &State{Repositories: []*RepositoryState{repositoryOne, repositoryTwo}}
+
+	executionHistory := make(map[string][]string)
+	var historyMutex sync.Mutex
+
+	recordOperation := func(repoPath string, step string) {
+		historyMutex.Lock()
+		defer historyMutex.Unlock()
+		executionHistory[repoPath] = append(executionHistory[repoPath], step)
+	}
+
+	stageOne := &stubRepositoryOperation{
+		name: "stage-one",
+		executeFunc: func(_ context.Context, _ *Environment, repository *RepositoryState) error {
+			recordOperation(repository.Path, "stage-one")
+			return nil
+		},
+	}
+	stageTwo := &stubRepositoryOperation{
+		name: "stage-two",
+		executeFunc: func(_ context.Context, _ *Environment, repository *RepositoryState) error {
+			recordOperation(repository.Path, "stage-two")
+			return nil
+		},
+	}
+
+	stages := []OperationStage{
+		{Operations: []*OperationNode{{Name: "stage-one", Operation: stageOne}}},
+		{Operations: []*OperationNode{{Name: "stage-two", Operation: stageTwo}}},
+	}
+
+	runOperationStages(context.Background(), stages, environment, state, nil, 2)
+
+	require.Len(t, executionHistory[repositoryOne.Path], 2)
+	require.Equal(t, []string{"stage-one", "stage-two"}, executionHistory[repositoryOne.Path])
+	require.Len(t, executionHistory[repositoryTwo.Path], 2)
+	require.Equal(t, []string{"stage-one", "stage-two"}, executionHistory[repositoryTwo.Path])
+}
+
+func TestStageIsRepositoryScopedForBuiltinOperations(t *testing.T) {
+	t.Helper()
+
+	renameStage := OperationStage{
+		Operations: []*OperationNode{
+			{Name: "rename", Operation: &RenameOperation{}},
+		},
+	}
+	require.True(t, stageIsRepositoryScoped(renameStage))
+
+	canonicalRemoteStage := OperationStage{
+		Operations: []*OperationNode{
+			{Name: "canonical-remote", Operation: &CanonicalRemoteOperation{}},
+		},
+	}
+	require.True(t, stageIsRepositoryScoped(canonicalRemoteStage))
+
+	protocolStage := OperationStage{
+		Operations: []*OperationNode{
+			{Name: "protocol-convert", Operation: &ProtocolConversionOperation{}},
+		},
+	}
+	require.True(t, stageIsRepositoryScoped(protocolStage))
+}

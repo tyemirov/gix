@@ -216,15 +216,58 @@ func buildTaskFiles(reader optionReader) ([]TaskFileDefinition, error) {
 			permissions = fs.FileMode(permissionsValue)
 		}
 
+		replacements, replacementsError := buildTaskFileReplacements(fileReader)
+		if replacementsError != nil {
+			return nil, replacementsError
+		}
+
 		files = append(files, TaskFileDefinition{
 			PathTemplate:    pathTemplate,
 			ContentTemplate: contentTemplate,
 			Mode:            mode,
 			Permissions:     permissions,
+			Replacements:    replacements,
 		})
 	}
 
 	return files, nil
+}
+
+func buildTaskFileReplacements(reader optionReader) ([]TaskReplacementDefinition, error) {
+	replacementEntries, exists, err := reader.mapSlice(optionTaskFileReplacementsKeyConstant)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, nil
+	}
+
+	replacements := make([]TaskReplacementDefinition, 0, len(replacementEntries))
+	for _, entry := range replacementEntries {
+		replacementReader := newOptionReader(entry)
+		fromValue, fromExists, fromError := replacementReader.stringValue(optionTaskReplacementFromKeyConstant)
+		if fromError != nil {
+			return nil, fromError
+		}
+		if !fromExists || len(strings.TrimSpace(fromValue)) == 0 {
+			return nil, errors.New("replacement requires 'from' value")
+		}
+
+		toValue, toExists, toError := replacementReader.stringValue(optionTaskReplacementToKeyConstant)
+		if toError != nil {
+			return nil, toError
+		}
+		if !toExists {
+			toValue = ""
+		}
+
+		replacements = append(replacements, TaskReplacementDefinition{
+			FromTemplate: fromValue,
+			ToTemplate:   toValue,
+		})
+	}
+
+	return replacements, nil
 }
 
 func buildTaskActions(reader optionReader) ([]TaskActionDefinition, error) {

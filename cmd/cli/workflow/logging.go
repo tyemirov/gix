@@ -27,15 +27,17 @@ func (formatter *workflowHumanFormatter) HandleEvent(event shared.Event, writer 
 		return
 	}
 
-	repository := strings.TrimSpace(event.RepositoryIdentifier)
-	if len(repository) == 0 {
-		repository = strings.TrimSpace(event.RepositoryPath)
+	identifier := strings.TrimSpace(event.RepositoryIdentifier)
+	path := strings.TrimSpace(event.RepositoryPath)
+	repositoryLabel := strings.TrimSpace(formatRepositoryHeaderLabel(identifier, path))
+	headerRepository := repositoryLabel
+	if strings.TrimSpace(identifier) == "" || headerRepository == "" {
+		headerRepository = "workflow"
 	}
-	if len(repository) == 0 {
-		repository = "workflow"
+	if strings.TrimSpace(identifier) != "" {
+		formatter.ensureHeader(writer, headerRepository)
 	}
-
-	formatter.ensureHeader(writer, repository)
+	repositoryKey := headerRepository
 
 	switch event.Code {
 	case shared.EventCodeTaskPlan:
@@ -44,10 +46,10 @@ func (formatter *workflowHumanFormatter) HandleEvent(event shared.Event, writer 
 			taskName = strings.TrimSpace(event.Message)
 		}
 		if len(taskName) > 0 {
-			formatter.pendingTasks[repository] = taskName
+			formatter.pendingTasks[repositoryKey] = taskName
 		}
 	case shared.EventCodeTaskApply:
-		taskName := formatter.consumeTaskName(repository, strings.TrimSpace(event.Message))
+		taskName := formatter.consumeTaskName(repositoryKey, strings.TrimSpace(event.Message))
 		if len(taskName) > 0 {
 			fmt.Fprintf(writer, "  ✓ %s\n", taskName)
 		}
@@ -65,7 +67,7 @@ func (formatter *workflowHumanFormatter) HandleEvent(event shared.Event, writer 
 		}
 		fmt.Fprintf(writer, "  ↪ switched to %s%s\n", branch, suffix)
 	case shared.EventCodeTaskSkip:
-		delete(formatter.pendingTasks, repository)
+		delete(formatter.pendingTasks, repositoryKey)
 		formatter.writeWarning(writer, strings.TrimSpace(event.Message))
 	default:
 		switch event.Level {
@@ -123,6 +125,21 @@ func (formatter *workflowHumanFormatter) writeEventSummary(writer io.Writer, eve
 		return
 	}
 	fmt.Fprintf(writer, "event=%s\n", event.Code)
+}
+
+func formatRepositoryHeaderLabel(identifier string, path string) string {
+	trimmedIdentifier := strings.TrimSpace(identifier)
+	trimmedPath := strings.TrimSpace(path)
+	switch {
+	case trimmedIdentifier != "" && trimmedPath != "":
+		return fmt.Sprintf("%s (%s)", trimmedIdentifier, trimmedPath)
+	case trimmedIdentifier != "":
+		return trimmedIdentifier
+	case trimmedPath != "":
+		return trimmedPath
+	default:
+		return ""
+	}
 }
 
 func (formatter *workflowHumanFormatter) buildDetailSegments(event shared.Event) []string {

@@ -33,6 +33,28 @@ func (operation *RenameOperation) Execute(executionContext context.Context, envi
 		return nil
 	}
 
+	for _, repository := range state.Repositories {
+		if repository == nil {
+			continue
+		}
+		if err := operation.ExecuteForRepository(executionContext, environment, repository); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// ExecuteForRepository applies rename operations for a single repository.
+func (operation *RenameOperation) ExecuteForRepository(
+	executionContext context.Context,
+	environment *Environment,
+	repository *RepositoryState,
+) error {
+	if environment == nil || repository == nil {
+		return nil
+	}
+
 	directoryPlanner := rename.NewDirectoryPlanner()
 	dependencies := rename.Dependencies{
 		FileSystem: environment.FileSystem,
@@ -42,60 +64,61 @@ func (operation *RenameOperation) Execute(executionContext context.Context, envi
 		Reporter:   environment.Reporter,
 	}
 
-	for repositoryIndex := range state.Repositories {
-		repository := state.Repositories[repositoryIndex]
-		repositoryPath, repositoryPathError := shared.NewRepositoryPath(repository.Path)
-		if repositoryPathError != nil {
-			return fmt.Errorf("rename directories: %w", repositoryPathError)
-		}
-		plan := directoryPlanner.Plan(operation.IncludeOwner, repository.Inspection.FinalOwnerRepo, repository.Inspection.DesiredFolderName)
-		desiredFolderName := plan.FolderName
-		if plan.IsNoop(repository.Path, repository.Inspection.FolderName) {
-			desiredFolderName = filepath.Base(repository.Path)
-		}
-		trimmedFolderName := strings.TrimSpace(desiredFolderName)
-		if len(trimmedFolderName) == 0 {
-			continue
-		}
+	repositoryPath, repositoryPathError := shared.NewRepositoryPath(repository.Path)
+	if repositoryPathError != nil {
+		return fmt.Errorf("rename directories: %w", repositoryPathError)
+	}
 
-		assumeYes := false
-		if environment.PromptState != nil {
-			assumeYes = environment.PromptState.IsAssumeYesEnabled()
-		}
+	plan := directoryPlanner.Plan(operation.IncludeOwner, repository.Inspection.FinalOwnerRepo, repository.Inspection.DesiredFolderName)
+	desiredFolderName := plan.FolderName
+	if plan.IsNoop(repository.Path, repository.Inspection.FolderName) {
+		desiredFolderName = filepath.Base(repository.Path)
+	}
+	trimmedFolderName := strings.TrimSpace(desiredFolderName)
+	if len(trimmedFolderName) == 0 {
+		return nil
+	}
 
-		originalPath := repositoryPath.String()
+	assumeYes := false
+	if environment.PromptState != nil {
+		assumeYes = environment.PromptState.IsAssumeYesEnabled()
+	}
 
-		options := rename.Options{
-			RepositoryPath:          repositoryPath,
-			DesiredFolderName:       trimmedFolderName,
-			CleanPolicy:             shared.CleanWorktreePolicyFromBool(operation.RequireCleanWorktree),
-			ConfirmationPolicy:      shared.ConfirmationPolicyFromBool(assumeYes),
-			IncludeOwner:            plan.IncludeOwner,
-			EnsureParentDirectories: plan.IncludeOwner,
-		}
+	originalPath := repositoryPath.String()
 
-		if executionError := rename.Execute(executionContext, dependencies, options); executionError != nil {
-			if logRepositoryOperationError(environment, executionError) {
-				continue
-			}
-			return fmt.Errorf("rename directories: %w", executionError)
-		}
+	options := rename.Options{
+		RepositoryPath:          repositoryPath,
+		DesiredFolderName:       trimmedFolderName,
+		CleanPolicy:             shared.CleanWorktreePolicyFromBool(operation.RequireCleanWorktree),
+		ConfirmationPolicy:      shared.ConfirmationPolicyFromBool(assumeYes),
+		IncludeOwner:            plan.IncludeOwner,
+		EnsureParentDirectories: plan.IncludeOwner,
+	}
 
-		newPath := filepath.Join(filepath.Dir(originalPath), plan.FolderName)
-		if !renameCompleted(environment.FileSystem, originalPath, newPath) {
-			continue
+	if executionError := rename.Execute(executionContext, dependencies, options); executionError != nil {
+		if logRepositoryOperationError(environment, executionError) {
+			return nil
 		}
+		return fmt.Errorf("rename directories: %w", executionError)
+	}
 
-		if updateError := state.UpdateRepositoryPath(repositoryIndex, newPath); updateError != nil {
-			return updateError
-		}
+	newPath := filepath.Join(filepath.Dir(originalPath), plan.FolderName)
+	if !renameCompleted(environment.FileSystem, originalPath, newPath) {
+		return nil
+	}
 
-		if refreshError := repository.Refresh(executionContext, environment.AuditService); refreshError != nil {
-			return fmt.Errorf(renameRefreshErrorTemplateConstant, refreshError)
-		}
+	repository.Path = newPath
+
+	if refreshError := repository.Refresh(executionContext, environment.AuditService); refreshError != nil {
+		return fmt.Errorf(renameRefreshErrorTemplateConstant, refreshError)
 	}
 
 	return nil
+}
+
+// IsRepositoryScoped reports repository-level execution behavior.
+func (operation *RenameOperation) IsRepositoryScoped() bool {
+	return true
 }
 
 // ApplyRequireCleanDefault enables clean-worktree enforcement when no explicit preference was configured.

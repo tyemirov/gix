@@ -148,6 +148,34 @@ func TestPullRequestCreateOperationCreatesPR(t *testing.T) {
 	require.Equal(t, "pr", firstArgument(gitExecutor.githubCommands[0].Arguments))
 }
 
+func TestPullRequestCreateOperationSkipsWhenBranchMissing(t *testing.T) {
+	gitExecutor := &recordingGitExecutor{}
+	client, clientErr := githubcli.NewClient(gitExecutor)
+	require.NoError(t, clientErr)
+
+	op, buildErr := buildPullRequestCreateOperation(map[string]any{
+		"branch": "{{ index .Environment \"missing_branch\" }}",
+		"title":  "chore({{ .Repository.Name }}): update",
+		"body":   "Update {{ .Repository.FullName }}",
+		"base":   "{{ .Repository.DefaultBranch }}",
+	})
+	require.NoError(t, buildErr)
+
+	repository := NewRepositoryState(audit.RepositoryInspection{
+		Path:                "/repositories/sample",
+		FinalOwnerRepo:      "octocat/sample",
+		RemoteDefaultBranch: "main",
+	})
+	state := &State{Repositories: []*RepositoryState{repository}}
+	env := &Environment{
+		GitExecutor:  gitExecutor,
+		GitHubClient: client,
+	}
+
+	require.NoError(t, op.Execute(context.Background(), env, state))
+	require.Len(t, gitExecutor.githubCommands, 0)
+}
+
 func TestGitStageCommitOperationStagesAndCommits(t *testing.T) {
 	gitExecutor := &recordingGitExecutor{
 		worktreeClean: true,
@@ -205,6 +233,44 @@ func TestPullRequestOpenOperationPushesAndCreatesPR(t *testing.T) {
 	require.True(t, commandArgumentsExist(gitExecutor.commands, []string{"push", "--set-upstream", "origin", "feature/sample-docs"}))
 	require.NotEmpty(t, gitExecutor.githubCommands)
 	require.Equal(t, "pr", firstArgument(gitExecutor.githubCommands[0].Arguments))
+}
+
+func TestPullRequestOpenOperationSkipsWhenBranchMissing(t *testing.T) {
+	gitExecutor := &recordingGitExecutor{
+		worktreeClean: true,
+		currentBranch: "main",
+		remoteURLs:    map[string]string{"origin": "git@github.com:sample/repo.git"},
+		existingRefs:  map[string]bool{},
+	}
+	repoManager, managerErr := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(t, managerErr)
+
+	client, clientErr := githubcli.NewClient(gitExecutor)
+	require.NoError(t, clientErr)
+
+	op, buildErr := buildPullRequestOpenOperation(map[string]any{
+		"branch": "{{ index .Environment \"missing_branch\" }}",
+		"title":  "chore({{ .Repository.Name }}): gitignore",
+		"body":   "Ensure gitignore entries",
+		"base":   "{{ .Repository.DefaultBranch }}",
+	})
+	require.NoError(t, buildErr)
+
+	repository := NewRepositoryState(audit.RepositoryInspection{
+		Path:                "/repositories/sample",
+		FinalOwnerRepo:      "octocat/sample",
+		RemoteDefaultBranch: "main",
+	})
+	state := &State{Repositories: []*RepositoryState{repository}}
+	env := &Environment{
+		GitExecutor:       gitExecutor,
+		RepositoryManager: repoManager,
+		GitHubClient:      client,
+	}
+
+	require.NoError(t, op.Execute(context.Background(), env, state))
+	require.Len(t, gitExecutor.githubCommands, 0)
+	require.Len(t, gitExecutor.commands, 0)
 }
 
 func commandArgumentsExist(commands []execshell.CommandDetails, expected []string) bool {

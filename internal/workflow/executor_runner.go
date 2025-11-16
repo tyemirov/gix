@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/temirov/gix/internal/repos/shared"
 )
 
-const defaultRepositoryParallelism = 4
+const defaultWorkflowParallelism = 1
 
 type stageExecutionResult struct {
 	stageOutcomes     []StageOutcome
@@ -42,21 +43,6 @@ func runOperationStages(
 		}
 	}
 
-	parallelism := sanitizeRepositoryParallelism(repositoryParallelism, len(workItems))
-	if parallelism <= 1 {
-		return runOperationStagesSequential(ctx, stages, environment, state, workItems, reporter)
-	}
-	return runOperationStagesConcurrent(ctx, stages, environment, state, workItems, reporter, parallelism)
-}
-
-func runOperationStagesSequential(
-	ctx context.Context,
-	stages []OperationStage,
-	environment *Environment,
-	state *State,
-	workItems []repositoryWorkItem,
-	reporter shared.SummaryReporter,
-) stageExecutionResult {
 	result := stageExecutionResult{
 		stageOutcomes:     make([]StageOutcome, 0),
 		operationOutcomes: make(map[string]OperationOutcome),
@@ -67,100 +53,10 @@ func runOperationStagesSequential(
 		environment.State = originalState
 	}()
 
-	var failures []recordedOperationFailure
+	repositoryParallelism = sanitizeRepositoryParallelism(repositoryParallelism, len(workItems))
 	stageCounter := 0
-	globalStageExecuted := make([]bool, len(stages))
-
-	for repositoryOrderIndex, item := range workItems {
-		environment.State = item.state
-
-		for stageIndex := range stages {
-			stage := stages[stageIndex]
-			if len(stage.Operations) == 0 {
-				continue
-			}
-
-			if !stageIsRepositoryScoped(stage) {
-				if repositoryOrderIndex == 0 && !globalStageExecuted[stageIndex] {
-					environment.State = state
-					outcome, operationResults, stageFailures := executeGlobalStage(
-						ctx,
-						stage,
-						environment,
-						state,
-						reporter,
-						stageIndex,
-					)
-					if outcome != nil {
-						outcome.Index = stageCounter
-						result.stageOutcomes = append(result.stageOutcomes, *outcome)
-						stageCounter++
-					}
-					for key, opOutcome := range operationResults {
-						result.operationOutcomes[key] = opOutcome
-					}
-					failures = append(failures, stageFailures...)
-					globalStageExecuted[stageIndex] = true
-					environment.State = item.state
-				}
-				continue
-			}
-
-			stageOutcome, operationResults, stageFailures, stageFailed := executeRepositoryStageForRepository(
-				ctx,
-				stage,
-				item.repository,
-				item.label,
-				item.state,
-				environment,
-				reporter,
-				stageIndex,
-			)
-
-			if stageOutcome != nil {
-				stageOutcome.Index = stageCounter
-				result.stageOutcomes = append(result.stageOutcomes, *stageOutcome)
-				stageCounter++
-			}
-			for key, outcome := range operationResults {
-				result.operationOutcomes[key] = outcome
-			}
-			failures = append(failures, stageFailures...)
-			if stageFailed {
-				break
-			}
-		}
-	}
-
-	result.failures = failures
-	return result
-}
-
-func runOperationStagesConcurrent(
-	ctx context.Context,
-	stages []OperationStage,
-	environment *Environment,
-	state *State,
-	workItems []repositoryWorkItem,
-	reporter shared.SummaryReporter,
-	repositoryParallelism int,
-) stageExecutionResult {
-	result := stageExecutionResult{
-		stageOutcomes:     make([]StageOutcome, 0),
-		operationOutcomes: make(map[string]OperationOutcome),
-	}
-
-	originalState := environment.State
-	defer func() {
-		environment.State = originalState
-	}()
-
-	repositoryFailed := make([]bool, len(workItems))
-	repoStageResults := make([][]repositoryStageResult, len(workItems))
-	for index := range repoStageResults {
-		repoStageResults[index] = make([]repositoryStageResult, len(stages))
-	}
-	globalStageResults := make([]repositoryStageResult, len(stages))
+	repositoryStages := make([]OperationStage, 0)
+	repositoryStageIndices := make([]int, 0)
 
 	for stageIndex := range stages {
 		stage := stages[stageIndex]
@@ -168,124 +64,176 @@ func runOperationStagesConcurrent(
 			continue
 		}
 
-		if !stageIsRepositoryScoped(stage) {
-			environment.State = state
-			outcome, operationResults, stageFailures := executeGlobalStage(
-				ctx,
-				stage,
-				environment,
-				state,
-				reporter,
-				stageIndex,
-			)
-			globalStageResults[stageIndex] = repositoryStageResult{
-				outcome:           outcome,
-				operationOutcomes: operationResults,
-				failures:          stageFailures,
-			}
+		if stageIsRepositoryScoped(stage) {
+			repositoryStages = append(repositoryStages, stage)
+			repositoryStageIndices = append(repositoryStageIndices, stageIndex)
 			continue
 		}
 
-		semaphore := make(chan struct{}, repositoryParallelism)
-		resultChannel := make(chan parallelStageResult, len(workItems))
-		launched := 0
-
-		for repoIndex, item := range workItems {
-			if repositoryFailed[repoIndex] {
-				continue
-			}
-			launched++
-			semaphore <- struct{}{}
-			go func(repoIndex int, item repositoryWorkItem) {
-				repoEnvironment := cloneEnvironmentForRepository(environment, item.state)
-				stageOutcome, operationResults, stageFailures, stageFailed := executeRepositoryStageForRepository(
-					ctx,
-					stage,
-					item.repository,
-					item.label,
-					item.state,
-					repoEnvironment,
-					reporter,
-					stageIndex,
-				)
-				resultChannel <- parallelStageResult{
-					repositoryIndex:   repoIndex,
-					stageIndex:        stageIndex,
-					stageOutcome:      stageOutcome,
-					operationOutcomes: operationResults,
-					failures:          stageFailures,
-					stageFailed:       stageFailed,
+		if len(repositoryStages) > 0 {
+			repositoryResults := runRepositoryPipelines(
+				ctx,
+				repositoryStages,
+				repositoryStageIndices,
+				environment,
+				workItems,
+				reporter,
+				repositoryParallelism,
+			)
+			for _, pipelineResult := range repositoryResults {
+				for _, outcome := range pipelineResult.stageOutcomes {
+					if outcome == nil {
+						continue
+					}
+					outcome.Index = stageCounter
+					result.stageOutcomes = append(result.stageOutcomes, *outcome)
+					stageCounter++
 				}
-				<-semaphore
-			}(repoIndex, item)
+				for key, operationOutcome := range pipelineResult.operationOutcomes {
+					result.operationOutcomes[key] = operationOutcome
+				}
+				result.failures = append(result.failures, pipelineResult.failures...)
+			}
+			repositoryStages = repositoryStages[:0]
+			repositoryStageIndices = repositoryStageIndices[:0]
 		}
 
-		for processed := 0; processed < launched; processed++ {
-			resultMessage := <-resultChannel
-			repoStageResults[resultMessage.repositoryIndex][resultMessage.stageIndex] = repositoryStageResult{
-				outcome:           resultMessage.stageOutcome,
-				operationOutcomes: resultMessage.operationOutcomes,
-				failures:          resultMessage.failures,
-			}
-			if resultMessage.stageFailed {
-				repositoryFailed[resultMessage.repositoryIndex] = true
-			}
+		environment.State = state
+		outcome, operationResults, stageFailures := executeGlobalStage(
+			ctx,
+			stage,
+			environment,
+			state,
+			reporter,
+			stageIndex,
+		)
+		if outcome != nil {
+			outcome.Index = stageCounter
+			result.stageOutcomes = append(result.stageOutcomes, *outcome)
+			stageCounter++
 		}
+		for key, opOutcome := range operationResults {
+			result.operationOutcomes[key] = opOutcome
+		}
+		result.failures = append(result.failures, stageFailures...)
 	}
 
-	stageCounter := 0
-	for repoIndex := range workItems {
-		for stageIndex := range stages {
-			stage := stages[stageIndex]
-			if len(stage.Operations) == 0 {
-				continue
-			}
-
-			if !stageIsRepositoryScoped(stage) {
-				if repoIndex == 0 {
-					record := globalStageResults[stageIndex]
-					if record.outcome != nil {
-						record.outcome.Index = stageCounter
-						result.stageOutcomes = append(result.stageOutcomes, *record.outcome)
-						for key, outcome := range record.operationOutcomes {
-							result.operationOutcomes[key] = outcome
-						}
-						stageCounter++
-					}
-					result.failures = append(result.failures, record.failures...)
+	if len(repositoryStages) > 0 {
+		repositoryResults := runRepositoryPipelines(
+			ctx,
+			repositoryStages,
+			repositoryStageIndices,
+			environment,
+			workItems,
+			reporter,
+			repositoryParallelism,
+		)
+		for _, pipelineResult := range repositoryResults {
+			for _, outcome := range pipelineResult.stageOutcomes {
+				if outcome == nil {
+					continue
 				}
-				continue
-			}
-
-			record := repoStageResults[repoIndex][stageIndex]
-			if record.outcome != nil {
-				record.outcome.Index = stageCounter
-				result.stageOutcomes = append(result.stageOutcomes, *record.outcome)
-				for key, outcome := range record.operationOutcomes {
-					result.operationOutcomes[key] = outcome
-				}
+				outcome.Index = stageCounter
+				result.stageOutcomes = append(result.stageOutcomes, *outcome)
 				stageCounter++
 			}
-			result.failures = append(result.failures, record.failures...)
+			for key, operationOutcome := range pipelineResult.operationOutcomes {
+				result.operationOutcomes[key] = operationOutcome
+			}
+			result.failures = append(result.failures, pipelineResult.failures...)
 		}
 	}
 
 	return result
 }
 
-type repositoryStageResult struct {
-	outcome           *StageOutcome
+type repositoryPipelineResult struct {
+	stageOutcomes     []*StageOutcome
 	operationOutcomes map[string]OperationOutcome
 	failures          []recordedOperationFailure
 }
 
-type parallelStageResult struct {
-	repositoryIndex   int
-	stageIndex        int
-	stageOutcome      *StageOutcome
-	operationOutcomes map[string]OperationOutcome
-	failures          []recordedOperationFailure
-	stageFailed       bool
+func runRepositoryPipelines(
+	ctx context.Context,
+	stages []OperationStage,
+	stageIndices []int,
+	environment *Environment,
+	workItems []repositoryWorkItem,
+	reporter shared.SummaryReporter,
+	repositoryParallelism int,
+) []repositoryPipelineResult {
+	if len(stages) == 0 || len(workItems) == 0 {
+		return nil
+	}
+
+	results := make([]repositoryPipelineResult, len(workItems))
+	workerCount := sanitizeRepositoryParallelism(repositoryParallelism, len(workItems))
+	workChannel := make(chan repositoryWorkAssignment)
+	var wg sync.WaitGroup
+
+	for workerIndex := 0; workerIndex < workerCount; workerIndex++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for assignment := range workChannel {
+				repoEnvironment := cloneEnvironmentForRepository(environment, assignment.item.state)
+				repoResult := repositoryPipelineResult{
+					stageOutcomes:     make([]*StageOutcome, 0, len(stages)),
+					operationOutcomes: make(map[string]OperationOutcome),
+					failures:          make([]recordedOperationFailure, 0),
+				}
+				repositoryFailed := false
+
+				for stagePosition := range stages {
+					if repositoryFailed {
+						break
+					}
+
+					stage := stages[stagePosition]
+					stageOutcome, operationResults, stageFailures, stageFailed := executeRepositoryStageForRepository(
+						ctx,
+						stage,
+						assignment.item.repository,
+						assignment.item.label,
+						assignment.item.state,
+						repoEnvironment,
+						reporter,
+						stageIndices[stagePosition],
+					)
+
+					if stageOutcome != nil {
+						repoResult.stageOutcomes = append(repoResult.stageOutcomes, stageOutcome)
+					}
+					for key, operationOutcome := range operationResults {
+						repoResult.operationOutcomes[key] = operationOutcome
+					}
+					repoResult.failures = append(repoResult.failures, stageFailures...)
+
+					if stageFailed {
+						repositoryFailed = true
+					}
+				}
+
+				results[assignment.index] = repoResult
+			}
+		}()
+	}
+
+	for repoIndex := range workItems {
+		workChannel <- repositoryWorkAssignment{
+			index: repoIndex,
+			item:  workItems[repoIndex],
+		}
+	}
+	close(workChannel)
+	wg.Wait()
+
+	return results
+}
+
+type repositoryWorkAssignment struct {
+	index int
+	item  repositoryWorkItem
 }
 
 type repositoryWorkItem struct {
@@ -332,7 +280,7 @@ func sanitizeRepositoryParallelism(requested int, repositoryCount int) int {
 	}
 	parallelism := requested
 	if parallelism <= 0 {
-		parallelism = defaultRepositoryParallelism
+		parallelism = defaultWorkflowParallelism
 	}
 	if parallelism <= 0 {
 		parallelism = runtime.NumCPU()

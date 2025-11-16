@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	repoerrors "github.com/temirov/gix/internal/repos/errors"
@@ -188,6 +189,12 @@ func handleNamespaceRewriteAction(ctx context.Context, environment *Environment,
 
 	logNamespaceApply(environment, repository, result.BranchName, filesChanged, result.PushPerformed)
 
+	if environment != nil && environment.Variables != nil && result.PushPerformed {
+		if variableName, ok := namespaceBranchVariableName(repository); ok && len(strings.TrimSpace(result.BranchName)) > 0 {
+			environment.Variables.Set(variableName, strings.TrimSpace(result.BranchName))
+		}
+	}
+
 	if len(strings.TrimSpace(result.PushSkippedReason)) > 0 {
 		logNamespaceReason(environment, repository, shared.EventCodeNamespaceSkip, shared.EventLevelWarn, result.PushSkippedReason)
 	}
@@ -232,4 +239,70 @@ func logNamespaceReason(environment *Environment, repository *RepositoryState, c
 
 func sanitizeReason(reason string) string {
 	return strings.ReplaceAll(strings.TrimSpace(reason), " ", "_")
+}
+
+func namespaceBranchVariableName(repository *RepositoryState) (VariableName, bool) {
+	if repository == nil {
+		return "", false
+	}
+	owner, name := splitOwnerAndName(repository.Inspection.FinalOwnerRepo)
+	if len(owner) == 0 && len(name) == 0 {
+		owner, name = splitOwnerAndName(repository.Inspection.CanonicalOwnerRepo)
+	}
+	if len(owner) == 0 {
+		owner = "repository"
+	}
+	if len(name) == 0 {
+		name = strings.TrimSpace(repository.Inspection.DesiredFolderName)
+	}
+	if len(name) == 0 {
+		name = strings.TrimSpace(repository.Inspection.FolderName)
+	}
+	if len(name) == 0 {
+		name = filepath.Base(strings.TrimSpace(repository.Path))
+	}
+	if len(name) == 0 {
+		name = "repository"
+	}
+
+	identifier := fmt.Sprintf(
+		"namespace_branch_%s_%s",
+		sanitizeVariableToken(owner),
+		sanitizeVariableToken(name),
+	)
+
+	variableName, err := NewVariableName(identifier)
+	if err != nil {
+		return "", false
+	}
+	return variableName, true
+}
+
+func sanitizeVariableToken(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if len(trimmed) == 0 {
+		return "repository"
+	}
+
+	var builder strings.Builder
+	for _, symbol := range trimmed {
+		switch {
+		case symbol >= 'a' && symbol <= 'z':
+			builder.WriteRune(symbol)
+		case symbol >= 'A' && symbol <= 'Z':
+			builder.WriteRune(symbol)
+		case symbol >= '0' && symbol <= '9':
+			builder.WriteRune(symbol)
+		case symbol == '-', symbol == '_', symbol == '.':
+			builder.WriteRune(symbol)
+		default:
+			builder.WriteRune('_')
+		}
+	}
+
+	result := strings.Trim(builder.String(), "_")
+	if len(result) == 0 {
+		return "repository"
+	}
+	return result
 }

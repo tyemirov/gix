@@ -207,7 +207,7 @@ workflow:
 
 Run with: `gix workflow path/to/file.yaml --roots ~/Development [-y] [--require-clean]`.
 
-- Repository-scoped steps execute concurrently; pass `--repo-workers <N>` (or set `repository_workers` in configuration) to cap the number of simultaneous repositories. Use `0` to let gix pick a sensible default based on the host CPU count.
+- Repositories run sequentially so each workflow prints as a contiguous block per repo. Pass `--workflow-workers <N>` (or set `workflow_workers`) to allow the orchestrator to process up to `N` repositories in parallel; each repository still executes its steps sequentially.
 
 ### Built-in workflow commands
 
@@ -277,24 +277,75 @@ workflow:
        require_clean: true
 
  - step:
-   name: rewrite-go-namespace
+   name: namespace-branch
    after: ["switch-branch"]
    command: ["tasks", "apply"]
    with:
     tasks:
-     - name: "Rewrite module namespace"
+     - name: "Create namespace branch"
       actions:
-       - type: repo.namespace.rewrite
+       - type: branch.change
         options:
-         old: github.com/temirov
-         new: github.com/tyemirov
-         branch_prefix: chore/ns-rename
-         push: true
+         branch: "automation/ns-rewrite/{{ .Repository.Name }}-{{ index .Environment \"workflow_run_id\" }}"
          remote: origin
-         commit_message: "refactor: rewrite module namespace after owner rename"
+         create_if_missing: true
       safeguards:
-       branch_in: [ master ]
-       paths: [ go.mod ]
+       require_clean: true
+
+ - step:
+   name: namespace-rewrite
+   after: ["namespace-branch"]
+   command: ["tasks", "apply"]
+   with:
+    tasks:
+     - name: "Rewrite module namespace"
+      steps:
+       - files.apply
+      files:
+       - path: go.mod
+        mode: replace
+        replacements:
+         - from: github.com/temirov
+           to: github.com/tyemirov
+       - path: go.sum
+        mode: replace
+        replacements:
+         - from: github.com/temirov
+           to: github.com/tyemirov
+       - path: "**/*.go"
+        mode: replace
+        replacements:
+         - from: github.com/temirov
+           to: github.com/tyemirov
+
+ - step:
+   name: namespace-stage-commit
+   after: ["namespace-rewrite"]
+   command: ["git", "stage-commit"]
+   with:
+    paths:
+     - "."
+    commit_message: "refactor: rewrite module namespace after owner rename"
+
+ - step:
+   name: namespace-push
+   after: ["namespace-stage-commit"]
+   command: ["git", "push"]
+   with:
+    branch: "automation/ns-rewrite/{{ .Repository.Name }}-{{ index .Environment \"workflow_run_id\" }}"
+    push_remote: origin
+
+ - step:
+   name: namespace-open-pr
+   after: ["namespace-push"]
+   command: ["pull-request", "open"]
+   with:
+    branch: "automation/ns-rewrite/{{ .Repository.Name }}-{{ index .Environment \"workflow_run_id\" }}"
+    title: "refactor({{ .Repository.Name }}): rewrite module namespace"
+    body: |
+      Rewrites Go module imports from `github.com/temirov` to `github.com/tyemirov` after the owner rename.
+    base: "{{ .Repository.DefaultBranch }}"
+    push_remote: origin
 ```
 
 Notes:
@@ -310,10 +361,11 @@ Schema highlights:
 
 - Task: `{ name, ensure_clean, branch, files[], actions[], commit, pull_request, safeguards }`
 - Branch: `{ name, start_point, push_remote }` where `name`/`start_point` are Go text/templates rendered with repository data; default `push_remote: origin`.
-- Files: `{ path, content, mode: overwrite|skip-if-exists|append-if-missing, permissions }` with templated `path`/`content`.
+- Files: `{ path, content, mode: overwrite|skip-if-exists|append-if-missing|replace, permissions, replacements }` with templated `path`/`content`.
   - `mode: overwrite` rewrites the entire file.
   - `mode: skip-if-exists` leaves existing files untouched.
   - `mode: append-if-missing` preserves existing content and appends each missing line from `content`, making it ideal for `.gitignore`-style enforcement.
+  - `mode: replace` rewrites matching substrings using `replacements: [{ from, to }]` (templated). File paths accept glob patterns, including recursive `**/*.ext`, so you can update many files with one entry.
 - Actions: `{ type, options }` where `type` is one of:
  - `repo.remote.update`, `repo.remote.convert-protocol`, `repo.folder.rename`, `branch.default`, `repo.release.tag`, `audit.report`, `repo.history.purge`, `repo.files.replace`, `repo.namespace.rewrite`
 - LLM: optional `{ model, base_url, api_key_env, timeout_seconds, max_completion_tokens, temperature }` block. When present, commit/changelog actions reuse the configured client instead of requiring a programmatic injector.

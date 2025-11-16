@@ -205,6 +205,193 @@ func TestWorkflowRunIntegration(testInstance *testing.T) {
 	}
 }
 
+func TestWorkflowProcessesRepositoriesSequentially(testInstance *testing.T) {
+	workingDirectory, workingDirectoryError := os.Getwd()
+	require.NoError(testInstance, workingDirectoryError)
+	repositoryRoot := filepath.Dir(workingDirectory)
+
+	rootDirectory := testInstance.TempDir()
+	fastRepository := filepath.Join(rootDirectory, "fast-repo")
+	slowRepository := filepath.Join(rootDirectory, "slow-repo")
+
+	initializeWorkflowRepository(testInstance, fastRepository)
+	initializeWorkflowRepository(testInstance, slowRepository)
+	require.NoError(testInstance, os.WriteFile(filepath.Join(fastRepository, "fast.flag"), []byte("fast\n"), 0o644))
+	require.NoError(testInstance, os.WriteFile(filepath.Join(slowRepository, "slow.flag"), []byte("slow\n"), 0o644))
+
+	stateFilePath := filepath.Join(rootDirectory, workflowIntegrationStateFileName)
+	require.NoError(testInstance, os.WriteFile(stateFilePath, []byte("main\n"), 0o644))
+
+	stubDirectory := filepath.Join(rootDirectory, "bin")
+	require.NoError(testInstance, os.MkdirAll(stubDirectory, 0o755))
+	stubScript := buildWorkflowStubScript(stateFilePath)
+	stubPath := filepath.Join(stubDirectory, workflowIntegrationStubExecutable)
+	require.NoError(testInstance, os.WriteFile(stubPath, []byte(stubScript), 0o755))
+
+	workflowConfiguration := `workflow:
+  - step:
+      name: stage-one
+      command: ["tasks", "apply"]
+      with:
+        tasks:
+          - name: "Stage One Slow"
+            ensure_clean: false
+            steps: [files.apply]
+            safeguards:
+              paths: ["slow.flag"]
+            files:
+              - path: stage.log
+                content: |
+                  stage1:slow-repo
+                  slow-padding-0001
+                  slow-padding-0002
+                  slow-padding-0003
+                  slow-padding-0004
+                  slow-padding-0005
+                  slow-padding-0006
+                  slow-padding-0007
+                  slow-padding-0008
+                  slow-padding-0009
+                  slow-padding-0010
+                  slow-padding-0011
+                  slow-padding-0012
+                  slow-padding-0013
+                  slow-padding-0014
+                  slow-padding-0015
+                  slow-padding-0016
+                  slow-padding-0017
+                  slow-padding-0018
+                  slow-padding-0019
+                  slow-padding-0020
+                mode: append-if-missing
+          - name: "Stage One Fast"
+            ensure_clean: false
+            steps: [files.apply]
+            safeguards:
+              paths: ["fast.flag"]
+            files:
+              - path: stage.log
+                content: "stage1:fast-repo"
+                mode: append-if-missing
+  - step:
+      name: stage-two
+      after: ["stage-one"]
+      command: ["tasks", "apply"]
+      with:
+        tasks:
+          - name: "Stage Two Slow"
+            ensure_clean: false
+            steps: [files.apply]
+            safeguards:
+              paths: ["slow.flag"]
+            files:
+              - path: stage.log
+                content: "stage2:slow-repo"
+                mode: append-if-missing
+          - name: "Stage Two Fast"
+            ensure_clean: false
+            steps: [files.apply]
+            safeguards:
+              paths: ["fast.flag"]
+            files:
+              - path: stage.log
+                content: "stage2:fast-repo"
+                mode: append-if-missing
+`
+	configurationPath := filepath.Join(rootDirectory, "sequential_workflow.yaml")
+	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(workflowConfiguration), 0o644))
+
+	commandArguments := []string{
+		workflowIntegrationRunSubcommand,
+		workflowIntegrationModulePathConstant,
+		workflowIntegrationLogLevelFlag,
+		workflowIntegrationErrorLevel,
+		workflowIntegrationCommand,
+		configurationPath,
+		workflowIntegrationRootsFlag,
+		fastRepository,
+		workflowIntegrationRootsFlag,
+		slowRepository,
+		workflowIntegrationYesFlag,
+		"--workflow-workers=2",
+	}
+
+	commandOptions := integrationCommandOptions{
+		PathVariable: stubDirectory + string(os.PathListSeparator) + os.Getenv("PATH"),
+	}
+
+	rawOutput := runIntegrationCommand(testInstance, repositoryRoot, commandOptions, workflowIntegrationTimeout, commandArguments)
+	filteredOutput := filterStructuredOutput(rawOutput)
+
+	fastLog := readStageLog(testInstance, fastRepository)
+	slowLog := readStageLog(testInstance, slowRepository)
+
+	requireStageOrder(testInstance, fastLog, "fast-repo")
+	requireStageOrder(testInstance, slowLog, "slow-repo")
+
+	require.NotContains(testInstance, filteredOutput, "TASK_SKIP", "unexpected task skips in sequential workflow validation")
+}
+
+func TestWorkflowLogHeaderFormatting(testInstance *testing.T) {
+	workingDirectory, workingDirectoryError := os.Getwd()
+	require.NoError(testInstance, workingDirectoryError)
+	repositoryRoot := filepath.Dir(workingDirectory)
+
+	rootDirectory := testInstance.TempDir()
+	repositoryPath := filepath.Join(rootDirectory, "legacy")
+
+	initializeWorkflowRepository(testInstance, repositoryPath)
+	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "dirty.txt"), []byte("dirty\n"), 0o644))
+
+	workflowConfiguration := `workflow:
+  - step:
+      name: task-clean
+      command: ["tasks", "apply"]
+      with:
+        tasks:
+          - name: "Ensure clean"
+            safeguards:
+              require_clean: true
+            steps: [files.apply]
+            files:
+              - path: README.md
+                content: "noop"
+                mode: overwrite
+# dirty repo triggers safeguards warning but workflow continues
+`
+	configPath := filepath.Join(rootDirectory, "header_format.yaml")
+	require.NoError(testInstance, os.WriteFile(configPath, []byte(workflowConfiguration), 0o644))
+
+	commandArguments := []string{
+		workflowIntegrationRunSubcommand,
+		workflowIntegrationModulePathConstant,
+		workflowIntegrationLogLevelFlag,
+		workflowIntegrationErrorLevel,
+		workflowIntegrationCommand,
+		configPath,
+		workflowIntegrationRootsFlag,
+		repositoryPath,
+		workflowIntegrationYesFlag,
+	}
+
+	extendedTimeout := workflowIntegrationTimeout * 2
+	outputText := runIntegrationCommand(testInstance, repositoryRoot, integrationCommandOptions{}, extendedTimeout, commandArguments)
+	filteredOutput := filterStructuredOutput(outputText)
+
+	lines := strings.Split(filteredOutput, "\n")
+	foundStructuredHeader := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "-- ") {
+			continue
+		}
+		if !strings.Contains(trimmed, ") --") {
+			testInstance.Fatalf("header missing path context: %s", trimmed)
+		}
+		foundStructuredHeader = true
+	}
+	require.True(testInstance, foundStructuredHeader, "expected at least one structured header in workflow output")
+}
 func TestWorkflowRunDisplaysHelpWhenConfigurationMissing(testInstance *testing.T) {
 	workingDirectory, workingDirectoryError := os.Getwd()
 	require.NoError(testInstance, workingDirectoryError)
@@ -434,4 +621,44 @@ func verifyWorkflowRepositoryState(testInstance *testing.T, repositoryPath strin
 	require.Equal(testInstance, "n/a", records[1][5])
 	require.Equal(testInstance, "ssh", records[1][6])
 	require.Equal(testInstance, "yes", records[1][7])
+}
+
+func parseStageEntries(orderLog string) []string {
+	lines := strings.Split(strings.TrimSpace(orderLog), "\n")
+	entries := make([]string, 0, len(lines))
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if len(trimmed) == 0 {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "stage1:") || strings.HasPrefix(trimmed, "stage2:") {
+			entries = append(entries, trimmed)
+		}
+	}
+	return entries
+}
+
+func findEntryIndex(entries []string, target string) int {
+	for index, entry := range entries {
+		if strings.Contains(entry, target) {
+			return index
+		}
+	}
+	return -1
+}
+
+func readStageLog(testInstance *testing.T, repositoryPath string) string {
+	logPath := filepath.Join(repositoryPath, "stage.log")
+	content, err := os.ReadFile(logPath)
+	require.NoError(testInstance, err)
+	return string(content)
+}
+
+func requireStageOrder(testInstance *testing.T, logContents string, label string) {
+	stageEntries := parseStageEntries(logContents)
+	stageOneIndex := findEntryIndex(stageEntries, fmt.Sprintf("stage1:%s", label))
+	stageTwoIndex := findEntryIndex(stageEntries, fmt.Sprintf("stage2:%s", label))
+	require.NotEqual(testInstance, -1, stageOneIndex, "missing stage one entry for %s. log:\n%s", label, logContents)
+	require.NotEqual(testInstance, -1, stageTwoIndex, "missing stage two entry for %s. log:\n%s", label, logContents)
+	require.Less(testInstance, stageOneIndex, stageTwoIndex, "stage order violated for %s. log:\n%s", label, logContents)
 }
