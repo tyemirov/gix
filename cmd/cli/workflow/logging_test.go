@@ -202,3 +202,36 @@ func TestWorkflowHumanFormatterWritesEventSummary(t *testing.T) {
 	}
 	require.True(t, found, "expected protocol update summary")
 }
+
+func TestWorkflowHumanFormatterPreservesSeverityForPhaseEvents(t *testing.T) {
+	formatter := newWorkflowHumanFormatter()
+	var buffer bytes.Buffer
+
+	repositoryIdentifier := "tyemirov/severity"
+	repositoryPath := "/tmp/repos/severity"
+
+	formatter.HandleEvent(shared.Event{
+		Level:                shared.EventLevelWarn,
+		Code:                 shared.EventCodeRemoteSkip,
+		RepositoryIdentifier: repositoryIdentifier,
+		RepositoryPath:       repositoryPath,
+		Message:              "missing origin owner",
+	}, &buffer)
+
+	formatter.HandleEvent(shared.Event{
+		Level:                shared.EventLevelError,
+		Code:                 shared.EventCodeNamespaceError,
+		RepositoryIdentifier: repositoryIdentifier,
+		RepositoryPath:       repositoryPath,
+		Message:              "template validation failed",
+	}, &buffer)
+
+	lines := strings.Split(strings.TrimSpace(buffer.String()), "\n")
+	require.Equal(t, []string{
+		"-- tyemirov/severity (/tmp/repos/severity) --",
+		"  remote/folder:",
+		"    - ⚠ missing origin owner",
+		"  files:",
+		"    - ✖ template validation failed",
+	}, lines)
+}

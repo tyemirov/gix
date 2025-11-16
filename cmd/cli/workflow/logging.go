@@ -169,8 +169,19 @@ func (formatter *workflowHumanFormatter) handlePhaseEventByCode(writer io.Writer
 	if len(message) == 0 {
 		message = strings.TrimSpace(event.Code)
 	}
-	formatter.writePhaseEntry(writer, repository, phase, message)
+	formatter.writePhaseEntry(writer, repository, phase, formatter.decoratePhaseMessage(event.Level, message))
 	return true
+}
+
+func (formatter *workflowHumanFormatter) decoratePhaseMessage(level shared.EventLevel, message string) string {
+	switch level {
+	case shared.EventLevelWarn:
+		return fmt.Sprintf("⚠ %s", message)
+	case shared.EventLevelError:
+		return fmt.Sprintf("✖ %s", message)
+	default:
+		return message
+	}
 }
 
 func phaseFromEventCode(code string) (workflowruntime.LogPhase, bool) {
