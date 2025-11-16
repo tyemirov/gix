@@ -8,7 +8,6 @@ import (
 
 	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
 	"github.com/temirov/gix/internal/execshell"
-	"github.com/temirov/gix/internal/repos/shared"
 	"github.com/temirov/gix/internal/workflow"
 )
 
@@ -82,20 +81,6 @@ func (manager *fakeGitRepositoryManager) SetRemoteURL(_ context.Context, reposit
 	return nil
 }
 
-type recordingPrompter struct {
-	result shared.ConfirmationResult
-	err    error
-	calls  int
-}
-
-func (prompter *recordingPrompter) Confirm(string) (shared.ConfirmationResult, error) {
-	prompter.calls++
-	if prompter.err != nil {
-		return shared.ConfirmationResult{}, prompter.err
-	}
-	return prompter.result, nil
-}
-
 type fakeFileSystem struct {
 	files map[string]string
 }
@@ -164,17 +149,4 @@ func (catalog *fakePresetCatalog) Load(name string) (workflow.Configuration, boo
 		return workflow.Configuration{}, false, nil
 	}
 	return catalog.configuration, true, nil
-}
-
-type recordingTaskRunner struct {
-	roots          []string
-	definitions    []workflow.TaskDefinition
-	runtimeOptions workflow.RuntimeOptions
-}
-
-func (runner *recordingTaskRunner) Run(_ context.Context, roots []string, definitions []workflow.TaskDefinition, options workflow.RuntimeOptions) (workflow.ExecutionOutcome, error) {
-	runner.roots = append([]string{}, roots...)
-	runner.definitions = append([]workflow.TaskDefinition{}, definitions...)
-	runner.runtimeOptions = options
-	return workflow.ExecutionOutcome{}, nil
 }

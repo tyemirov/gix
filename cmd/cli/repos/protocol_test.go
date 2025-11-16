@@ -1,8 +1,8 @@
 package repos_test
 
 import (
-	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	repos "github.com/temirov/gix/cmd/cli/repos"
+	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
 	"github.com/temirov/gix/internal/repos/shared"
 	"github.com/temirov/gix/internal/utils"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
@@ -28,9 +29,12 @@ const (
 	protocolMissingRootsMessage    = "no repository roots provided; specify --roots or configure defaults"
 	protocolRelativeRootConstant   = "relative/protocol-root"
 	protocolHomeRootSuffixConstant = "protocol-home-root"
+	protocolPresetName             = "remote-update-protocol"
 )
 
 func TestProtocolCommandConfigurationPrecedence(testInstance *testing.T) {
+	presetConfig := loadProtocolPreset(testInstance)
+
 	testCases := []struct {
 		name                 string
 		configuration        repos.ProtocolConfiguration
@@ -157,25 +161,29 @@ func TestProtocolCommandConfigurationPrecedence(testInstance *testing.T) {
 
 	for _, testCase := range testCases {
 		testInstance.Run(testCase.name, func(subtest *testing.T) {
-			discoverer := &fakeRepositoryDiscoverer{repositories: []string{remotesDiscoveredRepository}}
-			executor := &fakeGitExecutor{}
-			manager := &fakeGitRepositoryManager{remoteURL: "", currentBranch: remotesMetadataDefaultBranch, panicOnCurrentBranchLookup: true}
-			prompter := &recordingPrompter{result: shared.ConfirmationResult{Confirmed: true}}
-			runner := &recordingTaskRunner{}
+			catalog := &fakePresetCatalog{configuration: presetConfig, found: true}
+			executor := &protocolRecordingExecutor{}
 
 			builder := repos.ProtocolCommandBuilder{
-				LoggerProvider: func() *zap.Logger { return zap.NewNop() },
-				Discoverer:     discoverer,
-				GitExecutor:    executor,
-				GitManager:     manager,
-				PrompterFactory: func(*cobra.Command) shared.ConfirmationPrompter {
-					return prompter
-				},
+				LoggerProvider:               func() *zap.Logger { return zap.NewNop() },
+				Discoverer:                   &fakeRepositoryDiscoverer{repositories: []string{remotesDiscoveredRepository}},
+				GitExecutor:                  &fakeGitExecutor{},
+				GitManager:                   &fakeGitRepositoryManager{},
+				HumanReadableLoggingProvider: func() bool { return false },
 				ConfigurationProvider: func() repos.ProtocolConfiguration {
 					return testCase.configuration
 				},
-				TaskRunnerFactory: func(workflow.Dependencies) repos.TaskRunnerExecutor {
-					return runner
+				PresetCatalogFactory: func() workflowcmd.PresetCatalog { return catalog },
+				WorkflowExecutorFactory: func(nodes []*workflow.OperationNode, _ workflow.Dependencies) repos.WorkflowExecutor {
+					if !testCase.expectTaskInvocation {
+						return executor
+					}
+					require.Len(subtest, nodes, 1)
+					conversionOp, ok := nodes[0].Operation.(*workflow.ProtocolConversionOperation)
+					require.True(subtest, ok)
+					require.Equal(subtest, testCase.expectedFrom, string(conversionOp.FromProtocol))
+					require.Equal(subtest, testCase.expectedTo, string(conversionOp.ToProtocol))
+					return executor
 				},
 			}
 
@@ -183,41 +191,96 @@ func TestProtocolCommandConfigurationPrecedence(testInstance *testing.T) {
 			require.NoError(subtest, buildError)
 			bindGlobalProtocolFlags(command)
 
-			command.SetContext(context.Background())
-			stdoutBuffer := &bytes.Buffer{}
-			stderrBuffer := &bytes.Buffer{}
-			command.SetOut(stdoutBuffer)
-			command.SetErr(stderrBuffer)
 			command.SetArgs(testCase.arguments)
 
 			executionError := command.Execute()
 			if testCase.expectError {
 				require.Error(subtest, executionError)
 				require.Equal(subtest, testCase.expectedErrorMessage, executionError.Error())
-				require.Zero(subtest, prompter.calls)
-				require.Empty(subtest, runner.definitions)
+				require.Nil(subtest, executor.roots)
 				return
 			}
 
 			require.NoError(subtest, executionError)
+			require.Equal(subtest, protocolPresetName, catalog.loadedName)
 
 			expectedRoots := testCase.expectedRoots
 			if testCase.expectedRootsBuilder != nil {
 				expectedRoots = testCase.expectedRootsBuilder(subtest)
 			}
 
-			if testCase.expectTaskInvocation {
-				require.Equal(subtest, expectedRoots, runner.roots)
-				require.Len(subtest, runner.definitions, 1)
-				require.Len(subtest, runner.definitions[0].Actions, 1)
-				action := runner.definitions[0].Actions[0]
-				require.Equal(subtest, "repo.remote.convert-protocol", action.Type)
-				require.Equal(subtest, testCase.expectedFrom, action.Options["from"])
-				require.Equal(subtest, testCase.expectedTo, action.Options["to"])
-				require.Equal(subtest, testCase.expectedAssumeYes, runner.runtimeOptions.AssumeYes)
-			} else {
-				require.Empty(subtest, runner.definitions)
+			if !testCase.expectTaskInvocation {
+				require.Nil(subtest, executor.roots)
+				return
 			}
+
+			require.Equal(subtest, expectedRoots, executor.roots)
+			require.Equal(subtest, testCase.expectedAssumeYes, executor.options.AssumeYes)
+		})
+	}
+}
+
+func TestProtocolCommandPresetErrorsSurface(testInstance *testing.T) {
+	presetConfig := loadProtocolPreset(testInstance)
+
+	testCases := []struct {
+		name      string
+		catalog   fakePresetCatalog
+		expectErr string
+	}{
+		{
+			name:      "missing_preset",
+			catalog:   fakePresetCatalog{found: false},
+			expectErr: "remote-update-protocol preset not found",
+		},
+		{
+			name:      "load_error",
+			catalog:   fakePresetCatalog{found: true, loadError: errors.New("boom")},
+			expectErr: "unable to load remote-update-protocol preset: boom",
+		},
+		{
+			name: "build_error",
+			catalog: fakePresetCatalog{
+				found: true,
+				configuration: workflow.Configuration{
+					Steps: []workflow.StepConfiguration{
+						{Command: []string{"unknown"}},
+					},
+				},
+			},
+			expectErr: "unable to build remote-update-protocol workflow: unsupported workflow command: unknown",
+		},
+	}
+
+	for _, testCase := range testCases {
+		testCase := testCase
+		testInstance.Run(testCase.name, func(subtest *testing.T) {
+			catalog := testCase.catalog
+			if len(catalog.configuration.Steps) == 0 && catalog.found && catalog.loadError == nil && testCase.name != "build_error" {
+				catalog.configuration = presetConfig
+			}
+
+			builder := repos.ProtocolCommandBuilder{
+				LoggerProvider:               func() *zap.Logger { return zap.NewNop() },
+				Discoverer:                   &fakeRepositoryDiscoverer{repositories: []string{remotesDiscoveredRepository}},
+				GitExecutor:                  &fakeGitExecutor{},
+				GitManager:                   &fakeGitRepositoryManager{},
+				HumanReadableLoggingProvider: func() bool { return false },
+				ConfigurationProvider: func() repos.ProtocolConfiguration {
+					return repos.ProtocolConfiguration{
+						RepositoryRoots: []string{protocolConfiguredRootConstant},
+						FromProtocol:    string(shared.RemoteProtocolHTTPS),
+						ToProtocol:      string(shared.RemoteProtocolSSH),
+					}
+				},
+				PresetCatalogFactory: func() workflowcmd.PresetCatalog { return &catalog },
+			}
+
+			command, buildError := builder.Build()
+			require.NoError(subtest, buildError)
+			bindGlobalProtocolFlags(command)
+			err := command.Execute()
+			require.EqualError(subtest, err, testCase.expectErr)
 		})
 	}
 }
@@ -250,4 +313,29 @@ func protocolHomeRootBuilder(testingInstance testing.TB) []string {
 	require.NoError(testingInstance, homeError)
 	expandedRoot := filepath.Join(homeDirectory, protocolHomeRootSuffixConstant)
 	return []string{expandedRoot}
+}
+
+type protocolRecordingExecutor struct {
+	roots   []string
+	options workflow.RuntimeOptions
+}
+
+func (executor *protocolRecordingExecutor) Execute(_ context.Context, roots []string, options workflow.RuntimeOptions) (workflow.ExecutionOutcome, error) {
+	executor.roots = append([]string{}, roots...)
+	executor.options = options
+	return workflow.ExecutionOutcome{}, nil
+}
+
+func loadProtocolPreset(testingInstance testing.TB) workflow.Configuration {
+	presetContent := []byte(`workflow:
+  - step:
+      name: remote-update-protocol
+      command: ["remote", "update-protocol"]
+      with:
+        from: ""
+        to: ""
+`)
+	configuration, err := workflow.ParseConfiguration(presetContent)
+	require.NoError(testingInstance, err)
+	return configuration
 }

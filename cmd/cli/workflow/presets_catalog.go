@@ -50,6 +50,11 @@ var embeddedPresetDefinitions = []presetDefinition{
 		Description: "Update origin remotes to match canonical GitHub repositories.",
 		FileName:    "presets/remote-update-to-canonical.yaml",
 	},
+	{
+		Name:        "remote-update-protocol",
+		Description: "Convert origin remotes between git/ssh/https protocols.",
+		FileName:    "presets/remote-update-protocol.yaml",
+	},
 }
 
 type embeddedPresetCatalog struct {

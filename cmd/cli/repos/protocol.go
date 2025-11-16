@@ -3,12 +3,11 @@ package repos
 import (
 	"errors"
 	"fmt"
-	"io"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
 	"github.com/temirov/gix/internal/repos/shared"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
 	"github.com/temirov/gix/internal/workflow"
@@ -26,6 +25,11 @@ const (
 	protocolErrorMissingPair    = "specify both --from and --to"
 	protocolErrorSamePair       = "--from and --to must differ"
 	protocolErrorInvalidValue   = "invalid protocol value: %s"
+	protocolPresetName          = "remote-update-protocol"
+	protocolCommandKey          = "remote update-protocol"
+	protocolPresetMissingError  = "remote-update-protocol preset not found"
+	protocolPresetLoadError     = "unable to load remote-update-protocol preset: %w"
+	protocolBuildWorkflowError  = "unable to build remote-update-protocol workflow: %w"
 )
 
 // ProtocolCommandBuilder assembles the repo-protocol-convert command.
@@ -35,10 +39,10 @@ type ProtocolCommandBuilder struct {
 	GitExecutor                  shared.GitExecutor
 	GitManager                   shared.GitRepositoryManager
 	GitHubResolver               shared.GitHubMetadataResolver
-	PrompterFactory              PrompterFactory
 	HumanReadableLoggingProvider func() bool
 	ConfigurationProvider        func() ProtocolConfiguration
-	TaskRunnerFactory            func(workflow.Dependencies) TaskRunnerExecutor
+	PresetCatalogFactory         func() workflowcmd.PresetCatalog
+	WorkflowExecutorFactory      WorkflowExecutorFactory
 }
 
 // Build constructs the repo-protocol-convert command.
@@ -58,15 +62,6 @@ func (builder *ProtocolCommandBuilder) Build() (*cobra.Command, error) {
 }
 
 func (builder *ProtocolCommandBuilder) run(command *cobra.Command, arguments []string) error {
-	if command != nil {
-		if command.OutOrStdout() == io.Discard {
-			command.SetOut(os.Stdout)
-		}
-		if command.ErrOrStderr() == io.Discard {
-			command.SetErr(os.Stderr)
-		}
-	}
-
 	configuration := builder.resolveConfiguration()
 	executionFlags, executionFlagsAvailable := flagutils.ResolveExecutionFlags(command)
 
@@ -120,7 +115,6 @@ func (builder *ProtocolCommandBuilder) run(command *cobra.Command, arguments []s
 			GitExecutor:                  builder.GitExecutor,
 			GitManager:                   builder.GitManager,
 			GitHubResolver:               builder.GitHubResolver,
-			PrompterFactory:              builder.PrompterFactory,
 		},
 		taskrunner.DependenciesOptions{},
 	)
@@ -128,31 +122,40 @@ func (builder *ProtocolCommandBuilder) run(command *cobra.Command, arguments []s
 		return dependencyError
 	}
 
-	taskDependencies := dependencyResult.Workflow
-	trackingPrompter := newCascadingConfirmationPrompter(taskDependencies.Prompter, assumeYes)
-	taskDependencies.Prompter = trackingPrompter
-	taskDependencies.Output = command.OutOrStdout()
-	taskDependencies.Errors = command.ErrOrStderr()
-
-	taskRunner := ResolveTaskRunner(builder.TaskRunnerFactory, taskDependencies)
-
-	taskDefinition := workflow.TaskDefinition{
-		Name: "Convert remote protocol",
-		Actions: []workflow.TaskActionDefinition{
-			{
-				Type: "repo.remote.convert-protocol",
-				Options: map[string]any{
-					"from": string(fromProtocol),
-					"to":   string(toProtocol),
-				},
-			},
-		},
-		Commit: workflow.TaskCommitDefinition{},
+	workflowDependencies := dependencyResult.Workflow
+	if command != nil {
+		workflowDependencies.Output = command.OutOrStdout()
+		workflowDependencies.Errors = command.ErrOrStderr()
 	}
 
-	runtimeOptions := workflow.RuntimeOptions{AssumeYes: trackingPrompter.AssumeYes()}
+	presetCatalog := builder.resolvePresetCatalog()
+	presetConfiguration, presetFound, presetError := presetCatalog.Load(protocolPresetName)
+	if presetError != nil {
+		return fmt.Errorf(protocolPresetLoadError, presetError)
+	}
+	if !presetFound {
+		return errors.New(protocolPresetMissingError)
+	}
 
-	_, runErr := taskRunner.Run(command.Context(), roots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
+	for index := range presetConfiguration.Steps {
+		if workflow.CommandPathKey(presetConfiguration.Steps[index].Command) != protocolCommandKey {
+			continue
+		}
+		if presetConfiguration.Steps[index].Options == nil {
+			presetConfiguration.Steps[index].Options = make(map[string]any)
+		}
+		presetConfiguration.Steps[index].Options["from"] = string(fromProtocol)
+		presetConfiguration.Steps[index].Options["to"] = string(toProtocol)
+	}
+
+	nodes, operationsError := workflow.BuildOperations(presetConfiguration)
+	if operationsError != nil {
+		return fmt.Errorf(protocolBuildWorkflowError, operationsError)
+	}
+
+	runtimeOptions := workflow.RuntimeOptions{AssumeYes: assumeYes}
+	executor := resolveWorkflowExecutor(builder.WorkflowExecutorFactory, nodes, workflowDependencies)
+	_, runErr := executor.Execute(command.Context(), roots, runtimeOptions)
 	return runErr
 }
 
@@ -164,6 +167,15 @@ func (builder *ProtocolCommandBuilder) resolveConfiguration() ProtocolConfigurat
 
 	provided := builder.ConfigurationProvider()
 	return provided.sanitize()
+}
+
+func (builder *ProtocolCommandBuilder) resolvePresetCatalog() workflowcmd.PresetCatalog {
+	if builder.PresetCatalogFactory != nil {
+		if catalog := builder.PresetCatalogFactory(); catalog != nil {
+			return catalog
+		}
+	}
+	return workflowcmd.NewEmbeddedPresetCatalog()
 }
 
 func parseProtocolValue(value string) (shared.RemoteProtocol, error) {
