@@ -17,7 +17,6 @@ Read @AGENTS.md, @AGENTS.GO.md, @AGENTS.GIT.md @ARCHITECTURE.md, @POLICY.md, @NO
 - [ ] [GX-342] Convert `repo release`/`repo release retag` commands into workflow presets so tagging logic, remote selection, and messages flow through the standard workflow executor and task actions.
 - [ ] [GX-343] After the command-specific presets land, delete the bespoke task-runner plumbing in `cmd/cli/repos` (helpers, dependency builders, TaskDefinition construction) so repo commands are thin shims over workflow presets, and update docs/config to reflect the new preset catalog.
 - [ ] [GX-344] Convert `repo-files-replace` into a workflow preset so pattern/find/replace/command/safeguard logic is expressed declaratively and the CLI simply maps flags to workflow variables before invoking the standard executor.
-- [ ] [GX-346] Align AGENTS*/NOTES/POLICY docs with the latest process guidance copied from the upstream playbook so contributors see consistent repo-wide instructions.
 
 - [ ] [GX-345] Split safeguards into hard-stop (abort entire repository execution immediately on failure) and soft-skip (mark operation as skipped but allow other steps to proceed) categories so the DSL clearly expresses whether a violation halts the repo or just the current step; apply this separation to dirty worktree vs. missing remote scenarios.
 ## BugFixes (330–399)
