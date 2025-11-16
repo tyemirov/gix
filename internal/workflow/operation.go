@@ -42,6 +42,7 @@ type Environment struct {
 	Variables         *VariableStore
 	State             *State
 	sharedState       *environmentSharedState
+	suppressHeaders   bool
 }
 
 type environmentSharedState struct {

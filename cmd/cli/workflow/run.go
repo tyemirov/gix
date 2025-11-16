@@ -186,6 +186,7 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 			workflowDependencies.ReporterOptions,
 			shared.WithEventFormatter(newWorkflowHumanFormatter()),
 		)
+		workflowDependencies.DisableHeaderDecoration = true
 	}
 
 	roots, rootsError := rootutils.Resolve(command, remainingArguments, commandConfiguration.Roots)

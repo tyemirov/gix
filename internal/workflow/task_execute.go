@@ -131,5 +131,24 @@ func (executor taskExecutor) report(eventCode string, level shared.EventLevel, m
 	if executor.environment == nil {
 		return
 	}
-	executor.environment.ReportRepositoryEvent(executor.repository, level, eventCode, message, fields)
+
+	enriched := make(map[string]string)
+	for key, value := range fields {
+		enriched[key] = value
+	}
+
+	taskName := strings.TrimSpace(executor.plan.task.Name)
+	if len(taskName) > 0 {
+		enriched["task"] = taskName
+	}
+
+	if phase := executor.plan.loggingPhase(); phase != LogPhaseUnknown {
+		enriched["phase"] = string(phase)
+	}
+
+	if len(enriched) == 0 {
+		enriched = nil
+	}
+
+	executor.environment.ReportRepositoryEvent(executor.repository, level, eventCode, message, enriched)
 }

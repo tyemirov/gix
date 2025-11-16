@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/temirov/gix/internal/repos/shared"
@@ -58,6 +59,7 @@ type ExecutionContext struct {
 	branchPrepared       bool
 	skipRequested        bool
 	skipReason           string
+	lastSkipWarningKey   string
 }
 
 func (execCtx *ExecutionContext) recordFilesApplied() {
@@ -76,9 +78,16 @@ func (execCtx *ExecutionContext) reportSkip(message string, fields map[string]st
 	if execCtx == nil || execCtx.Environment == nil {
 		return
 	}
-	execCtx.Environment.ReportRepositoryEvent(execCtx.Repository, shared.EventLevelWarn, shared.EventCodeTaskSkip, message, fields)
-	if len(strings.TrimSpace(message)) > 0 {
-		execCtx.recordSkip(message)
+	trimmed := strings.TrimSpace(message)
+	if execCtx.shouldSuppressSkipWarning(trimmed, fields) {
+		if len(trimmed) > 0 {
+			execCtx.recordSkip(trimmed)
+		}
+		return
+	}
+	execCtx.Environment.ReportRepositoryEvent(execCtx.Repository, shared.EventLevelWarn, shared.EventCodeTaskSkip, trimmed, fields)
+	if len(trimmed) > 0 {
+		execCtx.recordSkip(trimmed)
 	}
 }
 
@@ -133,6 +142,45 @@ func wrapFields(fields map[string]string) map[string]string {
 		cloned[key] = value
 	}
 	return cloned
+}
+
+func (execCtx *ExecutionContext) shouldSuppressSkipWarning(message string, fields map[string]string) bool {
+	if execCtx == nil {
+		return false
+	}
+	key := buildSkipWarningKey(message, fields)
+	if len(key) == 0 {
+		return false
+	}
+	if execCtx.lastSkipWarningKey == key {
+		return true
+	}
+	execCtx.lastSkipWarningKey = key
+	return false
+}
+
+func buildSkipWarningKey(message string, fields map[string]string) string {
+	normalized := strings.TrimSpace(message)
+	if len(normalized) == 0 && len(fields) == 0 {
+		return ""
+	}
+	var builder strings.Builder
+	builder.WriteString(normalized)
+	if len(fields) == 0 {
+		return builder.String()
+	}
+	keys := make([]string, 0, len(fields))
+	for key := range fields {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		builder.WriteString("|")
+		builder.WriteString(strings.TrimSpace(key))
+		builder.WriteString("=")
+		builder.WriteString(strings.TrimSpace(fields[key]))
+	}
+	return builder.String()
 }
 
 func (execCtx *ExecutionContext) handleActionError(action workflowAction, err error) (bool, error) {

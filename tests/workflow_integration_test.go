@@ -15,53 +15,54 @@ import (
 )
 
 const (
-	workflowIntegrationTimeout                    = 15 * time.Second
-	workflowIntegrationRunSubcommand              = "run"
-	workflowIntegrationModulePathConstant         = "."
-	workflowIntegrationLogLevelFlag               = "--log-level"
-	workflowIntegrationConfigFlag                 = "--config"
-	workflowIntegrationErrorLevel                 = "error"
-	workflowIntegrationCommand                    = "workflow"
-	workflowIntegrationRootsFlag                  = "--roots"
-	workflowIntegrationYesFlag                    = "--yes"
-	workflowIntegrationGitExecutable              = "git"
-	workflowIntegrationInitFlag                   = "init"
-	workflowIntegrationInitialBranchFlag          = "--initial-branch=main"
-	workflowIntegrationConfigUserName             = "config"
-	workflowIntegrationUserNameKey                = "user.name"
-	workflowIntegrationUserEmailKey               = "user.email"
-	workflowIntegrationUserNameValue              = "Workflow Tester"
-	workflowIntegrationUserEmailValue             = "workflow@example.com"
-	workflowIntegrationCheckoutCommand            = "checkout"
-	workflowIntegrationBranchCommand              = "branch"
-	workflowIntegrationMasterBranch               = "master"
-	workflowIntegrationReadmeFileName             = "README.md"
-	workflowIntegrationInitialCommitMessage       = "initial commit"
-	workflowIntegrationWorkflowDirectory          = ".github/workflows"
-	workflowIntegrationWorkflowFileName           = "ci.yml"
-	workflowIntegrationWorkflowContent            = "name: CI\non:\n  push:\n    branches:\n      - main\n"
-	workflowIntegrationWorkflowCommitMessage      = "add workflow"
-	workflowIntegrationOriginRemoteName           = "origin"
-	workflowIntegrationHTTPSRemote                = "https://github.com/origin/example.git"
-	workflowIntegrationStubExecutable             = "gh"
-	workflowIntegrationStateFileName              = "default_branch.txt"
-	workflowIntegrationConfigFileName             = "config.yaml"
-	workflowIntegrationConfigSearchPathEnvVar     = "GIX_CONFIG_SEARCH_PATH"
-	workflowIntegrationAuditFileName              = "audit.csv"
-	workflowIntegrationBranchCommitMessage        = "CI: switch workflow branch filters to master"
-	workflowIntegrationRepoViewJSONTemplate       = "{\"nameWithOwner\":\"canonical/example\",\"defaultBranchRef\":{\"name\":\"%s\"},\"description\":\"\"}\n"
-	workflowIntegrationConvertExpectedTemplate    = "event=PROTOCOL_UPDATE path=%s"
-	workflowIntegrationRemoteSkipExpectedTemplate = "event=REMOTE_SKIP path=%s"
-	workflowIntegrationDefaultExpectedTemplate    = "WORKFLOW-DEFAULT: %s (main → master)"
-	workflowIntegrationAuditExpectedTemplate      = "WORKFLOW-AUDIT: wrote report to %s\n"
-	workflowIntegrationCSVHeader                  = "folder_name,final_github_repo,name_matches,remote_default_branch,local_branch,in_sync,remote_protocol,origin_matches_canonical\n"
-	workflowIntegrationSubtestNameTemplate        = "%d_%s"
-	workflowIntegrationDefaultCaseName            = "protocol_default_audit"
-	workflowIntegrationConfigFlagCaseName         = "config_flag_without_positional"
-	workflowIntegrationRepositoryConfigCase       = "repository_root_configuration"
-	workflowIntegrationHelpCaseName               = "workflow_help_missing_configuration"
-	workflowIntegrationUsageSnippet               = "workflow <configuration|preset>"
-	workflowIntegrationMissingConfigMessage       = "workflow configuration path or preset name required; provide a positional argument or --config flag"
+	workflowIntegrationTimeout                 = 15 * time.Second
+	workflowIntegrationRunSubcommand           = "run"
+	workflowIntegrationModulePathConstant      = "."
+	workflowIntegrationLogLevelFlag            = "--log-level"
+	workflowIntegrationConfigFlag              = "--config"
+	workflowIntegrationErrorLevel              = "error"
+	workflowIntegrationCommand                 = "workflow"
+	workflowIntegrationRootsFlag               = "--roots"
+	workflowIntegrationYesFlag                 = "--yes"
+	workflowIntegrationGitExecutable           = "git"
+	workflowIntegrationInitFlag                = "init"
+	workflowIntegrationInitialBranchFlag       = "--initial-branch=main"
+	workflowIntegrationConfigUserName          = "config"
+	workflowIntegrationUserNameKey             = "user.name"
+	workflowIntegrationUserEmailKey            = "user.email"
+	workflowIntegrationUserNameValue           = "Workflow Tester"
+	workflowIntegrationUserEmailValue          = "workflow@example.com"
+	workflowIntegrationCheckoutCommand         = "checkout"
+	workflowIntegrationBranchCommand           = "branch"
+	workflowIntegrationMasterBranch            = "master"
+	workflowIntegrationReadmeFileName          = "README.md"
+	workflowIntegrationInitialCommitMessage    = "initial commit"
+	workflowIntegrationWorkflowDirectory       = ".github/workflows"
+	workflowIntegrationWorkflowFileName        = "ci.yml"
+	workflowIntegrationWorkflowContent         = "name: CI\non:\n  push:\n    branches:\n      - main\n"
+	workflowIntegrationWorkflowCommitMessage   = "add workflow"
+	workflowIntegrationOriginRemoteName        = "origin"
+	workflowIntegrationHTTPSRemote             = "https://github.com/origin/example.git"
+	workflowIntegrationStubExecutable          = "gh"
+	workflowIntegrationStateFileName           = "default_branch.txt"
+	workflowIntegrationConfigFileName          = "config.yaml"
+	workflowIntegrationConfigSearchPathEnvVar  = "GIX_CONFIG_SEARCH_PATH"
+	workflowIntegrationAuditFileName           = "audit.csv"
+	workflowIntegrationBranchCommitMessage     = "CI: switch workflow branch filters to master"
+	workflowIntegrationRepoViewJSONTemplate    = "{\"nameWithOwner\":\"canonical/example\",\"defaultBranchRef\":{\"name\":\"%s\"},\"description\":\"\"}\n"
+	workflowIntegrationConvertExpectedTemplate = "-- canonical/example (%s) --"
+	workflowIntegrationRemoteUpdateLine        = "    - origin now git@github.com:canonical/example.git"
+	workflowIntegrationRemoteSkipExpectedLine  = "    - already canonical"
+	workflowIntegrationDefaultExpectedTemplate = "WORKFLOW-DEFAULT: %s (main → master)"
+	workflowIntegrationAuditExpectedTemplate   = "WORKFLOW-AUDIT: wrote report to %s\n"
+	workflowIntegrationCSVHeader               = "folder_name,final_github_repo,name_matches,remote_default_branch,local_branch,in_sync,remote_protocol,origin_matches_canonical\n"
+	workflowIntegrationSubtestNameTemplate     = "%d_%s"
+	workflowIntegrationDefaultCaseName         = "protocol_default_audit"
+	workflowIntegrationConfigFlagCaseName      = "config_flag_without_positional"
+	workflowIntegrationRepositoryConfigCase    = "repository_root_configuration"
+	workflowIntegrationHelpCaseName            = "workflow_help_missing_configuration"
+	workflowIntegrationUsageSnippet            = "workflow <configuration|preset>"
+	workflowIntegrationMissingConfigMessage    = "workflow configuration path or preset name required; provide a positional argument or --config flag"
 )
 
 func TestWorkflowRunIntegration(testInstance *testing.T) {
@@ -191,7 +192,8 @@ func TestWorkflowRunIntegration(testInstance *testing.T) {
 			filteredOutput := filterStructuredOutput(rawOutput)
 
 			expectedConversion := fmt.Sprintf(workflowIntegrationConvertExpectedTemplate, repositoryPath)
-			expectedRemoteUpdate := fmt.Sprintf(workflowIntegrationRemoteSkipExpectedTemplate, repositoryPath)
+			require.Contains(subtest, filteredOutput, workflowIntegrationRemoteUpdateLine)
+			expectedRemoteUpdate := workflowIntegrationRemoteSkipExpectedLine
 			expectedMigration := fmt.Sprintf(workflowIntegrationDefaultExpectedTemplate, repositoryPath)
 			expectedAudit := fmt.Sprintf(workflowIntegrationAuditExpectedTemplate, auditPath)
 
@@ -234,14 +236,15 @@ func TestWorkflowProcessesRepositoriesSequentially(testInstance *testing.T) {
       command: ["tasks", "apply"]
       with:
         tasks:
-          - name: "Stage One Slow"
+          - name: "Stage One"
             ensure_clean: false
             steps: [files.apply]
-            safeguards:
-              paths: ["slow.flag"]
             files:
               - path: stage.log
                 content: |
+                  {{- $slow := index .Environment "slow_repo_path" }}
+                  {{- $fast := index .Environment "fast_repo_path" }}
+                  {{- if eq .Repository.Path $slow }}
                   stage1:slow-repo
                   slow-padding-0001
                   slow-padding-0002
@@ -263,15 +266,9 @@ func TestWorkflowProcessesRepositoriesSequentially(testInstance *testing.T) {
                   slow-padding-0018
                   slow-padding-0019
                   slow-padding-0020
-                mode: append-if-missing
-          - name: "Stage One Fast"
-            ensure_clean: false
-            steps: [files.apply]
-            safeguards:
-              paths: ["fast.flag"]
-            files:
-              - path: stage.log
-                content: "stage1:fast-repo"
+                  {{- else if eq .Repository.Path $fast }}
+                  stage1:fast-repo
+                  {{- end }}
                 mode: append-if-missing
   - step:
       name: stage-two
@@ -279,23 +276,19 @@ func TestWorkflowProcessesRepositoriesSequentially(testInstance *testing.T) {
       command: ["tasks", "apply"]
       with:
         tasks:
-          - name: "Stage Two Slow"
+          - name: "Stage Two"
             ensure_clean: false
             steps: [files.apply]
-            safeguards:
-              paths: ["slow.flag"]
             files:
               - path: stage.log
-                content: "stage2:slow-repo"
-                mode: append-if-missing
-          - name: "Stage Two Fast"
-            ensure_clean: false
-            steps: [files.apply]
-            safeguards:
-              paths: ["fast.flag"]
-            files:
-              - path: stage.log
-                content: "stage2:fast-repo"
+                content: |
+                  {{- $slow := index .Environment "slow_repo_path" }}
+                  {{- $fast := index .Environment "fast_repo_path" }}
+                  {{- if eq .Repository.Path $slow }}
+                  stage2:slow-repo
+                  {{- else if eq .Repository.Path $fast }}
+                  stage2:fast-repo
+                  {{- end }}
                 mode: append-if-missing
 `
 	configurationPath := filepath.Join(rootDirectory, "sequential_workflow.yaml")
@@ -313,6 +306,8 @@ func TestWorkflowProcessesRepositoriesSequentially(testInstance *testing.T) {
 		workflowIntegrationRootsFlag,
 		slowRepository,
 		workflowIntegrationYesFlag,
+		"--var", fmt.Sprintf("slow_repo_path=%s", slowRepository),
+		"--var", fmt.Sprintf("fast_repo_path=%s", fastRepository),
 		"--workflow-workers=2",
 	}
 

@@ -1298,7 +1298,7 @@ func TestTaskExecutorSkipsWhenSafeguardFails(testInstance *testing.T) {
 	}
 
 	executionError := (&TaskOperation{tasks: []TaskDefinition{task}}).executeTask(context.Background(), environment, repository, task)
-	require.NoError(testInstance, executionError)
+	require.ErrorIs(testInstance, executionError, errRepositorySkipped)
 	require.Contains(testInstance, output.String(), "event=TASK_SKIP")
 	require.Contains(testInstance, output.String(), "requires branch main")
 }

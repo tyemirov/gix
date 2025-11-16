@@ -209,6 +209,23 @@ Run with: `gix workflow path/to/file.yaml --roots ~/Development [-y] [--require-
 
 - Repositories run sequentially so each workflow prints as a contiguous block per repo. Pass `--workflow-workers <N>` (or set `workflow_workers`) to allow the orchestrator to process up to `N` repositories in parallel; each repository still executes its steps sequentially.
 
+### Workflow logging
+
+Workflow runs now emit a single header per repository (`-- owner/repo (/path) --`) followed by grouped phase bullets so the log reads like a checklist. The formatter prints at most five sections — `remote/folder`, `branch`, `files`, `git`, and `pull request` — plus warning (`⚠`) and error (`✖`) lines when something needs attention. Example:
+
+```
+-- tyemirov/scheduler (/tmp/repos/scheduler) --
+  remote/folder:
+    - origin now ssh://git@github.com/tyemirov/scheduler.git
+  branch: master (created)
+  files:
+    - Ensure gitignore entries
+  git:
+    - Git Stage Commit
+```
+
+These summaries replace the older `TASK_PLAN/TASK_APPLY` spam while still surfacing detailed machine-readable events for tooling.
+
 ### Built-in workflow commands
 
 - `remote update-protocol`
