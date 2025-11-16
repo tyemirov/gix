@@ -87,6 +87,10 @@ func buildCommandEnvironment(options integrationCommandOptions) []string {
 		environmentValues[variableName] = variableValue
 	}
 
+	if _, exists := environmentValues[gitTerminalPromptEnvironmentNameConstant]; !exists {
+		environmentValues[gitTerminalPromptEnvironmentNameConstant] = gitTerminalPromptDisableValueConstant
+	}
+
 	if len(environmentValues) == 0 {
 		return []string{}
 	}

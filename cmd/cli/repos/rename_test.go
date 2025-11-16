@@ -44,28 +44,6 @@ func (executor *renameRecordingExecutor) Execute(_ context.Context, roots []stri
 	return workflow.ExecutionOutcome{}, nil
 }
 
-type fakePresetCatalog struct {
-	configuration workflow.Configuration
-	found         bool
-	loadError     error
-	loadedName    string
-}
-
-func (catalog *fakePresetCatalog) List() []workflowcmd.PresetMetadata {
-	return nil
-}
-
-func (catalog *fakePresetCatalog) Load(name string) (workflow.Configuration, bool, error) {
-	catalog.loadedName = name
-	if catalog.loadError != nil {
-		return workflow.Configuration{}, true, catalog.loadError
-	}
-	if !catalog.found {
-		return workflow.Configuration{}, false, nil
-	}
-	return catalog.configuration, true, nil
-}
-
 func TestRenameCommandConfigurationPrecedence(testInstance *testing.T) {
 	presetConfig := loadFolderRenamePreset(testInstance)
 

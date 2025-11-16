@@ -45,6 +45,11 @@ var embeddedPresetDefinitions = []presetDefinition{
 		Description: "Normalize repository folders so directories match canonical GitHub names.",
 		FileName:    "presets/folder-rename.yaml",
 	},
+	{
+		Name:        "remote-update-to-canonical",
+		Description: "Update origin remotes to match canonical GitHub repositories.",
+		FileName:    "presets/remote-update-to-canonical.yaml",
+	},
 }
 
 type embeddedPresetCatalog struct {

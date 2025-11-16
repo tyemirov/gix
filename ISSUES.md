@@ -2,7 +2,7 @@
 
 Entries record newly discovered requests or changes, with their outcomes. No instructive content lives here. Read @NOTES.md for the process to follow when fixing issues.
 
-Read @AGENTS.md, @ARCHITECTURE.md, @POLICY.md, @NOTES.md,  @README.md and @ISSUES.md. Start working on open issues. Work autonomously and stack up PRs.
+Read @AGENTS.md, @AGENTS.GO.md, @AGENTS.GIT.md @ARCHITECTURE.md, @POLICY.md, @NOTES.md,  @README.md and @ISSUES.md. Start working on open issues. Work autonomously and stack up PRs.
 
 ## Features (110–199)
 
@@ -10,7 +10,7 @@ Read @AGENTS.md, @ARCHITECTURE.md, @POLICY.md, @NOTES.md,  @README.md and @ISSUE
 - [x] [GX-333] Rethink human-readable workflow logging: collapse repetitive `TASK_PLAN/TASK_APPLY` spam into concise task summaries, retain only essential branch/PR status lines, and surface warnings/errors in a structured “issues” section so the log is useful at a glance.
 - [x] [GX-336] Parallelize workflow runner so repository-scoped operations are queued and processed concurrently (e.g., up to 10 repos at a time) instead of strictly sequential; enumerate roots up front, build a task queue, and stream results while respecting per-repo isolation and existing safeguards. — Repository-scoped workflow stages now execute through a configurable worker pool (`--workflow-workers`/`workflow_workers`) so operators can opt into parallelism; global steps still run once with ordered stage summaries preserved.
 - [x] [GX-337] Convert `repo-folders-rename` into an embedded workflow preset: encode the current task definition as YAML, teach the CLI command to translate flags/config into workflow variables, and execute via the workflow runtime instead of hand-rolled task runner wiring. — Added `folder-rename` preset plus CLI shim so the command now loads the preset, maps flags to workflow variables, and delegates execution to the workflow runtime.
-- [ ] [GX-338] Convert `repo-remote-update` (canonical remotes) into a workflow preset/CLI shim so owner constraints, prompts, and logging flow entirely through the workflow executor.
+- [x] [GX-338] Convert `repo-remote-update` (canonical remotes) into a workflow preset/CLI shim so owner constraints, prompts, and logging flow entirely through the workflow executor. — Added `remote-update-to-canonical` embedded preset plus CLI wiring so the command now loads the preset, injects owner preferences, and runs through the workflow executor.
 - [ ] [GX-339] Convert `repo-protocol-convert` into a workflow preset that validates `from`/`to` in the CLI layer, pushes options via variables, and delegates execution to workflow operations.
 - [ ] [GX-340] Convert `repo-history-remove` into a preset-driven workflow step covering path lists, remote/push/restore flags, and ensure the CLI simply maps arguments to preset variables.
 - [ ] [GX-341] Convert `repo-files-add` into a workflow preset (with variables for path/content/mode/branch/push). Update the CLI to load template content and pass it into workflow variables before executing.

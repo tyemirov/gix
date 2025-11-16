@@ -1,0 +1,6 @@
+workflow:
+  - step:
+      name: remote-update-to-canonical
+      command: ["remote", "update-to-canonical"]
+      with:
+        owner: ""
