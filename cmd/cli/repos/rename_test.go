@@ -290,12 +290,23 @@ func loadFolderRenamePreset(testingInstance testing.TB) workflow.Configuration {
       name: folder-rename
       command: ["folder", "rename"]
       with:
-        require_clean: '{{ index .Environment "folder_require_clean" }}'
-        include_owner: '{{ index .Environment "folder_include_owner" }}'
+        require_clean: false
+        include_owner: false
 `)
 	configuration, err := workflow.ParseConfiguration(presetContent)
 	require.NoError(testingInstance, err)
 	return configuration
+}
+
+func TestFolderRenamePresetUsesBooleanOptions(testInstance *testing.T) {
+	configuration := loadFolderRenamePreset(testInstance)
+	require.Len(testInstance, configuration.Steps, 1)
+
+	options := configuration.Steps[0].Options
+	require.Contains(testInstance, options, "require_clean")
+	require.Contains(testInstance, options, "include_owner")
+	require.IsType(testInstance, true, options["require_clean"])
+	require.IsType(testInstance, true, options["include_owner"])
 }
 
 func bindRenameCommandFlags(command *cobra.Command) {
