@@ -414,9 +414,12 @@ func (operation *pullRequestCreateOperation) ExecuteForRepository(ctx context.Co
 	if branchErr != nil {
 		return branchErr
 	}
+	if len(strings.TrimSpace(branchName)) == 0 {
+		return nil
+	}
 	branchName = sanitizeBranchName(branchName)
 	if len(branchName) == 0 {
-		return errors.New("pull request branch resolved to empty value")
+		return nil
 	}
 
 	title, titleErr := renderTemplateValue(operation.titleTemplate, "", templateData)
@@ -540,7 +543,7 @@ func (operation *pullRequestOpenOperation) ExecuteForRepository(ctx context.Cont
 		return branchErr
 	}
 	if len(strings.TrimSpace(branchName)) == 0 {
-		return errors.New("pull request branch resolved to empty value")
+		return nil
 	}
 
 	title, titleErr := renderTemplateValue(operation.titleTemplate, "", templateData)

@@ -19,10 +19,13 @@ const (
 	optionTaskBranchStartPointKeyConstant = "start_point"
 	optionTaskBranchPushRemoteKeyConstant = "push_remote"
 
-	optionTaskFilePathKeyConstant        = "path"
-	optionTaskFileContentKeyConstant     = "content"
-	optionTaskFileModeKeyConstant        = "mode"
-	optionTaskFilePermissionsKeyConstant = "permissions"
+	optionTaskFilePathKeyConstant         = "path"
+	optionTaskFileContentKeyConstant      = "content"
+	optionTaskFileModeKeyConstant         = "mode"
+	optionTaskFilePermissionsKeyConstant  = "permissions"
+	optionTaskFileReplacementsKeyConstant = "replacements"
+	optionTaskReplacementFromKeyConstant  = "from"
+	optionTaskReplacementToKeyConstant    = "to"
 
 	optionTaskPRTitleKeyConstant       = "title"
 	optionTaskPRBodyKeyConstant        = "body"
@@ -43,6 +46,7 @@ const (
 	taskFileModeOverwrite       taskFileExistsMode = "overwrite"
 	taskFileModeSkipIfExists    taskFileExistsMode = "skip-if-exists"
 	taskFileModeAppendIfMissing taskFileExistsMode = "append-if-missing"
+	taskFileModeReplace         taskFileExistsMode = "replace"
 )
 
 type taskExecutionStep string
@@ -69,6 +73,8 @@ const (
 	TaskFileModeSkipIfExists TaskFileMode = taskFileModeSkipIfExists
 	// TaskFileModeAppendIfMissing appends lines from the provided content only when they are missing, preserving existing entries.
 	TaskFileModeAppendIfMissing TaskFileMode = taskFileModeAppendIfMissing
+	// TaskFileModeReplace rewrites matching substrings inside existing files.
+	TaskFileModeReplace TaskFileMode = taskFileModeReplace
 )
 
 // TaskDefinition describes a single repository task.
@@ -98,6 +104,13 @@ type TaskFileDefinition struct {
 	ContentTemplate string
 	Mode            taskFileExistsMode
 	Permissions     fs.FileMode
+	Replacements    []TaskReplacementDefinition
+}
+
+// TaskReplacementDefinition describes a text replacement operation.
+type TaskReplacementDefinition struct {
+	FromTemplate string
+	ToTemplate   string
 }
 
 // TaskCommitDefinition describes commit metadata for a task.

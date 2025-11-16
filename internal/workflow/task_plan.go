@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -241,10 +243,21 @@ func (planner taskPlanner) planFileChanges(environment *Environment, repository 
 		if filepath.IsAbs(relativePath) {
 			return nil, fmt.Errorf("file path %q must be relative", renderedPath)
 		}
-		if _, exists := seenPaths[relativePath]; exists {
+		if _, exists := seenPaths[relativePath]; exists && fileDefinition.Mode != taskFileModeReplace {
 			return nil, fmt.Errorf("duplicate file path %s", relativePath)
 		}
-		seenPaths[relativePath] = struct{}{}
+		if fileDefinition.Mode != taskFileModeReplace {
+			seenPaths[relativePath] = struct{}{}
+		}
+
+		if fileDefinition.Mode == taskFileModeReplace {
+			replacementChanges, replacementError := planner.buildReplacementChanges(environment, repository, relativePath, fileDefinition)
+			if replacementError != nil {
+				return nil, replacementError
+			}
+			changes = append(changes, replacementChanges...)
+			continue
+		}
 
 		content, contentError := planner.renderTemplate(fileDefinition.ContentTemplate, "")
 		if contentError != nil {
@@ -329,6 +342,197 @@ func parseEnsureLines(content []byte) []string {
 		lines = append(lines, raw)
 	}
 	return lines
+}
+
+type renderedReplacement struct {
+	from string
+	to   string
+}
+
+func (planner taskPlanner) buildReplacementChanges(environment *Environment, repository *RepositoryState, relativePath string, definition TaskFileDefinition) ([]taskFileChange, error) {
+	if environment == nil || environment.FileSystem == nil {
+		return nil, errors.New("replace mode requires filesystem access")
+	}
+	if len(definition.Replacements) == 0 {
+		return nil, fmt.Errorf("file %s replacement mode requires replacements", relativePath)
+	}
+
+	replacements, renderErr := planner.renderReplacements(definition.Replacements)
+	if renderErr != nil {
+		return nil, renderErr
+	}
+
+	targets, targetErr := planner.resolveReplacementTargets(repository, relativePath)
+	if targetErr != nil {
+		return nil, targetErr
+	}
+
+	changes := make([]taskFileChange, 0, len(targets))
+	seen := make(map[string]struct{}, len(targets))
+
+	for _, targetRelative := range targets {
+		if _, exists := seen[targetRelative]; exists {
+			continue
+		}
+		seen[targetRelative] = struct{}{}
+
+		absolutePath := filepath.Join(repository.Path, targetRelative)
+		originalBytes, readErr := environment.FileSystem.ReadFile(absolutePath)
+		if readErr != nil {
+			if errors.Is(readErr, fs.ErrNotExist) {
+				continue
+			}
+			return nil, readErr
+		}
+
+		updatedContent, replaced := applyReplacements(string(originalBytes), replacements)
+		if !replaced {
+			continue
+		}
+
+		permissions := definition.Permissions
+		if info, statErr := environment.FileSystem.Stat(absolutePath); statErr == nil {
+			permissions = info.Mode()
+		}
+
+		changes = append(changes, taskFileChange{
+			relativePath: targetRelative,
+			absolutePath: absolutePath,
+			content:      []byte(updatedContent),
+			mode:         taskFileModeOverwrite,
+			permissions:  permissions,
+			apply:        true,
+		})
+	}
+
+	return changes, nil
+}
+
+func (planner taskPlanner) renderReplacements(definitions []TaskReplacementDefinition) ([]renderedReplacement, error) {
+	replacements := make([]renderedReplacement, 0, len(definitions))
+	for _, definition := range definitions {
+		fromValue, fromErr := planner.renderTemplate(definition.FromTemplate, "")
+		if fromErr != nil {
+			return nil, fromErr
+		}
+		toValue, toErr := planner.renderTemplate(definition.ToTemplate, "")
+		if toErr != nil {
+			return nil, toErr
+		}
+		replacements = append(replacements, renderedReplacement{
+			from: strings.TrimSpace(fromValue),
+			to:   toValue,
+		})
+	}
+	return replacements, nil
+}
+
+func (planner taskPlanner) resolveReplacementTargets(repository *RepositoryState, relativePath string) ([]string, error) {
+	cleaned := filepath.Clean(relativePath)
+	normalized := filepath.ToSlash(cleaned)
+	if !strings.ContainsAny(normalized, "*?[") {
+		return []string{cleaned}, nil
+	}
+
+	matcher, matcherErr := compileReplacementMatcher(normalized)
+	if matcherErr != nil {
+		return nil, matcherErr
+	}
+
+	targets := make([]string, 0)
+	absolutePattern := filepath.Join(repository.Path, normalized)
+	matches, err := filepath.Glob(absolutePattern)
+	if err != nil {
+		return nil, err
+	}
+	for _, match := range matches {
+		info, statErr := os.Stat(match)
+		if statErr != nil || info.IsDir() {
+			continue
+		}
+		relative, relErr := filepath.Rel(repository.Path, match)
+		if relErr != nil {
+			continue
+		}
+		normalizedRelative := filepath.ToSlash(relative)
+		if matcher(normalizedRelative) {
+			targets = append(targets, normalizedRelative)
+		}
+	}
+	return targets, nil
+}
+
+func applyReplacements(original string, replacements []renderedReplacement) (string, bool) {
+	updated := original
+	replaced := false
+	for _, replacement := range replacements {
+		if len(replacement.from) == 0 {
+			continue
+		}
+		if strings.Contains(updated, replacement.from) {
+			newValue := strings.ReplaceAll(updated, replacement.from, replacement.to)
+			if newValue != updated {
+				replaced = true
+				updated = newValue
+			}
+		}
+	}
+	return updated, replaced
+}
+
+func compileReplacementMatcher(pattern string) (func(string) bool, error) {
+	if !strings.Contains(pattern, "**") {
+		return func(candidate string) bool {
+			matched, err := filepath.Match(pattern, candidate)
+			return err == nil && matched
+		}, nil
+	}
+
+	var builder strings.Builder
+	builder.WriteString("^")
+	for index := 0; index < len(pattern); index++ {
+		character := pattern[index]
+		switch character {
+		case '*':
+			if index+1 < len(pattern) && pattern[index+1] == '*' {
+				builder.WriteString(".*")
+				index++
+				continue
+			}
+			builder.WriteString("[^/]*")
+		case '?':
+			builder.WriteString(".")
+		case '[':
+			end := index + 1
+			if end < len(pattern) && (pattern[end] == '!' || pattern[end] == '^') {
+				end++
+			}
+			for end < len(pattern) && pattern[end] != ']' {
+				end++
+			}
+			if end >= len(pattern) {
+				builder.WriteString("\\[")
+				continue
+			}
+			class := pattern[index : end+1]
+			if strings.HasPrefix(class, "[!") {
+				class = "[^" + class[2:]
+			}
+			builder.WriteString(class)
+			index = end
+		default:
+			builder.WriteString(regexp.QuoteMeta(string(character)))
+		}
+	}
+	builder.WriteString("$")
+
+	regex, regexErr := regexp.Compile(builder.String())
+	if regexErr != nil {
+		return nil, regexErr
+	}
+	return func(candidate string) bool {
+		return regex.MatchString(candidate)
+	}, nil
 }
 
 func buildEnsureLineSet(content []byte) map[string]struct{} {

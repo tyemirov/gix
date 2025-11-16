@@ -54,9 +54,15 @@ func main() { dep.Do() }
 		Output:            output,
 		Reporter:          shared.NewStructuredReporter(output, output, shared.WithRepositoryHeaders(false)),
 		PromptState:       NewPromptState(true),
+		Variables:         NewVariableStore(),
 	}
 
-	repository := &RepositoryState{Path: tempDir}
+	repository := &RepositoryState{
+		Path: tempDir,
+		Inspection: audit.RepositoryInspection{
+			FinalOwnerRepo: "owner/repo",
+		},
+	}
 	parameters := map[string]any{
 		"old":                          "github.com/old/org",
 		"new":                          "github.com/new/org",
@@ -97,6 +103,12 @@ func main() { dep.Do() }
 		require.Contains(t, details.Arguments, namespaceTestCommitMessage)
 	}
 	require.True(t, commitCommandFound)
+
+	namespaceVariable, varErr := NewVariableName("namespace_branch_owner_repo")
+	require.NoError(t, varErr)
+	branchValue, branchExists := environment.Variables.Get(namespaceVariable)
+	require.True(t, branchExists)
+	require.Contains(t, branchValue, "rewrite/")
 }
 
 func TestHandleNamespaceRewriteActionPushFailure(t *testing.T) {
@@ -135,6 +147,7 @@ func TestHandleNamespaceRewriteActionPushFailure(t *testing.T) {
 		Errors:            errorOutput,
 		Reporter:          shared.NewStructuredReporter(output, errorOutput, shared.WithRepositoryHeaders(false)),
 		PromptState:       NewPromptState(true),
+		Variables:         NewVariableStore(),
 	}
 
 	repository := &RepositoryState{Path: tempDir, Inspection: audit.RepositoryInspection{FinalOwnerRepo: "owner/repo"}}
@@ -156,6 +169,11 @@ func TestHandleNamespaceRewriteActionPushFailure(t *testing.T) {
 	require.Equal(t, "false", applyEvent["push"])
 	skipEvent := requireEventByCode(t, events, shared.EventCodeNamespaceSkip)
 	require.NotEmpty(t, skipEvent["reason"])
+
+	namespaceVariable, varErr := NewVariableName("namespace_branch_owner_repo")
+	require.NoError(t, varErr)
+	_, branchExists := environment.Variables.Get(namespaceVariable)
+	require.False(t, branchExists)
 
 	errorEvents := parseStructuredEvents(errorOutput.String())
 	require.NotEmpty(t, errorEvents)
@@ -188,9 +206,15 @@ func TestHandleNamespaceRewriteActionSkipsWhenRemoteUpToDate(t *testing.T) {
 		Output:            output,
 		Reporter:          shared.NewStructuredReporter(output, output, shared.WithRepositoryHeaders(false)),
 		PromptState:       NewPromptState(true),
+		Variables:         NewVariableStore(),
 	}
 
-	repository := &RepositoryState{Path: tempDir}
+	repository := &RepositoryState{
+		Path: tempDir,
+		Inspection: audit.RepositoryInspection{
+			FinalOwnerRepo: "owner/repo",
+		},
+	}
 	parameters := map[string]any{
 		"old":                          "github.com/old/org",
 		"new":                          "github.com/new/org",
@@ -208,6 +232,11 @@ func TestHandleNamespaceRewriteActionSkipsWhenRemoteUpToDate(t *testing.T) {
 	require.Equal(t, "false", applyEvent["push"])
 	skipEvent := requireEventByCode(t, events, shared.EventCodeNamespaceSkip)
 	require.Contains(t, skipEvent["reason"], "already")
+
+	namespaceVariable, varErr := NewVariableName("namespace_branch_owner_repo")
+	require.NoError(t, varErr)
+	_, branchExists := environment.Variables.Get(namespaceVariable)
+	require.False(t, branchExists)
 }
 
 func TestHandleNamespaceRewriteActionRespectsSafeguards(t *testing.T) {

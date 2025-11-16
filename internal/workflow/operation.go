@@ -47,6 +47,7 @@ type Environment struct {
 type environmentSharedState struct {
 	mutex               sync.Mutex
 	auditReportExecuted bool
+	lastRepositoryKey   string
 }
 
 func (environment *Environment) ensureSharedState() {

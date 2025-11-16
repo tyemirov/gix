@@ -44,21 +44,72 @@ workflow:
               require_clean: true
 
   - step:
-      name: rewrite-go-namespace
+      name: namespace-branch
       after: ["switch-branch"]
       command: ["tasks", "apply"]
       with:
         tasks:
-          - name: "Rewrite module namespace"
+          - name: "Create namespace branch"
             actions:
-              - type: repo.namespace.rewrite
+              - type: branch.change
                 options:
-                  old: github.com/temirov
-                  new: github.com/tyemirov
-                  branch_prefix: chore/ns-rename
-                  push: true
+                  branch: "automation/ns-rewrite/{{ .Repository.Name }}-{{ index .Environment \"workflow_run_id\" }}"
                   remote: origin
-                  commit_message: "refactor: rewrite module namespace after owner rename"
+                  create_if_missing: true
             safeguards:
-              branch_in: [ master ]
-              paths: [ go.mod ]
+              require_clean: true
+
+  - step:
+      name: namespace-rewrite
+      after: ["namespace-branch"]
+      command: ["tasks", "apply"]
+      with:
+        tasks:
+          - name: "Rewrite module namespace"
+            steps:
+              - files.apply
+            files:
+              - path: go.mod
+                mode: replace
+                replacements:
+                  - from: github.com/temirov
+                    to: github.com/tyemirov
+              - path: go.sum
+                mode: replace
+                replacements:
+                  - from: github.com/temirov
+                    to: github.com/tyemirov
+              - path: "**/*.go"
+                mode: replace
+                replacements:
+                  - from: github.com/temirov
+                    to: github.com/tyemirov
+
+  - step:
+      name: namespace-stage-commit
+      after: ["namespace-rewrite"]
+      command: ["git", "stage-commit"]
+      with:
+        paths:
+          - "."
+        commit_message: "refactor: rewrite module namespace after owner rename"
+
+  - step:
+      name: namespace-push
+      after: ["namespace-stage-commit"]
+      command: ["git", "push"]
+      with:
+        branch: "automation/ns-rewrite/{{ .Repository.Name }}-{{ index .Environment \"workflow_run_id\" }}"
+        push_remote: origin
+
+  - step:
+      name: namespace-open-pr
+      after: ["namespace-push"]
+      command: ["pull-request", "open"]
+      with:
+        branch: "automation/ns-rewrite/{{ .Repository.Name }}-{{ index .Environment \"workflow_run_id\" }}"
+        title: 'refactor({{ .Repository.Name }}): rewrite module namespace'
+        body: |
+          Rewrites Go module imports from `github.com/temirov` to `github.com/tyemirov` after the owner rename.
+        base: master
+        push_remote: origin

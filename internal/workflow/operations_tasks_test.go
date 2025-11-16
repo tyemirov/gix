@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -18,6 +19,7 @@ import (
 	"github.com/temirov/gix/internal/execshell"
 	"github.com/temirov/gix/internal/githubcli"
 	"github.com/temirov/gix/internal/gitrepo"
+	"github.com/temirov/gix/internal/repos/filesystem"
 	"github.com/temirov/gix/internal/repos/shared"
 	"github.com/temirov/gix/pkg/llm"
 )
@@ -107,6 +109,67 @@ func TestTaskPlannerBuildPlanAppliesEnvironmentVariables(t *testing.T) {
 	require.Equal(t, "feat: captured message", plan.commitMessage)
 	require.Len(t, plan.fileChanges, 1)
 	require.Equal(t, []byte("feat: captured message"), plan.fileChanges[0].content)
+}
+
+func TestPlanFileChangesReplaceMode(t *testing.T) {
+	tempDir := t.TempDir()
+	filePath := filepath.Join(tempDir, "go.mod")
+	require.NoError(t, os.WriteFile(filePath, []byte("module github.com/temirov/example\n"), 0o644))
+
+	repository := &RepositoryState{Path: tempDir}
+	taskDefinition := TaskDefinition{
+		Files: []TaskFileDefinition{{
+			PathTemplate: "go.mod",
+			Mode:         taskFileModeReplace,
+			Replacements: []TaskReplacementDefinition{
+				{FromTemplate: "github.com/temirov", ToTemplate: "github.com/tyemirov"},
+			},
+		}},
+	}
+
+	environment := &Environment{FileSystem: filesystem.OSFileSystem{}}
+	templateData := buildTaskTemplateData(repository, taskDefinition, nil)
+	planner := newTaskPlanner(taskDefinition, templateData)
+
+	changes, err := planner.planFileChanges(environment, repository)
+	require.NoError(t, err)
+	require.Len(t, changes, 1)
+	require.True(t, changes[0].apply)
+	require.Contains(t, string(changes[0].content), "github.com/tyemirov/example")
+}
+
+func TestPlanFileChangesReplaceModeSupportsGlob(t *testing.T) {
+	tempDir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(tempDir, "pkg"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "pkg", "one.go"), []byte(`package pkg
+import "github.com/temirov/foo"
+`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "pkg", "two.go"), []byte(`package pkg
+import "github.com/temirov/bar"
+`), 0o644))
+
+	repository := &RepositoryState{Path: tempDir}
+	taskDefinition := TaskDefinition{
+		Files: []TaskFileDefinition{{
+			PathTemplate: "**/*.go",
+			Mode:         taskFileModeReplace,
+			Replacements: []TaskReplacementDefinition{
+				{FromTemplate: "github.com/temirov", ToTemplate: "github.com/tyemirov"},
+			},
+		}},
+	}
+
+	environment := &Environment{FileSystem: filesystem.OSFileSystem{}}
+	templateData := buildTaskTemplateData(repository, taskDefinition, nil)
+	planner := newTaskPlanner(taskDefinition, templateData)
+
+	changes, err := planner.planFileChanges(environment, repository)
+	require.NoError(t, err)
+	require.Len(t, changes, 2)
+	for _, change := range changes {
+		require.True(t, change.apply)
+		require.Contains(t, string(change.content), "github.com/tyemirov")
+	}
 }
 
 func TestBuildTaskOperationInjectsLLMConfiguration(t *testing.T) {

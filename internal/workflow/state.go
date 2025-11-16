@@ -9,7 +9,6 @@ import (
 )
 
 const (
-	repositoryRefreshMissingServiceMessageConstant    = "audit service not configured for workflow state refresh"
 	repositoryRefreshMissingInspectionMessageConstant = "repository inspection not available after refresh"
 )
 
@@ -30,7 +29,7 @@ func NewRepositoryState(inspection audit.RepositoryInspection) *RepositoryState 
 // Refresh updates the repository inspection data using the supplied audit service.
 func (state *RepositoryState) Refresh(executionContext context.Context, service *audit.Service) error {
 	if service == nil {
-		return errors.New(repositoryRefreshMissingServiceMessageConstant)
+		return nil
 	}
 
 	inspections, inspectionError := service.DiscoverInspections(executionContext, []string{state.Path}, false, false, audit.InspectionDepthFull)
