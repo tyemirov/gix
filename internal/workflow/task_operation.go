@@ -102,6 +102,9 @@ func (operation *TaskOperation) ExecuteForRepository(executionContext context.Co
 	var executionErrors []error
 	for _, task := range operation.tasks {
 		if err := operation.executeTask(executionContext, environment, repository, task); err != nil {
+			if errors.Is(err, errRepositorySkipped) {
+				return err
+			}
 			executionErrors = append(executionErrors, err)
 		}
 	}
@@ -123,7 +126,7 @@ func (operation *TaskOperation) executeTask(executionContext context.Context, en
 		}
 		if !pass {
 			environment.ReportRepositoryEvent(repository, shared.EventLevelWarn, shared.EventCodeTaskSkip, reason, nil)
-			return nil
+			return repositorySkipError{reason: reason}
 		}
 	}
 

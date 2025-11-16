@@ -94,6 +94,7 @@ func (application *Application) registerCommands(cobraCommand *cobra.Command) {
 		},
 		HumanReadableLoggingProvider: application.humanReadableLoggingEnabled,
 		ConfigurationProvider:        application.reposRenameConfiguration,
+		PresetCatalogFactory:         workflowcmd.NewEmbeddedPresetCatalog,
 	}
 
 	remotesBuilder := repos.RemotesCommandBuilder{

@@ -339,15 +339,23 @@ func executeRepositoryStageForRepository(
 
 		startTime := time.Now()
 		executeError := repoOperation.ExecuteForRepository(ctx, environment, repository)
+		skipRepository := errors.Is(executeError, errRepositorySkipped)
+		if skipRepository {
+			repositoryFailed = true
+		}
 		executionDuration := time.Since(startTime)
 
 		if reporter != nil {
 			reporter.RecordOperationDuration(compositeName, executionDuration)
-			if executeError == nil {
+			if executeError == nil || skipRepository {
 				reporter.RecordEvent(shared.EventCodeWorkflowOperationSuccess, shared.EventLevelInfo)
 			} else {
 				reporter.RecordEvent(shared.EventCodeWorkflowOperationFailure, shared.EventLevelError)
 			}
+		}
+
+		if skipRepository {
+			executeError = nil
 		}
 
 		operationOutcomes[fmt.Sprintf("%s@%s", node.Name, repoLabel)] = OperationOutcome{
@@ -358,12 +366,10 @@ func executeRepositoryStageForRepository(
 		}
 
 		if executeError == nil {
+			if skipRepository {
+				break
+			}
 			continue
-		}
-
-		if errors.Is(executeError, errRepositorySkipped) {
-			repositoryFailed = true
-			break
 		}
 
 		subErrors := collectOperationErrors(executeError)

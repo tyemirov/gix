@@ -8,40 +8,95 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/temirov/gix/internal/repos/shared"
+	workflowruntime "github.com/temirov/gix/internal/workflow"
 )
 
-func TestWorkflowHumanFormatterCollapsesTasks(t *testing.T) {
+func TestWorkflowHumanFormatterGroupsPhases(t *testing.T) {
 	formatter := newWorkflowHumanFormatter()
 	var buffer bytes.Buffer
 
 	repo := "tyemirov/scheduler"
+	path := "/tmp/repos/scheduler"
+
 	formatter.HandleEvent(shared.Event{
 		Code:                 shared.EventCodeTaskPlan,
 		RepositoryIdentifier: repo,
-		Message:              "task plan ready",
-		Details:              map[string]string{"task": "Ensure gitignore entries"},
+		RepositoryPath:       path,
+		Details:              map[string]string{"task": "Switch to master"},
 	}, &buffer)
+
+	formatter.HandleEvent(shared.Event{
+		Code:                 shared.EventCodeRemoteUpdate,
+		RepositoryIdentifier: repo,
+		RepositoryPath:       path,
+		Message:              "origin now ssh://git@github.com/tyemirov/scheduler.git",
+	}, &buffer)
+
 	formatter.HandleEvent(shared.Event{
 		Code:                 shared.EventCodeRepoSwitched,
 		RepositoryIdentifier: repo,
-		Message:              "→ master",
-		Details:              map[string]string{"branch": "master"},
+		RepositoryPath:       path,
+		Details: map[string]string{
+			"branch":  "master",
+			"created": "true",
+		},
 	}, &buffer)
+
 	formatter.HandleEvent(shared.Event{
 		Code:                 shared.EventCodeTaskApply,
 		RepositoryIdentifier: repo,
+		RepositoryPath:       path,
+		Details: map[string]string{
+			"phase": string(workflowruntime.LogPhaseBranch),
+			"task":  "Switch to master",
+		},
 	}, &buffer)
+
 	formatter.HandleEvent(shared.Event{
-		Code:                 shared.EventCodeTaskSkip,
+		Code:                 shared.EventCodeTaskPlan,
 		RepositoryIdentifier: repo,
-		Message:              "PULL-SKIP: missing tracking",
+		RepositoryPath:       path,
+		Details:              map[string]string{"task": "Ensure gitignore entries"},
+	}, &buffer)
+
+	formatter.HandleEvent(shared.Event{
+		Code:                 shared.EventCodeTaskApply,
+		RepositoryIdentifier: repo,
+		RepositoryPath:       path,
+		Details: map[string]string{
+			"phase": string(workflowruntime.LogPhaseFiles),
+			"task":  "Ensure gitignore entries",
+		},
+	}, &buffer)
+
+	formatter.HandleEvent(shared.Event{
+		Code:                 shared.EventCodeTaskPlan,
+		RepositoryIdentifier: repo,
+		RepositoryPath:       path,
+		Details:              map[string]string{"task": "Git Stage Commit"},
+	}, &buffer)
+
+	formatter.HandleEvent(shared.Event{
+		Code:                 shared.EventCodeTaskApply,
+		RepositoryIdentifier: repo,
+		RepositoryPath:       path,
+		Details: map[string]string{
+			"phase": string(workflowruntime.LogPhaseGit),
+			"task":  "Git Stage Commit",
+		},
 	}, &buffer)
 
 	lines := strings.Split(strings.TrimSpace(buffer.String()), "\n")
-	require.Equal(t, "-- tyemirov/scheduler --", lines[0])
-	require.Equal(t, "  ↪ switched to master", lines[1])
-	require.Equal(t, "  ✓ Ensure gitignore entries", lines[2])
-	require.Equal(t, "  ⚠ PULL-SKIP: missing tracking", lines[3])
+	require.Equal(t, []string{
+		"-- tyemirov/scheduler (/tmp/repos/scheduler) --",
+		"  remote/folder:",
+		"    - origin now ssh://git@github.com/tyemirov/scheduler.git",
+		"  branch: master (created)",
+		"  files:",
+		"    - Ensure gitignore entries",
+		"  git:",
+		"    - Git Stage Commit",
+	}, lines)
 }
 
 func TestWorkflowHumanFormatterHandlesMultipleRepositories(t *testing.T) {
@@ -54,28 +109,75 @@ func TestWorkflowHumanFormatterHandlesMultipleRepositories(t *testing.T) {
 	formatter.HandleEvent(shared.Event{
 		Code:                 shared.EventCodeTaskPlan,
 		RepositoryIdentifier: firstRepo,
-		Details:              map[string]string{"task": "Switch to master"},
+		RepositoryPath:       "/tmp/repos/alpha",
+		Details:              map[string]string{"task": "Update files"},
 	}, &buffer)
 	formatter.HandleEvent(shared.Event{
 		Code:                 shared.EventCodeTaskApply,
 		RepositoryIdentifier: firstRepo,
+		RepositoryPath:       "/tmp/repos/alpha",
+		Details: map[string]string{
+			"phase": string(workflowruntime.LogPhaseFiles),
+			"task":  "Update files",
+		},
 	}, &buffer)
 
 	formatter.HandleEvent(shared.Event{
 		Code:                 shared.EventCodeTaskPlan,
 		RepositoryIdentifier: secondRepo,
-		Details:              map[string]string{"task": "Open Pull Request"},
+		RepositoryPath:       "/tmp/repos/beta",
+		Details:              map[string]string{"task": "Push branch"},
 	}, &buffer)
 	formatter.HandleEvent(shared.Event{
 		Code:                 shared.EventCodeTaskApply,
 		RepositoryIdentifier: secondRepo,
+		RepositoryPath:       "/tmp/repos/beta",
+		Details: map[string]string{
+			"phase": string(workflowruntime.LogPhaseGit),
+			"task":  "Push branch",
+		},
 	}, &buffer)
 
-	output := buffer.String()
-	require.Contains(t, output, "-- tyemirov/alpha --")
-	require.Contains(t, output, "-- tyemirov/beta --")
-	require.Contains(t, output, "  ✓ Switch to master")
-	require.Contains(t, output, "  ✓ Open Pull Request")
+	lines := strings.Split(strings.TrimSpace(buffer.String()), "\n")
+	require.Equal(t, []string{
+		"-- tyemirov/alpha (/tmp/repos/alpha) --",
+		"  files:",
+		"    - Update files",
+		"",
+		"-- tyemirov/beta (/tmp/repos/beta) --",
+		"  git:",
+		"    - Push branch",
+	}, lines)
+}
+
+func TestWorkflowHumanFormatterFallbackForBranchPhaseWithoutSwitch(t *testing.T) {
+	formatter := newWorkflowHumanFormatter()
+	var buffer bytes.Buffer
+
+	repo := "tyemirov/solo"
+	path := "/tmp/repos/solo"
+
+	formatter.HandleEvent(shared.Event{
+		Code:                 shared.EventCodeTaskPlan,
+		RepositoryIdentifier: repo,
+		RepositoryPath:       path,
+		Details:              map[string]string{"task": "Switch branch"},
+	}, &buffer)
+	formatter.HandleEvent(shared.Event{
+		Code:                 shared.EventCodeTaskApply,
+		RepositoryIdentifier: repo,
+		RepositoryPath:       path,
+		Details: map[string]string{
+			"phase": string(workflowruntime.LogPhaseBranch),
+			"task":  "Switch branch",
+		},
+	}, &buffer)
+
+	lines := strings.Split(strings.TrimSpace(buffer.String()), "\n")
+	require.Equal(t, []string{
+		"-- tyemirov/solo (/tmp/repos/solo) --",
+		"  branch: Switch branch",
+	}, lines)
 }
 
 func TestWorkflowHumanFormatterWritesEventSummary(t *testing.T) {
@@ -83,19 +185,53 @@ func TestWorkflowHumanFormatterWritesEventSummary(t *testing.T) {
 	var buffer bytes.Buffer
 
 	formatter.HandleEvent(shared.Event{
-		Code:                 "PROTOCOL_UPDATE",
+		Code:                 shared.EventCodeWorkflowOperationSuccess,
 		RepositoryIdentifier: "canonical/example",
-		Details:              map[string]string{"path": "/tmp/repo"},
+		RepositoryPath:       "/tmp/repos/example",
+		Details:              map[string]string{"path": "/tmp/repos/example"},
 	}, &buffer)
 
 	lines := strings.Split(strings.TrimSpace(buffer.String()), "\n")
-	require.Contains(t, lines, "-- canonical/example --")
+	require.Contains(t, lines, "-- canonical/example (/tmp/repos/example) --")
 	found := false
 	for _, line := range lines {
-		if strings.Contains(line, "event=PROTOCOL_UPDATE path=/tmp/repo") {
+		if strings.Contains(line, "event=WORKFLOW_OPERATION_SUCCESS path=/tmp/repos/example") {
 			found = true
 			break
 		}
 	}
 	require.True(t, found, "expected protocol update summary")
+}
+
+func TestWorkflowHumanFormatterPreservesSeverityForPhaseEvents(t *testing.T) {
+	formatter := newWorkflowHumanFormatter()
+	var buffer bytes.Buffer
+
+	repositoryIdentifier := "tyemirov/severity"
+	repositoryPath := "/tmp/repos/severity"
+
+	formatter.HandleEvent(shared.Event{
+		Level:                shared.EventLevelWarn,
+		Code:                 shared.EventCodeRemoteSkip,
+		RepositoryIdentifier: repositoryIdentifier,
+		RepositoryPath:       repositoryPath,
+		Message:              "missing origin owner",
+	}, &buffer)
+
+	formatter.HandleEvent(shared.Event{
+		Level:                shared.EventLevelError,
+		Code:                 shared.EventCodeNamespaceError,
+		RepositoryIdentifier: repositoryIdentifier,
+		RepositoryPath:       repositoryPath,
+		Message:              "template validation failed",
+	}, &buffer)
+
+	lines := strings.Split(strings.TrimSpace(buffer.String()), "\n")
+	require.Equal(t, []string{
+		"-- tyemirov/severity (/tmp/repos/severity) --",
+		"  remote/folder:",
+		"    - ⚠ missing origin owner",
+		"  files:",
+		"    - ✖ template validation failed",
+	}, lines)
 }

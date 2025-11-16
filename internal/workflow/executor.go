@@ -30,18 +30,19 @@ const (
 
 // Dependencies configures shared collaborators for workflow execution.
 type Dependencies struct {
-	Logger                 *zap.Logger
-	RepositoryDiscoverer   shared.RepositoryDiscoverer
-	GitExecutor            shared.GitExecutor
-	RepositoryManager      *gitrepo.RepositoryManager
-	GitHubClient           *githubcli.Client
-	FileSystem             shared.FileSystem
-	Prompter               shared.ConfirmationPrompter
-	Output                 io.Writer
-	Errors                 io.Writer
-	HumanReadableLogging   bool
-	DisableWorkflowLogging bool
-	ReporterOptions        []shared.ReporterOption
+	Logger                  *zap.Logger
+	RepositoryDiscoverer    shared.RepositoryDiscoverer
+	GitExecutor             shared.GitExecutor
+	RepositoryManager       *gitrepo.RepositoryManager
+	GitHubClient            *githubcli.Client
+	FileSystem              shared.FileSystem
+	Prompter                shared.ConfirmationPrompter
+	Output                  io.Writer
+	Errors                  io.Writer
+	HumanReadableLogging    bool
+	DisableWorkflowLogging  bool
+	ReporterOptions         []shared.ReporterOption
+	DisableHeaderDecoration bool
 }
 
 // RuntimeOptions captures user-provided execution modifiers.
@@ -283,6 +284,7 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 		Logger:            executor.dependencies.Logger,
 		Variables:         NewVariableStore(),
 		sharedState:       &environmentSharedState{},
+		suppressHeaders:   executor.dependencies.DisableHeaderDecoration,
 	}
 	environment.State = state
 	if environment.Variables != nil {

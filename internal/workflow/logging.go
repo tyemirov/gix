@@ -13,12 +13,16 @@ func (environment *Environment) ReportRepositoryEvent(repository *RepositoryStat
 		return
 	}
 
+	decorateHeaders := !environment.suppressHeaders
+
 	repositoryIdentifier := ""
 	repositoryPath := ""
 	if repository != nil {
 		repositoryIdentifier = selectOwnerRepository(repository)
 		repositoryPath = repository.Path
-		message = environment.decorateRepositoryMessage(repositoryIdentifier, repositoryPath, message)
+		if decorateHeaders {
+			message = environment.decorateRepositoryMessage(repositoryIdentifier, repositoryPath, message)
+		}
 	} else {
 		environment.clearRepositoryHeader()
 	}
