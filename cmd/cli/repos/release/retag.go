@@ -124,10 +124,14 @@ func (builder *RetagCommandBuilder) run(command *cobra.Command, _ []string) erro
 		return errors.New(retagPresetMissingMessage)
 	}
 
+	parsedMappings, parsedMappingsError := buildRetagMappings(mappingValues, messageTemplate)
+	if parsedMappingsError != nil {
+		return parsedMappingsError
+	}
+
 	params := releaseRetagPresetOptions{
-		MessageTemplate: messageTemplate,
-		Mappings:        mappingValues,
-		Remote:          configuration.RemoteName,
+		Mappings: parsedMappings,
+		Remote:   configuration.RemoteName,
 	}
 
 	if executionFlagsAvailable && executionFlags.RemoteSet {
@@ -178,9 +182,8 @@ func (builder *RetagCommandBuilder) resolvePresetCatalog() workflowcmd.PresetCat
 }
 
 type releaseRetagPresetOptions struct {
-	MessageTemplate string
-	Mappings        []string
-	Remote          string
+	Mappings []any
+	Remote   string
 }
 
 func updateReleaseRetagPresetOptions(options map[string]any, params releaseRetagPresetOptions) {
@@ -210,7 +213,7 @@ func updateReleaseRetagPresetOptions(options map[string]any, params releaseRetag
 	if actionOptions == nil {
 		actionOptions = make(map[string]any)
 	}
-	actionOptions["mappings"] = buildRetagMappings(params.Mappings, params.MessageTemplate)
+	actionOptions["mappings"] = params.Mappings
 	if len(strings.TrimSpace(params.Remote)) > 0 {
 		actionOptions["remote"] = strings.TrimSpace(params.Remote)
 	} else {
@@ -223,28 +226,29 @@ func updateReleaseRetagPresetOptions(options map[string]any, params releaseRetag
 	options["tasks"] = tasks
 }
 
-func buildRetagMappings(rawMappings []string, messageTemplate string) []any {
+func buildRetagMappings(rawMappings []string, messageTemplate string) ([]any, error) {
 	mappings := make([]any, 0, len(rawMappings))
+	templateValue := strings.TrimSpace(messageTemplate)
 	for _, raw := range rawMappings {
 		parts := strings.SplitN(raw, "=", 2)
 		if len(parts) != 2 {
-			continue
+			return nil, fmt.Errorf("invalid --map value %q: expected <tag=target>", raw)
 		}
 		tag := strings.TrimSpace(parts[0])
 		target := strings.TrimSpace(parts[1])
 		if len(tag) == 0 || len(target) == 0 {
-			continue
+			return nil, fmt.Errorf("invalid --map value %q: tag and target are required", raw)
 		}
 		entry := map[string]any{
 			"tag":    tag,
 			"target": target,
 		}
-		if len(strings.TrimSpace(messageTemplate)) > 0 {
-			message := strings.ReplaceAll(messageTemplate, "{{tag}}", tag)
+		if len(templateValue) > 0 {
+			message := strings.ReplaceAll(templateValue, "{{tag}}", tag)
 			message = strings.ReplaceAll(message, "{{target}}", target)
 			entry["message"] = message
 		}
 		mappings = append(mappings, entry)
 	}
-	return mappings
+	return mappings, nil
 }

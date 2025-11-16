@@ -110,6 +110,54 @@ func TestRetagCommandRequiresMappings(t *testing.T) {
 	require.Error(t, command.RunE(command, nil))
 }
 
+func TestRetagCommandRejectsMalformedMappings(t *testing.T) {
+	root := t.TempDir()
+	preset := loadReleaseRetagPreset(t)
+	testCases := []struct {
+		name      string
+		args      []string
+		expectErr string
+	}{
+		{
+			name:      "missing_target",
+			args:      []string{"--" + retagMappingFlagName, "v1.0.0"},
+			expectErr: "invalid --map value \"v1.0.0\": expected <tag=target>",
+		},
+		{
+			name:      "missing_tag",
+			args:      []string{"--" + retagMappingFlagName, "=main"},
+			expectErr: "invalid --map value \"=main\": tag and target are required",
+		},
+		{
+			name:      "missing_target_value",
+			args:      []string{"--" + retagMappingFlagName, "v1.0.0="},
+			expectErr: "invalid --map value \"v1.0.0=\": tag and target are required",
+		},
+	}
+
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run(testCase.name, func(subtest *testing.T) {
+			builder := RetagCommandBuilder{
+				LoggerProvider: func() *zap.Logger { return zap.NewNop() },
+				ConfigurationProvider: func() CommandConfiguration {
+					return CommandConfiguration{RepositoryRoots: []string{root}, RemoteName: "origin"}
+				},
+				GitExecutor: &stubGitExecutor{},
+				PresetCatalogFactory: func() workflowcmd.PresetCatalog {
+					return &fakePresetCatalog{configuration: preset, found: true}
+				},
+			}
+			command, err := builder.Build()
+			require.NoError(subtest, err)
+			flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Enabled: true})
+			command.SetArgs(testCase.args)
+			command.SetContext(context.Background())
+			require.EqualError(subtest, command.Execute(), testCase.expectErr)
+		})
+	}
+}
+
 func TestRetagCommandBuildsMappings(t *testing.T) {
 	root := t.TempDir()
 	recording := &releaseRecordingExecutor{}
