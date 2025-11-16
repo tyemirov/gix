@@ -55,6 +55,16 @@ var embeddedPresetDefinitions = []presetDefinition{
 		Description: "Seed repository files via tasks apply.",
 		FileName:    "presets/files-add.yaml",
 	},
+	{
+		Name:        "release-tag",
+		Description: "Create annotated release tags across repositories.",
+		FileName:    "presets/release-tag.yaml",
+	},
+	{
+		Name:        "release-retag",
+		Description: "Retag existing releases to new commits.",
+		FileName:    "presets/release-retag.yaml",
+	},
 }
 
 type embeddedPresetCatalog struct {

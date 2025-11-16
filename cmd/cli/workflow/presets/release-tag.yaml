@@ -1,0 +1,14 @@
+workflow:
+  - step:
+      name: release-tag
+      command: ["tasks", "apply"]
+      with:
+        tasks:
+          - name: Create release tag
+            ensure_clean: false
+            actions:
+              - type: repo.release.tag
+                options:
+                  tag: ""
+                  message: ""
+                  remote: ""

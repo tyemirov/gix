@@ -1,7 +1,9 @@
 package release
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -10,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	repocli "github.com/temirov/gix/cmd/cli/repos"
+	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
 	"github.com/temirov/gix/internal/execshell"
 	"github.com/temirov/gix/internal/utils"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
@@ -27,19 +30,6 @@ func (executor *stubGitExecutor) ExecuteGit(_ context.Context, details execshell
 
 func (executor *stubGitExecutor) ExecuteGitHubCLI(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
 	return execshell.ExecutionResult{}, nil
-}
-
-type recordingTaskRunner struct {
-	roots          []string
-	definitions    []workflow.TaskDefinition
-	runtimeOptions workflow.RuntimeOptions
-}
-
-func (runner *recordingTaskRunner) Run(_ context.Context, roots []string, definitions []workflow.TaskDefinition, options workflow.RuntimeOptions) (workflow.ExecutionOutcome, error) {
-	runner.roots = append([]string{}, roots...)
-	runner.definitions = append([]workflow.TaskDefinition{}, definitions...)
-	runner.runtimeOptions = options
-	return workflow.ExecutionOutcome{}, nil
 }
 
 func TestCommandBuilds(t *testing.T) {
@@ -69,15 +59,29 @@ func TestCommandRequiresTagArgument(t *testing.T) {
 func TestCommandRunsAcrossRoots(t *testing.T) {
 	executor := &stubGitExecutor{}
 	root := t.TempDir()
-	runner := &recordingTaskRunner{}
+	recording := &releaseRecordingExecutor{}
+	preset := loadReleaseTagPreset(t)
 	builder := CommandBuilder{
 		LoggerProvider: func() *zap.Logger { return zap.NewNop() },
 		ConfigurationProvider: func() CommandConfiguration {
 			return CommandConfiguration{RepositoryRoots: []string{root}, RemoteName: "origin", Message: "Ship it"}
 		},
-		GitExecutor: executor,
-		TaskRunnerFactory: func(workflow.Dependencies) repocli.TaskRunnerExecutor {
-			return runner
+		GitExecutor:          executor,
+		PresetCatalogFactory: func() workflowcmd.PresetCatalog { return &fakePresetCatalog{configuration: preset, found: true} },
+		WorkflowExecutorFactory: func(nodes []*workflow.OperationNode, _ workflow.Dependencies) repocli.WorkflowExecutor {
+			require.Len(t, nodes, 1)
+			taskOp, ok := nodes[0].Operation.(*workflow.TaskOperation)
+			require.True(t, ok)
+			defs := taskOp.Definitions()
+			require.Len(t, defs, 1)
+			actionDefs := defs[0].Actions
+			require.Len(t, actionDefs, 1)
+			action := actionDefs[0]
+			require.Equal(t, "repo.release.tag", action.Type)
+			require.Equal(t, "v1.2.3", action.Options["tag"])
+			require.Equal(t, "Ship it", action.Options["message"])
+			require.Equal(t, "origin", action.Options["remote"])
+			return recording
 		},
 	}
 	command, err := builder.Build()
@@ -88,16 +92,8 @@ func TestCommandRunsAcrossRoots(t *testing.T) {
 	command.SetContext(contextAccessor.WithExecutionFlags(context.Background(), utils.ExecutionFlags{}))
 
 	require.NoError(t, command.RunE(command, []string{"v1.2.3"}))
-	require.Equal(t, []string{root}, runner.roots)
-	require.Len(t, runner.definitions, 1)
-	actionDefinitions := runner.definitions[0].Actions
-	require.Len(t, actionDefinitions, 1)
-	action := actionDefinitions[0]
-	require.Equal(t, "repo.release.tag", action.Type)
-	require.Equal(t, "v1.2.3", action.Options["tag"])
-	require.Equal(t, "Ship it", action.Options["message"])
-	require.Equal(t, "origin", action.Options["remote"])
-	require.False(t, runner.runtimeOptions.AssumeYes)
+	require.Equal(t, []string{root}, recording.roots)
+	require.False(t, recording.options.AssumeYes)
 }
 
 func TestRetagCommandRequiresMappings(t *testing.T) {
@@ -114,17 +110,85 @@ func TestRetagCommandRequiresMappings(t *testing.T) {
 	require.Error(t, command.RunE(command, nil))
 }
 
+func TestRetagCommandRejectsMalformedMappings(t *testing.T) {
+	root := t.TempDir()
+	preset := loadReleaseRetagPreset(t)
+	testCases := []struct {
+		name      string
+		args      []string
+		expectErr string
+	}{
+		{
+			name:      "missing_target",
+			args:      []string{"--" + retagMappingFlagName, "v1.0.0"},
+			expectErr: "invalid --map value \"v1.0.0\": expected <tag=target>",
+		},
+		{
+			name:      "missing_tag",
+			args:      []string{"--" + retagMappingFlagName, "=main"},
+			expectErr: "invalid --map value \"=main\": tag and target are required",
+		},
+		{
+			name:      "missing_target_value",
+			args:      []string{"--" + retagMappingFlagName, "v1.0.0="},
+			expectErr: "invalid --map value \"v1.0.0=\": tag and target are required",
+		},
+	}
+
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run(testCase.name, func(subtest *testing.T) {
+			builder := RetagCommandBuilder{
+				LoggerProvider: func() *zap.Logger { return zap.NewNop() },
+				ConfigurationProvider: func() CommandConfiguration {
+					return CommandConfiguration{RepositoryRoots: []string{root}, RemoteName: "origin"}
+				},
+				GitExecutor: &stubGitExecutor{},
+				PresetCatalogFactory: func() workflowcmd.PresetCatalog {
+					return &fakePresetCatalog{configuration: preset, found: true}
+				},
+			}
+			command, err := builder.Build()
+			require.NoError(subtest, err)
+			flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Enabled: true})
+			command.SetArgs(testCase.args)
+			command.SetContext(context.Background())
+			require.EqualError(subtest, command.Execute(), testCase.expectErr)
+		})
+	}
+}
+
 func TestRetagCommandBuildsMappings(t *testing.T) {
 	root := t.TempDir()
-	runner := &recordingTaskRunner{}
+	recording := &releaseRecordingExecutor{}
+	preset := loadReleaseRetagPreset(t)
 	builder := RetagCommandBuilder{
 		LoggerProvider: func() *zap.Logger { return zap.NewNop() },
 		ConfigurationProvider: func() CommandConfiguration {
 			return CommandConfiguration{RepositoryRoots: []string{root}, RemoteName: "origin", Message: "Retag {{tag}} -> {{target}}"}
 		},
-		GitExecutor: &stubGitExecutor{},
-		TaskRunnerFactory: func(workflow.Dependencies) repocli.TaskRunnerExecutor {
-			return runner
+		GitExecutor:          &stubGitExecutor{},
+		PresetCatalogFactory: func() workflowcmd.PresetCatalog { return &fakePresetCatalog{configuration: preset, found: true} },
+		WorkflowExecutorFactory: func(nodes []*workflow.OperationNode, _ workflow.Dependencies) repocli.WorkflowExecutor {
+			require.Len(t, nodes, 1)
+			taskOp, ok := nodes[0].Operation.(*workflow.TaskOperation)
+			require.True(t, ok)
+			defs := taskOp.Definitions()
+			require.Len(t, defs, 1)
+			actionDefs := defs[0].Actions
+			require.Len(t, actionDefs, 1)
+			action := actionDefs[0]
+			require.Equal(t, "repo.release.retag", action.Type)
+			mappings, ok := action.Options["mappings"].([]any)
+			require.True(t, ok)
+			require.Len(t, mappings, 2)
+			first, ok := mappings[0].(map[string]any)
+			require.True(t, ok)
+			require.Equal(t, "v1.0.0", first["tag"])
+			require.Equal(t, "main", first["target"])
+			require.Equal(t, "Retag v1.0.0 -> main", first["message"])
+			require.Equal(t, "origin", action.Options["remote"])
+			return recording
 		},
 	}
 	command, err := builder.Build()
@@ -142,20 +206,191 @@ func TestRetagCommandBuildsMappings(t *testing.T) {
 	command.SetContext(context.Background())
 	require.NoError(t, command.Execute())
 
-	require.Equal(t, []string{root}, runner.roots)
-	require.Len(t, runner.definitions, 1)
-	actionDefinitions := runner.definitions[0].Actions
-	require.Len(t, actionDefinitions, 1)
-	action := actionDefinitions[0]
-	require.Equal(t, "repo.release.retag", action.Type)
+	require.Equal(t, []string{root}, recording.roots)
+}
 
-	mappingValue, ok := action.Options["mappings"].([]any)
-	require.True(t, ok)
-	require.Len(t, mappingValue, 2)
-	firstMapping, ok := mappingValue[0].(map[string]any)
-	require.True(t, ok)
-	require.Equal(t, "v1.0.0", firstMapping["tag"])
-	require.Equal(t, "main", firstMapping["target"])
-	require.Equal(t, "Retag v1.0.0 -> main", firstMapping["message"])
-	require.Equal(t, "origin", action.Options["remote"])
+func TestReleaseCommandPresetErrorsSurface(t *testing.T) {
+	preset := loadReleaseTagPreset(t)
+
+	testCases := []struct {
+		name      string
+		catalog   fakePresetCatalog
+		expectErr string
+	}{
+		{
+			name:      "missing_preset",
+			catalog:   fakePresetCatalog{found: false},
+			expectErr: releasePresetMissingMsg,
+		},
+		{
+			name:      "load_error",
+			catalog:   fakePresetCatalog{found: true, loadError: errors.New("boom")},
+			expectErr: "unable to load release-tag preset: boom",
+		},
+		{
+			name: "build_error",
+			catalog: fakePresetCatalog{
+				found: true,
+				configuration: workflow.Configuration{
+					Steps: []workflow.StepConfiguration{{Command: []string{"unknown"}}},
+				},
+			},
+			expectErr: "unable to build release-tag workflow: unsupported workflow command: unknown",
+		},
+	}
+
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run(testCase.name, func(subtest *testing.T) {
+			catalog := testCase.catalog
+			if len(catalog.configuration.Steps) == 0 && catalog.found && catalog.loadError == nil && testCase.name != "build_error" {
+				catalog.configuration = preset
+			}
+
+			builder := CommandBuilder{
+				LoggerProvider:        func() *zap.Logger { return zap.NewNop() },
+				ConfigurationProvider: func() CommandConfiguration { return CommandConfiguration{RepositoryRoots: []string{t.TempDir()}} },
+				GitExecutor:           &stubGitExecutor{},
+				PresetCatalogFactory:  func() workflowcmd.PresetCatalog { return &catalog },
+			}
+			command, err := builder.Build()
+			require.NoError(subtest, err)
+			flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Enabled: true})
+			command.SetOut(&bytes.Buffer{})
+			command.SetErr(&bytes.Buffer{})
+			executionErr := command.RunE(command, []string{"v1.0.0"})
+			require.EqualError(subtest, executionErr, testCase.expectErr)
+		})
+	}
+}
+
+func TestRetagCommandPresetErrorsSurface(t *testing.T) {
+	preset := loadReleaseRetagPreset(t)
+
+	testCases := []struct {
+		name      string
+		catalog   fakePresetCatalog
+		expectErr string
+	}{
+		{
+			name:      "missing_preset",
+			catalog:   fakePresetCatalog{found: false},
+			expectErr: retagPresetMissingMessage,
+		},
+		{
+			name:      "load_error",
+			catalog:   fakePresetCatalog{found: true, loadError: errors.New("boom")},
+			expectErr: "unable to load release-retag preset: boom",
+		},
+		{
+			name: "build_error",
+			catalog: fakePresetCatalog{
+				found: true,
+				configuration: workflow.Configuration{
+					Steps: []workflow.StepConfiguration{{Command: []string{"unknown"}}},
+				},
+			},
+			expectErr: "unable to build release-retag workflow: unsupported workflow command: unknown",
+		},
+	}
+
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run(testCase.name, func(subtest *testing.T) {
+			catalog := testCase.catalog
+			if len(catalog.configuration.Steps) == 0 && catalog.found && catalog.loadError == nil && testCase.name != "build_error" {
+				catalog.configuration = preset
+			}
+
+			builder := RetagCommandBuilder{
+				LoggerProvider:        func() *zap.Logger { return zap.NewNop() },
+				ConfigurationProvider: func() CommandConfiguration { return CommandConfiguration{RepositoryRoots: []string{t.TempDir()}} },
+				GitExecutor:           &stubGitExecutor{},
+				PresetCatalogFactory:  func() workflowcmd.PresetCatalog { return &catalog },
+			}
+			command, err := builder.Build()
+			require.NoError(subtest, err)
+			flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Enabled: true})
+			command.SetOut(&bytes.Buffer{})
+			command.SetErr(&bytes.Buffer{})
+			command.SetArgs([]string{"--map", "v1.0.0=main"})
+			err = command.Execute()
+			require.EqualError(subtest, err, testCase.expectErr)
+		})
+	}
+}
+
+type fakePresetCatalog struct {
+	configuration workflow.Configuration
+	found         bool
+	loadError     error
+}
+
+func (catalog *fakePresetCatalog) List() []workflowcmd.PresetMetadata {
+	return nil
+}
+
+func (catalog *fakePresetCatalog) Load(name string) (workflow.Configuration, bool, error) {
+	if catalog == nil {
+		return workflow.Configuration{}, false, nil
+	}
+	if catalog.loadError != nil {
+		return workflow.Configuration{}, true, catalog.loadError
+	}
+	if !catalog.found {
+		return workflow.Configuration{}, false, nil
+	}
+	return catalog.configuration, true, nil
+}
+
+type releaseRecordingExecutor struct {
+	roots   []string
+	options workflow.RuntimeOptions
+}
+
+func (executor *releaseRecordingExecutor) Execute(_ context.Context, roots []string, options workflow.RuntimeOptions) (workflow.ExecutionOutcome, error) {
+	executor.roots = append([]string{}, roots...)
+	executor.options = options
+	return workflow.ExecutionOutcome{}, nil
+}
+
+func loadReleaseTagPreset(testingInstance testing.TB) workflow.Configuration {
+	presetContent := []byte(`workflow:
+  - step:
+      name: release-tag
+      command: ["tasks", "apply"]
+      with:
+        tasks:
+          - name: Create release tag
+            ensure_clean: false
+            actions:
+              - type: repo.release.tag
+                options:
+                  tag: ""
+                  message: ""
+                  remote: ""
+`)
+	configuration, err := workflow.ParseConfiguration(presetContent)
+	require.NoError(testingInstance, err)
+	return configuration
+}
+
+func loadReleaseRetagPreset(testingInstance testing.TB) workflow.Configuration {
+	presetContent := []byte(`workflow:
+  - step:
+      name: release-retag
+      command: ["tasks", "apply"]
+      with:
+        tasks:
+          - name: Retag release tags
+            ensure_clean: false
+            actions:
+              - type: repo.release.retag
+                options:
+                  mappings: []
+                  remote: ""
+`)
+	configuration, err := workflow.ParseConfiguration(presetContent)
+	require.NoError(testingInstance, err)
+	return configuration
 }

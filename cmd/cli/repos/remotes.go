@@ -130,7 +130,7 @@ func (builder *RemotesCommandBuilder) run(command *cobra.Command, arguments []st
 	}
 
 	runtimeOptions := workflow.RuntimeOptions{AssumeYes: assumeYes}
-	executor := resolveWorkflowExecutor(builder.WorkflowExecutorFactory, nodes, workflowDependencies)
+	executor := ResolveWorkflowExecutor(builder.WorkflowExecutorFactory, nodes, workflowDependencies)
 	_, runErr := executor.Execute(command.Context(), roots, runtimeOptions)
 	return runErr
 }
