@@ -124,7 +124,12 @@ func TestFilesAddCommandFlagOverrides(t *testing.T) {
 			require.True(t, task.EnsureClean)
 			require.Equal(t, "automation/docs", task.Branch.NameTemplate)
 			require.Equal(t, "develop", task.Branch.StartPointTemplate)
-			require.Equal(t, "", task.Branch.PushRemote)
+			require.Equal(t, "origin", task.Branch.PushRemote)
+			stepNames := make([]string, 0, len(task.Steps))
+			for _, step := range task.Steps {
+				stepNames = append(stepNames, string(step))
+			}
+			require.Equal(t, []string{"branch.prepare", "files.apply", "git.stage-commit"}, stepNames)
 			require.Len(t, task.Files, 1)
 
 			fileDef := task.Files[0]

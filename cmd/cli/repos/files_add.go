@@ -356,10 +356,11 @@ func updateFilesAddPresetOptions(options map[string]any, params filesAddPresetOp
 	branchEntry := map[string]any{
 		"name":        params.BranchName,
 		"start_point": params.StartPoint,
-		"push_remote": params.Remote,
 	}
-	if !params.Push {
-		branchEntry["push_remote"] = ""
+	if params.Push {
+		branchEntry["push_remote"] = params.Remote
+	} else {
+		taskEntry["steps"] = []any{"branch.prepare", "files.apply", "git.stage-commit"}
 	}
 	taskEntry["branch"] = branchEntry
 
