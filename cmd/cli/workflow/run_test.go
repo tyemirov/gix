@@ -309,6 +309,59 @@ func TestWorkflowCommandPassesVariablesFromFlags(testInstance *testing.T) {
 	require.Equal(testInstance, "demo", executorRecorder.runtimeOptions.Variables["scope"])
 }
 
+func TestWorkflowCommandAppliesOwnerVariableToCanonicalRemote(testInstance *testing.T) {
+	discoverer := &fakeWorkflowDiscoverer{}
+	executor := &fakeWorkflowGitExecutor{}
+	executorRecorder := &recordingExecutor{}
+	ownerPreset := workflowpkg.Configuration{
+		Steps: []workflowpkg.StepConfiguration{
+			{
+				Command: []string{"remote", "update-to-canonical"},
+				Options: map[string]any{"owner": ""},
+			},
+		},
+	}
+	var capturedNodes []*workflowpkg.OperationNode
+
+	builder := workflowcmd.CommandBuilder{
+		LoggerProvider: func() *zap.Logger { return zap.NewNop() },
+		Discoverer:     discoverer,
+		GitExecutor:    executor,
+		ConfigurationProvider: func() workflowcmd.CommandConfiguration {
+			return workflowcmd.CommandConfiguration{Roots: []string{workflowConfiguredRootConstant}}
+		},
+		OperationExecutorFactory: func(nodes []*workflowpkg.OperationNode, dependencies workflowpkg.Dependencies) workflowcmd.OperationExecutor {
+			capturedNodes = nodes
+			executorRecorder.captureOperations(nodes)
+			return executorRecorder
+		},
+		PresetCatalogFactory: func() workflowcmd.PresetCatalog {
+			return &fakePresetCatalog{configurations: map[string]workflowpkg.Configuration{"remote-update-to-canonical": ownerPreset}}
+		},
+	}
+
+	command, buildError := builder.Build()
+	require.NoError(testInstance, buildError)
+	bindGlobalWorkflowFlags(command)
+
+	command.SetArgs([]string{"remote-update-to-canonical", "--roots", workflowConfiguredRootConstant, "--var", "owner=canonical"})
+	command.SetContext(context.Background())
+
+	require.NoError(testInstance, command.Execute())
+	require.NotNil(testInstance, capturedNodes)
+	found := false
+	for index := range capturedNodes {
+		node := capturedNodes[index]
+		canonicalOperation, castSucceeded := node.Operation.(*workflowpkg.CanonicalRemoteOperation)
+		if !castSucceeded {
+			continue
+		}
+		found = true
+		require.Equal(testInstance, "canonical", canonicalOperation.OwnerConstraint)
+	}
+	require.True(testInstance, found, "expected canonical remote operation to be built")
+}
+
 func TestWorkflowCommandLoadsVariablesFromFile(testInstance *testing.T) {
 	tempDirectory := testInstance.TempDir()
 	configPath := filepath.Join(tempDirectory, workflowConfigFileNameConstant)

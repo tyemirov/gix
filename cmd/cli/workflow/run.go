@@ -134,15 +134,17 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 		workflowConfiguration = loadedConfiguration
 	}
 
-	nodes, operationsError := workflow.BuildOperations(workflowConfiguration)
-	if operationsError != nil {
-		return fmt.Errorf(buildOperationsErrorTemplateConstant, operationsError)
-	}
-
 	commandConfiguration := builder.resolveConfiguration()
 	variableAssignments, variableError := builder.resolveVariables(command, commandConfiguration)
 	if variableError != nil {
 		return variableError
+	}
+
+	applyVariableOverrides(&workflowConfiguration, variableAssignments)
+
+	nodes, operationsError := workflow.BuildOperations(workflowConfiguration)
+	if operationsError != nil {
+		return fmt.Errorf(buildOperationsErrorTemplateConstant, operationsError)
 	}
 
 	requireCleanDefault := commandConfiguration.RequireClean
@@ -275,6 +277,27 @@ func (builder *CommandBuilder) resolveVariables(command *cobra.Command, configur
 		return nil, nil
 	}
 	return variableAssignments, nil
+}
+
+func applyVariableOverrides(configuration *workflow.Configuration, variables map[string]string) {
+	if configuration == nil || len(variables) == 0 {
+		return
+	}
+
+	ownerValue := strings.TrimSpace(variables["owner"])
+	if len(ownerValue) == 0 {
+		return
+	}
+
+	for stepIndex := range configuration.Steps {
+		if workflow.CommandPathKey(configuration.Steps[stepIndex].Command) != "remote update-to-canonical" {
+			continue
+		}
+		if configuration.Steps[stepIndex].Options == nil {
+			configuration.Steps[stepIndex].Options = make(map[string]any)
+		}
+		configuration.Steps[stepIndex].Options["owner"] = ownerValue
+	}
 }
 
 func (builder *CommandBuilder) resolvePresetCatalog() PresetCatalog {
