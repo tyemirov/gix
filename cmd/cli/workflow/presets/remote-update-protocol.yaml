@@ -1,0 +1,7 @@
+workflow:
+  - step:
+      name: remote-update-protocol
+      command: ["remote", "update-protocol"]
+      with:
+        from: ""
+        to: ""

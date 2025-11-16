@@ -111,6 +111,7 @@ func (application *Application) registerCommands(cobraCommand *cobra.Command) {
 		},
 		HumanReadableLoggingProvider: application.humanReadableLoggingEnabled,
 		ConfigurationProvider:        application.reposProtocolConfiguration,
+		PresetCatalogFactory:         workflowcmd.NewEmbeddedPresetCatalog,
 	}
 
 	removeBuilder := repos.RemoveCommandBuilder{
@@ -119,6 +120,7 @@ func (application *Application) registerCommands(cobraCommand *cobra.Command) {
 		},
 		HumanReadableLoggingProvider: application.humanReadableLoggingEnabled,
 		ConfigurationProvider:        application.reposRemoveConfiguration,
+		PresetCatalogFactory:         workflowcmd.NewEmbeddedPresetCatalog,
 	}
 
 	replaceBuilder := repos.ReplaceCommandBuilder{
