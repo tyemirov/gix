@@ -6,8 +6,10 @@ import (
 	"path/filepath"
 	"time"
 
+	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
 	"github.com/temirov/gix/internal/execshell"
 	"github.com/temirov/gix/internal/repos/shared"
+	"github.com/temirov/gix/internal/workflow"
 )
 
 type fakeRepositoryDiscoverer struct {
@@ -138,3 +140,41 @@ func (info fakeFileInfo) Mode() os.FileMode  { return 0 }
 func (info fakeFileInfo) ModTime() time.Time { return time.Time{} }
 func (info fakeFileInfo) IsDir() bool        { return false }
 func (info fakeFileInfo) Sys() any           { return nil }
+
+type fakePresetCatalog struct {
+	configuration workflow.Configuration
+	found         bool
+	loadError     error
+	loadedName    string
+}
+
+func (catalog *fakePresetCatalog) List() []workflowcmd.PresetMetadata {
+	return nil
+}
+
+func (catalog *fakePresetCatalog) Load(name string) (workflow.Configuration, bool, error) {
+	if catalog == nil {
+		return workflow.Configuration{}, false, nil
+	}
+	catalog.loadedName = name
+	if catalog.loadError != nil {
+		return workflow.Configuration{}, true, catalog.loadError
+	}
+	if !catalog.found {
+		return workflow.Configuration{}, false, nil
+	}
+	return catalog.configuration, true, nil
+}
+
+type recordingTaskRunner struct {
+	roots          []string
+	definitions    []workflow.TaskDefinition
+	runtimeOptions workflow.RuntimeOptions
+}
+
+func (runner *recordingTaskRunner) Run(_ context.Context, roots []string, definitions []workflow.TaskDefinition, options workflow.RuntimeOptions) (workflow.ExecutionOutcome, error) {
+	runner.roots = append([]string{}, roots...)
+	runner.definitions = append([]workflow.TaskDefinition{}, definitions...)
+	runner.runtimeOptions = options
+	return workflow.ExecutionOutcome{}, nil
+}

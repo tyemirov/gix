@@ -1,9 +1,8 @@
 package repos_test
 
 import (
-	"bytes"
 	"context"
-	"io"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,8 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	repos "github.com/temirov/gix/cmd/cli/repos"
-	"github.com/temirov/gix/internal/repos/shared"
-	"github.com/temirov/gix/internal/utils"
+	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
 	"github.com/temirov/gix/internal/workflow"
 )
@@ -26,8 +24,6 @@ const (
 	remotesConfiguredRootConstant    = "/tmp/remotes-config-root"
 	remotesCLIRepositoryRootConstant = "/tmp/remotes-cli-root"
 	remotesDiscoveredRepository      = "/tmp/remotes-repo"
-	remotesOriginURLConstant         = "https://github.com/origin/example.git"
-	remotesCanonicalRepository       = "canonical/example"
 	remotesMetadataDefaultBranch     = "main"
 	remotesMissingRootsMessage       = "no repository roots provided; specify --roots or configure defaults"
 	remotesRelativeRootConstant      = "relative/remotes-root"
@@ -35,34 +31,34 @@ const (
 	remotesOwnerFlagConstant         = "--owner"
 	remotesOwnerConstraintConstant   = "canonical"
 	remotesOwnerMismatchConstant     = "different"
+	remoteCanonicalPresetName        = "remote-update-to-canonical"
 )
 
-type recordingTaskRunner struct {
-	roots          []string
-	definitions    []workflow.TaskDefinition
-	runtimeOptions workflow.RuntimeOptions
+type remotesRecordingExecutor struct {
+	roots   []string
+	options workflow.RuntimeOptions
 }
 
-func (runner *recordingTaskRunner) Run(_ context.Context, roots []string, definitions []workflow.TaskDefinition, options workflow.RuntimeOptions) (workflow.ExecutionOutcome, error) {
-	runner.roots = append([]string{}, roots...)
-	runner.definitions = append([]workflow.TaskDefinition{}, definitions...)
-	runner.runtimeOptions = options
+func (executor *remotesRecordingExecutor) Execute(_ context.Context, roots []string, options workflow.RuntimeOptions) (workflow.ExecutionOutcome, error) {
+	executor.roots = append([]string{}, roots...)
+	executor.options = options
 	return workflow.ExecutionOutcome{}, nil
 }
 
 func TestRemotesCommandConfigurationPrecedence(testInstance *testing.T) {
+	presetConfig := loadRemoteCanonicalPreset(testInstance)
+
 	testCases := []struct {
-		name                    string
-		configuration           repos.RemotesConfiguration
-		arguments               []string
-		expectedRoots           []string
-		expectedRootsBuilder    func(testing.TB) []string
-		expectPromptInvocations int
-		expectError             bool
-		expectedErrorMessage    string
-		expectedAssumeYes       bool
-		expectedOwnerConstraint string
-		expectTaskInvocation    bool
+		name                 string
+		configuration        repos.RemotesConfiguration
+		arguments            []string
+		expectedRoots        []string
+		expectedRootsBuilder func(testing.TB) []string
+		expectError          bool
+		expectedErrorMessage string
+		expectedAssumeYes    bool
+		expectedOwner        string
+		expectExecution      bool
 	}{
 		{
 			name: "configuration_uses_defaults",
@@ -70,35 +66,32 @@ func TestRemotesCommandConfigurationPrecedence(testInstance *testing.T) {
 				AssumeYes:       false,
 				RepositoryRoots: []string{remotesConfiguredRootConstant},
 			},
-			arguments:               []string{},
-			expectedRoots:           []string{remotesConfiguredRootConstant},
-			expectPromptInvocations: 0,
-			expectedAssumeYes:       false,
-			expectTaskInvocation:    true,
+			expectedRoots:     []string{remotesConfiguredRootConstant},
+			expectedAssumeYes: false,
+			expectExecution:   true,
 		},
 		{
 			name: "flags_override_configuration",
 			configuration: repos.RemotesConfiguration{
 				AssumeYes:       false,
+				Owner:           remotesOwnerMismatchConstant,
 				RepositoryRoots: []string{remotesConfiguredRootConstant},
 			},
 			arguments: []string{
 				remotesAssumeYesFlagConstant,
+				remotesOwnerFlagConstant, remotesOwnerConstraintConstant,
 				remotesRootFlagConstant, remotesCLIRepositoryRootConstant,
 			},
-			expectedRoots:           []string{remotesCLIRepositoryRootConstant},
-			expectPromptInvocations: 0,
-			expectedAssumeYes:       true,
-			expectTaskInvocation:    true,
+			expectedRoots:     []string{remotesCLIRepositoryRootConstant},
+			expectedAssumeYes: true,
+			expectedOwner:     remotesOwnerConstraintConstant,
+			expectExecution:   true,
 		},
 		{
 			name:                 "error_when_roots_missing",
 			configuration:        repos.RemotesConfiguration{},
-			arguments:            []string{},
 			expectError:          true,
 			expectedErrorMessage: remotesMissingRootsMessage,
-			expectedAssumeYes:    false,
-			expectTaskInvocation: false,
 		},
 		{
 			name: "configuration_expands_home_relative_root",
@@ -106,31 +99,26 @@ func TestRemotesCommandConfigurationPrecedence(testInstance *testing.T) {
 				AssumeYes:       true,
 				RepositoryRoots: []string{"~/" + remotesHomeRootSuffixConstant},
 			},
-			arguments: []string{},
-			expectedRootsBuilder: func(testingInstance testing.TB) []string {
+			expectedRootsBuilder: func(tb testing.TB) []string {
 				homeDirectory, homeError := os.UserHomeDir()
-				require.NoError(testingInstance, homeError)
-				expandedRoot := filepath.Join(homeDirectory, remotesHomeRootSuffixConstant)
-				return []string{expandedRoot}
+				require.NoError(tb, homeError)
+				return []string{filepath.Join(homeDirectory, remotesHomeRootSuffixConstant)}
 			},
-			expectPromptInvocations: 0,
-			expectedAssumeYes:       true,
-			expectTaskInvocation:    true,
+			expectedAssumeYes: true,
+			expectExecution:   true,
 		},
 		{
-			name: "arguments_preserve_relative_roots",
+			name: "arguments_preserve_relative_root",
 			configuration: repos.RemotesConfiguration{
-				AssumeYes:       false,
 				RepositoryRoots: nil,
 			},
 			arguments: []string{
 				remotesAssumeYesFlagConstant,
 				remotesRootFlagConstant, remotesRelativeRootConstant,
 			},
-			expectedRoots:           []string{remotesRelativeRootConstant},
-			expectPromptInvocations: 0,
-			expectedAssumeYes:       true,
-			expectTaskInvocation:    true,
+			expectedRoots:     []string{remotesRelativeRootConstant},
+			expectedAssumeYes: true,
+			expectExecution:   true,
 		},
 		{
 			name:          "arguments_expand_home_relative_root",
@@ -139,182 +127,159 @@ func TestRemotesCommandConfigurationPrecedence(testInstance *testing.T) {
 				remotesAssumeYesFlagConstant,
 				remotesRootFlagConstant, "~/" + remotesHomeRootSuffixConstant,
 			},
-			expectedRootsBuilder: func(testingInstance testing.TB) []string {
+			expectedRootsBuilder: func(tb testing.TB) []string {
 				homeDirectory, homeError := os.UserHomeDir()
-				require.NoError(testingInstance, homeError)
-				expandedRoot := filepath.Join(homeDirectory, remotesHomeRootSuffixConstant)
-				return []string{expandedRoot}
+				require.NoError(tb, homeError)
+				return []string{filepath.Join(homeDirectory, remotesHomeRootSuffixConstant)}
 			},
-			expectPromptInvocations: 0,
-			expectedAssumeYes:       true,
-			expectTaskInvocation:    true,
+			expectedAssumeYes: true,
+			expectExecution:   true,
 		},
 	}
 
-	for testCaseIndex := range testCases {
-		testCase := testCases[testCaseIndex]
+	for _, testCase := range testCases {
+		testCase := testCase
 		testInstance.Run(testCase.name, func(subtest *testing.T) {
-			discoverer := &fakeRepositoryDiscoverer{repositories: []string{remotesDiscoveredRepository}}
-			executor := &fakeGitExecutor{}
-			prompter := &recordingPrompter{result: shared.ConfirmationResult{Confirmed: true}}
-			runner := &recordingTaskRunner{}
+			catalog := &fakePresetCatalog{configuration: presetConfig, found: true}
+			executor := &remotesRecordingExecutor{}
 
 			builder := repos.RemotesCommandBuilder{
-				LoggerProvider: func() *zap.Logger { return zap.NewNop() },
-				Discoverer:     discoverer,
-				GitExecutor:    executor,
-				PrompterFactory: func(*cobra.Command) shared.ConfirmationPrompter {
-					return prompter
-				},
+				LoggerProvider:               func() *zap.Logger { return zap.NewNop() },
+				Discoverer:                   &fakeRepositoryDiscoverer{repositories: []string{remotesDiscoveredRepository}},
+				GitExecutor:                  &fakeGitExecutor{},
+				GitManager:                   &fakeGitRepositoryManager{},
+				HumanReadableLoggingProvider: func() bool { return false },
 				ConfigurationProvider: func() repos.RemotesConfiguration {
 					return testCase.configuration
 				},
-				TaskRunnerFactory: func(workflow.Dependencies) repos.TaskRunnerExecutor {
-					return runner
+				PresetCatalogFactory: func() workflowcmd.PresetCatalog { return catalog },
+				WorkflowExecutorFactory: func(nodes []*workflow.OperationNode, _ workflow.Dependencies) repos.WorkflowExecutor {
+					if !testCase.expectExecution {
+						return executor
+					}
+					require.Len(subtest, nodes, 1)
+					canonicalOp, ok := nodes[0].Operation.(*workflow.CanonicalRemoteOperation)
+					require.True(subtest, ok)
+					require.Equal(subtest, strings.TrimSpace(testCase.expectedOwner), canonicalOp.OwnerConstraint)
+					return executor
 				},
 			}
 
 			command, buildError := builder.Build()
 			require.NoError(subtest, buildError)
-			bindGlobalRemotesFlags(command)
-
-			command.SetContext(context.Background())
-			stdoutBuffer := &bytes.Buffer{}
-			stderrBuffer := &bytes.Buffer{}
-			command.SetOut(stdoutBuffer)
-			command.SetErr(stderrBuffer)
+			bindRemotesCommandFlags(command)
 			command.SetArgs(testCase.arguments)
 
-			executionError := command.Execute()
+			err := command.Execute()
 			if testCase.expectError {
-				require.Error(subtest, executionError)
-				require.Equal(subtest, testCase.expectedErrorMessage, executionError.Error())
-				combinedOutput := stdoutBuffer.String() + stderrBuffer.String()
-				require.Contains(subtest, combinedOutput, command.UseLine())
-				require.Zero(subtest, prompter.calls)
-				require.Empty(subtest, runner.definitions)
+				require.EqualError(subtest, err, testCase.expectedErrorMessage)
+				require.Nil(subtest, executor.roots)
 				return
 			}
 
-			require.NoError(subtest, executionError)
+			require.NoError(subtest, err)
+			require.Equal(subtest, remoteCanonicalPresetName, catalog.loadedName)
+
+			if !testCase.expectExecution {
+				require.Nil(subtest, executor.roots)
+				return
+			}
 
 			expectedRoots := testCase.expectedRoots
 			if testCase.expectedRootsBuilder != nil {
 				expectedRoots = testCase.expectedRootsBuilder(subtest)
 			}
-			require.Equal(subtest, expectedRoots, runner.roots)
-			require.Equal(subtest, testCase.expectPromptInvocations, prompter.calls)
-
-			if testCase.expectTaskInvocation {
-				require.Len(subtest, runner.definitions, 1)
-				require.Len(subtest, runner.definitions[0].Actions, 1)
-				action := runner.definitions[0].Actions[0]
-				require.Equal(subtest, "repo.remote.update", action.Type)
-				if len(strings.TrimSpace(testCase.expectedOwnerConstraint)) > 0 {
-					require.Equal(subtest, testCase.expectedOwnerConstraint, action.Options["owner"])
-				} else {
-					require.NotContains(subtest, action.Options, "owner")
-				}
-				require.Equal(subtest, testCase.expectedAssumeYes, runner.runtimeOptions.AssumeYes)
-			} else {
-				require.Empty(subtest, runner.definitions)
-			}
+			require.Equal(subtest, expectedRoots, executor.roots)
+			require.Equal(subtest, testCase.expectedAssumeYes, executor.options.AssumeYes)
 		})
 	}
 }
 
-func TestRemotesCommandOwnerOptions(testInstance *testing.T) {
+func TestRemotesCommandPresetErrorsSurface(testInstance *testing.T) {
+	presetConfig := loadRemoteCanonicalPreset(testInstance)
+
 	testCases := []struct {
-		name          string
-		configuration repos.RemotesConfiguration
-		arguments     []string
-		expectedOwner string
+		name      string
+		catalog   fakePresetCatalog
+		expectErr string
 	}{
 		{
-			name: "configuration_owner_applies",
-			configuration: repos.RemotesConfiguration{
-				Owner:           remotesOwnerConstraintConstant,
-				AssumeYes:       true,
-				RepositoryRoots: []string{remotesConfiguredRootConstant},
-			},
-			expectedOwner: remotesOwnerConstraintConstant,
+			name:      "missing_preset",
+			catalog:   fakePresetCatalog{found: false},
+			expectErr: "remote-update-to-canonical preset not found",
 		},
 		{
-			name: "flag_overrides_configuration",
-			configuration: repos.RemotesConfiguration{
-				Owner:           remotesOwnerMismatchConstant,
-				AssumeYes:       true,
-				RepositoryRoots: []string{remotesConfiguredRootConstant},
-			},
-			arguments:     []string{remotesOwnerFlagConstant, remotesOwnerConstraintConstant},
-			expectedOwner: remotesOwnerConstraintConstant,
+			name:      "load_error",
+			catalog:   fakePresetCatalog{found: true, loadError: errors.New("boom")},
+			expectErr: "unable to load remote-update-to-canonical preset: boom",
 		},
 		{
-			name: "owner_not_specified",
-			configuration: repos.RemotesConfiguration{
-				RepositoryRoots: []string{remotesConfiguredRootConstant},
+			name: "build_error",
+			catalog: fakePresetCatalog{
+				found: true,
+				configuration: workflow.Configuration{
+					Steps: []workflow.StepConfiguration{{Command: []string{"unknown"}}},
+				},
 			},
-			expectedOwner: "",
+			expectErr: "unable to build remote-update-to-canonical workflow: unsupported workflow command: unknown",
 		},
 	}
 
 	for _, testCase := range testCases {
+		testCase := testCase
 		testInstance.Run(testCase.name, func(subtest *testing.T) {
-			executor := &fakeGitExecutor{}
-			runner := &recordingTaskRunner{}
+			catalog := testCase.catalog
+			if len(catalog.configuration.Steps) == 0 && catalog.found && catalog.loadError == nil && testCase.name != "build_error" {
+				catalog.configuration = presetConfig
+			}
 
 			builder := repos.RemotesCommandBuilder{
-				LoggerProvider: func() *zap.Logger { return zap.NewNop() },
-				GitExecutor:    executor,
+				LoggerProvider:               func() *zap.Logger { return zap.NewNop() },
+				Discoverer:                   &fakeRepositoryDiscoverer{repositories: []string{remotesDiscoveredRepository}},
+				GitExecutor:                  &fakeGitExecutor{},
+				GitManager:                   &fakeGitRepositoryManager{},
+				HumanReadableLoggingProvider: func() bool { return false },
 				ConfigurationProvider: func() repos.RemotesConfiguration {
-					return testCase.configuration
+					return repos.RemotesConfiguration{RepositoryRoots: []string{remotesConfiguredRootConstant}}
 				},
-				TaskRunnerFactory: func(workflow.Dependencies) repos.TaskRunnerExecutor {
-					return runner
-				},
+				PresetCatalogFactory: func() workflowcmd.PresetCatalog { return &catalog },
 			}
 
 			command, buildError := builder.Build()
 			require.NoError(subtest, buildError)
-			bindGlobalRemotesFlags(command)
-			command.SetContext(context.Background())
-			command.SetOut(io.Discard)
-			command.SetErr(io.Discard)
-			command.SetArgs(testCase.arguments)
-
-			require.NoError(subtest, command.Execute())
-
-			require.Len(subtest, runner.definitions, 1)
-			require.Len(subtest, runner.definitions[0].Actions, 1)
-			action := runner.definitions[0].Actions[0]
-			if len(strings.TrimSpace(testCase.expectedOwner)) > 0 {
-				require.Equal(subtest, testCase.expectedOwner, action.Options["owner"])
-			} else {
-				require.NotContains(subtest, action.Options, "owner")
-			}
+			bindRemotesCommandFlags(command)
+			err := command.Execute()
+			require.EqualError(subtest, err, testCase.expectErr)
 		})
 	}
 }
 
-func bindGlobalRemotesFlags(command *cobra.Command) {
-	flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Enabled: true})
-	flagutils.BindExecutionFlags(command, flagutils.ExecutionDefaults{}, flagutils.ExecutionFlagDefinitions{
-		AssumeYes: flagutils.ExecutionFlagDefinition{Name: flagutils.AssumeYesFlagName, Usage: flagutils.AssumeYesFlagUsage, Shorthand: flagutils.AssumeYesFlagShorthand, Enabled: true},
+func loadRemoteCanonicalPreset(testingInstance testing.TB) workflow.Configuration {
+	presetContent := []byte(`workflow:
+  - step:
+      name: remote-update-to-canonical
+      command: ["remote", "update-to-canonical"]
+      with:
+        owner: ""
+`)
+	configuration, err := workflow.ParseConfiguration(presetContent)
+	require.NoError(testingInstance, err)
+	return configuration
+}
+
+func bindRemotesCommandFlags(command *cobra.Command) {
+	flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{
+		Name:       flagutils.DefaultRootFlagName,
+		Usage:      flagutils.DefaultRootFlagUsage,
+		Enabled:    true,
+		Persistent: true,
 	})
-	command.PersistentFlags().String(flagutils.RemoteFlagName, "", flagutils.RemoteFlagUsage)
-	command.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
-		contextAccessor := utils.NewCommandContextAccessor()
-		executionFlags := utils.ExecutionFlags{}
-		if assumeYesValue, assumeYesChanged, assumeYesError := flagutils.BoolFlag(cmd, flagutils.AssumeYesFlagName); assumeYesError == nil {
-			executionFlags.AssumeYes = assumeYesValue
-			executionFlags.AssumeYesSet = assumeYesChanged
-		}
-		if remoteValue, remoteChanged, remoteError := flagutils.StringFlag(cmd, flagutils.RemoteFlagName); remoteError == nil {
-			executionFlags.Remote = strings.TrimSpace(remoteValue)
-			executionFlags.RemoteSet = remoteChanged && len(strings.TrimSpace(remoteValue)) > 0
-		}
-		updatedContext := contextAccessor.WithExecutionFlags(cmd.Context(), executionFlags)
-		cmd.SetContext(updatedContext)
-		return nil
-	}
+	flagutils.BindExecutionFlags(command, flagutils.ExecutionDefaults{}, flagutils.ExecutionFlagDefinitions{
+		AssumeYes: flagutils.ExecutionFlagDefinition{
+			Name:      flagutils.AssumeYesFlagName,
+			Usage:     flagutils.AssumeYesFlagUsage,
+			Shorthand: flagutils.AssumeYesFlagShorthand,
+			Enabled:   true,
+		},
+	})
 }

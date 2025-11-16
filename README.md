@@ -94,9 +94,10 @@ In addition to external YAML/JSON files, you can run bundled presets:
 gix workflow --list-presets
 gix workflow license --roots ~/Development --yes
 gix workflow folder-rename --var folder_require_clean=true --var folder_include_owner=false --roots ~/Development --yes
+gix workflow remote-update-to-canonical --var owner=canonical --roots ~/Development --yes
 ```
 
-Embedded workflows ship with the binary so you can hand teammates a stable command (for example, `license`, `namespace`, or `folder-rename`) without distributing a separate configuration file.
+Embedded workflows ship with the binary so you can hand teammates a stable command (for example, `license`, `namespace`, `folder-rename`, or `remote-update-to-canonical`) without distributing a separate configuration file.
 
 ### Atomic git helpers
 
