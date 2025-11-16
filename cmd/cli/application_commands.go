@@ -129,6 +129,7 @@ func (application *Application) registerCommands(cobraCommand *cobra.Command) {
 		},
 		HumanReadableLoggingProvider: application.humanReadableLoggingEnabled,
 		ConfigurationProvider:        application.reposReplaceConfiguration,
+		PresetCatalogFactory:         workflowcmd.NewEmbeddedPresetCatalog,
 	}
 
 	filesAddBuilder := repos.FilesAddCommandBuilder{

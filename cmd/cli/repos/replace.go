@@ -2,10 +2,12 @@ package repos
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
 	"github.com/temirov/gix/internal/repos/shared"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
 	rootutils "github.com/temirov/gix/internal/utils/roots"
@@ -25,8 +27,11 @@ const (
 	replaceBranchFlagName       = "branch"
 	replaceRequirePathFlagName  = "require-path"
 	replaceMissingFindError     = "replacement requires --find"
-	replacementTaskName         = "Replace repository file content"
-	replacementActionType       = "repo.files.replace"
+	replacePresetName           = "files-replace"
+	replacePresetCommandKey     = "tasks apply"
+	replacePresetMissingMessage = "files-replace preset not found"
+	replacePresetLoadError      = "unable to load files-replace preset: %w"
+	replaceBuildWorkflowError   = "unable to build files-replace workflow: %w"
 )
 
 // ReplaceCommandBuilder assembles the repo-files-replace command.
@@ -38,7 +43,8 @@ type ReplaceCommandBuilder struct {
 	FileSystem                   shared.FileSystem
 	HumanReadableLoggingProvider func() bool
 	ConfigurationProvider        func() ReplaceConfiguration
-	TaskRunnerFactory            func(workflow.Dependencies) TaskRunnerExecutor
+	PresetCatalogFactory         func() workflowcmd.PresetCatalog
+	WorkflowExecutorFactory      WorkflowExecutorFactory
 }
 
 // Build constructs the repo-files-replace command.
@@ -162,52 +168,47 @@ func (builder *ReplaceCommandBuilder) run(command *cobra.Command, _ []string) er
 		return dependencyError
 	}
 
-	taskDependencies := dependencyResult.Workflow
-	taskDependencies.Output = command.OutOrStdout()
-	taskDependencies.Errors = command.ErrOrStderr()
-
-	taskRunner := ResolveTaskRunner(builder.TaskRunnerFactory, taskDependencies)
-
-	actionOptions := map[string]any{
-		"find":    findValue,
-		"replace": replaceValue,
+	workflowDependencies := dependencyResult.Workflow
+	if command != nil {
+		workflowDependencies.Output = command.OutOrStdout()
+		workflowDependencies.Errors = command.ErrOrStderr()
 	}
 
-	if len(patterns) == 1 {
-		actionOptions["pattern"] = patterns[0]
-	} else if len(patterns) > 1 {
-		actionOptions["patterns"] = patterns
+	presetCatalog := builder.resolvePresetCatalog()
+	presetConfiguration, presetFound, presetError := presetCatalog.Load(replacePresetName)
+	if presetError != nil {
+		return fmt.Errorf(replacePresetLoadError, presetError)
+	}
+	if !presetFound {
+		return errors.New(replacePresetMissingMessage)
 	}
 
-	if len(commandArguments) > 0 {
-		actionOptions["command"] = commandArguments
+	params := filesReplacePresetOptions{
+		Patterns:     patterns,
+		Find:         findValue,
+		Replace:      replaceValue,
+		Command:      commandArguments,
+		RequireClean: requireClean,
+		Branch:       branchValue,
+		RequirePaths: requiredPaths,
 	}
 
-	safeguards := map[string]any{}
-	if requireClean {
-		safeguards["require_clean"] = true
-	}
-	if len(branchValue) > 0 {
-		safeguards["branch"] = branchValue
-	}
-	if len(requiredPaths) > 0 {
-		safeguards["paths"] = requiredPaths
-	}
-	if len(safeguards) > 0 {
-		actionOptions["safeguards"] = safeguards
+	for index := range presetConfiguration.Steps {
+		if workflow.CommandPathKey(presetConfiguration.Steps[index].Command) != replacePresetCommandKey {
+			continue
+		}
+		updateFilesReplacePresetOptions(presetConfiguration.Steps[index].Options, params)
 	}
 
-	taskDefinition := workflow.TaskDefinition{
-		Name:        replacementTaskName,
-		EnsureClean: false,
-		Actions: []workflow.TaskActionDefinition{
-			{Type: replacementActionType, Options: actionOptions},
-		},
+	nodes, operationsError := workflow.BuildOperations(presetConfiguration)
+	if operationsError != nil {
+		return fmt.Errorf(replaceBuildWorkflowError, operationsError)
 	}
 
 	runtimeOptions := workflow.RuntimeOptions{AssumeYes: assumeYes}
 
-	_, runErr := taskRunner.Run(command.Context(), roots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
+	executor := ResolveWorkflowExecutor(builder.WorkflowExecutorFactory, nodes, workflowDependencies)
+	_, runErr := executor.Execute(command.Context(), roots, runtimeOptions)
 	return runErr
 }
 
@@ -216,6 +217,15 @@ func (builder *ReplaceCommandBuilder) resolveConfiguration() ReplaceConfiguratio
 		return DefaultToolsConfiguration().Replace
 	}
 	return builder.ConfigurationProvider().Sanitize()
+}
+
+func (builder *ReplaceCommandBuilder) resolvePresetCatalog() workflowcmd.PresetCatalog {
+	if builder.PresetCatalogFactory != nil {
+		if catalog := builder.PresetCatalogFactory(); catalog != nil {
+			return catalog
+		}
+	}
+	return workflowcmd.NewEmbeddedPresetCatalog()
 }
 
 func sanitizeCommandArguments(arguments []string) []string {
@@ -231,4 +241,79 @@ func sanitizeCommandArguments(arguments []string) []string {
 		return nil
 	}
 	return sanitized
+}
+
+type filesReplacePresetOptions struct {
+	Patterns     []string
+	Find         string
+	Replace      string
+	Command      []string
+	RequireClean bool
+	Branch       string
+	RequirePaths []string
+}
+
+func updateFilesReplacePresetOptions(options map[string]any, params filesReplacePresetOptions) {
+	if options == nil {
+		return
+	}
+	tasksValue, ok := options["tasks"].([]any)
+	if !ok || len(tasksValue) == 0 {
+		return
+	}
+	taskEntry, ok := tasksValue[0].(map[string]any)
+	if !ok {
+		return
+	}
+	actionsValue, ok := taskEntry["actions"].([]any)
+	if !ok || len(actionsValue) == 0 {
+		return
+	}
+	actionEntry, ok := actionsValue[0].(map[string]any)
+	if !ok {
+		return
+	}
+
+	actionOptions, _ := actionEntry["options"].(map[string]any)
+	if actionOptions == nil {
+		actionOptions = make(map[string]any)
+	}
+	actionOptions["find"] = params.Find
+	actionOptions["replace"] = params.Replace
+
+	delete(actionOptions, "pattern")
+	delete(actionOptions, "patterns")
+	if len(params.Patterns) == 1 {
+		actionOptions["pattern"] = params.Patterns[0]
+	} else if len(params.Patterns) > 1 {
+		actionOptions["patterns"] = append([]string{}, params.Patterns...)
+	}
+
+	if len(params.Command) > 0 {
+		actionOptions["command"] = append([]string{}, params.Command...)
+	} else {
+		delete(actionOptions, "command")
+	}
+
+	safeguards := map[string]any{}
+	if params.RequireClean {
+		safeguards["require_clean"] = true
+	}
+	if len(params.Branch) > 0 {
+		safeguards["branch"] = params.Branch
+	}
+	if len(params.RequirePaths) > 0 {
+		safeguards["paths"] = append([]string{}, params.RequirePaths...)
+	}
+	if len(safeguards) > 0 {
+		actionOptions["safeguards"] = safeguards
+	} else {
+		delete(actionOptions, "safeguards")
+	}
+
+	actionEntry["options"] = actionOptions
+	actionsValue[0] = actionEntry
+	taskEntry["actions"] = actionsValue
+	tasksValue[0] = taskEntry
+	options["tasks"] = tasksValue
 }

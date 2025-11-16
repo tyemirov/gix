@@ -61,6 +61,11 @@ var embeddedPresetDefinitions = []presetDefinition{
 		FileName:    "presets/files-add.yaml",
 	},
 	{
+		Name:        "files-replace",
+		Description: "Perform string replacements across repository files.",
+		FileName:    "presets/files-replace.yaml",
+	},
+	{
 		Name:        "history-remove",
 		Description: "Rewrite repository history to remove sensitive paths.",
 		FileName:    "presets/history-remove.yaml",
