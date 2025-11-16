@@ -1,0 +1,19 @@
+workflow:
+  - step:
+      name: files-add
+      command: ["tasks", "apply"]
+      with:
+        tasks:
+          - name: Add repository file
+            ensure_clean: true
+            branch:
+              name: ""
+              start_point: ""
+              push_remote: ""
+            files:
+              - path: ""
+                content: ""
+                mode: skip-if-exists
+                permissions: 420
+            commit:
+              message: ""

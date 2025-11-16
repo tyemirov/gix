@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
 	"github.com/temirov/gix/internal/repos/shared"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
 	"github.com/temirov/gix/internal/workflow"
@@ -36,6 +37,11 @@ const (
 	filesAddConflictingContentError = "--content and --content-file cannot both be provided"
 	filesAddTaskNameTemplate        = "Add repository file %s"
 	filesAddDefaultCommitTemplate   = "docs: add %s"
+	filesAddPresetName              = "files-add"
+	filesAddPresetCommandKey        = "tasks apply"
+	filesAddPresetMissingMessage    = "files-add preset not found"
+	filesAddPresetLoadErrorTemplate = "unable to load files-add preset: %w"
+	filesAddBuildWorkflowError      = "unable to build files-add workflow: %w"
 )
 
 // FilesAddCommandBuilder assembles the repo-files-add command.
@@ -47,7 +53,8 @@ type FilesAddCommandBuilder struct {
 	FileSystem                   shared.FileSystem
 	HumanReadableLoggingProvider func() bool
 	ConfigurationProvider        func() AddConfiguration
-	TaskRunnerFactory            func(workflow.Dependencies) TaskRunnerExecutor
+	PresetCatalogFactory         func() workflowcmd.PresetCatalog
+	WorkflowExecutorFactory      WorkflowExecutorFactory
 }
 
 // Build constructs the repo-files-add command.
@@ -253,36 +260,43 @@ func (builder *FilesAddCommandBuilder) run(command *cobra.Command, arguments []s
 		return rootsError
 	}
 
-	taskDependencies := dependencyResult.Workflow
-	taskDependencies.Output = command.OutOrStdout()
-	taskDependencies.Errors = command.ErrOrStderr()
-	taskDependencies.FileSystem = fileSystem
+	workflowDependencies := dependencyResult.Workflow
+	workflowDependencies.Output = command.OutOrStdout()
+	workflowDependencies.Errors = command.ErrOrStderr()
+	workflowDependencies.FileSystem = fileSystem
 
-	taskRunner := ResolveTaskRunner(builder.TaskRunnerFactory, taskDependencies)
-
-	fileDefinition := workflow.TaskFileDefinition{
-		PathTemplate:    targetPath,
-		ContentTemplate: fileContent,
-		Mode:            workflow.ParseTaskFileMode(modeValue),
-		Permissions:     os.FileMode(parsedPermissions),
+	presetCatalog := builder.resolvePresetCatalog()
+	presetConfiguration, presetFound, presetError := presetCatalog.Load(filesAddPresetName)
+	if presetError != nil {
+		return fmt.Errorf(filesAddPresetLoadErrorTemplate, presetError)
+	}
+	if !presetFound {
+		return errors.New(filesAddPresetMissingMessage)
 	}
 
-	taskDefinition := workflow.TaskDefinition{
-		Name:        fmt.Sprintf(filesAddTaskNameTemplate, targetPath),
-		EnsureClean: requireClean,
-		Branch: workflow.TaskBranchDefinition{
-			NameTemplate:       branchTemplate,
-			StartPointTemplate: startPointTemplate,
-			PushRemote:         remoteName,
-		},
-		Files: []workflow.TaskFileDefinition{fileDefinition},
-		Commit: workflow.TaskCommitDefinition{
-			MessageTemplate: commitMessage,
-		},
+	params := filesAddPresetOptions{
+		Path:          targetPath,
+		Content:       fileContent,
+		Mode:          modeValue,
+		Permissions:   os.FileMode(parsedPermissions),
+		RequireClean:  requireClean,
+		BranchName:    branchTemplate,
+		StartPoint:    startPointTemplate,
+		Push:          pushBranches,
+		Remote:        remoteName,
+		CommitMessage: commitMessage,
 	}
 
-	if !pushBranches {
-		taskDefinition.Branch.PushRemote = ""
+	for index := range presetConfiguration.Steps {
+		if workflow.CommandPathKey(presetConfiguration.Steps[index].Command) != filesAddPresetCommandKey {
+			continue
+		}
+		updateFilesAddPresetOptions(presetConfiguration.Steps[index].Options, params)
+	}
+
+	nodes, operationsError := workflow.BuildOperations(presetConfiguration)
+	if operationsError != nil {
+		return fmt.Errorf(filesAddBuildWorkflowError, operationsError)
 	}
 
 	runtimeOptions := workflow.RuntimeOptions{
@@ -290,7 +304,8 @@ func (builder *FilesAddCommandBuilder) run(command *cobra.Command, arguments []s
 		CaptureInitialWorktreeStatus: requireClean,
 	}
 
-	_, runErr := taskRunner.Run(command.Context(), roots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
+	executor := resolveWorkflowExecutor(builder.WorkflowExecutorFactory, nodes, workflowDependencies)
+	_, runErr := executor.Execute(command.Context(), roots, runtimeOptions)
 	return runErr
 }
 
@@ -299,4 +314,70 @@ func (builder *FilesAddCommandBuilder) resolveConfiguration() AddConfiguration {
 		return DefaultToolsConfiguration().Add
 	}
 	return builder.ConfigurationProvider().Sanitize()
+}
+
+func (builder *FilesAddCommandBuilder) resolvePresetCatalog() workflowcmd.PresetCatalog {
+	if builder.PresetCatalogFactory != nil {
+		if catalog := builder.PresetCatalogFactory(); catalog != nil {
+			return catalog
+		}
+	}
+	return workflowcmd.NewEmbeddedPresetCatalog()
+}
+
+type filesAddPresetOptions struct {
+	Path          string
+	Content       string
+	Mode          string
+	Permissions   os.FileMode
+	RequireClean  bool
+	BranchName    string
+	StartPoint    string
+	Push          bool
+	Remote        string
+	CommitMessage string
+}
+
+func updateFilesAddPresetOptions(options map[string]any, params filesAddPresetOptions) {
+	if options == nil {
+		return
+	}
+	tasksValue, ok := options["tasks"].([]any)
+	if !ok || len(tasksValue) == 0 {
+		return
+	}
+	taskEntry, ok := tasksValue[0].(map[string]any)
+	if !ok {
+		return
+	}
+	taskEntry["name"] = fmt.Sprintf(filesAddTaskNameTemplate, params.Path)
+	taskEntry["ensure_clean"] = params.RequireClean
+
+	branchEntry := map[string]any{
+		"name":        params.BranchName,
+		"start_point": params.StartPoint,
+	}
+	if params.Push {
+		branchEntry["push_remote"] = params.Remote
+	} else {
+		taskEntry["steps"] = []any{"branch.prepare", "files.apply", "git.stage-commit"}
+	}
+	taskEntry["branch"] = branchEntry
+
+	fileDefinition := map[string]any{
+		"path":        params.Path,
+		"content":     params.Content,
+		"mode":        params.Mode,
+		"permissions": int(params.Permissions),
+	}
+	taskEntry["files"] = []any{fileDefinition}
+
+	commitEntry := map[string]any{
+		"message": params.CommitMessage,
+	}
+	taskEntry["commit"] = commitEntry
+	taskEntry["commit_message"] = params.CommitMessage
+
+	tasksValue[0] = taskEntry
+	options["tasks"] = tasksValue
 }

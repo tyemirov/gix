@@ -1,6 +1,7 @@
 package repos_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -256,6 +257,8 @@ func TestRenameCommandPresetErrorsSurface(testInstance *testing.T) {
 			command, buildError := builder.Build()
 			require.NoError(subtest, buildError)
 			bindRenameCommandFlags(command)
+			command.SetOut(&bytes.Buffer{})
+			command.SetErr(&bytes.Buffer{})
 			err := command.Execute()
 			require.EqualError(subtest, err, testCase.expectErr)
 		})
