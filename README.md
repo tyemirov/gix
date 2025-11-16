@@ -96,9 +96,10 @@ gix workflow license --roots ~/Development --yes
 gix workflow folder-rename --var folder_require_clean=true --var folder_include_owner=false --roots ~/Development --yes
 gix workflow remote-update-to-canonical --var owner=canonical --roots ~/Development --yes
 gix workflow remote-update-protocol --var from=https --var to=ssh --roots ~/Development --yes
+gix workflow history-remove --var history_paths=secrets.txt,config.yml --var history_remote=origin --var history_push=true --roots ~/Development --yes
 ```
 
-Embedded workflows ship with the binary so you can hand teammates a stable command (for example, `license`, `namespace`, `folder-rename`, `remote-update-to-canonical`, or `remote-update-protocol`) without distributing a separate configuration file.
+Embedded workflows ship with the binary so you can hand teammates a stable command (for example, `license`, `namespace`, `folder-rename`, `remote-update-to-canonical`, `remote-update-protocol`, or `history-remove`) without distributing a separate configuration file.
 
 ### Atomic git helpers
 

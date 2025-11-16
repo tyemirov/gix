@@ -3,6 +3,7 @@ package repos_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -10,24 +11,10 @@ import (
 	"go.uber.org/zap"
 
 	repos "github.com/temirov/gix/cmd/cli/repos"
+	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
 	"github.com/temirov/gix/internal/workflow"
 )
-
-type recordingHistoryTaskRunner struct {
-	roots          []string
-	definitions    []workflow.TaskDefinition
-	runtimeOptions workflow.RuntimeOptions
-	invocations    int
-}
-
-func (runner *recordingHistoryTaskRunner) Run(_ context.Context, roots []string, definitions []workflow.TaskDefinition, options workflow.RuntimeOptions) (workflow.ExecutionOutcome, error) {
-	runner.invocations++
-	runner.roots = append([]string{}, roots...)
-	runner.definitions = append([]workflow.TaskDefinition{}, definitions...)
-	runner.runtimeOptions = options
-	return workflow.ExecutionOutcome{}, nil
-}
 
 func bindGlobalRemoveFlags(command *cobra.Command) {
 	flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Enabled: true})
@@ -45,6 +32,8 @@ func TestRemoveCommandConfigurationPrecedence(testInstance *testing.T) {
 		configuredRoot = "/tmp/history-config-root"
 		flagRoot       = "/tmp/history-cli-root"
 	)
+
+	presetConfig := loadHistoryRemovePreset(testInstance)
 
 	testCases := []struct {
 		name                 string
@@ -113,7 +102,8 @@ func TestRemoveCommandConfigurationPrecedence(testInstance *testing.T) {
 			discoverer := &fakeRepositoryDiscoverer{repositories: []string{configuredRoot}}
 			executor := &fakeGitExecutor{}
 			manager := &fakeGitRepositoryManager{}
-			runner := &recordingHistoryTaskRunner{}
+			catalog := &fakePresetCatalog{configuration: presetConfig, found: true}
+			recording := &historyRecordingExecutor{}
 
 			configCopy := testCase.configuration
 			builder := repos.RemoveCommandBuilder{
@@ -125,8 +115,43 @@ func TestRemoveCommandConfigurationPrecedence(testInstance *testing.T) {
 				ConfigurationProvider: func() repos.RemoveConfiguration {
 					return configCopy
 				},
-				TaskRunnerFactory: func(workflow.Dependencies) repos.TaskRunnerExecutor {
-					return runner
+				PresetCatalogFactory: func() workflowcmd.PresetCatalog { return catalog },
+				WorkflowExecutorFactory: func(nodes []*workflow.OperationNode, _ workflow.Dependencies) repos.WorkflowExecutor {
+					if !testCase.expectTaskInvocation {
+						return recording
+					}
+					require.Len(subtest, nodes, 1)
+					taskOperation, ok := nodes[0].Operation.(*workflow.TaskOperation)
+					require.True(subtest, ok)
+					taskDefinitions := taskOperation.Definitions()
+					require.Len(subtest, taskDefinitions, 1)
+					task := taskDefinitions[0]
+					require.True(subtest, task.EnsureClean)
+					require.Len(subtest, task.Actions, 1)
+					action := task.Actions[0]
+					require.Equal(subtest, "repo.history.purge", action.Type)
+					pathsValue, ok := action.Options["paths"].([]string)
+					require.True(subtest, ok)
+					require.ElementsMatch(subtest, testCase.expectedPaths, pathsValue)
+
+					if remoteValue, exists := action.Options["remote"].(string); exists {
+						require.Equal(subtest, testCase.expectedRemote, remoteValue)
+					} else {
+						require.Empty(subtest, testCase.expectedRemote)
+					}
+
+					pushValue, ok := action.Options["push"].(bool)
+					require.True(subtest, ok)
+					require.Equal(subtest, testCase.expectPush, pushValue)
+
+					restoreValue, ok := action.Options["restore"].(bool)
+					require.True(subtest, ok)
+					require.Equal(subtest, testCase.expectRestore, restoreValue)
+
+					pushMissingValue, ok := action.Options["push_missing"].(bool)
+					require.True(subtest, ok)
+					require.Equal(subtest, testCase.expectPushMissing, pushMissingValue)
+					return recording
 				},
 			}
 
@@ -143,45 +168,115 @@ func TestRemoveCommandConfigurationPrecedence(testInstance *testing.T) {
 			require.NoError(subtest, executionError)
 
 			if testCase.expectTaskInvocation {
-				require.Equal(subtest, 1, runner.invocations)
-				require.Equal(subtest, testCase.expectedRoots, runner.roots)
-				require.Len(subtest, runner.definitions, 1)
-
-				task := runner.definitions[0]
-				require.Equal(subtest, "Remove repository history paths", task.Name)
-				require.True(subtest, task.EnsureClean)
-				require.Len(subtest, task.Actions, 1)
-
-				action := task.Actions[0]
-				require.Equal(subtest, "repo.history.purge", action.Type)
-
-				pathsValue, ok := action.Options["paths"].([]string)
-				require.True(subtest, ok)
-				require.ElementsMatch(subtest, testCase.expectedPaths, pathsValue)
-
-				remoteValue, remoteExists := action.Options["remote"].(string)
-				if remoteExists {
-					require.Equal(subtest, testCase.expectedRemote, remoteValue)
-				} else {
-					require.Empty(subtest, testCase.expectedRemote)
-				}
-
-				pushValue, ok := action.Options["push"].(bool)
-				require.True(subtest, ok)
-				require.Equal(subtest, testCase.expectPush, pushValue)
-
-				restoreValue, ok := action.Options["restore"].(bool)
-				require.True(subtest, ok)
-				require.Equal(subtest, testCase.expectRestore, restoreValue)
-
-				pushMissingValue, ok := action.Options["push_missing"].(bool)
-				require.True(subtest, ok)
-				require.Equal(subtest, testCase.expectPushMissing, pushMissingValue)
-
-				require.Equal(subtest, testCase.expectAssumeYes, runner.runtimeOptions.AssumeYes)
+				require.Equal(subtest, testCase.expectedRoots, recording.roots)
+				require.Equal(subtest, testCase.expectAssumeYes, recording.options.AssumeYes)
 			} else {
-				require.Equal(subtest, 0, runner.invocations)
+				require.Nil(subtest, recording.roots)
 			}
 		})
 	}
+}
+
+func TestRemoveCommandPresetErrorsSurface(testInstance *testing.T) {
+	presetConfig := loadHistoryRemovePreset(testInstance)
+
+	testCases := []struct {
+		name      string
+		catalog   fakePresetCatalog
+		expectErr string
+	}{
+		{
+			name:      "missing_preset",
+			catalog:   fakePresetCatalog{found: false},
+			expectErr: "history-remove preset not found",
+		},
+		{
+			name:      "load_error",
+			catalog:   fakePresetCatalog{found: true, loadError: errors.New("boom")},
+			expectErr: "unable to load history-remove preset: boom",
+		},
+		{
+			name: "build_error",
+			catalog: fakePresetCatalog{
+				found: true,
+				configuration: workflow.Configuration{
+					Steps: []workflow.StepConfiguration{
+						{Command: []string{"unknown"}},
+					},
+				},
+			},
+			expectErr: "unable to build history-remove workflow: unsupported workflow command: unknown",
+		},
+	}
+
+	for _, testCase := range testCases {
+		testCase := testCase
+		testInstance.Run(testCase.name, func(subtest *testing.T) {
+			catalog := testCase.catalog
+			if len(catalog.configuration.Steps) == 0 && catalog.found && catalog.loadError == nil && testCase.name != "build_error" {
+				catalog.configuration = presetConfig
+			}
+
+			builder := repos.RemoveCommandBuilder{
+				LoggerProvider:               func() *zap.Logger { return zap.NewNop() },
+				Discoverer:                   &fakeRepositoryDiscoverer{repositories: []string{"/tmp/history-config-root"}},
+				GitExecutor:                  &fakeGitExecutor{},
+				GitManager:                   &fakeGitRepositoryManager{},
+				FileSystem:                   fakeFileSystem{files: map[string]string{}},
+				HumanReadableLoggingProvider: func() bool { return false },
+				ConfigurationProvider: func() repos.RemoveConfiguration {
+					return repos.RemoveConfiguration{
+						RepositoryRoots: []string{"/tmp/history-config-root"},
+						Remote:          "origin",
+						Push:            true,
+						Restore:         true,
+						PushMissing:     false,
+					}
+				},
+				PresetCatalogFactory: func() workflowcmd.PresetCatalog { return &catalog },
+			}
+
+			command, buildError := builder.Build()
+			require.NoError(subtest, buildError)
+			bindGlobalRemoveFlags(command)
+			command.SetArgs([]string{"secrets.txt"})
+
+			err := command.Execute()
+			require.EqualError(subtest, err, testCase.expectErr)
+		})
+	}
+}
+
+type historyRecordingExecutor struct {
+	roots   []string
+	options workflow.RuntimeOptions
+}
+
+func (executor *historyRecordingExecutor) Execute(_ context.Context, roots []string, options workflow.RuntimeOptions) (workflow.ExecutionOutcome, error) {
+	executor.roots = append([]string{}, roots...)
+	executor.options = options
+	return workflow.ExecutionOutcome{}, nil
+}
+
+func loadHistoryRemovePreset(testingInstance testing.TB) workflow.Configuration {
+	presetContent := []byte(`workflow:
+  - step:
+      name: history-remove
+      command: ["tasks", "apply"]
+      with:
+        tasks:
+          - name: Remove repository history paths
+            ensure_clean: true
+            actions:
+              - type: repo.history.purge
+                options:
+                  paths: []
+                  remote: ""
+                  push: true
+                  restore: true
+                  push_missing: false
+`)
+	configuration, err := workflow.ParseConfiguration(presetContent)
+	require.NoError(testingInstance, err)
+	return configuration
 }

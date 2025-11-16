@@ -12,7 +12,7 @@ Read @AGENTS.md, @AGENTS.GO.md, @AGENTS.GIT.md @ARCHITECTURE.md, @POLICY.md, @NO
 - [x] [GX-337] Convert `repo-folders-rename` into an embedded workflow preset: encode the current task definition as YAML, teach the CLI command to translate flags/config into workflow variables, and execute via the workflow runtime instead of hand-rolled task runner wiring. — Added `folder-rename` preset plus CLI shim so the command now loads the preset, maps flags to workflow variables, and delegates execution to the workflow runtime.
 - [x] [GX-338] Convert `repo-remote-update` (canonical remotes) into a workflow preset/CLI shim so owner constraints, prompts, and logging flow entirely through the workflow executor. — Added `remote-update-to-canonical` embedded preset plus CLI wiring so the command now loads the preset, injects owner preferences, and runs through the workflow executor.
 - [x] [GX-339] Convert `repo-protocol-convert` into a workflow preset that validates `from`/`to` in the CLI layer, pushes options via variables, and delegates execution to workflow operations. — Added `remote-update-protocol` preset plus CLI shim so the command validates `from`/`to`, injects them into the preset, and executes via the workflow runtime.
-- [ ] [GX-340] Convert `repo-history-remove` into a preset-driven workflow step covering path lists, remote/push/restore flags, and ensure the CLI simply maps arguments to preset variables.
+- [x] [GX-340] Convert `repo-history-remove` into a preset-driven workflow step covering path lists, remote/push/restore flags, and ensure the CLI simply maps arguments to preset variables. — Added `history-remove` preset plus CLI shim so the command normalizes paths, injects remote/push flags, and executes via the workflow runtime.
 - [ ] [GX-341] Convert `repo-files-add` into a workflow preset (with variables for path/content/mode/branch/push). Update the CLI to load template content and pass it into workflow variables before executing.
 - [ ] [GX-342] Convert `repo release`/`repo release retag` commands into workflow presets so tagging logic, remote selection, and messages flow through the standard workflow executor and task actions.
 - [ ] [GX-343] After the command-specific presets land, delete the bespoke task-runner plumbing in `cmd/cli/repos` (helpers, dependency builders, TaskDefinition construction) so repo commands are thin shims over workflow presets, and update docs/config to reflect the new preset catalog.
@@ -62,6 +62,35 @@ Read @AGENTS.md, @AGENTS.GO.md, @AGENTS.GIT.md @ARCHITECTURE.md, @POLICY.md, @NO
     but after running the workflow the line that says `.env` never gets into the diffs (PRs). I suspect that instead of string matching for appending them, we use regex, and we shall not use regex in this case. We match on the entire line, whatever it is (probably trimming)
 — Append-if-missing now compares literal line content (whitespace intact) so substrings like `.envrc` or indented variants no longer satisfy `.env`; added tests covering those scenarios.
 - [ ] [GX-336] Workflow logging still feels repetetive/confusing (branch change prints both `↪ switched` and `✓ Switch...`). Need redesigned human-readable format: single header per repo with path, grouped phase bullets (remote/folder, branch, file edits, git actions, PR), concise branch transition line, and clear warning/error markers. Update README docs once implemented.
+- [ ] [GX-337] gix default master command fails despit worktree being clean 
+```
+00:23:32 tyemirov@Vadyms-MacBook-Pro:~/Development/tyemirov/Research/ISSUES.md - [feature/IM-101-project-model] $ gix default master
+-- repo: tyemirov/ISSUES.md ----------------------------------------------------
+00:24:15 INFO  TASK_PLAN          tyemirov/ISSUES.md                 task plan ready                          | actions=count=1 branch=automation-Promote-default-branch-to-master event=TASK_PLAN path=/Users/tyemirov/Development/tyemirov/Research/ISSUES.md repo=tyemirov/ISSUES.md start_point=main task=Promote default branch to master
+tasks apply: repository worktree must be clean before migration
+Summary: total.repos=1 TASK_PLAN=1 WORKFLOW_OPERATION_FAILURE=1 WARN=0 ERROR=1 duration_human=1.729s duration_ms=1729
+tasks apply: repository worktree must be clean before migration
+00:24:17 tyemirov@Vadyms-MacBook-Pro:~/Development/tyemirov/Research/ISSUES.md - [master] $ 
+00:24:30 tyemirov@Vadyms-MacBook-Pro:~/Development/tyemirov/Research/ISSUES.md - [master] $ git pull
+remote: Enumerating objects: 1, done.
+remote: Counting objects: 100% (1/1), done.
+remote: Total 1 (delta 0), reused 0 (delta 0), pack-reused 0 (from 0)
+Unpacking objects: 100% (1/1), 913 bytes | 456.00 KiB/s, done.
+From github.com:tyemirov/ISSUES.md
+   0c7327c..d36e8e9  main       -> origin/main
+There is no tracking information for the current branch.
+Please specify which branch you want to merge with.
+See git-pull(1) for details.
+
+    git pull <remote> <branch>
+
+If you wish to set tracking information for this branch you can do so with:
+
+    git branch --set-upstream-to=origin/<branch> master
+
+00:24:44 tyemirov@Vadyms-MacBook-Pro:~/Development/tyemirov/Research/ISSUES.md - [master] $ 
+```
+
 
 ## Maintenance (410–499)
 

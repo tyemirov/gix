@@ -55,6 +55,11 @@ var embeddedPresetDefinitions = []presetDefinition{
 		Description: "Convert origin remotes between git/ssh/https protocols.",
 		FileName:    "presets/remote-update-protocol.yaml",
 	},
+	{
+		Name:        "history-remove",
+		Description: "Purge repository history paths via git-filter-repo.",
+		FileName:    "presets/history-remove.yaml",
+	},
 }
 
 type embeddedPresetCatalog struct {

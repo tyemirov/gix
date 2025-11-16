@@ -1,0 +1,16 @@
+workflow:
+  - step:
+      name: history-remove
+      command: ["tasks", "apply"]
+      with:
+        tasks:
+          - name: Remove repository history paths
+            ensure_clean: true
+            actions:
+              - type: repo.history.purge
+                options:
+                  paths: []
+                  remote: ""
+                  push: true
+                  restore: true
+                  push_missing: false

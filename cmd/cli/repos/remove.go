@@ -2,10 +2,12 @@ package repos
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
 	"github.com/temirov/gix/internal/repos/shared"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
 	"github.com/temirov/gix/internal/workflow"
@@ -25,6 +27,11 @@ const (
 	removePushMissingFlagName      = "push-missing"
 	removePushMissingDescription   = "Create missing remote branches when restoring upstreams"
 	removeMissingPathsErrorMessage = "history purge requires at least one path argument"
+	historyRemovePresetName        = "history-remove"
+	historyRemoveCommandKey        = "tasks apply"
+	historyPresetMissingMessage    = "history-remove preset not found"
+	historyPresetLoadErrorTemplate = "unable to load history-remove preset: %w"
+	historyBuildWorkflowError      = "unable to build history-remove workflow: %w"
 )
 
 // RemoveCommandBuilder assembles the repo-history-remove command.
@@ -36,7 +43,8 @@ type RemoveCommandBuilder struct {
 	FileSystem                   shared.FileSystem
 	HumanReadableLoggingProvider func() bool
 	ConfigurationProvider        func() RemoveConfiguration
-	TaskRunnerFactory            func(workflow.Dependencies) TaskRunnerExecutor
+	PresetCatalogFactory         func() workflowcmd.PresetCatalog
+	WorkflowExecutorFactory      WorkflowExecutorFactory
 }
 
 // Build constructs the repo-history-remove command.
@@ -135,11 +143,11 @@ func (builder *RemoveCommandBuilder) run(command *cobra.Command, arguments []str
 		return dependencyError
 	}
 
-	taskDependencies := dependencyResult.Workflow
-	taskDependencies.Output = command.OutOrStdout()
-	taskDependencies.Errors = command.ErrOrStderr()
-
-	taskRunner := ResolveTaskRunner(builder.TaskRunnerFactory, taskDependencies)
+	workflowDependencies := dependencyResult.Workflow
+	if command != nil {
+		workflowDependencies.Output = command.OutOrStdout()
+		workflowDependencies.Errors = command.ErrOrStderr()
+	}
 
 	normalizedPaths := make([]string, 0, len(arguments))
 	for _, pathArgument := range arguments {
@@ -157,25 +165,30 @@ func (builder *RemoveCommandBuilder) run(command *cobra.Command, arguments []str
 		return errors.New(removeMissingPathsErrorMessage)
 	}
 
-	actionOptions := map[string]any{
-		"paths":        normalizedPaths,
-		"remote":       remoteName,
-		"push":         pushEnabled,
-		"restore":      restoreEnabled,
-		"push_missing": pushMissing,
+	presetCatalog := builder.resolvePresetCatalog()
+	presetConfiguration, presetFound, presetError := presetCatalog.Load(historyRemovePresetName)
+	if presetError != nil {
+		return fmt.Errorf(historyPresetLoadErrorTemplate, presetError)
+	}
+	if !presetFound {
+		return errors.New(historyPresetMissingMessage)
 	}
 
-	taskDefinition := workflow.TaskDefinition{
-		Name:        "Remove repository history paths",
-		EnsureClean: true,
-		Actions: []workflow.TaskActionDefinition{
-			{Type: "repo.history.purge", Options: actionOptions},
-		},
+	for index := range presetConfiguration.Steps {
+		if workflow.CommandPathKey(presetConfiguration.Steps[index].Command) != historyRemoveCommandKey {
+			continue
+		}
+		updateHistoryPresetOptions(presetConfiguration.Steps[index].Options, normalizedPaths, remoteName, pushEnabled, restoreEnabled, pushMissing)
+	}
+
+	nodes, operationsError := workflow.BuildOperations(presetConfiguration)
+	if operationsError != nil {
+		return fmt.Errorf(historyBuildWorkflowError, operationsError)
 	}
 
 	runtimeOptions := workflow.RuntimeOptions{AssumeYes: assumeYes}
-
-	_, runErr := taskRunner.Run(command.Context(), roots, []workflow.TaskDefinition{taskDefinition}, runtimeOptions)
+	executor := resolveWorkflowExecutor(builder.WorkflowExecutorFactory, nodes, workflowDependencies)
+	_, runErr := executor.Execute(command.Context(), roots, runtimeOptions)
 	return runErr
 }
 
@@ -185,4 +198,49 @@ func (builder *RemoveCommandBuilder) resolveConfiguration() RemoveConfiguration 
 	}
 
 	return builder.ConfigurationProvider().sanitize()
+}
+
+func (builder *RemoveCommandBuilder) resolvePresetCatalog() workflowcmd.PresetCatalog {
+	if builder.PresetCatalogFactory != nil {
+		if catalog := builder.PresetCatalogFactory(); catalog != nil {
+			return catalog
+		}
+	}
+	return workflowcmd.NewEmbeddedPresetCatalog()
+}
+
+func updateHistoryPresetOptions(options map[string]any, paths []string, remote string, push bool, restore bool, pushMissing bool) {
+	if options == nil {
+		return
+	}
+	tasksValue, ok := options["tasks"].([]any)
+	if !ok || len(tasksValue) == 0 {
+		return
+	}
+	taskEntry, ok := tasksValue[0].(map[string]any)
+	if !ok {
+		return
+	}
+	actionsValue, ok := taskEntry["actions"].([]any)
+	if !ok || len(actionsValue) == 0 {
+		return
+	}
+	actionEntry, ok := actionsValue[0].(map[string]any)
+	if !ok {
+		return
+	}
+	actionOptions, _ := actionEntry["options"].(map[string]any)
+	if actionOptions == nil {
+		actionOptions = make(map[string]any)
+	}
+	actionOptions["paths"] = append([]string{}, paths...)
+	actionOptions["remote"] = remote
+	actionOptions["push"] = push
+	actionOptions["restore"] = restore
+	actionOptions["push_missing"] = pushMissing
+	actionEntry["options"] = actionOptions
+	actionsValue[0] = actionEntry
+	taskEntry["actions"] = actionsValue
+	tasksValue[0] = taskEntry
+	options["tasks"] = tasksValue
 }
