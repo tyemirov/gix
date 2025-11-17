@@ -12,7 +12,8 @@ workflow:
                   remote: origin
                   create_if_missing: false
             safeguards:
-              require_clean: true
+              hard_stop:
+                require_clean: true
 
   - step:
       name: gitignore-branch
@@ -28,7 +29,8 @@ workflow:
                   remote: origin
                   create_if_missing: true
             safeguards:
-              require_clean: true
+              hard_stop:
+                require_clean: true
 
   - step:
       name: gitignore-apply
@@ -38,8 +40,9 @@ workflow:
         tasks:
           - name: "Ensure gitignore entries"
             safeguards:
-              paths:
-                - ".gitignore"
+              soft_skip:
+                paths:
+                  - ".gitignore"
             steps:
               - files.apply
             files:

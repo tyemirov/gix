@@ -93,9 +93,14 @@ func TestReplaceCommandUsesConfigurationDefaults(t *testing.T) {
 
 			safeguards, ok := options["safeguards"].(map[string]any)
 			require.True(t, ok)
-			require.True(t, safeguards["require_clean"].(bool))
-			require.Equal(t, "main", safeguards["branch"])
-			require.ElementsMatch(t, []string{filepath.Clean("go.mod")}, safeguards["paths"].([]string))
+			hardStop, ok := safeguards["hard_stop"].(map[string]any)
+			require.True(t, ok)
+			require.True(t, hardStop["require_clean"].(bool))
+
+			softSkip, ok := safeguards["soft_skip"].(map[string]any)
+			require.True(t, ok)
+			require.Equal(t, "main", softSkip["branch"])
+			require.ElementsMatch(t, []string{filepath.Clean("go.mod")}, softSkip["paths"].([]string))
 			return recording
 		},
 	}
@@ -159,9 +164,14 @@ func TestReplaceCommandFlagOverrides(t *testing.T) {
 			require.Equal(t, []string{"go", "test", "./..."}, commandArgs)
 
 			safeguards := action.Options["safeguards"].(map[string]any)
-			require.True(t, safeguards["require_clean"].(bool))
-			require.Equal(t, "master", safeguards["branch"])
-			require.Equal(t, []string{filepath.Clean("go.mod")}, safeguards["paths"].([]string))
+			hardStop, ok := safeguards["hard_stop"].(map[string]any)
+			require.True(t, ok)
+			require.True(t, hardStop["require_clean"].(bool))
+
+			softSkip, ok := safeguards["soft_skip"].(map[string]any)
+			require.True(t, ok)
+			require.Equal(t, "master", softSkip["branch"])
+			require.Equal(t, []string{filepath.Clean("go.mod")}, softSkip["paths"].([]string))
 
 			return recording
 		},

@@ -1303,6 +1303,44 @@ func TestTaskExecutorSkipsWhenSafeguardFails(testInstance *testing.T) {
 	require.Contains(testInstance, output.String(), "requires branch main")
 }
 
+func TestTaskExecutorSkipsSoftSafeguards(testInstance *testing.T) {
+	gitExecutor := &recordingGitExecutor{
+		worktreeClean: true,
+		currentBranch: "feature/demo",
+	}
+	fileSystem := newFakeFileSystem(nil)
+
+	repositoryManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(testInstance, managerError)
+
+	repository := NewRepositoryState(audit.RepositoryInspection{Path: "/repositories/sample"})
+
+	output := &bytes.Buffer{}
+	reporter := shared.NewStructuredReporter(output, output, shared.WithRepositoryHeaders(false))
+	environment := &Environment{
+		GitExecutor:       gitExecutor,
+		RepositoryManager: repositoryManager,
+		FileSystem:        fileSystem,
+		Output:            output,
+		Reporter:          reporter,
+	}
+
+	task := TaskDefinition{
+		Name: "Soft Guarded Task",
+		Safeguards: map[string]any{
+			"soft_skip": map[string]any{"branch": "main"},
+		},
+		Actions: []TaskActionDefinition{
+			{Type: taskActionFileReplace, Options: map[string]any{"pattern": "*.md", "find": "foo", "replace": "bar"}},
+		},
+	}
+
+	executionError := (&TaskOperation{tasks: []TaskDefinition{task}}).executeTask(context.Background(), environment, repository, task)
+	require.NoError(testInstance, executionError)
+	require.Contains(testInstance, output.String(), "event=TASK_SKIP")
+	require.Contains(testInstance, output.String(), "requires branch main")
+}
+
 type stubLLMGitExecutor struct {
 	responses map[string]string
 }

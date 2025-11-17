@@ -295,18 +295,9 @@ func updateFilesReplacePresetOptions(options map[string]any, params filesReplace
 		delete(actionOptions, "command")
 	}
 
-	safeguards := map[string]any{}
-	if params.RequireClean {
-		safeguards["require_clean"] = true
-	}
-	if len(params.Branch) > 0 {
-		safeguards["branch"] = params.Branch
-	}
-	if len(params.RequirePaths) > 0 {
-		safeguards["paths"] = append([]string{}, params.RequirePaths...)
-	}
-	if len(safeguards) > 0 {
-		actionOptions["safeguards"] = safeguards
+	safeguardOptions := buildFilesReplaceSafeguards(params)
+	if len(safeguardOptions) > 0 {
+		actionOptions["safeguards"] = safeguardOptions
 	} else {
 		delete(actionOptions, "safeguards")
 	}
@@ -316,4 +307,32 @@ func updateFilesReplacePresetOptions(options map[string]any, params filesReplace
 	taskEntry["actions"] = actionsValue
 	tasksValue[0] = taskEntry
 	options["tasks"] = tasksValue
+}
+
+func buildFilesReplaceSafeguards(params filesReplacePresetOptions) map[string]any {
+	hardSafeguards := map[string]any{}
+	if params.RequireClean {
+		hardSafeguards["require_clean"] = true
+	}
+
+	softSafeguards := map[string]any{}
+	if len(strings.TrimSpace(params.Branch)) > 0 {
+		softSafeguards["branch"] = params.Branch
+	}
+	if len(params.RequirePaths) > 0 {
+		softSafeguards["paths"] = append([]string{}, params.RequirePaths...)
+	}
+
+	if len(hardSafeguards) == 0 && len(softSafeguards) == 0 {
+		return nil
+	}
+
+	safeguardOptions := make(map[string]any)
+	if len(hardSafeguards) > 0 {
+		safeguardOptions["hard_stop"] = hardSafeguards
+	}
+	if len(softSafeguards) > 0 {
+		safeguardOptions["soft_skip"] = softSafeguards
+	}
+	return safeguardOptions
 }

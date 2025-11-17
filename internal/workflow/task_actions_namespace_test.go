@@ -290,6 +290,37 @@ func main() { dep.Do() }
 	require.Equal(t, "status --porcelain", recorded[0])
 }
 
+func TestHandleNamespaceRewriteActionHardStopSafeguard(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(tempDir, ".git"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "go.mod"), []byte("module github.com/old/org/app\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "main.go"), []byte(`package main`), 0o644))
+
+	executor := &namespaceTestGitExecutor{statusOutput: " M main.go"}
+	manager, err := gitrepo.NewRepositoryManager(executor)
+	require.NoError(t, err)
+
+	environment := &Environment{
+		FileSystem:        filesystem.OSFileSystem{},
+		GitExecutor:       executor,
+		RepositoryManager: manager,
+	}
+
+	repository := &RepositoryState{Path: tempDir}
+	parameters := map[string]any{
+		"old": "github.com/old/org",
+		"new": "github.com/new/org",
+		"safeguards": map[string]any{
+			"hard_stop": map[string]any{"require_clean": true},
+		},
+	}
+
+	err = handleNamespaceRewriteAction(context.Background(), environment, repository, parameters)
+	require.ErrorIs(t, err, errRepositorySkipped)
+}
+
 type namespaceTestGitExecutor struct {
 	commands     []execshell.CommandDetails
 	staged       map[string]struct{}

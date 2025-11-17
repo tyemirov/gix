@@ -120,8 +120,19 @@ func handleNamespaceRewriteAction(ctx context.Context, environment *Environment,
 		return safeguardsErr
 	}
 
-	if len(safeguards) > 0 {
-		pass, reason, evalErr := EvaluateSafeguards(ctx, environment, repository, safeguards)
+	hardSafeguards, softSafeguards := splitSafeguardSets(safeguards, safeguardDefaultSoftSkip)
+	if len(hardSafeguards) > 0 {
+		pass, reason, evalErr := EvaluateSafeguards(ctx, environment, repository, hardSafeguards)
+		if evalErr != nil {
+			return evalErr
+		}
+		if !pass {
+			logNamespaceReason(environment, repository, shared.EventCodeNamespaceSkip, shared.EventLevelWarn, reason)
+			return repositorySkipError{reason: reason}
+		}
+	}
+	if len(softSafeguards) > 0 {
+		pass, reason, evalErr := EvaluateSafeguards(ctx, environment, repository, softSafeguards)
 		if evalErr != nil {
 			return evalErr
 		}

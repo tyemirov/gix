@@ -133,3 +133,34 @@ func TestHandleFileReplaceActionSafeguardSkips(t *testing.T) {
 	require.Contains(t, output.String(), "REPLACE-SKIP")
 	require.Empty(t, executor.commands)
 }
+
+func TestHandleFileReplaceActionHardStopSafeguard(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	targetPath := filepath.Join(tempDir, "example.txt")
+	require.NoError(t, filesystem.OSFileSystem{}.WriteFile(targetPath, []byte("token value"), 0o644))
+
+	executor := &recordingShellExecutor{clean: false, branch: "master"}
+	manager, managerError := gitrepo.NewRepositoryManager(executor)
+	require.NoError(t, managerError)
+
+	environment := &Environment{
+		FileSystem:        filesystem.OSFileSystem{},
+		RepositoryManager: manager,
+		GitExecutor:       executor,
+	}
+
+	repository := &RepositoryState{Path: tempDir}
+	parameters := map[string]any{
+		"pattern": "*.txt",
+		"find":    "token",
+		"replace": "value",
+		"safeguards": map[string]any{
+			"hard_stop": map[string]any{"require_clean": true},
+		},
+	}
+
+	err := handleFileReplaceAction(context.Background(), environment, repository, parameters)
+	require.ErrorIs(t, err, errRepositorySkipped)
+}

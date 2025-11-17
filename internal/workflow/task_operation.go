@@ -119,14 +119,26 @@ func (operation *TaskOperation) executeTask(executionContext context.Context, en
 		return nil
 	}
 
-	if len(task.Safeguards) > 0 {
-		pass, reason, evalErr := EvaluateSafeguards(executionContext, environment, repository, task.Safeguards)
+	hardSafeguards, softSafeguards := splitSafeguardSets(task.Safeguards, safeguardDefaultHardStop)
+	if len(hardSafeguards) > 0 {
+		pass, reason, evalErr := EvaluateSafeguards(executionContext, environment, repository, hardSafeguards)
 		if evalErr != nil {
 			return evalErr
 		}
 		if !pass {
 			environment.ReportRepositoryEvent(repository, shared.EventLevelWarn, shared.EventCodeTaskSkip, reason, nil)
 			return repositorySkipError{reason: reason}
+		}
+	}
+
+	if len(softSafeguards) > 0 {
+		pass, reason, evalErr := EvaluateSafeguards(executionContext, environment, repository, softSafeguards)
+		if evalErr != nil {
+			return evalErr
+		}
+		if !pass {
+			environment.ReportRepositoryEvent(repository, shared.EventLevelWarn, shared.EventCodeTaskSkip, reason, nil)
+			return nil
 		}
 	}
 

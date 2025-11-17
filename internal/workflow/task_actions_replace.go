@@ -79,13 +79,26 @@ func handleFileReplaceAction(ctx context.Context, environment *Environment, repo
 		return safeguardsError
 	}
 
-	pass, reason, evaluationError := EvaluateSafeguards(ctx, environment, repository, safeguardMap)
-	if evaluationError != nil {
-		return evaluationError
+	hardSafeguards, softSafeguards := splitSafeguardSets(safeguardMap, safeguardDefaultSoftSkip)
+	if len(hardSafeguards) > 0 {
+		pass, reason, evaluationError := EvaluateSafeguards(ctx, environment, repository, hardSafeguards)
+		if evaluationError != nil {
+			return evaluationError
+		}
+		if !pass {
+			writeReplacementMessage(environment, fileReplaceSkipMessageTemplate, repository.Path, reason)
+			return repositorySkipError{reason: reason}
+		}
 	}
-	if !pass {
-		writeReplacementMessage(environment, fileReplaceSkipMessageTemplate, repository.Path, reason)
-		return nil
+	if len(softSafeguards) > 0 {
+		pass, reason, evaluationError := EvaluateSafeguards(ctx, environment, repository, softSafeguards)
+		if evaluationError != nil {
+			return evaluationError
+		}
+		if !pass {
+			writeReplacementMessage(environment, fileReplaceSkipMessageTemplate, repository.Path, reason)
+			return nil
+		}
 	}
 
 	matchingFiles, matchError := collectReplacementTargets(repository.Path, patterns)

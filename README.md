@@ -103,7 +103,7 @@ Embedded workflows ship with the binary so you can hand teammates a stable comma
 
 Workflows can now compose individual git/file operations as standalone steps:
 
-- `tasks apply` with `steps: ["files.apply"]` — perform only the file mutation stage (no automatic stage/commit/push); add `safeguards.paths` to insist the file already exists.
+- `tasks apply` with `steps: ["files.apply"]` — perform only the file mutation stage (no automatic stage/commit/push); add `safeguards.soft_skip.paths` to insist the file already exists.
 - `git stage-commit` — run `git add` for templated paths and immediately commit with a templated message (optionally `allow_empty`).
 - `git push` — push a templated branch to a templated remote with remote validation (useful when you truly need a push without a PR).
 - `pull-request open` — push (warning when no remote) and open a PR in one step, using templated title/body/base/head values.
@@ -293,7 +293,8 @@ workflow:
          remote: origin
          create_if_missing: false
       safeguards:
-       require_clean: true
+       hard_stop:
+        require_clean: true
 
  - step:
    name: namespace-branch
@@ -309,7 +310,8 @@ workflow:
          remote: origin
          create_if_missing: true
       safeguards:
-       require_clean: true
+       hard_stop:
+        require_clean: true
 
  - step:
    name: namespace-rewrite
@@ -390,7 +392,7 @@ Schema highlights:
 - LLM: optional `{ model, base_url, api_key_env, timeout_seconds, max_completion_tokens, temperature }` block. When present, commit/changelog actions reuse the configured client instead of requiring a programmatic injector.
 - Commit: `{ message }` (templated). Defaults to `Apply task <name>` when empty.
 - Pull request: `{ title, body, base, draft }` (templated; optional).
-- Safeguards: map of conditions that skip the task when unmet; see below.
+- Safeguards: `{ hard_stop: {...}, soft_skip: {...} }` blocks that control whether a violation aborts the repository (`hard_stop`) or just skips the current task/action (`soft_skip`). Legacy flat maps are treated as `hard_stop`.
 - Steps: optional ordered list (`branch.prepare`, `files.apply`, `git.stage`, `git.commit`, `git.push`, `pull-request.create`, `actions`) that restricts which internal actions run. When omitted, file-backed tasks run the entire branch/commit/push pipeline by default.
 - Execution steps are now explicit actions: `git.branch.prepare` (creates the work branch), `files.apply`, `git.stage`, `git.commit`, `git.push`, and `pull-request.create`. Each action evaluates its own safeguards so workflows fail fast with actionable errors (for example, dirty worktrees or missing remotes).
 
@@ -413,9 +415,11 @@ Example task-only workflow step:
      commit:
       message: "chore: update license"
      safeguards:
-      require_clean: true
-      branch_in: [master]
-      paths: [".git"]
+      hard_stop:
+       require_clean: true
+      soft_skip:
+       branch_in: [master]
+       paths: [".git"]
 ```
 
 Templating supports Go text/template with `.Task.*`, `.Repository.*`, and `.Environment` fields. Available repository fields include: `Path`, `Owner`, `Name`, `FullName`, `DefaultBranch`, `PathDepth`, `InitialClean`, `HasNestedRepositories`. Capture outputs from LLM actions with `capture_as: <variable>` and reference them in later tasks or workflow steps using `{{ index .Environment "variable" }}`.
