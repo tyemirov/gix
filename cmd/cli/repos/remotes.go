@@ -123,3 +123,17 @@ func (builder *RemotesCommandBuilder) presetCommand() workflowcmd.PresetCommand 
 		WorkflowExecutorFactory:      builder.WorkflowExecutorFactory,
 	})
 }
+
+func (builder *RemotesCommandBuilder) presetCommand() workflowcmd.PresetCommand {
+	return newPresetCommand(presetCommandDependencies{
+		LoggerProvider:               builder.LoggerProvider,
+		HumanReadableLoggingProvider: builder.HumanReadableLoggingProvider,
+		Discoverer:                   builder.Discoverer,
+		GitExecutor:                  builder.GitExecutor,
+		GitManager:                   builder.GitManager,
+		GitHubResolver:               builder.GitHubResolver,
+		PrompterFactory:              builder.PrompterFactory,
+		PresetCatalogFactory:         builder.PresetCatalogFactory,
+		WorkflowExecutorFactory:      builder.WorkflowExecutorFactory,
+	})
+}

@@ -197,6 +197,19 @@ func (builder *ReplaceCommandBuilder) presetCommand() workflowcmd.PresetCommand 
 	})
 }
 
+func (builder *ReplaceCommandBuilder) presetCommand() workflowcmd.PresetCommand {
+	return newPresetCommand(presetCommandDependencies{
+		LoggerProvider:               builder.LoggerProvider,
+		HumanReadableLoggingProvider: builder.HumanReadableLoggingProvider,
+		Discoverer:                   builder.Discoverer,
+		GitExecutor:                  builder.GitExecutor,
+		GitManager:                   builder.GitManager,
+		FileSystem:                   builder.FileSystem,
+		PresetCatalogFactory:         builder.PresetCatalogFactory,
+		WorkflowExecutorFactory:      builder.WorkflowExecutorFactory,
+	})
+}
+
 func sanitizeCommandArguments(arguments []string) []string {
 	sanitized := make([]string, 0, len(arguments))
 	for _, argument := range arguments {

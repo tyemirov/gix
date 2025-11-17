@@ -296,6 +296,19 @@ func (builder *FilesAddCommandBuilder) presetCommand() workflowcmd.PresetCommand
 	})
 }
 
+func (builder *FilesAddCommandBuilder) presetCommand() workflowcmd.PresetCommand {
+	return newPresetCommand(presetCommandDependencies{
+		LoggerProvider:               builder.LoggerProvider,
+		HumanReadableLoggingProvider: builder.HumanReadableLoggingProvider,
+		Discoverer:                   builder.Discoverer,
+		GitExecutor:                  builder.GitExecutor,
+		GitManager:                   builder.GitManager,
+		FileSystem:                   builder.FileSystem,
+		PresetCatalogFactory:         builder.PresetCatalogFactory,
+		WorkflowExecutorFactory:      builder.WorkflowExecutorFactory,
+	})
+}
+
 type filesAddPresetOptions struct {
 	Path          string
 	Content       string
