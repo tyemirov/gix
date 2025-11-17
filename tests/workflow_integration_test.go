@@ -346,7 +346,8 @@ func TestWorkflowLogHeaderFormatting(testInstance *testing.T) {
         tasks:
           - name: "Ensure clean"
             safeguards:
-              require_clean: true
+              hard_stop:
+                require_clean: true
             steps: [files.apply]
             files:
               - path: README.md

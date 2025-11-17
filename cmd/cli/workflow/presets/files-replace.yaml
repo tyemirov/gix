@@ -14,4 +14,3 @@ workflow:
                   pattern: ""
                   patterns: []
                   command: []
-                  safeguards: {}

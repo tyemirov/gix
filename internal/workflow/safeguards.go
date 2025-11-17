@@ -17,6 +17,13 @@ var (
 
 const maxStatusReasonEntries = 5
 
+type safeguardFallback int
+
+const (
+	safeguardDefaultHardStop safeguardFallback = iota
+	safeguardDefaultSoftSkip
+)
+
 // EvaluateSafeguards validates whether the current repository satisfies the provided safeguards.
 // It returns false with a human-readable reason when a safeguard fails.
 func EvaluateSafeguards(ctx context.Context, environment *Environment, repository *RepositoryState, raw map[string]any) (bool, string, error) {
@@ -118,6 +125,70 @@ pathsCheck:
 	}
 
 	return true, "", nil
+}
+
+func splitSafeguardSets(raw map[string]any, fallback safeguardFallback) (map[string]any, map[string]any) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+
+	normalized := make(map[string]any, len(raw))
+	for key, value := range raw {
+		normalized[strings.TrimSpace(strings.ToLower(key))] = value
+	}
+
+	var hard, soft map[string]any
+
+	if hardValue, exists := normalized["hard_stop"]; exists {
+		hard = convertSafeguardMap(hardValue)
+	}
+	if softValue, exists := normalized["soft_skip"]; exists {
+		soft = convertSafeguardMap(softValue)
+	}
+
+	if hard != nil || soft != nil {
+		return trimEmptyMap(hard), trimEmptyMap(soft)
+	}
+
+	switch fallback {
+	case safeguardDefaultSoftSkip:
+		return nil, cloneSafeguardMap(raw)
+	default:
+		return cloneSafeguardMap(raw), nil
+	}
+}
+
+func convertSafeguardMap(value any) map[string]any {
+	switch typed := value.(type) {
+	case map[string]any:
+		return cloneSafeguardMap(typed)
+	case map[interface{}]interface{}:
+		cloned := make(map[string]any, len(typed))
+		for key, val := range typed {
+			cloned[fmt.Sprint(key)] = val
+		}
+		return cloned
+	default:
+		return nil
+	}
+}
+
+func cloneSafeguardMap(raw map[string]any) map[string]any {
+	if len(raw) == 0 {
+		return nil
+	}
+	cloned := make(map[string]any, len(raw))
+	for key, value := range raw {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func trimEmptyMap(raw map[string]any) map[string]any {
+	if len(raw) == 0 {
+		return nil
+	}
+	return raw
 }
 
 func parseBranchList(raw any) []string {

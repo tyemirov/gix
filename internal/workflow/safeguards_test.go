@@ -69,3 +69,24 @@ func TestEvaluateSafeguardsPasses(t *testing.T) {
 	require.True(t, pass)
 	require.Empty(t, reason)
 }
+
+func TestSplitSafeguardsFallbacks(t *testing.T) {
+	hard, soft := splitSafeguardSets(map[string]any{"branch": "main"}, safeguardDefaultHardStop)
+	require.Equal(t, "main", hard["branch"])
+	require.Nil(t, soft)
+
+	hard, soft = splitSafeguardSets(map[string]any{"branch": "main"}, safeguardDefaultSoftSkip)
+	require.Nil(t, hard)
+	require.Equal(t, "main", soft["branch"])
+}
+
+func TestSplitSafeguardsStructured(t *testing.T) {
+	raw := map[string]any{
+		"hard_stop": map[string]any{"require_clean": true},
+		"soft_skip": map[string]any{"paths": []string{"README.md"}},
+	}
+
+	hard, soft := splitSafeguardSets(raw, safeguardDefaultHardStop)
+	require.True(t, hard["require_clean"].(bool))
+	require.ElementsMatch(t, []string{"README.md"}, soft["paths"].([]string))
+}
