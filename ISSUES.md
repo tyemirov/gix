@@ -61,7 +61,7 @@ Read @AGENTS.md, @AGENTS.GO.md, @AGENTS.GIT.md @ARCHITECTURE.md, @POLICY.md, @NO
 
     but after running the workflow the line that says `.env` never gets into the diffs (PRs). I suspect that instead of string matching for appending them, we use regex, and we shall not use regex in this case. We match on the entire line, whatever it is (probably trimming)
 — Append-if-missing now compares literal line content (whitespace intact) so substrings like `.envrc` or indented variants no longer satisfy `.env`; added tests covering those scenarios.
-- [ ] [GX-336] Workflow logging still feels repetetive/confusing (branch change prints both `↪ switched` and `✓ Switch...`). Need redesigned human-readable format: single header per repo with path, grouped phase bullets (remote/folder, branch, file edits, git actions, PR), concise branch transition line, and clear warning/error markers. Update README docs once implemented.
+- [x] [GX-336] Workflow logging still feels repetetive/confusing (branch change prints both `↪ switched` and `✓ Switch...`). Need redesigned human-readable format: single header per repo with path, grouped phase bullets (remote/folder, branch, file edits, git actions, PR), concise branch transition line, and clear warning/error markers. Update README docs once implemented. — Human formatter now emits bullet-grouped phases, consolidates warnings/errors under an `issues` block, and README/docs were refreshed to describe the new layout.
 
 ## Maintenance (410–499)
 

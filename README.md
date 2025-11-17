@@ -213,17 +213,20 @@ Run with: `gix workflow path/to/file.yaml --roots ~/Development [-y] [--require-
 
 ### Workflow logging
 
-Workflow runs now emit a single header per repository (`-- owner/repo (/path) --`) followed by grouped phase bullets so the log reads like a checklist. The formatter prints at most five sections — `remote/folder`, `branch`, `files`, `git`, and `pull request` — plus warning (`⚠`) and error (`✖`) lines when something needs attention. Example:
+Workflow runs now emit a single header per repository (`-- owner/repo (/path) --`) followed by grouped phase bullets so the log reads like a checklist. The formatter prints at most five sections — `remote/folder`, `branch`, `files`, `git`, and `pull request` — plus an `issues` block that collects warning (`⚠`) and error (`✖`) lines when something needs attention. Example:
 
 ```
 -- tyemirov/scheduler (/tmp/repos/scheduler) --
-  remote/folder:
+  • remote/folder:
     - origin now ssh://git@github.com/tyemirov/scheduler.git
-  branch: master (created)
-  files:
+  • branch:
+    - master (created)
+  • files:
     - Ensure gitignore entries
-  git:
+  • git:
     - Git Stage Commit
+  issues:
+    - ⚠ git fetch skipped (no tracking remote)
 ```
 
 These summaries replace the older `TASK_PLAN/TASK_APPLY` spam while still surfacing detailed machine-readable events for tooling.
