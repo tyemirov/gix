@@ -293,6 +293,7 @@ func applyVariableOverrides(configuration *workflow.Configuration, variables map
 	historyPush, historyPushProvided := parseWorkflowBooleanVariable(variables["push"])
 	historyRestore, historyRestoreProvided := parseWorkflowBooleanVariable(variables["restore"])
 	historyPushMissing, historyPushMissingProvided := parseWorkflowBooleanVariable(variables["push_missing"])
+	historyVariablesProvided := len(historyPaths) > 0 || len(historyRemote) > 0 || historyPushProvided || historyRestoreProvided || historyPushMissingProvided
 
 	for stepIndex := range configuration.Steps {
 		commandKey := workflow.CommandPathKey(configuration.Steps[stepIndex].Command)
@@ -319,6 +320,10 @@ func applyVariableOverrides(configuration *workflow.Configuration, variables map
 				configuration.Steps[stepIndex].Options["to"] = toProtocol
 			}
 		case "tasks apply":
+			if !historyVariablesProvided {
+				continue
+			}
+
 			historyOptions, ok := historyActionOptions(configuration.Steps[stepIndex].Options)
 			if !ok {
 				continue
@@ -403,6 +408,10 @@ func historyActionOptions(options map[string]any) (map[string]any, bool) {
 	}
 	actionEntry, ok := actionsValue[0].(map[string]any)
 	if !ok {
+		return nil, false
+	}
+	actionType, ok := actionEntry["type"].(string)
+	if !ok || !strings.EqualFold(strings.TrimSpace(actionType), "repo.history.purge") {
 		return nil, false
 	}
 	actionOptions, ok := actionEntry["options"].(map[string]any)
