@@ -13,6 +13,7 @@ import (
 
 var phaseLabels = map[workflowruntime.LogPhase]string{
 	workflowruntime.LogPhaseRemoteFolder: "remote/folder",
+	workflowruntime.LogPhaseBranch:       "branch",
 	workflowruntime.LogPhaseFiles:        "files",
 	workflowruntime.LogPhaseGit:          "git",
 	workflowruntime.LogPhasePullRequest:  "pull request",
@@ -36,6 +37,7 @@ type workflowHumanFormatter struct {
 type repositoryLogState struct {
 	printedPhases          map[workflowruntime.LogPhase]struct{}
 	suppressNextBranchTask bool
+	issuesPrinted          bool
 }
 
 func (formatter *workflowHumanFormatter) HandleEvent(event shared.Event, writer io.Writer) {
@@ -65,7 +67,7 @@ func (formatter *workflowHumanFormatter) HandleEvent(event shared.Event, writer 
 		return
 	case shared.EventCodeTaskSkip:
 		delete(formatter.pendingTasks, repositoryKey)
-		formatter.writeWarning(writer, strings.TrimSpace(event.Message))
+		formatter.writeIssue(writer, state, fmt.Sprintf("⚠ %s", strings.TrimSpace(event.Message)))
 		return
 	case shared.EventCodeRepoSwitched:
 		formatter.handleBranchSwitch(writer, repositoryKey, state, event)
@@ -78,13 +80,13 @@ func (formatter *workflowHumanFormatter) HandleEvent(event shared.Event, writer 
 
 	switch event.Level {
 	case shared.EventLevelWarn:
-		formatter.writeWarning(writer, strings.TrimSpace(event.Message))
+		formatter.writeIssue(writer, state, fmt.Sprintf("⚠ %s", strings.TrimSpace(event.Message)))
 	case shared.EventLevelError:
 		message := strings.TrimSpace(event.Message)
 		if len(message) == 0 {
 			message = "error"
 		}
-		fmt.Fprintf(writer, "  ✖ %s\n", message)
+		formatter.writeIssue(writer, state, fmt.Sprintf("✖ %s", message))
 	default:
 		formatter.writeEventSummary(writer, event)
 	}
@@ -253,7 +255,7 @@ func (formatter *workflowHumanFormatter) writePhaseEntry(writer io.Writer, repos
 	state := formatter.ensureRepositoryState(repository)
 	if _, exists := state.printedPhases[phase]; !exists {
 		if label, ok := phaseLabels[phase]; ok {
-			fmt.Fprintf(writer, "  %s:\n", label)
+			fmt.Fprintf(writer, "  • %s:\n", label)
 		}
 		state.printedPhases[phase] = struct{}{}
 	}
@@ -261,17 +263,18 @@ func (formatter *workflowHumanFormatter) writePhaseEntry(writer io.Writer, repos
 }
 
 func (formatter *workflowHumanFormatter) writeBranchLine(writer io.Writer, repository string, message string) {
-	if len(message) == 0 {
-		return
-	}
-	fmt.Fprintf(writer, "  branch: %s\n", message)
+	formatter.writePhaseEntry(writer, repository, workflowruntime.LogPhaseBranch, message)
 }
 
-func (formatter *workflowHumanFormatter) writeWarning(writer io.Writer, message string) {
-	if len(message) == 0 {
+func (formatter *workflowHumanFormatter) writeIssue(writer io.Writer, state *repositoryLogState, message string) {
+	if len(message) == 0 || state == nil {
 		return
 	}
-	fmt.Fprintf(writer, "  ⚠ %s\n", message)
+	if !state.issuesPrinted {
+		fmt.Fprintln(writer, "  issues:")
+		state.issuesPrinted = true
+	}
+	fmt.Fprintf(writer, "    - %s\n", message)
 }
 
 func (formatter *workflowHumanFormatter) writeEventSummary(writer io.Writer, event shared.Event) {
