@@ -9,8 +9,6 @@ import (
 
 	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
 	"github.com/temirov/gix/internal/repos/shared"
-	flagutils "github.com/temirov/gix/internal/utils/flags"
-	rootutils "github.com/temirov/gix/internal/utils/roots"
 	"github.com/temirov/gix/internal/workflow"
 	"github.com/temirov/gix/pkg/taskrunner"
 )
@@ -63,8 +61,6 @@ func (builder *CommandBuilder) Build() (*cobra.Command, error) {
 func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) error {
 	configuration := builder.resolveConfiguration()
 
-	executionFlags, executionFlagsAvailable := flagutils.ResolveExecutionFlags(command)
-
 	if len(arguments) == 0 {
 		if command != nil {
 			_ = command.Help()
@@ -88,79 +84,48 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 		}
 	}
 
-	remoteName := configuration.RemoteName
-	if executionFlagsAvailable && executionFlags.RemoteSet {
-		override := strings.TrimSpace(executionFlags.Remote)
-		if len(override) > 0 {
-			remoteName = override
-		}
-	}
-
-	repositoryRoots, rootsError := rootutils.Resolve(command, additionalArgs, configuration.RepositoryRoots)
-	if rootsError != nil {
-		return rootsError
-	}
-
-	dependencyResult, dependencyError := taskrunner.BuildDependencies(
-		taskrunner.DependenciesConfig{
-			LoggerProvider:               builder.LoggerProvider,
-			HumanReadableLoggingProvider: builder.HumanReadableLoggingProvider,
-			RepositoryDiscoverer:         builder.Discoverer,
-			GitExecutor:                  builder.GitExecutor,
-			GitRepositoryManager:         builder.GitManager,
-			FileSystem:                   builder.FileSystem,
-		},
-		taskrunner.DependenciesOptions{
-			Command:         command,
+	request := workflowcmd.PresetCommandRequest{
+		Command:                 command,
+		Arguments:               arguments,
+		RootArguments:           additionalArgs,
+		ConfiguredAssumeYes:     false,
+		ConfiguredRoots:         configuration.RepositoryRoots,
+		PresetName:              releasePresetName,
+		PresetMissingMessage:    releasePresetMissingMsg,
+		PresetLoadErrorTemplate: releasePresetLoadError,
+		BuildErrorTemplate:      releaseBuildWorkflowErr,
+		DependenciesOptions: taskrunner.DependenciesOptions{
 			DisablePrompter: true,
 		},
-	)
-	if dependencyError != nil {
-		return dependencyError
+		Configure: func(ctx workflowcmd.PresetCommandContext) (workflowcmd.PresetCommandResult, error) {
+			resolvedRemote := configuration.RemoteName
+			if ctx.ExecutionFlagsAvailable && ctx.ExecutionFlags.RemoteSet {
+				override := strings.TrimSpace(ctx.ExecutionFlags.Remote)
+				if len(override) > 0 {
+					resolvedRemote = override
+				}
+			}
+
+			for index := range ctx.Configuration.Steps {
+				if workflow.CommandPathKey(ctx.Configuration.Steps[index].Command) != releasePresetCommandKey {
+					continue
+				}
+				updateReleasePresetOptions(
+					ctx.Configuration.Steps[index].Options,
+					tagName,
+					messageValue,
+					resolvedRemote,
+				)
+			}
+
+			return workflowcmd.PresetCommandResult{
+				Configuration:  ctx.Configuration,
+				RuntimeOptions: ctx.RuntimeOptions(),
+			}, nil
+		},
 	}
 
-	workflowDependencies := dependencyResult.Workflow
-	if command != nil {
-		workflowDependencies.Output = command.OutOrStdout()
-		workflowDependencies.Errors = command.ErrOrStderr()
-	}
-
-	presetCatalog := builder.resolvePresetCatalog()
-	presetConfiguration, presetFound, presetError := presetCatalog.Load(releasePresetName)
-	if presetError != nil {
-		return fmt.Errorf(releasePresetLoadError, presetError)
-	}
-	if !presetFound {
-		return errors.New(releasePresetMissingMsg)
-	}
-
-	for index := range presetConfiguration.Steps {
-		if workflow.CommandPathKey(presetConfiguration.Steps[index].Command) != releasePresetCommandKey {
-			continue
-		}
-		updateReleasePresetOptions(
-			presetConfiguration.Steps[index].Options,
-			tagName,
-			messageValue,
-			remoteName,
-		)
-	}
-
-	nodes, operationsError := workflow.BuildOperations(presetConfiguration)
-	if operationsError != nil {
-		return fmt.Errorf(releaseBuildWorkflowErr, operationsError)
-	}
-
-	assumeYes := false
-	if executionFlagsAvailable && executionFlags.AssumeYesSet {
-		assumeYes = executionFlags.AssumeYes
-	}
-
-	runtimeOptions := workflow.RuntimeOptions{AssumeYes: assumeYes}
-
-	executor := workflowcmd.ResolveOperationExecutor(builder.WorkflowExecutorFactory, nodes, workflowDependencies)
-	_, runErr := executor.Execute(command.Context(), repositoryRoots, runtimeOptions)
-	return runErr
+	return builder.presetCommand().Execute(request)
 }
 
 func (builder *CommandBuilder) resolveConfiguration() CommandConfiguration {
@@ -177,6 +142,19 @@ func (builder *CommandBuilder) resolvePresetCatalog() workflowcmd.PresetCatalog 
 		}
 	}
 	return workflowcmd.NewEmbeddedPresetCatalog()
+}
+
+func (builder *CommandBuilder) presetCommand() workflowcmd.PresetCommand {
+	return newPresetCommand(presetCommandDependencies{
+		LoggerProvider:               builder.LoggerProvider,
+		HumanReadableLoggingProvider: builder.HumanReadableLoggingProvider,
+		Discoverer:                   builder.Discoverer,
+		GitExecutor:                  builder.GitExecutor,
+		GitManager:                   builder.GitManager,
+		FileSystem:                   builder.FileSystem,
+		PresetCatalogFactory:         builder.PresetCatalogFactory,
+		WorkflowExecutorFactory:      builder.WorkflowExecutorFactory,
+	})
 }
 
 func updateReleasePresetOptions(options map[string]any, tagName string, message string, remote string) {

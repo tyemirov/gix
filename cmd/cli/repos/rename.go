@@ -2,16 +2,13 @@ package repos
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/spf13/cobra"
 
 	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
 	"github.com/temirov/gix/internal/repos/shared"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
-	rootutils "github.com/temirov/gix/internal/utils/roots"
 	"github.com/temirov/gix/internal/workflow"
-	"github.com/temirov/gix/pkg/taskrunner"
 )
 
 const (
@@ -62,12 +59,6 @@ func (builder *RenameCommandBuilder) Build() (*cobra.Command, error) {
 
 func (builder *RenameCommandBuilder) run(command *cobra.Command, arguments []string) error {
 	configuration := builder.resolveConfiguration()
-	executionFlags, executionFlagsAvailable := flagutils.ResolveExecutionFlags(command)
-
-	assumeYes := configuration.AssumeYes
-	if executionFlagsAvailable && executionFlags.AssumeYesSet {
-		assumeYes = executionFlags.AssumeYes
-	}
 
 	requireClean := configuration.RequireCleanWorktree
 	if command != nil {
@@ -91,70 +82,49 @@ func (builder *RenameCommandBuilder) run(command *cobra.Command, arguments []str
 		}
 	}
 
-	roots, rootsError := rootutils.Resolve(command, arguments, configuration.RepositoryRoots)
-	if rootsError != nil {
-		return rootsError
-	}
+	request := workflowcmd.PresetCommandRequest{
+		Command:                 command,
+		Arguments:               arguments,
+		RootArguments:           arguments,
+		ConfiguredAssumeYes:     configuration.AssumeYes,
+		ConfiguredRoots:         configuration.RepositoryRoots,
+		PresetName:              folderRenamePresetName,
+		PresetMissingMessage:    renamePresetMissingMessage,
+		PresetLoadErrorTemplate: renamePresetLoadErrorTemplate,
+		BuildErrorTemplate:      renameBuildOperationsError,
+		Configure: func(ctx workflowcmd.PresetCommandContext) (workflowcmd.PresetCommandResult, error) {
+			for index := range ctx.Configuration.Steps {
+				if workflow.CommandPathKey(ctx.Configuration.Steps[index].Command) != folderRenameCommandKey {
+					continue
+				}
+				if ctx.Configuration.Steps[index].Options == nil {
+					ctx.Configuration.Steps[index].Options = make(map[string]any)
+				}
+				ctx.Configuration.Steps[index].Options["require_clean"] = requireClean
+				ctx.Configuration.Steps[index].Options["include_owner"] = includeOwner
+			}
 
-	dependencyResult, dependencyError := taskrunner.BuildDependencies(
-		taskrunner.DependenciesConfig{
-			LoggerProvider:               builder.LoggerProvider,
-			HumanReadableLoggingProvider: builder.HumanReadableLoggingProvider,
-			RepositoryDiscoverer:         builder.Discoverer,
-			GitExecutor:                  builder.GitExecutor,
-			GitRepositoryManager:         builder.GitManager,
-			GitHubResolver:               builder.GitHubResolver,
-			FileSystem:                   builder.FileSystem,
-			PrompterFactory:              builder.PrompterFactory,
+			runtimeOptions := ctx.RuntimeOptions()
+			runtimeOptions.IncludeNestedRepositories = true
+			runtimeOptions.ProcessRepositoriesByDescendingDepth = true
+			if requireClean {
+				runtimeOptions.CaptureInitialWorktreeStatus = true
+			}
+
+			prepare := func(nodes []*workflow.OperationNode) error {
+				workflow.ApplyDefaults(nodes, workflow.OperationDefaults{RequireClean: requireClean})
+				return nil
+			}
+
+			return workflowcmd.PresetCommandResult{
+				Configuration:     ctx.Configuration,
+				RuntimeOptions:    runtimeOptions,
+				PrepareOperations: prepare,
+			}, nil
 		},
-		taskrunner.DependenciesOptions{Command: command},
-	)
-	if dependencyError != nil {
-		return dependencyError
 	}
 
-	workflowDependencies := dependencyResult.Workflow
-	workflowDependencies.Output = command.OutOrStdout()
-	workflowDependencies.Errors = command.ErrOrStderr()
-
-	presetCatalog := builder.resolvePresetCatalog()
-	presetConfiguration, presetFound, presetError := presetCatalog.Load(folderRenamePresetName)
-	if presetError != nil {
-		return fmt.Errorf(renamePresetLoadErrorTemplate, presetError)
-	}
-	if !presetFound {
-		return errors.New(renamePresetMissingMessage)
-	}
-
-	for index := range presetConfiguration.Steps {
-		if workflow.CommandPathKey(presetConfiguration.Steps[index].Command) != folderRenameCommandKey {
-			continue
-		}
-		if presetConfiguration.Steps[index].Options == nil {
-			presetConfiguration.Steps[index].Options = make(map[string]any)
-		}
-		presetConfiguration.Steps[index].Options["require_clean"] = requireClean
-		presetConfiguration.Steps[index].Options["include_owner"] = includeOwner
-	}
-
-	nodes, operationsError := workflow.BuildOperations(presetConfiguration)
-	if operationsError != nil {
-		return fmt.Errorf(renameBuildOperationsError, operationsError)
-	}
-	workflow.ApplyDefaults(nodes, workflow.OperationDefaults{RequireClean: requireClean})
-
-	runtimeOptions := workflow.RuntimeOptions{
-		AssumeYes:                            assumeYes,
-		IncludeNestedRepositories:            true,
-		ProcessRepositoriesByDescendingDepth: true,
-	}
-	if requireClean {
-		runtimeOptions.CaptureInitialWorktreeStatus = true
-	}
-
-	executor := workflowcmd.ResolveOperationExecutor(builder.WorkflowExecutorFactory, nodes, workflowDependencies)
-	_, runErr := executor.Execute(command.Context(), roots, runtimeOptions)
-	return runErr
+	return builder.presetCommand().Execute(request)
 }
 
 func (builder *RenameCommandBuilder) resolveConfiguration() RenameConfiguration {
@@ -174,4 +144,19 @@ func (builder *RenameCommandBuilder) resolvePresetCatalog() workflowcmd.PresetCa
 		}
 	}
 	return workflowcmd.NewEmbeddedPresetCatalog()
+}
+
+func (builder *RenameCommandBuilder) presetCommand() workflowcmd.PresetCommand {
+	return newPresetCommand(presetCommandDependencies{
+		LoggerProvider:               builder.LoggerProvider,
+		HumanReadableLoggingProvider: builder.HumanReadableLoggingProvider,
+		Discoverer:                   builder.Discoverer,
+		GitExecutor:                  builder.GitExecutor,
+		GitManager:                   builder.GitManager,
+		GitHubResolver:               builder.GitHubResolver,
+		FileSystem:                   builder.FileSystem,
+		PrompterFactory:              builder.PrompterFactory,
+		PresetCatalogFactory:         builder.PresetCatalogFactory,
+		WorkflowExecutorFactory:      builder.WorkflowExecutorFactory,
+	})
 }
