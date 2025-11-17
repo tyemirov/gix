@@ -206,8 +206,8 @@ func TestServiceRunBehaviors(testInstance *testing.T) {
 			},
 			discoverer: stubDiscoverer{repositories: []string{"/tmp/example"}},
 			executorOutputs: map[string]execshell.ExecutionResult{
-				"rev-parse --is-inside-work-tree": {StandardOutput: "true"},
-				"ls-remote --symref origin HEAD":  {StandardOutput: "ref: refs/heads/main\tHEAD\n"},
+				"rev-parse --is-inside-work-tree":       {StandardOutput: "true"},
+				"symbolic-ref refs/remotes/origin/HEAD": {StandardOutput: "refs/remotes/origin/main\n"},
 			},
 			gitManager: stubGitManager{
 				cleanWorktree: true,
