@@ -65,7 +65,7 @@ Read @AGENTS.md, @AGENTS.GO.md, @AGENTS.GIT.md @ARCHITECTURE.md, @POLICY.md, @NO
 
 ## Maintenance (410–499)
 
-- [ ] [GX-412] Review @POLICY.md and verify what code areas need improvements and refactoring. Prepare a detailed plan of refactoring. Check for bugs, missing tests, poor coding practices, uplication and slop. Ensure strong encapsulation and following the principles og @AGENTS.md and policies of @POLICY.md
+- [x] [GX-412] Review @POLICY.md and verify what code areas need improvements and refactoring. Prepare a detailed plan of refactoring. Check for bugs, missing tests, poor coding practices, uplication and slop. Ensure strong encapsulation and following the principles og @AGENTS.md and policies of @POLICY.md — Documented the refactor plan in `docs/GX-412-refactor-plan.md`, covering CLI preset helpers, typed workflow builders, domain smart constructors, taskrunner dependency injection, and missing negative-path tests.
 
 
 ## Planning 
