@@ -2,7 +2,6 @@ package repos
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -10,9 +9,7 @@ import (
 	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
 	"github.com/temirov/gix/internal/repos/shared"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
-	rootutils "github.com/temirov/gix/internal/utils/roots"
 	"github.com/temirov/gix/internal/workflow"
-	"github.com/temirov/gix/pkg/taskrunner"
 )
 
 const (
@@ -74,12 +71,6 @@ func (builder *RemoveCommandBuilder) run(command *cobra.Command, arguments []str
 	}
 
 	configuration := builder.resolveConfiguration()
-	executionFlags, executionFlagsAvailable := flagutils.ResolveExecutionFlags(command)
-
-	assumeYes := configuration.AssumeYes
-	if executionFlagsAvailable && executionFlags.AssumeYesSet {
-		assumeYes = executionFlags.AssumeYes
-	}
 
 	remoteName := configuration.Remote
 	if command != nil && command.Flags().Changed(removeRemoteFlagName) {
@@ -123,32 +114,6 @@ func (builder *RemoveCommandBuilder) run(command *cobra.Command, arguments []str
 		}
 	}
 
-	roots, rootsError := rootutils.Resolve(command, nil, configuration.RepositoryRoots)
-	if rootsError != nil {
-		return rootsError
-	}
-
-	dependencyResult, dependencyError := taskrunner.BuildDependencies(
-		taskrunner.DependenciesConfig{
-			LoggerProvider:               builder.LoggerProvider,
-			HumanReadableLoggingProvider: builder.HumanReadableLoggingProvider,
-			RepositoryDiscoverer:         builder.Discoverer,
-			GitExecutor:                  builder.GitExecutor,
-			GitRepositoryManager:         builder.GitManager,
-			FileSystem:                   builder.FileSystem,
-		},
-		taskrunner.DependenciesOptions{Command: command},
-	)
-	if dependencyError != nil {
-		return dependencyError
-	}
-
-	workflowDependencies := dependencyResult.Workflow
-	if command != nil {
-		workflowDependencies.Output = command.OutOrStdout()
-		workflowDependencies.Errors = command.ErrOrStderr()
-	}
-
 	normalizedPaths := make([]string, 0, len(arguments))
 	for _, pathArgument := range arguments {
 		trimmed := strings.TrimSpace(pathArgument)
@@ -165,39 +130,39 @@ func (builder *RemoveCommandBuilder) run(command *cobra.Command, arguments []str
 		return errors.New(removeMissingPathsErrorMessage)
 	}
 
-	presetCatalog := builder.resolvePresetCatalog()
-	presetConfiguration, presetFound, presetError := presetCatalog.Load(historyRemovePresetName)
-	if presetError != nil {
-		return fmt.Errorf(historyPresetLoadErrorTemplate, presetError)
-	}
-	if !presetFound {
-		return errors.New(historyPresetMissingMessage)
+	request := workflowcmd.PresetCommandRequest{
+		Command:                 command,
+		Arguments:               arguments,
+		RootArguments:           []string{},
+		ConfiguredAssumeYes:     configuration.AssumeYes,
+		ConfiguredRoots:         configuration.RepositoryRoots,
+		PresetName:              historyRemovePresetName,
+		PresetMissingMessage:    historyPresetMissingMessage,
+		PresetLoadErrorTemplate: historyPresetLoadErrorTemplate,
+		BuildErrorTemplate:      historyBuildWorkflowError,
+		Configure: func(ctx workflowcmd.PresetCommandContext) (workflowcmd.PresetCommandResult, error) {
+			for index := range ctx.Configuration.Steps {
+				if workflow.CommandPathKey(ctx.Configuration.Steps[index].Command) != historyRemoveCommandKey {
+					continue
+				}
+				updateHistoryPresetOptions(
+					ctx.Configuration.Steps[index].Options,
+					normalizedPaths,
+					strings.TrimSpace(remoteName),
+					pushEnabled,
+					restoreEnabled,
+					pushMissing,
+				)
+			}
+
+			return workflowcmd.PresetCommandResult{
+				Configuration:  ctx.Configuration,
+				RuntimeOptions: ctx.RuntimeOptions(),
+			}, nil
+		},
 	}
 
-	for index := range presetConfiguration.Steps {
-		if workflow.CommandPathKey(presetConfiguration.Steps[index].Command) != historyRemoveCommandKey {
-			continue
-		}
-		updateHistoryPresetOptions(
-			presetConfiguration.Steps[index].Options,
-			normalizedPaths,
-			strings.TrimSpace(remoteName),
-			pushEnabled,
-			restoreEnabled,
-			pushMissing,
-		)
-	}
-
-	nodes, operationsError := workflow.BuildOperations(presetConfiguration)
-	if operationsError != nil {
-		return fmt.Errorf(historyBuildWorkflowError, operationsError)
-	}
-
-	runtimeOptions := workflow.RuntimeOptions{AssumeYes: assumeYes}
-
-	executor := workflowcmd.ResolveOperationExecutor(builder.WorkflowExecutorFactory, nodes, workflowDependencies)
-	_, runErr := executor.Execute(command.Context(), roots, runtimeOptions)
-	return runErr
+	return builder.presetCommand().Execute(request)
 }
 
 func (builder *RemoveCommandBuilder) resolveConfiguration() RemoveConfiguration {
@@ -208,13 +173,17 @@ func (builder *RemoveCommandBuilder) resolveConfiguration() RemoveConfiguration 
 	return builder.ConfigurationProvider().sanitize()
 }
 
-func (builder *RemoveCommandBuilder) resolvePresetCatalog() workflowcmd.PresetCatalog {
-	if builder.PresetCatalogFactory != nil {
-		if catalog := builder.PresetCatalogFactory(); catalog != nil {
-			return catalog
-		}
-	}
-	return workflowcmd.NewEmbeddedPresetCatalog()
+func (builder *RemoveCommandBuilder) presetCommand() workflowcmd.PresetCommand {
+	return newPresetCommand(presetCommandDependencies{
+		LoggerProvider:               builder.LoggerProvider,
+		HumanReadableLoggingProvider: builder.HumanReadableLoggingProvider,
+		Discoverer:                   builder.Discoverer,
+		GitExecutor:                  builder.GitExecutor,
+		GitManager:                   builder.GitManager,
+		FileSystem:                   builder.FileSystem,
+		PresetCatalogFactory:         builder.PresetCatalogFactory,
+		WorkflowExecutorFactory:      builder.WorkflowExecutorFactory,
+	})
 }
 
 func updateHistoryPresetOptions(options map[string]any, paths []string, remote string, push bool, restore bool, pushMissing bool) {

@@ -13,9 +13,7 @@ import (
 	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
 	"github.com/temirov/gix/internal/repos/shared"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
-	rootutils "github.com/temirov/gix/internal/utils/roots"
 	"github.com/temirov/gix/internal/workflow"
-	"github.com/temirov/gix/pkg/taskrunner"
 )
 
 const (
@@ -84,12 +82,6 @@ func (builder *FilesAddCommandBuilder) Build() (*cobra.Command, error) {
 
 func (builder *FilesAddCommandBuilder) run(command *cobra.Command, arguments []string) error {
 	configuration := builder.resolveConfiguration()
-	executionFlags, executionFlagsAvailable := flagutils.ResolveExecutionFlags(command)
-
-	assumeYes := configuration.AssumeYes
-	if executionFlagsAvailable && executionFlags.AssumeYesSet {
-		assumeYes = executionFlags.AssumeYes
-	}
 
 	targetPath := strings.TrimSpace(configuration.Path)
 	if command != nil && command.Flags().Changed(filesAddPathFlagName) {
@@ -136,31 +128,6 @@ func (builder *FilesAddCommandBuilder) run(command *cobra.Command, arguments []s
 	}
 	if len(strings.TrimSpace(contentValue)) == 0 && len(strings.TrimSpace(contentFilePath)) == 0 {
 		return errors.New(filesAddMissingContentError)
-	}
-
-	dependencyResult, dependencyError := taskrunner.BuildDependencies(
-		taskrunner.DependenciesConfig{
-			LoggerProvider:               builder.LoggerProvider,
-			HumanReadableLoggingProvider: builder.HumanReadableLoggingProvider,
-			RepositoryDiscoverer:         builder.Discoverer,
-			GitExecutor:                  builder.GitExecutor,
-			GitRepositoryManager:         builder.GitManager,
-			FileSystem:                   builder.FileSystem,
-		},
-		taskrunner.DependenciesOptions{Command: command},
-	)
-	if dependencyError != nil {
-		return dependencyError
-	}
-
-	fileSystem := dependencyResult.FileSystem
-	fileContent := contentValue
-	if len(strings.TrimSpace(contentFilePath)) > 0 {
-		data, readError := fileSystem.ReadFile(contentFilePath)
-		if readError != nil {
-			return readError
-		}
-		fileContent = string(data)
 	}
 
 	modeValue := configuration.Mode
@@ -236,13 +203,6 @@ func (builder *FilesAddCommandBuilder) run(command *cobra.Command, arguments []s
 		}
 		remoteName = strings.TrimSpace(value)
 	}
-	if executionFlagsAvailable && executionFlags.RemoteSet {
-		override := strings.TrimSpace(executionFlags.Remote)
-		if len(override) > 0 {
-			remoteName = override
-		}
-	}
-
 	commitMessage := configuration.CommitMessage
 	if command != nil && command.Flags().Changed(filesAddCommitMessageFlagName) {
 		value, err := command.Flags().GetString(filesAddCommitMessageFlagName)
@@ -255,58 +215,65 @@ func (builder *FilesAddCommandBuilder) run(command *cobra.Command, arguments []s
 		commitMessage = fmt.Sprintf(filesAddDefaultCommitTemplate, targetPath)
 	}
 
-	roots, rootsError := rootutils.Resolve(command, arguments, configuration.RepositoryRoots)
-	if rootsError != nil {
-		return rootsError
+	presetCommand := builder.presetCommand()
+	request := workflowcmd.PresetCommandRequest{
+		Command:                 command,
+		Arguments:               arguments,
+		RootArguments:           arguments,
+		ConfiguredAssumeYes:     configuration.AssumeYes,
+		ConfiguredRoots:         configuration.RepositoryRoots,
+		PresetName:              filesAddPresetName,
+		PresetMissingMessage:    filesAddPresetMissingMessage,
+		PresetLoadErrorTemplate: filesAddPresetLoadErrorTemplate,
+		BuildErrorTemplate:      filesAddBuildWorkflowError,
+		Configure: func(ctx workflowcmd.PresetCommandContext) (workflowcmd.PresetCommandResult, error) {
+			fileContent := contentValue
+			if len(strings.TrimSpace(contentFilePath)) > 0 {
+				data, readError := ctx.Dependencies.FileSystem.ReadFile(contentFilePath)
+				if readError != nil {
+					return workflowcmd.PresetCommandResult{}, readError
+				}
+				fileContent = string(data)
+			}
+
+			resolvedRemote := remoteName
+			if ctx.ExecutionFlagsAvailable && ctx.ExecutionFlags.RemoteSet {
+				override := strings.TrimSpace(ctx.ExecutionFlags.Remote)
+				if len(override) > 0 {
+					resolvedRemote = override
+				}
+			}
+
+			params := filesAddPresetOptions{
+				Path:          targetPath,
+				Content:       fileContent,
+				Mode:          modeValue,
+				Permissions:   os.FileMode(parsedPermissions),
+				RequireClean:  requireClean,
+				BranchName:    branchTemplate,
+				StartPoint:    startPointTemplate,
+				Push:          pushBranches,
+				Remote:        resolvedRemote,
+				CommitMessage: commitMessage,
+			}
+
+			for index := range ctx.Configuration.Steps {
+				if workflow.CommandPathKey(ctx.Configuration.Steps[index].Command) != filesAddPresetCommandKey {
+					continue
+				}
+				updateFilesAddPresetOptions(ctx.Configuration.Steps[index].Options, params)
+			}
+
+			runtimeOptions := ctx.RuntimeOptions()
+			runtimeOptions.CaptureInitialWorktreeStatus = requireClean
+			return workflowcmd.PresetCommandResult{
+				Configuration:  ctx.Configuration,
+				RuntimeOptions: runtimeOptions,
+			}, nil
+		},
 	}
 
-	workflowDependencies := dependencyResult.Workflow
-	workflowDependencies.Output = command.OutOrStdout()
-	workflowDependencies.Errors = command.ErrOrStderr()
-	workflowDependencies.FileSystem = fileSystem
-
-	presetCatalog := builder.resolvePresetCatalog()
-	presetConfiguration, presetFound, presetError := presetCatalog.Load(filesAddPresetName)
-	if presetError != nil {
-		return fmt.Errorf(filesAddPresetLoadErrorTemplate, presetError)
-	}
-	if !presetFound {
-		return errors.New(filesAddPresetMissingMessage)
-	}
-
-	params := filesAddPresetOptions{
-		Path:          targetPath,
-		Content:       fileContent,
-		Mode:          modeValue,
-		Permissions:   os.FileMode(parsedPermissions),
-		RequireClean:  requireClean,
-		BranchName:    branchTemplate,
-		StartPoint:    startPointTemplate,
-		Push:          pushBranches,
-		Remote:        remoteName,
-		CommitMessage: commitMessage,
-	}
-
-	for index := range presetConfiguration.Steps {
-		if workflow.CommandPathKey(presetConfiguration.Steps[index].Command) != filesAddPresetCommandKey {
-			continue
-		}
-		updateFilesAddPresetOptions(presetConfiguration.Steps[index].Options, params)
-	}
-
-	nodes, operationsError := workflow.BuildOperations(presetConfiguration)
-	if operationsError != nil {
-		return fmt.Errorf(filesAddBuildWorkflowError, operationsError)
-	}
-
-	runtimeOptions := workflow.RuntimeOptions{
-		AssumeYes:                    assumeYes,
-		CaptureInitialWorktreeStatus: requireClean,
-	}
-
-	executor := workflowcmd.ResolveOperationExecutor(builder.WorkflowExecutorFactory, nodes, workflowDependencies)
-	_, runErr := executor.Execute(command.Context(), roots, runtimeOptions)
-	return runErr
+	return presetCommand.Execute(request)
 }
 
 func (builder *FilesAddCommandBuilder) resolveConfiguration() AddConfiguration {
@@ -316,13 +283,17 @@ func (builder *FilesAddCommandBuilder) resolveConfiguration() AddConfiguration {
 	return builder.ConfigurationProvider().Sanitize()
 }
 
-func (builder *FilesAddCommandBuilder) resolvePresetCatalog() workflowcmd.PresetCatalog {
-	if builder.PresetCatalogFactory != nil {
-		if catalog := builder.PresetCatalogFactory(); catalog != nil {
-			return catalog
-		}
-	}
-	return workflowcmd.NewEmbeddedPresetCatalog()
+func (builder *FilesAddCommandBuilder) presetCommand() workflowcmd.PresetCommand {
+	return newPresetCommand(presetCommandDependencies{
+		LoggerProvider:               builder.LoggerProvider,
+		HumanReadableLoggingProvider: builder.HumanReadableLoggingProvider,
+		Discoverer:                   builder.Discoverer,
+		GitExecutor:                  builder.GitExecutor,
+		GitManager:                   builder.GitManager,
+		FileSystem:                   builder.FileSystem,
+		PresetCatalogFactory:         builder.PresetCatalogFactory,
+		WorkflowExecutorFactory:      builder.WorkflowExecutorFactory,
+	})
 }
 
 type filesAddPresetOptions struct {
