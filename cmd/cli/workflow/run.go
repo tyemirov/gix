@@ -222,7 +222,7 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 		Variables:                            variableAssignments,
 	}
 
-	executor := resolveOperationExecutor(builder.OperationExecutorFactory, nodes, workflowDependencies)
+	executor := ResolveOperationExecutor(builder.OperationExecutorFactory, nodes, workflowDependencies)
 	_, runErr := executor.Execute(command.Context(), roots, runtimeOptions)
 	return runErr
 }

@@ -24,7 +24,8 @@ type OperationExecutor interface {
 // OperationExecutorFactory constructs workflow executors.
 type OperationExecutorFactory func(nodes []*workflowpkg.OperationNode, dependencies workflowpkg.Dependencies) OperationExecutor
 
-func resolveOperationExecutor(factory OperationExecutorFactory, nodes []*workflowpkg.OperationNode, dependencies workflowpkg.Dependencies) OperationExecutor {
+// ResolveOperationExecutor returns a custom executor when provided, otherwise it builds the default workflow executor.
+func ResolveOperationExecutor(factory OperationExecutorFactory, nodes []*workflowpkg.OperationNode, dependencies workflowpkg.Dependencies) OperationExecutor {
 	if factory != nil {
 		if executor := factory(nodes, dependencies); executor != nil {
 			return executor

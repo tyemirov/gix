@@ -47,7 +47,7 @@ const (
 
 // FilesAddCommandBuilder assembles the repo-files-add command.
 type FilesAddCommandBuilder struct {
-	LoggerProvider               LoggerProvider
+	LoggerProvider               workflowcmd.LoggerProvider
 	Discoverer                   shared.RepositoryDiscoverer
 	GitExecutor                  shared.GitExecutor
 	GitManager                   shared.GitRepositoryManager
@@ -55,7 +55,7 @@ type FilesAddCommandBuilder struct {
 	HumanReadableLoggingProvider func() bool
 	ConfigurationProvider        func() AddConfiguration
 	PresetCatalogFactory         func() workflowcmd.PresetCatalog
-	WorkflowExecutorFactory      WorkflowExecutorFactory
+	WorkflowExecutorFactory      workflowcmd.OperationExecutorFactory
 }
 
 // Build constructs the repo-files-add command.
@@ -304,7 +304,7 @@ func (builder *FilesAddCommandBuilder) run(command *cobra.Command, arguments []s
 		CaptureInitialWorktreeStatus: requireClean,
 	}
 
-	executor := ResolveWorkflowExecutor(builder.WorkflowExecutorFactory, nodes, workflowDependencies)
+	executor := workflowcmd.ResolveOperationExecutor(builder.WorkflowExecutorFactory, nodes, workflowDependencies)
 	_, runErr := executor.Execute(command.Context(), roots, runtimeOptions)
 	return runErr
 }

@@ -126,7 +126,7 @@ func TestRemoveCommandConfigurationPrecedence(testInstance *testing.T) {
 				PresetCatalogFactory: func() workflowcmd.PresetCatalog {
 					return &fakePresetCatalog{configuration: presetConfig, found: true}
 				},
-				WorkflowExecutorFactory: func(nodes []*workflow.OperationNode, _ workflow.Dependencies) repos.WorkflowExecutor {
+				WorkflowExecutorFactory: func(nodes []*workflow.OperationNode, _ workflow.Dependencies) workflowcmd.OperationExecutor {
 					require.Len(subtest, nodes, 1)
 					taskOp, ok := nodes[0].Operation.(*workflow.TaskOperation)
 					require.True(subtest, ok)
