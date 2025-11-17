@@ -156,7 +156,7 @@ func TestRenameCommandConfigurationPrecedence(testInstance *testing.T) {
 					return repos.RenameConfiguration{}
 				},
 				PresetCatalogFactory: func() workflowcmd.PresetCatalog { return catalog },
-				WorkflowExecutorFactory: func(nodes []*workflow.OperationNode, _ workflow.Dependencies) repos.WorkflowExecutor {
+				WorkflowExecutorFactory: func(nodes []*workflow.OperationNode, _ workflow.Dependencies) workflowcmd.OperationExecutor {
 					if testCase.expectExecution {
 						require.Len(subtest, nodes, 1)
 						renameOperation, ok := nodes[0].Operation.(*workflow.RenameOperation)

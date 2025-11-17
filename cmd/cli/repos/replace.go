@@ -36,7 +36,7 @@ const (
 
 // ReplaceCommandBuilder assembles the repo-files-replace command.
 type ReplaceCommandBuilder struct {
-	LoggerProvider               LoggerProvider
+	LoggerProvider               workflowcmd.LoggerProvider
 	Discoverer                   shared.RepositoryDiscoverer
 	GitExecutor                  shared.GitExecutor
 	GitManager                   shared.GitRepositoryManager
@@ -44,7 +44,7 @@ type ReplaceCommandBuilder struct {
 	HumanReadableLoggingProvider func() bool
 	ConfigurationProvider        func() ReplaceConfiguration
 	PresetCatalogFactory         func() workflowcmd.PresetCatalog
-	WorkflowExecutorFactory      WorkflowExecutorFactory
+	WorkflowExecutorFactory      workflowcmd.OperationExecutorFactory
 }
 
 // Build constructs the repo-files-replace command.
@@ -207,7 +207,7 @@ func (builder *ReplaceCommandBuilder) run(command *cobra.Command, _ []string) er
 
 	runtimeOptions := workflow.RuntimeOptions{AssumeYes: assumeYes}
 
-	executor := ResolveWorkflowExecutor(builder.WorkflowExecutorFactory, nodes, workflowDependencies)
+	executor := workflowcmd.ResolveOperationExecutor(builder.WorkflowExecutorFactory, nodes, workflowDependencies)
 	_, runErr := executor.Execute(command.Context(), roots, runtimeOptions)
 	return runErr
 }

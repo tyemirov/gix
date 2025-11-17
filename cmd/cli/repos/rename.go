@@ -31,17 +31,17 @@ const (
 
 // RenameCommandBuilder assembles the repo-folders-rename command.
 type RenameCommandBuilder struct {
-	LoggerProvider               LoggerProvider
+	LoggerProvider               workflowcmd.LoggerProvider
 	Discoverer                   shared.RepositoryDiscoverer
 	GitExecutor                  shared.GitExecutor
 	GitManager                   shared.GitRepositoryManager
 	GitHubResolver               shared.GitHubMetadataResolver
 	FileSystem                   shared.FileSystem
-	PrompterFactory              PrompterFactory
+	PrompterFactory              workflowcmd.PrompterFactory
 	HumanReadableLoggingProvider func() bool
 	ConfigurationProvider        func() RenameConfiguration
 	PresetCatalogFactory         func() workflowcmd.PresetCatalog
-	WorkflowExecutorFactory      WorkflowExecutorFactory
+	WorkflowExecutorFactory      workflowcmd.OperationExecutorFactory
 }
 
 // Build constructs the repo-folders-rename command.
@@ -152,7 +152,7 @@ func (builder *RenameCommandBuilder) run(command *cobra.Command, arguments []str
 		runtimeOptions.CaptureInitialWorktreeStatus = true
 	}
 
-	executor := ResolveWorkflowExecutor(builder.WorkflowExecutorFactory, nodes, workflowDependencies)
+	executor := workflowcmd.ResolveOperationExecutor(builder.WorkflowExecutorFactory, nodes, workflowDependencies)
 	_, runErr := executor.Execute(command.Context(), roots, runtimeOptions)
 	return runErr
 }

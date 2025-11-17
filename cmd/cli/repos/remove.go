@@ -37,7 +37,7 @@ const (
 
 // RemoveCommandBuilder assembles the repo-history-remove command.
 type RemoveCommandBuilder struct {
-	LoggerProvider               LoggerProvider
+	LoggerProvider               workflowcmd.LoggerProvider
 	Discoverer                   shared.RepositoryDiscoverer
 	GitExecutor                  shared.GitExecutor
 	GitManager                   shared.GitRepositoryManager
@@ -45,7 +45,7 @@ type RemoveCommandBuilder struct {
 	HumanReadableLoggingProvider func() bool
 	ConfigurationProvider        func() RemoveConfiguration
 	PresetCatalogFactory         func() workflowcmd.PresetCatalog
-	WorkflowExecutorFactory      WorkflowExecutorFactory
+	WorkflowExecutorFactory      workflowcmd.OperationExecutorFactory
 }
 
 // Build constructs the repo-history-remove command.
@@ -195,7 +195,7 @@ func (builder *RemoveCommandBuilder) run(command *cobra.Command, arguments []str
 
 	runtimeOptions := workflow.RuntimeOptions{AssumeYes: assumeYes}
 
-	executor := ResolveWorkflowExecutor(builder.WorkflowExecutorFactory, nodes, workflowDependencies)
+	executor := workflowcmd.ResolveOperationExecutor(builder.WorkflowExecutorFactory, nodes, workflowDependencies)
 	_, runErr := executor.Execute(command.Context(), roots, runtimeOptions)
 	return runErr
 }

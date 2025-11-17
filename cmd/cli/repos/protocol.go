@@ -35,16 +35,16 @@ const (
 
 // ProtocolCommandBuilder assembles the repo-protocol-convert command.
 type ProtocolCommandBuilder struct {
-	LoggerProvider               LoggerProvider
+	LoggerProvider               workflowcmd.LoggerProvider
 	Discoverer                   shared.RepositoryDiscoverer
 	GitExecutor                  shared.GitExecutor
 	GitManager                   shared.GitRepositoryManager
 	GitHubResolver               shared.GitHubMetadataResolver
-	PrompterFactory              PrompterFactory
+	PrompterFactory              workflowcmd.PrompterFactory
 	HumanReadableLoggingProvider func() bool
 	ConfigurationProvider        func() ProtocolConfiguration
 	PresetCatalogFactory         func() workflowcmd.PresetCatalog
-	WorkflowExecutorFactory      WorkflowExecutorFactory
+	WorkflowExecutorFactory      workflowcmd.OperationExecutorFactory
 }
 
 // Build constructs the repo-protocol-convert command.
@@ -157,7 +157,7 @@ func (builder *ProtocolCommandBuilder) run(command *cobra.Command, arguments []s
 
 	runtimeOptions := workflow.RuntimeOptions{AssumeYes: assumeYes}
 
-	executor := ResolveWorkflowExecutor(builder.WorkflowExecutorFactory, nodes, workflowDependencies)
+	executor := workflowcmd.ResolveOperationExecutor(builder.WorkflowExecutorFactory, nodes, workflowDependencies)
 	_, runErr := executor.Execute(command.Context(), roots, runtimeOptions)
 	return runErr
 }

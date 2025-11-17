@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	repocli "github.com/temirov/gix/cmd/cli/repos"
 	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
 	"github.com/temirov/gix/internal/execshell"
 	"github.com/temirov/gix/internal/utils"
@@ -68,7 +67,7 @@ func TestCommandRunsAcrossRoots(t *testing.T) {
 		},
 		GitExecutor:          executor,
 		PresetCatalogFactory: func() workflowcmd.PresetCatalog { return &fakePresetCatalog{configuration: preset, found: true} },
-		WorkflowExecutorFactory: func(nodes []*workflow.OperationNode, _ workflow.Dependencies) repocli.WorkflowExecutor {
+		WorkflowExecutorFactory: func(nodes []*workflow.OperationNode, _ workflow.Dependencies) workflowcmd.OperationExecutor {
 			require.Len(t, nodes, 1)
 			taskOp, ok := nodes[0].Operation.(*workflow.TaskOperation)
 			require.True(t, ok)
@@ -169,7 +168,7 @@ func TestRetagCommandBuildsMappings(t *testing.T) {
 		},
 		GitExecutor:          &stubGitExecutor{},
 		PresetCatalogFactory: func() workflowcmd.PresetCatalog { return &fakePresetCatalog{configuration: preset, found: true} },
-		WorkflowExecutorFactory: func(nodes []*workflow.OperationNode, _ workflow.Dependencies) repocli.WorkflowExecutor {
+		WorkflowExecutorFactory: func(nodes []*workflow.OperationNode, _ workflow.Dependencies) workflowcmd.OperationExecutor {
 			require.Len(t, nodes, 1)
 			taskOp, ok := nodes[0].Operation.(*workflow.TaskOperation)
 			require.True(t, ok)

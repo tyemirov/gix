@@ -154,7 +154,7 @@ func TestRemotesCommandConfigurationPrecedence(testInstance *testing.T) {
 					return testCase.configuration
 				},
 				PresetCatalogFactory: func() workflowcmd.PresetCatalog { return catalog },
-				WorkflowExecutorFactory: func(nodes []*workflow.OperationNode, _ workflow.Dependencies) repos.WorkflowExecutor {
+				WorkflowExecutorFactory: func(nodes []*workflow.OperationNode, _ workflow.Dependencies) workflowcmd.OperationExecutor {
 					if !testCase.expectExecution {
 						return executor
 					}

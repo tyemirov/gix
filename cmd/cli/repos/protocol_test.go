@@ -177,7 +177,7 @@ func TestProtocolCommandConfigurationPrecedence(testInstance *testing.T) {
 				PresetCatalogFactory: func() workflowcmd.PresetCatalog {
 					return &fakePresetCatalog{configuration: presetConfig, found: true}
 				},
-				WorkflowExecutorFactory: func(nodes []*workflow.OperationNode, _ workflow.Dependencies) repos.WorkflowExecutor {
+				WorkflowExecutorFactory: func(nodes []*workflow.OperationNode, _ workflow.Dependencies) workflowcmd.OperationExecutor {
 					if !testCase.expectTaskInvocation {
 						return recording
 					}

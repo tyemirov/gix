@@ -7,7 +7,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	repocli "github.com/temirov/gix/cmd/cli/repos"
 	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
 	"github.com/temirov/gix/internal/repos/shared"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
@@ -34,7 +33,7 @@ const (
 
 // CommandBuilder assembles the release command.
 type CommandBuilder struct {
-	LoggerProvider               LoggerProvider
+	LoggerProvider               workflowcmd.LoggerProvider
 	Discoverer                   shared.RepositoryDiscoverer
 	GitExecutor                  shared.GitExecutor
 	GitManager                   shared.GitRepositoryManager
@@ -42,7 +41,7 @@ type CommandBuilder struct {
 	HumanReadableLoggingProvider func() bool
 	ConfigurationProvider        func() CommandConfiguration
 	PresetCatalogFactory         func() workflowcmd.PresetCatalog
-	WorkflowExecutorFactory      repocli.WorkflowExecutorFactory
+	WorkflowExecutorFactory      workflowcmd.OperationExecutorFactory
 }
 
 // Build constructs the repo release command.
@@ -159,7 +158,7 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 
 	runtimeOptions := workflow.RuntimeOptions{AssumeYes: assumeYes}
 
-	executor := repocli.ResolveWorkflowExecutor(builder.WorkflowExecutorFactory, nodes, workflowDependencies)
+	executor := workflowcmd.ResolveOperationExecutor(builder.WorkflowExecutorFactory, nodes, workflowDependencies)
 	_, runErr := executor.Execute(command.Context(), repositoryRoots, runtimeOptions)
 	return runErr
 }
