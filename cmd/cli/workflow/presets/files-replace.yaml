@@ -1,0 +1,16 @@
+workflow:
+  - step:
+      name: files-replace
+      command: ["tasks", "apply"]
+      with:
+        tasks:
+          - name: Replace repository file content
+            ensure_clean: false
+            actions:
+              - type: repo.files.replace
+                options:
+                  find: ""
+                  replace: ""
+                  pattern: ""
+                  patterns: []
+                  command: []

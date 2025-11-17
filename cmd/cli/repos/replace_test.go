@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	repos "github.com/temirov/gix/cmd/cli/repos"
+	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
 	"github.com/temirov/gix/internal/repos/filesystem"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
 	"github.com/temirov/gix/internal/workflow"
@@ -30,23 +31,22 @@ const (
 	replaceCliRoot          = "/tmp/replace-cli-root"
 )
 
-type replaceRecordingTaskRunner struct {
-	roots          []string
-	definitions    []workflow.TaskDefinition
-	runtimeOptions workflow.RuntimeOptions
+type replaceRecordingExecutor struct {
+	roots   []string
+	options workflow.RuntimeOptions
 }
 
-func (runner *replaceRecordingTaskRunner) Run(_ context.Context, roots []string, definitions []workflow.TaskDefinition, options workflow.RuntimeOptions) (workflow.ExecutionOutcome, error) {
-	runner.roots = append([]string{}, roots...)
-	runner.definitions = append([]workflow.TaskDefinition{}, definitions...)
-	runner.runtimeOptions = options
+func (executor *replaceRecordingExecutor) Execute(_ context.Context, roots []string, options workflow.RuntimeOptions) (workflow.ExecutionOutcome, error) {
+	executor.roots = append([]string{}, roots...)
+	executor.options = options
 	return workflow.ExecutionOutcome{}, nil
 }
 
 func TestReplaceCommandUsesConfigurationDefaults(t *testing.T) {
 	t.Parallel()
 
-	taskRunner := &replaceRecordingTaskRunner{}
+	presetConfig := loadFilesReplacePreset(t)
+	recording := &replaceRecordingExecutor{}
 	builder := repos.ReplaceCommandBuilder{
 		LoggerProvider: func() *zap.Logger {
 			return zap.NewNop()
@@ -71,8 +71,37 @@ func TestReplaceCommandUsesConfigurationDefaults(t *testing.T) {
 				RequirePaths:    []string{"go.mod"},
 			}
 		},
-		TaskRunnerFactory: func(workflow.Dependencies) repos.TaskRunnerExecutor {
-			return taskRunner
+		PresetCatalogFactory: func() workflowcmd.PresetCatalog {
+			return &fakePresetCatalog{configuration: presetConfig, found: true}
+		},
+		WorkflowExecutorFactory: func(nodes []*workflow.OperationNode, _ workflow.Dependencies) repos.WorkflowExecutor {
+			require.Len(t, nodes, 1)
+			taskOperation, ok := nodes[0].Operation.(*workflow.TaskOperation)
+			require.True(t, ok)
+			definitions := taskOperation.Definitions()
+			require.Len(t, definitions, 1)
+			task := definitions[0]
+			require.Len(t, task.Actions, 1)
+			action := task.Actions[0]
+			require.Equal(t, "repo.files.replace", action.Type)
+
+			options := action.Options
+			require.Equal(t, "foo", options["find"])
+			require.Equal(t, "bar", options["replace"])
+			require.Equal(t, "*.md", options["pattern"])
+			require.Equal(t, []string{"go", "fmt", "./..."}, options["command"])
+
+			safeguards, ok := options["safeguards"].(map[string]any)
+			require.True(t, ok)
+			hardStop, ok := safeguards["hard_stop"].(map[string]any)
+			require.True(t, ok)
+			require.True(t, hardStop["require_clean"].(bool))
+
+			softSkip, ok := safeguards["soft_skip"].(map[string]any)
+			require.True(t, ok)
+			require.Equal(t, "main", softSkip["branch"])
+			require.ElementsMatch(t, []string{filepath.Clean("go.mod")}, softSkip["paths"].([]string))
+			return recording
 		},
 	}
 
@@ -87,30 +116,15 @@ func TestReplaceCommandUsesConfigurationDefaults(t *testing.T) {
 	runError := command.Execute()
 	require.NoError(t, runError)
 
-	require.Equal(t, []string{replaceConfiguredRoot}, taskRunner.roots)
-	require.True(t, taskRunner.runtimeOptions.AssumeYes)
-	require.Len(t, taskRunner.definitions, 1)
-
-	action := taskRunner.definitions[0].Actions[0]
-	require.Equal(t, "repo.files.replace", action.Type)
-
-	options := action.Options
-	require.Equal(t, "foo", options["find"])
-	require.Equal(t, "bar", options["replace"])
-	require.Equal(t, "*.md", options["pattern"])
-	require.Equal(t, []string{"go", "fmt", "./..."}, options["command"])
-
-	safeguards, ok := options["safeguards"].(map[string]any)
-	require.True(t, ok)
-	require.True(t, safeguards["require_clean"].(bool))
-	require.Equal(t, "main", safeguards["branch"])
-	require.ElementsMatch(t, []string{filepath.Clean("go.mod")}, safeguards["paths"].([]string))
+	require.Equal(t, []string{replaceConfiguredRoot}, recording.roots)
+	require.True(t, recording.options.AssumeYes)
 }
 
 func TestReplaceCommandFlagOverrides(t *testing.T) {
 	t.Parallel()
 
-	taskRunner := &replaceRecordingTaskRunner{}
+	presetConfig := loadFilesReplacePreset(t)
+	recording := &replaceRecordingExecutor{}
 	builder := repos.ReplaceCommandBuilder{
 		LoggerProvider:               func() *zap.Logger { return zap.NewNop() },
 		Discoverer:                   &fakeRepositoryDiscoverer{repositories: []string{replaceCliRoot}},
@@ -125,7 +139,42 @@ func TestReplaceCommandFlagOverrides(t *testing.T) {
 				Find:            "config",
 			}
 		},
-		TaskRunnerFactory: func(workflow.Dependencies) repos.TaskRunnerExecutor { return taskRunner },
+		PresetCatalogFactory: func() workflowcmd.PresetCatalog {
+			return &fakePresetCatalog{configuration: presetConfig, found: true}
+		},
+		WorkflowExecutorFactory: func(nodes []*workflow.OperationNode, _ workflow.Dependencies) repos.WorkflowExecutor {
+			require.Len(t, nodes, 1)
+			taskOperation, ok := nodes[0].Operation.(*workflow.TaskOperation)
+			require.True(t, ok)
+			definitions := taskOperation.Definitions()
+			require.Len(t, definitions, 1)
+			task := definitions[0]
+			require.Len(t, task.Actions, 1)
+			action := task.Actions[0]
+
+			require.Equal(t, "repo.files.replace", action.Type)
+			require.Equal(t, "old", action.Options["find"])
+			require.Equal(t, "new", action.Options["replace"])
+
+			patternList, ok := action.Options["patterns"].([]string)
+			require.True(t, ok)
+			require.ElementsMatch(t, []string{"*.go", "cmd/**/*.go"}, patternList)
+
+			commandArgs := action.Options["command"].([]string)
+			require.Equal(t, []string{"go", "test", "./..."}, commandArgs)
+
+			safeguards := action.Options["safeguards"].(map[string]any)
+			hardStop, ok := safeguards["hard_stop"].(map[string]any)
+			require.True(t, ok)
+			require.True(t, hardStop["require_clean"].(bool))
+
+			softSkip, ok := safeguards["soft_skip"].(map[string]any)
+			require.True(t, ok)
+			require.Equal(t, "master", softSkip["branch"])
+			require.Equal(t, []string{filepath.Clean("go.mod")}, softSkip["paths"].([]string))
+
+			return recording
+		},
 	}
 
 	command, buildError := builder.Build()
@@ -151,32 +200,13 @@ func TestReplaceCommandFlagOverrides(t *testing.T) {
 	runError := command.Execute()
 	require.NoError(t, runError)
 
-	require.Equal(t, []string{replaceCliRoot}, taskRunner.roots)
-	require.True(t, taskRunner.runtimeOptions.AssumeYes)
-
-	require.Len(t, taskRunner.definitions, 1)
-	action := taskRunner.definitions[0].Actions[0]
-	require.Equal(t, "repo.files.replace", action.Type)
-
-	require.Equal(t, []string{"old", "new"}, []string{action.Options["find"].(string), action.Options["replace"].(string)})
-
-	patternList, ok := action.Options["patterns"].([]string)
-	require.True(t, ok)
-	require.ElementsMatch(t, []string{"*.go", "cmd/**/*.go"}, patternList)
-
-	commandArgs := action.Options["command"].([]string)
-	require.Equal(t, []string{"go", "test", "./..."}, commandArgs)
-
-	safeguards := action.Options["safeguards"].(map[string]any)
-	require.True(t, safeguards["require_clean"].(bool))
-	require.Equal(t, "master", safeguards["branch"])
-	require.Equal(t, []string{filepath.Clean("go.mod")}, safeguards["paths"].([]string))
+	require.Equal(t, []string{replaceCliRoot}, recording.roots)
+	require.True(t, recording.options.AssumeYes)
 }
 
 func TestReplaceCommandRequiresFind(t *testing.T) {
 	t.Parallel()
 
-	taskRunner := &replaceRecordingTaskRunner{}
 	builder := repos.ReplaceCommandBuilder{
 		LoggerProvider:               func() *zap.Logger { return zap.NewNop() },
 		Discoverer:                   &fakeRepositoryDiscoverer{repositories: []string{replaceConfiguredRoot}},
@@ -185,7 +215,6 @@ func TestReplaceCommandRequiresFind(t *testing.T) {
 		FileSystem:                   filesystem.OSFileSystem{},
 		HumanReadableLoggingProvider: func() bool { return false },
 		ConfigurationProvider:        func() repos.ReplaceConfiguration { return repos.ReplaceConfiguration{} },
-		TaskRunnerFactory:            func(workflow.Dependencies) repos.TaskRunnerExecutor { return taskRunner },
 	}
 
 	command, buildError := builder.Build()
@@ -199,7 +228,6 @@ func TestReplaceCommandRequiresFind(t *testing.T) {
 	err := command.Execute()
 	require.Error(t, err)
 	require.Contains(t, strings.ToLower(err.Error()), "requires --find")
-	require.Empty(t, taskRunner.definitions)
 }
 
 func bindGlobalReplaceFlags(command *cobra.Command) {
@@ -207,4 +235,29 @@ func bindGlobalReplaceFlags(command *cobra.Command) {
 	flagutils.BindExecutionFlags(command, flagutils.ExecutionDefaults{}, flagutils.ExecutionFlagDefinitions{
 		AssumeYes: flagutils.ExecutionFlagDefinition{Name: flagutils.AssumeYesFlagName, Usage: flagutils.AssumeYesFlagUsage, Shorthand: flagutils.AssumeYesFlagShorthand, Enabled: true},
 	})
+}
+
+func loadFilesReplacePreset(testInstance testing.TB) workflow.Configuration {
+	testInstance.Helper()
+	presetContent := []byte(`workflow:
+  - step:
+      name: files-replace
+      command: ["tasks", "apply"]
+      with:
+        tasks:
+          - name: Replace repository file content
+            ensure_clean: false
+            actions:
+              - type: repo.files.replace
+                options:
+                  find: ""
+                  replace: ""
+                  pattern: ""
+                  patterns: []
+                  command: []
+                  safeguards: {}
+`)
+	configuration, parseError := workflow.ParseConfiguration(presetContent)
+	require.NoError(testInstance, parseError)
+	return configuration
 }

@@ -41,7 +41,8 @@ workflow:
                   remote: origin
                   create_if_missing: false
             safeguards:
-              require_clean: true
+              hard_stop:
+                require_clean: true
 
   - step:
       name: namespace-branch
@@ -57,7 +58,8 @@ workflow:
                   remote: origin
                   create_if_missing: true
             safeguards:
-              require_clean: true
+              hard_stop:
+                require_clean: true
 
   - step:
       name: namespace-rewrite

@@ -89,12 +89,13 @@ func TestWorkflowHumanFormatterGroupsPhases(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(buffer.String()), "\n")
 	require.Equal(t, []string{
 		"-- tyemirov/scheduler (/tmp/repos/scheduler) --",
-		"  remote/folder:",
+		"  • remote/folder:",
 		"    - origin now ssh://git@github.com/tyemirov/scheduler.git",
-		"  branch: master (created)",
-		"  files:",
+		"  • branch:",
+		"    - master (created)",
+		"  • files:",
 		"    - Ensure gitignore entries",
-		"  git:",
+		"  • git:",
 		"    - Git Stage Commit",
 	}, lines)
 }
@@ -141,11 +142,11 @@ func TestWorkflowHumanFormatterHandlesMultipleRepositories(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(buffer.String()), "\n")
 	require.Equal(t, []string{
 		"-- tyemirov/alpha (/tmp/repos/alpha) --",
-		"  files:",
+		"  • files:",
 		"    - Update files",
 		"",
 		"-- tyemirov/beta (/tmp/repos/beta) --",
-		"  git:",
+		"  • git:",
 		"    - Push branch",
 	}, lines)
 }
@@ -176,7 +177,8 @@ func TestWorkflowHumanFormatterFallbackForBranchPhaseWithoutSwitch(t *testing.T)
 	lines := strings.Split(strings.TrimSpace(buffer.String()), "\n")
 	require.Equal(t, []string{
 		"-- tyemirov/solo (/tmp/repos/solo) --",
-		"  branch: Switch branch",
+		"  • branch:",
+		"    - Switch branch",
 	}, lines)
 }
 
@@ -229,9 +231,32 @@ func TestWorkflowHumanFormatterPreservesSeverityForPhaseEvents(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(buffer.String()), "\n")
 	require.Equal(t, []string{
 		"-- tyemirov/severity (/tmp/repos/severity) --",
-		"  remote/folder:",
+		"  • remote/folder:",
 		"    - ⚠ missing origin owner",
-		"  files:",
+		"  • files:",
 		"    - ✖ template validation failed",
+	}, lines)
+}
+
+func TestWorkflowHumanFormatterRecordsIssues(t *testing.T) {
+	formatter := newWorkflowHumanFormatter()
+	var buffer bytes.Buffer
+
+	repo := "tyemirov/issues"
+	path := "/tmp/repos/issues"
+
+	formatter.HandleEvent(shared.Event{
+		Code:                 shared.EventCodeTaskSkip,
+		Level:                shared.EventLevelWarn,
+		RepositoryIdentifier: repo,
+		RepositoryPath:       path,
+		Message:              "git pull declined",
+	}, &buffer)
+
+	lines := strings.Split(strings.TrimSpace(buffer.String()), "\n")
+	require.Equal(t, []string{
+		"-- tyemirov/issues (/tmp/repos/issues) --",
+		"  issues:",
+		"    - ⚠ git pull declined",
 	}, lines)
 }
