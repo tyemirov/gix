@@ -470,31 +470,31 @@ func isPathWithinRepository(path string, repositories map[string]struct{}) bool 
 }
 
 func (service *Service) resolveDefaultBranchFromGit(executionContext context.Context, repositoryPath string) string {
-	commandDetails := execshell.CommandDetails{
-		Arguments:        lsRemoteHeadArguments(),
+	remoteHeadReference := execshell.CommandDetails{
+		Arguments:        remoteHeadSymbolicRefArguments(),
 		WorkingDirectory: repositoryPath,
 	}
 
-	executionResult, executionError := service.gitExecutor.ExecuteGit(executionContext, commandDetails)
-	if executionError != nil {
-		return ""
+	if executionResult, executionError := service.gitExecutor.ExecuteGit(executionContext, remoteHeadReference); executionError == nil {
+		remoteReference := strings.TrimSpace(executionResult.StandardOutput)
+		remoteReference = strings.TrimPrefix(remoteReference, fmt.Sprintf("refs/remotes/%s/", shared.OriginRemoteNameConstant))
+		remoteReference = strings.TrimPrefix(remoteReference, refsHeadsPrefixConstant)
+		if len(remoteReference) > 0 {
+			return remoteReference
+		}
 	}
 
-	lines := strings.Split(executionResult.StandardOutput, "\n")
-	for _, line := range lines {
-		if !strings.HasPrefix(line, "ref:") {
-			continue
+	localHeadReference := execshell.CommandDetails{
+		Arguments:        localHeadSymbolicRefArguments(),
+		WorkingDirectory: repositoryPath,
+	}
+
+	if executionResult, executionError := service.gitExecutor.ExecuteGit(executionContext, localHeadReference); executionError == nil {
+		localReference := strings.TrimSpace(executionResult.StandardOutput)
+		localReference = strings.TrimPrefix(localReference, refsHeadsPrefixConstant)
+		if len(localReference) > 0 {
+			return localReference
 		}
-		components := strings.Split(line, gitReferenceSeparator)
-		if len(components) < 1 {
-			continue
-		}
-		referenceParts := strings.Fields(components[0])
-		if len(referenceParts) < 2 {
-			continue
-		}
-		reference := referenceParts[1]
-		return strings.TrimPrefix(reference, refsHeadsPrefixConstant)
 	}
 
 	return ""
