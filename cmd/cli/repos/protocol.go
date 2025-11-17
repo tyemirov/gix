@@ -9,10 +9,7 @@ import (
 
 	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
 	"github.com/temirov/gix/internal/repos/shared"
-	flagutils "github.com/temirov/gix/internal/utils/flags"
-	rootutils "github.com/temirov/gix/internal/utils/roots"
 	"github.com/temirov/gix/internal/workflow"
-	"github.com/temirov/gix/pkg/taskrunner"
 )
 
 const (
@@ -65,12 +62,6 @@ func (builder *ProtocolCommandBuilder) Build() (*cobra.Command, error) {
 
 func (builder *ProtocolCommandBuilder) run(command *cobra.Command, arguments []string) error {
 	configuration := builder.resolveConfiguration()
-	executionFlags, executionFlagsAvailable := flagutils.ResolveExecutionFlags(command)
-
-	assumeYes := configuration.AssumeYes
-	if executionFlagsAvailable && executionFlags.AssumeYesSet {
-		assumeYes = executionFlags.AssumeYes
-	}
 
 	fromValue := configuration.FromProtocol
 	if command != nil && command.Flags().Changed(protocolFromFlagName) {
@@ -103,63 +94,36 @@ func (builder *ProtocolCommandBuilder) run(command *cobra.Command, arguments []s
 		return errors.New(protocolErrorSamePair)
 	}
 
-	roots, rootsError := rootutils.Resolve(command, arguments, configuration.RepositoryRoots)
-	if rootsError != nil {
-		return rootsError
-	}
+	request := workflowcmd.PresetCommandRequest{
+		Command:                 command,
+		Arguments:               arguments,
+		RootArguments:           arguments,
+		ConfiguredAssumeYes:     configuration.AssumeYes,
+		ConfiguredRoots:         configuration.RepositoryRoots,
+		PresetName:              protocolPresetName,
+		PresetMissingMessage:    protocolPresetMissingError,
+		PresetLoadErrorTemplate: protocolPresetLoadError,
+		BuildErrorTemplate:      protocolBuildWorkflowError,
+		Configure: func(ctx workflowcmd.PresetCommandContext) (workflowcmd.PresetCommandResult, error) {
+			for index := range ctx.Configuration.Steps {
+				if workflow.CommandPathKey(ctx.Configuration.Steps[index].Command) != protocolCommandKey {
+					continue
+				}
+				if ctx.Configuration.Steps[index].Options == nil {
+					ctx.Configuration.Steps[index].Options = make(map[string]any)
+				}
+				ctx.Configuration.Steps[index].Options["from"] = string(fromProtocol)
+				ctx.Configuration.Steps[index].Options["to"] = string(toProtocol)
+			}
 
-	dependencyResult, dependencyError := taskrunner.BuildDependencies(
-		taskrunner.DependenciesConfig{
-			LoggerProvider:               builder.LoggerProvider,
-			HumanReadableLoggingProvider: builder.HumanReadableLoggingProvider,
-			RepositoryDiscoverer:         builder.Discoverer,
-			GitExecutor:                  builder.GitExecutor,
-			GitRepositoryManager:         builder.GitManager,
-			GitHubResolver:               builder.GitHubResolver,
-			PrompterFactory:              builder.PrompterFactory,
+			return workflowcmd.PresetCommandResult{
+				Configuration:  ctx.Configuration,
+				RuntimeOptions: ctx.RuntimeOptions(),
+			}, nil
 		},
-		taskrunner.DependenciesOptions{Command: command},
-	)
-	if dependencyError != nil {
-		return dependencyError
 	}
 
-	workflowDependencies := dependencyResult.Workflow
-	if command != nil {
-		workflowDependencies.Output = command.OutOrStdout()
-		workflowDependencies.Errors = command.ErrOrStderr()
-	}
-
-	presetCatalog := builder.resolvePresetCatalog()
-	presetConfiguration, presetFound, presetError := presetCatalog.Load(protocolPresetName)
-	if presetError != nil {
-		return fmt.Errorf(protocolPresetLoadError, presetError)
-	}
-	if !presetFound {
-		return errors.New(protocolPresetMissingError)
-	}
-
-	for index := range presetConfiguration.Steps {
-		if workflow.CommandPathKey(presetConfiguration.Steps[index].Command) != protocolCommandKey {
-			continue
-		}
-		if presetConfiguration.Steps[index].Options == nil {
-			presetConfiguration.Steps[index].Options = make(map[string]any)
-		}
-		presetConfiguration.Steps[index].Options["from"] = string(fromProtocol)
-		presetConfiguration.Steps[index].Options["to"] = string(toProtocol)
-	}
-
-	nodes, operationsError := workflow.BuildOperations(presetConfiguration)
-	if operationsError != nil {
-		return fmt.Errorf(protocolBuildWorkflowError, operationsError)
-	}
-
-	runtimeOptions := workflow.RuntimeOptions{AssumeYes: assumeYes}
-
-	executor := workflowcmd.ResolveOperationExecutor(builder.WorkflowExecutorFactory, nodes, workflowDependencies)
-	_, runErr := executor.Execute(command.Context(), roots, runtimeOptions)
-	return runErr
+	return builder.presetCommand().Execute(request)
 }
 
 func (builder *ProtocolCommandBuilder) resolveConfiguration() ProtocolConfiguration {
@@ -172,13 +136,18 @@ func (builder *ProtocolCommandBuilder) resolveConfiguration() ProtocolConfigurat
 	return provided.sanitize()
 }
 
-func (builder *ProtocolCommandBuilder) resolvePresetCatalog() workflowcmd.PresetCatalog {
-	if builder.PresetCatalogFactory != nil {
-		if catalog := builder.PresetCatalogFactory(); catalog != nil {
-			return catalog
-		}
-	}
-	return workflowcmd.NewEmbeddedPresetCatalog()
+func (builder *ProtocolCommandBuilder) presetCommand() workflowcmd.PresetCommand {
+	return newPresetCommand(presetCommandDependencies{
+		LoggerProvider:               builder.LoggerProvider,
+		HumanReadableLoggingProvider: builder.HumanReadableLoggingProvider,
+		Discoverer:                   builder.Discoverer,
+		GitExecutor:                  builder.GitExecutor,
+		GitManager:                   builder.GitManager,
+		GitHubResolver:               builder.GitHubResolver,
+		PrompterFactory:              builder.PrompterFactory,
+		PresetCatalogFactory:         builder.PresetCatalogFactory,
+		WorkflowExecutorFactory:      builder.WorkflowExecutorFactory,
+	})
 }
 
 func parseProtocolValue(value string) (shared.RemoteProtocol, error) {

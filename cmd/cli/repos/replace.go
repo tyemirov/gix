@@ -2,7 +2,6 @@ package repos
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -10,9 +9,7 @@ import (
 	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
 	"github.com/temirov/gix/internal/repos/shared"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
-	rootutils "github.com/temirov/gix/internal/utils/roots"
 	"github.com/temirov/gix/internal/workflow"
-	"github.com/temirov/gix/pkg/taskrunner"
 )
 
 const (
@@ -69,12 +66,6 @@ func (builder *ReplaceCommandBuilder) Build() (*cobra.Command, error) {
 
 func (builder *ReplaceCommandBuilder) run(command *cobra.Command, _ []string) error {
 	configuration := builder.resolveConfiguration()
-	executionFlags, executionFlagsAvailable := flagutils.ResolveExecutionFlags(command)
-
-	assumeYes := configuration.AssumeYes
-	if executionFlagsAvailable && executionFlags.AssumeYesSet {
-		assumeYes = executionFlags.AssumeYes
-	}
 
 	patterns := append([]string{}, configuration.Patterns...)
 	if command != nil && command.Flags().Changed(replacePatternFlagName) {
@@ -148,68 +139,42 @@ func (builder *ReplaceCommandBuilder) run(command *cobra.Command, _ []string) er
 		requiredPaths = sanitizeReplacementPaths(flagPaths)
 	}
 
-	roots, rootsError := rootutils.Resolve(command, nil, configuration.RepositoryRoots)
-	if rootsError != nil {
-		return rootsError
-	}
+	request := workflowcmd.PresetCommandRequest{
+		Command:                 command,
+		Arguments:               nil,
+		RootArguments:           []string{},
+		ConfiguredAssumeYes:     configuration.AssumeYes,
+		ConfiguredRoots:         configuration.RepositoryRoots,
+		PresetName:              replacePresetName,
+		PresetMissingMessage:    replacePresetMissingMessage,
+		PresetLoadErrorTemplate: replacePresetLoadError,
+		BuildErrorTemplate:      replaceBuildWorkflowError,
+		Configure: func(ctx workflowcmd.PresetCommandContext) (workflowcmd.PresetCommandResult, error) {
+			params := filesReplacePresetOptions{
+				Patterns:     patterns,
+				Find:         findValue,
+				Replace:      replaceValue,
+				Command:      commandArguments,
+				RequireClean: requireClean,
+				Branch:       branchValue,
+				RequirePaths: requiredPaths,
+			}
 
-	dependencyResult, dependencyError := taskrunner.BuildDependencies(
-		taskrunner.DependenciesConfig{
-			LoggerProvider:               builder.LoggerProvider,
-			HumanReadableLoggingProvider: builder.HumanReadableLoggingProvider,
-			RepositoryDiscoverer:         builder.Discoverer,
-			GitExecutor:                  builder.GitExecutor,
-			GitRepositoryManager:         builder.GitManager,
-			FileSystem:                   builder.FileSystem,
+			for index := range ctx.Configuration.Steps {
+				if workflow.CommandPathKey(ctx.Configuration.Steps[index].Command) != replacePresetCommandKey {
+					continue
+				}
+				updateFilesReplacePresetOptions(ctx.Configuration.Steps[index].Options, params)
+			}
+
+			return workflowcmd.PresetCommandResult{
+				Configuration:  ctx.Configuration,
+				RuntimeOptions: ctx.RuntimeOptions(),
+			}, nil
 		},
-		taskrunner.DependenciesOptions{Command: command},
-	)
-	if dependencyError != nil {
-		return dependencyError
 	}
 
-	workflowDependencies := dependencyResult.Workflow
-	if command != nil {
-		workflowDependencies.Output = command.OutOrStdout()
-		workflowDependencies.Errors = command.ErrOrStderr()
-	}
-
-	presetCatalog := builder.resolvePresetCatalog()
-	presetConfiguration, presetFound, presetError := presetCatalog.Load(replacePresetName)
-	if presetError != nil {
-		return fmt.Errorf(replacePresetLoadError, presetError)
-	}
-	if !presetFound {
-		return errors.New(replacePresetMissingMessage)
-	}
-
-	params := filesReplacePresetOptions{
-		Patterns:     patterns,
-		Find:         findValue,
-		Replace:      replaceValue,
-		Command:      commandArguments,
-		RequireClean: requireClean,
-		Branch:       branchValue,
-		RequirePaths: requiredPaths,
-	}
-
-	for index := range presetConfiguration.Steps {
-		if workflow.CommandPathKey(presetConfiguration.Steps[index].Command) != replacePresetCommandKey {
-			continue
-		}
-		updateFilesReplacePresetOptions(presetConfiguration.Steps[index].Options, params)
-	}
-
-	nodes, operationsError := workflow.BuildOperations(presetConfiguration)
-	if operationsError != nil {
-		return fmt.Errorf(replaceBuildWorkflowError, operationsError)
-	}
-
-	runtimeOptions := workflow.RuntimeOptions{AssumeYes: assumeYes}
-
-	executor := workflowcmd.ResolveOperationExecutor(builder.WorkflowExecutorFactory, nodes, workflowDependencies)
-	_, runErr := executor.Execute(command.Context(), roots, runtimeOptions)
-	return runErr
+	return builder.presetCommand().Execute(request)
 }
 
 func (builder *ReplaceCommandBuilder) resolveConfiguration() ReplaceConfiguration {
@@ -219,13 +184,17 @@ func (builder *ReplaceCommandBuilder) resolveConfiguration() ReplaceConfiguratio
 	return builder.ConfigurationProvider().Sanitize()
 }
 
-func (builder *ReplaceCommandBuilder) resolvePresetCatalog() workflowcmd.PresetCatalog {
-	if builder.PresetCatalogFactory != nil {
-		if catalog := builder.PresetCatalogFactory(); catalog != nil {
-			return catalog
-		}
-	}
-	return workflowcmd.NewEmbeddedPresetCatalog()
+func (builder *ReplaceCommandBuilder) presetCommand() workflowcmd.PresetCommand {
+	return newPresetCommand(presetCommandDependencies{
+		LoggerProvider:               builder.LoggerProvider,
+		HumanReadableLoggingProvider: builder.HumanReadableLoggingProvider,
+		Discoverer:                   builder.Discoverer,
+		GitExecutor:                  builder.GitExecutor,
+		GitManager:                   builder.GitManager,
+		FileSystem:                   builder.FileSystem,
+		PresetCatalogFactory:         builder.PresetCatalogFactory,
+		WorkflowExecutorFactory:      builder.WorkflowExecutorFactory,
+	})
 }
 
 func sanitizeCommandArguments(arguments []string) []string {

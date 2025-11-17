@@ -2,7 +2,6 @@ package repos
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -10,9 +9,7 @@ import (
 	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
 	"github.com/temirov/gix/internal/repos/shared"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
-	rootutils "github.com/temirov/gix/internal/utils/roots"
 	"github.com/temirov/gix/internal/workflow"
-	"github.com/temirov/gix/pkg/taskrunner"
 )
 
 const (
@@ -59,12 +56,6 @@ func (builder *RemotesCommandBuilder) Build() (*cobra.Command, error) {
 
 func (builder *RemotesCommandBuilder) run(command *cobra.Command, arguments []string) error {
 	configuration := builder.resolveConfiguration()
-	executionFlags, executionFlagsAvailable := flagutils.ResolveExecutionFlags(command)
-
-	assumeYes := configuration.AssumeYes
-	if executionFlagsAvailable && executionFlags.AssumeYesSet {
-		assumeYes = executionFlags.AssumeYes
-	}
 
 	ownerConstraint := configuration.Owner
 	if command != nil {
@@ -77,62 +68,36 @@ func (builder *RemotesCommandBuilder) run(command *cobra.Command, arguments []st
 		}
 	}
 
-	roots, rootsError := rootutils.Resolve(command, arguments, configuration.RepositoryRoots)
-	if rootsError != nil {
-		return rootsError
-	}
+	request := workflowcmd.PresetCommandRequest{
+		Command:                 command,
+		Arguments:               arguments,
+		RootArguments:           arguments,
+		ConfiguredAssumeYes:     configuration.AssumeYes,
+		ConfiguredRoots:         configuration.RepositoryRoots,
+		PresetName:              remoteCanonicalPresetName,
+		PresetMissingMessage:    remotesPresetMissingMessage,
+		PresetLoadErrorTemplate: remotesPresetLoadErrorTemplate,
+		BuildErrorTemplate:      remotesBuildOperationsErrorTemplate,
+		Configure: func(ctx workflowcmd.PresetCommandContext) (workflowcmd.PresetCommandResult, error) {
+			trimmedOwner := strings.TrimSpace(ownerConstraint)
+			for index := range ctx.Configuration.Steps {
+				if workflow.CommandPathKey(ctx.Configuration.Steps[index].Command) != remoteCanonicalCommandKey {
+					continue
+				}
+				if ctx.Configuration.Steps[index].Options == nil {
+					ctx.Configuration.Steps[index].Options = make(map[string]any)
+				}
+				ctx.Configuration.Steps[index].Options["owner"] = trimmedOwner
+			}
 
-	dependencyResult, dependencyError := taskrunner.BuildDependencies(
-		taskrunner.DependenciesConfig{
-			LoggerProvider:               builder.LoggerProvider,
-			HumanReadableLoggingProvider: builder.HumanReadableLoggingProvider,
-			RepositoryDiscoverer:         builder.Discoverer,
-			GitExecutor:                  builder.GitExecutor,
-			GitRepositoryManager:         builder.GitManager,
-			GitHubResolver:               builder.GitHubResolver,
-			PrompterFactory:              builder.PrompterFactory,
+			return workflowcmd.PresetCommandResult{
+				Configuration:  ctx.Configuration,
+				RuntimeOptions: ctx.RuntimeOptions(),
+			}, nil
 		},
-		taskrunner.DependenciesOptions{Command: command},
-	)
-	if dependencyError != nil {
-		return dependencyError
 	}
 
-	workflowDependencies := dependencyResult.Workflow
-	if command != nil {
-		workflowDependencies.Output = command.OutOrStdout()
-		workflowDependencies.Errors = command.ErrOrStderr()
-	}
-
-	presetCatalog := builder.resolvePresetCatalog()
-	presetConfiguration, presetFound, presetError := presetCatalog.Load(remoteCanonicalPresetName)
-	if presetError != nil {
-		return fmt.Errorf(remotesPresetLoadErrorTemplate, presetError)
-	}
-	if !presetFound {
-		return errors.New(remotesPresetMissingMessage)
-	}
-
-	trimmedOwner := strings.TrimSpace(ownerConstraint)
-	for index := range presetConfiguration.Steps {
-		if workflow.CommandPathKey(presetConfiguration.Steps[index].Command) != remoteCanonicalCommandKey {
-			continue
-		}
-		if presetConfiguration.Steps[index].Options == nil {
-			presetConfiguration.Steps[index].Options = make(map[string]any)
-		}
-		presetConfiguration.Steps[index].Options["owner"] = trimmedOwner
-	}
-
-	nodes, operationsError := workflow.BuildOperations(presetConfiguration)
-	if operationsError != nil {
-		return fmt.Errorf(remotesBuildOperationsErrorTemplate, operationsError)
-	}
-
-	runtimeOptions := workflow.RuntimeOptions{AssumeYes: assumeYes}
-	executor := workflowcmd.ResolveOperationExecutor(builder.WorkflowExecutorFactory, nodes, workflowDependencies)
-	_, runErr := executor.Execute(command.Context(), roots, runtimeOptions)
-	return runErr
+	return builder.presetCommand().Execute(request)
 }
 
 func (builder *RemotesCommandBuilder) resolveConfiguration() RemotesConfiguration {
@@ -145,11 +110,16 @@ func (builder *RemotesCommandBuilder) resolveConfiguration() RemotesConfiguratio
 	return provided.sanitize()
 }
 
-func (builder *RemotesCommandBuilder) resolvePresetCatalog() workflowcmd.PresetCatalog {
-	if builder.PresetCatalogFactory != nil {
-		if catalog := builder.PresetCatalogFactory(); catalog != nil {
-			return catalog
-		}
-	}
-	return workflowcmd.NewEmbeddedPresetCatalog()
+func (builder *RemotesCommandBuilder) presetCommand() workflowcmd.PresetCommand {
+	return newPresetCommand(presetCommandDependencies{
+		LoggerProvider:               builder.LoggerProvider,
+		HumanReadableLoggingProvider: builder.HumanReadableLoggingProvider,
+		Discoverer:                   builder.Discoverer,
+		GitExecutor:                  builder.GitExecutor,
+		GitManager:                   builder.GitManager,
+		GitHubResolver:               builder.GitHubResolver,
+		PrompterFactory:              builder.PrompterFactory,
+		PresetCatalogFactory:         builder.PresetCatalogFactory,
+		WorkflowExecutorFactory:      builder.WorkflowExecutorFactory,
+	})
 }

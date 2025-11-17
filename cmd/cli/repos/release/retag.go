@@ -9,8 +9,6 @@ import (
 
 	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
 	"github.com/temirov/gix/internal/repos/shared"
-	flagutils "github.com/temirov/gix/internal/utils/flags"
-	rootutils "github.com/temirov/gix/internal/utils/roots"
 	"github.com/temirov/gix/internal/workflow"
 	"github.com/temirov/gix/pkg/taskrunner"
 )
@@ -63,8 +61,6 @@ func (builder *RetagCommandBuilder) Build() (*cobra.Command, error) {
 func (builder *RetagCommandBuilder) run(command *cobra.Command, _ []string) error {
 	configuration := builder.resolveConfiguration()
 
-	executionFlags, executionFlagsAvailable := flagutils.ResolveExecutionFlags(command)
-
 	messageTemplate := configuration.Message
 	if command != nil && command.Flags().Changed(retagMessageTemplateFlagName) {
 		templateValue, templateError := command.Flags().GetString(retagMessageTemplateFlagName)
@@ -85,83 +81,52 @@ func (builder *RetagCommandBuilder) run(command *cobra.Command, _ []string) erro
 		return errors.New("retag requires at least one --map <tag=target> entry")
 	}
 
-	repositoryRoots, rootsError := rootutils.Resolve(command, nil, configuration.RepositoryRoots)
-	if rootsError != nil {
-		return rootsError
-	}
-
-	dependencyResult, dependencyError := taskrunner.BuildDependencies(
-		taskrunner.DependenciesConfig{
-			LoggerProvider:               builder.LoggerProvider,
-			HumanReadableLoggingProvider: builder.HumanReadableLoggingProvider,
-			RepositoryDiscoverer:         builder.Discoverer,
-			GitExecutor:                  builder.GitExecutor,
-			GitRepositoryManager:         builder.GitManager,
-			FileSystem:                   builder.FileSystem,
-		},
-		taskrunner.DependenciesOptions{
-			Command:         command,
-			DisablePrompter: true,
-		},
-	)
-	if dependencyError != nil {
-		return dependencyError
-	}
-
-	workflowDependencies := dependencyResult.Workflow
-	if command != nil {
-		workflowDependencies.Output = command.OutOrStdout()
-		workflowDependencies.Errors = command.ErrOrStderr()
-	}
-
-	presetCatalog := builder.resolvePresetCatalog()
-	presetConfiguration, presetFound, presetError := presetCatalog.Load(retagPresetName)
-	if presetError != nil {
-		return fmt.Errorf(retagPresetLoadError, presetError)
-	}
-	if !presetFound {
-		return errors.New(retagPresetMissingMessage)
-	}
-
 	parsedMappings, parsedMappingsError := buildRetagMappings(mappingValues, messageTemplate)
 	if parsedMappingsError != nil {
 		return parsedMappingsError
 	}
 
-	params := releaseRetagPresetOptions{
-		Mappings: parsedMappings,
-		Remote:   configuration.RemoteName,
+	request := workflowcmd.PresetCommandRequest{
+		Command:                 command,
+		Arguments:               nil,
+		RootArguments:           []string{},
+		ConfiguredAssumeYes:     false,
+		ConfiguredRoots:         configuration.RepositoryRoots,
+		PresetName:              retagPresetName,
+		PresetMissingMessage:    retagPresetMissingMessage,
+		PresetLoadErrorTemplate: retagPresetLoadError,
+		BuildErrorTemplate:      retagBuildWorkflowError,
+		DependenciesOptions: taskrunner.DependenciesOptions{
+			DisablePrompter: true,
+		},
+		Configure: func(ctx workflowcmd.PresetCommandContext) (workflowcmd.PresetCommandResult, error) {
+			params := releaseRetagPresetOptions{
+				Mappings: parsedMappings,
+				Remote:   configuration.RemoteName,
+			}
+
+			if ctx.ExecutionFlagsAvailable && ctx.ExecutionFlags.RemoteSet {
+				override := strings.TrimSpace(ctx.ExecutionFlags.Remote)
+				if len(override) > 0 {
+					params.Remote = override
+				}
+			}
+
+			for index := range ctx.Configuration.Steps {
+				if workflow.CommandPathKey(ctx.Configuration.Steps[index].Command) != retagPresetCommandKey {
+					continue
+				}
+				updateReleaseRetagPresetOptions(ctx.Configuration.Steps[index].Options, params)
+			}
+
+			return workflowcmd.PresetCommandResult{
+				Configuration:  ctx.Configuration,
+				RuntimeOptions: ctx.RuntimeOptions(),
+			}, nil
+		},
 	}
 
-	if executionFlagsAvailable && executionFlags.RemoteSet {
-		override := strings.TrimSpace(executionFlags.Remote)
-		if len(override) > 0 {
-			params.Remote = override
-		}
-	}
-
-	for index := range presetConfiguration.Steps {
-		if workflow.CommandPathKey(presetConfiguration.Steps[index].Command) != retagPresetCommandKey {
-			continue
-		}
-		updateReleaseRetagPresetOptions(presetConfiguration.Steps[index].Options, params)
-	}
-
-	nodes, operationsError := workflow.BuildOperations(presetConfiguration)
-	if operationsError != nil {
-		return fmt.Errorf(retagBuildWorkflowError, operationsError)
-	}
-
-	assumeYes := false
-	if executionFlagsAvailable && executionFlags.AssumeYesSet {
-		assumeYes = executionFlags.AssumeYes
-	}
-
-	runtimeOptions := workflow.RuntimeOptions{AssumeYes: assumeYes}
-
-	executor := workflowcmd.ResolveOperationExecutor(builder.WorkflowExecutorFactory, nodes, workflowDependencies)
-	_, runErr := executor.Execute(command.Context(), repositoryRoots, runtimeOptions)
-	return runErr
+	return builder.presetCommand().Execute(request)
 }
 
 func (builder *RetagCommandBuilder) resolveConfiguration() CommandConfiguration {
@@ -171,13 +136,17 @@ func (builder *RetagCommandBuilder) resolveConfiguration() CommandConfiguration 
 	return builder.ConfigurationProvider().Sanitize()
 }
 
-func (builder *RetagCommandBuilder) resolvePresetCatalog() workflowcmd.PresetCatalog {
-	if builder.PresetCatalogFactory != nil {
-		if catalog := builder.PresetCatalogFactory(); catalog != nil {
-			return catalog
-		}
-	}
-	return workflowcmd.NewEmbeddedPresetCatalog()
+func (builder *RetagCommandBuilder) presetCommand() workflowcmd.PresetCommand {
+	return newPresetCommand(presetCommandDependencies{
+		LoggerProvider:               builder.LoggerProvider,
+		HumanReadableLoggingProvider: builder.HumanReadableLoggingProvider,
+		Discoverer:                   builder.Discoverer,
+		GitExecutor:                  builder.GitExecutor,
+		GitManager:                   builder.GitManager,
+		FileSystem:                   builder.FileSystem,
+		PresetCatalogFactory:         builder.PresetCatalogFactory,
+		WorkflowExecutorFactory:      builder.WorkflowExecutorFactory,
+	})
 }
 
 type releaseRetagPresetOptions struct {
