@@ -244,24 +244,40 @@ func (builder *FilesAddCommandBuilder) run(command *cobra.Command, arguments []s
 				}
 			}
 
-			params := filesAddPresetOptions{
-				Path:          targetPath,
-				Content:       fileContent,
-				Mode:          modeValue,
-				Permissions:   os.FileMode(parsedPermissions),
-				RequireClean:  requireClean,
-				BranchName:    branchTemplate,
-				StartPoint:    startPointTemplate,
-				Push:          pushBranches,
-				Remote:        resolvedRemote,
-				CommitMessage: commitMessage,
+			taskDefinition := workflow.TaskDefinition{
+				Name:        fmt.Sprintf(filesAddTaskNameTemplate, targetPath),
+				EnsureClean: requireClean,
+				Branch: workflow.TaskBranchDefinition{
+					NameTemplate:       branchTemplate,
+					StartPointTemplate: startPointTemplate,
+				},
+				Files: []workflow.TaskFileDefinition{
+					{
+						PathTemplate:    targetPath,
+						ContentTemplate: fileContent,
+						Mode:            workflow.ParseTaskFileMode(modeValue),
+						Permissions:     os.FileMode(parsedPermissions),
+					},
+				},
+				Commit: workflow.TaskCommitDefinition{MessageTemplate: commitMessage},
+			}
+			if pushBranches {
+				taskDefinition.Branch.PushRemote = resolvedRemote
+			} else {
+				taskDefinition.Steps = []workflow.TaskExecutionStep{
+					workflow.TaskExecutionStepBranchPrepare,
+					workflow.TaskExecutionStepFilesApply,
+					workflow.TaskExecutionStepGitStageCommit,
+				}
 			}
 
 			for index := range ctx.Configuration.Steps {
 				if workflow.CommandPathKey(ctx.Configuration.Steps[index].Command) != filesAddPresetCommandKey {
 					continue
 				}
-				updateFilesAddPresetOptions(ctx.Configuration.Steps[index].Options, params)
+				ctx.Configuration.Steps[index].Options = workflow.TasksApplyDefinition{
+					Tasks: []workflow.TaskDefinition{taskDefinition},
+				}.Options()
 			}
 
 			runtimeOptions := ctx.RuntimeOptions()
@@ -294,61 +310,4 @@ func (builder *FilesAddCommandBuilder) presetCommand() workflowcmd.PresetCommand
 		PresetCatalogFactory:         builder.PresetCatalogFactory,
 		WorkflowExecutorFactory:      builder.WorkflowExecutorFactory,
 	})
-}
-
-type filesAddPresetOptions struct {
-	Path          string
-	Content       string
-	Mode          string
-	Permissions   os.FileMode
-	RequireClean  bool
-	BranchName    string
-	StartPoint    string
-	Push          bool
-	Remote        string
-	CommitMessage string
-}
-
-func updateFilesAddPresetOptions(options map[string]any, params filesAddPresetOptions) {
-	if options == nil {
-		return
-	}
-	tasksValue, ok := options["tasks"].([]any)
-	if !ok || len(tasksValue) == 0 {
-		return
-	}
-	taskEntry, ok := tasksValue[0].(map[string]any)
-	if !ok {
-		return
-	}
-	taskEntry["name"] = fmt.Sprintf(filesAddTaskNameTemplate, params.Path)
-	taskEntry["ensure_clean"] = params.RequireClean
-
-	branchEntry := map[string]any{
-		"name":        params.BranchName,
-		"start_point": params.StartPoint,
-	}
-	if params.Push {
-		branchEntry["push_remote"] = params.Remote
-	} else {
-		taskEntry["steps"] = []any{"branch.prepare", "files.apply", "git.stage-commit"}
-	}
-	taskEntry["branch"] = branchEntry
-
-	fileDefinition := map[string]any{
-		"path":        params.Path,
-		"content":     params.Content,
-		"mode":        params.Mode,
-		"permissions": int(params.Permissions),
-	}
-	taskEntry["files"] = []any{fileDefinition}
-
-	commitEntry := map[string]any{
-		"message": params.CommitMessage,
-	}
-	taskEntry["commit"] = commitEntry
-	taskEntry["commit_message"] = params.CommitMessage
-
-	tasksValue[0] = taskEntry
-	options["tasks"] = tasksValue
 }

@@ -112,11 +112,31 @@ func (builder *RetagCommandBuilder) run(command *cobra.Command, _ []string) erro
 				}
 			}
 
+			actionOptions := map[string]any{
+				"mappings": params.Mappings,
+			}
+			if trimmedRemote := strings.TrimSpace(params.Remote); trimmedRemote != "" {
+				actionOptions["remote"] = trimmedRemote
+			}
+
+			taskDefinition := workflow.TaskDefinition{
+				Name:        "Retag release tags",
+				EnsureClean: false,
+				Actions: []workflow.TaskActionDefinition{
+					{
+						Type:    "repo.release.retag",
+						Options: actionOptions,
+					},
+				},
+			}
+
 			for index := range ctx.Configuration.Steps {
 				if workflow.CommandPathKey(ctx.Configuration.Steps[index].Command) != retagPresetCommandKey {
 					continue
 				}
-				updateReleaseRetagPresetOptions(ctx.Configuration.Steps[index].Options, params)
+				ctx.Configuration.Steps[index].Options = workflow.TasksApplyDefinition{
+					Tasks: []workflow.TaskDefinition{taskDefinition},
+				}.Options()
 			}
 
 			return workflowcmd.PresetCommandResult{
@@ -152,46 +172,6 @@ func (builder *RetagCommandBuilder) presetCommand() workflowcmd.PresetCommand {
 type releaseRetagPresetOptions struct {
 	Mappings []any
 	Remote   string
-}
-
-func updateReleaseRetagPresetOptions(options map[string]any, params releaseRetagPresetOptions) {
-	if options == nil {
-		return
-	}
-	tasks, ok := options["tasks"].([]any)
-	if !ok || len(tasks) == 0 {
-		return
-	}
-	taskEntry, ok := tasks[0].(map[string]any)
-	if !ok {
-		return
-	}
-	taskEntry["name"] = "Retag release tags"
-	taskEntry["ensure_clean"] = false
-
-	actionEntries, ok := taskEntry["actions"].([]any)
-	if !ok || len(actionEntries) == 0 {
-		return
-	}
-	actionEntry, ok := actionEntries[0].(map[string]any)
-	if !ok {
-		return
-	}
-	actionOptions, _ := actionEntry["options"].(map[string]any)
-	if actionOptions == nil {
-		actionOptions = make(map[string]any)
-	}
-	actionOptions["mappings"] = params.Mappings
-	if len(strings.TrimSpace(params.Remote)) > 0 {
-		actionOptions["remote"] = strings.TrimSpace(params.Remote)
-	} else {
-		delete(actionOptions, "remote")
-	}
-	actionEntry["options"] = actionOptions
-	actionEntries[0] = actionEntry
-	taskEntry["actions"] = actionEntries
-	tasks[0] = taskEntry
-	options["tasks"] = tasks
 }
 
 func buildRetagMappings(rawMappings []string, messageTemplate string) ([]any, error) {

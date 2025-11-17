@@ -160,11 +160,25 @@ func (builder *ReplaceCommandBuilder) run(command *cobra.Command, _ []string) er
 				RequirePaths: requiredPaths,
 			}
 
+			taskDefinition := workflow.TaskDefinition{
+				Name:        "Replace repository file content",
+				EnsureClean: requireClean,
+				Actions: []workflow.TaskActionDefinition{
+					{
+						Type:    "repo.files.replace",
+						Options: buildFilesReplaceActionOptions(params),
+					},
+				},
+				Safeguards: buildFilesReplaceSafeguards(params),
+			}
+
 			for index := range ctx.Configuration.Steps {
 				if workflow.CommandPathKey(ctx.Configuration.Steps[index].Command) != replacePresetCommandKey {
 					continue
 				}
-				updateFilesReplacePresetOptions(ctx.Configuration.Steps[index].Options, params)
+				ctx.Configuration.Steps[index].Options = workflow.TasksApplyDefinition{
+					Tasks: []workflow.TaskDefinition{taskDefinition},
+				}.Options()
 			}
 
 			return workflowcmd.PresetCommandResult{
@@ -222,60 +236,23 @@ type filesReplacePresetOptions struct {
 	RequirePaths []string
 }
 
-func updateFilesReplacePresetOptions(options map[string]any, params filesReplacePresetOptions) {
-	if options == nil {
-		return
-	}
-	tasksValue, ok := options["tasks"].([]any)
-	if !ok || len(tasksValue) == 0 {
-		return
-	}
-	taskEntry, ok := tasksValue[0].(map[string]any)
-	if !ok {
-		return
-	}
-	actionsValue, ok := taskEntry["actions"].([]any)
-	if !ok || len(actionsValue) == 0 {
-		return
-	}
-	actionEntry, ok := actionsValue[0].(map[string]any)
-	if !ok {
-		return
+func buildFilesReplaceActionOptions(params filesReplacePresetOptions) map[string]any {
+	options := map[string]any{
+		"find":    params.Find,
+		"replace": params.Replace,
 	}
 
-	actionOptions, _ := actionEntry["options"].(map[string]any)
-	if actionOptions == nil {
-		actionOptions = make(map[string]any)
-	}
-	actionOptions["find"] = params.Find
-	actionOptions["replace"] = params.Replace
-
-	delete(actionOptions, "pattern")
-	delete(actionOptions, "patterns")
 	if len(params.Patterns) == 1 {
-		actionOptions["pattern"] = params.Patterns[0]
+		options["pattern"] = params.Patterns[0]
 	} else if len(params.Patterns) > 1 {
-		actionOptions["patterns"] = append([]string{}, params.Patterns...)
+		options["patterns"] = append([]string{}, params.Patterns...)
 	}
 
 	if len(params.Command) > 0 {
-		actionOptions["command"] = append([]string{}, params.Command...)
-	} else {
-		delete(actionOptions, "command")
+		options["command"] = append([]string{}, params.Command...)
 	}
 
-	safeguardOptions := buildFilesReplaceSafeguards(params)
-	if len(safeguardOptions) > 0 {
-		actionOptions["safeguards"] = safeguardOptions
-	} else {
-		delete(actionOptions, "safeguards")
-	}
-
-	actionEntry["options"] = actionOptions
-	actionsValue[0] = actionEntry
-	taskEntry["actions"] = actionsValue
-	tasksValue[0] = taskEntry
-	options["tasks"] = tasksValue
+	return options
 }
 
 func buildFilesReplaceSafeguards(params filesReplacePresetOptions) map[string]any {

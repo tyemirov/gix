@@ -141,18 +141,30 @@ func (builder *RemoveCommandBuilder) run(command *cobra.Command, arguments []str
 		PresetLoadErrorTemplate: historyPresetLoadErrorTemplate,
 		BuildErrorTemplate:      historyBuildWorkflowError,
 		Configure: func(ctx workflowcmd.PresetCommandContext) (workflowcmd.PresetCommandResult, error) {
+			taskDefinition := workflow.TaskDefinition{
+				Name:        "Remove repository history paths",
+				EnsureClean: true,
+				Actions: []workflow.TaskActionDefinition{
+					{
+						Type: "repo.history.purge",
+						Options: map[string]any{
+							"paths":        append([]string{}, normalizedPaths...),
+							"remote":       strings.TrimSpace(remoteName),
+							"push":         pushEnabled,
+							"restore":      restoreEnabled,
+							"push_missing": pushMissing,
+						},
+					},
+				},
+			}
+
 			for index := range ctx.Configuration.Steps {
 				if workflow.CommandPathKey(ctx.Configuration.Steps[index].Command) != historyRemoveCommandKey {
 					continue
 				}
-				updateHistoryPresetOptions(
-					ctx.Configuration.Steps[index].Options,
-					normalizedPaths,
-					strings.TrimSpace(remoteName),
-					pushEnabled,
-					restoreEnabled,
-					pushMissing,
-				)
+				ctx.Configuration.Steps[index].Options = workflow.TasksApplyDefinition{
+					Tasks: []workflow.TaskDefinition{taskDefinition},
+				}.Options()
 			}
 
 			return workflowcmd.PresetCommandResult{
@@ -184,42 +196,4 @@ func (builder *RemoveCommandBuilder) presetCommand() workflowcmd.PresetCommand {
 		PresetCatalogFactory:         builder.PresetCatalogFactory,
 		WorkflowExecutorFactory:      builder.WorkflowExecutorFactory,
 	})
-}
-
-func updateHistoryPresetOptions(options map[string]any, paths []string, remote string, push bool, restore bool, pushMissing bool) {
-	if options == nil {
-		return
-	}
-	tasksValue, ok := options["tasks"].([]any)
-	if !ok || len(tasksValue) == 0 {
-		return
-	}
-	taskEntry, ok := tasksValue[0].(map[string]any)
-	if !ok {
-		return
-	}
-	actionsValue, ok := taskEntry["actions"].([]any)
-	if !ok || len(actionsValue) == 0 {
-		return
-	}
-	actionEntry, ok := actionsValue[0].(map[string]any)
-	if !ok {
-		return
-	}
-	actionOptions, _ := actionEntry["options"].(map[string]any)
-	if actionOptions == nil {
-		actionOptions = make(map[string]any)
-	}
-	actionOptions["paths"] = append([]string{}, paths...)
-	if len(remote) > 0 {
-		actionOptions["remote"] = remote
-	}
-	actionOptions["push"] = push
-	actionOptions["restore"] = restore
-	actionOptions["push_missing"] = pushMissing
-	actionEntry["options"] = actionOptions
-	actionsValue[0] = actionEntry
-	taskEntry["actions"] = actionsValue
-	tasksValue[0] = taskEntry
-	options["tasks"] = tasksValue
 }
