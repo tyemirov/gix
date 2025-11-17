@@ -21,6 +21,8 @@ const (
 	gitRevParseSubcommandConstant      = "rev-parse"
 	gitAbbrevRefFlagConstant           = "--abbrev-ref"
 	gitSymbolicFullNameFlagConstant    = "--symbolic-full-name"
+	gitSymbolicRefSubcommandConstant   = "symbolic-ref"
+	gitShortFlagConstant               = "--short"
 	gitHeadReferenceConstant           = "HEAD"
 	gitLSRemoteSubcommandConstant      = "ls-remote"
 	gitSymrefFlagConstant              = "--symref"
@@ -129,11 +131,17 @@ func fallbackRemoteRevisionReferences(branch string) []string {
 	}
 }
 
-func lsRemoteHeadArguments() []string {
+func remoteHeadSymbolicRefArguments() []string {
 	return []string{
-		gitLSRemoteSubcommandConstant,
-		gitSymrefFlagConstant,
-		shared.OriginRemoteNameConstant,
+		gitSymbolicRefSubcommandConstant,
+		fmt.Sprintf("refs/remotes/%s/%s", shared.OriginRemoteNameConstant, gitHeadReferenceConstant),
+	}
+}
+
+func localHeadSymbolicRefArguments() []string {
+	return []string{
+		gitSymbolicRefSubcommandConstant,
+		gitShortFlagConstant,
 		gitHeadReferenceConstant,
 	}
 }
