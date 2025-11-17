@@ -151,18 +151,3 @@ func (builder *RenameCommandBuilder) presetCommand() workflowcmd.PresetCommand {
 		WorkflowExecutorFactory:      builder.WorkflowExecutorFactory,
 	})
 }
-
-func (builder *RenameCommandBuilder) presetCommand() workflowcmd.PresetCommand {
-	return newPresetCommand(presetCommandDependencies{
-		LoggerProvider:               builder.LoggerProvider,
-		HumanReadableLoggingProvider: builder.HumanReadableLoggingProvider,
-		Discoverer:                   builder.Discoverer,
-		GitExecutor:                  builder.GitExecutor,
-		GitManager:                   builder.GitManager,
-		GitHubResolver:               builder.GitHubResolver,
-		FileSystem:                   builder.FileSystem,
-		PrompterFactory:              builder.PrompterFactory,
-		PresetCatalogFactory:         builder.PresetCatalogFactory,
-		WorkflowExecutorFactory:      builder.WorkflowExecutorFactory,
-	})
-}

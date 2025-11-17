@@ -149,19 +149,6 @@ func (builder *RetagCommandBuilder) presetCommand() workflowcmd.PresetCommand {
 	})
 }
 
-func (builder *RetagCommandBuilder) presetCommand() workflowcmd.PresetCommand {
-	return newPresetCommand(presetCommandDependencies{
-		LoggerProvider:               builder.LoggerProvider,
-		HumanReadableLoggingProvider: builder.HumanReadableLoggingProvider,
-		Discoverer:                   builder.Discoverer,
-		GitExecutor:                  builder.GitExecutor,
-		GitManager:                   builder.GitManager,
-		FileSystem:                   builder.FileSystem,
-		PresetCatalogFactory:         builder.PresetCatalogFactory,
-		WorkflowExecutorFactory:      builder.WorkflowExecutorFactory,
-	})
-}
-
 type releaseRetagPresetOptions struct {
 	Mappings []any
 	Remote   string

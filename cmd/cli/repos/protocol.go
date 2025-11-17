@@ -150,20 +150,6 @@ func (builder *ProtocolCommandBuilder) presetCommand() workflowcmd.PresetCommand
 	})
 }
 
-func (builder *ProtocolCommandBuilder) presetCommand() workflowcmd.PresetCommand {
-	return newPresetCommand(presetCommandDependencies{
-		LoggerProvider:               builder.LoggerProvider,
-		HumanReadableLoggingProvider: builder.HumanReadableLoggingProvider,
-		Discoverer:                   builder.Discoverer,
-		GitExecutor:                  builder.GitExecutor,
-		GitManager:                   builder.GitManager,
-		GitHubResolver:               builder.GitHubResolver,
-		PrompterFactory:              builder.PrompterFactory,
-		PresetCatalogFactory:         builder.PresetCatalogFactory,
-		WorkflowExecutorFactory:      builder.WorkflowExecutorFactory,
-	})
-}
-
 func parseProtocolValue(value string) (shared.RemoteProtocol, error) {
 	trimmed := strings.ToLower(strings.TrimSpace(value))
 	switch trimmed {
