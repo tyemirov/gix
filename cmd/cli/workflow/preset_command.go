@@ -90,6 +90,12 @@ func (command PresetCommand) Execute(request PresetCommandRequest) error {
 
 	dependenciesOptions := request.DependenciesOptions
 	dependenciesOptions.Command = request.Command
+	if dependenciesOptions.Output == nil && request.Command != nil {
+		dependenciesOptions.Output = request.Command.OutOrStdout()
+	}
+	if dependenciesOptions.Errors == nil && request.Command != nil {
+		dependenciesOptions.Errors = request.Command.ErrOrStderr()
+	}
 
 	dependencyResult, dependencyError := taskrunner.BuildDependencies(
 		taskrunner.DependenciesConfig{
@@ -109,10 +115,6 @@ func (command PresetCommand) Execute(request PresetCommandRequest) error {
 	}
 
 	workflowDependencies := dependencyResult.Workflow
-	if request.Command != nil {
-		workflowDependencies.Output = request.Command.OutOrStdout()
-		workflowDependencies.Errors = request.Command.ErrOrStderr()
-	}
 
 	presetCatalog := command.resolvePresetCatalog()
 	presetConfiguration, presetFound, presetError := presetCatalog.Load(request.PresetName)

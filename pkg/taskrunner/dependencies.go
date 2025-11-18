@@ -1,6 +1,7 @@
 package taskrunner
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -14,6 +15,11 @@ import (
 	"github.com/temirov/gix/internal/repos/prompt"
 	"github.com/temirov/gix/internal/repos/shared"
 	"github.com/temirov/gix/internal/workflow"
+)
+
+var (
+	errOutputWriterMissing = errors.New("taskrunner.dependencies.output_missing")
+	errErrorWriterMissing  = errors.New("taskrunner.dependencies.errors_missing")
 )
 
 // DependenciesConfig captures providers required to build workflow dependencies.
@@ -48,8 +54,69 @@ type DependenciesResult struct {
 	FileSystem           shared.FileSystem
 }
 
+// GitExecutionEnvironment captures executor-level collaborators.
+type GitExecutionEnvironment struct {
+	Logger                    *zap.Logger
+	HumanReadableLogging      bool
+	GitExecutor               shared.GitExecutor
+	WorkflowRepositoryManager *gitrepo.RepositoryManager
+	ResolvedRepositoryManager shared.GitRepositoryManager
+	GitHubResolver            shared.GitHubMetadataResolver
+	GitHubClient              *githubcli.Client
+}
+
+// RepositoryEnvironment exposes repository discovery and filesystem access.
+type RepositoryEnvironment struct {
+	Discoverer shared.RepositoryDiscoverer
+	FileSystem shared.FileSystem
+}
+
+// PromptEnvironment captures terminal IO + prompt plumbing.
+type PromptEnvironment struct {
+	Prompter shared.ConfirmationPrompter
+	Output   io.Writer
+	Errors   io.Writer
+}
+
 // BuildDependencies resolves git, GitHub, filesystem, and prompting collaborators for workflow execution.
 func BuildDependencies(config DependenciesConfig, options DependenciesOptions) (DependenciesResult, error) {
+	gitEnvironment, gitEnvironmentError := NewGitExecutionEnvironment(config, options)
+	if gitEnvironmentError != nil {
+		return DependenciesResult{}, gitEnvironmentError
+	}
+
+	repositoryEnvironment := NewRepositoryEnvironment(config)
+
+	promptEnvironment, promptEnvironmentError := NewPromptEnvironment(config, options)
+	if promptEnvironmentError != nil {
+		return DependenciesResult{}, promptEnvironmentError
+	}
+
+	workflowDependencies := workflow.Dependencies{
+		Logger:               gitEnvironment.Logger,
+		RepositoryDiscoverer: repositoryEnvironment.Discoverer,
+		GitExecutor:          gitEnvironment.GitExecutor,
+		RepositoryManager:    gitEnvironment.WorkflowRepositoryManager,
+		GitHubClient:         gitEnvironment.GitHubClient,
+		FileSystem:           repositoryEnvironment.FileSystem,
+		Prompter:             promptEnvironment.Prompter,
+		Output:               promptEnvironment.Output,
+		Errors:               promptEnvironment.Errors,
+		HumanReadableLogging: gitEnvironment.HumanReadableLogging,
+	}
+
+	return DependenciesResult{
+		Workflow:             workflowDependencies,
+		GitExecutor:          gitEnvironment.GitExecutor,
+		RepositoryManager:    gitEnvironment.ResolvedRepositoryManager,
+		GitHubResolver:       gitEnvironment.GitHubResolver,
+		RepositoryDiscoverer: repositoryEnvironment.Discoverer,
+		FileSystem:           repositoryEnvironment.FileSystem,
+	}, nil
+}
+
+// NewGitExecutionEnvironment constructs the logger, git executor, and manager stack.
+func NewGitExecutionEnvironment(config DependenciesConfig, options DependenciesOptions) (GitExecutionEnvironment, error) {
 	logger := resolveLogger(config.LoggerProvider)
 	humanReadable := false
 	if config.HumanReadableLoggingProvider != nil {
@@ -58,12 +125,12 @@ func BuildDependencies(config DependenciesConfig, options DependenciesOptions) (
 
 	gitExecutor, executorError := dependencies.ResolveGitExecutor(config.GitExecutor, logger, humanReadable)
 	if executorError != nil {
-		return DependenciesResult{}, fmt.Errorf("taskrunner.dependencies.git_executor: %w", executorError)
+		return GitExecutionEnvironment{}, fmt.Errorf("taskrunner.dependencies.git_executor: %w", executorError)
 	}
 
 	resolvedManager, managerError := dependencies.ResolveGitRepositoryManager(config.GitRepositoryManager, gitExecutor)
 	if managerError != nil {
-		return DependenciesResult{}, fmt.Errorf("taskrunner.dependencies.git_manager: %w", managerError)
+		return GitExecutionEnvironment{}, fmt.Errorf("taskrunner.dependencies.git_manager: %w", managerError)
 	}
 
 	var repositoryManager *gitrepo.RepositoryManager
@@ -72,15 +139,16 @@ func BuildDependencies(config DependenciesConfig, options DependenciesOptions) (
 	} else {
 		constructedManager, constructedManagerError := gitrepo.NewRepositoryManager(gitExecutor)
 		if constructedManagerError != nil {
-			return DependenciesResult{}, fmt.Errorf("taskrunner.dependencies.git_manager_construct: %w", constructedManagerError)
+			return GitExecutionEnvironment{}, fmt.Errorf("taskrunner.dependencies.git_manager_construct: %w", constructedManagerError)
 		}
 		repositoryManager = constructedManager
 		resolvedManager = repositoryManager
 	}
 
-	resolvedGitHubResolver := config.GitHubResolver
+	var resolvedGitHubResolver shared.GitHubMetadataResolver
 	var githubClient *githubcli.Client
 	if options.SkipGitHubResolver {
+		resolvedGitHubResolver = config.GitHubResolver
 		if typedClient, ok := resolvedGitHubResolver.(*githubcli.Client); ok && typedClient != nil {
 			githubClient = typedClient
 		}
@@ -88,48 +156,58 @@ func BuildDependencies(config DependenciesConfig, options DependenciesOptions) (
 		var resolverError error
 		resolvedGitHubResolver, resolverError = dependencies.ResolveGitHubResolver(config.GitHubResolver, gitExecutor)
 		if resolverError != nil {
-			return DependenciesResult{}, fmt.Errorf("taskrunner.dependencies.github_resolver: %w", resolverError)
+			return GitExecutionEnvironment{}, fmt.Errorf("taskrunner.dependencies.github_resolver: %w", resolverError)
 		}
-
 		if typedClient, ok := resolvedGitHubResolver.(*githubcli.Client); ok && typedClient != nil {
 			githubClient = typedClient
-		} else {
-			constructedClient, constructedClientError := githubcli.NewClient(gitExecutor)
-			if constructedClientError != nil {
-				return DependenciesResult{}, fmt.Errorf("taskrunner.dependencies.github_client: %w", constructedClientError)
-			}
-			githubClient = constructedClient
-			resolvedGitHubResolver = githubClient
 		}
 	}
 
-	repositoryDiscoverer := dependencies.ResolveRepositoryDiscoverer(config.RepositoryDiscoverer)
-	fileSystem := dependencies.ResolveFileSystem(config.FileSystem)
+	return GitExecutionEnvironment{
+		Logger:                    logger,
+		HumanReadableLogging:      humanReadable,
+		GitExecutor:               gitExecutor,
+		WorkflowRepositoryManager: repositoryManager,
+		ResolvedRepositoryManager: resolvedManager,
+		GitHubResolver:            resolvedGitHubResolver,
+		GitHubClient:              githubClient,
+	}, nil
+}
 
-	outputWriter := resolveWriter(options.Output, options.Command, true)
-	errorWriter := resolveWriter(options.Errors, options.Command, false)
-	prompter := resolvePrompter(config.PrompterFactory, options)
+// NewRepositoryEnvironment wires repository discoverer and filesystem dependencies.
+func NewRepositoryEnvironment(config DependenciesConfig) RepositoryEnvironment {
+	return RepositoryEnvironment{
+		Discoverer: dependencies.ResolveRepositoryDiscoverer(config.RepositoryDiscoverer),
+		FileSystem: dependencies.ResolveFileSystem(config.FileSystem),
+	}
+}
 
-	workflowDependencies := workflow.Dependencies{
-		Logger:               logger,
-		RepositoryDiscoverer: repositoryDiscoverer,
-		GitExecutor:          gitExecutor,
-		RepositoryManager:    repositoryManager,
-		GitHubClient:         githubClient,
-		FileSystem:           fileSystem,
-		Prompter:             prompter,
-		Output:               outputWriter,
-		Errors:               errorWriter,
-		HumanReadableLogging: humanReadable,
+// NewPromptEnvironment captures prompt + IO wiring, failing when writers are missing.
+func NewPromptEnvironment(config DependenciesConfig, options DependenciesOptions) (PromptEnvironment, error) {
+	outputWriter := options.Output
+	if outputWriter == nil && options.Command != nil {
+		outputWriter = options.Command.OutOrStdout()
+	}
+	if outputWriter == nil {
+		return PromptEnvironment{}, errOutputWriterMissing
 	}
 
-	return DependenciesResult{
-		Workflow:             workflowDependencies,
-		GitExecutor:          gitExecutor,
-		RepositoryManager:    resolvedManager,
-		GitHubResolver:       resolvedGitHubResolver,
-		RepositoryDiscoverer: repositoryDiscoverer,
-		FileSystem:           fileSystem,
+	errorWriter := options.Errors
+	if errorWriter == nil && options.Command != nil {
+		errorWriter = options.Command.ErrOrStderr()
+	}
+	if errorWriter == nil {
+		return PromptEnvironment{}, errErrorWriterMissing
+	}
+
+	options.Output = outputWriter
+	options.Errors = errorWriter
+	prompter := resolvePrompter(config.PrompterFactory, options)
+
+	return PromptEnvironment{
+		Prompter: prompter,
+		Output:   outputWriter,
+		Errors:   errorWriter,
 	}, nil
 }
 
@@ -142,27 +220,6 @@ func resolveLogger(provider func() *zap.Logger) *zap.Logger {
 		return zap.NewNop()
 	}
 	return logger
-}
-
-func resolveWriter(provided io.Writer, command *cobra.Command, useStdout bool) io.Writer {
-	if provided != nil {
-		return provided
-	}
-	if command != nil {
-		if useStdout {
-			if writer := command.OutOrStdout(); writer != nil && writer != io.Discard {
-				return writer
-			}
-		} else {
-			if writer := command.ErrOrStderr(); writer != nil && writer != io.Discard {
-				return writer
-			}
-		}
-	}
-	if useStdout {
-		return os.Stdout
-	}
-	return os.Stderr
 }
 
 func resolvePrompter(factory func(*cobra.Command) shared.ConfirmationPrompter, options DependenciesOptions) shared.ConfirmationPrompter {
@@ -179,10 +236,14 @@ func resolvePrompter(factory func(*cobra.Command) shared.ConfirmationPrompter, o
 	}
 
 	var inputReader io.Reader = os.Stdin
-	var outputWriter io.Writer = os.Stdout
 	if options.Command != nil {
 		inputReader = options.Command.InOrStdin()
-		outputWriter = options.Command.OutOrStdout()
 	}
+
+	outputWriter := options.Output
+	if outputWriter == nil {
+		outputWriter = os.Stdout
+	}
+
 	return prompt.NewIOConfirmationPrompter(inputReader, outputWriter)
 }

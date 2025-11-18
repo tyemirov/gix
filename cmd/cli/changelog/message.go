@@ -207,6 +207,8 @@ func (builder *MessageCommandBuilder) run(command *cobra.Command, arguments []st
 		},
 		taskrunner.DependenciesOptions{
 			Command:         command,
+			Output:          command.OutOrStdout(),
+			Errors:          command.ErrOrStderr(),
 			DisablePrompter: true,
 		},
 	)
@@ -233,9 +235,6 @@ func (builder *MessageCommandBuilder) run(command *cobra.Command, arguments []st
 	if clientError != nil {
 		return clientError
 	}
-
-	taskDependencies.Output = command.OutOrStdout()
-	taskDependencies.Errors = command.ErrOrStderr()
 
 	taskRunner := taskrunner.Resolve(builder.TaskRunnerFactory, taskDependencies)
 
