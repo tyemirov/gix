@@ -81,11 +81,13 @@ workflow:
                 replacements:
                   - from: github.com/temirov
                     to: github.com/tyemirov
-              - path: "**/*.go"
-                mode: replace
-                replacements:
-                  - from: github.com/temirov
-                    to: github.com/tyemirov
+            actions:
+              - type: repo.files.replace
+                options:
+                  find: github.com/temirov
+                  replace: github.com/tyemirov
+                  patterns:
+                    - "**/*.go"
 
   - step:
       name: namespace-stage-commit
