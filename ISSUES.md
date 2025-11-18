@@ -1,4 +1,5 @@
-# ISSUES (Append-only Log)
+# ISSUES
+**Append-only section-based log**
 
 Entries record newly discovered requests or changes, with their outcomes. No instructive content lives here. Read @NOTES.md for the process to follow when fixing issues.
 
@@ -8,77 +9,102 @@ Each issue is formatted as `- [ ] [GX-<number>]`. When resolved it becomes -` [x
 
 ## Features (110–199)
 
-## Improvements (235–299)
-- [x] [GX-333] Rethink human-readable workflow logging: collapse repetitive `TASK_PLAN/TASK_APPLY` spam into concise task summaries, retain only essential branch/PR status lines, and surface warnings/errors in a structured “issues” section so the log is useful at a glance.
-- [x] [GX-336] Parallelize workflow runner so repository-scoped operations are queued and processed concurrently (e.g., up to 10 repos at a time) instead of strictly sequential; enumerate roots up front, build a task queue, and stream results while respecting per-repo isolation and existing safeguards. — Repository-scoped workflow stages now execute through a configurable worker pool (`--workflow-workers`/`workflow_workers`) so operators can opt into parallelism; global steps still run once with ordered stage summaries preserved.
-- [x] [GX-337] Convert `repo-folders-rename` into an embedded workflow preset: encode the current task definition as YAML, teach the CLI command to translate flags/config into workflow variables, and execute via the workflow runtime instead of hand-rolled task runner wiring. — Added `folder-rename` preset plus CLI shim so the command now loads the preset, maps flags to workflow variables, and delegates execution to the workflow runtime.
-- [x] [GX-338] Convert `repo-remote-update` (canonical remotes) into a workflow preset/CLI shim so owner constraints, prompts, and logging flow entirely through the workflow executor. — Added `remote-update-to-canonical` embedded preset plus CLI wiring so the command now loads the preset, injects owner preferences, and runs through the workflow executor.
-- [x] [GX-339] Convert `repo-protocol-convert` into a workflow preset that validates `from`/`to` in the CLI layer, pushes options via variables, and delegates execution to workflow operations.
-- [x] [GX-340] Convert `repo-history-remove` into a preset-driven workflow step covering path lists, remote/push/restore flags, and ensure the CLI simply maps arguments to preset variables.
-- [x] [GX-341] Convert `repo-files-add` into a workflow preset (with variables for path/content/mode/branch/push). Update the CLI to load template content and pass it into workflow variables before executing. — Added `files-add` preset plus CLI shim so the command resolves path/content/branch settings, injects them into the preset, and executes via the workflow runtime.
-- [x] [GX-342] Convert `repo release`/`repo release retag` commands into workflow presets so tagging logic, remote selection, and messages flow through the standard workflow executor and task actions.
-- [x] [GX-343] After the command-specific presets land, delete the bespoke task-runner plumbing in `cmd/cli/repos` (helpers, dependency builders, TaskDefinition construction) so repo commands are thin shims over workflow presets, and update docs/config to reflect the new preset catalog. — Removed repo helpers in favor of the shared workflow executor wiring plus updated commands/tests to consume the workflow-layer factories.
-- [x] [GX-344] Convert `repo-files-replace` into a workflow preset so pattern/find/replace/command/safeguard logic is expressed declaratively and the CLI simply maps flags to workflow variables before invoking the standard executor. — Added `files-replace` preset plus CLI shim so the command now loads the preset, injects pattern/find/command/safeguard options, and executes via the workflow runtime with updated tests/docs.
+## Improvements (246–299)
 
-- [x] [GX-345] Split safeguards into hard-stop (abort entire repository execution immediately on failure) and soft-skip (mark operation as skipped but allow other steps to proceed) categories so the DSL clearly expresses whether a violation halts the repo or just the current step; apply this separation to dirty worktree vs. missing remote scenarios. — Added structured `hard_stop`/`soft_skip` safeguard blocks, updated evaluators/CLI configs/tests, and ensured dirty worktree guards abort while soft skips (missing files/branch) only skip the current task.
-## BugFixes (330–399)
+## BugFixes (337–399)
 
-- [x] [GX-330] the append-if-missing doesnt work. It only appends the first line and skips the rest. so, if a file doesnt have any of the lines we want to add, only the first line will be added. — Fixed by normalizing CR-only line endings before parsing so multi-line templates append every line; added regression tests for CR content.
-- [x] [GX-420] `gix cd` (and similar workflow commands) still emitted legacy TASK_PLAN/TASK_APPLY logs even when the new human formatter should be active. — Workflow dependencies now always enable the human-readable formatter so commands can no longer fall back to the old structured drivel.
-
-```yaml
-  - step:
-      name: gitignore-apply
-      after: ["gitignore-branch"]
-      command: ["tasks", "apply"]
-      with:
-        tasks:
-          - name: "Ensure gitignore entries"
-            safeguards:
-              paths:
-                - ".gitignore"
-            steps:
-              - files.apply
-            files:
-              - path: .gitignore
-                content: |
-                  # Managed by gix gitignore workflow
-                  .env
-                  tools/
-                  bin/
-                mode: append-if-missing
+- [ ] [GX-337] When replacing lines in files only a portion of files is getting the replacement and the rest doesn't. An example is running the @configs/cleanup.yaml flow against this very repo:
 ```
-- [x] [GX-331] Workflow execution does not halt after a repository-scoped step emits `TASK_SKIP` (for example, when the `newCleanWorktreeGuard` rejects a dirty worktree), so subsequent steps like `git stage-commit` still run and fail even though the repository should have been skipped entirely. — Introduced a repository-skip sentinel error, taught the executor to stop additional operations when it appears, and added regression coverage to ensure later steps never run on skipped repositories.
-- [x] [GX-332] Workflow executor logs every repository-scoped stage (e.g., `stage 1 … switch-master`), leaking implementation detail; only the final summary should remain visible. — Removed the per-stage zap logging and CLI post-run dump so only the reporter’s summary remains.
-- [x] [GX-333] Rethink human-readable workflow logging: collapse repetitive `TASK_PLAN/TASK_APPLY` spam into concise task summaries, retain only essential branch/PR status lines, and surface warnings/errors in a structured “issues” section so the log is useful at a glance. — Added a workflow-specific event formatter that groups logs per repository, prints single-line task results, and highlights warnings/errors without overwhelming noise.
-- [x] [GX-334] `branch.change` still runs `git pull --rebase` after creating a brand new local branch without a tracking remote, producing noisy `PULL-SKIP` warnings during workflows (there’s nothing to pull, so we should skip automatically). — Skip the pull step when a branch is created without remote tracking so new automation branches no longer emit useless warnings.
-
-- [x] [GX-335] the content of the action in @configs/gitignore.yaml   says
-```yaml
-    content: |
-                      # Managed by gix gitignore workflow
-                      .env
-                      tools/
-                      bin/
+15:14:40 tyemirov@Vadyms-MacBook-Pro:~/Development/tyemirov/gix - [automation/ns-rewrite/gix-20251118T225204] $ go fmt ./... && go vet ./... && go test ./...
+main.go:7:2: no required module provides package github.com/temirov/gix/cmd/cli; to add it:
+        go get github.com/temirov/gix/cmd/cli
+cmd/cli/application_bootstrap.go:16:2: no required module provides package github.com/temirov/gix/cmd/cli/changelog; to add it:
+        go get github.com/temirov/gix/cmd/cli/changelog
+cmd/cli/application_bootstrap.go:17:2: no required module provides package github.com/temirov/gix/cmd/cli/commit; to add it:
+        go get github.com/temirov/gix/cmd/cli/commit
+cmd/cli/application_bootstrap.go:18:2: no required module provides package github.com/temirov/gix/cmd/cli/repos; to add it:
+        go get github.com/temirov/gix/cmd/cli/repos
+cmd/cli/application_bootstrap.go:19:2: no required module provides package github.com/temirov/gix/cmd/cli/repos/release; to add it:
+        go get github.com/temirov/gix/cmd/cli/repos/release
+cmd/cli/application_bootstrap.go:20:2: no required module provides package github.com/temirov/gix/cmd/cli/workflow; to add it:
+        go get github.com/temirov/gix/cmd/cli/workflow
+cmd/cli/application_bootstrap.go:21:2: no required module provides package github.com/temirov/gix/internal/audit; to add it:
+        go get github.com/temirov/gix/internal/audit
+cmd/cli/application_commands.go:15:2: no required module provides package github.com/temirov/gix/internal/audit/cli; to add it:
+        go get github.com/temirov/gix/internal/audit/cli
+cmd/cli/application_bootstrap.go:22:2: no required module provides package github.com/temirov/gix/internal/branches; to add it:
+        go get github.com/temirov/gix/internal/branches
+cmd/cli/application_bootstrap.go:23:2: no required module provides package github.com/temirov/gix/internal/branches/cd; to add it:
+        go get github.com/temirov/gix/internal/branches/cd
+cmd/cli/application_bootstrap.go:24:2: no required module provides package github.com/temirov/gix/internal/migrate; to add it:
+        go get github.com/temirov/gix/internal/migrate
+cmd/cli/application_commands.go:18:2: no required module provides package github.com/temirov/gix/internal/migrate/cli; to add it:
+        go get github.com/temirov/gix/internal/migrate/cli
+cmd/cli/application_bootstrap.go:25:2: no required module provides package github.com/temirov/gix/internal/packages; to add it:
+        go get github.com/temirov/gix/internal/packages
+cmd/cli/application_bootstrap.go:26:2: no required module provides package github.com/temirov/gix/internal/repos/dependencies; to add it:
+        go get github.com/temirov/gix/internal/repos/dependencies
+cmd/cli/application_commands.go:20:2: no required module provides package github.com/temirov/gix/internal/repos/prompt; to add it:
+        go get github.com/temirov/gix/internal/repos/prompt
+cmd/cli/application_commands.go:21:2: no required module provides package github.com/temirov/gix/internal/repos/shared; to add it:
+        go get github.com/temirov/gix/internal/repos/shared
+cmd/cli/application_bootstrap.go:27:2: no required module provides package github.com/temirov/gix/internal/utils; to add it:
+        go get github.com/temirov/gix/internal/utils
+cmd/cli/application_bootstrap.go:28:2: no required module provides package github.com/temirov/gix/internal/utils/flags; to add it:
+        go get github.com/temirov/gix/internal/utils/flags
+cmd/cli/application_bootstrap.go:29:2: no required module provides package github.com/temirov/gix/internal/version; to add it:
+        go get github.com/temirov/gix/internal/version
+cmd/cli/application_config.go:10:2: no required module provides package github.com/temirov/gix/internal/workflow; to add it:
+        go get github.com/temirov/gix/internal/workflow
+cmd/cli/changelog/configuration.go:6:2: no required module provides package github.com/temirov/gix/internal/utils/roots; to add it:
+        go get github.com/temirov/gix/internal/utils/roots
+cmd/cli/changelog/message.go:15:2: no required module provides package github.com/temirov/gix/pkg/llm; to add it:
+        go get github.com/temirov/gix/pkg/llm
+cmd/cli/changelog/helpers.go:9:2: no required module provides package github.com/temirov/gix/pkg/taskrunner; to add it:
+        go get github.com/temirov/gix/pkg/taskrunner
+cmd/cli/commit/message.go:11:2: no required module provides package github.com/temirov/gix/internal/commitmsg; to add it:
+        go get github.com/temirov/gix/internal/commitmsg
+cmd/cli/repos/remove.go:10:2: no required module provides package github.com/temirov/gix/internal/repos/history; to add it:
+        go get github.com/temirov/gix/internal/repos/history
+cmd/cli/workflow/configuration.go:4:2: no required module provides package github.com/temirov/gix/internal/utils/path; to add it:
+        go get github.com/temirov/gix/internal/utils/path
+internal/audit/service.go:15:2: no required module provides package github.com/temirov/gix/internal/execshell; to add it:
+        go get github.com/temirov/gix/internal/execshell
+internal/branches/task_action.go:10:2: no required module provides package github.com/temirov/gix/internal/branches/refresh; to add it:
+        go get github.com/temirov/gix/internal/branches/refresh
+internal/execshell/executor.go:11:2: no required module provides package github.com/temirov/gix/internal/githubauth; to add it:
+        go get github.com/temirov/gix/internal/githubauth
+internal/migrate/pages.go:8:2: no required module provides package github.com/temirov/gix/internal/githubcli; to add it:
+        go get github.com/temirov/gix/internal/githubcli
+internal/migrate/service.go:14:2: no required module provides package github.com/temirov/gix/internal/gitrepo; to add it:
+        go get github.com/temirov/gix/internal/gitrepo
+internal/packages/command.go:11:2: no required module provides package github.com/temirov/gix/internal/ghcr; to add it:
+        go get github.com/temirov/gix/internal/ghcr
+internal/releases/service.go:11:2: no required module provides package github.com/temirov/gix/internal/repos/errors; to add it:
+        go get github.com/temirov/gix/internal/repos/errors
+internal/repos/dependencies/resolve.go:7:2: no required module provides package github.com/temirov/gix/internal/repos/discovery; to add it:
+        go get github.com/temirov/gix/internal/repos/discovery
+internal/repos/dependencies/resolve.go:8:2: no required module provides package github.com/temirov/gix/internal/repos/filesystem; to add it:
+        go get github.com/temirov/gix/internal/repos/filesystem
+internal/repos/protocol/executor.go:9:2: no required module provides package github.com/temirov/gix/internal/repos/remotes; to add it:
+        go get github.com/temirov/gix/internal/repos/remotes
+internal/workflow/task_actions_llm.go:11:2: no required module provides package github.com/temirov/gix/internal/changelog; to add it:
+        go get github.com/temirov/gix/internal/changelog
+internal/workflow/task_actions.go:13:2: no required module provides package github.com/temirov/gix/internal/releases; to add it:
+        go get github.com/temirov/gix/internal/releases
+internal/workflow/operations_migrate.go:12:2: no required module provides package github.com/temirov/gix/internal/repos/identity; to add it:
+        go get github.com/temirov/gix/internal/repos/identity
+internal/workflow/task_actions_namespace.go:11:2: no required module provides package github.com/temirov/gix/internal/repos/namespace; to add it:
+        go get github.com/temirov/gix/internal/repos/namespace
+internal/workflow/operations_protocol.go:9:2: no required module provides package github.com/temirov/gix/internal/repos/protocol; to add it:
+        go get github.com/temirov/gix/internal/repos/protocol
+internal/workflow/operations_rename.go:10:2: no required module provides package github.com/temirov/gix/internal/repos/rename; to add it:
+        go get github.com/temirov/gix/internal/repos/rename
 ```
 
-    but after running the workflow the line that says `.env` never gets into the diffs (PRs). I suspect that instead of string matching for appending them, we use regex, and we shall not use regex in this case. We match on the entire line, whatever it is (probably trimming)
-— Append-if-missing now compares literal line content (whitespace intact) so substrings like `.envrc` or indented variants no longer satisfy `.env`; added tests covering those scenarios.
-- [x] [GX-336] Workflow logging still feels repetetive/confusing (branch change prints both `↪ switched` and `✓ Switch...`). Need redesigned human-readable format: single header per repo with path, grouped phase bullets (remote/folder, branch, file edits, git actions, PR), concise branch transition line, and clear warning/error markers. Update README docs once implemented. — Human formatter now emits bullet-grouped phases, consolidates warnings/errors under an `issues` block, and README/docs were refreshed to describe the new layout.
-- [x] [GX-421] Workflow commands like `gix cd` and `gix message changelog` still dump the legacy structured reporter output (TASK_PLAN/TASK_APPLY spam plus the `Summary: total.repos=…` footer) even when human-readable logging should be forced on. Remove the old structured formatter codepaths, always install the human formatter, and ensure no command can emit the drivel summary again. — Deleted the legacy CLI formatter, moved human logging into `internal/workflow`, forced it on via taskrunner dependencies, removed summary printing, and updated workflow/integration tests so only the concise human output remains.
-
-## Maintenance (410–499)
-
-- [x] [GX-412] Review @POLICY.md and verify what code areas need improvements and refactoring. Prepare a detailed plan of refactoring. Check for bugs, missing tests, poor coding practices, uplication and slop. Ensure strong encapsulation and following the principles og @AGENTS.md and policies of @POLICY.md — Documented the refactor plan in `docs/GX-412-refactor-plan.md`, covering CLI preset helpers, typed workflow builders, domain smart constructors, taskrunner dependency injection, and missing negative-path tests.
-- [x] [GX-413] Eliminate duplicate preset CLI plumbing by introducing a shared `workflowcmd.PresetCommand` helper that centralizes flag parsing, root/config validation, execution flag overrides (including `--workflow-workers`), and dependency wiring before migrating repo commands (files-add/replace/remove/etc.) plus their tests to the new abstraction so edge validation only happens once. — Added `workflowcmd.PresetCommand` with unit tests plus helper builders, then migrated files-add/replace/remove/remotes/protocol/rename/release commands to the new abstraction; existing tests were updated and `go test ./cmd/... ./pkg/taskrunner` passes.
-- [x] [GX-414] Replace untyped preset mutation (current `map[string]any` hacking in repo commands) with typed workflow builder structs (e.g., `workflow.TasksApplyConfig`, file action helpers) that validate allowed combinations of patterns, safeguards, and branch blocks at construction time, deleting the bespoke `update*PresetOptions` helpers and adding serialization tests for single vs multi-pattern and safeguard permutations. — Added `workflow.TasksApplyDefinition` + builder utilities (with tests) and refactored files-add/replace/history-remove/release/retag commands to construct `TaskDefinition` values instead of mutating raw maps.
-- [x] [GX-415] Add smart constructors for domain option structs in `internal/repos/history` and `internal/repos/rename` so CLI layers pass typed owner/repository identifiers and sanitized path segments instead of raw strings/booleans; delete redundant `strings.TrimSpace` validation in CLI shims and expand unit tests around invalid constructor inputs. — Added `shared.RepositoryPathSegment`, history/rename option builders, CLI/workflow wiring that now builds typed inputs, plus new tests covering invalid segments and folder names.
-- [x] [GX-416] Refactor `pkg/taskrunner/dependencies.go` into composable builders (`NewGitExecutionEnvironment`, `NewRepositoryEnvironment`, `NewPromptEnvironment`) that fail fast when dependencies are missing, honor `SkipGitHubResolver` without instantiating clients, and inject IO/loggers explicitly; update workflow + CLI builders plus resolver tests accordingly.
-- [x] [GX-417] Backfill CLI negative-path tests for file-based commands (`cmd/cli/repos/files_add.go`, `replace.go`, `remove.go`) covering `--content-file` IO errors, conflicting `--content` vs `--content-file` flags, and permission parse failures, ensuring errors are wrapped with context and presets are not invoked when validation fails. — Added context-wrapped `ReadFile` errors plus `files_add` tests for conflicting flags, invalid permissions, and content-file IO failures to prove presets stay untouched on validation errors.
-- [x] [GX-418] `gix message changelog` should suppress workflow logging (TASK_PLAN/TASK_APPLY) and print only the generated changelog, but current runs still emit workflow logs on stdout. — Disabled workflow logging for changelog/commit message commands and added tests to ensure only the generated text is printed.
-- [x] [GX-419] Cleanup workflow replaces Go imports via `files.apply` `path="**/*.go"`, which is treated as a literal path and creates directories named `**` with files `*.go`. — `mode: replace` now parses correctly so glob paths are resolved before editing files, letting the cleanup workflow match Go sources without creating literal `**/*.go` artifacts.
+## Maintenance (422–499)
 
 ## Planning 
-do not work on the issues below, not ready
+**Do not work on these, not ready**
 
 - [ ] Add an ability to rollback changes. Make flows and complex commands transactional to allow for rollback when a flow that changes things fails

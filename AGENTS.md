@@ -1,8 +1,8 @@
 # AGENTS.md
 
-## <Repo/App name>
+## gix, a Git/GitHub helper CLI
 
-<App purpose description. What does it do>. See README.md for details
+gix keeps large fleets of Git repositories in a healthy state. It bundles the day-to-day tasks every maintainer repeats: normalising folder names, aligning remotes, pruning stale branches, scrubbing GHCR images, and shipping consistent release notes. See README.md for details
 
 ## Document Roles
 
