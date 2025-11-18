@@ -1,5 +1,27 @@
 # Changelog
 
+## [v0.2.0]
+
+### Features ✨
+- _No changes._
+
+### Improvements ⚙️
+- Force workflow commands to always use human-readable formatter, removing legacy structured logs.
+- Support replace mode globs in taskfiles to correctly handle file patterns.
+- Use replace action for Go file globs in cleanup tasks to avoid creating literal `**/*.go` files.
+- Suppress workflow logging during changelog and commit message commands for cleaner output.
+
+### Bug Fixes 🐛
+- Removed legacy workflow logging outputs (TASK_PLAN/TASK_APPLY) across commands.
+- Disabled legacy CLI structured report formatter, ensuring only human-readable output remains.
+- Fixed changelog and commit message commands to avoid emitting workflow logs.
+  
+### Testing 🧪
+- Added tests to confirm workflow logging suppression in changelog and commit message commands.
+
+### Docs 📚
+- Updated changelog to mention issue GX-419 related to glob support in replace mode.
+
 ## [v0.2.0-rc.13]
 
 ### Features ✨
