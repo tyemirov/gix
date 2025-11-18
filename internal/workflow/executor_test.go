@@ -31,7 +31,7 @@ func TestExecutorReturnsStructuredErrorMessage(testInstance *testing.T) {
 	githubClient, clientError := githubcli.NewClient(gitExecutor)
 	require.NoError(testInstance, clientError)
 
-	dependencies := Dependencies{
+	dependencies := humanReadableDependencies(Dependencies{
 		RepositoryDiscoverer: executorStubRepositoryDiscoverer{repositories: []string{repositoryPath}},
 		GitExecutor:          gitExecutor,
 		RepositoryManager:    repositoryManager,
@@ -40,7 +40,7 @@ func TestExecutorReturnsStructuredErrorMessage(testInstance *testing.T) {
 		Prompter:             nil,
 		Output:               &bytes.Buffer{},
 		Errors:               &bytes.Buffer{},
-	}
+	})
 
 	operation := failingOperation{}
 	executor := NewExecutor([]Operation{operation}, dependencies)
@@ -74,15 +74,14 @@ func TestExecutorDeduplicatesRelativeRoots(testInstance *testing.T) {
 
 	outputBuffer := &bytes.Buffer{}
 
-	dependencies := Dependencies{
+	dependencies := humanReadableDependencies(Dependencies{
 		RepositoryDiscoverer: executorStubRepositoryDiscoverer{repositories: []string{repositoryPath}},
 		GitExecutor:          gitExecutor,
 		RepositoryManager:    repositoryManager,
 		GitHubClient:         githubClient,
 		Output:               outputBuffer,
 		Errors:               outputBuffer,
-		HumanReadableLogging: true,
-	}
+	})
 
 	executor := NewExecutor([]Operation{repoSwitchOperation{}}, dependencies)
 
@@ -98,11 +97,7 @@ func TestExecutorDeduplicatesRelativeRoots(testInstance *testing.T) {
 	)
 	require.NoError(testInstance, executionError)
 
-	occurrences := strings.Count(outputBuffer.String(), "event="+shared.EventCodeRepoSwitched)
-	if occurrences != 1 {
-		testInstance.Logf("executor output:\n%s", outputBuffer.String())
-	}
-	require.Equal(testInstance, 1, occurrences)
+	require.Equal(testInstance, 1, outcome.ReporterSummaryData.EventCounts[shared.EventCodeRepoSwitched])
 	require.Equal(testInstance, 1, outcome.RepositoryCount)
 }
 
@@ -115,13 +110,13 @@ func TestExecutorSkipsMetadataWhenGitHubClientMissing(testInstance *testing.T) {
 	repositoryManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
 	require.NoError(testInstance, managerError)
 
-	dependencies := Dependencies{
+	dependencies := humanReadableDependencies(Dependencies{
 		RepositoryDiscoverer: executorStubRepositoryDiscoverer{repositories: []string{repositoryPath}},
 		GitExecutor:          gitExecutor,
 		RepositoryManager:    repositoryManager,
 		Output:               &bytes.Buffer{},
 		Errors:               &bytes.Buffer{},
-	}
+	})
 
 	executor := NewExecutor([]Operation{repoSwitchOperation{}}, dependencies)
 
@@ -145,14 +140,13 @@ func TestExecutorSummaryCountsRepositoriesWithoutEmittedEvents(testInstance *tes
 
 	outputBuffer := &bytes.Buffer{}
 
-	dependencies := Dependencies{
+	dependencies := humanReadableDependencies(Dependencies{
 		RepositoryDiscoverer: executorStubRepositoryDiscoverer{repositories: []string{repositoryPath}},
 		GitExecutor:          gitExecutor,
 		RepositoryManager:    repositoryManager,
 		Output:               outputBuffer,
 		Errors:               outputBuffer,
-		HumanReadableLogging: true,
-	}
+	})
 
 	executor := NewExecutor([]Operation{noopOperation{}}, dependencies)
 
@@ -163,9 +157,9 @@ func TestExecutorSummaryCountsRepositoriesWithoutEmittedEvents(testInstance *tes
 	)
 	require.NoError(testInstance, executionError)
 
-	summary := outputBuffer.String()
-	require.Contains(testInstance, summary, "Summary: total.repos=1")
+	require.Equal(testInstance, 1, outcome.ReporterSummaryData.TotalRepositories)
 	require.Equal(testInstance, 1, outcome.RepositoryCount)
+	require.Empty(testInstance, strings.TrimSpace(outputBuffer.String()))
 }
 
 func TestExecutorSeedsVariablesFromRuntimeOptions(testInstance *testing.T) {
@@ -181,14 +175,14 @@ func TestExecutorSeedsVariablesFromRuntimeOptions(testInstance *testing.T) {
 	require.NoError(testInstance, clientError)
 
 	recording := &variableRecordingOperation{}
-	dependencies := Dependencies{
+	dependencies := humanReadableDependencies(Dependencies{
 		RepositoryDiscoverer: executorStubRepositoryDiscoverer{repositories: []string{repositoryPath}},
 		GitExecutor:          gitExecutor,
 		RepositoryManager:    repositoryManager,
 		GitHubClient:         githubClient,
 		Output:               &bytes.Buffer{},
 		Errors:               &bytes.Buffer{},
-	}
+	})
 
 	executor := NewExecutor([]Operation{recording}, dependencies)
 	outcome, executionError := executor.Execute(
@@ -220,14 +214,14 @@ func TestExecutorRecordsStageAndOperationOutcomes(testInstance *testing.T) {
 	githubClient, clientError := githubcli.NewClient(gitExecutor)
 	require.NoError(testInstance, clientError)
 
-	dependencies := Dependencies{
+	dependencies := humanReadableDependencies(Dependencies{
 		RepositoryDiscoverer: executorStubRepositoryDiscoverer{repositories: []string{repositoryPath}},
 		GitExecutor:          gitExecutor,
 		RepositoryManager:    repositoryManager,
 		GitHubClient:         githubClient,
 		Output:               &bytes.Buffer{},
 		Errors:               &bytes.Buffer{},
-	}
+	})
 
 	operations := []Operation{
 		namedOperation{operationName: "alpha"},
@@ -277,14 +271,14 @@ func TestRepositorySkipPreventsSubsequentOperations(testInstance *testing.T) {
 	require.NoError(testInstance, clientError)
 
 	tracker := &trackingRepositoryOperation{}
-	dependencies := Dependencies{
+	dependencies := humanReadableDependencies(Dependencies{
 		RepositoryDiscoverer: executorStubRepositoryDiscoverer{repositories: []string{repositoryPath}},
 		GitExecutor:          gitExecutor,
 		RepositoryManager:    repositoryManager,
 		GitHubClient:         githubClient,
 		Output:               &bytes.Buffer{},
 		Errors:               &bytes.Buffer{},
-	}
+	})
 
 	executor := NewExecutor([]Operation{repositorySkipOperation{}, tracker}, dependencies)
 	_, executionError := executor.Execute(
@@ -308,25 +302,24 @@ func TestExecutorContinuesExecutingOperationsAfterFailure(testInstance *testing.
 	buffer := &bytes.Buffer{}
 	recorder := &recordingOperation{}
 
-	dependencies := Dependencies{
+	dependencies := humanReadableDependencies(Dependencies{
 		RepositoryDiscoverer: executorStubRepositoryDiscoverer{repositories: []string{repositoryPath}},
 		GitExecutor:          gitExecutor,
 		RepositoryManager:    repositoryManager,
 		Output:               buffer,
 		Errors:               buffer,
-		HumanReadableLogging: true,
-	}
+	})
 
 	executor := NewExecutor([]Operation{failingOperation{}, recorder}, dependencies)
 
-	_, executionError := executor.Execute(
+	outcome, executionError := executor.Execute(
 		context.Background(),
 		[]string{repositoryPath},
 		RuntimeOptions{SkipRepositoryMetadata: true},
 	)
 	require.Error(testInstance, executionError)
 	require.True(testInstance, recorder.executed)
-	require.Contains(testInstance, buffer.String(), "Summary: total.repos=1")
+	require.Equal(testInstance, 1, outcome.ReporterSummaryData.TotalRepositories)
 }
 
 func TestExecutorLogsAllErrorsFromJoinedOperationFailures(testInstance *testing.T) {
@@ -339,28 +332,34 @@ func TestExecutorLogsAllErrorsFromJoinedOperationFailures(testInstance *testing.
 	require.NoError(testInstance, managerError)
 
 	outputBuffer := &bytes.Buffer{}
-	dependencies := Dependencies{
+	dependencies := humanReadableDependencies(Dependencies{
 		RepositoryDiscoverer: executorStubRepositoryDiscoverer{repositories: []string{repositoryPath}},
 		GitExecutor:          gitExecutor,
 		RepositoryManager:    repositoryManager,
 		Output:               outputBuffer,
 		Errors:               outputBuffer,
 		Logger:               nil,
-		HumanReadableLogging: true,
-	}
+	})
 
 	executor := NewExecutor([]Operation{joinFailOperation{}}, dependencies)
 
-	_, executionError := executor.Execute(
+	outcome, executionError := executor.Execute(
 		context.Background(),
 		[]string{repositoryPath},
 		RuntimeOptions{SkipRepositoryMetadata: true},
 	)
 	require.Error(testInstance, executionError)
-	output := outputBuffer.String()
-	require.Contains(testInstance, output, "NAMESPACE_REWRITE_FAILED")
-	require.Contains(testInstance, output, "ORIGIN_OWNER_MISSING")
-	require.Contains(testInstance, output, "Summary: total.repos=1")
+	eventCounts := outcome.ReporterSummaryData.EventCounts
+	require.Equal(
+		testInstance,
+		1,
+		eventCounts[strings.ToUpper(string(repoerrors.ErrNamespaceRewriteFailed))],
+	)
+	require.Equal(
+		testInstance,
+		1,
+		eventCounts[strings.ToUpper(string(repoerrors.ErrOriginOwnerMissing))],
+	)
 }
 
 func TestExecutorSuppressesWorkflowLogsWhenDisabled(t *testing.T) {
@@ -373,15 +372,14 @@ func TestExecutorSuppressesWorkflowLogsWhenDisabled(t *testing.T) {
 	require.NoError(t, managerErr)
 
 	output := &bytes.Buffer{}
-	dependencies := Dependencies{
+	dependencies := humanReadableDependencies(Dependencies{
 		RepositoryDiscoverer:   executorStubRepositoryDiscoverer{repositories: []string{repositoryPath}},
 		GitExecutor:            gitExecutor,
 		RepositoryManager:      repositoryManager,
 		Output:                 output,
 		Errors:                 output,
-		HumanReadableLogging:   true,
 		DisableWorkflowLogging: true,
-	}
+	})
 
 	executor := NewExecutor([]Operation{noopOperation{}}, dependencies)
 	_, err := executor.Execute(
@@ -520,6 +518,16 @@ func (operation *trackingRepositoryOperation) ExecuteForRepository(ctx context.C
 
 func (operation *trackingRepositoryOperation) IsRepositoryScoped() bool {
 	return true
+}
+
+func humanReadableDependencies(dependencies Dependencies) Dependencies {
+	dependencies.HumanReadableLogging = true
+	dependencies.ReporterOptions = append(
+		dependencies.ReporterOptions,
+		shared.WithEventFormatter(NewHumanEventFormatter()),
+	)
+	dependencies.DisableHeaderDecoration = true
+	return dependencies
 }
 
 type stubWorkflowGitExecutor struct {

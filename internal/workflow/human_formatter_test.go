@@ -8,11 +8,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/temirov/gix/internal/repos/shared"
-	workflowruntime "github.com/temirov/gix/internal/workflow"
 )
 
 func TestWorkflowHumanFormatterGroupsPhases(t *testing.T) {
-	formatter := newWorkflowHumanFormatter()
+	formatter := NewHumanEventFormatter()
 	var buffer bytes.Buffer
 
 	repo := "tyemirov/scheduler"
@@ -47,7 +46,7 @@ func TestWorkflowHumanFormatterGroupsPhases(t *testing.T) {
 		RepositoryIdentifier: repo,
 		RepositoryPath:       path,
 		Details: map[string]string{
-			"phase": string(workflowruntime.LogPhaseBranch),
+			"phase": string(LogPhaseBranch),
 			"task":  "Switch to master",
 		},
 	}, &buffer)
@@ -64,7 +63,7 @@ func TestWorkflowHumanFormatterGroupsPhases(t *testing.T) {
 		RepositoryIdentifier: repo,
 		RepositoryPath:       path,
 		Details: map[string]string{
-			"phase": string(workflowruntime.LogPhaseFiles),
+			"phase": string(LogPhaseFiles),
 			"task":  "Ensure gitignore entries",
 		},
 	}, &buffer)
@@ -81,7 +80,7 @@ func TestWorkflowHumanFormatterGroupsPhases(t *testing.T) {
 		RepositoryIdentifier: repo,
 		RepositoryPath:       path,
 		Details: map[string]string{
-			"phase": string(workflowruntime.LogPhaseGit),
+			"phase": string(LogPhaseGit),
 			"task":  "Git Stage Commit",
 		},
 	}, &buffer)
@@ -101,7 +100,7 @@ func TestWorkflowHumanFormatterGroupsPhases(t *testing.T) {
 }
 
 func TestWorkflowHumanFormatterHandlesMultipleRepositories(t *testing.T) {
-	formatter := newWorkflowHumanFormatter()
+	formatter := NewHumanEventFormatter()
 	var buffer bytes.Buffer
 
 	firstRepo := "tyemirov/alpha"
@@ -118,7 +117,7 @@ func TestWorkflowHumanFormatterHandlesMultipleRepositories(t *testing.T) {
 		RepositoryIdentifier: firstRepo,
 		RepositoryPath:       "/tmp/repos/alpha",
 		Details: map[string]string{
-			"phase": string(workflowruntime.LogPhaseFiles),
+			"phase": string(LogPhaseFiles),
 			"task":  "Update files",
 		},
 	}, &buffer)
@@ -134,7 +133,7 @@ func TestWorkflowHumanFormatterHandlesMultipleRepositories(t *testing.T) {
 		RepositoryIdentifier: secondRepo,
 		RepositoryPath:       "/tmp/repos/beta",
 		Details: map[string]string{
-			"phase": string(workflowruntime.LogPhaseGit),
+			"phase": string(LogPhaseGit),
 			"task":  "Push branch",
 		},
 	}, &buffer)
@@ -152,7 +151,7 @@ func TestWorkflowHumanFormatterHandlesMultipleRepositories(t *testing.T) {
 }
 
 func TestWorkflowHumanFormatterFallbackForBranchPhaseWithoutSwitch(t *testing.T) {
-	formatter := newWorkflowHumanFormatter()
+	formatter := NewHumanEventFormatter()
 	var buffer bytes.Buffer
 
 	repo := "tyemirov/solo"
@@ -169,7 +168,7 @@ func TestWorkflowHumanFormatterFallbackForBranchPhaseWithoutSwitch(t *testing.T)
 		RepositoryIdentifier: repo,
 		RepositoryPath:       path,
 		Details: map[string]string{
-			"phase": string(workflowruntime.LogPhaseBranch),
+			"phase": string(LogPhaseBranch),
 			"task":  "Switch branch",
 		},
 	}, &buffer)
@@ -183,7 +182,7 @@ func TestWorkflowHumanFormatterFallbackForBranchPhaseWithoutSwitch(t *testing.T)
 }
 
 func TestWorkflowHumanFormatterWritesEventSummary(t *testing.T) {
-	formatter := newWorkflowHumanFormatter()
+	formatter := NewHumanEventFormatter()
 	var buffer bytes.Buffer
 
 	formatter.HandleEvent(shared.Event{
@@ -202,11 +201,11 @@ func TestWorkflowHumanFormatterWritesEventSummary(t *testing.T) {
 			break
 		}
 	}
-	require.True(t, found, "expected protocol update summary")
+	require.True(t, found, "expected workflow summary")
 }
 
 func TestWorkflowHumanFormatterPreservesSeverityForPhaseEvents(t *testing.T) {
-	formatter := newWorkflowHumanFormatter()
+	formatter := NewHumanEventFormatter()
 	var buffer bytes.Buffer
 
 	repositoryIdentifier := "tyemirov/severity"
@@ -239,7 +238,7 @@ func TestWorkflowHumanFormatterPreservesSeverityForPhaseEvents(t *testing.T) {
 }
 
 func TestWorkflowHumanFormatterRecordsIssues(t *testing.T) {
-	formatter := newWorkflowHumanFormatter()
+	formatter := NewHumanEventFormatter()
 	var buffer bytes.Buffer
 
 	repo := "tyemirov/issues"
