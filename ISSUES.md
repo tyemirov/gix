@@ -24,6 +24,7 @@ Each issue is formatted as `- [ ] [GX-<number>]`. When resolved it becomes -` [x
 ## BugFixes (330–399)
 
 - [x] [GX-330] the append-if-missing doesnt work. It only appends the first line and skips the rest. so, if a file doesnt have any of the lines we want to add, only the first line will be added. — Fixed by normalizing CR-only line endings before parsing so multi-line templates append every line; added regression tests for CR content.
+- [ ] [GX-420] `gix cd` (and other workflow-powered commands) still emit human-readable TASK_PLAN/TASK_APPLY logs when the CLI log format is set to `console`. That logging mode should be disabled entirely so no command prints workflow noise regardless of config.
 
 ```yaml
   - step:

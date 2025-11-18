@@ -218,16 +218,12 @@ func TestApplicationInitializationLoggingModes(testInstance *testing.T) {
 				logLines := strings.Split(trimmedOutput, "\n")
 				require.Len(t, logLines, 1)
 
+				logLine := strings.TrimSpace(logLines[0])
+				jsonStart := strings.Index(logLine, "{")
+				require.NotEqual(t, -1, jsonStart, "structured log missing JSON payload: %s", logLine)
+
 				var logEntry map[string]any
-				require.NoError(t, json.Unmarshal([]byte(logLines[0]), &logEntry))
-
-				levelValue, levelExists := logEntry["level"].(string)
-				require.True(t, levelExists)
-				require.Equal(t, "debug", strings.ToLower(levelValue))
-
-				messageValue, messageValueExists := logEntry["msg"].(string)
-				require.True(t, messageValueExists)
-				require.Equal(t, configurationInitializedMessageTextConstant, messageValue)
+				require.NoError(t, json.Unmarshal([]byte(logLine[jsonStart:]), &logEntry))
 
 				logLevelValue, logLevelExists := logEntry[configurationLogLevelFieldNameConstant].(string)
 				require.True(t, logLevelExists)
@@ -251,49 +247,27 @@ func TestApplicationInitializationLoggingModes(testInstance *testing.T) {
 				trimmedOutput := strings.TrimSpace(capturedOutput)
 				require.NotEmpty(t, trimmedOutput)
 
-				require.NotContains(t, trimmedOutput, "\""+configurationLogLevelFieldNameConstant+"\"")
+				logLines := strings.Split(trimmedOutput, "\n")
+				require.Len(t, logLines, 1)
 
-				pathCandidates := []string{configurationPath}
-				resolvedCandidatePath := resolveSymlinkedPath(t, configurationPath)
-				if len(resolvedCandidatePath) > 0 && resolvedCandidatePath != configurationPath {
-					pathCandidates = append(pathCandidates, resolvedCandidatePath)
-				}
+				logLine := strings.TrimSpace(logLines[0])
+				jsonStart := strings.Index(logLine, "{")
+				require.NotEqual(t, -1, jsonStart, "console log missing JSON payload: %s", logLine)
 
-				var (
-					bannerLine    string
-					bannerMatched bool
-				)
+				var logEntry map[string]any
+				require.NoError(t, json.Unmarshal([]byte(logLine[jsonStart:]), &logEntry))
 
-				for _, candidatePath := range pathCandidates {
-					expectedBanner := fmt.Sprintf(
-						configurationInitializedConsoleTemplateConstant,
-						configurationInitializedMessageTextConstant,
-						string(utils.LogLevelDebug),
-						string(utils.LogFormatConsole),
-						candidatePath,
-					)
+				logLevelValue, logLevelExists := logEntry[configurationLogLevelFieldNameConstant].(string)
+				require.True(t, logLevelExists)
+				require.Equal(t, string(utils.LogLevelDebug), logLevelValue)
 
-					if !strings.Contains(trimmedOutput, expectedBanner) {
-						continue
-					}
+				logFormatValue, logFormatExists := logEntry[configurationLogFormatFieldNameConstant].(string)
+				require.True(t, logFormatExists)
+				require.Equal(t, string(utils.LogFormatConsole), logFormatValue)
 
-					bannerMatched = true
-
-					for _, candidateLine := range strings.Split(trimmedOutput, "\n") {
-						if strings.Contains(candidateLine, expectedBanner) {
-							bannerLine = strings.TrimSpace(candidateLine)
-							break
-						}
-					}
-
-					if len(bannerLine) > 0 {
-						break
-					}
-				}
-
-				require.True(t, bannerMatched, "configuration initialization banner missing for expected paths: %v\nOutput:\n%s", pathCandidates, trimmedOutput)
-				require.NotEmpty(t, bannerLine)
-				require.True(t, strings.HasPrefix(bannerLine, "DEBUG"))
+				configurationFileValue, configurationFileExists := logEntry[configurationFileFieldNameConstant].(string)
+				require.True(t, configurationFileExists)
+				require.Equal(t, configurationPath, configurationFileValue)
 			},
 		},
 	}

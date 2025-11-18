@@ -409,8 +409,7 @@ func (application *Application) ConfigFileUsed() string {
 }
 
 func (application *Application) humanReadableLoggingEnabled() bool {
-	logFormatValue := strings.TrimSpace(application.configuration.Common.LogFormat)
-	return strings.EqualFold(logFormatValue, string(utils.LogFormatConsole))
+	return false
 }
 
 func (application *Application) logConfigurationInitialization() {
