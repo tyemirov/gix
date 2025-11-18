@@ -39,6 +39,41 @@ func TestNewRepositoryPath(t *testing.T) {
 	}
 }
 
+func TestNewRepositoryPathSegment(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name        string
+		input       string
+		expected    string
+		expectError bool
+	}{
+		{name: "normalizes_segment", input: " ./nested/secret.txt ", expected: "nested/secret.txt"},
+		{name: "converts_windows_separator", input: "configs\\prod.env", expected: "configs/prod.env"},
+		{name: "rejects_empty", input: " ", expectError: true},
+		{name: "rejects_current_directory", input: ".", expectError: true},
+		{name: "rejects_parent_traversal", input: "../secrets.txt", expectError: true},
+		{name: "rejects_absolute", input: "/etc/passwd", expectError: true},
+	}
+
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			result, err := shared.NewRepositoryPathSegment(testCase.input)
+			if testCase.expectError {
+				require.Error(t, err)
+				require.ErrorIs(t, err, shared.ErrRepositoryPathSegmentInvalid)
+				return
+			}
+
+			require.NoError(t, err)
+			require.Equal(t, testCase.expected, result.String())
+		})
+	}
+}
+
 func TestNewOwnerSlug(t *testing.T) {
 	t.Parallel()
 

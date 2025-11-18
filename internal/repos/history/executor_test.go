@@ -13,6 +13,26 @@ import (
 	"github.com/temirov/gix/internal/repos/shared"
 )
 
+func buildHistoryOptions(
+	t *testing.T,
+	repo shared.RepositoryPath,
+	paths []string,
+	remoteName *shared.RemoteName,
+	push bool,
+	restore bool,
+	pushMissing bool,
+) history.Options {
+	t.Helper()
+
+	segments, segmentsError := history.NewPaths(paths)
+	require.NoError(t, segmentsError)
+
+	options, optionsError := history.NewOptions(repo, segments, remoteName, push, restore, pushMissing)
+	require.NoError(t, optionsError)
+
+	return options
+}
+
 type scriptedGitExecutor struct {
 	responses      map[string]execshell.ExecutionResult
 	errorFactories map[string]func(execshell.CommandDetails) error
@@ -98,14 +118,7 @@ func TestExecutorSkipsWhenPathsMissing(testInstance *testing.T) {
 	require.NoError(testInstance, repositoryPathError)
 	remoteNameValue, remoteNameError := shared.NewRemoteName("origin")
 	require.NoError(testInstance, remoteNameError)
-	options := history.Options{
-		RepositoryPath: repositoryPath,
-		Paths:          []string{"secrets.txt"},
-		RemoteName:     &remoteNameValue,
-		Push:           false,
-		Restore:        false,
-		PushMissing:    false,
-	}
+	options := buildHistoryOptions(testInstance, repositoryPath, []string{"secrets.txt"}, &remoteNameValue, false, false, false)
 
 	executionError := service.Execute(context.Background(), options)
 	require.NoError(testInstance, executionError)
@@ -145,14 +158,7 @@ func TestExecutorRunsFilterRepoAndPush(testInstance *testing.T) {
 	repoPath := testInstance.TempDir()
 	repositoryPath, repositoryPathError := shared.NewRepositoryPath(repoPath)
 	require.NoError(testInstance, repositoryPathError)
-	options := history.Options{
-		RepositoryPath: repositoryPath,
-		Paths:          []string{"missing.txt", "secrets.txt"},
-		RemoteName:     nil,
-		Push:           true,
-		Restore:        true,
-		PushMissing:    false,
-	}
+	options := buildHistoryOptions(testInstance, repositoryPath, []string{"missing.txt", "secrets.txt"}, nil, true, true, false)
 
 	executionError := service.Execute(context.Background(), options)
 	require.NoError(testInstance, executionError)
@@ -191,14 +197,7 @@ func TestExecutorFailsWhenFetchingRemoteRefsFails(testInstance *testing.T) {
 	require.NoError(testInstance, repositoryPathError)
 	remoteNameValue, remoteNameError := shared.NewRemoteName("origin")
 	require.NoError(testInstance, remoteNameError)
-	options := history.Options{
-		RepositoryPath: repositoryPath,
-		Paths:          []string{"secrets.txt"},
-		RemoteName:     &remoteNameValue,
-		Push:           false,
-		Restore:        false,
-		PushMissing:    false,
-	}
+	options := buildHistoryOptions(testInstance, repositoryPath, []string{"secrets.txt"}, &remoteNameValue, false, false, false)
 
 	executionError := service.Execute(context.Background(), options)
 	require.Error(testInstance, executionError)

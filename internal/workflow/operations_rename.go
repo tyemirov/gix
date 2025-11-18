@@ -69,7 +69,8 @@ func (operation *RenameOperation) ExecuteForRepository(
 		return fmt.Errorf("rename directories: %w", repositoryPathError)
 	}
 
-	plan := directoryPlanner.Plan(operation.IncludeOwner, repository.Inspection.FinalOwnerRepo, repository.Inspection.DesiredFolderName)
+	ownerRepository, _ := shared.ParseOwnerRepositoryOptional(repository.Inspection.FinalOwnerRepo)
+	plan := directoryPlanner.Plan(operation.IncludeOwner, ownerRepository, repository.Inspection.DesiredFolderName)
 	desiredFolderName := plan.FolderName
 	if plan.IsNoop(repository.Path, repository.Inspection.FolderName) {
 		desiredFolderName = filepath.Base(repository.Path)
@@ -86,13 +87,16 @@ func (operation *RenameOperation) ExecuteForRepository(
 
 	originalPath := repositoryPath.String()
 
-	options := rename.Options{
+	options, optionsError := rename.NewOptions(rename.OptionsDefinition{
 		RepositoryPath:          repositoryPath,
 		DesiredFolderName:       trimmedFolderName,
 		CleanPolicy:             shared.CleanWorktreePolicyFromBool(operation.RequireCleanWorktree),
 		ConfirmationPolicy:      shared.ConfirmationPolicyFromBool(assumeYes),
 		IncludeOwner:            plan.IncludeOwner,
 		EnsureParentDirectories: plan.IncludeOwner,
+	})
+	if optionsError != nil {
+		return fmt.Errorf("rename directories: %w", optionsError)
 	}
 
 	if executionError := rename.Execute(executionContext, dependencies, options); executionError != nil {

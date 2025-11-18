@@ -7,7 +7,6 @@ import (
 	"io"
 	"io/fs"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/temirov/gix/internal/execshell"
@@ -65,16 +64,6 @@ type Dependencies struct {
 	Output            io.Writer
 }
 
-// Options configures the history purge workflow.
-type Options struct {
-	RepositoryPath shared.RepositoryPath
-	Paths          []string
-	RemoteName     *shared.RemoteName
-	Push           bool
-	Restore        bool
-	PushMissing    bool
-}
-
 // Executor orchestrates history removal using git-filter-repo.
 type Executor struct {
 	dependencies Dependencies
@@ -90,27 +79,17 @@ func (executor Executor) Execute(ctx context.Context, options Options) error {
 	if executor.dependencies.GitExecutor == nil || executor.dependencies.RepositoryManager == nil || executor.dependencies.FileSystem == nil {
 		return repoerrors.Wrap(
 			repoerrors.OperationHistoryPurge,
-			options.RepositoryPath.String(),
+			options.repositoryPathString(),
 			repoerrors.ErrExecutorDependenciesMissing,
 			errors.New("history purge requires git executor, repository manager, and filesystem"),
 		)
 	}
 
-	repositoryPath := options.RepositoryPath.String()
-
-	paths := normalizePaths(options.Paths)
-	if len(paths) == 0 {
-		return repoerrors.Wrap(
-			repoerrors.OperationHistoryPurge,
-			repositoryPath,
-			repoerrors.ErrPathsRequired,
-			nil,
-		)
-	}
-
+	repositoryPath := options.repositoryPathString()
+	paths := options.pathStrings()
 	requestedRemote := ""
-	if options.RemoteName != nil {
-		requestedRemote = options.RemoteName.String()
+	if options.remoteName != nil {
+		requestedRemote = options.remoteName.String()
 	}
 	remoteName, savedRemoteURL := executor.prepareRemote(ctx, repositoryPath, requestedRemote)
 	joinedPaths := strings.Join(paths, ",")
@@ -169,7 +148,7 @@ func (executor Executor) Execute(ctx context.Context, options Options) error {
 
 	executor.restoreRemote(ctx, repositoryPath, remoteName, savedRemoteURL)
 
-	if options.Push && len(strings.TrimSpace(remoteName)) > 0 {
+	if options.push && len(strings.TrimSpace(remoteName)) > 0 {
 		if err := executor.forcePush(ctx, repositoryPath, remoteName); err != nil {
 			return repoerrors.Wrap(
 				repoerrors.OperationHistoryPurge,
@@ -180,8 +159,8 @@ func (executor Executor) Execute(ctx context.Context, options Options) error {
 		}
 	}
 
-	if options.Restore && len(strings.TrimSpace(remoteName)) > 0 {
-		if err := executor.restoreUpstreams(ctx, repositoryPath, remoteName, options.PushMissing); err != nil {
+	if options.restore && len(strings.TrimSpace(remoteName)) > 0 {
+		if err := executor.restoreUpstreams(ctx, repositoryPath, remoteName, options.pushMissing); err != nil {
 			return repoerrors.Wrap(
 				repoerrors.OperationHistoryPurge,
 				repositoryPath,
@@ -191,7 +170,7 @@ func (executor Executor) Execute(ctx context.Context, options Options) error {
 		}
 	}
 
-	executor.printf(successMessageTemplate, repositoryPath, joinedPaths, remoteName, options.Push, options.Restore, options.PushMissing)
+	executor.printf(successMessageTemplate, repositoryPath, joinedPaths, remoteName, options.push, options.restore, options.pushMissing)
 	return nil
 }
 
@@ -438,26 +417,4 @@ func (executor Executor) printf(format string, values ...any) {
 		return
 	}
 	fmt.Fprintf(executor.dependencies.Output, format, values...)
-}
-
-func normalizePaths(entries []string) []string {
-	unique := make(map[string]struct{})
-	for _, entry := range entries {
-		trimmed := strings.TrimSpace(entry)
-		if len(trimmed) == 0 {
-			continue
-		}
-		cleaned := strings.TrimPrefix(trimmed, "./")
-		if len(cleaned) == 0 {
-			continue
-		}
-		unique[cleaned] = struct{}{}
-	}
-
-	results := make([]string, 0, len(unique))
-	for value := range unique {
-		results = append(results, value)
-	}
-	sort.Strings(results)
-	return results
 }

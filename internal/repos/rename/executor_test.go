@@ -174,11 +174,18 @@ type eventExpectation struct {
 	assert func(*testing.T, map[string]string)
 }
 
+func mustRenameOptions(t *testing.T, definition rename.OptionsDefinition) rename.Options {
+	t.Helper()
+	options, err := rename.NewOptions(definition)
+	require.NoError(t, err)
+	return options
+}
+
 func TestExecutorBehaviors(testInstance *testing.T) {
 	projectPath := mustRepositoryPath(testInstance, renameTestProjectFolderPath)
 	testCases := []struct {
 		name                       string
-		options                    rename.Options
+		optionsDefinition          rename.OptionsDefinition
 		fileSystem                 *stubFileSystem
 		gitManager                 shared.GitRepositoryManager
 		prompter                   shared.ConfirmationPrompter
@@ -189,7 +196,7 @@ func TestExecutorBehaviors(testInstance *testing.T) {
 	}{
 		{
 			name: "prompter_declines",
-			options: rename.Options{
+			optionsDefinition: rename.OptionsDefinition{
 				RepositoryPath:    projectPath,
 				DesiredFolderName: renameTestDesiredFolderName,
 			},
@@ -215,7 +222,7 @@ func TestExecutorBehaviors(testInstance *testing.T) {
 		},
 		{
 			name: "prompter_accepts_once",
-			options: rename.Options{
+			optionsDefinition: rename.OptionsDefinition{
 				RepositoryPath:    projectPath,
 				DesiredFolderName: renameTestDesiredFolderName,
 			},
@@ -241,7 +248,7 @@ func TestExecutorBehaviors(testInstance *testing.T) {
 		},
 		{
 			name: "prompter_accepts_all",
-			options: rename.Options{
+			optionsDefinition: rename.OptionsDefinition{
 				RepositoryPath:    projectPath,
 				DesiredFolderName: renameTestDesiredFolderName,
 			},
@@ -266,7 +273,7 @@ func TestExecutorBehaviors(testInstance *testing.T) {
 		},
 		{
 			name: "prompter_error",
-			options: rename.Options{
+			optionsDefinition: rename.OptionsDefinition{
 				RepositoryPath:    projectPath,
 				DesiredFolderName: renameTestDesiredFolderName,
 			},
@@ -292,7 +299,7 @@ func TestExecutorBehaviors(testInstance *testing.T) {
 		},
 		{
 			name: "assume_yes_skips_prompt",
-			options: rename.Options{
+			optionsDefinition: rename.OptionsDefinition{
 				RepositoryPath:     projectPath,
 				DesiredFolderName:  renameTestDesiredFolderName,
 				ConfirmationPolicy: shared.ConfirmationAssumeYes,
@@ -317,7 +324,7 @@ func TestExecutorBehaviors(testInstance *testing.T) {
 		},
 		{
 			name: "skip_dirty_worktree",
-			options: rename.Options{
+			optionsDefinition: rename.OptionsDefinition{
 				RepositoryPath:     projectPath,
 				DesiredFolderName:  renameTestDesiredFolderName,
 				CleanPolicy:        shared.CleanWorktreeRequired,
@@ -344,7 +351,7 @@ func TestExecutorBehaviors(testInstance *testing.T) {
 		},
 		{
 			name: "already_normalized_skip",
-			options: rename.Options{
+			optionsDefinition: rename.OptionsDefinition{
 				RepositoryPath:     projectPath,
 				DesiredFolderName:  filepath.Base(renameTestProjectFolderPath),
 				ConfirmationPolicy: shared.ConfirmationAssumeYes,
@@ -369,7 +376,7 @@ func TestExecutorBehaviors(testInstance *testing.T) {
 		},
 		{
 			name: "execute_missing_parent_without_creation",
-			options: rename.Options{
+			optionsDefinition: rename.OptionsDefinition{
 				RepositoryPath:          projectPath,
 				DesiredFolderName:       renameTestOwnerDesiredFolderName,
 				ConfirmationPolicy:      shared.ConfirmationAssumeYes,
@@ -396,7 +403,7 @@ func TestExecutorBehaviors(testInstance *testing.T) {
 		},
 		{
 			name: "execute_missing_parent_with_creation",
-			options: rename.Options{
+			optionsDefinition: rename.OptionsDefinition{
 				RepositoryPath:          projectPath,
 				DesiredFolderName:       renameTestOwnerDesiredFolderName,
 				ConfirmationPolicy:      shared.ConfirmationAssumeYes,
@@ -439,7 +446,8 @@ func TestExecutorBehaviors(testInstance *testing.T) {
 				Reporter:   reporter,
 			})
 
-			executionError := executor.Execute(context.Background(), testCase.options)
+			options := mustRenameOptions(testingInstance, testCase.optionsDefinition)
+			executionError := executor.Execute(context.Background(), options)
 			if testCase.expectedError != "" {
 				require.Error(testingInstance, executionError)
 				require.True(testingInstance, errors.Is(executionError, testCase.expectedError))
@@ -481,7 +489,11 @@ func TestExecutorPromptsAdvertiseApplyAll(testInstance *testing.T) {
 	}
 	projectPath := mustRepositoryPath(testInstance, renameTestProjectFolderPath)
 	renamer := rename.NewExecutor(dependencies)
-	executionError := renamer.Execute(context.Background(), rename.Options{RepositoryPath: projectPath, DesiredFolderName: renameTestDesiredFolderName})
+	options := mustRenameOptions(testInstance, rename.OptionsDefinition{
+		RepositoryPath:    projectPath,
+		DesiredFolderName: renameTestDesiredFolderName,
+	})
+	executionError := renamer.Execute(context.Background(), options)
 	require.NoError(testInstance, executionError)
 	require.Equal(testInstance, []string{fmt.Sprintf("Rename '%s' → '%s'? [a/N/y] ", renameTestProjectFolderPath, renameTestTargetFolderPath)}, commandPrompter.recordedPrompts)
 }

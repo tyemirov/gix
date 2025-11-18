@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -26,18 +27,19 @@ const (
 )
 
 var (
-	ErrRepositoryPathInvalid   = errors.New("repository path invalid")
-	ErrOwnerSlugInvalid        = errors.New("owner slug invalid")
-	ErrRepositoryNameInvalid   = errors.New("repository name invalid")
-	ErrOwnerRepositoryInvalid  = errors.New("owner repository invalid")
-	ErrRemoteURLInvalid        = errors.New("remote URL invalid")
-	ErrRemoteNameInvalid       = errors.New("remote name invalid")
-	ErrBranchNameInvalid       = errors.New("branch name invalid")
-	ErrRemoteProtocolInvalid   = errors.New("remote protocol invalid")
-	ownerSlugPattern           = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
-	repositoryNamePattern      = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
-	remoteNamePattern          = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
-	branchWhitespaceCharacters = " \t\n\r"
+	ErrRepositoryPathInvalid        = errors.New("repository path invalid")
+	ErrRepositoryPathSegmentInvalid = errors.New("repository path segment invalid")
+	ErrOwnerSlugInvalid             = errors.New("owner slug invalid")
+	ErrRepositoryNameInvalid        = errors.New("repository name invalid")
+	ErrOwnerRepositoryInvalid       = errors.New("owner repository invalid")
+	ErrRemoteURLInvalid             = errors.New("remote URL invalid")
+	ErrRemoteNameInvalid            = errors.New("remote name invalid")
+	ErrBranchNameInvalid            = errors.New("branch name invalid")
+	ErrRemoteProtocolInvalid        = errors.New("remote protocol invalid")
+	ownerSlugPattern                = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+	repositoryNamePattern           = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+	remoteNamePattern               = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+	branchWhitespaceCharacters      = " \t\n\r"
 )
 
 // RemoteProtocol enumerates supported git remote protocols.
@@ -104,6 +106,42 @@ func (path RepositoryPath) String() string {
 		panic("shared.RepositoryPath: zero value")
 	}
 	return path.value
+}
+
+// RepositoryPathSegment represents a relative path inside a repository.
+type RepositoryPathSegment struct {
+	value string
+}
+
+// NewRepositoryPathSegment validates relative repository paths.
+func NewRepositoryPathSegment(rawValue string) (RepositoryPathSegment, error) {
+	if strings.ContainsAny(rawValue, "\r\n") {
+		return RepositoryPathSegment{}, fmt.Errorf("%w: contains newline", ErrRepositoryPathSegmentInvalid)
+	}
+	trimmed := strings.TrimSpace(rawValue)
+	if len(trimmed) == 0 {
+		return RepositoryPathSegment{}, fmt.Errorf("%w: empty", ErrRepositoryPathSegmentInvalid)
+	}
+	slashed := strings.ReplaceAll(trimmed, "\\", "/")
+	normalized := path.Clean(filepath.ToSlash(slashed))
+	if normalized == "." {
+		return RepositoryPathSegment{}, fmt.Errorf("%w: resolves to current directory", ErrRepositoryPathSegmentInvalid)
+	}
+	if strings.HasPrefix(normalized, "/") {
+		return RepositoryPathSegment{}, fmt.Errorf("%w: absolute path", ErrRepositoryPathSegmentInvalid)
+	}
+	if normalized == ".." || strings.HasPrefix(normalized, "../") {
+		return RepositoryPathSegment{}, fmt.Errorf("%w: parent traversal", ErrRepositoryPathSegmentInvalid)
+	}
+	return RepositoryPathSegment{value: normalized}, nil
+}
+
+// String returns the normalized relative path.
+func (segment RepositoryPathSegment) String() string {
+	if len(segment.value) == 0 {
+		panic("shared.RepositoryPathSegment: zero value")
+	}
+	return segment.value
 }
 
 // OwnerSlug represents a GitHub owner segment (user or organization).
