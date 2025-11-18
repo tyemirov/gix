@@ -106,6 +106,9 @@ Resolution: Updated workflow replacement planning to walk recursive glob targets
 - [x] [GX-338] The repository remote is `github.com/tyemirov/gix` (`git remote -v`), but the module path + README badge/install instructions still point to `github.com/temirov/gix`, so `go install github.com/tyemirov/gix@latest` fails with `module declares its path as github.com/temirov/gix` and the release badge points at the wrong owner.
 Resolution: Renamed the module + all Go imports to `github.com/tyemirov/gix`, updated the README badge/install instructions/default owner, and re-ran make lint/test/ci to validate the canonical path now matches the remote.
 
+- [x] [GX-339] Documentation (README + ARCHITECTURE) still advertises Go 1.24 support and quick-start instructions say “Go 1.24+”, but `go.mod` now requires Go 1.25, so users compiling with 1.24 hit module version errors.
+Resolution: Updated README + ARCHITECTURE to note Go 1.25+, matching go.mod; no code changes required.
+
 ## Maintenance (422–499)
 
 ## Planning 

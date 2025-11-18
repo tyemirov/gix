@@ -12,7 +12,7 @@ gix keeps large fleets of Git repositories in a healthy state. It bundles the da
 
 ## Quick Start
 
-1. Install the CLI: `go install github.com/tyemirov/gix@latest` (Go 1.24+).
+1. Install the CLI: `go install github.com/tyemirov/gix@latest` (Go 1.25+).
 2. Explore the available commands: `gix --help`.
 3. Bootstrap defaults in your workspace: `gix --init LOCAL` (or `gix --init user` for a per-user config).
 4. Run an audit to confirm your environment: `gix audit --roots ~/Development`.
