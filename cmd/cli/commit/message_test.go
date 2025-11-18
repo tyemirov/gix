@@ -63,6 +63,7 @@ func TestMessageCommandGeneratesCommitMessage(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, runner)
 	require.Equal(t, []string{tempDir}, runner.roots)
+	require.True(t, runner.dependencies.DisableWorkflowLogging, "commit message workflow logging should be disabled")
 	require.Len(t, runner.definitions, 1)
 	require.Len(t, runner.definitions[0].Actions, 1)
 	action := runner.definitions[0].Actions[0]
