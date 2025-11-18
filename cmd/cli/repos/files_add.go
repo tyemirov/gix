@@ -231,7 +231,7 @@ func (builder *FilesAddCommandBuilder) run(command *cobra.Command, arguments []s
 			if len(strings.TrimSpace(contentFilePath)) > 0 {
 				data, readError := ctx.Dependencies.FileSystem.ReadFile(contentFilePath)
 				if readError != nil {
-					return workflowcmd.PresetCommandResult{}, readError
+					return workflowcmd.PresetCommandResult{}, fmt.Errorf("read content file %s: %w", contentFilePath, readError)
 				}
 				fileContent = string(data)
 			}
