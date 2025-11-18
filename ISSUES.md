@@ -4,6 +4,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
 Read @AGENTS.md, @AGENTS.GO.md, @AGENTS.GIT.md @ARCHITECTURE.md, @POLICY.md, @NOTES.md,  @README.md and @ISSUES.md. Start working on open issues. Work autonomously and stack up PRs.
 
+Each issue is formatted as `- [ ] [GX-<number>]`. When resolved it becomes -` [x] [GX-<number>]`
+
 ## Features (110–199)
 
 ## Improvements (235–299)
