@@ -32,16 +32,6 @@ const (
 	parentDirectoryPermissionConstant = fs.FileMode(0o755)
 )
 
-// Options configures a rename execution.
-type Options struct {
-	RepositoryPath          shared.RepositoryPath
-	DesiredFolderName       string
-	CleanPolicy             shared.CleanWorktreePolicy
-	ConfirmationPolicy      shared.ConfirmationPolicy
-	IncludeOwner            bool
-	EnsureParentDirectories bool
-}
-
 // Dependencies supplies collaborators required to evaluate rename operations.
 type Dependencies struct {
 	FileSystem shared.FileSystem
@@ -66,12 +56,12 @@ func NewExecutor(dependencies Dependencies) *Executor {
 
 // Execute performs the rename workflow using the executor's dependencies.
 func (executor *Executor) Execute(executionContext context.Context, options Options) error {
-	desiredName := strings.TrimSpace(options.DesiredFolderName)
+	desiredName := options.desiredFolderName
 	if len(desiredName) == 0 {
 		return nil
 	}
 
-	repositoryPath := options.RepositoryPath.String()
+	repositoryPath := options.repositoryPath.String()
 
 	if executor.dependencies.FileSystem == nil {
 		return repoerrors.Wrap(
@@ -95,7 +85,7 @@ func (executor *Executor) Execute(executionContext context.Context, options Opti
 	parentDirectory := filepath.Dir(oldAbsolutePath)
 	newAbsolutePath := filepath.Join(parentDirectory, desiredName)
 
-	skip, prerequisiteError := executor.evaluatePrerequisites(executionContext, oldAbsolutePath, newAbsolutePath, options.CleanPolicy.RequireClean(), options.EnsureParentDirectories)
+	skip, prerequisiteError := executor.evaluatePrerequisites(executionContext, oldAbsolutePath, newAbsolutePath, options.cleanPolicy.RequireClean(), options.ensureParentDirectories)
 	if prerequisiteError != nil {
 		return prerequisiteError
 	}
@@ -103,7 +93,7 @@ func (executor *Executor) Execute(executionContext context.Context, options Opti
 		return nil
 	}
 
-	if options.ConfirmationPolicy.ShouldPrompt() && executor.dependencies.Prompter != nil {
+	if options.confirmationPolicy.ShouldPrompt() && executor.dependencies.Prompter != nil {
 		prompt := fmt.Sprintf(promptTemplate, oldAbsolutePath, newAbsolutePath)
 		confirmationResult, promptError := executor.dependencies.Prompter.Confirm(prompt)
 		if promptError != nil {
@@ -121,7 +111,7 @@ func (executor *Executor) Execute(executionContext context.Context, options Opti
 		}
 	}
 
-	if ensureError := executor.ensureParentDirectory(newAbsolutePath, options.EnsureParentDirectories); ensureError != nil {
+	if ensureError := executor.ensureParentDirectory(newAbsolutePath, options.ensureParentDirectories); ensureError != nil {
 		return ensureError
 	}
 

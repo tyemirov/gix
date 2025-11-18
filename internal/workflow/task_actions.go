@@ -471,12 +471,14 @@ func handleHistoryPurgeAction(ctx context.Context, environment *Environment, rep
 	if !exists {
 		return errors.New("history purge action requires 'paths'")
 	}
-	paths, pathsError := readHistoryPaths(rawPaths)
+	pathStrings, pathsError := readHistoryPaths(rawPaths)
 	if pathsError != nil {
 		return pathsError
 	}
-	if len(paths) == 0 {
-		return errors.New("history purge action requires at least one path")
+
+	pathSegments, segmentError := history.NewPaths(pathStrings)
+	if segmentError != nil {
+		return fmt.Errorf("history purge action: %w", segmentError)
 	}
 
 	reader := newOptionReader(parameters)
@@ -528,13 +530,9 @@ func handleHistoryPurgeAction(ctx context.Context, environment *Environment, rep
 		Output:            environment.Output,
 	})
 
-	options := history.Options{
-		RepositoryPath: repositoryPath,
-		Paths:          paths,
-		RemoteName:     remoteNameValue,
-		Push:           pushEnabled,
-		Restore:        restoreEnabled,
-		PushMissing:    pushMissing,
+	options, optionsError := history.NewOptions(repositoryPath, pathSegments, remoteNameValue, pushEnabled, restoreEnabled, pushMissing)
+	if optionsError != nil {
+		return fmt.Errorf("history purge action: %w", optionsError)
 	}
 
 	return executor.Execute(ctx, options)

@@ -3,18 +3,15 @@ package rename
 import (
 	"path/filepath"
 	"strings"
-)
 
-const (
-	ownerRepositorySeparatorConstant = "/"
+	"github.com/temirov/gix/internal/repos/shared"
 )
 
 // DirectoryPlan describes the desired folder arrangement for a repository rename.
 type DirectoryPlan struct {
-	FolderName        string
-	OwnerSegment      string
-	RepositorySegment string
-	IncludeOwner      bool
+	FolderName   string
+	IncludeOwner bool
+	owner        *shared.OwnerRepository
 }
 
 // DirectoryPlanner computes desired directory plans based on rename preferences.
@@ -26,25 +23,21 @@ func NewDirectoryPlanner() DirectoryPlanner {
 }
 
 // Plan evaluates the desired directory layout for a repository.
-func (planner DirectoryPlanner) Plan(includeOwner bool, finalOwnerRepository string, defaultFolderName string) DirectoryPlan {
+func (planner DirectoryPlanner) Plan(includeOwner bool, finalOwnerRepository *shared.OwnerRepository, defaultFolderName string) DirectoryPlan {
 	trimmedDefaultFolderName := strings.TrimSpace(defaultFolderName)
 	plan := DirectoryPlan{
-		FolderName:        trimmedDefaultFolderName,
-		RepositorySegment: trimmedDefaultFolderName,
+		FolderName: trimmedDefaultFolderName,
 	}
 
-	if !includeOwner {
+	if !includeOwner || finalOwnerRepository == nil {
 		return plan
 	}
 
-	ownerSegment, repositorySegment, parseSucceeded := splitOwnerRepository(finalOwnerRepository)
-	if !parseSucceeded {
-		return plan
-	}
+	ownerSegment := finalOwnerRepository.Owner().String()
+	repositorySegment := finalOwnerRepository.Repository().String()
 
 	plan.IncludeOwner = true
-	plan.OwnerSegment = ownerSegment
-	plan.RepositorySegment = repositorySegment
+	plan.owner = finalOwnerRepository
 	plan.FolderName = filepath.Join(ownerSegment, repositorySegment)
 
 	return plan
@@ -64,24 +57,4 @@ func (plan DirectoryPlan) IsNoop(repositoryPath string, currentFolderName string
 	}
 
 	return trimmedTarget == strings.TrimSpace(currentFolderName)
-}
-
-func splitOwnerRepository(ownerRepository string) (string, string, bool) {
-	trimmedOwnerRepository := strings.TrimSpace(ownerRepository)
-	if len(trimmedOwnerRepository) == 0 {
-		return "", "", false
-	}
-
-	segments := strings.Split(trimmedOwnerRepository, ownerRepositorySeparatorConstant)
-	if len(segments) != 2 {
-		return "", "", false
-	}
-
-	ownerSegment := strings.TrimSpace(segments[0])
-	repositorySegment := strings.TrimSpace(segments[1])
-	if len(ownerSegment) == 0 || len(repositorySegment) == 0 {
-		return "", "", false
-	}
-
-	return ownerSegment, repositorySegment, true
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
+	"github.com/temirov/gix/internal/repos/history"
 	"github.com/temirov/gix/internal/repos/shared"
 	flagutils "github.com/temirov/gix/internal/utils/flags"
 	"github.com/temirov/gix/internal/workflow"
@@ -114,20 +115,17 @@ func (builder *RemoveCommandBuilder) run(command *cobra.Command, arguments []str
 		}
 	}
 
-	normalizedPaths := make([]string, 0, len(arguments))
-	for _, pathArgument := range arguments {
-		trimmed := strings.TrimSpace(pathArgument)
-		if len(trimmed) == 0 {
-			continue
+	pathSegments, pathError := history.NewPaths(arguments)
+	if pathError != nil {
+		if errors.Is(pathError, history.ErrPathsMissing) {
+			return errors.New(removeMissingPathsErrorMessage)
 		}
-		normalized := strings.TrimPrefix(trimmed, "./")
-		if len(normalized) == 0 {
-			continue
-		}
-		normalizedPaths = append(normalizedPaths, normalized)
+		return pathError
 	}
-	if len(normalizedPaths) == 0 {
-		return errors.New(removeMissingPathsErrorMessage)
+
+	normalizedPaths := make([]string, len(pathSegments))
+	for index := range pathSegments {
+		normalizedPaths[index] = pathSegments[index].String()
 	}
 
 	request := workflowcmd.PresetCommandRequest{

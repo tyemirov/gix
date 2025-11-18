@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/temirov/gix/internal/repos/rename"
+	"github.com/temirov/gix/internal/repos/shared"
 )
 
 const (
@@ -17,47 +18,45 @@ const (
 	plannerOwnerRepositoryPathConstant      = "/tmp/owner/example"
 )
 
+func parseOwnerRepo(t *testing.T, raw string) *shared.OwnerRepository {
+	t.Helper()
+	repo, err := shared.ParseOwnerRepositoryOptional(raw)
+	require.NoError(t, err)
+	return repo
+}
+
 func TestDirectoryPlannerPlan(testInstance *testing.T) {
 	testCases := []struct {
 		name              string
 		includeOwner      bool
 		finalOwnerRepo    string
 		defaultFolderName string
-		expectedPlan      rename.DirectoryPlan
+		expectedFolder    string
+		expectedInclude   bool
 	}{
 		{
 			name:              "without_owner_uses_default",
 			includeOwner:      false,
 			finalOwnerRepo:    plannerOwnerRepositoryConstant,
 			defaultFolderName: plannerDefaultFolderNameConstant,
-			expectedPlan: rename.DirectoryPlan{
-				FolderName:        plannerDefaultFolderNameConstant,
-				RepositorySegment: plannerDefaultFolderNameConstant,
-				IncludeOwner:      false,
-			},
+			expectedFolder:    plannerDefaultFolderNameConstant,
+			expectedInclude:   false,
 		},
 		{
 			name:              "with_owner_builds_nested_folder",
 			includeOwner:      true,
 			finalOwnerRepo:    plannerOwnerRepositoryConstant,
 			defaultFolderName: plannerDefaultFolderNameConstant,
-			expectedPlan: rename.DirectoryPlan{
-				FolderName:        filepath.Join("owner", "example"),
-				OwnerSegment:      "owner",
-				RepositorySegment: "example",
-				IncludeOwner:      true,
-			},
+			expectedFolder:    filepath.Join("owner", "example"),
+			expectedInclude:   true,
 		},
 		{
 			name:              "with_owner_missing_identifier_uses_default",
 			includeOwner:      true,
 			finalOwnerRepo:    "",
 			defaultFolderName: plannerDefaultFolderNameConstant,
-			expectedPlan: rename.DirectoryPlan{
-				FolderName:        plannerDefaultFolderNameConstant,
-				RepositorySegment: plannerDefaultFolderNameConstant,
-				IncludeOwner:      false,
-			},
+			expectedFolder:    plannerDefaultFolderNameConstant,
+			expectedInclude:   false,
 		},
 	}
 
@@ -65,14 +64,20 @@ func TestDirectoryPlannerPlan(testInstance *testing.T) {
 	for _, testCase := range testCases {
 		testCase := testCase
 		testInstance.Run(testCase.name, func(subtest *testing.T) {
-			plan := planner.Plan(testCase.includeOwner, testCase.finalOwnerRepo, testCase.defaultFolderName)
-			require.Equal(subtest, testCase.expectedPlan, plan)
+			owner, err := shared.ParseOwnerRepositoryOptional(testCase.finalOwnerRepo)
+			require.NoError(subtest, err)
+
+			plan := planner.Plan(testCase.includeOwner, owner, testCase.defaultFolderName)
+			require.Equal(subtest, testCase.expectedFolder, plan.FolderName)
+			require.Equal(subtest, testCase.expectedInclude, plan.IncludeOwner)
 		})
 	}
 }
 
 func TestDirectoryPlanIsNoop(testInstance *testing.T) {
 	planner := rename.NewDirectoryPlanner()
+	ownerRepo := parseOwnerRepo(testInstance, plannerOwnerRepositoryConstant)
+	alternateOwner := parseOwnerRepo(testInstance, plannerAlternateOwnerRepositoryConstant)
 	testCases := []struct {
 		name           string
 		plan           rename.DirectoryPlan
@@ -89,28 +94,28 @@ func TestDirectoryPlanIsNoop(testInstance *testing.T) {
 		},
 		{
 			name:           "matching_folder_without_owner",
-			plan:           planner.Plan(false, plannerOwnerRepositoryConstant, plannerDefaultFolderNameConstant),
+			plan:           planner.Plan(false, ownerRepo, plannerDefaultFolderNameConstant),
 			repositoryPath: plannerRepositoryPathConstant,
 			currentFolder:  plannerDefaultFolderNameConstant,
 			expectedIsNoop: true,
 		},
 		{
 			name:           "mismatched_folder_without_owner",
-			plan:           planner.Plan(false, plannerOwnerRepositoryConstant, plannerDefaultFolderNameConstant),
+			plan:           planner.Plan(false, ownerRepo, plannerDefaultFolderNameConstant),
 			repositoryPath: plannerRepositoryPathConstant,
 			currentFolder:  "legacy",
 			expectedIsNoop: false,
 		},
 		{
 			name:           "matching_owner_repository_suffix",
-			plan:           planner.Plan(true, plannerOwnerRepositoryConstant, plannerDefaultFolderNameConstant),
+			plan:           planner.Plan(true, ownerRepo, plannerDefaultFolderNameConstant),
 			repositoryPath: plannerOwnerRepositoryPathConstant,
 			currentFolder:  plannerDefaultFolderNameConstant,
 			expectedIsNoop: true,
 		},
 		{
 			name:           "different_owner_repository_suffix",
-			plan:           planner.Plan(true, plannerAlternateOwnerRepositoryConstant, plannerDefaultFolderNameConstant),
+			plan:           planner.Plan(true, alternateOwner, plannerDefaultFolderNameConstant),
 			repositoryPath: plannerOwnerRepositoryPathConstant,
 			currentFolder:  plannerDefaultFolderNameConstant,
 			expectedIsNoop: false,
