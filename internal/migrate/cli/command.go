@@ -95,6 +95,8 @@ func (builder *CommandBuilder) runDefault(command *cobra.Command, arguments []st
 		},
 		taskrunner.DependenciesOptions{
 			Command: command,
+			Output:  command.OutOrStdout(),
+			Errors:  command.ErrOrStderr(),
 		},
 	)
 	if dependencyError != nil {

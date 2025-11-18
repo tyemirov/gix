@@ -80,6 +80,8 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 		},
 		taskrunner.DependenciesOptions{
 			Command:            command,
+			Output:             command.OutOrStdout(),
+			Errors:             command.ErrOrStderr(),
 			SkipGitHubResolver: true,
 		},
 	)

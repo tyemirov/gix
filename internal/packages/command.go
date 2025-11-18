@@ -121,6 +121,8 @@ func (builder *CommandBuilder) runPurge(command *cobra.Command, arguments []stri
 		},
 		taskrunner.DependenciesOptions{
 			Command:         command,
+			Output:          command.OutOrStdout(),
+			Errors:          command.ErrOrStderr(),
 			DisablePrompter: true,
 		},
 	)

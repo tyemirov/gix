@@ -1,6 +1,7 @@
 package taskrunner
 
 import (
+	"bytes"
 	"context"
 	"io/fs"
 	"testing"
@@ -20,10 +21,49 @@ func TestBuildDependenciesSkipsGitHubResolver(t *testing.T) {
 		FileSystem:           stubFileSystem{},
 	}
 
-	result, err := BuildDependencies(config, DependenciesOptions{SkipGitHubResolver: true})
+	result, err := BuildDependencies(
+		config,
+		DependenciesOptions{
+			SkipGitHubResolver: true,
+			Output:             &bytes.Buffer{},
+			Errors:             &bytes.Buffer{},
+		},
+	)
 	require.NoError(t, err)
 	require.Nil(t, result.GitHubResolver)
 	require.Nil(t, result.Workflow.GitHubClient)
+}
+
+func TestBuildDependenciesRequiresOutputWriter(t *testing.T) {
+	config := DependenciesConfig{
+		LoggerProvider:       func() *zap.Logger { return zap.NewNop() },
+		RepositoryDiscoverer: stubRepositoryDiscoverer{},
+		GitExecutor:          stubGitExecutor{},
+		GitRepositoryManager: stubRepositoryManager{},
+		FileSystem:           stubFileSystem{},
+	}
+
+	_, err := BuildDependencies(config, DependenciesOptions{SkipGitHubResolver: true})
+	require.ErrorIs(t, err, errOutputWriterMissing)
+}
+
+func TestBuildDependenciesRequiresErrorWriter(t *testing.T) {
+	config := DependenciesConfig{
+		LoggerProvider:       func() *zap.Logger { return zap.NewNop() },
+		RepositoryDiscoverer: stubRepositoryDiscoverer{},
+		GitExecutor:          stubGitExecutor{},
+		GitRepositoryManager: stubRepositoryManager{},
+		FileSystem:           stubFileSystem{},
+	}
+
+	_, err := BuildDependencies(
+		config,
+		DependenciesOptions{
+			SkipGitHubResolver: true,
+			Output:             &bytes.Buffer{},
+		},
+	)
+	require.ErrorIs(t, err, errErrorWriterMissing)
 }
 
 type stubGitExecutor struct{}
