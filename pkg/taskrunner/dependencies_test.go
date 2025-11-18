@@ -66,6 +66,30 @@ func TestBuildDependenciesRequiresErrorWriter(t *testing.T) {
 	require.ErrorIs(t, err, errErrorWriterMissing)
 }
 
+func TestBuildDependenciesAlwaysEnablesHumanLogging(t *testing.T) {
+	config := DependenciesConfig{
+		LoggerProvider:       func() *zap.Logger { return zap.NewNop() },
+		RepositoryDiscoverer: stubRepositoryDiscoverer{},
+		GitExecutor:          stubGitExecutor{},
+		GitRepositoryManager: stubRepositoryManager{},
+		FileSystem:           stubFileSystem{},
+		HumanReadableLoggingProvider: func() bool {
+			return false
+		},
+	}
+
+	result, err := BuildDependencies(
+		config,
+		DependenciesOptions{
+			Output:             &bytes.Buffer{},
+			Errors:             &bytes.Buffer{},
+			SkipGitHubResolver: true,
+		},
+	)
+	require.NoError(t, err)
+	require.True(t, result.Workflow.HumanReadableLogging)
+}
+
 type stubGitExecutor struct{}
 
 func (stubGitExecutor) ExecuteGit(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {

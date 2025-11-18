@@ -102,7 +102,7 @@ func BuildDependencies(config DependenciesConfig, options DependenciesOptions) (
 		Prompter:             promptEnvironment.Prompter,
 		Output:               promptEnvironment.Output,
 		Errors:               promptEnvironment.Errors,
-		HumanReadableLogging: gitEnvironment.HumanReadableLogging,
+		HumanReadableLogging: true,
 	}
 
 	return DependenciesResult{
