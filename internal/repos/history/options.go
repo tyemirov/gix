@@ -85,13 +85,6 @@ func (options Options) repositoryPathString() string {
 	return options.repositoryPath.String()
 }
 
-func (options Options) remoteNameString() string {
-	if options.remoteName == nil {
-		return ""
-	}
-	return options.remoteName.String()
-}
-
 func (options Options) pathStrings() []string {
 	results := make([]string, len(options.paths))
 	for index := range options.paths {
