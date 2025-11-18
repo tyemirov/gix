@@ -106,16 +106,39 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 				}
 			}
 
+			displayName := "Create release tag"
+			trimmedTag := strings.TrimSpace(tagName)
+			if trimmedTag != "" {
+				displayName = fmt.Sprintf("Create release tag %s", trimmedTag)
+			}
+			actionOptions := map[string]any{
+				"tag": trimmedTag,
+			}
+			if trimmedMessage := strings.TrimSpace(messageValue); trimmedMessage != "" {
+				actionOptions["message"] = trimmedMessage
+			}
+			if trimmedRemote := strings.TrimSpace(resolvedRemote); trimmedRemote != "" {
+				actionOptions["remote"] = trimmedRemote
+			}
+
+			taskDefinition := workflow.TaskDefinition{
+				Name:        displayName,
+				EnsureClean: false,
+				Actions: []workflow.TaskActionDefinition{
+					{
+						Type:    "repo.release.tag",
+						Options: actionOptions,
+					},
+				},
+			}
+
 			for index := range ctx.Configuration.Steps {
 				if workflow.CommandPathKey(ctx.Configuration.Steps[index].Command) != releasePresetCommandKey {
 					continue
 				}
-				updateReleasePresetOptions(
-					ctx.Configuration.Steps[index].Options,
-					tagName,
-					messageValue,
-					resolvedRemote,
-				)
+				ctx.Configuration.Steps[index].Options = workflow.TasksApplyDefinition{
+					Tasks: []workflow.TaskDefinition{taskDefinition},
+				}.Options()
 			}
 
 			return workflowcmd.PresetCommandResult{
@@ -146,55 +169,4 @@ func (builder *CommandBuilder) presetCommand() workflowcmd.PresetCommand {
 		PresetCatalogFactory:         builder.PresetCatalogFactory,
 		WorkflowExecutorFactory:      builder.WorkflowExecutorFactory,
 	})
-}
-
-func updateReleasePresetOptions(options map[string]any, tagName string, message string, remote string) {
-	if options == nil {
-		return
-	}
-	taskEntries, ok := options["tasks"].([]any)
-	if !ok || len(taskEntries) == 0 {
-		return
-	}
-	taskEntry, ok := taskEntries[0].(map[string]any)
-	if !ok {
-		return
-	}
-
-	displayName := "Create release tag"
-	trimmedTag := strings.TrimSpace(tagName)
-	if len(trimmedTag) > 0 {
-		displayName = fmt.Sprintf("Create release tag %s", trimmedTag)
-	}
-	taskEntry["name"] = displayName
-	taskEntry["ensure_clean"] = false
-
-	actionEntries, ok := taskEntry["actions"].([]any)
-	if !ok || len(actionEntries) == 0 {
-		return
-	}
-	actionEntry, ok := actionEntries[0].(map[string]any)
-	if !ok {
-		return
-	}
-	actionOptions, _ := actionEntry["options"].(map[string]any)
-	if actionOptions == nil {
-		actionOptions = make(map[string]any)
-	}
-	actionOptions["tag"] = trimmedTag
-	if len(strings.TrimSpace(message)) > 0 {
-		actionOptions["message"] = strings.TrimSpace(message)
-	} else {
-		delete(actionOptions, "message")
-	}
-	if len(strings.TrimSpace(remote)) > 0 {
-		actionOptions["remote"] = strings.TrimSpace(remote)
-	} else {
-		delete(actionOptions, "remote")
-	}
-	actionEntry["options"] = actionOptions
-	actionEntries[0] = actionEntry
-	taskEntry["actions"] = actionEntries
-	taskEntries[0] = taskEntry
-	options["tasks"] = taskEntries
 }

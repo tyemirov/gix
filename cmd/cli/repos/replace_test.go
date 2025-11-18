@@ -91,8 +91,8 @@ func TestReplaceCommandUsesConfigurationDefaults(t *testing.T) {
 			require.Equal(t, "*.md", options["pattern"])
 			require.Equal(t, []string{"go", "fmt", "./..."}, options["command"])
 
-			safeguards, ok := options["safeguards"].(map[string]any)
-			require.True(t, ok)
+			safeguards := task.Safeguards
+			require.NotNil(t, safeguards)
 			hardStop, ok := safeguards["hard_stop"].(map[string]any)
 			require.True(t, ok)
 			require.True(t, hardStop["require_clean"].(bool))
@@ -163,7 +163,8 @@ func TestReplaceCommandFlagOverrides(t *testing.T) {
 			commandArgs := action.Options["command"].([]string)
 			require.Equal(t, []string{"go", "test", "./..."}, commandArgs)
 
-			safeguards := action.Options["safeguards"].(map[string]any)
+			safeguards := task.Safeguards
+			require.NotNil(t, safeguards)
 			hardStop, ok := safeguards["hard_stop"].(map[string]any)
 			require.True(t, ok)
 			require.True(t, hardStop["require_clean"].(bool))

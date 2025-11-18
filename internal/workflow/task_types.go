@@ -63,6 +63,30 @@ const (
 	taskExecutionStepCustomActions   taskExecutionStep = "actions"
 )
 
+// TaskExecutionStep describes the explicit steps a task should run.
+type TaskExecutionStep = taskExecutionStep
+
+const (
+	// TaskExecutionStepBranchPrepare runs the branch creation workflow.
+	TaskExecutionStepBranchPrepare TaskExecutionStep = taskExecutionStepBranchPrepare
+	// TaskExecutionStepFilesApply writes templated files.
+	TaskExecutionStepFilesApply TaskExecutionStep = taskExecutionStepFilesApply
+	// TaskExecutionStepGitStage stages templated files without committing.
+	TaskExecutionStepGitStage TaskExecutionStep = taskExecutionStepGitStage
+	// TaskExecutionStepGitCommit commits staged changes.
+	TaskExecutionStepGitCommit TaskExecutionStep = taskExecutionStepGitCommit
+	// TaskExecutionStepGitStageCommit performs a combined stage + commit.
+	TaskExecutionStepGitStageCommit TaskExecutionStep = taskExecutionStepGitStageCommit
+	// TaskExecutionStepGitPush pushes the templated branch to the configured remote.
+	TaskExecutionStepGitPush TaskExecutionStep = taskExecutionStepGitPush
+	// TaskExecutionStepPullRequestCreate opens a draft/open PR without pushing.
+	TaskExecutionStepPullRequestCreate TaskExecutionStep = taskExecutionStepPullRequest
+	// TaskExecutionStepPullRequestOpen pushes and opens the PR in one step.
+	TaskExecutionStepPullRequestOpen TaskExecutionStep = taskExecutionStepPullRequestOpen
+	// TaskExecutionStepCustomActions runs imperative actions only.
+	TaskExecutionStepCustomActions TaskExecutionStep = taskExecutionStepCustomActions
+)
+
 // TaskFileMode enumerates file handling semantics for task-managed files.
 type TaskFileMode = taskFileExistsMode
 
