@@ -12,7 +12,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/temirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/internal/repos/shared"
 )
 
 type taskPlan struct {
@@ -439,26 +439,81 @@ func (planner taskPlanner) resolveReplacementTargets(repository *RepositoryState
 		return nil, matcherErr
 	}
 
-	targets := make([]string, 0)
-	absolutePattern := filepath.Join(repository.Path, normalized)
-	matches, err := filepath.Glob(absolutePattern)
-	if err != nil {
-		return nil, err
+	searchRoot := determineReplacementSearchRoot(repository.Path, normalized)
+	targets, collectErr := collectRecursiveReplacementTargets(repository.Path, searchRoot, matcher)
+	if collectErr != nil {
+		return nil, collectErr
 	}
-	for _, match := range matches {
-		info, statErr := os.Stat(match)
-		if statErr != nil || info.IsDir() {
-			continue
+	return targets, nil
+}
+
+func determineReplacementSearchRoot(repositoryPath string, pattern string) string {
+	wildcardIndex := strings.IndexAny(pattern, "*?[")
+	if wildcardIndex == -1 {
+		return repositoryPath
+	}
+
+	prefix := pattern[:wildcardIndex]
+	slashIndex := strings.LastIndex(prefix, "/")
+	if slashIndex <= 0 {
+		return repositoryPath
+	}
+
+	directoryPrefix := strings.Trim(prefix[:slashIndex], "/")
+	if len(directoryPrefix) == 0 {
+		return repositoryPath
+	}
+
+	return filepath.Join(repositoryPath, filepath.FromSlash(directoryPrefix))
+}
+
+func collectRecursiveReplacementTargets(repositoryPath string, searchRoot string, matcher func(string) bool) ([]string, error) {
+	info, statErr := os.Stat(searchRoot)
+	if statErr != nil {
+		if errors.Is(statErr, fs.ErrNotExist) {
+			return nil, nil
 		}
-		relative, relErr := filepath.Rel(repository.Path, match)
+		return nil, statErr
+	}
+
+	if !info.IsDir() {
+		relativePath, relErr := filepath.Rel(repositoryPath, searchRoot)
 		if relErr != nil {
-			continue
+			return nil, relErr
 		}
-		normalizedRelative := filepath.ToSlash(relative)
-		if matcher(normalizedRelative) {
-			targets = append(targets, normalizedRelative)
+		normalized := filepath.ToSlash(relativePath)
+		if matcher(normalized) {
+			return []string{normalized}, nil
 		}
+		return nil, nil
 	}
+
+	targets := make([]string, 0)
+	walkErr := filepath.WalkDir(searchRoot, func(path string, entry fs.DirEntry, pathErr error) error {
+		if pathErr != nil {
+			if errors.Is(pathErr, fs.ErrNotExist) {
+				return nil
+			}
+			return pathErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		relativePath, relErr := filepath.Rel(repositoryPath, path)
+		if relErr != nil {
+			return relErr
+		}
+		normalized := filepath.ToSlash(relativePath)
+		if matcher(normalized) {
+			targets = append(targets, normalized)
+		}
+		return nil
+	})
+	if walkErr != nil {
+		return nil, walkErr
+	}
+
+	sort.Strings(targets)
 	return targets, nil
 }
 

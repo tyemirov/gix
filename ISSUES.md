@@ -13,7 +13,7 @@ Each issue is formatted as `- [ ] [GX-<number>]`. When resolved it becomes -` [x
 
 ## BugFixes (337–399)
 
-- [ ] [GX-337] When replacing lines in files only a portion of files is getting the replacement and the rest doesn't. An example is running the @configs/cleanup.yaml flow against this very repo:
+- [x] [GX-337] When replacing lines in files only a portion of files is getting the replacement and the rest doesn't. An example is running the @configs/cleanup.yaml flow against this very repo:
 ```
 15:14:40 tyemirov@Vadyms-MacBook-Pro:~/Development/tyemirov/gix - [automation/ns-rewrite/gix-20251118T225204] $ go fmt ./... && go vet ./... && go test ./...
 main.go:7:2: no required module provides package github.com/temirov/gix/cmd/cli; to add it:
@@ -101,6 +101,7 @@ internal/workflow/operations_protocol.go:9:2: no required module provides packag
 internal/workflow/operations_rename.go:10:2: no required module provides package github.com/temirov/gix/internal/repos/rename; to add it:
         go get github.com/temirov/gix/internal/repos/rename
 ```
+Resolution: Updated workflow replacement planning to walk recursive glob targets so namespace rewrites touch every Go file; covered via new test and passing make lint/test/ci.
 
 ## Maintenance (422–499)
 
