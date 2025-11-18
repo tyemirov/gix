@@ -354,6 +354,8 @@ func parseTaskFileMode(raw string) TaskFileMode {
 		return TaskFileModeSkipIfExists
 	case string(taskFileModeAppendIfMissing):
 		return TaskFileModeAppendIfMissing
+	case string(taskFileModeReplace):
+		return TaskFileModeReplace
 	default:
 		return TaskFileModeOverwrite
 	}
