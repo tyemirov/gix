@@ -166,6 +166,7 @@ func (builder *MessageCommandBuilder) run(command *cobra.Command, arguments []st
 		return dependencyError
 	}
 	taskDependencies := dependencyResult.Workflow
+	taskDependencies.DisableWorkflowLogging = true
 
 	clientFactory := builder.ClientFactory
 	if clientFactory == nil {

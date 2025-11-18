@@ -152,5 +152,7 @@ func TestMessageCommandOutputsChangelogOnce(t *testing.T) {
 
 	out := output.String()
 	require.Equal(t, 1, strings.Count(out, "## [v1.0.0]"), "expected changelog heading once, output: %q", out)
+	require.NotContains(t, out, "TASK_PLAN", "workflow logs should be suppressed for changelog command")
+	require.NotContains(t, out, "TASK_APPLY", "workflow logs should be suppressed for changelog command")
 	require.Equal(t, 1, client.calls, "chat client should be invoked exactly once")
 }
