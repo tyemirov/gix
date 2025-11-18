@@ -1,5 +1,41 @@
 # Changelog
 
+## [v0.2.0-rc.13]
+
+### Features ✨
+- Enforce typed options in history and rename commands.
+- Add concurrent repository execution to workflow.
+- Add preset workflow helpers and convert workflow commands to presets.
+
+### Improvements ⚙️
+- Redesigned workflow logging and improved safeguard tracking between hard-stop and soft-skip.
+- Synced repository playbook documentation and enhanced audit fallback handling.
+- Added typed preset builders and preset workflow helper utilities.
+- Propagate owner variable to canonical workflow preset.
+- Ensure folder-rename preset uses boolean options.
+- Clean workflow logging headers.
+- Validate retag mapping inputs.
+- Gate history variable overrides to history actions.
+- Preserve severity indicators for phase events.
+
+### Bug Fixes 🐛
+- Refined workflow human-readable logging.
+- Add hard-stop vs soft-skip safeguards.
+- Converted repo-files-add, repo-files-replace, remote update, and release commands to workflow presets.
+- Removed bespoke repo workflow helpers.
+- Ensure repo files add skips pushes when disabled.
+- Fixed repo workflow executor wiring.
+
+### Testing 🧪
+- Covered negative paths in files-add tests.
+- Updated audit fallback expectations.
+- Added integration coverage for workflow preset variables.
+
+### Docs 📚
+- Added GX-412 refactor plan and marked GX-417 issue as resolved.
+- Updated Go backend and git agent coding standard documents.
+- Improved repo playbook documentation to align with new features and workflows.
+
 ## [v0.2.0-rc.12]
 
 ### Features ✨
