@@ -230,6 +230,108 @@ func TestFilesAddCommandRejectsPositionalRoots(t *testing.T) {
 	require.Equal(t, rootutils.PositionalRootsUnsupportedMessage(), err.Error())
 }
 
+func TestFilesAddCommandRejectsConflictingContentFlags(t *testing.T) {
+	t.Parallel()
+
+	builder := repos.FilesAddCommandBuilder{
+		LoggerProvider:               func() *zap.Logger { return zap.NewNop() },
+		Discoverer:                   &fakeRepositoryDiscoverer{repositories: []string{filesAddConfiguredRoot}},
+		GitExecutor:                  &fakeGitExecutor{},
+		GitManager:                   &fakeGitRepositoryManager{cleanWorktree: true, cleanWorktreeSet: true},
+		FileSystem:                   fakeFileSystem{files: map[string]string{"content.txt": "external"}},
+		HumanReadableLoggingProvider: func() bool { return false },
+		ConfigurationProvider:        func() repos.AddConfiguration { return repos.AddConfiguration{} },
+		PresetCatalogFactory: func() workflowcmd.PresetCatalog {
+			require.Fail(t, "preset catalog should not be invoked when validation fails")
+			return nil
+		},
+	}
+
+	command, buildError := builder.Build()
+	require.NoError(t, buildError)
+	bindGlobalReplaceFlags(command)
+	command.SetContext(context.Background())
+	command.SetArgs([]string{
+		filesAddPathFlag, "docs/example.md",
+		filesAddContentFlag, "inline",
+		filesAddContentFileFlag, "content.txt",
+	})
+
+	err := command.Execute()
+	require.EqualError(t, err, "--content and --content-file cannot both be provided")
+}
+
+func TestFilesAddCommandRejectsInvalidPermissions(t *testing.T) {
+	t.Parallel()
+
+	builder := repos.FilesAddCommandBuilder{
+		LoggerProvider:               func() *zap.Logger { return zap.NewNop() },
+		Discoverer:                   &fakeRepositoryDiscoverer{repositories: []string{filesAddConfiguredRoot}},
+		GitExecutor:                  &fakeGitExecutor{},
+		GitManager:                   &fakeGitRepositoryManager{cleanWorktree: true, cleanWorktreeSet: true},
+		FileSystem:                   fakeFileSystem{},
+		HumanReadableLoggingProvider: func() bool { return false },
+		ConfigurationProvider:        func() repos.AddConfiguration { return repos.AddConfiguration{} },
+		PresetCatalogFactory: func() workflowcmd.PresetCatalog {
+			require.Fail(t, "preset catalog should not be invoked when permissions parsing fails")
+			return nil
+		},
+	}
+
+	command, buildError := builder.Build()
+	require.NoError(t, buildError)
+	bindGlobalReplaceFlags(command)
+	command.SetContext(context.Background())
+	command.SetArgs([]string{
+		filesAddPathFlag, "docs/example.md",
+		filesAddContentFlag, "inline",
+		filesAddPermissionsFlag, "invalid",
+	})
+
+	err := command.Execute()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid permissions invalid")
+}
+
+func TestFilesAddCommandReportsContentFileErrors(t *testing.T) {
+	t.Parallel()
+
+	presetConfig := loadFilesAddPreset(t)
+	readErr := errors.New("no such file or directory")
+	var workflowInvoked bool
+	builder := repos.FilesAddCommandBuilder{
+		LoggerProvider:               func() *zap.Logger { return zap.NewNop() },
+		Discoverer:                   &fakeRepositoryDiscoverer{repositories: []string{filesAddConfiguredRoot}},
+		GitExecutor:                  &fakeGitExecutor{},
+		GitManager:                   &fakeGitRepositoryManager{cleanWorktree: true, cleanWorktreeSet: true},
+		FileSystem:                   erroringFileSystem{readError: readErr},
+		HumanReadableLoggingProvider: func() bool { return false },
+		ConfigurationProvider: func() repos.AddConfiguration {
+			return repos.AddConfiguration{RepositoryRoots: []string{filesAddConfiguredRoot}}
+		},
+		PresetCatalogFactory: func() workflowcmd.PresetCatalog { return &fakePresetCatalog{configuration: presetConfig, found: true} },
+		WorkflowExecutorFactory: func(nodes []*workflow.OperationNode, dependencies workflow.Dependencies) workflowcmd.OperationExecutor {
+			workflowInvoked = true
+			return &filesAddRecordingExecutor{}
+		},
+	}
+
+	command, buildError := builder.Build()
+	require.NoError(t, buildError)
+	bindGlobalReplaceFlags(command)
+	command.SetContext(context.Background())
+	command.SetArgs([]string{
+		filesAddPathFlag, "docs/example.md",
+		filesAddContentFileFlag, "missing.txt",
+	})
+
+	err := command.Execute()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "read content file missing.txt")
+	require.ErrorIs(t, err, readErr)
+	require.False(t, workflowInvoked, "workflow should not run when content file read fails")
+}
+
 func TestFilesAddCommandPresetErrorsSurface(t *testing.T) {
 	t.Parallel()
 
@@ -308,6 +410,15 @@ func (executor *filesAddRecordingExecutor) Execute(_ context.Context, roots []st
 	executor.roots = append([]string{}, roots...)
 	executor.options = options
 	return workflow.ExecutionOutcome{}, nil
+}
+
+type erroringFileSystem struct {
+	fakeFileSystem
+	readError error
+}
+
+func (fs erroringFileSystem) ReadFile(string) ([]byte, error) {
+	return nil, fs.readError
 }
 
 func loadFilesAddPreset(testingInstance testing.TB) workflow.Configuration {
