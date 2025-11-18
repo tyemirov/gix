@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	flagutils "github.com/temirov/gix/internal/utils/flags"
+	flagutils "github.com/tyemirov/gix/internal/utils/flags"
 )
 
 const (
@@ -50,7 +50,7 @@ const (
 	reposIntegrationNestedRenameCaseName        = "rename_nested_repositories"
 	reposIntegrationNestedToolsDirectoryName    = "tools"
 	reposIntegrationNestedRepositoryName        = "svg_tools"
-	reposIntegrationNestedOriginURL             = "https://github.com/temirov/svg_tools.git"
+	reposIntegrationNestedOriginURL             = "https://github.com/tyemirov/svg_tools.git"
 	reposIntegrationGitUserName                 = "Integration Test"
 	reposIntegrationGitUserEmail                = "integration@example.com"
 	reposIntegrationNestedIgnoreEntry           = "tools/"
