@@ -9,10 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/temirov/gix/internal/audit"
-	"github.com/temirov/gix/internal/releases"
-	"github.com/temirov/gix/internal/repos/history"
-	"github.com/temirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/internal/audit"
+	"github.com/tyemirov/gix/internal/releases"
+	"github.com/tyemirov/gix/internal/repos/history"
+	"github.com/tyemirov/gix/internal/repos/shared"
 )
 
 const (

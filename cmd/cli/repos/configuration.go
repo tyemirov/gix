@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	rootutils "github.com/temirov/gix/internal/utils/roots"
+	rootutils "github.com/tyemirov/gix/internal/utils/roots"
 )
 
 // ToolsConfiguration captures repository command configuration sections.

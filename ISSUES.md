@@ -103,6 +103,9 @@ internal/workflow/operations_rename.go:10:2: no required module provides package
 ```
 Resolution: Updated workflow replacement planning to walk recursive glob targets so namespace rewrites touch every Go file; covered via new test and passing make lint/test/ci.
 
+- [x] [GX-338] The repository remote is `github.com/tyemirov/gix` (`git remote -v`), but the module path + README badge/install instructions still point to `github.com/temirov/gix`, so `go install github.com/tyemirov/gix@latest` fails with `module declares its path as github.com/temirov/gix` and the release badge points at the wrong owner.
+Resolution: Renamed the module + all Go imports to `github.com/tyemirov/gix`, updated the README badge/install instructions/default owner, and re-ran make lint/test/ci to validate the canonical path now matches the remote.
+
 ## Maintenance (422–499)
 
 ## Planning 

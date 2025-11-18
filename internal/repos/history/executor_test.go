@@ -7,10 +7,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/temirov/gix/internal/execshell"
-	"github.com/temirov/gix/internal/repos/filesystem"
-	"github.com/temirov/gix/internal/repos/history"
-	"github.com/temirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/repos/filesystem"
+	"github.com/tyemirov/gix/internal/repos/history"
+	"github.com/tyemirov/gix/internal/repos/shared"
 )
 
 func buildHistoryOptions(

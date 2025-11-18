@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/temirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/execshell"
 )
 
 func branchExists(ctx context.Context, executor sharedGitExecutor, repositoryPath string, branchName string) (bool, error) {

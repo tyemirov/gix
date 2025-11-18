@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	flagutils "github.com/temirov/gix/internal/utils/flags"
+	flagutils "github.com/tyemirov/gix/internal/utils/flags"
 )
 
 const (

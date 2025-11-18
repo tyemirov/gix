@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/temirov/gix/internal/branches/refresh"
-	"github.com/temirov/gix/internal/repos/shared"
-	"github.com/temirov/gix/internal/workflow"
+	"github.com/tyemirov/gix/internal/branches/refresh"
+	"github.com/tyemirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/internal/workflow"
 )
 
 const (

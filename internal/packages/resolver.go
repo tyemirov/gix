@@ -4,7 +4,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/temirov/gix/internal/ghcr"
+	"github.com/tyemirov/gix/internal/ghcr"
 	"go.uber.org/zap"
 )
 

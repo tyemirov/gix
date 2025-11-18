@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	migrate "github.com/temirov/gix/internal/migrate"
+	migrate "github.com/tyemirov/gix/internal/migrate"
 )
 
 const (

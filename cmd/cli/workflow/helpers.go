@@ -6,8 +6,8 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
-	"github.com/temirov/gix/internal/repos/shared"
-	workflowpkg "github.com/temirov/gix/internal/workflow"
+	"github.com/tyemirov/gix/internal/repos/shared"
+	workflowpkg "github.com/tyemirov/gix/internal/workflow"
 )
 
 // LoggerProvider yields a zap logger for command execution.

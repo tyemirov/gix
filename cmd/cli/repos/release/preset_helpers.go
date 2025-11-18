@@ -1,8 +1,8 @@
 package release
 
 import (
-	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
-	"github.com/temirov/gix/internal/repos/shared"
+	workflowcmd "github.com/tyemirov/gix/cmd/cli/workflow"
+	"github.com/tyemirov/gix/internal/repos/shared"
 )
 
 type presetCommandDependencies struct {

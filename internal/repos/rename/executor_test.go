@@ -14,9 +14,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	repoerrors "github.com/temirov/gix/internal/repos/errors"
-	"github.com/temirov/gix/internal/repos/rename"
-	"github.com/temirov/gix/internal/repos/shared"
+	repoerrors "github.com/tyemirov/gix/internal/repos/errors"
+	"github.com/tyemirov/gix/internal/repos/rename"
+	"github.com/tyemirov/gix/internal/repos/shared"
 )
 
 type stubFileSystem struct {

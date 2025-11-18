@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	packages "github.com/temirov/gix/internal/packages"
+	packages "github.com/tyemirov/gix/internal/packages"
 )
 
 func TestParseTokenSourceScenarios(testingInstance *testing.T) {
