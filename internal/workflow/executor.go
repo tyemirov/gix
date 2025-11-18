@@ -344,7 +344,6 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 		if executor.dependencies.Logger != nil {
 			executor.dependencies.Logger.Info("workflow_summary", zap.Any("summary", summaryData))
 		}
-		reporter.PrintSummary()
 	}
 
 	outcome.EndTime = time.Now()

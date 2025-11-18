@@ -105,6 +105,12 @@ func BuildDependencies(config DependenciesConfig, options DependenciesOptions) (
 		HumanReadableLogging: true,
 	}
 
+	workflowDependencies.ReporterOptions = append(
+		workflowDependencies.ReporterOptions,
+		shared.WithEventFormatter(workflow.NewHumanEventFormatter()),
+	)
+	workflowDependencies.DisableHeaderDecoration = true
+
 	return DependenciesResult{
 		Workflow:             workflowDependencies,
 		GitExecutor:          gitEnvironment.GitExecutor,

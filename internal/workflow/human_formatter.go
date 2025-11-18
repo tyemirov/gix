@@ -6,20 +6,19 @@ import (
 	"sort"
 	"strings"
 
-	workflowruntime "github.com/temirov/gix/internal/workflow"
-
 	"github.com/temirov/gix/internal/repos/shared"
 )
 
-var phaseLabels = map[workflowruntime.LogPhase]string{
-	workflowruntime.LogPhaseRemoteFolder: "remote/folder",
-	workflowruntime.LogPhaseBranch:       "branch",
-	workflowruntime.LogPhaseFiles:        "files",
-	workflowruntime.LogPhaseGit:          "git",
-	workflowruntime.LogPhasePullRequest:  "pull request",
+var phaseLabels = map[LogPhase]string{
+	LogPhaseRemoteFolder: "remote/folder",
+	LogPhaseBranch:       "branch",
+	LogPhaseFiles:        "files",
+	LogPhaseGit:          "git",
+	LogPhasePullRequest:  "pull request",
 }
 
-func newWorkflowHumanFormatter() shared.EventFormatter {
+// NewHumanEventFormatter returns the workflow human-readable formatter.
+func NewHumanEventFormatter() shared.EventFormatter {
 	return &workflowHumanFormatter{
 		headersPrinted:   make(map[string]struct{}),
 		pendingTasks:     make(map[string]string),
@@ -35,7 +34,7 @@ type workflowHumanFormatter struct {
 }
 
 type repositoryLogState struct {
-	printedPhases          map[workflowruntime.LogPhase]struct{}
+	printedPhases          map[LogPhase]struct{}
 	suppressNextBranchTask bool
 	issuesPrinted          bool
 }
@@ -106,11 +105,11 @@ func (formatter *workflowHumanFormatter) recordTaskPlan(repository string, event
 func (formatter *workflowHumanFormatter) handleTaskApply(writer io.Writer, repository string, state *repositoryLogState, event shared.Event) {
 	taskName := formatter.resolveTaskName(repository, event)
 	phase := formatter.determinePhase(event)
-	if phase == workflowruntime.LogPhaseUnknown {
-		phase = workflowruntime.LogPhaseFiles
+	if phase == LogPhaseUnknown {
+		phase = LogPhaseFiles
 	}
 
-	if phase == workflowruntime.LogPhaseBranch {
+	if phase == LogPhaseBranch {
 		if state.suppressNextBranchTask {
 			state.suppressNextBranchTask = false
 			return
@@ -122,21 +121,21 @@ func (formatter *workflowHumanFormatter) handleTaskApply(writer io.Writer, repos
 	formatter.writePhaseEntry(writer, repository, phase, taskName)
 }
 
-func (formatter *workflowHumanFormatter) determinePhase(event shared.Event) workflowruntime.LogPhase {
+func (formatter *workflowHumanFormatter) determinePhase(event shared.Event) LogPhase {
 	rawPhase := strings.TrimSpace(event.Details["phase"])
 	switch rawPhase {
-	case string(workflowruntime.LogPhaseRemoteFolder):
-		return workflowruntime.LogPhaseRemoteFolder
-	case string(workflowruntime.LogPhaseBranch):
-		return workflowruntime.LogPhaseBranch
-	case string(workflowruntime.LogPhaseFiles):
-		return workflowruntime.LogPhaseFiles
-	case string(workflowruntime.LogPhaseGit):
-		return workflowruntime.LogPhaseGit
-	case string(workflowruntime.LogPhasePullRequest):
-		return workflowruntime.LogPhasePullRequest
+	case string(LogPhaseRemoteFolder):
+		return LogPhaseRemoteFolder
+	case string(LogPhaseBranch):
+		return LogPhaseBranch
+	case string(LogPhaseFiles):
+		return LogPhaseFiles
+	case string(LogPhaseGit):
+		return LogPhaseGit
+	case string(LogPhasePullRequest):
+		return LogPhasePullRequest
 	default:
-		return workflowruntime.LogPhaseUnknown
+		return LogPhaseUnknown
 	}
 }
 
@@ -186,7 +185,7 @@ func (formatter *workflowHumanFormatter) decoratePhaseMessage(level shared.Event
 	}
 }
 
-func phaseFromEventCode(code string) (workflowruntime.LogPhase, bool) {
+func phaseFromEventCode(code string) (LogPhase, bool) {
 	switch code {
 	case shared.EventCodeRemotePlan,
 		shared.EventCodeRemoteSkip,
@@ -196,20 +195,21 @@ func phaseFromEventCode(code string) (workflowruntime.LogPhase, bool) {
 		shared.EventCodeProtocolPlan,
 		shared.EventCodeProtocolSkip,
 		shared.EventCodeProtocolUpdate,
-		shared.EventCodeProtocolDeclined,
-		shared.EventCodeFolderPlan,
+		shared.EventCodeProtocolDeclined:
+		return LogPhaseRemoteFolder, true
+	case shared.EventCodeFolderPlan,
 		shared.EventCodeFolderSkip,
 		shared.EventCodeFolderRename,
 		shared.EventCodeFolderError:
-		return workflowruntime.LogPhaseRemoteFolder, true
+		return LogPhaseFiles, true
 	case shared.EventCodeNamespacePlan,
 		shared.EventCodeNamespaceApply,
 		shared.EventCodeNamespaceSkip,
 		shared.EventCodeNamespaceNoop,
 		shared.EventCodeNamespaceError:
-		return workflowruntime.LogPhaseFiles, true
+		return LogPhaseFiles, true
 	default:
-		return workflowruntime.LogPhaseUnknown, false
+		return LogPhaseUnknown, false
 	}
 }
 
@@ -231,7 +231,7 @@ func (formatter *workflowHumanFormatter) ensureRepositoryState(repository string
 		return state
 	}
 	state = &repositoryLogState{
-		printedPhases: make(map[workflowruntime.LogPhase]struct{}),
+		printedPhases: make(map[LogPhase]struct{}),
 	}
 	formatter.repositoryStates[repository] = state
 	return state
@@ -248,7 +248,7 @@ func (formatter *workflowHumanFormatter) consumeTaskName(repository string, fall
 	return fallback
 }
 
-func (formatter *workflowHumanFormatter) writePhaseEntry(writer io.Writer, repository string, phase workflowruntime.LogPhase, message string) {
+func (formatter *workflowHumanFormatter) writePhaseEntry(writer io.Writer, repository string, phase LogPhase, message string) {
 	if len(message) == 0 {
 		return
 	}
@@ -263,7 +263,7 @@ func (formatter *workflowHumanFormatter) writePhaseEntry(writer io.Writer, repos
 }
 
 func (formatter *workflowHumanFormatter) writeBranchLine(writer io.Writer, repository string, message string) {
-	formatter.writePhaseEntry(writer, repository, workflowruntime.LogPhaseBranch, message)
+	formatter.writePhaseEntry(writer, repository, LogPhaseBranch, message)
 }
 
 func (formatter *workflowHumanFormatter) writeIssue(writer io.Writer, state *repositoryLogState, message string) {
