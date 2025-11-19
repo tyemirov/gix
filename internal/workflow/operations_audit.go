@@ -25,6 +25,8 @@ const (
 	auditCSVHeaderInSyncConstant          = "in_sync"
 	auditCSVHeaderRemoteProtocolConstant  = "remote_protocol"
 	auditCSVHeaderOriginCanonicalConstant = "origin_matches_canonical"
+	auditCSVHeaderWorktreeDirtyConstant   = "worktree_dirty"
+	auditCSVHeaderDirtyFilesConstant      = "dirty_files"
 )
 
 // AuditReportOperation emits an audit CSV summarizing repository state.
@@ -93,6 +95,8 @@ func (operation *AuditReportOperation) Execute(executionContext context.Context,
 		auditCSVHeaderInSyncConstant,
 		auditCSVHeaderRemoteProtocolConstant,
 		auditCSVHeaderOriginCanonicalConstant,
+		auditCSVHeaderWorktreeDirtyConstant,
+		auditCSVHeaderDirtyFilesConstant,
 	}
 
 	if writeError := csvWriter.Write(header); writeError != nil {
@@ -139,6 +143,9 @@ func buildAuditReportRow(inspection audit.RepositoryInspection) []string {
 	remoteProtocol := string(inspection.RemoteProtocol)
 	originMatches := string(inspection.OriginMatchesCanonical)
 
+	var worktreeDirty audit.TernaryValue
+	dirtyFiles := ""
+
 	if !inspection.IsGitRepository {
 		finalRepository = string(audit.TernaryValueNotApplicable)
 		remoteDefaultBranch = string(audit.TernaryValueNotApplicable)
@@ -146,6 +153,14 @@ func buildAuditReportRow(inspection audit.RepositoryInspection) []string {
 		inSync = audit.TernaryValueNotApplicable
 		remoteProtocol = string(audit.TernaryValueNotApplicable)
 		originMatches = string(audit.TernaryValueNotApplicable)
+		worktreeDirty = audit.TernaryValueNotApplicable
+	} else {
+		if len(inspection.WorktreeDirtyFiles) > 0 {
+			worktreeDirty = audit.TernaryValueYes
+			dirtyFiles = strings.Join(inspection.WorktreeDirtyFiles, "; ")
+		} else {
+			worktreeDirty = audit.TernaryValueNo
+		}
 	}
 
 	return []string{
@@ -157,5 +172,7 @@ func buildAuditReportRow(inspection audit.RepositoryInspection) []string {
 		string(inSync),
 		remoteProtocol,
 		originMatches,
+		string(worktreeDirty),
+		dirtyFiles,
 	}
 }
