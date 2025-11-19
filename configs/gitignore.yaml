@@ -61,6 +61,17 @@ workflow:
         tasks:
           - name: "Ensure gitignore entries"
             safeguards:
+              hard_stop:
+                require_clean:
+                  enabled: true
+                  ignore_dirty_paths:
+                    - ".env"
+                    - ".env.*"
+                    - ".DS_Store"
+                    - "qodana.yaml"
+                    - ".idea/"
+                    - "tools/"
+                    - "bin/"
               soft_skip:
                 paths:
                   - ".gitignore"
