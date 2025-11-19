@@ -86,6 +86,20 @@ workflow:
                 replacements:
                   - from: github.com/temirov
                     to: github.com/tyemirov
+              - path: README.md
+                mode: replace
+                replacements:
+                  - from: github.com/temirov/gix
+                    to: github.com/tyemirov/gix
+                  - from: temirov/gix
+                    to: tyemirov/gix
+                  - from: temirov/gix.svg
+                    to: tyemirov/gix.svg
+              - path: "docs/**/*.md"
+                mode: replace
+                replacements:
+                  - from: github.com/temirov/gix
+                    to: github.com/tyemirov/gix
 
   - step:
       name: namespace-stage-commit
