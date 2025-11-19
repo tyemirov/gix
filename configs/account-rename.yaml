@@ -41,8 +41,8 @@ workflow:
                   remote: origin
                   create_if_missing: false
                   capture:
-                    name: initial_commit
-                    value: commit
+                    name: initial_branch
+                    value: branch
             safeguards:
               hard_stop:
                 require_clean: true
@@ -139,10 +139,10 @@ workflow:
       command: ["tasks", "apply"]
       with:
         tasks:
-          - name: "Restore initial commit"
+          - name: "Restore initial branch"
             actions:
               - type: branch.change
                 options:
                   restore:
-                    from: initial_commit
-                    value: commit
+                    from: initial_branch
+                    value: branch
