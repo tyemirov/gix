@@ -1,5 +1,36 @@
 # Changelog
 
+## [v0.2.1]
+
+### Features ✨
+- _No changes._
+
+### Improvements ⚙️
+- Updated CLI design and documentation for enhanced user experience.
+- Clarified Go 1.25 baseline requirements.
+- Aligned module namespaces for improved consistency.
+- Converted multiple repo commands (rename, remote update, protocol convert, files add/replace, release) to workflow presets with CLI shims for streamlined execution.
+- Separated safeguards into hard-stop and soft-skip categories for clearer task failure behavior.
+- Enhanced workflow logging with human-readable formats and parallelized execution for repo-scoped operations.
+
+### Bug Fixes 🐛
+- Fixed issue with recursive replacements to apply across all files in namespace rewrites.
+- Resolved workflow tasks skipping or failing due to improper handling of repository skip signals.
+- Prevented unnecessary git pull rebase warnings when creating new branches without remotes.
+- Corrected append-if-missing template behavior for multi-line file updates.
+- Fixed module path and repository remote URL mismatch to ensure correct installation and badge links.
+- Fixed partial application of file replacements during workflows for comprehensive changes.
+
+### Testing 🧪
+- Added regression tests covering recursive replacements.
+- Added coverage to ensure skipped repositories prevent subsequent failing steps.
+- Updated and added tests for CLI workflow shim commands.
+
+### Docs 📚
+- Refreshed CLI design documentation.
+- Updated issues log formatting and instructions.
+- Enhanced README and architecture docs with updated environment and usage details.
+
 ## [v0.2.0]
 
 ### Features ✨
