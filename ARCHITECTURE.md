@@ -2,7 +2,7 @@
 
 ## Overview
 
-gix is a Go 1.24 command-line application built with Cobra and Viper. The binary exposed by `main.go` delegates all setup to `cmd/cli`, which wires logging, configuration, and command registration before executing user-facing operations. Domain logic lives in `internal` packages, each focused on a cohesive maintenance capability. Shared libraries that may be reused by external programs are published under `pkg/`.
+gix is a Go 1.25 command-line application built with Cobra and Viper. The binary exposed by `main.go` delegates all setup to `cmd/cli`, which wires logging, configuration, and command registration before executing user-facing operations. Domain logic lives in `internal` packages, each focused on a cohesive maintenance capability. Shared libraries that may be reused by external programs are published under `pkg/`.
 
 ```
 .
