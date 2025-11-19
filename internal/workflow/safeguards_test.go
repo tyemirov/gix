@@ -19,7 +19,9 @@ func TestEvaluateSafeguardsRequireClean(t *testing.T) {
 	env := &Environment{RepositoryManager: manager}
 	repo := &RepositoryState{Path: "/repositories/sample"}
 
-	pass, reason, evalErr := EvaluateSafeguards(context.Background(), env, repo, map[string]any{"require_clean": true})
+	pass, reason, evalErr := EvaluateSafeguards(context.Background(), env, repo, map[string]any{
+		"require_clean": map[string]any{"enabled": true},
+	})
 	require.NoError(t, evalErr)
 	require.False(t, pass)
 	require.Equal(t, "repository not clean: M file.txt", reason)
@@ -40,8 +42,10 @@ func TestEvaluateSafeguardsRequireCleanIgnoresPaths(t *testing.T) {
 	repo := &RepositoryState{Path: "/repositories/sample"}
 
 	pass, reason, evalErr := EvaluateSafeguards(context.Background(), env, repo, map[string]any{
-		"require_clean":      true,
-		"ignore_dirty_paths": []string{".DS_Store"},
+		"require_clean": map[string]any{
+			"enabled":            true,
+			"ignore_dirty_paths": []string{".DS_Store"},
+		},
 	})
 	require.NoError(t, evalErr)
 	require.True(t, pass)
@@ -49,12 +53,59 @@ func TestEvaluateSafeguardsRequireCleanIgnoresPaths(t *testing.T) {
 
 	executor.worktreeEntries = []string{"?? .DS_Store", " M main.go"}
 	pass, reason, evalErr = EvaluateSafeguards(context.Background(), env, repo, map[string]any{
-		"require_clean":      true,
-		"ignore_dirty_paths": []string{".DS_Store"},
+		"require_clean": map[string]any{
+			"enabled":            true,
+			"ignore_dirty_paths": []string{".DS_Store"},
+		},
 	})
 	require.NoError(t, evalErr)
 	require.False(t, pass)
 	require.Equal(t, "repository not clean: M main.go", reason)
+}
+
+func TestEvaluateSafeguardsRequireCleanStringValue(t *testing.T) {
+	t.Parallel()
+
+	testCases := map[string]struct {
+		requireClean  any
+		worktreeClean bool
+		expectedPass  bool
+		reason        string
+	}{
+		"enabled": {
+			requireClean:  "true",
+			worktreeClean: false,
+			expectedPass:  false,
+			reason:        "repository not clean: M file.txt",
+		},
+		"disabled": {
+			requireClean:  "false",
+			worktreeClean: false,
+			expectedPass:  true,
+			reason:        "",
+		},
+	}
+
+	for name, testCase := range testCases {
+		testCase := testCase
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			executor := &recordingGitExecutor{worktreeClean: testCase.worktreeClean, currentBranch: "master"}
+			manager, err := gitrepo.NewRepositoryManager(executor)
+			require.NoError(t, err)
+
+			env := &Environment{RepositoryManager: manager}
+			repo := &RepositoryState{Path: "/repositories/sample"}
+
+			pass, reason, evalErr := EvaluateSafeguards(context.Background(), env, repo, map[string]any{
+				"require_clean": testCase.requireClean,
+			})
+			require.NoError(t, evalErr)
+			require.Equal(t, testCase.expectedPass, pass)
+			require.Equal(t, testCase.reason, reason)
+		})
+	}
 }
 
 func TestEvaluateSafeguardsBranchAndPaths(t *testing.T) {
@@ -93,7 +144,7 @@ func TestEvaluateSafeguardsPasses(t *testing.T) {
 	repo := &RepositoryState{Path: "/repositories/sample"}
 
 	pass, reason, evalErr := EvaluateSafeguards(context.Background(), env, repo, map[string]any{
-		"require_clean": true,
+		"require_clean": map[string]any{"enabled": true},
 		"branch_in":     []string{"dev", "master"},
 		"paths":         []string{"README.md"},
 	})
@@ -114,12 +165,12 @@ func TestSplitSafeguardsFallbacks(t *testing.T) {
 
 func TestSplitSafeguardsStructured(t *testing.T) {
 	raw := map[string]any{
-		"hard_stop": map[string]any{"require_clean": true},
+		"hard_stop": map[string]any{"require_clean": map[string]any{"enabled": true}},
 		"soft_skip": map[string]any{"paths": []string{"README.md"}},
 	}
 
 	hard, soft := splitSafeguardSets(raw, safeguardDefaultHardStop)
-	require.True(t, hard["require_clean"].(bool))
+	require.True(t, hard["require_clean"].(map[string]any)["enabled"].(bool))
 	require.ElementsMatch(t, []string{"README.md"}, soft["paths"].([]string))
 }
 

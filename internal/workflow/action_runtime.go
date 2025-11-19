@@ -60,6 +60,7 @@ type ExecutionContext struct {
 	skipRequested        bool
 	skipReason           string
 	lastSkipWarningKey   string
+	ignoredDirtyPatterns []dirtyIgnorePattern
 }
 
 func (execCtx *ExecutionContext) recordFilesApplied() {

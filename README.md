@@ -419,7 +419,8 @@ Example task-only workflow step:
       message: "chore: update license"
      safeguards:
       hard_stop:
-       require_clean: true
+       require_clean:
+        enabled: true
       soft_skip:
        branch_in: [master]
        paths: [".git"]
@@ -431,8 +432,8 @@ Templating supports Go text/template with `.Task.*`, `.Repository.*`, and `.Envi
 
 Safeguards gate tasks (and are also used internally by some actions). Supported keys:
 
-- `require_clean: <bool>` — skip when the worktree is dirty.
-- `ignore_dirty_paths: [".DS_Store", ".env.*", "bin/"]` — optional glob/prefix list to treat specific dirty files/directories as ignorable when `require_clean` is true (useful for workflows that will add those entries to `.gitignore`).
+- `require_clean.enabled: <bool>` — skip when the worktree is dirty (defaults to true when `require_clean` is declared).
+- `require_clean.ignore_dirty_paths: [".DS_Store", ".env.*", "bin/"]` — optional glob/prefix list applied only when `require_clean` is enabled; useful for workflows that add matching entries to `.gitignore`.
 - `capture: { name: "<name>", value: branch|commit, overwrite: <bool> }` — record the current branch or HEAD commit into a workflow variable so later steps can restore it. Captured values are also available under `.Environment["Captured.<name>"]` for templating, and `overwrite` defaults to false to preserve the first recorded value during a workflow run.
 - `restore: { from: "<name>", value: branch|commit }` — jump back to a previously captured branch/commit. Validation fails if the capture name is missing, and `value` defaults to the original capture kind when omitted.
 - `branch: <name>` — require current branch to match exactly.
