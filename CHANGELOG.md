@@ -1,5 +1,35 @@
 # Changelog
 
+## [v0.2.5]
+
+### Features ✨
+- Accept string values for `require_clean` directive enabling refined workspace cleanliness checks.
+- Support nested `require_clean` options including `enabled` and `ignore_dirty_paths` for flexible configuration.
+- Add capture and restore for initial branch state in account rename and gitignore workflows for improved branch handling.
+
+### Improvements ⚙️
+- Default change directory refresh is now enabled with safe skip when no tracking remote exists.
+- Worktree cleanliness checks now filter ignored dirty file patterns before deciding cleanness.
+- Enhanced workflow safeguards to parse and evaluate complex `require_clean` configurations.
+- Refactor default config and YAML workflows to align with new `require_clean` map structure.
+- Expand branch change action to conditionally refresh based on tracking remote presence.
+- Improve error reporting consistency in clean worktree guard with better status information.
+- Update account rename replacements to generic username substitution improving maintainability.
+- Internal test coverage extended to verify dirty ignore patterns and clean worktree guard behavior.
+
+### Bug Fixes 🐛
+- Fixed incorrect initial commit capture name to initial branch in workflows to restore correct branch.
+- Prevent false dirty statuses when only ignored dirty paths are modified.
+
+### Testing 🧪
+- Added comprehensive unit tests for action guards enforcing ignore patterns on dirty worktrees.
+- Workflow safeguard tests enhanced to cover nested `require_clean` maps and ignore path behavior.
+- Added branch change action test asserts for tracking remote config checks and refresh skip.
+
+### Docs 📚
+- Update README to clarify `require_clean` new nested syntax and default behavior.
+- Document new `capture` and `restore` semantics for branch variables in README examples.
+
 ## [v0.2.4]
 
 ### Features ✨
