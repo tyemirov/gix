@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/temirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/internal/repos/shared"
 )
 
 // TaskOperation executes declarative repository tasks (file mutations, commits, and PRs).

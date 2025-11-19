@@ -8,10 +8,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/temirov/gix/internal/execshell"
-	flagutils "github.com/temirov/gix/internal/utils/flags"
-	"github.com/temirov/gix/internal/workflow"
-	"github.com/temirov/gix/pkg/llm"
+	"github.com/tyemirov/gix/internal/execshell"
+	flagutils "github.com/tyemirov/gix/internal/utils/flags"
+	"github.com/tyemirov/gix/internal/workflow"
+	"github.com/tyemirov/gix/pkg/llm"
 )
 
 func TestMessageCommandGeneratesCommitMessage(t *testing.T) {

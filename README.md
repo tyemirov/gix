@@ -1,6 +1,6 @@
 # gix, a Git/GitHub helper CLI
 
-[![GitHub release](https://img.shields.io/github/release/temirov/gix.svg)](https://github.com/temirov/gix/releases)
+[![GitHub release](https://img.shields.io/github/release/tyemirov/gix.svg)](https://github.com/tyemirov/gix/releases)
 
 gix keeps large fleets of Git repositories in a healthy state. It bundles the day-to-day tasks every maintainer repeats: normalising folder names, aligning remotes, pruning stale branches, scrubbing GHCR images, and shipping consistent release notes.
 
@@ -12,7 +12,7 @@ gix keeps large fleets of Git repositories in a healthy state. It bundles the da
 
 ## Quick Start
 
-1. Install the CLI: `go install github.com/temirov/gix@latest` (Go 1.24+).
+1. Install the CLI: `go install github.com/tyemirov/gix@latest` (Go 1.25+).
 2. Explore the available commands: `gix --help`.
 3. Bootstrap defaults in your workspace: `gix --init LOCAL` (or `gix --init user` for a per-user config).
 4. Run an audit to confirm your environment: `gix audit --roots ~/Development`.
@@ -173,7 +173,7 @@ workflow:
    after: ["rename"]
    command: ["remote", "update-to-canonical"]
    with:
-    owner: temirov
+    owner: tyemirov
 
  - step:
    name: protocols

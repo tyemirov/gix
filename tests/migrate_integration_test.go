@@ -14,10 +14,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/temirov/gix/internal/execshell"
-	"github.com/temirov/gix/internal/githubcli"
-	"github.com/temirov/gix/internal/gitrepo"
-	migrate "github.com/temirov/gix/internal/migrate"
+	"github.com/tyemirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/githubcli"
+	"github.com/tyemirov/gix/internal/gitrepo"
+	migrate "github.com/tyemirov/gix/internal/migrate"
 )
 
 const (

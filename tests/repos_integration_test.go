@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	flagutils "github.com/temirov/gix/internal/utils/flags"
+	flagutils "github.com/tyemirov/gix/internal/utils/flags"
 )
 
 const (

@@ -9,8 +9,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/temirov/gix/internal/execshell"
-	"github.com/temirov/gix/pkg/llm"
+	"github.com/tyemirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/pkg/llm"
 )
 
 func TestBuildRequestUsesLatestTagBaseline(t *testing.T) {

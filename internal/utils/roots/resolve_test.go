@@ -9,8 +9,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 
-	flagutils "github.com/temirov/gix/internal/utils/flags"
-	rootutils "github.com/temirov/gix/internal/utils/roots"
+	flagutils "github.com/tyemirov/gix/internal/utils/flags"
+	rootutils "github.com/tyemirov/gix/internal/utils/roots"
 )
 
 func TestResolveRootSelectionScenarios(testInstance *testing.T) {

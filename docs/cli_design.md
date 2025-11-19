@@ -57,22 +57,22 @@ The following tables document each script. "Inputs" include both positional argu
 | Outputs | Logs deletions and final summary to stdout. API errors surface to stderr via `curl` exit behavior. |
 
 ## 3. Command Equivalence Plan
-The new CLI (working name **`git-maintenance`**) will use Cobra for command/flag parsing. The root binary lives at `cmd/cli/main.go` and exposes the following hierarchy:
+The CLI (released as **`gix`**) uses Cobra for command/flag parsing. The root binary lives at `cmd/cli/main.go` and exposes the following hierarchy:
 
-- `git-maintenance audit`
-- `git-maintenance repo-folders-rename`
-- `git-maintenance repo-remote-update`
-- `git-maintenance repo-protocol-convert`
-- `git-maintenance repo-prs-purge`
-- `git-maintenance default <target-branch>`
-- `git-maintenance repo-packages-purge`
+- `gix audit`
+- `gix repo-folders-rename`
+- `gix repo-remote-update`
+- `gix repo-protocol-convert`
+- `gix repo-prs-purge`
+- `gix default <target-branch>`
+- `gix repo-packages-purge`
 
 ### 3.1 Flag and Behavior Mapping
 The table below maps current script switches to Cobra equivalents and documents planned `gh` interactions.
 
 | Script behavior | Cobra command | Flags & arguments | `gh` usage strategy |
 | --- | --- | --- | --- |
-| Remove untagged GHCR packages | `git-maintenance repo-packages-purge` | `--package` (optional override), ``, `--page-size` (default 100). The command resolves the owner, owner type, and default package name from each repository's origin remote and requires a token with GitHub Packages scopes. Configurable via Viper with env prefix `GITMAINT`. | Prefer direct HTTP using `go-github` REST client authenticated with token. If we reuse `gh`, we would invoke `gh api` with `--method`. The design chooses native HTTP to avoid shelling out where OAuth token is already provided. |
+| Remove untagged GHCR packages | `gix repo-packages-purge` | `--package` (optional override), ``, `--page-size` (default 100). The command resolves the owner, owner type, and default package name from each repository's origin remote and requires a token with GitHub Packages scopes. Configurable via Viper with env prefix `GIX`. | Prefer direct HTTP using `go-github` REST client authenticated with token. If we reuse `gh`, we would invoke `gh api` with `--method`. The design chooses native HTTP to avoid shelling out where OAuth token is already provided. |
 
 ### 3.2 Shared command behavior
 - All `repo` subcommands support `--debug` to raise Zap logging level to `Debug`.
@@ -84,7 +84,7 @@ The table below maps current script switches to Cobra equivalents and documents 
 
 ## 4. Module Path and Project Layout
 ### 4.1 Module path
-Adopt the Go module path **`github.com/temirov/git-maintenance`**. This preserves the current GitHub namespace and describes the tool’s purpose clearly.
+Adopt the Go module path **`github.com/tyemirov/gix`** so it matches the published repository and binary name.
 
 ### 4.2 Directory structure
 ```
@@ -142,9 +142,9 @@ Notes:
 - All domain services receive a structured logger via dependency injection; no package-level globals.
 
 ### 5.2 Configuration precedence (Viper)
-- Viper initialized with prefix `GITMAINT`.
+- Viper initialized with prefix `GIX`.
 - Precedence: **command-line flags > environment variables > config file > defaults**.
-- Config file search order: `./git-maintenance.yaml`, `$XDG_CONFIG_HOME/git-maintenance/config.yaml`, `$HOME/.config/git-maintenance/config.yaml`.
+- Config file search order: `./gix.yaml`, `$XDG_CONFIG_HOME/gix/config.yaml`, `$HOME/.config/gix/config.yaml`.
 - Flags bind to Viper keys so environment/config seamlessly fill defaults.
 - Sensitive values (tokens) read from env/flag only; we will not persist secrets to disk by default.
 
@@ -185,7 +185,7 @@ Integration harness responsibilities:
 
 ## 7. Open Questions & Approval Checklist
 Before implementation starts, please review and confirm:
-1. Module path `github.com/temirov/git-maintenance` and directory layout meet expectations.
+1. Module path `github.com/tyemirov/gix` and directory layout meet expectations.
 2. Command hierarchy and flag mapping provide the right developer experience.
 3. Continued reliance on `gh` via subprocess (except GHCR purge, which uses native HTTP) is acceptable.
 4. Logging (Zap), configuration precedence (Viper), and testing strategies align with requirements.

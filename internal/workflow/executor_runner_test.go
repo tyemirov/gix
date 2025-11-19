@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/temirov/gix/internal/audit"
+	"github.com/tyemirov/gix/internal/audit"
 )
 
 type stubRepositoryOperation struct {

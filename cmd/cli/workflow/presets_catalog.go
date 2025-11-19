@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/temirov/gix/internal/workflow"
+	"github.com/tyemirov/gix/internal/workflow"
 )
 
 //go:embed presets/*.yaml

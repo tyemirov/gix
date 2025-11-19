@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/temirov/gix/internal/execshell"
-	"github.com/temirov/gix/internal/githubcli"
+	"github.com/tyemirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/githubcli"
 )
 
 const (

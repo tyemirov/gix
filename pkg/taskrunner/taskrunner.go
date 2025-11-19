@@ -3,7 +3,7 @@ package taskrunner
 import (
 	"context"
 
-	"github.com/temirov/gix/internal/workflow"
+	"github.com/tyemirov/gix/internal/workflow"
 )
 
 // Executor runs workflow task definitions across repositories.

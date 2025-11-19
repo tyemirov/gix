@@ -14,14 +14,14 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/temirov/gix/internal/audit"
-	"github.com/temirov/gix/internal/commitmsg"
-	"github.com/temirov/gix/internal/execshell"
-	"github.com/temirov/gix/internal/githubcli"
-	"github.com/temirov/gix/internal/gitrepo"
-	"github.com/temirov/gix/internal/repos/filesystem"
-	"github.com/temirov/gix/internal/repos/shared"
-	"github.com/temirov/gix/pkg/llm"
+	"github.com/tyemirov/gix/internal/audit"
+	"github.com/tyemirov/gix/internal/commitmsg"
+	"github.com/tyemirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/githubcli"
+	"github.com/tyemirov/gix/internal/gitrepo"
+	"github.com/tyemirov/gix/internal/repos/filesystem"
+	"github.com/tyemirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/pkg/llm"
 )
 
 func TestTaskPlannerBuildPlanRendersTemplates(testInstance *testing.T) {
@@ -147,6 +147,10 @@ import "github.com/temirov/foo"
 	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "pkg", "two.go"), []byte(`package pkg
 import "github.com/temirov/bar"
 `), 0o644))
+	require.NoError(t, os.MkdirAll(filepath.Join(tempDir, "pkg", "nested", "inner"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "pkg", "nested", "inner", "three.go"), []byte(`package pkg
+import "github.com/temirov/baz"
+`), 0o644))
 
 	repository := &RepositoryState{Path: tempDir}
 	taskDefinition := TaskDefinition{
@@ -165,11 +169,18 @@ import "github.com/temirov/bar"
 
 	changes, err := planner.planFileChanges(environment, repository)
 	require.NoError(t, err)
-	require.Len(t, changes, 2)
+	require.Len(t, changes, 3)
+	paths := make([]string, 0, len(changes))
 	for _, change := range changes {
 		require.True(t, change.apply)
 		require.Contains(t, string(change.content), "github.com/tyemirov")
+		paths = append(paths, change.relativePath)
 	}
+	require.ElementsMatch(t, []string{
+		"pkg/one.go",
+		"pkg/two.go",
+		"pkg/nested/inner/three.go",
+	}, paths)
 }
 
 func TestBuildTaskOperationInjectsLLMConfiguration(t *testing.T) {
