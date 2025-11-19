@@ -1,5 +1,30 @@
 # Changelog
 
+## [v0.2.4]
+
+### Features ✨
+- Add capture and restore blocks with variable names and kind (branch or commit) for workflow DSL to enable saving and reverting the current state.
+- Support branch change action to capture and restore branch or commit state within workflows.
+- Refine capture DSL with named variables and align it with the `kind` keyword for clarity and validation.
+
+### Improvements ⚙️
+- Protect capture state per repository to avoid conflicts during concurrent workflow executions.
+- Update capture DSL and improve coverage.
+- Restore original commit after gitignore and account rename flows to maintain repository state consistency.
+
+### Bug Fixes 🐛
+- Add missing imports for capture storage to ensure functionality.
+- Prevent branch.change action from capturing and restoring simultaneously to avoid conflicts.
+
+### Testing 🧪
+- Add extensive tests for branch change action capture and restore behavior, including overwrite protection and restore using branch or commit.
+- Implement branchCaptureExecutor stub to simulate git commands for reliable testing.
+
+### Docs 📚
+- Document new `capture` and `restore` workflow options with examples in the README.
+- Update ISSUE.md with resolutions related to capture and restore features.
+- Add examples for restoring original commit in account-rename and gitignore workflow configs.
+
 ## [v0.2.3]
 
 ### Features ✨
