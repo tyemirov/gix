@@ -432,6 +432,7 @@ Templating supports Go text/template with `.Task.*`, `.Repository.*`, and `.Envi
 Safeguards gate tasks (and are also used internally by some actions). Supported keys:
 
 - `require_clean: <bool>` — skip when the worktree is dirty.
+- `ignore_dirty_paths: [".DS_Store", ".env.*", "bin/"]` — optional glob/prefix list to treat specific dirty files/directories as ignorable when `require_clean` is true (useful for workflows that will add those entries to `.gitignore`).
 - `branch: <name>` — require current branch to match exactly.
 - `branch_in: [<name>...]` — require current branch to be one of the listed values.
 - `paths: [<relative/path>...]` — require listed paths to exist in the repository.

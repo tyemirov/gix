@@ -1457,14 +1457,15 @@ func (info fakeFileInfo) IsDir() bool { return false }
 func (info fakeFileInfo) Sys() any    { return nil }
 
 type recordingGitExecutor struct {
-	commands       []execshell.CommandDetails
-	githubCommands []execshell.CommandDetails
-	branchExists   bool
-	worktreeClean  bool
-	currentBranch  string
-	existingRefs   map[string]bool
-	remoteURLs     map[string]string
-	remoteErrors   map[string]error
+	commands        []execshell.CommandDetails
+	githubCommands  []execshell.CommandDetails
+	branchExists    bool
+	worktreeClean   bool
+	worktreeEntries []string
+	currentBranch   string
+	existingRefs    map[string]bool
+	remoteURLs      map[string]string
+	remoteErrors    map[string]error
 }
 
 func (executor *recordingGitExecutor) ExecuteGit(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
@@ -1477,6 +1478,9 @@ func (executor *recordingGitExecutor) ExecuteGit(_ context.Context, details exec
 	case "status":
 		if executor.worktreeClean {
 			return execshell.ExecutionResult{StandardOutput: ""}, nil
+		}
+		if len(executor.worktreeEntries) > 0 {
+			return execshell.ExecutionResult{StandardOutput: strings.Join(executor.worktreeEntries, "\n")}, nil
 		}
 		return execshell.ExecutionResult{StandardOutput: " M file.txt"}, nil
 	case "rev-parse":
