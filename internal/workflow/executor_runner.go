@@ -271,6 +271,9 @@ func cloneEnvironmentForRepository(base *Environment, repoState *State) *Environ
 	}
 	clone := *base
 	clone.State = repoState
+	if base.Variables != nil {
+		clone.Variables = base.Variables.Clone()
+	}
 	return &clone
 }
 

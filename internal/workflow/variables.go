@@ -92,3 +92,17 @@ func (store *VariableStore) Snapshot() map[string]string {
 	}
 	return snapshot
 }
+
+// Clone produces an independent copy of the variable store.
+func (store *VariableStore) Clone() *VariableStore {
+	if store == nil {
+		return nil
+	}
+	store.mutex.RLock()
+	defer store.mutex.RUnlock()
+	clone := &VariableStore{values: make(map[VariableName]variableEntry, len(store.values))}
+	for name, entry := range store.values {
+		clone.values[name] = entry
+	}
+	return clone
+}
