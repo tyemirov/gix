@@ -350,7 +350,7 @@ func filterIgnoredStatusEntries(entries []string, patterns []dirtyIgnorePattern)
 	}
 	remaining := make([]string, 0, len(entries))
 	for _, entry := range entries {
-		if !statusEntryMatchesIgnore(entry, patterns) {
+		if !(statusEntryIsUntrackedOrIgnored(entry) && statusEntryMatchesIgnore(entry, patterns)) {
 			remaining = append(remaining, entry)
 		}
 	}
@@ -380,4 +380,17 @@ func extractStatusPath(entry string) string {
 		return trimmed
 	}
 	return strings.TrimSpace(trimmed[spaceIndex+1:])
+}
+
+const (
+	gitStatusUntrackedPrefix = "??"
+	gitStatusIgnoredPrefix   = "!!"
+)
+
+func statusEntryIsUntrackedOrIgnored(entry string) bool {
+	trimmed := strings.TrimSpace(entry)
+	if len(trimmed) < len(gitStatusUntrackedPrefix) {
+		return false
+	}
+	return strings.HasPrefix(trimmed, gitStatusUntrackedPrefix) || strings.HasPrefix(trimmed, gitStatusIgnoredPrefix)
 }

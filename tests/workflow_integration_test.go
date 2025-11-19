@@ -388,6 +388,77 @@ func TestWorkflowLogHeaderFormatting(testInstance *testing.T) {
 	}
 	require.True(testInstance, foundStructuredHeader, "expected at least one structured header in workflow output")
 }
+
+func TestWorkflowRequireCleanOnlyIgnoresUntrackedPaths(testInstance *testing.T) {
+	workingDirectory, workingDirectoryError := os.Getwd()
+	require.NoError(testInstance, workingDirectoryError)
+	repositoryRoot := filepath.Dir(workingDirectory)
+
+	rootDirectory := testInstance.TempDir()
+	repositoryPath := filepath.Join(rootDirectory, "require-clean-ignore")
+
+	initializeWorkflowRepository(testInstance, repositoryPath)
+
+	binDirectory := filepath.Join(repositoryPath, "bin")
+	require.NoError(testInstance, os.MkdirAll(binDirectory, 0o755))
+	scriptPath := filepath.Join(binDirectory, "script.sh")
+	require.NoError(testInstance, os.WriteFile(scriptPath, []byte("#!/bin/sh\nexit 0\n"), 0o755))
+
+	addBinCommand := exec.Command(workflowIntegrationGitExecutable, "-C", repositoryPath, "add", "bin")
+	addBinCommand.Env = buildGitCommandEnvironment(nil)
+	require.NoError(testInstance, addBinCommand.Run())
+
+	commitBinCommand := exec.Command(workflowIntegrationGitExecutable, "-C", repositoryPath, "commit", "-m", "add bin script")
+	commitBinCommand.Env = buildGitCommandEnvironment(nil)
+	require.NoError(testInstance, commitBinCommand.Run())
+
+	workflowConfiguration := `workflow:
+  - step:
+      name: task-clean
+      command: ["tasks", "apply"]
+      with:
+        tasks:
+          - name: "Ensure clean"
+            safeguards:
+              hard_stop:
+                require_clean: true
+                ignore_dirty_paths:
+                  - ".DS_Store"
+                  - "bin/"
+            steps: [files.apply]
+            files:
+              - path: README.md
+                content: "noop"
+                mode: overwrite
+`
+
+	configPath := filepath.Join(rootDirectory, "require_clean_ignore.yaml")
+	require.NoError(testInstance, os.WriteFile(configPath, []byte(workflowConfiguration), 0o644))
+
+	dirtyStorePath := filepath.Join(repositoryPath, ".DS_Store")
+	require.NoError(testInstance, os.WriteFile(dirtyStorePath, []byte("junk\n"), 0o644))
+
+	commandArguments := []string{
+		workflowIntegrationRunSubcommand,
+		workflowIntegrationModulePathConstant,
+		workflowIntegrationLogLevelFlag,
+		workflowIntegrationErrorLevel,
+		workflowIntegrationCommand,
+		configPath,
+		workflowIntegrationRootsFlag,
+		repositoryPath,
+		workflowIntegrationYesFlag,
+	}
+
+	runIntegrationCommand(testInstance, repositoryRoot, integrationCommandOptions{}, workflowIntegrationTimeout, commandArguments)
+
+	require.NoError(testInstance, os.WriteFile(scriptPath, []byte("#!/bin/sh\necho dirty\n"), 0o755))
+
+	dirtyOutput := runIntegrationCommand(testInstance, repositoryRoot, integrationCommandOptions{}, workflowIntegrationTimeout, commandArguments)
+	filteredOutput := filterStructuredOutput(dirtyOutput)
+	require.Contains(testInstance, filteredOutput, "repository not clean")
+	require.Contains(testInstance, filteredOutput, "bin/script.sh")
+}
 func TestWorkflowRunDisplaysHelpWhenConfigurationMissing(testInstance *testing.T) {
 	workingDirectory, workingDirectoryError := os.Getwd()
 	require.NoError(testInstance, workingDirectoryError)

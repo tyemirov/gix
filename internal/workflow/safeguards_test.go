@@ -122,3 +122,14 @@ func TestSplitSafeguardsStructured(t *testing.T) {
 	require.True(t, hard["require_clean"].(bool))
 	require.ElementsMatch(t, []string{"README.md"}, soft["paths"].([]string))
 }
+
+func TestFilterIgnoredStatusEntriesSkipsOnlyUntracked(t *testing.T) {
+	t.Parallel()
+
+	patterns := buildDirtyIgnorePatterns([]string{"bin/", ".env.*"})
+	entries := []string{"?? bin/temp.sh", " M bin/script.sh", "?? .env.local", " M .env.example"}
+
+	remaining := filterIgnoredStatusEntries(entries, patterns)
+
+	require.ElementsMatch(t, []string{" M bin/script.sh", " M .env.example"}, remaining)
+}
