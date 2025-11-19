@@ -77,7 +77,60 @@ func BuildOperations(configuration Configuration) ([]*OperationNode, error) {
 		}
 	}
 
+	if err := validateBranchCaptureBindings(nodes); err != nil {
+		return nil, err
+	}
+
 	return nodes, nil
+}
+
+func validateBranchCaptureBindings(nodes []*OperationNode) error {
+	captured := make(map[string]CaptureKind)
+
+	for _, node := range nodes {
+		taskOperation, ok := node.Operation.(*TaskOperation)
+		if !ok {
+			continue
+		}
+
+		definitions := taskOperation.Definitions()
+		for _, task := range definitions {
+			for _, action := range task.Actions {
+				if !strings.EqualFold(strings.TrimSpace(action.Type), "branch.change") {
+					continue
+				}
+
+				captureSpec, captureErr := ParseBranchCaptureSpec(action.Options)
+				if captureErr != nil {
+					return captureErr
+				}
+				if captureSpec != nil {
+					name := string(captureSpec.Name)
+					if existingKind, exists := captured[name]; exists && existingKind != captureSpec.Kind {
+						return fmt.Errorf("branch.change capture %q declared with multiple kinds", name)
+					}
+					captured[name] = captureSpec.Kind
+				}
+
+				restoreSpec, restoreErr := ParseBranchRestoreSpec(action.Options)
+				if restoreErr != nil {
+					return restoreErr
+				}
+				if restoreSpec != nil {
+					name := string(restoreSpec.Name)
+					kind, exists := captured[name]
+					if !exists {
+						return fmt.Errorf("branch.change restore references unknown capture %q", name)
+					}
+					if restoreSpec.KindExplicit && restoreSpec.Kind != kind {
+						return fmt.Errorf("branch.change restore %q expects %s but capture is %s", name, restoreSpec.Kind, kind)
+					}
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 func buildOperationFromStep(step StepConfiguration) (Operation, error) {

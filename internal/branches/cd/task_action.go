@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/tyemirov/gix/internal/branches/refresh"
+	"github.com/tyemirov/gix/internal/execshell"
 	"github.com/tyemirov/gix/internal/repos/shared"
 	"github.com/tyemirov/gix/internal/workflow"
 )
@@ -37,6 +38,22 @@ func init() {
 func handleBranchChangeAction(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, parameters map[string]any) error {
 	if environment == nil || repository == nil {
 		return nil
+	}
+
+	captureSpec, captureErr := workflow.ParseBranchCaptureSpec(parameters)
+	if captureErr != nil {
+		return captureErr
+	}
+	restoreSpec, restoreErr := workflow.ParseBranchRestoreSpec(parameters)
+	if restoreErr != nil {
+		return restoreErr
+	}
+	if captureSpec != nil && restoreSpec != nil {
+		return errors.New("branch.change cannot capture and restore simultaneously")
+	}
+
+	if restoreSpec != nil {
+		return performBranchRestore(ctx, environment, repository, restoreSpec)
 	}
 
 	branchName, branchErr := stringOption(parameters, taskOptionBranchName)
@@ -124,6 +141,12 @@ func handleBranchChangeAction(ctx context.Context, environment *workflow.Environ
 		return changeError
 	}
 
+	if captureSpec != nil {
+		if err := captureBranchState(ctx, environment, repository, captureSpec); err != nil {
+			return err
+		}
+	}
+
 	for _, warning := range result.Warnings {
 		environment.ReportRepositoryEvent(
 			repository,
@@ -205,6 +228,102 @@ func stringOption(options map[string]any, key string) (string, error) {
 	default:
 		return "", fmt.Errorf("%s must be a string", key)
 	}
+}
+
+func performBranchRestore(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, spec *workflow.BranchRestoreSpec) error {
+	if environment == nil || repository == nil || spec == nil {
+		return nil
+	}
+	if environment.Variables == nil {
+		return fmt.Errorf("capture %s is not defined", spec.Name)
+	}
+
+	value, exists := environment.Variables.Get(spec.Name)
+	if !exists || len(strings.TrimSpace(value)) == 0 {
+		return fmt.Errorf("capture %s is not defined", spec.Name)
+	}
+
+	restoreKind := spec.Kind
+	if !spec.KindExplicit {
+		if recordedKind, ok := environment.CaptureKindForVariable(spec.Name); ok {
+			restoreKind = recordedKind
+		}
+	}
+	if restoreKind == "" {
+		restoreKind = workflow.CaptureKindBranch
+	}
+
+	switch restoreKind {
+	case workflow.CaptureKindBranch:
+		service, serviceError := NewService(ServiceDependencies{
+			GitExecutor: environment.GitExecutor,
+			Logger:      environment.Logger,
+		})
+		if serviceError != nil {
+			return serviceError
+		}
+		_, changeErr := service.Change(ctx, Options{
+			RepositoryPath: repository.Path,
+			BranchName:     strings.TrimSpace(value),
+		})
+		return changeErr
+	case workflow.CaptureKindCommit:
+		if environment.GitExecutor == nil {
+			return errors.New("git executor required to restore commit")
+		}
+		command := execshell.CommandDetails{
+			Arguments:        []string{"checkout", strings.TrimSpace(value)},
+			WorkingDirectory: repository.Path,
+		}
+		_, execErr := environment.GitExecutor.ExecuteGit(ctx, command)
+		return execErr
+	default:
+		return fmt.Errorf("unsupported restore value %q", restoreKind)
+	}
+}
+
+func captureBranchState(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, spec *workflow.BranchCaptureSpec) error {
+	if environment == nil || repository == nil || spec == nil {
+		return nil
+	}
+	if environment.RepositoryManager == nil {
+		return errors.New("repository manager required to capture branch state")
+	}
+	if environment.Variables == nil {
+		environment.Variables = workflow.NewVariableStore()
+	}
+
+	var capturedValue string
+	switch spec.Kind {
+	case workflow.CaptureKindBranch:
+		currentBranch, branchErr := environment.RepositoryManager.GetCurrentBranch(ctx, repository.Path)
+		if branchErr != nil {
+			return branchErr
+		}
+		if len(strings.TrimSpace(currentBranch)) == 0 {
+			return errors.New("cannot capture current branch: repository is not on a named branch")
+		}
+		capturedValue = strings.TrimSpace(currentBranch)
+	case workflow.CaptureKindCommit:
+		if environment.GitExecutor == nil {
+			return errors.New("git executor required to capture commit")
+		}
+		command := execshell.CommandDetails{
+			Arguments:        []string{"rev-parse", "HEAD"},
+			WorkingDirectory: repository.Path,
+		}
+		result, execErr := environment.GitExecutor.ExecuteGit(ctx, command)
+		if execErr != nil {
+			return execErr
+		}
+		capturedValue = strings.TrimSpace(result.StandardOutput)
+	default:
+		return fmt.Errorf("unsupported capture value %q", spec.Kind)
+	}
+
+	environment.StoreCaptureValue(spec.Name, capturedValue, spec.Overwrite)
+	environment.RecordCaptureKind(spec.Name, spec.Kind)
+	return nil
 }
 
 func optionalStringOption(options map[string]any, key string) (string, error) {

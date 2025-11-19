@@ -236,6 +236,37 @@ func TestBuildOperationsApplyTasksValidationLegacy(testInstance *testing.T) {
 	require.ErrorContains(testInstance, buildError, "tasks apply step requires at least one task entry")
 }
 
+func TestBuildOperationsValidatesBranchCaptureBindings(testInstance *testing.T) {
+	configuration := workflow.Configuration{
+		Steps: []workflow.StepConfiguration{
+			{
+				Command: []string{"tasks", "apply"},
+				Options: map[string]any{
+					"tasks": []any{
+						map[string]any{
+							"name": "restore",
+							"actions": []any{
+								map[string]any{
+									"type": "branch.change",
+									"options": map[string]any{
+										"restore": map[string]any{
+											"from": "missing_capture",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	_, buildError := workflow.BuildOperations(configuration)
+	require.Error(testInstance, buildError)
+	require.ErrorContains(testInstance, buildError, "restore references unknown capture")
+}
+
 func TestLoadConfiguration(testInstance *testing.T) {
 	testCases := []struct {
 		name            string

@@ -17,6 +17,9 @@ Resolution: Added `worktree_dirty` and `dirty_files` columns sourced from `git s
 - [x] [GX-247] The gitignore workflow fails its `require_clean` safeguard when only `.DS_Store`/`.env` files are dirty even though it manages those entries.
 Resolution: Safeguards support `ignore_dirty_paths` so workflows can allow known dirty files, and `configs/gitignore.yaml` ignores the same paths it writes into `.gitignore`.
 
+- [x] [GX-248] `branch.change` needs an explicit capture/restore DSL so workflows can hop back to the original branch/commit when a run is a no-op instead of leaving repos stranded on automation branches.
+Resolution: Added `capture` and `restore` blocks with variable names + kind (`branch` or `commit`), compile-time validation, and runtime helpers so workflows can declaratively capture the starting point and restore later.
+
 ## BugFixes (337–399)
 
 - [x] [GX-337] When replacing lines in files only a portion of files is getting the replacement and the rest doesn't. An example is running the @configs/cleanup.yaml flow against this very repo:
