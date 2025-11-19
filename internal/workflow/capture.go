@@ -22,8 +22,9 @@ const (
 
 // BranchCaptureSpec describes a capture directive attached to branch.change.
 type BranchCaptureSpec struct {
-	Name VariableName
-	Kind CaptureKind
+	Name      VariableName
+	Kind      CaptureKind
+	Overwrite bool
 }
 
 // BranchRestoreSpec describes a restore directive attached to branch.change.
@@ -42,31 +43,36 @@ func ParseBranchCaptureSpec(options map[string]any) (*BranchCaptureSpec, error) 
 	}
 
 	captureReader := newOptionReader(captureMap)
-	variableValue, variableExists, variableErr := captureReader.stringValue(captureVariableKey)
+	variableValue, variableExists, variableErr := captureReader.stringValue("name")
 	if variableErr != nil {
 		return nil, variableErr
 	}
 	if !variableExists || len(strings.TrimSpace(variableValue)) == 0 {
-		return nil, fmt.Errorf("branch.change capture requires %q", captureVariableKey)
+		return nil, fmt.Errorf("branch.change capture requires %q", "name")
 	}
 	name, nameErr := NewVariableName(variableValue)
 	if nameErr != nil {
 		return nil, nameErr
 	}
 
-	kindValue, kindExists, kindErr := captureReader.stringValue(captureKindKey)
+	kindValue, kindExists, kindErr := captureReader.stringValue("value")
 	if kindErr != nil {
 		return nil, kindErr
 	}
 	if !kindExists {
-		return nil, fmt.Errorf("branch.change capture requires %q", captureKindKey)
+		return nil, fmt.Errorf("branch.change capture requires %q", "value")
 	}
 	kind, kindErr := parseCaptureKind(kindValue)
 	if kindErr != nil {
 		return nil, kindErr
 	}
 
-	return &BranchCaptureSpec{Name: name, Kind: kind}, nil
+	overwriteValue, _, overwriteErr := captureReader.boolValue("overwrite")
+	if overwriteErr != nil {
+		return nil, overwriteErr
+	}
+
+	return &BranchCaptureSpec{Name: name, Kind: kind, Overwrite: overwriteValue}, nil
 }
 
 // ParseBranchRestoreSpec extracts a restore specification from action options.
@@ -78,19 +84,19 @@ func ParseBranchRestoreSpec(options map[string]any) (*BranchRestoreSpec, error) 
 	}
 
 	restoreReader := newOptionReader(restoreMap)
-	variableValue, variableExists, variableErr := restoreReader.stringValue(restoreVariableKey)
+	variableValue, variableExists, variableErr := restoreReader.stringValue("from")
 	if variableErr != nil {
 		return nil, variableErr
 	}
 	if !variableExists || len(strings.TrimSpace(variableValue)) == 0 {
-		return nil, fmt.Errorf("branch.change restore requires %q", restoreVariableKey)
+		return nil, fmt.Errorf("branch.change restore requires %q", "from")
 	}
 	name, nameErr := NewVariableName(variableValue)
 	if nameErr != nil {
 		return nil, nameErr
 	}
 
-	kindValue, kindExists, kindErr := restoreReader.stringValue(restoreKindKey)
+	kindValue, kindExists, kindErr := restoreReader.stringValue("value")
 	if kindErr != nil {
 		return nil, kindErr
 	}
