@@ -109,6 +109,9 @@ Resolution: Renamed the module + all Go imports to `github.com/tyemirov/gix`, up
 - [x] [GX-339] Documentation (README + ARCHITECTURE) still advertises Go 1.24 support and quick-start instructions say “Go 1.24+”, but `go.mod` now requires Go 1.25, so users compiling with 1.24 hit module version errors.
 Resolution: Updated README + ARCHITECTURE to note Go 1.25+, matching go.mod; no code changes required.
 
+- [x] [GX-422] `docs/cli_design.md` still references the old `git-maintenance` binary and module path `github.com/temirov/git-maintenance`, which no longer exist after the rename to `gix` (`github.com/tyemirov/gix`). Doc readers will follow outdated instructions.
+Resolution: Updated the CLI design doc to describe the `gix` binary, `github.com/tyemirov/gix` module path, `GIX` env prefix, and config search paths so it matches the shipped tool.
+
 ## Maintenance (422–499)
 
 ## Planning 
