@@ -63,6 +63,51 @@ func TestEvaluateSafeguardsRequireCleanIgnoresPaths(t *testing.T) {
 	require.Equal(t, "repository not clean: M main.go", reason)
 }
 
+func TestEvaluateSafeguardsRequireCleanStringValue(t *testing.T) {
+	t.Parallel()
+
+	testCases := map[string]struct {
+		requireClean  any
+		worktreeClean bool
+		expectedPass  bool
+		reason        string
+	}{
+		"enabled": {
+			requireClean:  "true",
+			worktreeClean: false,
+			expectedPass:  false,
+			reason:        "repository not clean: M file.txt",
+		},
+		"disabled": {
+			requireClean:  "false",
+			worktreeClean: false,
+			expectedPass:  true,
+			reason:        "",
+		},
+	}
+
+	for name, testCase := range testCases {
+		testCase := testCase
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			executor := &recordingGitExecutor{worktreeClean: testCase.worktreeClean, currentBranch: "master"}
+			manager, err := gitrepo.NewRepositoryManager(executor)
+			require.NoError(t, err)
+
+			env := &Environment{RepositoryManager: manager}
+			repo := &RepositoryState{Path: "/repositories/sample"}
+
+			pass, reason, evalErr := EvaluateSafeguards(context.Background(), env, repo, map[string]any{
+				"require_clean": testCase.requireClean,
+			})
+			require.NoError(t, evalErr)
+			require.Equal(t, testCase.expectedPass, pass)
+			require.Equal(t, testCase.reason, reason)
+		})
+	}
+}
+
 func TestEvaluateSafeguardsBranchAndPaths(t *testing.T) {
 	t.Parallel()
 

@@ -209,7 +209,12 @@ func readRequireCleanDirective(raw map[string]any) (bool, []dirtyIgnorePattern, 
 	case map[interface{}]interface{}:
 		return parseRequireCleanMap(convertSafeguardMap(typed))
 	default:
-		return false, nil, true, fmt.Errorf("require_clean must be a boolean or map")
+		reader := newOptionReader(raw)
+		enabled, _, enabledErr := reader.boolValue("require_clean")
+		if enabledErr != nil {
+			return false, nil, true, fmt.Errorf("require_clean must be a boolean or map")
+		}
+		return enabled, parseDirtyIgnorePatterns(raw["ignore_dirty_paths"]), true, nil
 	}
 }
 
