@@ -103,6 +103,15 @@ internal/workflow/operations_rename.go:10:2: no required module provides package
 ```
 Resolution: Updated workflow replacement planning to walk recursive glob targets so namespace rewrites touch every Go file; covered via new test and passing make lint/test/ci.
 
+- [x] [GX-338] The repository remote is `github.com/tyemirov/gix` (`git remote -v`), but the module path + README badge/install instructions still point to `github.com/temirov/gix`, so `go install github.com/tyemirov/gix@latest` fails with `module declares its path as github.com/temirov/gix` and the release badge points at the wrong owner.
+Resolution: Renamed the module + all Go imports to `github.com/tyemirov/gix`, updated the README badge/install instructions/default owner, and re-ran make lint/test/ci to validate the canonical path now matches the remote.
+
+- [x] [GX-339] Documentation (README + ARCHITECTURE) still advertises Go 1.24 support and quick-start instructions say “Go 1.24+”, but `go.mod` now requires Go 1.25, so users compiling with 1.24 hit module version errors.
+Resolution: Updated README + ARCHITECTURE to note Go 1.25+, matching go.mod; no code changes required.
+
+- [x] [GX-422] `docs/cli_design.md` still references the old `git-maintenance` binary and module path `github.com/temirov/git-maintenance`, which no longer exist after the rename to `gix` (`github.com/tyemirov/gix`). Doc readers will follow outdated instructions.
+Resolution: Updated the CLI design doc to describe the `gix` binary, `github.com/tyemirov/gix` module path, `GIX` env prefix, and config search paths so it matches the shipped tool.
+
 ## Maintenance (422–499)
 
 ## Planning 

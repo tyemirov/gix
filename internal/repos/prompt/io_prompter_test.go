@@ -9,8 +9,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/temirov/gix/internal/repos/prompt"
-	"github.com/temirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/internal/repos/prompt"
+	"github.com/tyemirov/gix/internal/repos/shared"
 )
 
 type failingReader struct {

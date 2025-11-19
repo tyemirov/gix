@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/temirov/gix/pkg/llm"
+	"github.com/tyemirov/gix/pkg/llm"
 )
 
 const (

@@ -7,12 +7,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/temirov/gix/internal/repos/shared"
-	"github.com/temirov/gix/internal/utils"
-	flagutils "github.com/temirov/gix/internal/utils/flags"
-	rootutils "github.com/temirov/gix/internal/utils/roots"
-	workflowpkg "github.com/temirov/gix/internal/workflow"
-	"github.com/temirov/gix/pkg/taskrunner"
+	"github.com/tyemirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/internal/utils"
+	flagutils "github.com/tyemirov/gix/internal/utils/flags"
+	rootutils "github.com/tyemirov/gix/internal/utils/roots"
+	workflowpkg "github.com/tyemirov/gix/internal/workflow"
+	"github.com/tyemirov/gix/pkg/taskrunner"
 )
 
 // PresetCommand centralizes shared preset-backed command behavior.

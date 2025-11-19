@@ -8,11 +8,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/temirov/gix/internal/execshell"
-	migrate "github.com/temirov/gix/internal/migrate"
-	migratecli "github.com/temirov/gix/internal/migrate/cli"
-	flagutils "github.com/temirov/gix/internal/utils/flags"
-	"github.com/temirov/gix/internal/workflow"
+	"github.com/tyemirov/gix/internal/execshell"
+	migrate "github.com/tyemirov/gix/internal/migrate"
+	migratecli "github.com/tyemirov/gix/internal/migrate/cli"
+	flagutils "github.com/tyemirov/gix/internal/utils/flags"
+	"github.com/tyemirov/gix/internal/workflow"
 )
 
 var integrationBoundRootFlagHolders []*flagutils.RootFlagValues

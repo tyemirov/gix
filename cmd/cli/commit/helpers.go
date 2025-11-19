@@ -6,7 +6,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/temirov/gix/pkg/taskrunner"
+	"github.com/tyemirov/gix/pkg/taskrunner"
 )
 
 // LoggerProvider yields a zap logger for command execution.

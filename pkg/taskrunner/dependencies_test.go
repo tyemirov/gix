@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/temirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/execshell"
 )
 
 func TestBuildDependenciesSkipsGitHubResolver(t *testing.T) {

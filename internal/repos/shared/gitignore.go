@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/temirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/execshell"
 )
 
 // CheckIgnoredPaths returns the subset of relative paths ignored by git when evaluated from worktreeRoot.

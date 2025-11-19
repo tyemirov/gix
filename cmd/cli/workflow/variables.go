@@ -7,7 +7,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	workflowpkg "github.com/temirov/gix/internal/workflow"
+	workflowpkg "github.com/tyemirov/gix/internal/workflow"
 )
 
 func parseVariableAssignments(assignments []string) (map[string]string, error) {

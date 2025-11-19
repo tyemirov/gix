@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/temirov/gix/internal/changelog"
-	"github.com/temirov/gix/internal/commitmsg"
-	"github.com/temirov/gix/pkg/llm"
+	"github.com/tyemirov/gix/internal/changelog"
+	"github.com/tyemirov/gix/internal/commitmsg"
+	"github.com/tyemirov/gix/pkg/llm"
 )
 
 const (

@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/temirov/gix/internal/execshell"
-	repoerrors "github.com/temirov/gix/internal/repos/errors"
-	"github.com/temirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/internal/execshell"
+	repoerrors "github.com/tyemirov/gix/internal/repos/errors"
+	"github.com/tyemirov/gix/internal/repos/shared"
 )
 
 const (

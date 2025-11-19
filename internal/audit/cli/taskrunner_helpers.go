@@ -1,8 +1,8 @@
 package cli
 
 import (
-	"github.com/temirov/gix/internal/workflow"
-	"github.com/temirov/gix/pkg/taskrunner"
+	"github.com/tyemirov/gix/internal/workflow"
+	"github.com/tyemirov/gix/pkg/taskrunner"
 )
 
 // TaskRunnerExecutor coordinates workflow task execution.

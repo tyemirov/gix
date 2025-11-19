@@ -5,8 +5,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/temirov/gix/internal/repos/rename"
-	"github.com/temirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/internal/repos/rename"
+	"github.com/tyemirov/gix/internal/repos/shared"
 )
 
 func TestNewOptionsRejectsEmptyName(t *testing.T) {

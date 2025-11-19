@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"time"
 
-	workflowcmd "github.com/temirov/gix/cmd/cli/workflow"
-	"github.com/temirov/gix/internal/execshell"
-	"github.com/temirov/gix/internal/workflow"
+	workflowcmd "github.com/tyemirov/gix/cmd/cli/workflow"
+	"github.com/tyemirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/workflow"
 )
 
 type fakeRepositoryDiscoverer struct {

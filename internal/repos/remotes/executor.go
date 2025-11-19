@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	repoerrors "github.com/temirov/gix/internal/repos/errors"
-	"github.com/temirov/gix/internal/repos/shared"
+	repoerrors "github.com/tyemirov/gix/internal/repos/errors"
+	"github.com/tyemirov/gix/internal/repos/shared"
 )
 
 const (

@@ -7,9 +7,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/temirov/gix/internal/ghcr"
-	"github.com/temirov/gix/internal/githubcli"
-	packages "github.com/temirov/gix/internal/packages"
+	"github.com/tyemirov/gix/internal/ghcr"
+	"github.com/tyemirov/gix/internal/githubcli"
+	packages "github.com/tyemirov/gix/internal/packages"
 )
 
 const (

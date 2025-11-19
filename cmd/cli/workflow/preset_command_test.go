@@ -8,9 +8,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/temirov/gix/internal/execshell"
-	flagutils "github.com/temirov/gix/internal/utils/flags"
-	workflowpkg "github.com/temirov/gix/internal/workflow"
+	"github.com/tyemirov/gix/internal/execshell"
+	flagutils "github.com/tyemirov/gix/internal/utils/flags"
+	workflowpkg "github.com/tyemirov/gix/internal/workflow"
 )
 
 func TestPresetCommandExecuteSuccess(t *testing.T) {

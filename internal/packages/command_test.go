@@ -8,11 +8,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/temirov/gix/internal/execshell"
-	"github.com/temirov/gix/internal/ghcr"
-	packages "github.com/temirov/gix/internal/packages"
-	flagutils "github.com/temirov/gix/internal/utils/flags"
-	"github.com/temirov/gix/internal/workflow"
+	"github.com/tyemirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/ghcr"
+	packages "github.com/tyemirov/gix/internal/packages"
+	flagutils "github.com/tyemirov/gix/internal/utils/flags"
+	"github.com/tyemirov/gix/internal/workflow"
 )
 
 type recordingTaskRunner struct {
