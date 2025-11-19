@@ -1,5 +1,22 @@
 # Changelog
 
+## [v0.2.2]
+
+### Features ✨
+- Added audit report columns to show worktree dirty status and list files needing attention.
+
+### Improvements ⚙️
+- Improved account renaming flows for better consistency and coverage.
+
+### Bug Fixes 🐛
+- _No changes._
+
+### Testing 🧪
+- Enhanced tests to cover new worktree dirty state and dirty files in audit reports.
+
+### Docs 📚
+- Updated ISSUE tracking with new audit worktree visibility feature.
+
 ## [v0.2.1]
 
 ### Features ✨
