@@ -32,10 +32,11 @@ func (executor taskExecutor) Execute(executionContext context.Context) error {
 	}
 
 	execCtx := &ExecutionContext{
-		Environment:  executor.environment,
-		Repository:   executor.repository,
-		Plan:         &executor.plan,
-		requireClean: executor.resolveEnsureClean(),
+		Environment:          executor.environment,
+		Repository:           executor.repository,
+		Plan:                 &executor.plan,
+		requireClean:         executor.resolveEnsureClean(),
+		ignoredDirtyPatterns: collectIgnoredDirtyPatterns(executor.plan.task),
 	}
 
 	hasFileChanges := hasApplicableChanges(executor.plan.fileChanges)
@@ -151,4 +152,39 @@ func (executor taskExecutor) report(eventCode string, level shared.EventLevel, m
 	}
 
 	executor.environment.ReportRepositoryEvent(executor.repository, level, eventCode, message, enriched)
+}
+
+func collectIgnoredDirtyPatterns(task TaskDefinition) []dirtyIgnorePattern {
+	if len(task.Safeguards) == 0 {
+		return nil
+	}
+
+	hard, soft := splitSafeguardSets(task.Safeguards, safeguardDefaultHardStop)
+	patterns := appendPatternSet(nil, hard)
+	patterns = appendPatternSet(patterns, soft)
+	if len(patterns) == 0 {
+		return nil
+	}
+	result := make([]dirtyIgnorePattern, 0, len(patterns))
+	seen := make(map[string]struct{}, len(patterns))
+	for _, pattern := range patterns {
+		key := fmt.Sprintf("%s|dir=%t|glob=%t", pattern.value, pattern.isDir, pattern.hasGlob)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, pattern)
+	}
+	return result
+}
+
+func appendPatternSet(destination []dirtyIgnorePattern, raw map[string]any) []dirtyIgnorePattern {
+	if len(raw) == 0 {
+		return destination
+	}
+	requireClean, patterns, exists, err := readRequireCleanDirective(raw)
+	if err != nil || !exists || !requireClean || len(patterns) == 0 {
+		return destination
+	}
+	return append(destination, patterns...)
 }

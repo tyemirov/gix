@@ -20,11 +20,10 @@ func newCleanWorktreeGuard() actionGuard {
 			if clean {
 				return nil
 			}
-			fields := map[string]string{}
-			if len(status) > 0 {
-				fields["status"] = strings.Join(status, ", ")
+			if len(status) == 0 {
+				return newActionSkipError("repository dirty", nil)
 			}
-			return newActionSkipError("repository dirty", fields)
+			return newActionSkipError("repository dirty", map[string]string{"status": strings.Join(status, ", ")})
 		}
 
 		clean, err := execCtx.Environment.RepositoryManager.CheckCleanWorktree(ctx, execCtx.Repository.Path)
@@ -37,13 +36,20 @@ func newCleanWorktreeGuard() actionGuard {
 			statusEntries, err = execCtx.Environment.RepositoryManager.WorktreeStatus(ctx, execCtx.Repository.Path)
 			if err != nil {
 				statusEntries = []string{fmt.Sprintf("status_error:%s", err.Error())}
+			} else {
+				statusEntries = filterIgnoredStatusEntries(statusEntries, execCtx.ignoredDirtyPatterns)
+				if len(statusEntries) == 0 {
+					clean = true
+				}
 			}
 		}
-		execCtx.storeWorktreeCheck(clean, statusEntries)
 
 		if clean {
+			execCtx.storeWorktreeCheck(true, nil)
 			return nil
 		}
+
+		execCtx.storeWorktreeCheck(false, statusEntries)
 
 		fields := map[string]string{}
 		if len(statusEntries) > 0 {

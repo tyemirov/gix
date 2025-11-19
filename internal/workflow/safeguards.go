@@ -38,7 +38,7 @@ func EvaluateSafeguards(ctx context.Context, environment *Environment, repositor
 	reader := newOptionReader(raw)
 	repositoryPath := strings.TrimSpace(repository.Path)
 
-	requireClean, requireCleanExists, requireCleanError := reader.boolValue("require_clean")
+	requireClean, ignoredPatterns, requireCleanExists, requireCleanError := readRequireCleanDirective(raw)
 	if requireCleanError != nil {
 		return false, "", requireCleanError
 	}
@@ -50,7 +50,6 @@ func EvaluateSafeguards(ctx context.Context, environment *Environment, repositor
 		if statusError != nil {
 			return false, "", statusError
 		}
-		ignoredPatterns := parseDirtyIgnorePatterns(raw["ignore_dirty_paths"])
 		remainingEntries := filterIgnoredStatusEntries(statusEntries, ignoredPatterns)
 		if len(remainingEntries) > 0 {
 			displayEntries := remainingEntries
@@ -192,6 +191,41 @@ func trimEmptyMap(raw map[string]any) map[string]any {
 		return nil
 	}
 	return raw
+}
+
+func readRequireCleanDirective(raw map[string]any) (bool, []dirtyIgnorePattern, bool, error) {
+	if len(raw) == 0 {
+		return false, nil, false, nil
+	}
+	value, exists := raw["require_clean"]
+	if !exists {
+		return false, nil, false, nil
+	}
+	switch typed := value.(type) {
+	case bool:
+		return typed, parseDirtyIgnorePatterns(raw["ignore_dirty_paths"]), true, nil
+	case map[string]any:
+		return parseRequireCleanMap(typed)
+	case map[interface{}]interface{}:
+		return parseRequireCleanMap(convertSafeguardMap(typed))
+	default:
+		return false, nil, true, fmt.Errorf("require_clean must be a boolean or map")
+	}
+}
+
+func parseRequireCleanMap(raw map[string]any) (bool, []dirtyIgnorePattern, bool, error) {
+	if len(raw) == 0 {
+		return true, nil, true, nil
+	}
+	reader := newOptionReader(raw)
+	enabled, enabledExists, enabledErr := reader.boolValue("enabled")
+	if enabledErr != nil {
+		return false, nil, true, enabledErr
+	}
+	if !enabledExists {
+		enabled = true
+	}
+	return enabled, parseDirtyIgnorePatterns(raw["ignore_dirty_paths"]), true, nil
 }
 
 func parseBranchList(raw any) []string {

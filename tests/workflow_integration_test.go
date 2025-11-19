@@ -347,7 +347,8 @@ func TestWorkflowLogHeaderFormatting(testInstance *testing.T) {
           - name: "Ensure clean"
             safeguards:
               hard_stop:
-                require_clean: true
+                require_clean:
+                  enabled: true
             steps: [files.apply]
             files:
               - path: README.md
@@ -421,10 +422,11 @@ func TestWorkflowRequireCleanOnlyIgnoresUntrackedPaths(testInstance *testing.T) 
           - name: "Ensure clean"
             safeguards:
               hard_stop:
-                require_clean: true
-                ignore_dirty_paths:
-                  - ".DS_Store"
-                  - "bin/"
+                require_clean:
+                  enabled: true
+                  ignore_dirty_paths:
+                    - ".DS_Store"
+                    - "bin/"
             steps: [files.apply]
             files:
               - path: README.md
@@ -450,7 +452,10 @@ func TestWorkflowRequireCleanOnlyIgnoresUntrackedPaths(testInstance *testing.T) 
 		workflowIntegrationYesFlag,
 	}
 
-	runIntegrationCommand(testInstance, repositoryRoot, integrationCommandOptions{}, workflowIntegrationTimeout, commandArguments)
+	cleanOutput := runIntegrationCommand(testInstance, repositoryRoot, integrationCommandOptions{}, workflowIntegrationTimeout, commandArguments)
+	filteredCleanOutput := filterStructuredOutput(cleanOutput)
+	require.NotContains(testInstance, filteredCleanOutput, "repository dirty")
+	require.NotContains(testInstance, filteredCleanOutput, "repository not clean")
 
 	require.NoError(testInstance, os.WriteFile(scriptPath, []byte("#!/bin/sh\necho dirty\n"), 0o755))
 
