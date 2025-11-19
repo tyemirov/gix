@@ -1,5 +1,28 @@
 # Changelog
 
+## [v0.2.3]
+
+### Features ✨
+- Allow `ignore_dirty_paths` safeguard to permit ignoring specific dirty files/directories when `require_clean` is true.
+- `.gitignore` workflow now includes managed entries for additional service files like `.env`, `.DS_Store`, `qodana.yaml`, `.idea/`, `tools/`, and `bin/`.
+
+### Improvements ⚙️
+- Improved account renaming flow.
+- Enhanced `.gitignore` workflow to add and ensure proper ignore entries.
+- Refined safeguard evaluation to respect status codes and ignore specified dirty paths when filtering dirty ignores.
+
+### Bug Fixes 🐛
+- Fixed issue where `require_clean` safeguard incorrectly reported failure when only managed dirty files (e.g., `.DS_Store`, `.env`) were present.
+
+### Testing 🧪
+- Added tests for `ignore_dirty_paths` safeguard behavior in workflow and repository state.
+- Integration tests verifying `require_clean` with ignored paths functioning correctly.
+- Additional coverage for filtering status entries and safeguard evaluations.
+
+### Docs 📚
+- Updated README to document `ignore_dirty_paths` safeguard option and usage examples.
+- Documented new gitignore managed entries and safeguard behavior in configuration files.
+
 ## [v0.2.2]
 
 ### Features ✨
