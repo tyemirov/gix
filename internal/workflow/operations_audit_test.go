@@ -16,7 +16,7 @@ import (
 const (
 	auditReportTestFileNameConstant       = "audit_report.csv"
 	auditReportWhitespacePaddingConstant  = " "
-	auditReportExpectedHeaderLineConstant = "folder_name,final_github_repo,name_matches,remote_default_branch,local_branch,in_sync,remote_protocol,origin_matches_canonical"
+	auditReportExpectedHeaderLineConstant = "folder_name,final_github_repo,name_matches,remote_default_branch,local_branch,in_sync,remote_protocol,origin_matches_canonical,worktree_dirty,dirty_files"
 )
 
 func TestAuditReportOperationCreatesNestedOutput(testInstance *testing.T) {

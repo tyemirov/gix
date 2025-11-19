@@ -33,8 +33,8 @@ const (
 	auditIntegrationStubScript                 = "#!/bin/sh\nif [ \"$1\" = \"repo\" ] && [ \"$2\" = \"view\" ]; then\n  cat <<'EOF'\n{\"nameWithOwner\":\"canonical/example\",\"defaultBranchRef\":{\"name\":\"main\"},\"description\":\"\"}\nEOF\n  exit 0\nfi\nexit 0\n"
 	auditIntegrationRepositoryPrefixConstant   = "audit-integration-repository-"
 	auditIntegrationHomeShortcutPrefixConstant = "~/"
-	auditIntegrationCSVHeaderConstant          = "folder_name,final_github_repo,name_matches,remote_default_branch,local_branch,in_sync,remote_protocol,origin_matches_canonical\n"
-	auditIntegrationCSVRowTemplate             = "%[1]s,canonical/example,no,main,,n/a,https,no\n"
+	auditIntegrationCSVHeaderConstant          = "folder_name,final_github_repo,name_matches,remote_default_branch,local_branch,in_sync,remote_protocol,origin_matches_canonical,worktree_dirty,dirty_files\n"
+	auditIntegrationCSVRowTemplate             = "%[1]s,canonical/example,no,main,,n/a,https,no,no,\n"
 	auditIntegrationCSVTemplate                = auditIntegrationCSVHeaderConstant + auditIntegrationCSVRowTemplate
 	auditIntegrationCSVCaseNameConstant        = "audit_csv"
 	auditIntegrationDebugCaseNameConstant      = "audit_debug"
@@ -155,7 +155,7 @@ func TestAuditRunCommandIntegration(testInstance *testing.T) {
 			name:      auditIntegrationIncludeAllCaseNameConstant,
 			arguments: includeAllArguments,
 			expectedOutput: fmt.Sprintf(
-				"folder_name,final_github_repo,name_matches,remote_default_branch,local_branch,in_sync,remote_protocol,origin_matches_canonical\n%[1]s,canonical/example,no,main,,n/a,https,no\n%[2]s,n/a,n/a,n/a,n/a,n/a,n/a,n/a\n",
+				"folder_name,final_github_repo,name_matches,remote_default_branch,local_branch,in_sync,remote_protocol,origin_matches_canonical,worktree_dirty,dirty_files\n%[1]s,canonical/example,no,main,,n/a,https,no,no,\n%[2]s,n/a,n/a,n/a,n/a,n/a,n/a,n/a,n/a,\n",
 				includeAllRepositoryFolderName,
 				nonGitFolderName,
 			),

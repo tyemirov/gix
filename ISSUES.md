@@ -11,6 +11,9 @@ Each issue is formatted as `- [ ] [GX-<number>]`. When resolved it becomes -` [x
 
 ## Improvements (246–299)
 
+- [x] [GX-246] Audit report lacks worktree visibility; add columns showing whether the repository is dirty plus which files need attention.
+Resolution: Added `worktree_dirty` and `dirty_files` columns sourced from `git status --porcelain` so CSV consumers see dirty trees and affected files.
+
 ## BugFixes (337–399)
 
 - [x] [GX-337] When replacing lines in files only a portion of files is getting the replacement and the rest doesn't. An example is running the @configs/cleanup.yaml flow against this very repo:

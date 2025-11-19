@@ -55,6 +55,7 @@ type RepositoryInspection struct {
 	InSyncStatus           TernaryValue
 	OriginMatchesCanonical TernaryValue
 	IsGitRepository        bool
+	WorktreeDirtyFiles     []string
 }
 
 // AuditReportRow models a single CSV audit result.
@@ -67,6 +68,8 @@ type AuditReportRow struct {
 	InSync                 TernaryValue
 	RemoteProtocol         RemoteProtocolType
 	OriginMatchesCanonical TernaryValue
+	WorktreeDirty          TernaryValue
+	DirtyFiles             string
 }
 
 // CSVRecord returns the row formatted for CSV encoding.
@@ -80,5 +83,7 @@ func (row AuditReportRow) CSVRecord() []string {
 		string(row.InSync),
 		string(row.RemoteProtocol),
 		string(row.OriginMatchesCanonical),
+		string(row.WorktreeDirty),
+		row.DirtyFiles,
 	}
 }

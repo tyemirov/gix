@@ -141,6 +141,8 @@ func (service *Service) writeAuditReport(inspections []RepositoryInspection) err
 		csvHeaderInSync,
 		csvHeaderRemoteProtocol,
 		csvHeaderOriginCanonical,
+		csvHeaderWorktreeDirty,
+		csvHeaderDirtyFiles,
 	}
 	if writeError := csvWriter.Write(header); writeError != nil {
 		return writeError
@@ -216,6 +218,7 @@ func (service *Service) isGitRepository(executionContext context.Context, reposi
 
 func (service *Service) inspectRepository(executionContext context.Context, repositoryPath string, inspectionDepth InspectionDepth) (RepositoryInspection, error) {
 	folderName := filepath.Base(repositoryPath)
+	worktreeStatus := service.collectWorktreeStatus(executionContext, repositoryPath)
 
 	originURL, originError := service.gitManager.GetRemoteURL(executionContext, repositoryPath, shared.OriginRemoteNameConstant)
 	if originError != nil || len(strings.TrimSpace(originURL)) == 0 {
@@ -241,6 +244,7 @@ func (service *Service) inspectRepository(executionContext context.Context, repo
 			InSyncStatus:           TernaryValueNotApplicable,
 			OriginMatchesCanonical: TernaryValueNotApplicable,
 			IsGitRepository:        true,
+			WorktreeDirtyFiles:     worktreeStatus,
 		}, nil
 	}
 
@@ -299,6 +303,7 @@ func (service *Service) inspectRepository(executionContext context.Context, repo
 		InSyncStatus:           inSyncStatus,
 		OriginMatchesCanonical: matchesCanonical(originOwnerRepo, canonicalOwnerRepo),
 		IsGitRepository:        true,
+		WorktreeDirtyFiles:     worktreeStatus,
 	}
 	return inspection, nil
 }
@@ -332,6 +337,8 @@ func inspectionReportRow(inspection RepositoryInspection) AuditReportRow {
 	inSync := inspection.InSyncStatus
 	remoteProtocol := inspection.RemoteProtocol
 	originMatches := inspection.OriginMatchesCanonical
+	var worktreeDirty TernaryValue
+	dirtyFilesValue := ""
 
 	if !inspection.IsGitRepository {
 		finalRepo = string(TernaryValueNotApplicable)
@@ -340,6 +347,14 @@ func inspectionReportRow(inspection RepositoryInspection) AuditReportRow {
 		inSync = TernaryValueNotApplicable
 		remoteProtocol = RemoteProtocolType(string(TernaryValueNotApplicable))
 		originMatches = TernaryValueNotApplicable
+		worktreeDirty = TernaryValueNotApplicable
+	} else {
+		if len(inspection.WorktreeDirtyFiles) > 0 {
+			worktreeDirty = TernaryValueYes
+			dirtyFilesValue = strings.Join(inspection.WorktreeDirtyFiles, "; ")
+		} else {
+			worktreeDirty = TernaryValueNo
+		}
 	}
 	return AuditReportRow{
 		FolderName:             inspection.FolderName,
@@ -350,6 +365,8 @@ func inspectionReportRow(inspection RepositoryInspection) AuditReportRow {
 		InSync:                 inSync,
 		RemoteProtocol:         remoteProtocol,
 		OriginMatchesCanonical: originMatches,
+		WorktreeDirty:          worktreeDirty,
+		DirtyFiles:             dirtyFilesValue,
 	}
 }
 
@@ -533,7 +550,23 @@ func (service *Service) computeInSync(executionContext context.Context, reposito
 	if headRevision == remoteRevision {
 		return TernaryValueYes
 	}
+
 	return TernaryValueNo
+}
+
+func (service *Service) collectWorktreeStatus(executionContext context.Context, repositoryPath string) []string {
+	if service.gitManager == nil {
+		return nil
+	}
+
+	statusEntries, statusError := service.gitManager.WorktreeStatus(executionContext, repositoryPath)
+	if statusError != nil || len(statusEntries) == 0 {
+		return nil
+	}
+
+	copied := make([]string, len(statusEntries))
+	copy(copied, statusEntries)
+	return copied
 }
 
 func (service *Service) resolveUpstreamReference(executionContext context.Context, repositoryPath string) string {
