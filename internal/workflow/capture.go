@@ -15,9 +15,9 @@ const (
 	captureOptionKey   = "capture"
 	restoreOptionKey   = "restore"
 	captureVariableKey = "variable"
-	captureKindKey     = "value"
+	captureKindKey     = "kind"
 	restoreVariableKey = "variable"
-	restoreKindKey     = "value"
+	restoreKindKey     = "kind"
 )
 
 // BranchCaptureSpec describes a capture directive attached to branch.change.

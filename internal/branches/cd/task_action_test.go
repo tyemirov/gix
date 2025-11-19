@@ -234,7 +234,7 @@ func TestHandleBranchChangeActionCapturesBranch(t *testing.T) {
 		taskOptionBranchRemote: shared.OriginRemoteNameConstant,
 		"capture": map[string]any{
 			"variable": "initial_branch",
-			"value":    "branch",
+			"kind":     "branch",
 		},
 	}
 
@@ -265,7 +265,7 @@ func TestHandleBranchChangeActionCapturesCommit(t *testing.T) {
 		taskOptionBranchRemote: shared.OriginRemoteNameConstant,
 		"capture": map[string]any{
 			"variable": "initial_commit",
-			"value":    "commit",
+			"kind":     "commit",
 		},
 	}
 
@@ -332,7 +332,7 @@ func TestHandleBranchChangeActionRestoresCommit(t *testing.T) {
 	parameters := map[string]any{
 		"restore": map[string]any{
 			"variable": "initial_commit",
-			"value":    "commit",
+			"kind":     "commit",
 		},
 	}
 

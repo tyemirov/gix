@@ -13,7 +13,7 @@ workflow:
                   create_if_missing: false
                   capture:
                     variable: initial_commit
-                    value: commit
+                    kind: commit
             safeguards:
               hard_stop:
                 require_clean: true
@@ -110,4 +110,4 @@ workflow:
                 options:
                   restore:
                     variable: initial_commit
-                    value: commit
+                    kind: commit
