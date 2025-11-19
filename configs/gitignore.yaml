@@ -11,6 +11,9 @@ workflow:
                   branch: master
                   remote: origin
                   create_if_missing: false
+                  capture:
+                    variable: initial_commit
+                    value: commit
             safeguards:
               hard_stop:
                 require_clean: true
@@ -94,3 +97,17 @@ workflow:
           Ensure `.gitignore` contains the standard secrets/tooling entries (.env, tools/, bin/).
         base: "{{ .Repository.DefaultBranch }}"
         push_remote: origin
+
+  - step:
+      name: restore-original-state
+      after: ["gitignore-open-pr"]
+      command: ["tasks", "apply"]
+      with:
+        tasks:
+          - name: "Restore initial commit"
+            actions:
+              - type: branch.change
+                options:
+                  restore:
+                    variable: initial_commit
+                    value: commit
