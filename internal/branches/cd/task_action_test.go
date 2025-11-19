@@ -45,6 +45,33 @@ func (reporter *recordingReporter) RecordOperationDuration(string, time.Duration
 func (reporter *recordingReporter) RecordStageDuration(string, time.Duration) {
 }
 
+type branchCaptureExecutor struct {
+	commands []execshell.CommandDetails
+}
+
+func (executor *branchCaptureExecutor) ExecuteGit(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
+	executor.commands = append(executor.commands, details)
+	if len(details.Arguments) == 0 {
+		return execshell.ExecutionResult{}, nil
+	}
+	switch details.Arguments[0] {
+	case "remote":
+		return execshell.ExecutionResult{StandardOutput: "origin\n"}, nil
+	case "rev-parse":
+		if len(details.Arguments) > 2 && details.Arguments[1] == "--abbrev-ref" && details.Arguments[2] == "HEAD" {
+			return execshell.ExecutionResult{StandardOutput: "main\n"}, nil
+		}
+		if len(details.Arguments) > 1 && details.Arguments[1] == "HEAD" {
+			return execshell.ExecutionResult{StandardOutput: "abcd1234\n"}, nil
+		}
+	}
+	return execshell.ExecutionResult{}, nil
+}
+
+func (executor *branchCaptureExecutor) ExecuteGitHubCLI(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
+	return execshell.ExecutionResult{}, nil
+}
+
 func TestHandleBranchChangeActionUsesRepositoryDefault(t *testing.T) {
 	executor := &stubGitExecutor{
 		responses: []stubGitResponse{
@@ -181,4 +208,141 @@ func TestHandleBranchChangeActionRefreshesBranch(t *testing.T) {
 	require.Len(t, reporter.events, 1)
 	require.Equal(t, "true", reporter.events[0].Details["refresh"])
 	require.Equal(t, "true", reporter.events[0].Details["require_clean"])
+}
+
+func TestHandleBranchChangeActionCapturesBranch(t *testing.T) {
+	executor := &branchCaptureExecutor{}
+	reporter := &recordingReporter{}
+	variableName, nameErr := workflow.NewVariableName("initial_branch")
+	require.NoError(t, nameErr)
+
+	gitManager, managerErr := gitrepo.NewRepositoryManager(executor)
+	require.NoError(t, managerErr)
+
+	environment := &workflow.Environment{
+		GitExecutor:       executor,
+		RepositoryManager: gitManager,
+		Logger:            zap.NewNop(),
+		Output:            io.Discard,
+		Errors:            io.Discard,
+		Reporter:          reporter,
+		Variables:         workflow.NewVariableStore(),
+	}
+	repository := &workflow.RepositoryState{Path: "/tmp/project"}
+	parameters := map[string]any{
+		taskOptionBranchName:   "feature/gitignore",
+		taskOptionBranchRemote: shared.OriginRemoteNameConstant,
+		"capture": map[string]any{
+			"variable": "initial_branch",
+			"value":    "branch",
+		},
+	}
+
+	require.NoError(t, handleBranchChangeAction(context.Background(), environment, repository, parameters))
+	value, exists := environment.Variables.Get(variableName)
+	require.True(t, exists)
+	require.Equal(t, "main", value)
+	kind, kindExists := environment.CaptureKindForVariable(variableName)
+	require.True(t, kindExists)
+	require.Equal(t, workflow.CaptureKindBranch, kind)
+}
+
+func TestHandleBranchChangeActionCapturesCommit(t *testing.T) {
+	executor := &branchCaptureExecutor{}
+	gitManager, managerErr := gitrepo.NewRepositoryManager(executor)
+	require.NoError(t, managerErr)
+	environment := &workflow.Environment{
+		GitExecutor:       executor,
+		RepositoryManager: gitManager,
+		Logger:            zap.NewNop(),
+		Output:            io.Discard,
+		Errors:            io.Discard,
+		Variables:         workflow.NewVariableStore(),
+	}
+	repository := &workflow.RepositoryState{Path: "/tmp/project"}
+	parameters := map[string]any{
+		taskOptionBranchName:   "feature/gitignore",
+		taskOptionBranchRemote: shared.OriginRemoteNameConstant,
+		"capture": map[string]any{
+			"variable": "initial_commit",
+			"value":    "commit",
+		},
+	}
+
+	require.NoError(t, handleBranchChangeAction(context.Background(), environment, repository, parameters))
+	name, _ := workflow.NewVariableName("initial_commit")
+	value, exists := environment.Variables.Get(name)
+	require.True(t, exists)
+	require.Equal(t, "abcd1234", value)
+	kind, kindExists := environment.CaptureKindForVariable(name)
+	require.True(t, kindExists)
+	require.Equal(t, workflow.CaptureKindCommit, kind)
+}
+
+func TestHandleBranchChangeActionRestoresBranch(t *testing.T) {
+	executor := &branchCaptureExecutor{}
+	variableName, _ := workflow.NewVariableName("initial_branch")
+	gitManager, managerErr := gitrepo.NewRepositoryManager(executor)
+	require.NoError(t, managerErr)
+	environment := &workflow.Environment{
+		GitExecutor:       executor,
+		RepositoryManager: gitManager,
+		Logger:            zap.NewNop(),
+		Output:            io.Discard,
+		Errors:            io.Discard,
+		Variables:         workflow.NewVariableStore(),
+	}
+	environment.Variables.Set(variableName, "develop")
+	environment.RecordCaptureKind(variableName, workflow.CaptureKindBranch)
+	repository := &workflow.RepositoryState{Path: "/tmp/project"}
+	parameters := map[string]any{
+		"restore": map[string]any{
+			"variable": "initial_branch",
+		},
+	}
+
+	require.NoError(t, handleBranchChangeAction(context.Background(), environment, repository, parameters))
+	require.True(t, len(executor.commands) >= 3)
+	foundSwitch := false
+	for _, command := range executor.commands {
+		if len(command.Arguments) >= 2 && command.Arguments[0] == "switch" && command.Arguments[1] == "develop" {
+			foundSwitch = true
+			break
+		}
+	}
+	require.True(t, foundSwitch)
+}
+
+func TestHandleBranchChangeActionRestoresCommit(t *testing.T) {
+	executor := &branchCaptureExecutor{}
+	variableName, _ := workflow.NewVariableName("initial_commit")
+	gitManager, managerErr := gitrepo.NewRepositoryManager(executor)
+	require.NoError(t, managerErr)
+	environment := &workflow.Environment{
+		GitExecutor:       executor,
+		RepositoryManager: gitManager,
+		Logger:            zap.NewNop(),
+		Output:            io.Discard,
+		Errors:            io.Discard,
+		Variables:         workflow.NewVariableStore(),
+	}
+	environment.Variables.Set(variableName, "deadbeef")
+	environment.RecordCaptureKind(variableName, workflow.CaptureKindCommit)
+	repository := &workflow.RepositoryState{Path: "/tmp/project"}
+	parameters := map[string]any{
+		"restore": map[string]any{
+			"variable": "initial_commit",
+			"value":    "commit",
+		},
+	}
+
+	require.NoError(t, handleBranchChangeAction(context.Background(), environment, repository, parameters))
+	foundCheckout := false
+	for _, command := range executor.commands {
+		if len(command.Arguments) >= 2 && command.Arguments[0] == "checkout" && command.Arguments[1] == "deadbeef" {
+			foundCheckout = true
+			break
+		}
+	}
+	require.True(t, foundCheckout)
 }

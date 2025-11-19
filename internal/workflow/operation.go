@@ -49,6 +49,7 @@ type environmentSharedState struct {
 	mutex               sync.Mutex
 	auditReportExecuted bool
 	lastRepositoryKey   string
+	capturedKinds       map[string]CaptureKind
 }
 
 func (environment *Environment) ensureSharedState() {
@@ -78,6 +79,31 @@ func (environment *Environment) markAuditReportExecuted() {
 	environment.sharedState.mutex.Lock()
 	environment.sharedState.auditReportExecuted = true
 	environment.sharedState.mutex.Unlock()
+}
+
+// RecordCaptureKind remembers the kind used for a captured workflow variable.
+func (environment *Environment) RecordCaptureKind(name VariableName, kind CaptureKind) {
+	if environment == nil {
+		return
+	}
+	environment.ensureSharedState()
+	if environment.sharedState.capturedKinds == nil {
+		environment.sharedState.capturedKinds = make(map[string]CaptureKind)
+	}
+	environment.sharedState.capturedKinds[string(name)] = kind
+}
+
+// CaptureKindForVariable reports the capture kind previously recorded for the variable.
+func (environment *Environment) CaptureKindForVariable(name VariableName) (CaptureKind, bool) {
+	if environment == nil {
+		return "", false
+	}
+	environment.ensureSharedState()
+	if environment.sharedState.capturedKinds == nil {
+		return "", false
+	}
+	kind, exists := environment.sharedState.capturedKinds[string(name)]
+	return kind, exists
 }
 
 // OperationDefaults captures fallback behaviors shared across operations.
