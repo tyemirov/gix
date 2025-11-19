@@ -321,7 +321,7 @@ func captureBranchState(ctx context.Context, environment *workflow.Environment, 
 		return fmt.Errorf("unsupported capture value %q", spec.Kind)
 	}
 
-	environment.Variables.Set(spec.Name, capturedValue)
+	environment.StoreCaptureValue(spec.Name, capturedValue, spec.Overwrite)
 	environment.RecordCaptureKind(spec.Name, spec.Kind)
 	return nil
 }

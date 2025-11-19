@@ -125,9 +125,11 @@ func (environment *Environment) StoreCaptureValue(name VariableName, value strin
 	if _, exists := environment.sharedState.capturedValues[key]; exists && !overwrite {
 		return
 	}
-	environment.sharedState.capturedValues[key] = strings.TrimSpace(value)
+	trimmedValue := strings.TrimSpace(value)
+	environment.sharedState.capturedValues[key] = trimmedValue
 	if environment.Variables != nil {
-		environment.Variables.Set(VariableName(fmt.Sprintf("Captured.%s", key)), value)
+		environment.Variables.Set(name, trimmedValue)
+		environment.Variables.Set(VariableName(fmt.Sprintf("Captured.%s", key)), trimmedValue)
 	}
 }
 

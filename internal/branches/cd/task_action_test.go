@@ -233,8 +233,8 @@ func TestHandleBranchChangeActionCapturesBranch(t *testing.T) {
 		taskOptionBranchName:   "feature/gitignore",
 		taskOptionBranchRemote: shared.OriginRemoteNameConstant,
 		"capture": map[string]any{
-			"variable": "initial_branch",
-			"kind":     "branch",
+			"name":  "initial_branch",
+			"value": "branch",
 		},
 	}
 
@@ -242,6 +242,11 @@ func TestHandleBranchChangeActionCapturesBranch(t *testing.T) {
 	value, exists := environment.Variables.Get(variableName)
 	require.True(t, exists)
 	require.Equal(t, "main", value)
+	capturedVariableName, capturedNameErr := workflow.NewVariableName("Captured.initial_branch")
+	require.NoError(t, capturedNameErr)
+	capturedValue, capturedExists := environment.Variables.Get(capturedVariableName)
+	require.True(t, capturedExists)
+	require.Equal(t, "main", capturedValue)
 	kind, kindExists := environment.CaptureKindForVariable(variableName)
 	require.True(t, kindExists)
 	require.Equal(t, workflow.CaptureKindBranch, kind)
@@ -264,8 +269,8 @@ func TestHandleBranchChangeActionCapturesCommit(t *testing.T) {
 		taskOptionBranchName:   "feature/gitignore",
 		taskOptionBranchRemote: shared.OriginRemoteNameConstant,
 		"capture": map[string]any{
-			"variable": "initial_commit",
-			"kind":     "commit",
+			"name":  "initial_commit",
+			"value": "commit",
 		},
 	}
 
@@ -274,9 +279,55 @@ func TestHandleBranchChangeActionCapturesCommit(t *testing.T) {
 	value, exists := environment.Variables.Get(name)
 	require.True(t, exists)
 	require.Equal(t, "abcd1234", value)
+	capturedVariableName, capturedNameErr := workflow.NewVariableName("Captured.initial_commit")
+	require.NoError(t, capturedNameErr)
+	capturedValue, capturedExists := environment.Variables.Get(capturedVariableName)
+	require.True(t, capturedExists)
+	require.Equal(t, "abcd1234", capturedValue)
 	kind, kindExists := environment.CaptureKindForVariable(name)
 	require.True(t, kindExists)
 	require.Equal(t, workflow.CaptureKindCommit, kind)
+}
+
+func TestHandleBranchChangeActionCaptureRespectsOverwrite(t *testing.T) {
+	executor := &branchCaptureExecutor{}
+	reporter := &recordingReporter{}
+	variableName, nameErr := workflow.NewVariableName("initial_branch")
+	require.NoError(t, nameErr)
+	capturedVariableName, capturedNameErr := workflow.NewVariableName("Captured.initial_branch")
+	require.NoError(t, capturedNameErr)
+
+	gitManager, managerErr := gitrepo.NewRepositoryManager(executor)
+	require.NoError(t, managerErr)
+
+	environment := &workflow.Environment{
+		GitExecutor:       executor,
+		RepositoryManager: gitManager,
+		Logger:            zap.NewNop(),
+		Output:            io.Discard,
+		Errors:            io.Discard,
+		Reporter:          reporter,
+		Variables:         workflow.NewVariableStore(),
+	}
+	environment.StoreCaptureValue(variableName, "preserved", true)
+	repository := &workflow.RepositoryState{Path: "/tmp/project"}
+	parameters := map[string]any{
+		taskOptionBranchName:   "feature/gitignore",
+		taskOptionBranchRemote: shared.OriginRemoteNameConstant,
+		"capture": map[string]any{
+			"name":      "initial_branch",
+			"value":     "branch",
+			"overwrite": false,
+		},
+	}
+
+	require.NoError(t, handleBranchChangeAction(context.Background(), environment, repository, parameters))
+	value, exists := environment.Variables.Get(variableName)
+	require.True(t, exists)
+	require.Equal(t, "preserved", value)
+	sharedValue, sharedExists := environment.Variables.Get(capturedVariableName)
+	require.True(t, sharedExists)
+	require.Equal(t, "preserved", sharedValue)
 }
 
 func TestHandleBranchChangeActionRestoresBranch(t *testing.T) {
@@ -297,7 +348,7 @@ func TestHandleBranchChangeActionRestoresBranch(t *testing.T) {
 	repository := &workflow.RepositoryState{Path: "/tmp/project"}
 	parameters := map[string]any{
 		"restore": map[string]any{
-			"variable": "initial_branch",
+			"from": "initial_branch",
 		},
 	}
 
@@ -331,8 +382,8 @@ func TestHandleBranchChangeActionRestoresCommit(t *testing.T) {
 	repository := &workflow.RepositoryState{Path: "/tmp/project"}
 	parameters := map[string]any{
 		"restore": map[string]any{
-			"variable": "initial_commit",
-			"kind":     "commit",
+			"from":  "initial_commit",
+			"value": "commit",
 		},
 	}
 

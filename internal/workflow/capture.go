@@ -12,12 +12,8 @@ const (
 	CaptureKindBranch CaptureKind = "branch"
 	CaptureKindCommit CaptureKind = "commit"
 
-	captureOptionKey   = "capture"
-	restoreOptionKey   = "restore"
-	captureVariableKey = "variable"
-	captureKindKey     = "kind"
-	restoreVariableKey = "variable"
-	restoreKindKey     = "kind"
+	captureOptionKey = "capture"
+	restoreOptionKey = "restore"
 )
 
 // BranchCaptureSpec describes a capture directive attached to branch.change.
