@@ -2,7 +2,9 @@ package workflow
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"strings"
 	"sync"
 
 	"go.uber.org/zap"
@@ -50,6 +52,7 @@ type environmentSharedState struct {
 	auditReportExecuted bool
 	lastRepositoryKey   string
 	capturedKinds       map[string]CaptureKind
+	capturedValues      map[string]string
 }
 
 func (environment *Environment) ensureSharedState() {
@@ -90,6 +93,9 @@ func (environment *Environment) RecordCaptureKind(name VariableName, kind Captur
 	if environment.sharedState.capturedKinds == nil {
 		environment.sharedState.capturedKinds = make(map[string]CaptureKind)
 	}
+	if environment.sharedState.capturedValues == nil {
+		environment.sharedState.capturedValues = make(map[string]string)
+	}
 	environment.sharedState.capturedKinds[string(name)] = kind
 }
 
@@ -104,6 +110,40 @@ func (environment *Environment) CaptureKindForVariable(name VariableName) (Captu
 	}
 	kind, exists := environment.sharedState.capturedKinds[string(name)]
 	return kind, exists
+}
+
+// StoreCaptureValue persists the captured value under the shared namespace.
+func (environment *Environment) StoreCaptureValue(name VariableName, value string, overwrite bool) {
+	if environment == nil {
+		return
+	}
+	environment.ensureSharedState()
+	if environment.sharedState.capturedValues == nil {
+		environment.sharedState.capturedValues = make(map[string]string)
+	}
+	key := string(name)
+	if _, exists := environment.sharedState.capturedValues[key]; exists && !overwrite {
+		return
+	}
+	trimmedValue := strings.TrimSpace(value)
+	environment.sharedState.capturedValues[key] = trimmedValue
+	if environment.Variables != nil {
+		environment.Variables.Set(name, trimmedValue)
+		environment.Variables.Set(VariableName(fmt.Sprintf("Captured.%s", key)), trimmedValue)
+	}
+}
+
+// CapturedValue returns the previously stored capture value.
+func (environment *Environment) CapturedValue(name VariableName) (string, bool) {
+	if environment == nil {
+		return "", false
+	}
+	environment.ensureSharedState()
+	if environment.sharedState.capturedValues == nil {
+		return "", false
+	}
+	value, exists := environment.sharedState.capturedValues[string(name)]
+	return value, exists
 }
 
 // OperationDefaults captures fallback behaviors shared across operations.

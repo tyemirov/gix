@@ -250,7 +250,7 @@ func TestBuildOperationsValidatesBranchCaptureBindings(testInstance *testing.T) 
 									"type": "branch.change",
 									"options": map[string]any{
 										"restore": map[string]any{
-											"variable": "missing_capture",
+											"from": "missing_capture",
 										},
 									},
 								},

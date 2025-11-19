@@ -433,8 +433,8 @@ Safeguards gate tasks (and are also used internally by some actions). Supported 
 
 - `require_clean: <bool>` — skip when the worktree is dirty.
 - `ignore_dirty_paths: [".DS_Store", ".env.*", "bin/"]` — optional glob/prefix list to treat specific dirty files/directories as ignorable when `require_clean` is true (useful for workflows that will add those entries to `.gitignore`).
-- `capture: { variable: "<name>", kind: branch|commit }` — record the current branch or HEAD commit into a workflow variable so later steps can restore it.
-- `restore: { variable: "<name>", kind: branch|commit }` — jump back to a previously captured branch/commit. Validation fails if the capture name is missing, and `kind` defaults to the original capture kind when omitted.
+- `capture: { name: "<name>", value: branch|commit, overwrite: <bool> }` — record the current branch or HEAD commit into a workflow variable so later steps can restore it. Captured values are also available under `.Environment["Captured.<name>"]` for templating, and `overwrite` defaults to false to preserve the first recorded value during a workflow run.
+- `restore: { from: "<name>", value: branch|commit }` — jump back to a previously captured branch/commit. Validation fails if the capture name is missing, and `value` defaults to the original capture kind when omitted.
 - `branch: <name>` — require current branch to match exactly.
 - `branch_in: [<name>...]` — require current branch to be one of the listed values.
 - `paths: [<relative/path>...]` — require listed paths to exist in the repository.

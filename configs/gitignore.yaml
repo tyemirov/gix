@@ -12,8 +12,8 @@ workflow:
                   remote: origin
                   create_if_missing: false
                   capture:
-                    variable: initial_commit
-                    kind: commit
+                    name: initial_commit
+                    value: commit
             safeguards:
               hard_stop:
                 require_clean: true
@@ -109,5 +109,5 @@ workflow:
               - type: branch.change
                 options:
                   restore:
-                    variable: initial_commit
-                    kind: commit
+                    from: initial_commit
+                    value: commit
