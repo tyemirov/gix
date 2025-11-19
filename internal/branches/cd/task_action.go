@@ -141,6 +141,23 @@ func handleBranchChangeAction(ctx context.Context, environment *workflow.Environ
 		return changeError
 	}
 
+	if refreshRequested {
+		hasTracking, trackingErr := branchHasTrackingRemote(ctx, environment.GitExecutor, repository.Path, result.BranchName)
+		if trackingErr != nil {
+			return trackingErr
+		}
+		if !hasTracking {
+			refreshRequested = false
+			environment.ReportRepositoryEvent(
+				repository,
+				shared.EventLevelWarn,
+				shared.EventCodeTaskSkip,
+				"refresh skipped (no tracking remote)",
+				map[string]string{"branch": result.BranchName},
+			)
+		}
+	}
+
 	if captureSpec != nil {
 		if err := captureBranchState(ctx, environment, repository, captureSpec); err != nil {
 			return err
@@ -215,6 +232,25 @@ func handleBranchChangeAction(ctx context.Context, environment *workflow.Environ
 	}
 
 	return nil
+}
+
+func branchHasTrackingRemote(ctx context.Context, executor shared.GitExecutor, repositoryPath string, branchName string) (bool, error) {
+	if executor == nil {
+		return false, errors.New("git executor required to inspect tracking state")
+	}
+	configKey := fmt.Sprintf("branch.%s.remote", branchName)
+	_, err := executor.ExecuteGit(ctx, execshell.CommandDetails{
+		Arguments:        []string{"config", "--get", configKey},
+		WorkingDirectory: repositoryPath,
+	})
+	if err == nil {
+		return true, nil
+	}
+	var commandFailure execshell.CommandFailedError
+	if errors.As(err, &commandFailure) && commandFailure.Result.ExitCode == 1 {
+		return false, nil
+	}
+	return false, err
 }
 
 func stringOption(options map[string]any, key string) (string, error) {
