@@ -50,6 +50,10 @@ workflow:
                 content: |
                   # Managed by gix gitignore workflow
                   .env
+                  .env.*
+                  .DS_Store
+                  qodana.yaml
+                  .idea/
                   tools/
                   bin/
                 mode: append-if-missing
