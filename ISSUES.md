@@ -14,6 +14,9 @@ Each issue is formatted as `- [ ] [GX-<number>]`. When resolved it becomes -` [x
 - [x] [GX-246] Audit report lacks worktree visibility; add columns showing whether the repository is dirty plus which files need attention.
 Resolution: Added `worktree_dirty` and `dirty_files` columns sourced from `git status --porcelain` so CSV consumers see dirty trees and affected files.
 
+- [x] [GX-247] The gitignore workflow fails its `require_clean` safeguard when only `.DS_Store`/`.env` files are dirty even though it manages those entries.
+Resolution: Safeguards support `ignore_dirty_paths` so workflows can allow known dirty files, and `configs/gitignore.yaml` ignores the same paths it writes into `.gitignore`.
+
 ## BugFixes (337–399)
 
 - [x] [GX-337] When replacing lines in files only a portion of files is getting the replacement and the rest doesn't. An example is running the @configs/cleanup.yaml flow against this very repo:

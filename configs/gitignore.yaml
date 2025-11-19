@@ -14,6 +14,14 @@ workflow:
             safeguards:
               hard_stop:
                 require_clean: true
+                ignore_dirty_paths:
+                  - ".env"
+                  - ".env.*"
+                  - ".DS_Store"
+                  - "qodana.yaml"
+                  - ".idea/"
+                  - "tools/"
+                  - "bin/"
 
   - step:
       name: gitignore-branch
@@ -31,6 +39,14 @@ workflow:
             safeguards:
               hard_stop:
                 require_clean: true
+                ignore_dirty_paths:
+                  - ".env"
+                  - ".env.*"
+                  - ".DS_Store"
+                  - "qodana.yaml"
+                  - ".idea/"
+                  - "tools/"
+                  - "bin/"
 
   - step:
       name: gitignore-apply
