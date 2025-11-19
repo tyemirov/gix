@@ -20,6 +20,8 @@ const (
 	csvHeaderInSync                             = "in_sync"
 	csvHeaderRemoteProtocol                     = "remote_protocol"
 	csvHeaderOriginCanonical                    = "origin_matches_canonical"
+	csvHeaderWorktreeDirty                      = "worktree_dirty"
+	csvHeaderDirtyFiles                         = "dirty_files"
 	gitIsInsideWorkTreeFlagConstant             = "--is-inside-work-tree"
 	gitTrueOutputConstant                       = "true"
 	notGitHubRemoteMessageConstant              = "not a github remote"

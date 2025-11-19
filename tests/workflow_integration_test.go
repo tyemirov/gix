@@ -55,7 +55,7 @@ const (
 	workflowIntegrationRemoteSkipExpectedLine  = "    - already canonical"
 	workflowIntegrationDefaultExpectedTemplate = "WORKFLOW-DEFAULT: %s (main → master)"
 	workflowIntegrationAuditExpectedTemplate   = "WORKFLOW-AUDIT: wrote report to %s\n"
-	workflowIntegrationCSVHeader               = "folder_name,final_github_repo,name_matches,remote_default_branch,local_branch,in_sync,remote_protocol,origin_matches_canonical\n"
+	workflowIntegrationCSVHeader               = "folder_name,final_github_repo,name_matches,remote_default_branch,local_branch,in_sync,remote_protocol,origin_matches_canonical,worktree_dirty,dirty_files\n"
 	workflowIntegrationSubtestNameTemplate     = "%d_%s"
 	workflowIntegrationDefaultCaseName         = "protocol_default_audit"
 	workflowIntegrationConfigFlagCaseName      = "config_flag_without_positional"

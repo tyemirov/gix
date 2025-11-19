@@ -16,7 +16,10 @@ import (
 	"github.com/tyemirov/gix/internal/githubcli"
 )
 
-const currentDirectoryRelativePathConstant = "."
+const (
+	currentDirectoryRelativePathConstant = "."
+	auditServiceCSVHeader                = "folder_name,final_github_repo,name_matches,remote_default_branch,local_branch,in_sync,remote_protocol,origin_matches_canonical,worktree_dirty,dirty_files\n"
+)
 
 type stubDiscoverer struct {
 	repositories []string
@@ -52,6 +55,7 @@ type stubGitManager struct {
 	branchName          string
 	remoteURL           string
 	panicOnBranchLookup bool
+	worktreeEntries     []string
 }
 
 func (manager stubGitManager) CheckCleanWorktree(ctx context.Context, repositoryPath string) (bool, error) {
@@ -62,7 +66,10 @@ func (manager stubGitManager) WorktreeStatus(ctx context.Context, repositoryPath
 	if manager.cleanWorktree {
 		return nil, nil
 	}
-	return []string{" M placeholder.txt"}, nil
+	if len(manager.worktreeEntries) > 0 {
+		return manager.worktreeEntries, nil
+	}
+	return []string{"M placeholder.txt"}, nil
 }
 
 func (manager stubGitManager) GetCurrentBranch(ctx context.Context, repositoryPath string) (string, error) {
@@ -144,7 +151,35 @@ func TestServiceRunBehaviors(testInstance *testing.T) {
 					DefaultBranch: "main",
 				},
 			},
-			expectedOutput: "folder_name,final_github_repo,name_matches,remote_default_branch,local_branch,in_sync,remote_protocol,origin_matches_canonical\nexample,canonical/example,yes,main,main,n/a,https,no\n",
+			expectedOutput: auditServiceCSVHeader + "example,canonical/example,yes,main,main,n/a,https,no,no,\n",
+			expectedError:  "",
+		},
+		{
+			name: "audit_report_marks_dirty_worktree",
+			options: audit.CommandOptions{
+				Roots:           []string{"/tmp/example"},
+				InspectionDepth: audit.InspectionDepthFull,
+			},
+			discoverer: stubDiscoverer{repositories: []string{"/tmp/example"}},
+			executorOutputs: map[string]execshell.ExecutionResult{
+				"rev-parse --is-inside-work-tree": {StandardOutput: "true"},
+			},
+			gitManager: stubGitManager{
+				cleanWorktree: false,
+				branchName:    "main",
+				remoteURL:     "https://github.com/origin/example.git",
+				worktreeEntries: []string{
+					"M main.go",
+					"?? README.md",
+				},
+			},
+			githubResolver: stubGitHubResolver{
+				metadata: githubcli.RepositoryMetadata{
+					NameWithOwner: "canonical/example",
+					DefaultBranch: "main",
+				},
+			},
+			expectedOutput: auditServiceCSVHeader + "example,canonical/example,yes,main,main,n/a,https,no,yes,M main.go; ?? README.md\n",
 			expectedError:  "",
 		},
 		{
@@ -169,7 +204,7 @@ func TestServiceRunBehaviors(testInstance *testing.T) {
 					DefaultBranch: "main",
 				},
 			},
-			expectedOutput:       "folder_name,final_github_repo,name_matches,remote_default_branch,local_branch,in_sync,remote_protocol,origin_matches_canonical\nexample,canonical/example,yes,main,,n/a,https,no\n",
+			expectedOutput:       auditServiceCSVHeader + "example,canonical/example,yes,main,,n/a,https,no,no,\n",
 			expectedError:        "",
 			panicOnUnexpectedGit: true,
 		},
@@ -195,7 +230,7 @@ func TestServiceRunBehaviors(testInstance *testing.T) {
 					DefaultBranch: "main",
 				},
 			},
-			expectedOutput: "folder_name,final_github_repo,name_matches,remote_default_branch,local_branch,in_sync,remote_protocol,origin_matches_canonical\nexample,canonical/example,yes,main,main,n/a,https,no\n",
+			expectedOutput: auditServiceCSVHeader + "example,canonical/example,yes,main,main,n/a,https,no,no,\n",
 			expectedError:  "DEBUG: discovered 1 candidate repos under: /tmp/example\nDEBUG: checking /tmp/example\n",
 		},
 		{
@@ -214,7 +249,7 @@ func TestServiceRunBehaviors(testInstance *testing.T) {
 				branchName:    "main",
 				remoteURL:     "https://github.com/origin/example.git",
 			},
-			expectedOutput: "folder_name,final_github_repo,name_matches,remote_default_branch,local_branch,in_sync,remote_protocol,origin_matches_canonical\nexample,origin/example,yes,main,,n/a,https,n/a\n",
+			expectedOutput: auditServiceCSVHeader + "example,origin/example,yes,main,,n/a,https,n/a,no,\n",
 			expectedError:  "",
 		},
 		{
@@ -239,7 +274,7 @@ func TestServiceRunBehaviors(testInstance *testing.T) {
 					DefaultBranch: "main",
 				},
 			},
-			expectedOutput: "folder_name,final_github_repo,name_matches,remote_default_branch,local_branch,in_sync,remote_protocol,origin_matches_canonical\nexample,canonical/example,yes,main,,n/a,https,no\n",
+			expectedOutput: auditServiceCSVHeader + "example,canonical/example,yes,main,,n/a,https,no,no,\n",
 			expectedError:  "",
 		},
 	}
@@ -317,7 +352,7 @@ func TestServiceRunNormalizesRepositoryPaths(testInstance *testing.T) {
 	}
 
 	expectedCSVOutput := fmt.Sprintf(
-		"folder_name,final_github_repo,name_matches,remote_default_branch,local_branch,in_sync,remote_protocol,origin_matches_canonical\n%s,canonical/example,%s,main,,n/a,https,no\n",
+		auditServiceCSVHeader+"%s,canonical/example,%s,main,,n/a,https,no,no,\n",
 		repositoryFolderName,
 		expectedNameMatches,
 	)
@@ -375,9 +410,9 @@ func TestServiceRunIncludesAllFolders(testInstance *testing.T) {
 	require.NoError(testInstance, runError)
 
 	expectedOutput := fmt.Sprintf(
-		"folder_name,final_github_repo,name_matches,remote_default_branch,local_branch,in_sync,remote_protocol,origin_matches_canonical\n"+
-			"%s,canonical/example,no,main,,n/a,https,no\n"+
-			"%s,n/a,n/a,n/a,n/a,n/a,n/a,n/a\n",
+		auditServiceCSVHeader+
+			"%s,canonical/example,no,main,,n/a,https,no,no,\n"+
+			"%s,n/a,n/a,n/a,n/a,n/a,n/a,n/a,n/a,\n",
 		gitRepositoryFolderName,
 		nonRepositoryFolderName,
 	)
@@ -422,7 +457,7 @@ func TestServiceRunUsesRelativeFolderNames(testInstance *testing.T) {
 	require.NoError(testInstance, runError)
 
 	expectedOutput := fmt.Sprintf(
-		"folder_name,final_github_repo,name_matches,remote_default_branch,local_branch,in_sync,remote_protocol,origin_matches_canonical\n%s,canonical/git-project,yes,main,,n/a,https,no\n",
+		auditServiceCSVHeader+"%s,canonical/git-project,yes,main,,n/a,https,no,no,\n",
 		filepath.ToSlash(relativeFolderPath),
 	)
 	require.Equal(testInstance, expectedOutput, outputBuffer.String())
