@@ -172,7 +172,41 @@ func (action gitCommitAction) Execute(ctx context.Context, execCtx *ExecutionCon
 		Arguments:        arguments,
 		WorkingDirectory: execCtx.Repository.Path,
 	})
+	if err == nil {
+		return nil
+	}
+
+	var failed execshell.CommandFailedError
+	if errors.As(err, &failed) && failed.Result.ExitCode == 1 && commitIsEmpty(failed.Result) {
+		if execCtx.Environment.Reporter != nil {
+			execCtx.Environment.ReportRepositoryEvent(
+				execCtx.Repository,
+				shared.EventLevelWarn,
+				shared.EventCodeTaskSkip,
+				"skip: nothing to commit",
+				nil,
+			)
+		}
+		return nil
+	}
+
 	return err
+}
+
+func commitIsEmpty(result execshell.ExecutionResult) bool {
+	output := strings.ToLower(result.StandardError)
+	if len(strings.TrimSpace(output)) == 0 {
+		output = strings.ToLower(result.StandardOutput)
+	}
+	switch {
+	case strings.Contains(output, "nothing to commit"),
+		strings.Contains(output, "working tree clean"),
+		strings.Contains(output, "no changes added to commit"),
+		strings.Contains(output, "nothing added to commit"):
+		return true
+	default:
+		return false
+	}
 }
 
 type gitPushAction struct {

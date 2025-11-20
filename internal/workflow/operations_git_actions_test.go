@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"context"
+	"io"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -10,6 +11,7 @@ import (
 	"github.com/tyemirov/gix/internal/execshell"
 	"github.com/tyemirov/gix/internal/githubcli"
 	"github.com/tyemirov/gix/internal/gitrepo"
+	"github.com/tyemirov/gix/internal/repos/shared"
 )
 
 func TestGitStageOperationStagesPaths(t *testing.T) {
@@ -196,6 +198,23 @@ func TestGitStageCommitOperationStagesAndCommits(t *testing.T) {
 	require.True(t, commandArgumentsExist(gitExecutor.commands, []string{"commit", "-m", "docs: update"}))
 }
 
+func TestGitStageCommitOperationSkipsWhenNothingToCommit(t *testing.T) {
+	gitExecutor := &failingCommitExecutor{}
+	op, buildErr := buildGitStageCommitOperation(map[string]any{
+		"paths":          []any{"README.md"},
+		"commit_message": "docs: update",
+	})
+	require.NoError(t, buildErr)
+
+	repository := NewRepositoryState(audit.RepositoryInspection{Path: "/repositories/sample"})
+	state := &State{Repositories: []*RepositoryState{repository}}
+	env := &Environment{GitExecutor: gitExecutor, Reporter: shared.NewStructuredReporter(io.Discard, io.Discard)}
+
+	require.NoError(t, op.Execute(context.Background(), env, state))
+	require.True(t, commandArgumentsExist(gitExecutor.commands, []string{"add", "README.md"}))
+	require.True(t, commandArgumentsExist(gitExecutor.commands, []string{"commit", "-m", "docs: update"}))
+}
+
 func TestPullRequestOpenOperationPushesAndCreatesPR(t *testing.T) {
 	gitExecutor := &recordingGitExecutor{
 		worktreeClean: true,
@@ -316,4 +335,27 @@ func TestGitStageCommitOperationRequiresCleanWorktree(t *testing.T) {
 	require.ErrorIs(t, op.Execute(context.Background(), env, state), errRepositorySkipped)
 	require.False(t, commandArgumentsExist(gitExecutor.commands, []string{"add", "README.md"}))
 	require.False(t, commandArgumentsExist(gitExecutor.commands, []string{"commit", "-m", "docs: update"}))
+}
+
+type failingCommitExecutor struct {
+	commands []execshell.CommandDetails
+}
+
+func (executor *failingCommitExecutor) ExecuteGit(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
+	executor.commands = append(executor.commands, details)
+	if len(details.Arguments) > 0 && details.Arguments[0] == "commit" {
+		return execshell.ExecutionResult{
+				StandardError: "nothing to commit, working tree clean",
+				ExitCode:      1,
+			}, execshell.CommandFailedError{
+				Command: execshell.ShellCommand{Name: execshell.CommandGit, Details: details},
+				Result:  execshell.ExecutionResult{StandardError: "nothing to commit, working tree clean", ExitCode: 1},
+			}
+	}
+	return execshell.ExecutionResult{}, nil
+}
+
+func (executor *failingCommitExecutor) ExecuteGitHubCLI(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
+	executor.commands = append(executor.commands, details)
+	return execshell.ExecutionResult{}, nil
 }
