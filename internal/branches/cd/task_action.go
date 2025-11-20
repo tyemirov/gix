@@ -124,24 +124,42 @@ func handleBranchChangeAction(ctx context.Context, environment *workflow.Environ
 		return errors.New(missingBranchMessageConstant)
 	}
 
+	var trackedStatus []string
+	var untrackedStatus []string
+	if environment.RepositoryManager != nil {
+		statusEntries, statusErr := environment.RepositoryManager.WorktreeStatus(ctx, repository.Path)
+		if statusErr != nil {
+			return statusErr
+		}
+		trackedStatus, untrackedStatus = worktree.SplitStatusEntries(statusEntries, nil)
+	}
+
 	refreshSkippedDetails := map[string]string{}
 	refreshSkipped := false
 	if refreshRequested && requireClean && !stashChanges && !commitChanges {
 		if environment.RepositoryManager == nil {
 			return errors.New(refreshMissingRepositoryManagerMessage)
 		}
-		statusResult, statusErr := worktree.CheckStatus(ctx, environment.RepositoryManager, repository.Path, nil)
-		if statusErr != nil {
-			return statusErr
-		}
-		if !statusResult.Clean() {
+		if len(trackedStatus) > 0 {
 			refreshRequested = false
 			refreshSkipped = true
 			refreshSkippedDetails["branch"] = resolvedBranchName
-			if len(statusResult.Entries) > 0 {
-				refreshSkippedDetails["status"] = strings.Join(statusResult.Entries, ", ")
-			}
+			refreshSkippedDetails["status"] = strings.Join(trackedStatus, ", ")
 		}
+	}
+
+	if refreshRequested && len(untrackedStatus) > 0 {
+		environment.ReportRepositoryEvent(
+			repository,
+			shared.EventLevelWarn,
+			shared.EventCodeRepoDirty,
+			"untracked files present; refresh will continue",
+			map[string]string{"status": strings.Join(untrackedStatus, ", ")},
+		)
+	}
+
+	if refreshSkipped && len(untrackedStatus) > 0 {
+		refreshSkippedDetails["untracked"] = strings.Join(untrackedStatus, ", ")
 	}
 
 	service, serviceError := NewService(ServiceDependencies{
