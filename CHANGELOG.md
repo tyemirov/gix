@@ -1,5 +1,22 @@
 # Changelog
 
+## [v0.2.6]
+
+### Features ✨
+- _No changes._
+
+### Improvements ⚙️
+- Added configuration to ignore specific dirty paths during gitignore application for cleaner workflows.
+
+### Bug Fixes 🐛
+- Honor ignore_dirty_paths setting in the gitignore application process.
+
+### Testing 🧪
+- _No changes._
+
+### Docs 📚
+- _No changes._
+
 ## [v0.2.5]
 
 ### Features ✨
