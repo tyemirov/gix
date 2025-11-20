@@ -26,6 +26,9 @@ Resolution: Added a shared worktree clean inspector that filters out untracked/i
 - [x] [GX-250] Align `gix cd`/`branch.change` behavior with `git switch` by always switching branches (even when worktrees are dirty), using `require_clean` only to gate refresh/pull stages and emitting structured warnings that list the files preventing refresh when it is skipped.
 Resolution: `branch.change` always switches branches now; require_clean only guards refresh, issuing structured skip warnings with tracked dirty paths while untracked files no longer block refresh; added tests covering dirty skip and untracked refresh cases.
 
+- [ ] [GX-340] Stage-commit workflow step fails when there are no changes, aborting task flow and leaving repositories on automation branches instead of restoring to the original branch.
+Resolution: <pending>
+
 ## BugFixes (337–399)
 
 - [x] [GX-337] When replacing lines in files only a portion of files is getting the replacement and the rest doesn't. An example is running the @configs/cleanup.yaml flow against this very repo:
