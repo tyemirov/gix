@@ -64,10 +64,10 @@ func (builder *CommandBuilder) Build() (*cobra.Command, error) {
 		Example: commandExampleTemplateConstant,
 	}
 
-	command.Flags().Bool(refreshFlagNameConstant, false, refreshFlagDescriptionConstant)
-	command.Flags().Bool(stashFlagNameConstant, false, stashFlagDescriptionConstant)
-	command.Flags().Bool(commitFlagNameConstant, false, commitFlagDescriptionConstant)
-	command.Flags().Bool(requireCleanFlagNameConstant, true, requireCleanFlagDescriptionConstant)
+	flagutils.AddToggleFlag(command.Flags(), nil, refreshFlagNameConstant, "", false, refreshFlagDescriptionConstant)
+	flagutils.AddToggleFlag(command.Flags(), nil, stashFlagNameConstant, "", false, stashFlagDescriptionConstant)
+	flagutils.AddToggleFlag(command.Flags(), nil, commitFlagNameConstant, "", false, commitFlagDescriptionConstant)
+	flagutils.AddToggleFlag(command.Flags(), nil, requireCleanFlagNameConstant, "", true, requireCleanFlagDescriptionConstant)
 
 	return command, nil
 }
