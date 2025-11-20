@@ -197,17 +197,6 @@ func TestSplitSafeguardsStructured(t *testing.T) {
 	require.ElementsMatch(t, []string{"README.md"}, soft["paths"].([]string))
 }
 
-func TestFilterIgnoredStatusEntriesSkipsOnlyUntracked(t *testing.T) {
-	t.Parallel()
-
-	patterns := worktree.BuildIgnorePatterns([]string{"bin/", ".env.*"})
-	entries := []string{"?? bin/temp.sh", " M bin/script.sh", "?? .env.local", " M .env.example"}
-
-	remaining := worktree.FilterStatusEntries(entries, patterns)
-
-	require.ElementsMatch(t, []string{"M bin/script.sh", "M .env.example"}, remaining)
-}
-
 func TestFilterIgnoredStatusEntriesDropsUntrackedWithoutPatterns(t *testing.T) {
 	t.Parallel()
 
@@ -215,4 +204,15 @@ func TestFilterIgnoredStatusEntriesDropsUntrackedWithoutPatterns(t *testing.T) {
 	remaining := worktree.FilterStatusEntries(entries, nil)
 
 	require.Empty(t, remaining)
+}
+
+func TestFilterStatusEntriesAppliesIgnorePatterns(t *testing.T) {
+	t.Parallel()
+
+	patterns := worktree.BuildIgnorePatterns([]string{"bin/", ".env.*"})
+	entries := []string{"?? bin/temp.sh", " M bin/script.sh", "?? .env.local", " M .env.example", "A main.go"}
+
+	remaining := worktree.FilterStatusEntries(entries, patterns)
+
+	require.ElementsMatch(t, []string{"A main.go"}, remaining)
 }

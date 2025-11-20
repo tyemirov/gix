@@ -60,6 +60,11 @@ func FilterStatusEntries(entries []string, patterns []IgnorePattern) []string {
 		if statusEntryIsUntrackedOrIgnored(trimmed) {
 			continue
 		}
+
+		if len(patterns) > 0 && pathMatchesIgnorePatterns(statusEntryPath(trimmed), patterns) {
+			continue
+		}
+
 		remaining = append(remaining, trimmed)
 	}
 	return remaining
@@ -141,6 +146,47 @@ func parseIgnorePatternEntries(entries []string) []IgnorePattern {
 
 func (pattern IgnorePattern) key() string {
 	return fmt.Sprintf("%s|dir=%t|glob=%t", pattern.value, pattern.isDir, pattern.hasGlob)
+}
+
+func pathMatchesIgnorePatterns(path string, patterns []IgnorePattern) bool {
+	normalized := strings.TrimPrefix(filepath.ToSlash(strings.TrimSpace(path)), "./")
+	for _, pattern := range patterns {
+		switch {
+		case pattern.hasGlob:
+			if matches, _ := filepath.Match(pattern.value, normalized); matches {
+				return true
+			}
+		case pattern.isDir:
+			if normalized == pattern.value || strings.HasPrefix(normalized, pattern.value+"/") {
+				return true
+			}
+		default:
+			if strings.HasPrefix(normalized, pattern.value) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func statusEntryPath(entry string) string {
+	trimmed := strings.TrimSpace(entry)
+	if len(trimmed) <= len(gitStatusUntrackedPrefix) {
+		return ""
+	}
+
+	pathPart := strings.TrimSpace(trimmed[2:])
+	if len(pathPart) == 0 {
+		return ""
+	}
+
+	if strings.Contains(pathPart, " -> ") {
+		sections := strings.Split(pathPart, " -> ")
+		return strings.TrimSpace(sections[len(sections)-1])
+	}
+
+	return pathPart
 }
 
 const (
