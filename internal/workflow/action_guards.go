@@ -3,8 +3,9 @@ package workflow
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
+
+	"github.com/tyemirov/gix/internal/repos/worktree"
 )
 
 func newCleanWorktreeGuard() actionGuard {
@@ -26,34 +27,21 @@ func newCleanWorktreeGuard() actionGuard {
 			return newActionSkipError("repository dirty", map[string]string{"status": strings.Join(status, ", ")})
 		}
 
-		clean, err := execCtx.Environment.RepositoryManager.CheckCleanWorktree(ctx, execCtx.Repository.Path)
-		if err != nil {
-			return err
+		statusResult, statusError := worktree.CheckStatus(ctx, execCtx.Environment.RepositoryManager, execCtx.Repository.Path, execCtx.ignoredDirtyPatterns)
+		if statusError != nil {
+			return statusError
 		}
 
-		var statusEntries []string
-		if !clean {
-			statusEntries, err = execCtx.Environment.RepositoryManager.WorktreeStatus(ctx, execCtx.Repository.Path)
-			if err != nil {
-				statusEntries = []string{fmt.Sprintf("status_error:%s", err.Error())}
-			} else {
-				statusEntries = filterIgnoredStatusEntries(statusEntries, execCtx.ignoredDirtyPatterns)
-				if len(statusEntries) == 0 {
-					clean = true
-				}
-			}
-		}
-
-		if clean {
+		if statusResult.Clean() {
 			execCtx.storeWorktreeCheck(true, nil)
 			return nil
 		}
 
-		execCtx.storeWorktreeCheck(false, statusEntries)
+		execCtx.storeWorktreeCheck(false, statusResult.Entries)
 
 		fields := map[string]string{}
-		if len(statusEntries) > 0 {
-			fields["status"] = strings.Join(statusEntries, ", ")
+		if len(statusResult.Entries) > 0 {
+			fields["status"] = strings.Join(statusResult.Entries, ", ")
 		}
 		return newActionSkipError("repository dirty", fields)
 	})

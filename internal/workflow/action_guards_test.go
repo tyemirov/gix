@@ -9,6 +9,7 @@ import (
 
 	"github.com/tyemirov/gix/internal/execshell"
 	"github.com/tyemirov/gix/internal/gitrepo"
+	"github.com/tyemirov/gix/internal/repos/worktree"
 )
 
 func TestCleanWorktreeGuardIgnoresConfiguredPatterns(t *testing.T) {
@@ -21,7 +22,7 @@ func TestCleanWorktreeGuardIgnoresConfiguredPatterns(t *testing.T) {
 		Environment:  &Environment{RepositoryManager: manager},
 		Repository:   &RepositoryState{Path: "/tmp/repo"},
 		requireClean: true,
-		ignoredDirtyPatterns: buildDirtyIgnorePatterns([]string{
+		ignoredDirtyPatterns: worktree.BuildIgnorePatterns([]string{
 			".DS_Store",
 		}),
 	}
@@ -39,7 +40,7 @@ func TestCleanWorktreeGuardRejectsNonIgnoredChanges(t *testing.T) {
 		Environment:  &Environment{RepositoryManager: manager},
 		Repository:   &RepositoryState{Path: "/tmp/repo"},
 		requireClean: true,
-		ignoredDirtyPatterns: buildDirtyIgnorePatterns([]string{
+		ignoredDirtyPatterns: worktree.BuildIgnorePatterns([]string{
 			".DS_Store",
 		}),
 	}
@@ -51,6 +52,21 @@ func TestCleanWorktreeGuardRejectsNonIgnoredChanges(t *testing.T) {
 	require.True(t, errors.As(err, &skipErr))
 	require.Equal(t, "repository dirty", skipErr.reason)
 	require.Contains(t, skipErr.fields["status"], "README.md")
+}
+
+func TestCleanWorktreeGuardIgnoresUntrackedWithoutPatterns(t *testing.T) {
+	guard := newCleanWorktreeGuard()
+
+	manager, err := gitrepo.NewRepositoryManager(stubStatusExecutor{output: "?? scratch.txt\n"})
+	require.NoError(t, err)
+
+	execCtx := &ExecutionContext{
+		Environment:  &Environment{RepositoryManager: manager},
+		Repository:   &RepositoryState{Path: "/tmp/repo"},
+		requireClean: true,
+	}
+
+	require.NoError(t, guard.Check(context.Background(), execCtx))
 }
 
 type stubStatusExecutor struct {

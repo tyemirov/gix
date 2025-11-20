@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/tyemirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/internal/repos/worktree"
 )
 
 type workflowAction interface {
@@ -60,7 +61,7 @@ type ExecutionContext struct {
 	skipRequested        bool
 	skipReason           string
 	lastSkipWarningKey   string
-	ignoredDirtyPatterns []dirtyIgnorePattern
+	ignoredDirtyPatterns []worktree.IgnorePattern
 }
 
 func (execCtx *ExecutionContext) recordFilesApplied() {

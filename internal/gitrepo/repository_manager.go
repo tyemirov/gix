@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/tyemirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/repos/worktree"
 )
 
 const (
@@ -99,11 +100,11 @@ func NewRepositoryManager(executor GitCommandExecutor) (*RepositoryManager, erro
 
 // CheckCleanWorktree returns true when the repository has no staged or unstaged changes.
 func (manager *RepositoryManager) CheckCleanWorktree(executionContext context.Context, repositoryPath string) (bool, error) {
-	status, statusError := manager.WorktreeStatus(executionContext, repositoryPath)
+	result, statusError := worktree.CheckStatus(executionContext, manager, repositoryPath, nil)
 	if statusError != nil {
 		return false, statusError
 	}
-	return len(status) == 0, nil
+	return result.Clean(), nil
 }
 
 // WorktreeStatus returns the porcelain status entries for the repository.

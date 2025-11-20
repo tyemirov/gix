@@ -39,6 +39,31 @@ func (executor *stubGitExecutor) ExecuteGitHubCLI(context.Context, execshell.Com
 	return execshell.ExecutionResult{}, nil
 }
 
+type scriptedGitExecutor struct {
+	recorded     []execshell.CommandDetails
+	remoteOutput string
+	statusOutput string
+}
+
+func (executor *scriptedGitExecutor) ExecuteGit(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
+	executor.recorded = append(executor.recorded, details)
+	if len(details.Arguments) == 0 {
+		return execshell.ExecutionResult{}, nil
+	}
+	switch details.Arguments[0] {
+	case "remote":
+		return execshell.ExecutionResult{StandardOutput: executor.remoteOutput}, nil
+	case "status":
+		return execshell.ExecutionResult{StandardOutput: executor.statusOutput}, nil
+	default:
+		return execshell.ExecutionResult{}, nil
+	}
+}
+
+func (executor *scriptedGitExecutor) ExecuteGitHubCLI(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
+	return execshell.ExecutionResult{}, nil
+}
+
 func TestChangeExecutesExpectedCommands(t *testing.T) {
 	executor := &stubGitExecutor{responses: []stubGitResponse{
 		{result: execshell.ExecutionResult{StandardOutput: "origin\n"}},

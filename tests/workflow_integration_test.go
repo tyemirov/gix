@@ -390,7 +390,7 @@ func TestWorkflowLogHeaderFormatting(testInstance *testing.T) {
 	require.True(testInstance, foundStructuredHeader, "expected at least one structured header in workflow output")
 }
 
-func TestWorkflowRequireCleanOnlyIgnoresUntrackedPaths(testInstance *testing.T) {
+func TestWorkflowRequireCleanIgnoresConfiguredDirtyPaths(testInstance *testing.T) {
 	workingDirectory, workingDirectoryError := os.Getwd()
 	require.NoError(testInstance, workingDirectoryError)
 	repositoryRoot := filepath.Dir(workingDirectory)
@@ -412,6 +412,17 @@ func TestWorkflowRequireCleanOnlyIgnoresUntrackedPaths(testInstance *testing.T) 
 	commitBinCommand := exec.Command(workflowIntegrationGitExecutable, "-C", repositoryPath, "commit", "-m", "add bin script")
 	commitBinCommand.Env = buildGitCommandEnvironment(nil)
 	require.NoError(testInstance, commitBinCommand.Run())
+
+	readmePath := filepath.Join(repositoryPath, "README.md")
+	require.NoError(testInstance, os.WriteFile(readmePath, []byte("noop"), 0o644))
+
+	stageReadmeCommand := exec.Command(workflowIntegrationGitExecutable, "-C", repositoryPath, "add", "README.md")
+	stageReadmeCommand.Env = buildGitCommandEnvironment(nil)
+	require.NoError(testInstance, stageReadmeCommand.Run())
+
+	commitReadmeCommand := exec.Command(workflowIntegrationGitExecutable, "-C", repositoryPath, "commit", "-m", "normalize readme")
+	commitReadmeCommand.Env = buildGitCommandEnvironment(nil)
+	require.NoError(testInstance, commitReadmeCommand.Run())
 
 	workflowConfiguration := `workflow:
   - step:
@@ -461,8 +472,16 @@ func TestWorkflowRequireCleanOnlyIgnoresUntrackedPaths(testInstance *testing.T) 
 
 	dirtyOutput := runIntegrationCommand(testInstance, repositoryRoot, integrationCommandOptions{}, workflowIntegrationTimeout, commandArguments)
 	filteredOutput := filterStructuredOutput(dirtyOutput)
-	require.Contains(testInstance, filteredOutput, "repository not clean")
-	require.Contains(testInstance, filteredOutput, "bin/script.sh")
+	require.NotContains(testInstance, filteredOutput, "repository dirty")
+	require.NotContains(testInstance, filteredOutput, "repository not clean")
+	require.NotContains(testInstance, filteredOutput, "bin/script.sh")
+
+	require.NoError(testInstance, os.WriteFile(readmePath, []byte("dirty\n"), 0o644))
+
+	rejectOutput := runIntegrationCommand(testInstance, repositoryRoot, integrationCommandOptions{}, workflowIntegrationTimeout, commandArguments)
+	rejectFiltered := filterStructuredOutput(rejectOutput)
+	require.Contains(testInstance, rejectFiltered, "repository not clean")
+	require.Contains(testInstance, rejectFiltered, "README.md")
 }
 func TestWorkflowRunDisplaysHelpWhenConfigurationMissing(testInstance *testing.T) {
 	workingDirectory, workingDirectoryError := os.Getwd()

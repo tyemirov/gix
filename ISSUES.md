@@ -20,9 +20,11 @@ Resolution: Safeguards support `ignore_dirty_paths` so workflows can allow known
 - [x] [GX-248] `branch.change` needs an explicit capture/restore DSL so workflows can hop back to the original branch/commit when a run is a no-op instead of leaving repos stranded on automation branches.
 Resolution: Added `capture` and `restore` blocks with variable names + kind (`branch` or `commit`), compile-time validation, and runtime helpers so workflows can declaratively capture the starting point and restore later.
 
-- [ ] [GX-249] Normalize `require_clean` semantics across CLI commands and workflows so untracked/ignored files never block execution, using a shared clean-check helper that filters status entries and surfaces per-file details in warnings.
+- [x] [GX-249] Normalize `require_clean` semantics across CLI commands and workflows so untracked/ignored files never block execution, using a shared clean-check helper that filters status entries and surfaces per-file details in warnings.
+Resolution: Added a shared worktree clean inspector that filters out untracked/ignored status entries, propagates tracked file details into warnings, and wired it through require_clean safeguards, task guards, repository renames, and git clean checks so CLI commands and workflows share the same semantics.
 
-- [ ] [GX-250] Align `gix cd`/`branch.change` behavior with `git switch` by always switching branches (even when worktrees are dirty), using `require_clean` only to gate refresh/pull stages and emitting structured warnings that list the files preventing refresh when it is skipped.
+- [x] [GX-250] Align `gix cd`/`branch.change` behavior with `git switch` by always switching branches (even when worktrees are dirty), using `require_clean` only to gate refresh/pull stages and emitting structured warnings that list the files preventing refresh when it is skipped.
+Resolution: `branch.change` always switches branches now; require_clean only guards refresh, issuing structured skip warnings with tracked dirty paths while untracked files no longer block refresh; added tests covering dirty skip and untracked refresh cases.
 
 ## BugFixes (337–399)
 

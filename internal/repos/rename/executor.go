@@ -9,6 +9,7 @@ import (
 
 	repoerrors "github.com/tyemirov/gix/internal/repos/errors"
 	"github.com/tyemirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/internal/repos/worktree"
 )
 
 const (
@@ -138,13 +139,13 @@ func (executor *Executor) evaluatePrerequisites(executionContext context.Context
 	}
 
 	if requireClean {
-		dirtyEntries, dirtyError := executor.worktreeStatus(executionContext, oldAbsolutePath)
-		if dirtyError != nil {
-			executor.reportOutput(skipDirtyMessage, newDirtyWorktreeArgument(oldAbsolutePath, []string{dirtyError.Error()}))
+		statusResult, statusError := worktree.CheckStatus(executionContext, executor.dependencies.GitManager, oldAbsolutePath, nil)
+		if statusError != nil {
+			executor.reportOutput(skipDirtyMessage, newDirtyWorktreeArgument(oldAbsolutePath, []string{statusError.Error()}))
 			return true, nil
 		}
-		if len(dirtyEntries) > 0 {
-			executor.reportOutput(skipDirtyMessage, newDirtyWorktreeArgument(oldAbsolutePath, dirtyEntries))
+		if !statusResult.Clean() {
+			executor.reportOutput(skipDirtyMessage, newDirtyWorktreeArgument(oldAbsolutePath, statusResult.Entries))
 			return true, nil
 		}
 	}
@@ -180,19 +181,6 @@ func (executor *Executor) evaluatePrerequisites(executionContext context.Context
 	}
 
 	return false, nil
-}
-
-func (executor *Executor) worktreeStatus(executionContext context.Context, repositoryPath string) ([]string, error) {
-	if executor.dependencies.GitManager == nil {
-		return nil, repoerrors.Wrap(
-			repoerrors.OperationRenameDirectories,
-			repositoryPath,
-			repoerrors.ErrGitManagerUnavailable,
-			nil,
-		)
-	}
-
-	return executor.dependencies.GitManager.WorktreeStatus(executionContext, repositoryPath)
 }
 
 func (executor *Executor) parentDirectoryDetails(path string) parentDirectoryInformation {

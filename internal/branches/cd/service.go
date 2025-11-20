@@ -71,6 +71,7 @@ type Options struct {
 	BranchName      string
 	RemoteName      string
 	CreateIfMissing bool
+	SkipPull        bool
 }
 
 // Result captures the outcome of a branch change.
@@ -130,7 +131,7 @@ func (service *Service) Change(executionContext context.Context, options Options
 	}
 
 	shouldFetch := remoteEnumeration.hasRemotes && (remoteEnumeration.requestedExists || useAllRemotes)
-	shouldPull := shouldFetch
+	shouldPull := shouldFetch && !options.SkipPull
 	shouldTrackRemote := remoteEnumeration.requestedExists && shouldFetch
 	warnings := make([]string, 0)
 

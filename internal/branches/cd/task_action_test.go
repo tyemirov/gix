@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
 	"go.uber.org/zap"
 
 	"github.com/tyemirov/gix/internal/audit"
-	"github.com/tyemirov/gix/internal/branches/refresh"
 	"github.com/tyemirov/gix/internal/execshell"
 	"github.com/tyemirov/gix/internal/gitrepo"
 	"github.com/tyemirov/gix/internal/repos/shared"
@@ -167,12 +167,7 @@ func execShellOutput(output string) execshell.ExecutionResult {
 }
 
 func TestHandleBranchChangeActionRefreshesBranch(t *testing.T) {
-	executor := &stubGitExecutor{
-		responses: []stubGitResponse{
-			{result: execShellOutput("")},
-			{result: execShellOutput("origin\n")},
-		},
-	}
+	executor := &scriptedGitExecutor{remoteOutput: "origin\n"}
 	gitManager, managerError := gitrepo.NewRepositoryManager(executor)
 	require.NoError(t, managerError)
 	reporter := &recordingReporter{}
@@ -214,22 +209,19 @@ func TestHandleBranchChangeActionRefreshesBranch(t *testing.T) {
 	require.Equal(t, "true", reporter.events[0].Details["require_clean"])
 }
 
-func TestHandleBranchChangeActionStopsWhenDirtyBeforeSwitch(t *testing.T) {
-	executor := &stubGitExecutor{
-		responses: []stubGitResponse{
-			{result: execshell.ExecutionResult{StandardOutput: " M dirty.txt\n"}},
-		},
-	}
+func TestHandleBranchChangeActionSkipsRefreshWhenDirty(t *testing.T) {
+	executor := &scriptedGitExecutor{remoteOutput: "origin\n", statusOutput: " M dirty.txt\n"}
 	repoManager, managerErr := gitrepo.NewRepositoryManager(executor)
 	require.NoError(t, managerErr)
 
+	reporter := &recordingReporter{}
 	environment := &workflow.Environment{
 		GitExecutor:       executor,
 		RepositoryManager: repoManager,
 		Logger:            zap.NewNop(),
 		Output:            io.Discard,
 		Errors:            io.Discard,
-		Reporter:          &recordingReporter{},
+		Reporter:          reporter,
 	}
 	repository := &workflow.RepositoryState{
 		Path: "/tmp/project",
@@ -242,11 +234,45 @@ func TestHandleBranchChangeActionStopsWhenDirtyBeforeSwitch(t *testing.T) {
 	}
 
 	err := handleBranchChangeAction(context.Background(), environment, repository, parameters)
-	require.Error(t, err)
-	require.ErrorIs(t, err, refresh.ErrWorktreeNotClean)
-	require.GreaterOrEqual(t, len(executor.recorded), 1)
+	require.NoError(t, err)
+	require.Len(t, executor.recorded, 4)
 	require.Equal(t, []string{"status", "--porcelain"}, executor.recorded[0].Arguments)
-	require.Len(t, executor.recorded, 1, "branch switch must not run when worktree is dirty")
+	require.Equal(t, []string{"remote"}, executor.recorded[1].Arguments)
+	require.Equal(t, []string{"fetch", "--prune", "origin"}, executor.recorded[2].Arguments)
+	require.Equal(t, []string{"switch", "feature/foo"}, executor.recorded[3].Arguments)
+	require.Len(t, reporter.events, 2)
+	require.Equal(t, shared.EventCodeTaskSkip, reporter.events[0].Code)
+	require.Contains(t, reporter.events[0].Message, "refresh skipped (dirty worktree)")
+	require.Equal(t, "M dirty.txt", reporter.events[0].Details["status"])
+	require.Equal(t, shared.EventCodeRepoSwitched, reporter.events[1].Code)
+}
+
+func TestHandleBranchChangeActionRefreshesWithUntrackedChanges(t *testing.T) {
+	executor := &scriptedGitExecutor{remoteOutput: "origin\n", statusOutput: "?? notes.tmp\n"}
+	gitManager, managerErr := gitrepo.NewRepositoryManager(executor)
+	require.NoError(t, managerErr)
+	reporter := &recordingReporter{}
+	buffer := &strings.Builder{}
+	environment := &workflow.Environment{
+		GitExecutor:       executor,
+		RepositoryManager: gitManager,
+		Logger:            zap.NewNop(),
+		Output:            buffer,
+		Errors:            io.Discard,
+		Reporter:          reporter,
+	}
+	repository := &workflow.RepositoryState{Path: "/tmp/project"}
+
+	parameters := map[string]any{
+		taskOptionBranchName:     "feature/foo",
+		taskOptionRefreshEnabled: true,
+		taskOptionRequireClean:   true,
+	}
+
+	require.NoError(t, handleBranchChangeAction(context.Background(), environment, repository, parameters))
+	require.Contains(t, buffer.String(), "REFRESHED: /tmp/project (feature/foo)")
+	require.Len(t, reporter.events, 1)
+	require.Equal(t, shared.EventCodeRepoSwitched, reporter.events[0].Code)
 }
 
 func TestHandleBranchChangeActionCapturesBranch(t *testing.T) {

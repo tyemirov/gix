@@ -7,6 +7,7 @@ import (
 
 	"github.com/tyemirov/gix/internal/execshell"
 	"github.com/tyemirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/internal/repos/worktree"
 )
 
 type taskExecutor struct {
@@ -154,7 +155,7 @@ func (executor taskExecutor) report(eventCode string, level shared.EventLevel, m
 	executor.environment.ReportRepositoryEvent(executor.repository, level, eventCode, message, enriched)
 }
 
-func collectIgnoredDirtyPatterns(task TaskDefinition) []dirtyIgnorePattern {
+func collectIgnoredDirtyPatterns(task TaskDefinition) []worktree.IgnorePattern {
 	if len(task.Safeguards) == 0 {
 		return nil
 	}
@@ -165,20 +166,10 @@ func collectIgnoredDirtyPatterns(task TaskDefinition) []dirtyIgnorePattern {
 	if len(patterns) == 0 {
 		return nil
 	}
-	result := make([]dirtyIgnorePattern, 0, len(patterns))
-	seen := make(map[string]struct{}, len(patterns))
-	for _, pattern := range patterns {
-		key := fmt.Sprintf("%s|dir=%t|glob=%t", pattern.value, pattern.isDir, pattern.hasGlob)
-		if _, exists := seen[key]; exists {
-			continue
-		}
-		seen[key] = struct{}{}
-		result = append(result, pattern)
-	}
-	return result
+	return worktree.DeduplicatePatterns(patterns)
 }
 
-func appendPatternSet(destination []dirtyIgnorePattern, raw map[string]any) []dirtyIgnorePattern {
+func appendPatternSet(destination []worktree.IgnorePattern, raw map[string]any) []worktree.IgnorePattern {
 	if len(raw) == 0 {
 		return destination
 	}

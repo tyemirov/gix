@@ -344,7 +344,34 @@ func TestExecutorBehaviors(testInstance *testing.T) {
 					assert: func(t *testing.T, event map[string]string) {
 						require.Equal(t, renameTestProjectFolderPath, event["path"])
 						require.Equal(t, "dirty_worktree", event["reason"])
-						require.Equal(t, "M README.md; ?? tmp.txt", event["dirty_entries"])
+						require.Equal(t, "M README.md", event["dirty_entries"])
+					},
+				},
+			},
+		},
+		{
+			name: "require_clean_allows_untracked_entries",
+			optionsDefinition: rename.OptionsDefinition{
+				RepositoryPath:     projectPath,
+				DesiredFolderName:  renameTestDesiredFolderName,
+				CleanPolicy:        shared.CleanWorktreeRequired,
+				ConfirmationPolicy: shared.ConfirmationAssumeYes,
+			},
+			fileSystem: &stubFileSystem{
+				existingPaths: map[string]bool{
+					renameTestRootDirectory:     true,
+					renameTestProjectFolderPath: true,
+					renameTestTargetFolderPath:  false,
+				},
+			},
+			gitManager:      stubGitManager{clean: false, dirtyEntries: []string{"?? tmp.txt"}},
+			expectedRenames: 1,
+			expectedEvents: []eventExpectation{
+				{
+					code: shared.EventCodeFolderRename,
+					assert: func(t *testing.T, event map[string]string) {
+						require.Equal(t, renameTestProjectFolderPath, event["path"])
+						require.Equal(t, renameTestTargetFolderPath, event["new_path"])
 					},
 				},
 			},
