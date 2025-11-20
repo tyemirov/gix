@@ -9,6 +9,7 @@ import (
 	"github.com/tyemirov/gix/internal/branches/refresh"
 	"github.com/tyemirov/gix/internal/execshell"
 	"github.com/tyemirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/internal/repos/worktree"
 	"github.com/tyemirov/gix/internal/workflow"
 )
 
@@ -127,13 +128,6 @@ func handleBranchChangeAction(ctx context.Context, environment *workflow.Environ
 		if environment.RepositoryManager == nil {
 			return errors.New(refreshMissingRepositoryManagerMessage)
 		}
-		clean, cleanErr := environment.RepositoryManager.CheckCleanWorktree(ctx, repository.Path)
-		if cleanErr != nil {
-			return cleanErr
-		}
-		if !clean {
-			return refresh.ErrWorktreeNotClean
-		}
 	}
 
 	service, serviceError := NewService(ServiceDependencies{
@@ -167,6 +161,30 @@ func handleBranchChangeAction(ctx context.Context, environment *workflow.Environ
 				shared.EventCodeTaskSkip,
 				"refresh skipped (no tracking remote)",
 				map[string]string{"branch": result.BranchName},
+			)
+		}
+	}
+
+	if refreshRequested && requireClean && !stashChanges && !commitChanges {
+		if environment.RepositoryManager == nil {
+			return errors.New(refreshMissingRepositoryManagerMessage)
+		}
+		statusResult, statusErr := worktree.CheckStatus(ctx, environment.RepositoryManager, repository.Path, nil)
+		if statusErr != nil {
+			return statusErr
+		}
+		if !statusResult.Clean() {
+			refreshRequested = false
+			details := map[string]string{"branch": result.BranchName}
+			if len(statusResult.Entries) > 0 {
+				details["status"] = strings.Join(statusResult.Entries, ", ")
+			}
+			environment.ReportRepositoryEvent(
+				repository,
+				shared.EventLevelWarn,
+				shared.EventCodeTaskSkip,
+				"refresh skipped (dirty worktree)",
+				details,
 			)
 		}
 	}
