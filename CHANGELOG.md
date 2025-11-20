@@ -1,5 +1,32 @@
 # Changelog
 
+## [v0.2.8]
+
+### Features ✨
+- Added shared worktree clean inspector to normalize `require_clean` semantics; filters untracked/ignored files and surfaces tracked file details in warnings.
+- Aligned branch change behavior to match `git switch` semantics: branches always switch even on dirty worktrees, with `require_clean` gating refresh/pull stages.
+- Workflows can now capture and restore branches or commits explicitly using new DSL blocks for better automation control.
+
+### Improvements ⚙️
+- Updated branch change refresh to skip pulls on dirty worktrees, issuing structured warnings with tracked dirty files to inform users.
+- Refactored workflow presets and safeguards to relax branch cleanliness requirements while still guarding against unwanted changes.
+- Enhanced branch change commands and rename executors to use shared clean-check helpers, improving consistency across CLI and workflows.
+- Workflow actions now report repository events for untracked/ignored files allowing refresh to continue with warnings instead of failures.
+
+### Bug Fixes 🐛
+- Fixed issue where untracked files blocked refresh operations by excluding them from cleanliness checks.
+- Corrected branch change refresh expectations to properly handle dirty worktree states without interrupting branch switching.
+- Reduced false hard stops on workflow steps by honoring `ignore_dirty_paths` in worktree filters and safegaurds.
+
+### Testing 🧪
+- Added tests covering dirty worktree skip of branch refresh, untracked files during refresh, and capturing and restoring branch state.
+- Implemented scripted Git executor in tests to simulate remote and status command outputs for more reliable and comprehensive test cases.
+
+### Docs 📚
+- Documented new normalized `require_clean` semantics and branch change refresh behavior in the issue tracker.
+- Updated workflow configurations to remove redundant hard stop requires_clean and reflect new relaxed worktree cleanliness guards.
+- Added notes explaining role and process changes for staff engineers regarding repository refactoring and development workflows.
+
 ## [v0.2.7]
 
 ### Features ✨
