@@ -154,9 +154,11 @@ func NewApplication() *Application {
 			configurationInitializationFlagUsageConstant,
 		)
 	}
-	cobraCommand.PersistentFlags().BoolVar(
+	flagutils.AddToggleFlag(
+		cobraCommand.PersistentFlags(),
 		&application.configurationInitializationForced,
 		configurationInitializationForceFlagNameConstant,
+		"",
 		false,
 		configurationInitializationForceFlagUsageConstant,
 	)
@@ -177,7 +179,14 @@ func NewApplication() *Application {
 
 	cobraCommand.PersistentFlags().String(flagutils.RemoteFlagName, "", flagutils.RemoteFlagUsage)
 
-	cobraCommand.PersistentFlags().BoolVar(&application.versionFlag, versionFlagNameConstant, false, versionFlagUsageConstant)
+	flagutils.AddToggleFlag(
+		cobraCommand.PersistentFlags(),
+		&application.versionFlag,
+		versionFlagNameConstant,
+		"",
+		false,
+		versionFlagUsageConstant,
+	)
 
 	versionCommand := &cobra.Command{
 		Use:           versionCommandUseNameConstant,

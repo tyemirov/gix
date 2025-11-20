@@ -58,7 +58,7 @@ func (builder *CommandBuilder) Build() (*cobra.Command, error) {
 	}
 
 	command.Flags().StringSlice(flagRootNameConstant, nil, flagRootDescriptionConstant)
-	command.Flags().Bool(flagIncludeAllNameConstant, false, flagIncludeAllDescription)
+	flagutils.AddToggleFlag(command.Flags(), nil, flagIncludeAllNameConstant, "", false, flagIncludeAllDescription)
 
 	return command, nil
 }

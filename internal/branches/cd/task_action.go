@@ -123,6 +123,19 @@ func handleBranchChangeAction(ctx context.Context, environment *workflow.Environ
 		return errors.New(missingBranchMessageConstant)
 	}
 
+	if refreshRequested && requireClean && !stashChanges && !commitChanges {
+		if environment.RepositoryManager == nil {
+			return errors.New(refreshMissingRepositoryManagerMessage)
+		}
+		clean, cleanErr := environment.RepositoryManager.CheckCleanWorktree(ctx, repository.Path)
+		if cleanErr != nil {
+			return cleanErr
+		}
+		if !clean {
+			return refresh.ErrWorktreeNotClean
+		}
+	}
+
 	service, serviceError := NewService(ServiceDependencies{
 		GitExecutor: environment.GitExecutor,
 		Logger:      environment.Logger,

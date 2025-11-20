@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/tyemirov/gix/internal/audit"
+	"github.com/tyemirov/gix/internal/branches/refresh"
 	"github.com/tyemirov/gix/internal/execshell"
 	"github.com/tyemirov/gix/internal/gitrepo"
 	"github.com/tyemirov/gix/internal/repos/shared"
@@ -168,6 +169,7 @@ func execShellOutput(output string) execshell.ExecutionResult {
 func TestHandleBranchChangeActionRefreshesBranch(t *testing.T) {
 	executor := &stubGitExecutor{
 		responses: []stubGitResponse{
+			{result: execShellOutput("")},
 			{result: execShellOutput("origin\n")},
 		},
 	}
@@ -195,20 +197,56 @@ func TestHandleBranchChangeActionRefreshesBranch(t *testing.T) {
 	}
 
 	require.NoError(t, handleBranchChangeAction(context.Background(), environment, repository, parameters))
-	require.Len(t, executor.recorded, 9)
-	require.Equal(t, []string{"remote"}, executor.recorded[0].Arguments)
-	require.Equal(t, []string{"fetch", "--prune", "origin"}, executor.recorded[1].Arguments)
-	require.Equal(t, []string{"switch", "feature/foo"}, executor.recorded[2].Arguments)
-	require.Equal(t, []string{"pull", "--rebase"}, executor.recorded[3].Arguments)
-	require.Equal(t, []string{"config", "--get", "branch.feature/foo.remote"}, executor.recorded[4].Arguments)
-	require.Equal(t, []string{"status", "--porcelain"}, executor.recorded[5].Arguments)
-	require.Equal(t, []string{"fetch", "--prune"}, executor.recorded[6].Arguments)
-	require.Equal(t, []string{"checkout", "feature/foo"}, executor.recorded[7].Arguments)
-	require.Equal(t, []string{"pull", "--ff-only"}, executor.recorded[8].Arguments)
+	require.Len(t, executor.recorded, 10)
+	require.Equal(t, []string{"status", "--porcelain"}, executor.recorded[0].Arguments)
+	require.Equal(t, []string{"remote"}, executor.recorded[1].Arguments)
+	require.Equal(t, []string{"fetch", "--prune", "origin"}, executor.recorded[2].Arguments)
+	require.Equal(t, []string{"switch", "feature/foo"}, executor.recorded[3].Arguments)
+	require.Equal(t, []string{"pull", "--rebase"}, executor.recorded[4].Arguments)
+	require.Equal(t, []string{"config", "--get", "branch.feature/foo.remote"}, executor.recorded[5].Arguments)
+	require.Equal(t, []string{"status", "--porcelain"}, executor.recorded[6].Arguments)
+	require.Equal(t, []string{"fetch", "--prune"}, executor.recorded[7].Arguments)
+	require.Equal(t, []string{"checkout", "feature/foo"}, executor.recorded[8].Arguments)
+	require.Equal(t, []string{"pull", "--ff-only"}, executor.recorded[9].Arguments)
 	require.Contains(t, buffer.String(), "REFRESHED: /tmp/project (feature/foo)")
 	require.Len(t, reporter.events, 1)
 	require.Equal(t, "true", reporter.events[0].Details["refresh"])
 	require.Equal(t, "true", reporter.events[0].Details["require_clean"])
+}
+
+func TestHandleBranchChangeActionStopsWhenDirtyBeforeSwitch(t *testing.T) {
+	executor := &stubGitExecutor{
+		responses: []stubGitResponse{
+			{result: execshell.ExecutionResult{StandardOutput: " M dirty.txt\n"}},
+		},
+	}
+	repoManager, managerErr := gitrepo.NewRepositoryManager(executor)
+	require.NoError(t, managerErr)
+
+	environment := &workflow.Environment{
+		GitExecutor:       executor,
+		RepositoryManager: repoManager,
+		Logger:            zap.NewNop(),
+		Output:            io.Discard,
+		Errors:            io.Discard,
+		Reporter:          &recordingReporter{},
+	}
+	repository := &workflow.RepositoryState{
+		Path: "/tmp/project",
+	}
+
+	parameters := map[string]any{
+		taskOptionBranchName:     "feature/foo",
+		taskOptionRefreshEnabled: true,
+		taskOptionRequireClean:   true,
+	}
+
+	err := handleBranchChangeAction(context.Background(), environment, repository, parameters)
+	require.Error(t, err)
+	require.ErrorIs(t, err, refresh.ErrWorktreeNotClean)
+	require.GreaterOrEqual(t, len(executor.recorded), 1)
+	require.Equal(t, []string{"status", "--porcelain"}, executor.recorded[0].Arguments)
+	require.Len(t, executor.recorded, 1, "branch switch must not run when worktree is dirty")
 }
 
 func TestHandleBranchChangeActionCapturesBranch(t *testing.T) {
