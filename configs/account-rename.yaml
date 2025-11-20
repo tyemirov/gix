@@ -34,6 +34,10 @@ workflow:
       with:
         tasks:
           - name: "Switch to master"
+            safeguards:
+              hard_stop:
+                require_clean:
+                  enabled: true
             actions:
               - type: branch.change
                 options:
