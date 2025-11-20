@@ -271,8 +271,9 @@ func TestHandleBranchChangeActionRefreshesWithUntrackedChanges(t *testing.T) {
 
 	require.NoError(t, handleBranchChangeAction(context.Background(), environment, repository, parameters))
 	require.Contains(t, buffer.String(), "REFRESHED: /tmp/project (feature/foo)")
-	require.Len(t, reporter.events, 1)
-	require.Equal(t, shared.EventCodeRepoSwitched, reporter.events[0].Code)
+	require.Len(t, reporter.events, 2)
+	require.Equal(t, shared.EventCodeRepoDirty, reporter.events[0].Code)
+	require.Equal(t, shared.EventCodeRepoSwitched, reporter.events[1].Code)
 }
 
 func TestHandleBranchChangeActionCapturesBranch(t *testing.T) {

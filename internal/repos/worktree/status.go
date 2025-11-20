@@ -70,6 +70,33 @@ func FilterStatusEntries(entries []string, patterns []IgnorePattern) []string {
 	return remaining
 }
 
+// SplitStatusEntries separates tracked/ignored status entries while preserving untracked/ignored entries for logging purposes.
+func SplitStatusEntries(entries []string, patterns []IgnorePattern) (tracked []string, untracked []string) {
+	if len(entries) == 0 {
+		return nil, nil
+	}
+
+	for _, entry := range entries {
+		trimmed := strings.TrimSpace(entry)
+		if len(trimmed) == 0 {
+			continue
+		}
+		path := statusEntryPath(trimmed)
+		if pathMatchesIgnorePatterns(path, patterns) {
+			continue
+		}
+
+		if statusEntryIsUntrackedOrIgnored(trimmed) {
+			untracked = append(untracked, trimmed)
+			continue
+		}
+
+		tracked = append(tracked, trimmed)
+	}
+
+	return tracked, untracked
+}
+
 // BuildIgnorePatterns constructs ignore patterns from string entries.
 func BuildIgnorePatterns(entries []string) []IgnorePattern {
 	return parseIgnorePatternEntries(entries)
