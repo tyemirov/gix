@@ -4,7 +4,7 @@ workflow:
       command: ["tasks", "apply"]
       with:
         tasks:
-          - name: "Switch to master if clean"
+          - name: "Switch to master"
             actions:
               - type: branch.change
                 options:
@@ -14,18 +14,6 @@ workflow:
                   capture:
                     name: initial_branch
                     value: branch
-            safeguards:
-              hard_stop:
-                require_clean:
-                  enabled: true
-                  ignore_dirty_paths:
-                    - ".env"
-                    - ".env.*"
-                    - ".DS_Store"
-                    - "qodana.yaml"
-                    - ".idea/"
-                    - "tools/"
-                    - "bin/"
 
   - step:
       name: gitignore-branch
@@ -40,18 +28,6 @@ workflow:
                   branch: "automation/gitignore/{{ .Repository.Name }}-{{ index .Environment \"workflow_run_id\" }}"
                   remote: origin
                   create_if_missing: true
-            safeguards:
-              hard_stop:
-                require_clean:
-                  enabled: true
-                  ignore_dirty_paths:
-                    - ".env"
-                    - ".env.*"
-                    - ".DS_Store"
-                    - "qodana.yaml"
-                    - ".idea/"
-                    - "tools/"
-                    - "bin/"
 
   - step:
       name: gitignore-apply

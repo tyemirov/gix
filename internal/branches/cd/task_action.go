@@ -9,6 +9,7 @@ import (
 	"github.com/tyemirov/gix/internal/branches/refresh"
 	"github.com/tyemirov/gix/internal/execshell"
 	"github.com/tyemirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/internal/repos/worktree"
 	"github.com/tyemirov/gix/internal/workflow"
 )
 
@@ -123,16 +124,23 @@ func handleBranchChangeAction(ctx context.Context, environment *workflow.Environ
 		return errors.New(missingBranchMessageConstant)
 	}
 
+	refreshSkippedDetails := map[string]string{}
+	refreshSkipped := false
 	if refreshRequested && requireClean && !stashChanges && !commitChanges {
 		if environment.RepositoryManager == nil {
 			return errors.New(refreshMissingRepositoryManagerMessage)
 		}
-		clean, cleanErr := environment.RepositoryManager.CheckCleanWorktree(ctx, repository.Path)
-		if cleanErr != nil {
-			return cleanErr
+		statusResult, statusErr := worktree.CheckStatus(ctx, environment.RepositoryManager, repository.Path, nil)
+		if statusErr != nil {
+			return statusErr
 		}
-		if !clean {
-			return refresh.ErrWorktreeNotClean
+		if !statusResult.Clean() {
+			refreshRequested = false
+			refreshSkipped = true
+			refreshSkippedDetails["branch"] = resolvedBranchName
+			if len(statusResult.Entries) > 0 {
+				refreshSkippedDetails["status"] = strings.Join(statusResult.Entries, ", ")
+			}
 		}
 	}
 
@@ -149,6 +157,7 @@ func handleBranchChangeAction(ctx context.Context, environment *workflow.Environ
 		BranchName:      resolvedBranchName,
 		RemoteName:      remoteName,
 		CreateIfMissing: createIfMissing,
+		SkipPull:        refreshSkipped,
 	})
 	if changeError != nil {
 		return changeError
@@ -169,6 +178,17 @@ func handleBranchChangeAction(ctx context.Context, environment *workflow.Environ
 				map[string]string{"branch": result.BranchName},
 			)
 		}
+	}
+
+	if refreshSkipped {
+		refreshSkippedDetails["branch"] = result.BranchName
+		environment.ReportRepositoryEvent(
+			repository,
+			shared.EventLevelWarn,
+			shared.EventCodeTaskSkip,
+			"refresh skipped (dirty worktree)",
+			refreshSkippedDetails,
+		)
 	}
 
 	if captureSpec != nil {
