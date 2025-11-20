@@ -124,9 +124,23 @@ func handleBranchChangeAction(ctx context.Context, environment *workflow.Environ
 		return errors.New(missingBranchMessageConstant)
 	}
 
+	refreshSkippedDetails := map[string]string{}
+	refreshSkipped := false
 	if refreshRequested && requireClean && !stashChanges && !commitChanges {
 		if environment.RepositoryManager == nil {
 			return errors.New(refreshMissingRepositoryManagerMessage)
+		}
+		statusResult, statusErr := worktree.CheckStatus(ctx, environment.RepositoryManager, repository.Path, nil)
+		if statusErr != nil {
+			return statusErr
+		}
+		if !statusResult.Clean() {
+			refreshRequested = false
+			refreshSkipped = true
+			refreshSkippedDetails["branch"] = resolvedBranchName
+			if len(statusResult.Entries) > 0 {
+				refreshSkippedDetails["status"] = strings.Join(statusResult.Entries, ", ")
+			}
 		}
 	}
 
@@ -143,6 +157,7 @@ func handleBranchChangeAction(ctx context.Context, environment *workflow.Environ
 		BranchName:      resolvedBranchName,
 		RemoteName:      remoteName,
 		CreateIfMissing: createIfMissing,
+		SkipPull:        refreshSkipped,
 	})
 	if changeError != nil {
 		return changeError
@@ -165,28 +180,15 @@ func handleBranchChangeAction(ctx context.Context, environment *workflow.Environ
 		}
 	}
 
-	if refreshRequested && requireClean && !stashChanges && !commitChanges {
-		if environment.RepositoryManager == nil {
-			return errors.New(refreshMissingRepositoryManagerMessage)
-		}
-		statusResult, statusErr := worktree.CheckStatus(ctx, environment.RepositoryManager, repository.Path, nil)
-		if statusErr != nil {
-			return statusErr
-		}
-		if !statusResult.Clean() {
-			refreshRequested = false
-			details := map[string]string{"branch": result.BranchName}
-			if len(statusResult.Entries) > 0 {
-				details["status"] = strings.Join(statusResult.Entries, ", ")
-			}
-			environment.ReportRepositoryEvent(
-				repository,
-				shared.EventLevelWarn,
-				shared.EventCodeTaskSkip,
-				"refresh skipped (dirty worktree)",
-				details,
-			)
-		}
+	if refreshSkipped {
+		refreshSkippedDetails["branch"] = result.BranchName
+		environment.ReportRepositoryEvent(
+			repository,
+			shared.EventLevelWarn,
+			shared.EventCodeTaskSkip,
+			"refresh skipped (dirty worktree)",
+			refreshSkippedDetails,
+		)
 	}
 
 	if captureSpec != nil {
