@@ -1,5 +1,24 @@
 # Changelog
 
+## [v0.2.7]
+
+### Features ✨
+- Accept yes/no toggles for all boolean flags.
+
+### Improvements ⚙️
+- Allow stash and commit refresh options to skip pre-clean failure.
+- Use toggle flags consistently in command flags.
+
+### Bug Fixes 🐛
+- Prevent branch change if refresh requires a clean worktree and it is dirty.
+
+### Testing 🧪
+- Enhance tests to cover branch refresh with clean checks and dirty worktree blocking.
+- Update branch change action test to verify additional status command execution.
+
+### Docs 📚
+- _No changes._
+
 ## [v0.2.6]
 
 ### Features ✨
