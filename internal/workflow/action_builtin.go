@@ -178,16 +178,7 @@ func (action gitCommitAction) Execute(ctx context.Context, execCtx *ExecutionCon
 
 	var failed execshell.CommandFailedError
 	if errors.As(err, &failed) && failed.Result.ExitCode == 1 && commitIsEmpty(failed.Result) {
-		if execCtx.Environment.Reporter != nil {
-			execCtx.Environment.ReportRepositoryEvent(
-				execCtx.Repository,
-				shared.EventLevelWarn,
-				shared.EventCodeTaskSkip,
-				"skip: nothing to commit",
-				nil,
-			)
-		}
-		return nil
+		return newActionSkipError("skip: nothing to commit", nil)
 	}
 
 	return err

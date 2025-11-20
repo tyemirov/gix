@@ -210,7 +210,7 @@ func TestGitStageCommitOperationSkipsWhenNothingToCommit(t *testing.T) {
 	state := &State{Repositories: []*RepositoryState{repository}}
 	env := &Environment{GitExecutor: gitExecutor, Reporter: shared.NewStructuredReporter(io.Discard, io.Discard)}
 
-	require.NoError(t, op.Execute(context.Background(), env, state))
+	require.ErrorIs(t, op.Execute(context.Background(), env, state), errRepositorySkipped)
 	require.True(t, commandArgumentsExist(gitExecutor.commands, []string{"add", "README.md"}))
 	require.True(t, commandArgumentsExist(gitExecutor.commands, []string{"commit", "-m", "docs: update"}))
 }
