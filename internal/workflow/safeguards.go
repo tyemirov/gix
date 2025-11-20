@@ -5,9 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	pathpkg "path"
 	"path/filepath"
 	"strings"
+
+	"github.com/tyemirov/gix/internal/repos/worktree"
 )
 
 var (
@@ -46,24 +47,23 @@ func EvaluateSafeguards(ctx context.Context, environment *Environment, repositor
 		if environment.RepositoryManager == nil {
 			return false, "", errSafeguardRepoManager
 		}
-		statusEntries, statusError := environment.RepositoryManager.WorktreeStatus(ctx, repositoryPath)
+		statusResult, statusError := worktree.CheckStatus(ctx, environment.RepositoryManager, repositoryPath, ignoredPatterns)
 		if statusError != nil {
 			return false, "", statusError
 		}
-		remainingEntries := filterIgnoredStatusEntries(statusEntries, ignoredPatterns)
-		if len(remainingEntries) > 0 {
-			displayEntries := remainingEntries
+		if len(statusResult.Entries) > 0 {
+			displayEntries := statusResult.Entries
 			if len(displayEntries) > maxStatusReasonEntries {
-				displayEntries = append([]string(nil), remainingEntries[:maxStatusReasonEntries]...)
+				displayEntries = append([]string(nil), statusResult.Entries[:maxStatusReasonEntries]...)
 			} else {
-				displayEntries = append([]string(nil), remainingEntries...)
+				displayEntries = append([]string(nil), statusResult.Entries...)
 			}
 			for index := range displayEntries {
 				displayEntries[index] = strings.TrimSpace(displayEntries[index])
 			}
 			reason := fmt.Sprintf("repository not clean: %s", strings.Join(displayEntries, ", "))
-			if len(remainingEntries) > maxStatusReasonEntries {
-				reason = fmt.Sprintf("%s (+%d more)", reason, len(remainingEntries)-maxStatusReasonEntries)
+			if len(statusResult.Entries) > maxStatusReasonEntries {
+				reason = fmt.Sprintf("%s (+%d more)", reason, len(statusResult.Entries)-maxStatusReasonEntries)
 			}
 			return false, reason, nil
 		}
@@ -193,7 +193,7 @@ func trimEmptyMap(raw map[string]any) map[string]any {
 	return raw
 }
 
-func readRequireCleanDirective(raw map[string]any) (bool, []dirtyIgnorePattern, bool, error) {
+func readRequireCleanDirective(raw map[string]any) (bool, []worktree.IgnorePattern, bool, error) {
 	if len(raw) == 0 {
 		return false, nil, false, nil
 	}
@@ -203,7 +203,7 @@ func readRequireCleanDirective(raw map[string]any) (bool, []dirtyIgnorePattern, 
 	}
 	switch typed := value.(type) {
 	case bool:
-		return typed, parseDirtyIgnorePatterns(raw["ignore_dirty_paths"]), true, nil
+		return typed, worktree.ParseIgnorePatterns(raw["ignore_dirty_paths"]), true, nil
 	case map[string]any:
 		return parseRequireCleanMap(typed)
 	case map[interface{}]interface{}:
@@ -214,11 +214,11 @@ func readRequireCleanDirective(raw map[string]any) (bool, []dirtyIgnorePattern, 
 		if enabledErr != nil {
 			return false, nil, true, fmt.Errorf("require_clean must be a boolean or map")
 		}
-		return enabled, parseDirtyIgnorePatterns(raw["ignore_dirty_paths"]), true, nil
+		return enabled, worktree.ParseIgnorePatterns(raw["ignore_dirty_paths"]), true, nil
 	}
 }
 
-func parseRequireCleanMap(raw map[string]any) (bool, []dirtyIgnorePattern, bool, error) {
+func parseRequireCleanMap(raw map[string]any) (bool, []worktree.IgnorePattern, bool, error) {
 	if len(raw) == 0 {
 		return true, nil, true, nil
 	}
@@ -230,7 +230,7 @@ func parseRequireCleanMap(raw map[string]any) (bool, []dirtyIgnorePattern, bool,
 	if !enabledExists {
 		enabled = true
 	}
-	return enabled, parseDirtyIgnorePatterns(raw["ignore_dirty_paths"]), true, nil
+	return enabled, worktree.ParseIgnorePatterns(raw["ignore_dirty_paths"]), true, nil
 }
 
 func parseBranchList(raw any) []string {
@@ -305,131 +305,4 @@ func sanitizePathSlice(paths []string) []string {
 		sanitized = append(sanitized, filepath.Clean(cleaned))
 	}
 	return sanitized
-}
-
-type dirtyIgnorePattern struct {
-	value   string
-	isDir   bool
-	hasGlob bool
-}
-
-func parseDirtyIgnorePatterns(raw any) []dirtyIgnorePattern {
-	switch typed := raw.(type) {
-	case []string:
-		return buildDirtyIgnorePatterns(typed)
-	case []any:
-		values := make([]string, 0, len(typed))
-		for _, entry := range typed {
-			value, ok := entry.(string)
-			if !ok {
-				continue
-			}
-			values = append(values, value)
-		}
-		return buildDirtyIgnorePatterns(values)
-	case string:
-		return buildDirtyIgnorePatterns([]string{typed})
-	default:
-		return nil
-	}
-}
-
-func buildDirtyIgnorePatterns(entries []string) []dirtyIgnorePattern {
-	patterns := make([]dirtyIgnorePattern, 0, len(entries))
-	for _, entry := range entries {
-		trimmed := strings.TrimSpace(entry)
-		if len(trimmed) == 0 {
-			continue
-		}
-		isDir := strings.HasSuffix(trimmed, "/")
-		normalized := strings.TrimSuffix(trimmed, "/")
-		normalized = strings.TrimPrefix(normalized, "./")
-		if len(normalized) == 0 {
-			continue
-		}
-		cleaned := filepath.ToSlash(filepath.Clean(normalized))
-		if cleaned == "." {
-			continue
-		}
-		patterns = append(patterns, dirtyIgnorePattern{
-			value:   cleaned,
-			isDir:   isDir,
-			hasGlob: strings.ContainsAny(trimmed, "*?["),
-		})
-	}
-	return patterns
-}
-
-func (pattern dirtyIgnorePattern) matches(path string) bool {
-	if len(pattern.value) == 0 {
-		return false
-	}
-	normalized := filepath.ToSlash(strings.TrimSpace(path))
-	if len(normalized) == 0 {
-		return false
-	}
-	normalized = strings.TrimPrefix(normalized, "./")
-	normalized = strings.TrimPrefix(normalized, "/")
-
-	if pattern.hasGlob {
-		matched, err := pathpkg.Match(pattern.value, normalized)
-		return err == nil && matched
-	}
-
-	if pattern.isDir {
-		return normalized == pattern.value || strings.HasPrefix(normalized, pattern.value+"/")
-	}
-
-	return normalized == pattern.value
-}
-
-func filterIgnoredStatusEntries(entries []string, patterns []dirtyIgnorePattern) []string {
-	if len(entries) == 0 || len(patterns) == 0 {
-		return entries
-	}
-	remaining := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		if !(statusEntryIsUntrackedOrIgnored(entry) && statusEntryMatchesIgnore(entry, patterns)) {
-			remaining = append(remaining, entry)
-		}
-	}
-	return remaining
-}
-
-func statusEntryMatchesIgnore(entry string, patterns []dirtyIgnorePattern) bool {
-	path := extractStatusPath(entry)
-	if len(path) == 0 {
-		return false
-	}
-	for _, pattern := range patterns {
-		if pattern.matches(path) {
-			return true
-		}
-	}
-	return false
-}
-
-func extractStatusPath(entry string) string {
-	trimmed := strings.TrimSpace(entry)
-	if len(trimmed) == 0 {
-		return ""
-	}
-	spaceIndex := strings.Index(trimmed, " ")
-	if spaceIndex == -1 {
-		return trimmed
-	}
-	return strings.TrimSpace(trimmed[spaceIndex+1:])
-}
-
-const (
-	gitStatusUntrackedPrefix = "??"
-	gitStatusIgnoredPrefix   = "!!"
-)
-
-func statusEntryIsUntrackedOrIgnored(entry string) bool {
-	trimmed := strings.TrimSpace(entry)
-	if len(trimmed) < len(gitStatusUntrackedPrefix) {
-		return false
-	}
-	return strings.HasPrefix(trimmed, gitStatusUntrackedPrefix) || strings.HasPrefix(trimmed, gitStatusIgnoredPrefix)
 }

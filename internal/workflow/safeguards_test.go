@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tyemirov/gix/internal/gitrepo"
+	"github.com/tyemirov/gix/internal/repos/worktree"
 )
 
 func TestEvaluateSafeguardsRequireClean(t *testing.T) {
@@ -61,6 +62,28 @@ func TestEvaluateSafeguardsRequireCleanIgnoresPaths(t *testing.T) {
 	require.NoError(t, evalErr)
 	require.False(t, pass)
 	require.Equal(t, "repository not clean: M main.go", reason)
+}
+
+func TestEvaluateSafeguardsRequireCleanIgnoresUntrackedByDefault(t *testing.T) {
+	t.Parallel()
+
+	executor := &recordingGitExecutor{
+		worktreeClean:   false,
+		currentBranch:   "master",
+		worktreeEntries: []string{"?? scratch.txt"},
+	}
+	manager, err := gitrepo.NewRepositoryManager(executor)
+	require.NoError(t, err)
+
+	env := &Environment{RepositoryManager: manager}
+	repo := &RepositoryState{Path: "/repositories/sample"}
+
+	pass, reason, evalErr := EvaluateSafeguards(context.Background(), env, repo, map[string]any{
+		"require_clean": true,
+	})
+	require.NoError(t, evalErr)
+	require.True(t, pass)
+	require.Empty(t, reason)
 }
 
 func TestEvaluateSafeguardsRequireCleanStringValue(t *testing.T) {
@@ -177,10 +200,19 @@ func TestSplitSafeguardsStructured(t *testing.T) {
 func TestFilterIgnoredStatusEntriesSkipsOnlyUntracked(t *testing.T) {
 	t.Parallel()
 
-	patterns := buildDirtyIgnorePatterns([]string{"bin/", ".env.*"})
+	patterns := worktree.BuildIgnorePatterns([]string{"bin/", ".env.*"})
 	entries := []string{"?? bin/temp.sh", " M bin/script.sh", "?? .env.local", " M .env.example"}
 
-	remaining := filterIgnoredStatusEntries(entries, patterns)
+	remaining := worktree.FilterStatusEntries(entries, patterns)
 
-	require.ElementsMatch(t, []string{" M bin/script.sh", " M .env.example"}, remaining)
+	require.ElementsMatch(t, []string{"M bin/script.sh", "M .env.example"}, remaining)
+}
+
+func TestFilterIgnoredStatusEntriesDropsUntrackedWithoutPatterns(t *testing.T) {
+	t.Parallel()
+
+	entries := []string{"?? cache.txt", "?? .DS_Store"}
+	remaining := worktree.FilterStatusEntries(entries, nil)
+
+	require.Empty(t, remaining)
 }
