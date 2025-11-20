@@ -33,7 +33,11 @@ workflow:
       command: ["tasks", "apply"]
       with:
         tasks:
-          - name: "Switch to master if clean"
+          - name: "Switch to master"
+            safeguards:
+              hard_stop:
+                require_clean:
+                  enabled: true
             actions:
               - type: branch.change
                 options:
@@ -43,9 +47,6 @@ workflow:
                   capture:
                     name: initial_branch
                     value: branch
-            safeguards:
-              hard_stop:
-                require_clean: true
 
   - step:
       name: namespace-branch
@@ -60,9 +61,6 @@ workflow:
                   branch: "automation/ns-rewrite/{{ .Repository.Name }}-{{ index .Environment \"workflow_run_id\" }}"
                   remote: origin
                   create_if_missing: true
-            safeguards:
-              hard_stop:
-                require_clean: true
 
   - step:
       name: namespace-rewrite
