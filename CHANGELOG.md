@@ -1,5 +1,31 @@
 # Changelog
 
+## [v0.2.9]
+
+### Features ✨
+- Support for stashing tracked files and restoring them during branch changes using `gix cd --stash`.
+- Handle multiple stashes during branch change refresh to improve workflow reliability.
+
+### Improvements ⚙️
+- Enhanced `gix cd` remote selection to fall back to a single configured remote automatically, matching `git checkout` behavior.
+- Updated documentation to reflect Go 1.25+ requirement and renamed module paths from `github.com/temirov/gix` to `github.com/tyemirov/gix`.
+- Improved audit report columns to show repository dirty status and affected files for better visibility.
+
+### Bug Fixes 🐛
+- Fixed `gix cd` incorrectly reporting branches as untracked by aligning upstream tracking logic with `git checkout`.
+- Corrected branch switching to always proceed even when worktrees are dirty, guarding only refresh/pull stages.
+- Resolved incomplete line replacement in files during workflow runs to apply changes to all targeted Go files.
+- Fixed outdated CLI design documentation to refer to the correct binary and module path after rename.
+
+### Testing 🧪
+- Added regression tests covering tracked-file stash/restore flow during branch changes.
+- Coverage improved for fallback behavior in remote selection and dirty skip scenarios.
+
+### Docs 📚
+- Updated README and architecture docs for Go 1.25+ requirement.
+- Revised CLI design document to reflect new binary, environment variables, and config paths.
+- Adjusted installation instructions and badges to use the updated repository and module paths.
+
 ## [v0.2.8]
 
 ### Features ✨
