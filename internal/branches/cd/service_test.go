@@ -128,6 +128,32 @@ func TestChangeCreatesBranchFromRemoteWhenAvailable(t *testing.T) {
 	require.Equal(t, []string{"switch", "-c", "feature", "--track", "origin/feature"}, executor.recorded[4].Arguments)
 }
 
+func TestChangeCreatesBranchFromSingleRemoteFallbackWhenDefaultMissing(t *testing.T) {
+	executor := &stubGitExecutor{responses: []stubGitResponse{
+		{result: execshell.ExecutionResult{StandardOutput: "upstream\n"}},
+		{},
+		{err: commandFailedError("error: pathspec 'feature' did not match any file(s) known to git")},
+		{},
+		{},
+		{},
+	}}
+	service, err := NewService(ServiceDependencies{GitExecutor: executor})
+	require.NoError(t, err)
+
+	result, changeError := service.Change(context.Background(), Options{
+		RepositoryPath:  "/tmp/repo",
+		BranchName:      "feature",
+		CreateIfMissing: true,
+	})
+	require.NoError(t, changeError)
+	require.True(t, result.BranchCreated)
+	require.Empty(t, result.Warnings)
+
+	require.Len(t, executor.recorded, 6)
+	require.Equal(t, []string{"rev-parse", "--verify", "upstream/feature"}, executor.recorded[3].Arguments)
+	require.Equal(t, []string{"switch", "-c", "feature", "--track", "upstream/feature"}, executor.recorded[4].Arguments)
+}
+
 func TestChangeValidatesInputs(t *testing.T) {
 	service, err := NewService(ServiceDependencies{GitExecutor: &stubGitExecutor{}})
 	require.NoError(t, err)
@@ -203,7 +229,7 @@ func TestChangeWarnsWhenPullFails(t *testing.T) {
 	require.Equal(t, []string{"pull", "--rebase"}, executor.recorded[3].Arguments)
 }
 
-func TestChangeFetchesAllWhenDefaultRemoteMissing(t *testing.T) {
+func TestChangeUsesSingleRemoteWhenDefaultMissing(t *testing.T) {
 	executor := &stubGitExecutor{responses: []stubGitResponse{
 		{result: execshell.ExecutionResult{StandardOutput: "upstream\n"}},
 	}}
@@ -217,7 +243,7 @@ func TestChangeFetchesAllWhenDefaultRemoteMissing(t *testing.T) {
 
 	require.Len(t, executor.recorded, 4)
 	require.Equal(t, []string{"remote"}, executor.recorded[0].Arguments)
-	require.Equal(t, []string{"fetch", "--all", "--prune"}, executor.recorded[1].Arguments)
+	require.Equal(t, []string{"fetch", "--prune", "upstream"}, executor.recorded[1].Arguments)
 }
 
 func TestChangeFetchesAllWhenExplicitRemoteMissing(t *testing.T) {

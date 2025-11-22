@@ -112,17 +112,23 @@ func (service *Service) Change(executionContext context.Context, options Options
 		return Result{}, ErrBranchNameRequired
 	}
 
-	remoteName := strings.TrimSpace(options.RemoteName)
-	remoteExplicitlyProvided := len(remoteName) > 0
+	inputRemoteName := strings.TrimSpace(options.RemoteName)
+	remoteExplicitlyProvided := len(inputRemoteName) > 0
 	if !remoteExplicitlyProvided {
-		remoteName = defaultRemoteNameConstant
+		inputRemoteName = defaultRemoteNameConstant
 	}
+	selectedRemoteName := inputRemoteName
 
 	environment := map[string]string{gitTerminalPromptEnvironmentNameConstant: gitTerminalPromptEnvironmentDisableValue}
 
-	remoteEnumeration, remoteLookupErr := service.enumerateRemotes(executionContext, trimmedRepositoryPath, remoteName, environment)
+	remoteEnumeration, remoteLookupErr := service.enumerateRemotes(executionContext, trimmedRepositoryPath, selectedRemoteName, environment)
 	if remoteLookupErr != nil {
 		return Result{}, fmt.Errorf(gitFetchFailureTemplateConstant, fmt.Errorf(gitRemoteListFailureTemplateConstant, remoteLookupErr))
+	}
+
+	if !remoteExplicitlyProvided && !remoteEnumeration.requestedExists && remoteEnumeration.hasRemotes && len(remoteEnumeration.singleRemoteName) > 0 {
+		selectedRemoteName = remoteEnumeration.singleRemoteName
+		remoteEnumeration.requestedExists = true
 	}
 
 	useAllRemotes := false
@@ -137,23 +143,23 @@ func (service *Service) Change(executionContext context.Context, options Options
 
 	if remoteExplicitlyProvided && !remoteEnumeration.requestedExists {
 		if remoteEnumeration.hasRemotes {
-			fallbackMessage := fmt.Sprintf(fetchFallbackWarningTemplateConstant, remoteName)
+			fallbackMessage := fmt.Sprintf(fetchFallbackWarningTemplateConstant, inputRemoteName)
 			warnings = append(warnings, fallbackMessage)
 			service.logger.Warn(
 				fetchFallbackLogMessageConstant,
 				zap.String(logFieldRepositoryPathConstant, trimmedRepositoryPath),
-				zap.String(logFieldRemoteNameConstant, remoteName),
+				zap.String(logFieldRemoteNameConstant, inputRemoteName),
 			)
 		} else {
 			shouldFetch = false
 			shouldPull = false
 			useAllRemotes = false
-			skipMessage := fmt.Sprintf(missingConfiguredRemoteWarningTemplate, remoteName)
+			skipMessage := fmt.Sprintf(missingConfiguredRemoteWarningTemplate, inputRemoteName)
 			warnings = append(warnings, skipMessage)
 			service.logger.Warn(
 				missingConfiguredRemoteLogMessageConstant,
 				zap.String(logFieldRepositoryPathConstant, trimmedRepositoryPath),
-				zap.String(logFieldRemoteNameConstant, remoteName),
+				zap.String(logFieldRemoteNameConstant, inputRemoteName),
 			)
 		}
 	}
@@ -163,7 +169,7 @@ func (service *Service) Change(executionContext context.Context, options Options
 		if useAllRemotes {
 			fetchArguments = append(fetchArguments, gitFetchAllFlagConstant, gitFetchPruneFlagConstant)
 		} else {
-			fetchArguments = append(fetchArguments, gitFetchPruneFlagConstant, remoteName)
+			fetchArguments = append(fetchArguments, gitFetchPruneFlagConstant, selectedRemoteName)
 		}
 
 		if _, err := service.executor.ExecuteGit(executionContext, execshell.CommandDetails{
@@ -176,12 +182,12 @@ func (service *Service) Change(executionContext context.Context, options Options
 			if shouldReportMissingRemote(summary) {
 				warningMessage = fmt.Sprintf(missingRemoteWarningTemplateConstant, formatMissingRemoteRepositoryName(trimmedRepositoryPath))
 			} else {
-				warningMessage = fmt.Sprintf(fetchWarningTemplateConstant, remoteName, summary)
+				warningMessage = fmt.Sprintf(fetchWarningTemplateConstant, inputRemoteName, summary)
 			}
 			service.logger.Warn(
 				fetchWarningLogMessageConstant,
 				zap.String(logFieldRepositoryPathConstant, trimmedRepositoryPath),
-				zap.String(logFieldRemoteNameConstant, remoteName),
+				zap.String(logFieldRemoteNameConstant, inputRemoteName),
 				zap.Error(err),
 			)
 			shouldPull = false
@@ -200,7 +206,7 @@ func (service *Service) Change(executionContext context.Context, options Options
 			return Result{}, fmt.Errorf(gitSwitchFailureTemplateConstant, trimmedBranchName, switchSummary, switchResultErr)
 		}
 		if shouldTrackRemote {
-			remoteExists, remoteCheckErr := service.remoteBranchExists(executionContext, trimmedRepositoryPath, remoteName, trimmedBranchName, environment)
+			remoteExists, remoteCheckErr := service.remoteBranchExists(executionContext, trimmedRepositoryPath, selectedRemoteName, trimmedBranchName, environment)
 			if remoteCheckErr != nil {
 				return Result{}, fmt.Errorf("failed to verify remote branch %q: %w", trimmedBranchName, remoteCheckErr)
 			}
@@ -209,7 +215,7 @@ func (service *Service) Change(executionContext context.Context, options Options
 
 		switchArguments := []string{gitSwitchSubcommandConstant, gitCreateBranchFlagConstant, trimmedBranchName}
 		if useRemoteTracking {
-			trackReference := fmt.Sprintf("%s/%s", remoteName, trimmedBranchName)
+			trackReference := fmt.Sprintf("%s/%s", selectedRemoteName, trimmedBranchName)
 			switchArguments = append(switchArguments, gitTrackFlagConstant, trackReference)
 		}
 		if _, err := service.executor.ExecuteGit(executionContext, execshell.CommandDetails{
@@ -219,7 +225,7 @@ func (service *Service) Change(executionContext context.Context, options Options
 		}); err != nil {
 			createSummary := summarizeCommandError(err)
 			if shouldTrackRemote {
-				return Result{}, fmt.Errorf(gitCreateBranchFromRemoteFailureTemplate, trimmedBranchName, remoteName, createSummary, err)
+				return Result{}, fmt.Errorf(gitCreateBranchFromRemoteFailureTemplate, trimmedBranchName, selectedRemoteName, createSummary, err)
 			}
 			return Result{}, fmt.Errorf(gitCreateBranchLocalFailureTemplate, trimmedBranchName, createSummary, err)
 		}
@@ -263,8 +269,9 @@ func (service *Service) trySwitch(executionContext context.Context, repositoryPa
 }
 
 type remoteEnumeration struct {
-	hasRemotes      bool
-	requestedExists bool
+	hasRemotes       bool
+	requestedExists  bool
+	singleRemoteName string
 }
 
 func (service *Service) enumerateRemotes(executionContext context.Context, repositoryPath string, remoteName string, environment map[string]string) (remoteEnumeration, error) {
@@ -278,16 +285,25 @@ func (service *Service) enumerateRemotes(executionContext context.Context, repos
 	}
 
 	enumeration := remoteEnumeration{}
+	singleRemoteCandidate := ""
+	remoteCount := 0
 	for _, candidate := range strings.Split(result.StandardOutput, "\n") {
 		trimmedCandidate := strings.TrimSpace(candidate)
 		if len(trimmedCandidate) == 0 {
 			continue
 		}
 		enumeration.hasRemotes = true
+		remoteCount++
+		if remoteCount == 1 {
+			singleRemoteCandidate = trimmedCandidate
+		} else {
+			singleRemoteCandidate = ""
+		}
 		if trimmedCandidate == remoteName {
 			enumeration.requestedExists = true
 		}
 	}
+	enumeration.singleRemoteName = singleRemoteCandidate
 	return enumeration, nil
 }
 
