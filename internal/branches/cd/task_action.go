@@ -28,18 +28,38 @@ const (
 	branchResolutionSourceRemoteDefault = "remote_default"
 	branchResolutionSourceConfigured    = "configured_default"
 
-	branchRefreshMessageTemplate           = "REFRESHED: %s (%s)\n"
-	refreshMissingRepositoryManagerMessage = "branch refresh requires repository manager"
+	branchRefreshMessageTemplate                 = "REFRESHED: %s (%s)\n"
+	refreshMissingRepositoryManagerMessage       = "branch refresh requires repository manager"
+	gitStashSubcommandConstant                   = "stash"
+	gitStashPushSubcommandConstant               = "push"
+	gitStashPopSubcommandConstant                = "pop"
+	stashTrackedChangesFailureTemplateConstant   = "failed to stash tracked changes before switching: %w"
+	restoreStashedChangesFailureTemplateConstant = "failed to restore stashed changes after switching: %w"
+	stashExecutorMissingMessageConstant          = "git executor required to manage stash operations"
 )
 
 func init() {
 	workflow.RegisterTaskAction(taskTypeBranchChange, handleBranchChangeAction)
 }
 
-func handleBranchChangeAction(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, parameters map[string]any) error {
+func handleBranchChangeAction(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, parameters map[string]any) (err error) {
 	if environment == nil || repository == nil {
 		return nil
 	}
+
+	stashApplied := false
+	defer func() {
+		if !stashApplied {
+			return
+		}
+		if environment == nil || environment.GitExecutor == nil {
+			err = errors.Join(err, errors.New(stashExecutorMissingMessageConstant))
+			return
+		}
+		if restoreErr := restoreStashedChanges(ctx, environment.GitExecutor, repository.Path); restoreErr != nil {
+			err = errors.Join(err, restoreErr)
+		}
+	}()
 
 	captureSpec, captureErr := workflow.ParseBranchCaptureSpec(parameters)
 	if captureErr != nil {
@@ -160,6 +180,16 @@ func handleBranchChangeAction(ctx context.Context, environment *workflow.Environ
 
 	if refreshSkipped && len(untrackedStatus) > 0 {
 		refreshSkippedDetails["untracked"] = strings.Join(untrackedStatus, ", ")
+	}
+
+	if stashChanges && len(trackedStatus) > 0 {
+		if environment.GitExecutor == nil {
+			return errors.New(stashExecutorMissingMessageConstant)
+		}
+		if err := stashTrackedChanges(ctx, environment.GitExecutor, repository.Path); err != nil {
+			return err
+		}
+		stashApplied = true
 	}
 
 	service, serviceError := NewService(ServiceDependencies{
@@ -410,6 +440,32 @@ func captureBranchState(ctx context.Context, environment *workflow.Environment, 
 
 	environment.StoreCaptureValue(spec.Name, capturedValue, spec.Overwrite)
 	environment.RecordCaptureKind(spec.Name, spec.Kind)
+	return nil
+}
+
+func stashTrackedChanges(ctx context.Context, executor shared.GitExecutor, repositoryPath string) error {
+	if executor == nil {
+		return errors.New(stashExecutorMissingMessageConstant)
+	}
+	if _, err := executor.ExecuteGit(ctx, execshell.CommandDetails{
+		Arguments:        []string{gitStashSubcommandConstant, gitStashPushSubcommandConstant},
+		WorkingDirectory: repositoryPath,
+	}); err != nil {
+		return fmt.Errorf(stashTrackedChangesFailureTemplateConstant, err)
+	}
+	return nil
+}
+
+func restoreStashedChanges(ctx context.Context, executor shared.GitExecutor, repositoryPath string) error {
+	if executor == nil {
+		return errors.New(stashExecutorMissingMessageConstant)
+	}
+	if _, err := executor.ExecuteGit(ctx, execshell.CommandDetails{
+		Arguments:        []string{gitStashSubcommandConstant, gitStashPopSubcommandConstant},
+		WorkingDirectory: repositoryPath,
+	}); err != nil {
+		return fmt.Errorf(restoreStashedChangesFailureTemplateConstant, err)
+	}
 	return nil
 }
 

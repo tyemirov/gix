@@ -167,7 +167,7 @@ func execShellOutput(output string) execshell.ExecutionResult {
 }
 
 func TestHandleBranchChangeActionRefreshesBranch(t *testing.T) {
-	executor := &scriptedGitExecutor{remoteOutput: "origin\n"}
+	executor := newScriptedGitExecutor("origin\n", "")
 	gitManager, managerError := gitrepo.NewRepositoryManager(executor)
 	require.NoError(t, managerError)
 	reporter := &recordingReporter{}
@@ -210,7 +210,7 @@ func TestHandleBranchChangeActionRefreshesBranch(t *testing.T) {
 }
 
 func TestHandleBranchChangeActionSkipsRefreshWhenDirty(t *testing.T) {
-	executor := &scriptedGitExecutor{remoteOutput: "origin\n", statusOutput: " M dirty.txt\n"}
+	executor := newScriptedGitExecutor("origin\n", " M dirty.txt\n")
 	repoManager, managerErr := gitrepo.NewRepositoryManager(executor)
 	require.NoError(t, managerErr)
 
@@ -248,7 +248,7 @@ func TestHandleBranchChangeActionSkipsRefreshWhenDirty(t *testing.T) {
 }
 
 func TestHandleBranchChangeActionRefreshesWithUntrackedChanges(t *testing.T) {
-	executor := &scriptedGitExecutor{remoteOutput: "origin\n", statusOutput: "?? notes.tmp\n"}
+	executor := newScriptedGitExecutor("origin\n", "?? notes.tmp\n")
 	gitManager, managerErr := gitrepo.NewRepositoryManager(executor)
 	require.NoError(t, managerErr)
 	reporter := &recordingReporter{}
@@ -274,6 +274,63 @@ func TestHandleBranchChangeActionRefreshesWithUntrackedChanges(t *testing.T) {
 	require.Len(t, reporter.events, 2)
 	require.Equal(t, shared.EventCodeRepoDirty, reporter.events[0].Code)
 	require.Equal(t, shared.EventCodeRepoSwitched, reporter.events[1].Code)
+}
+
+func TestHandleBranchChangeActionStashesTrackedChangesAroundSwitch(t *testing.T) {
+	executor := newScriptedGitExecutor("origin\n", " M tracked.txt\n")
+	gitManager, managerError := gitrepo.NewRepositoryManager(executor)
+	require.NoError(t, managerError)
+	reporter := &recordingReporter{}
+	environment := &workflow.Environment{
+		GitExecutor:       executor,
+		RepositoryManager: gitManager,
+		Logger:            zap.NewNop(),
+		Output:            io.Discard,
+		Errors:            io.Discard,
+		Reporter:          reporter,
+	}
+	repository := &workflow.RepositoryState{
+		Path: "/tmp/project",
+	}
+
+	parameters := map[string]any{
+		taskOptionBranchName:     "feature/foo",
+		taskOptionBranchRemote:   shared.OriginRemoteNameConstant,
+		taskOptionRefreshEnabled: true,
+		taskOptionRequireClean:   true,
+		taskOptionStashChanges:   true,
+	}
+
+	require.NoError(t, handleBranchChangeAction(context.Background(), environment, repository, parameters))
+
+	findCommandIndex := func(target ...string) int {
+		for idx, recorded := range executor.recorded {
+			if len(recorded.Arguments) != len(target) {
+				continue
+			}
+			match := true
+			for i := range recorded.Arguments {
+				if recorded.Arguments[i] != target[i] {
+					match = false
+					break
+				}
+			}
+			if match {
+				return idx
+			}
+		}
+		return -1
+	}
+
+	stashPushIndex := findCommandIndex("stash", "push")
+	switchIndex := findCommandIndex("switch", "feature/foo")
+	stashPopIndex := findCommandIndex("stash", "pop")
+
+	require.NotEqual(t, -1, stashPushIndex)
+	require.NotEqual(t, -1, switchIndex)
+	require.NotEqual(t, -1, stashPopIndex)
+	require.Less(t, stashPushIndex, switchIndex)
+	require.Less(t, switchIndex, stashPopIndex)
 }
 
 func TestHandleBranchChangeActionCapturesBranch(t *testing.T) {
