@@ -15,6 +15,8 @@ Each issue is formatted as `- [ ] [GX-<number>]`. When resolved it becomes -` [x
 
 ## BugFixes (340–399)
 
+- [ ] [GX-340] Audit this: I think I saw a few times when `gix cd` command was telling me that the branch was untract when in fact git co <branch> worked perfectly fine. I maybe off, so it's a maybe bug.
+
 ## Maintenance (422–499)
 
 ## Planning 
