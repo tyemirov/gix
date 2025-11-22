@@ -40,9 +40,18 @@ func (executor *stubGitExecutor) ExecuteGitHubCLI(context.Context, execshell.Com
 }
 
 type scriptedGitExecutor struct {
-	recorded     []execshell.CommandDetails
-	remoteOutput string
-	statusOutput string
+	recorded             []execshell.CommandDetails
+	remoteOutput         string
+	statusOutput         string
+	originalStatusOutput string
+}
+
+func newScriptedGitExecutor(remoteOutput string, statusOutput string) *scriptedGitExecutor {
+	return &scriptedGitExecutor{
+		remoteOutput:         remoteOutput,
+		statusOutput:         statusOutput,
+		originalStatusOutput: statusOutput,
+	}
 }
 
 func (executor *scriptedGitExecutor) ExecuteGit(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
@@ -55,6 +64,16 @@ func (executor *scriptedGitExecutor) ExecuteGit(_ context.Context, details execs
 		return execshell.ExecutionResult{StandardOutput: executor.remoteOutput}, nil
 	case "status":
 		return execshell.ExecutionResult{StandardOutput: executor.statusOutput}, nil
+	case "stash":
+		if len(details.Arguments) > 1 {
+			switch details.Arguments[1] {
+			case "push":
+				executor.statusOutput = ""
+			case "pop":
+				executor.statusOutput = executor.originalStatusOutput
+			}
+		}
+		return execshell.ExecutionResult{}, nil
 	default:
 		return execshell.ExecutionResult{}, nil
 	}
@@ -126,6 +145,32 @@ func TestChangeCreatesBranchFromRemoteWhenAvailable(t *testing.T) {
 	require.Len(t, executor.recorded, 6)
 	require.Equal(t, []string{"rev-parse", "--verify", "origin/feature"}, executor.recorded[3].Arguments)
 	require.Equal(t, []string{"switch", "-c", "feature", "--track", "origin/feature"}, executor.recorded[4].Arguments)
+}
+
+func TestChangeCreatesBranchFromSingleRemoteFallbackWhenDefaultMissing(t *testing.T) {
+	executor := &stubGitExecutor{responses: []stubGitResponse{
+		{result: execshell.ExecutionResult{StandardOutput: "upstream\n"}},
+		{},
+		{err: commandFailedError("error: pathspec 'feature' did not match any file(s) known to git")},
+		{},
+		{},
+		{},
+	}}
+	service, err := NewService(ServiceDependencies{GitExecutor: executor})
+	require.NoError(t, err)
+
+	result, changeError := service.Change(context.Background(), Options{
+		RepositoryPath:  "/tmp/repo",
+		BranchName:      "feature",
+		CreateIfMissing: true,
+	})
+	require.NoError(t, changeError)
+	require.True(t, result.BranchCreated)
+	require.Empty(t, result.Warnings)
+
+	require.Len(t, executor.recorded, 6)
+	require.Equal(t, []string{"rev-parse", "--verify", "upstream/feature"}, executor.recorded[3].Arguments)
+	require.Equal(t, []string{"switch", "-c", "feature", "--track", "upstream/feature"}, executor.recorded[4].Arguments)
 }
 
 func TestChangeValidatesInputs(t *testing.T) {
@@ -203,7 +248,7 @@ func TestChangeWarnsWhenPullFails(t *testing.T) {
 	require.Equal(t, []string{"pull", "--rebase"}, executor.recorded[3].Arguments)
 }
 
-func TestChangeFetchesAllWhenDefaultRemoteMissing(t *testing.T) {
+func TestChangeUsesSingleRemoteWhenDefaultMissing(t *testing.T) {
 	executor := &stubGitExecutor{responses: []stubGitResponse{
 		{result: execshell.ExecutionResult{StandardOutput: "upstream\n"}},
 	}}
@@ -217,7 +262,7 @@ func TestChangeFetchesAllWhenDefaultRemoteMissing(t *testing.T) {
 
 	require.Len(t, executor.recorded, 4)
 	require.Equal(t, []string{"remote"}, executor.recorded[0].Arguments)
-	require.Equal(t, []string{"fetch", "--all", "--prune"}, executor.recorded[1].Arguments)
+	require.Equal(t, []string{"fetch", "--prune", "upstream"}, executor.recorded[1].Arguments)
 }
 
 func TestChangeFetchesAllWhenExplicitRemoteMissing(t *testing.T) {
