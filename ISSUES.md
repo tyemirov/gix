@@ -11,7 +11,7 @@ Each issue is formatted as `- [ ] [GX-<number>]`. When resolved it becomes -` [x
 
 ## Improvements (251–299)
 
-- [ ] [GX-251] `gix cd` doesnt work with --stash flag the way I would like it to: I want it to stash the modified tracked files, switch to the destination branch and restore the files.
+- [x] [GX-251] `gix cd` doesnt work with --stash flag the way I would like it to: I want it to stash the modified tracked files, switch to the destination branch and restore the files. (Implemented tracked-file stashing around branch change plus restoration, with new regression coverage.)
 
 ## BugFixes (340–399)
 

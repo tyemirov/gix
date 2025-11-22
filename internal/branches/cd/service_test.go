@@ -40,9 +40,18 @@ func (executor *stubGitExecutor) ExecuteGitHubCLI(context.Context, execshell.Com
 }
 
 type scriptedGitExecutor struct {
-	recorded     []execshell.CommandDetails
-	remoteOutput string
-	statusOutput string
+	recorded             []execshell.CommandDetails
+	remoteOutput         string
+	statusOutput         string
+	originalStatusOutput string
+}
+
+func newScriptedGitExecutor(remoteOutput string, statusOutput string) *scriptedGitExecutor {
+	return &scriptedGitExecutor{
+		remoteOutput:         remoteOutput,
+		statusOutput:         statusOutput,
+		originalStatusOutput: statusOutput,
+	}
 }
 
 func (executor *scriptedGitExecutor) ExecuteGit(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
@@ -55,6 +64,16 @@ func (executor *scriptedGitExecutor) ExecuteGit(_ context.Context, details execs
 		return execshell.ExecutionResult{StandardOutput: executor.remoteOutput}, nil
 	case "status":
 		return execshell.ExecutionResult{StandardOutput: executor.statusOutput}, nil
+	case "stash":
+		if len(details.Arguments) > 1 {
+			switch details.Arguments[1] {
+			case "push":
+				executor.statusOutput = ""
+			case "pop":
+				executor.statusOutput = executor.originalStatusOutput
+			}
+		}
+		return execshell.ExecutionResult{}, nil
 	default:
 		return execshell.ExecutionResult{}, nil
 	}
