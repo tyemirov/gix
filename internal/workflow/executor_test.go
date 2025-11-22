@@ -391,6 +391,20 @@ func TestExecutorSuppressesWorkflowLogsWhenDisabled(t *testing.T) {
 	require.Empty(t, output.String())
 }
 
+func TestFormatOperationFailureSkipsTasksApplyPrefix(t *testing.T) {
+	t.Helper()
+	err := errors.New("git command exited with code 1 (switch master)")
+	message := formatOperationFailure(nil, err, commandTasksApplyKey)
+	require.Equal(t, "git command exited with code 1 (switch master)", message)
+}
+
+func TestFormatOperationFailureIncludesOperationName(t *testing.T) {
+	t.Helper()
+	err := errors.New("unable to rename folder")
+	message := formatOperationFailure(nil, err, "repo.folder.rename")
+	require.Equal(t, "repo.folder.rename: unable to rename folder", message)
+}
+
 type executorStubRepositoryDiscoverer struct {
 	repositories []string
 }

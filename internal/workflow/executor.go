@@ -467,6 +467,10 @@ func formatOperationFailure(environment *Environment, err error, operationName s
 		return message
 	}
 
+	if strings.EqualFold(strings.TrimSpace(operationName), commandTasksApplyKey) {
+		return message
+	}
+
 	lowerMessage := strings.ToLower(message)
 	lowerOperation := strings.ToLower(operationName)
 	if strings.HasPrefix(lowerMessage, lowerOperation) {
