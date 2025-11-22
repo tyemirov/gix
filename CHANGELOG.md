@@ -1,5 +1,25 @@
 # Changelog
 
+## [v0.2.10]
+
+### Features ✨
+- Redesign `gix cd` output to remove noisy "tasks apply" prefixes and add per-repository sections with a final summary when processing multiple repositories.
+
+### Improvements ⚙️
+- Implement summary reporting for workflow-backed commands showing aggregated results when more than one repository is involved.
+- Enhanced task runner to print execution summaries including event counts, warnings, errors, and durations.
+- Deduplicate repository roots for accurate summary computations.
+
+### Bug Fixes 🐛
+- Suppress "tasks apply" operation prefix in error messages for clearer failure outputs.
+
+### Testing 🧪
+- Added tests validating summary line formatting and multiple-repository summary output.
+- Coverage improvements for operation failure message formatting and task runner summary executor.
+
+### Docs 📚
+- Updated issue tracker with the new enhancement request and implementation notes for `gix cd` output redesign.
+
 ## [v0.2.9]
 
 ### Features ✨
