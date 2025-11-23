@@ -54,6 +54,11 @@ func (dispatcher *promptDispatcher) Confirm(prompt string) (shared.ConfirmationR
 	}
 	dispatcher.mutex.Lock()
 	defer dispatcher.mutex.Unlock()
+
+	if dispatcher.promptState != nil && dispatcher.promptState.IsAssumeYesEnabled() {
+		return shared.ConfirmationResult{Confirmed: true}, nil
+	}
+
 	result, confirmError := dispatcher.basePrompter.Confirm(prompt)
 	if confirmError != nil {
 		return shared.ConfirmationResult{}, confirmError
