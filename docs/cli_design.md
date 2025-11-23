@@ -225,7 +225,7 @@ Callers can inspect `OperationError.Code()` to branch on behaviour, while CLI la
 ### 8.4 Prompting and structured output
 Executors share two cross-cutting utilities from `internal/repos/shared`:
 
-- `ConfirmationPolicy` expresses whether to prompt (`ConfirmationPrompt`) or auto-accept (`ConfirmationAssumeYes`). Workflow edges enable `assume_yes` by flipping this policy; CLI surfaces map `--yes` to the same behaviour.
+- `ConfirmationPolicy` expresses whether to prompt (`ConfirmationPrompt`) or auto-accept (`ConfirmationAssumeYes`). Workflow edges enable `assume_yes` by flipping this policy; CLI surfaces map `--yes` to the same behaviour, and selecting `a`/`all` at one prompt upgrades the shared policy for the remainder of the run.
 - `Reporter` is a tiny interface that writes plan, skip, and success banners (`PLAN-CONVERT`, `UPDATE-REMOTE-DONE`, `CONVERT-SKIP`, etc.) to an `io.Writer`. Both CLI commands and workflow runners pass a writer backed by `cmd.OutOrStdout()` so tests can assert against deterministic strings.
 
-Prompts always expose the same template (`Convert 'origin' in '<path>' (https → ssh)? [a/N/y] `) and record “apply to all” selections in the shared `ConfirmationResult`. Declines print a `*-SKIP` banner; approvals continue with the executor flow.
+Prompts always expose the same template (`Convert 'origin' in '<path>' (https → ssh)? [a/N/y] `), record “apply to all” selections in the shared `ConfirmationResult`, and propagate that choice into the shared confirmation policy so subsequent prompts auto-accept. Declines print a `*-SKIP` banner; approvals continue with the executor flow.

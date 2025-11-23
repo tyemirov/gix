@@ -27,6 +27,7 @@
 
 ### Features ✨
 - Redesign `gix cd` output to remove noisy "tasks apply" prefixes and add per-repository sections with a final summary when processing multiple repositories.
+- Extend confirmation prompts so selecting `a`/`all` once upgrades the remainder of the run to auto-accept behaviour, matching the effect of passing `--yes` without requiring a new invocation.
 
 ### Improvements ⚙️
 - Implement summary reporting for workflow-backed commands showing aggregated results when more than one repository is involved.
