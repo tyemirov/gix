@@ -1,5 +1,28 @@
 # Changelog
 
+## [v0.2.11]
+
+### Features ✨
+- Added integration tests covering the `gix cd` refresh default behavior.
+- Introduced a new site and styles to showcase gix capabilities and workflows.
+
+### Improvements ⚙️
+- Hid the explicit `--refresh` flag in `gix cd`, enabling refresh only internally when `--stash` or `--commit` recovery is requested.
+- Simplified CLI usage and updated documentation/examples to match the new `gix cd` behavior.
+- Enhanced multi-repository workflows with refined summary reporting and deduplication of repository roots.
+
+### Bug Fixes 🐛
+- Fixed the default behavior for branch change refresh in `gix cd`.
+- Suppressed noisy "tasks apply" prefixes from error messages to improve clarity.
+
+### Testing 🧪
+- Added comprehensive integration tests for `gix cd --refresh` flow with stash and commit recovery.
+
+### Docs 📚
+- Created a full new docs site with introduction, feature list, use cases, workflows, architecture, and recipes.
+- Updated README and configuration defaults to reflect removal of the explicit `--refresh` flag on `gix cd`.
+- Fixed formatting in ISSUES.md for improved issue checklist readability.
+
 ## [v0.2.10]
 
 ### Features ✨
