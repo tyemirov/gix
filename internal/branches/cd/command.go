@@ -80,7 +80,7 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 
 	explicitBranch, configuredFallbackBranch, remainingArgs := builder.resolveBranchName(command, arguments, configuration)
 
-	refreshRequested := false
+	refreshRequested := configuration.RequireClean
 	stashRequested := configuration.StashChanges
 	commitRequested := configuration.CommitChanges
 	requireClean := configuration.RequireClean
@@ -100,9 +100,7 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 	if stashRequested && commitRequested {
 		return errors.New(conflictingRecoveryFlagsMessageConstant)
 	}
-	if stashRequested || commitRequested {
-		refreshRequested = true
-	}
+	refreshRequested = refreshRequested || stashRequested || commitRequested
 
 	remoteName := strings.TrimSpace(configuration.RemoteName)
 	if executionFlagsAvailable && executionFlags.RemoteSet {
