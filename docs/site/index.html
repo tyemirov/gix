@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>gix — Fleet-Oriented Git Automation</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="hero">
+    <div class="container">
+      <p class="eyebrow">Git + GitHub at Scale</p>
+      <h1>gix keeps large fleets of repositories healthy.</h1>
+      <p class="lede">
+        Automate folder normalization, remote alignment, branch refresh, and workflow-driven
+        maintenance with one CLI — purpose-built for teams juggling hundreds of repos.
+      </p>
+      <div class="cta-group">
+        <a class="cta primary" href="https://github.com/tyemirov/gix">Get gix on GitHub</a>
+        <a class="cta secondary" href="#workflows">See workflows</a>
+      </div>
+    </div>
+  </header>
+
+  <section class="section" id="features">
+    <div class="container">
+      <h2>Why gix?</h2>
+      <div class="grid">
+        <article class="card">
+          <h3>Fleet Awareness</h3>
+          <p>Discover repositories under one or more roots, skip nested duplicates, and
+            run the same command everywhere without shell scripts.</p>
+        </article>
+        <article class="card">
+          <h3>Confident Automation</h3>
+          <p>Domain-specific safeguards, “require clean” checks, interactive prompts, and
+            a structured reporter ensure every operation is auditable.</p>
+        </article>
+        <article class="card">
+          <h3>Workflows, Not Bash</h3>
+          <p>Describe multi-step plans (folder rename, remote update, git operations, PR creation)
+            declaratively with YAML or run the built-in presets.</p>
+        </article>
+        <article class="card">
+          <h3>Multi-Repo Git Hygiene</h3>
+          <p>Fix remotes, convert protocols, rename directories to canonical names, purge stale files,
+            and refresh branches through one CLI.</p>
+        </article>
+        <article class="card">
+          <h3>LLM Helpers</h3>
+          <p>Optional integrations assist with commit messages or changelog summaries while keeping
+            human approvals in the loop.</p>
+        </article>
+        <article class="card">
+          <h3>Stack-Friendly</h3>
+          <p>Every command runs through the same workflow engine, so CLI, automation, and CI all produce
+            consistent logs and summaries.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section alt" id="usecases">
+    <div class="container">
+      <h2>Use cases we see every week</h2>
+      <div class="usecase-grid">
+        <article class="card">
+          <h3>Platform Teams</h3>
+          <ul>
+            <li>Keep SDK repos aligned to the same branch default and remote protocol.</li>
+            <li>Roll out template updates by running workflows across every language pack.</li>
+            <li>Capture CSV audits for compliance reviews.</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h3>Security & Compliance</h3>
+          <ul>
+            <li>Ensure `.gitignore` and LICENSE files are present everywhere.</li>
+            <li>Trigger namespace rewrites after an organization rename.</li>
+            <li>Remove sensitive files from history with the `files rm` workflow.</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h3>Developer Tooling</h3>
+          <ul>
+            <li>Bootstrap new workspaces with `gix --init` and opinionated defaults.</li>
+            <li>Refresh dozens of example repos nightly to keep mergable branches.</li>
+            <li>Automate release tagging across mirrored repositories.</li>
+          </ul>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section alt" id="workflows">
+    <div class="container">
+      <h2>Everyday Workflows</h2>
+      <div class="workflow-grid">
+        <article>
+          <h3>Normalize Folders</h3>
+          <p><code>gix folder rename --roots ~/Development --owner --yes</code></p>
+          <p>Rename directories to match <code>owner/repo</code> naming so your filesystem mirrors GitHub.</p>
+        </article>
+        <article>
+          <h3>Fix Remotes</h3>
+          <p><code>gix remote update-to-canonical --owner tyemirov --roots ~/Projects</code></p>
+          <p>Ensure every repository’s <code>origin</code> points at the canonical GitHub slug.</p>
+        </article>
+        <article>
+          <h3>Convert Protocols</h3>
+          <p><code>gix remote update-protocol --from https --to git --roots ~/Work --yes</code></p>
+          <p>Switch entire trees over to SSH (or vice versa) without touching each repo manually.</p>
+        </article>
+        <article>
+          <h3>Refresh Branches</h3>
+          <p><code>gix cd master --stash --roots ~/Fleet</code></p>
+          <p>Stash tracked changes, jump to <code>master</code>, pull updates, and restore your work.</p>
+        </article>
+        <article>
+          <h3>Run a Workflow</h3>
+          <p><code>gix workflow configs/maintenance.yaml --roots ~/Fleet --yes</code></p>
+          <p>Chain rename, remote updates, git operations, and PR creation with one declarative file.</p>
+        </article>
+        <article>
+          <h3>Audit Everything</h3>
+          <p><code>gix audit --roots ~/Fleet --all &gt; audit.csv</code></p>
+          <p>Capture CSV output for branch defaults, owners, remote protocols, and more.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="architecture">
+    <div class="container">
+      <h2>Architecture at a Glance</h2>
+      <ul class="timeline">
+        <li>
+          <h3>Cobra + Viper CLI</h3>
+          <p>All commands live under <code>cmd/cli</code> with shared flags, configuration, and logging.</p>
+        </li>
+        <li>
+          <h3>Workflow Engine</h3>
+          <p>The internal workflow package plans, executes, and reports each operation, sharing discovery, prompts,
+            and logging across commands.</p>
+        </li>
+        <li>
+          <h3>Task Runner + Reporter</h3>
+          <p><code>pkg/taskrunner</code> wires dependencies and now emits compact summaries when multiple repositories run.</p>
+        </li>
+        <li>
+          <h3>Domain Packages</h3>
+          <p><code>internal/repos</code>, <code>internal/branches</code>, and friends isolate Git/GitHub logic so workflows stay focused.</p>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="section recipes" id="recipes">
+    <div class="container">
+      <h2>Recipes & Playbooks</h2>
+      <div class="recipe-grid">
+        <article class="recipe">
+          <header>
+            <h3>Bulk switch and refresh branches</h3>
+            <span class="pill">Branch Fleet</span>
+          </header>
+          <ol>
+            <li>Confirm the worktrees are clean or use <code>--stash</code> to store tracked changes.</li>
+            <li>Run <code>gix cd master --stash --roots ~/Fleet</code>.</li>
+            <li>Review the summary to see which repositories switched, skipped, or warned.</li>
+          </ol>
+          <pre><code>gix cd master --stash --roots ~/Fleet</code></pre>
+        </article>
+        <article class="recipe">
+          <header>
+            <h3>Convert all remotes to SSH</h3>
+            <span class="pill">Remote Hygiene</span>
+          </header>
+          <ol>
+            <li>Inspect current protocols with <code>gix audit --roots ~/Repos</code>.</li>
+            <li>Execute <code>gix remote update-protocol --from https --to git --roots ~/Repos --yes</code>.</li>
+            <li>Use the summary to confirm warnings (e.g., missing remotes).</li>
+          </ol>
+          <pre><code>gix remote update-protocol \
+  --from https \
+  --to git \
+  --roots ~/Repos --yes</code></pre>
+        </article>
+        <article class="recipe">
+          <header>
+            <h3>Roll out a repo workflow file</h3>
+            <span class="pill">Workflow Rollout</span>
+          </header>
+          <ol>
+            <li>Author a workflow (example below) describing the desired steps.</li>
+            <li>Run <code>gix workflow ./configs/maintenance.yaml --roots ~/Fleet --yes</code>.</li>
+            <li>Inspect per-repo logs plus the summary line (warnings/errors).</li>
+          </ol>
+          <pre><code>workflow:
+  - step:
+      name: normalize
+      command: ["folder", "rename"]
+      with:
+        include_owner: true
+  - step:
+      name: remotes
+      after: ["normalize"]
+      command: ["remote", "update-to-canonical"]</code></pre>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section alt" id="learning">
+    <div class="container">
+      <h2>Learning Hub</h2>
+      <div class="learning-grid">
+        <article>
+          <h3>Anatomy of a Workflow</h3>
+          <p>Commands, steps, safeguards, templating, and summaries all flow through <code>internal/workflow</code>.
+             The engine now plugs into <code>pkg/taskrunner</code>, which prints a concise summary when multiple repositories run.</p>
+        </article>
+        <article>
+          <h3>Recipes Library</h3>
+          <ul>
+            <li>Namespace rewrite &rarr; <code>gix workflow namespace --var namespace_old=... --var namespace_new=...</code></li>
+            <li>License seeding &rarr; <code>gix workflow license --var template=apache</code></li>
+            <li>GHCR cleanup &rarr; <code>gix packages delete --roots ~/Containers --yes</code></li>
+          </ul>
+        </article>
+        <article>
+          <h3>Dive Deeper</h3>
+          <ul>
+            <li><a href="../README.md">User README</a></li>
+            <li><a href="../ARCHITECTURE.md">Architecture reference</a></li>
+            <li><a href="../AGENTS.md">Process & policy</a></li>
+          </ul>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section alt" id="cta">
+    <div class="container">
+      <h2>Ready to automate your fleet?</h2>
+      <p>Install gix with Go 1.25+, point it at your repositories, and let it keep your fleet in shape.</p>
+      <div class="cta-group">
+        <a class="cta primary" href="https://github.com/tyemirov/gix/releases/latest">Download Release</a>
+        <a class="cta secondary" href="https://github.com/tyemirov/gix/blob/master/README.md">Read the README</a>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="container">
+      <p>© <span id="year"></span> gix · Built for large-scale Git/GitHub maintenance.</p>
+    </div>
+  </footer>
+
+  <script>
+    document.getElementById('year').textContent = new Date().getFullYear();
+  </script>
+</body>
+</html>

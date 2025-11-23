@@ -89,7 +89,7 @@ func TestCommandExecutesAcrossRoots(t *testing.T) {
 	require.Equal(t, "origin", action.Options[taskOptionBranchRemote])
 }
 
-func TestCommandRefreshFlagsPropagateToAction(t *testing.T) {
+func TestCommandStashFlagEnablesRefreshAndPropagatesOptions(t *testing.T) {
 	temporaryRoot := t.TempDir()
 	executor := &stubGitExecutor{}
 	runner := &recordingTaskRunner{}
@@ -108,7 +108,6 @@ func TestCommandRefreshFlagsPropagateToAction(t *testing.T) {
 	require.NoError(t, err)
 	flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Enabled: true})
 
-	require.NoError(t, command.Flags().Set(refreshFlagNameConstant, "true"))
 	require.NoError(t, command.Flags().Set(stashFlagNameConstant, "true"))
 	require.NoError(t, command.Flags().Set(requireCleanFlagNameConstant, "false"))
 

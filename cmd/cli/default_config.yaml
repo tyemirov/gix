@@ -60,7 +60,6 @@ operations:
         - .
       remote: origin
       branch: master
-      refresh: true
       require_clean: true
   - command: ["message", "commit"]
     with:

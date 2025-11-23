@@ -9,6 +9,7 @@
 - Implement summary reporting for workflow-backed commands showing aggregated results when more than one repository is involved.
 - Enhanced task runner to print execution summaries including event counts, warnings, errors, and durations.
 - Deduplicate repository roots for accurate summary computations.
+- Remove explicit `gix cd --refresh` flag from the CLI, keeping the stricter refresh stage internal and enabling it only when `--stash` or `--commit` recovery is requested, and update documentation/examples to reflect the simplified surface.
 
 ### Bug Fixes 🐛
 - Suppress "tasks apply" operation prefix in error messages for clearer failure outputs.
