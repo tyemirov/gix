@@ -14,7 +14,6 @@ type CommandConfiguration struct {
 	DefaultBranch   string   `mapstructure:"branch"`
 	RemoteName      string   `mapstructure:"remote"`
 	CreateIfMissing bool     `mapstructure:"create_if_missing"`
-	RefreshEnabled  bool     `mapstructure:"refresh"`
 	RequireClean    bool     `mapstructure:"require_clean"`
 	StashChanges    bool     `mapstructure:"stash"`
 	CommitChanges   bool     `mapstructure:"commit"`

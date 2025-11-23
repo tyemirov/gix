@@ -26,8 +26,6 @@ const (
 	changeCreatedSuffixConstant             = " (created)"
 	legacyAliasNameConstant                 = "branch-cd"
 	legacyAliasDeprecationMessage           = "DEPRECATED: use `gix cd` instead of `gix branch-cd`."
-	refreshFlagNameConstant                 = "refresh"
-	refreshFlagDescriptionConstant          = "Fetch and pull the branch after switching"
 	stashFlagNameConstant                   = "stash"
 	stashFlagDescriptionConstant            = "Stash local changes before refreshing"
 	commitFlagNameConstant                  = "commit"
@@ -64,7 +62,6 @@ func (builder *CommandBuilder) Build() (*cobra.Command, error) {
 		Example: commandExampleTemplateConstant,
 	}
 
-	flagutils.AddToggleFlag(command.Flags(), nil, refreshFlagNameConstant, "", false, refreshFlagDescriptionConstant)
 	flagutils.AddToggleFlag(command.Flags(), nil, stashFlagNameConstant, "", false, stashFlagDescriptionConstant)
 	flagutils.AddToggleFlag(command.Flags(), nil, commitFlagNameConstant, "", false, commitFlagDescriptionConstant)
 	flagutils.AddToggleFlag(command.Flags(), nil, requireCleanFlagNameConstant, "", true, requireCleanFlagDescriptionConstant)
@@ -83,15 +80,12 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 
 	explicitBranch, configuredFallbackBranch, remainingArgs := builder.resolveBranchName(command, arguments, configuration)
 
-	refreshRequested := configuration.RefreshEnabled
+	refreshRequested := configuration.RequireClean
 	stashRequested := configuration.StashChanges
 	commitRequested := configuration.CommitChanges
 	requireClean := configuration.RequireClean
 
 	if command != nil {
-		if flagValue, err := command.Flags().GetBool(refreshFlagNameConstant); err == nil && command.Flags().Changed(refreshFlagNameConstant) {
-			refreshRequested = flagValue
-		}
 		if flagValue, err := command.Flags().GetBool(stashFlagNameConstant); err == nil && command.Flags().Changed(stashFlagNameConstant) {
 			stashRequested = flagValue
 		}
@@ -106,9 +100,7 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 	if stashRequested && commitRequested {
 		return errors.New(conflictingRecoveryFlagsMessageConstant)
 	}
-	if stashRequested || commitRequested {
-		refreshRequested = true
-	}
+	refreshRequested = refreshRequested || stashRequested || commitRequested
 
 	remoteName := strings.TrimSpace(configuration.RemoteName)
 	if executionFlagsAvailable && executionFlags.RemoteSet {

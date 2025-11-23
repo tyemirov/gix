@@ -508,8 +508,8 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
  - Drafts Conventional Commit subjects and optional bullets using the configured LLM.
 - `gix default <target-branch> [--roots <dir>...] [-y]`
  - Promotes the default branch across repositories.
-- `gix cd [branch] [--remote <name>] [--refresh] [--stash | --commit] [--require-clean] [--roots <dir>...]` (alias `switch`)
- - Switches repositories to the selected branch when provided, or the repository default when omitted. Creates the branch if missing, rebases onto the remote, and, when `--refresh` is enabled, fetches/pulls with optional stash/commit recovery.
+- `gix cd [branch] [--remote <name>] [--stash | --commit] [--require-clean] [--roots <dir>...]` (alias `switch`)
+ - Switches repositories to the selected branch when provided, or the repository default when omitted. Creates the branch if missing, rebases onto the remote, and, when `--stash` or `--commit` are enabled, performs an additional refresh cycle that fetches/pulls with stash/commit-based recovery.
 ## Configuration essentials
 
 - `gix --init LOCAL` writes an embeddable starter `config.yaml` to the current directory; `gix --init user` places it under `$XDG_CONFIG_HOME/gix` or `$HOME/.gix`.
