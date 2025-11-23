@@ -1,5 +1,24 @@
 # Changelog
 
+## [v0.3.0-rc1]
+
+### Features ✨
+- Extend confirmation prompts to include an 'accept all' option that upgrades subsequent prompts to auto-accept, mimicking the `--yes` flag behavior without restarting the command.
+
+### Improvements ⚙️
+- Update documentation and CLI to reflect the new confirmation behavior supporting the 'accept all' feature.
+- Refactor prompt handling to support automatic approval after selecting the 'accept all' option.
+- Enhance summary reporting for multi-repository workflow commands.
+
+### Bug Fixes 🐛
+- _No changes._
+
+### Testing 🧪
+- Add tests for prompt behavior to verify 'accept all' selection upgrades the prompt session to auto-accept.
+
+### Docs 📚
+- Update CLI design document and README to describe the new confirmation prompt 'accept all' option and its effect on workflow behavior.
+
 ## [v0.2.11]
 
 ### Features ✨
