@@ -15,6 +15,28 @@ Each issue is formatted as `- [ ] [GX-<number>]`. When resolved it becomes `- [x
 - [ ] [GX-252] `gix cd` output is noisy (“tasks apply …”) and lacks summaries when run against multiple roots. Redesign the reporter so workflow-backed commands keep per-repo sections, drop the “tasks apply” prefixes, and print a final summary only when more than one repository is processed.
 - [x] [GX-253] Hide explicit `--refresh` flag on `gix cd`, keeping refresh behaviour wired internally for `--stash` and `--commit` flows only (removed the flag from CLI/config/docs, relying on stash/commit to opt into the stricter refresh stage).
 - [ ] [GX-254] Add an `A` option to confirmation prompts that, when selected in a non-`--yes` run, treats all subsequent confirmation questions in the session as accepted (equivalent to having passed `--yes`), so operators can promote a single “accept all” decision without restarting the command.
+- [ ] [GX-255] In cases when There is no tracking information for the current branch, create and associate the branch so I wouldnt need to do it manually
+
+15:24:28 tyemirov@Vadyms-MacBook-Pro:~/Development/tyemirov/Research/ISSUES.md - [bugfix/IM-310-log-handler] $ gix cd bugfix/IM-312-secure-join
+-- tyemirov/ISSUES.md (/Users/tyemirov/Development/tyemirov/Research/ISSUES.md) --
+  issues:
+    - ⚠ refresh skipped (no tracking remote)
+    - ⚠ PULL-SKIP: There is no tracking information for the current branch.
+  • branch:
+    - bugfix/IM-312-secure-join
+15:25:52 tyemirov@Vadyms-MacBook-Pro:~/Development/tyemirov/Research/ISSUES.md - [bugfix/IM-312-secure-join] $ git pull
+There is no tracking information for the current branch.
+Please specify which branch you want to merge with.
+See git-pull(1) for details.
+
+    git pull <remote> <branch>
+
+If you wish to set tracking information for this branch you can do so with:
+
+    git branch --set-upstream-to=origin/<branch> bugfix/IM-312-secure-join
+
+15:26:03 tyemirov@Vadyms-MacBook-Pro:~/Development/tyemirov/Research/ISSUES.md - [bugfix/IM-312-secure-join] $ git branch --set-upstream-to=origin/bugfix/IM-312-secure-join bugfix/IM-312-secure-join
+branch 'bugfix/IM-312-secure-join' set up to track 'origin/bugfix/IM-312-secure-join' by rebasing.
 
 ## BugFixes (340–399)
 
