@@ -1,5 +1,32 @@
 # Changelog
 
+## [v0.3.0-rc3]
+
+### Features ✨
+- Add session apply-all prompter to enable upgrading confirmation policy during command runs.
+
+### Improvements ⚙️
+- Refactor confirmation prompts to support `[a/N/y]` template with lowercase apply-all indicator.
+- Rename prompt state handling to session state for better semantic clarity.
+- Update documentation and CLI design notes to reflect the new confirmation prompt behavior.
+- Enhance the prompt components to auto-accept subsequent confirmations after apply-all selection.
+- Lowercase the apply-all indicator in confirmation prompts for consistency.
+- Auto-configure branch tracking when missing, improving `gix cd` usability.
+- Improve confirmation prompts to maintain uppercase default decline (`N`) behavior.
+
+### Bug Fixes 🐛
+- Fix prompt template in branch deletion confirmation to include apply-all `[a/N/y]` option.
+- Correct renamed packages and internal references related to prompt state and session state.
+
+### Testing 🧪
+- Add tests for session prompter covering applying 'apply-all' uppercase selection.
+- Update tests for renamed prompt session prompter and session state usage.
+
+### Docs 📚
+- Update `README.md` to clarify new confirmation prompt behavior including apply-all option.
+- Refine CLI design documentation for confirmation prompt letter case semantics and apply-all feature.
+- Adjust issue tracker documentation to mark apply-all issue as resolved with relevant implementation details.
+
 ## [v0.3.0-rc2]
 
 ### Features ✨
