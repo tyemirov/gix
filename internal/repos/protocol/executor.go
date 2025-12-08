@@ -13,7 +13,7 @@ import (
 const (
 	ownerRepoErrorMessage = "cannot derive owner/repo for protocol conversion in %s"
 	targetErrorMessage    = "cannot build target URL for protocol '%s' in %s"
-	promptTemplate        = "Convert 'origin' in '%s' (%s → %s)? [a/N/y] "
+	promptTemplate        = "Convert 'origin' in '%s' (%s → %s)? [A/N/y] "
 	failureMessage        = "failed to set origin to %s in %s"
 	declinedReason        = "user declined"
 )

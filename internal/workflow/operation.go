@@ -12,6 +12,7 @@ import (
 	"github.com/tyemirov/gix/internal/audit"
 	"github.com/tyemirov/gix/internal/githubcli"
 	"github.com/tyemirov/gix/internal/gitrepo"
+	"github.com/tyemirov/gix/internal/repos/prompt"
 	"github.com/tyemirov/gix/internal/repos/shared"
 )
 
@@ -36,7 +37,7 @@ type Environment struct {
 	GitHubClient      *githubcli.Client
 	FileSystem        shared.FileSystem
 	Prompter          shared.ConfirmationPrompter
-	PromptState       *PromptState
+	PromptState       *prompt.SessionState
 	Output            io.Writer
 	Errors            io.Writer
 	Reporter          shared.SummaryReporter

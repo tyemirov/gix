@@ -522,7 +522,7 @@ func TestExecutorPromptsAdvertiseApplyAll(testInstance *testing.T) {
 	})
 	executionError := renamer.Execute(context.Background(), options)
 	require.NoError(testInstance, executionError)
-	require.Equal(testInstance, []string{fmt.Sprintf("Rename '%s' → '%s'? [a/N/y] ", renameTestProjectFolderPath, renameTestTargetFolderPath)}, commandPrompter.recordedPrompts)
+	require.Equal(testInstance, []string{fmt.Sprintf("Rename '%s' → '%s'? [A/N/y] ", renameTestProjectFolderPath, renameTestTargetFolderPath)}, commandPrompter.recordedPrompts)
 }
 
 func parseStructuredEvents(output string) []map[string]string {

@@ -23,7 +23,7 @@ const (
 	namespacePushOptionKey          = "push"
 	namespaceRemoteOptionKey        = "remote"
 	namespaceSafeguardsOptionKey    = "safeguards"
-	namespacePromptTemplate         = "Rewrite namespace %s -> %s in %s? [a/N/y] "
+	namespacePromptTemplate         = "Rewrite namespace %s -> %s in %s? [A/N/y] "
 )
 
 func handleNamespaceRewriteAction(ctx context.Context, environment *Environment, repository *RepositoryState, parameters map[string]any) error {

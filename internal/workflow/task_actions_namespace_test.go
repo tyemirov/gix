@@ -16,6 +16,7 @@ import (
 	"github.com/tyemirov/gix/internal/gitrepo"
 	repoerrors "github.com/tyemirov/gix/internal/repos/errors"
 	"github.com/tyemirov/gix/internal/repos/filesystem"
+	"github.com/tyemirov/gix/internal/repos/prompt"
 	"github.com/tyemirov/gix/internal/repos/shared"
 )
 
@@ -53,7 +54,7 @@ func main() { dep.Do() }
 		RepositoryManager: manager,
 		Output:            output,
 		Reporter:          shared.NewStructuredReporter(output, output, shared.WithRepositoryHeaders(false)),
-		PromptState:       NewPromptState(true),
+		PromptState:       prompt.NewSessionState(true),
 		Variables:         NewVariableStore(),
 	}
 
@@ -146,7 +147,7 @@ func TestHandleNamespaceRewriteActionPushFailure(t *testing.T) {
 		Output:            output,
 		Errors:            errorOutput,
 		Reporter:          shared.NewStructuredReporter(output, errorOutput, shared.WithRepositoryHeaders(false)),
-		PromptState:       NewPromptState(true),
+		PromptState:       prompt.NewSessionState(true),
 		Variables:         NewVariableStore(),
 	}
 
@@ -205,7 +206,7 @@ func TestHandleNamespaceRewriteActionSkipsWhenRemoteUpToDate(t *testing.T) {
 		RepositoryManager: manager,
 		Output:            output,
 		Reporter:          shared.NewStructuredReporter(output, output, shared.WithRepositoryHeaders(false)),
-		PromptState:       NewPromptState(true),
+		PromptState:       prompt.NewSessionState(true),
 		Variables:         NewVariableStore(),
 	}
 

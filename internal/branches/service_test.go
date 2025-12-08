@@ -268,7 +268,7 @@ func TestServiceCleanupScenarios(testInstance *testing.T) {
 			expectedLogMessages:   []string{deletionDeclinedLogMessageConstant},
 			unexpectedLogMessages: []string{deletingRemoteLogMessageConstant, deletingLocalLogMessageConstant},
 			prompter:              &stubBranchPrompter{defaultResponse: shared.ConfirmationResult{Confirmed: false}},
-			expectedPrompts:       []string{fmt.Sprintf("Delete pull request branch '%s' from remote '%s' and the local repository? [y/N] ", "feature/user-decline", testRemoteNameConstant)},
+			expectedPrompts:       []string{fmt.Sprintf("Delete pull request branch '%s' from remote '%s' and the local repository? [A/N/y] ", "feature/user-decline", testRemoteNameConstant)},
 		},
 		{
 			name:                "duplicates_are_processed_once",

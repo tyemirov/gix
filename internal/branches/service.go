@@ -53,7 +53,7 @@ const (
 	remoteNameRequiredMessageConstant        = "remote name must be provided"
 	limitPositiveRequirementMessageConstant  = "pull request limit must be greater than zero"
 	executorNotConfiguredMessageConstant     = "command executor not configured"
-	branchDeletionPromptTemplateConstant     = "Delete pull request branch '%s' from remote '%s' and the local repository? [y/N] "
+	branchDeletionPromptTemplateConstant     = "Delete pull request branch '%s' from remote '%s' and the local repository? [A/N/y] "
 )
 
 // CommandExecutor coordinates git and GitHub CLI invocations required for cleanup.

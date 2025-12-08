@@ -70,6 +70,13 @@ func TestIOConfirmationPrompterConfirm(testInstance *testing.T) {
 			expectPromptEcho: true,
 		},
 		{
+			name:             "affirmative_apply_all_uppercase",
+			reader:           strings.NewReader("A\n"),
+			writer:           &recordingWriter{},
+			expectedResult:   shared.ConfirmationResult{Confirmed: true, ApplyToAll: true},
+			expectPromptEcho: true,
+		},
+		{
 			name:          "read_error",
 			reader:        failingReader{err: errors.New("read failure")},
 			writer:        &recordingWriter{},
