@@ -40,9 +40,24 @@ branch 'bugfix/IM-312-secure-join' set up to track 'origin/bugfix/IM-312-secure-
 ```
 - [ ] [GX-256] When `gix cd` reports “untracked files present; refresh will continue”, include the untracked file names/status entries in the warning output so operators can see exactly which files are untracked without running a separate git status.
 
+- [ ] [GX-256] Ensure that we commit only the files that we have changed. When running @configs/account-rename.yaml it looks like we are committing all uncommitted files in a tree
+
 ## BugFixes (340–399)
 
 - [x] [GX-340] Audit this: I think I saw a few times when `gix cd` command was telling me that the branch was untract when in fact git co <branch> worked perfectly fine. I maybe off, so it's a maybe bug. (Fixed by letting `gix cd` fall back to the lone configured remote so branch switches track upstreams just like `git checkout`; added regression coverage.)
+
+- [ ] [GX-341] I ran the workflow [text](configs/account-rename.yaml) but I am then getting errors
+```
+  Run make lint
+Error: main.go:7:2: no required module provides package github.com/temirov/ghttp/internal/app; to add it:
+	go get github.com/temirov/ghttp/internal/app
+go vet ./...
+Error: main.go:7:2: no required module provides package github.com/temirov/ghttp/internal/app; to add it:
+	go get github.com/temirov/ghttp/internal/app
+make: *** [Makefile:22: lint] Error 1
+Error: Process completed with exit code 2.
+```
+It means the replacement were not executed
 
 ## Maintenance (422–499)
 
