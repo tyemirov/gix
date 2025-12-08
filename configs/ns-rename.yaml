@@ -1,0 +1,29 @@
+workflow:
+  - step:
+      name: switch-to-master
+      command: ["tasks", "apply"]
+      with:
+        tasks:
+          - name: Switch to master if clean
+            ensure_clean: true
+            actions:
+              - type: branch.change
+                options:
+                  branch: master
+                  create_if_missing: false
+                  remote: origin
+                  refresh: true
+
+  - step:
+      name: rewrite-namespace
+      after: ["switch-to-master"]
+      command: ["tasks", "apply"]
+      with:
+        tasks:
+          - name: Rewrite module namespace
+            actions:
+              - type: repo.namespace.rewrite
+                options:
+                  old: github.com/temirov
+                  new: github.com/tyemirov
+                  push: true
