@@ -396,7 +396,7 @@ func TestExecutorPromptsAdvertiseApplyAll(t *testing.T) {
 	require.NoError(t, executionError)
 	require.Equal(
 		t,
-		[]string{fmt.Sprintf("Convert 'origin' in '%s' (%s → %s)? [a/N/y] ", protocolTestRepositoryPath, shared.RemoteProtocolHTTPS, shared.RemoteProtocolSSH)},
+		[]string{fmt.Sprintf("Convert 'origin' in '%s' (%s → %s)? [A/N/y] ", protocolTestRepositoryPath, shared.RemoteProtocolHTTPS, shared.RemoteProtocolSSH)},
 		commandPrompter.recordedPrompts,
 	)
 	events := parseStructuredEvents(outputBuffer.String())

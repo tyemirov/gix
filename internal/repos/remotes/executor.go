@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	promptTemplate                   = "Update 'origin' in '%s' to canonical (%s → %s)? [a/N/y] "
+	promptTemplate                   = "Update 'origin' in '%s' to canonical (%s → %s)? [A/N/y] "
 	ownerRepoNotDetectedErrorMessage = "owner repository not detected"
 	unknownProtocolErrorTemplate     = "unknown protocol %s"
 	gitProtocolURLTemplate           = "git@github.com:%s.git"

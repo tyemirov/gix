@@ -1,4 +1,4 @@
-package workflow
+package prompt
 
 import (
 	"sync"
@@ -7,20 +7,20 @@ import (
 	"github.com/tyemirov/gix/internal/repos/shared"
 )
 
-// PromptState tracks the shared confirmation policy across operations.
-type PromptState struct {
+// SessionState tracks the shared confirmation policy across a command session.
+type SessionState struct {
 	assumeYes atomic.Bool
 }
 
-// NewPromptState constructs a PromptState initialized with the provided value.
-func NewPromptState(initialAssumeYes bool) *PromptState {
-	state := &PromptState{}
+// NewSessionState constructs a SessionState initialized with the provided value.
+func NewSessionState(initialAssumeYes bool) *SessionState {
+	state := &SessionState{}
 	state.assumeYes.Store(initialAssumeYes)
 	return state
 }
 
 // IsAssumeYesEnabled reports whether prompts should be bypassed.
-func (state *PromptState) IsAssumeYesEnabled() bool {
+func (state *SessionState) IsAssumeYesEnabled() bool {
 	if state == nil {
 		return false
 	}
@@ -28,27 +28,28 @@ func (state *PromptState) IsAssumeYesEnabled() bool {
 }
 
 // EnableAssumeYes permanently enables the assume-yes behavior for subsequent prompts.
-func (state *PromptState) EnableAssumeYes() {
+func (state *SessionState) EnableAssumeYes() {
 	if state == nil {
 		return
 	}
 	state.assumeYes.Store(true)
 }
 
-type promptDispatcher struct {
+type sessionPrompter struct {
 	basePrompter shared.ConfirmationPrompter
-	promptState  *PromptState
+	promptState  *SessionState
 	mutex        sync.Mutex
 }
 
-func newPromptDispatcher(base shared.ConfirmationPrompter, state *PromptState) shared.ConfirmationPrompter {
+// NewSessionPrompter wraps a base prompter so selecting Apply-to-All upgrades the shared state.
+func NewSessionPrompter(base shared.ConfirmationPrompter, state *SessionState) shared.ConfirmationPrompter {
 	if base == nil {
 		return nil
 	}
-	return &promptDispatcher{basePrompter: base, promptState: state}
+	return &sessionPrompter{basePrompter: base, promptState: state}
 }
 
-func (dispatcher *promptDispatcher) Confirm(prompt string) (shared.ConfirmationResult, error) {
+func (dispatcher *sessionPrompter) Confirm(prompt string) (shared.ConfirmationResult, error) {
 	if dispatcher.basePrompter == nil {
 		return shared.ConfirmationResult{}, nil
 	}

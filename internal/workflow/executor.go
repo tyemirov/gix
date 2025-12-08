@@ -18,6 +18,7 @@ import (
 	"github.com/tyemirov/gix/internal/githubcli"
 	"github.com/tyemirov/gix/internal/gitrepo"
 	repoerrors "github.com/tyemirov/gix/internal/repos/errors"
+	"github.com/tyemirov/gix/internal/repos/prompt"
 	"github.com/tyemirov/gix/internal/repos/shared"
 	pathutils "github.com/tyemirov/gix/internal/utils/path"
 )
@@ -241,8 +242,8 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 		})
 	}
 
-	promptState := NewPromptState(runtimeOptions.AssumeYes)
-	dispatchingPrompter := newPromptDispatcher(executor.dependencies.Prompter, promptState)
+	promptState := prompt.NewSessionState(runtimeOptions.AssumeYes)
+	dispatchingPrompter := prompt.NewSessionPrompter(executor.dependencies.Prompter, promptState)
 
 	state := &State{Roots: sanitizedRoots, Repositories: repositoryStates}
 	reporterOutput := executor.dependencies.Output

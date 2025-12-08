@@ -1,10 +1,11 @@
-package workflow
+package prompt_test
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/tyemirov/gix/internal/repos/prompt"
 	"github.com/tyemirov/gix/internal/repos/shared"
 )
 
@@ -26,12 +27,12 @@ func (prompter *stubConfirmationPrompter) Confirm(string) (shared.ConfirmationRe
 	return prompter.defaultConfirmation, nil
 }
 
-func TestPromptDispatcherSkipsPromptWhenAssumeYesEnabled(testInstance *testing.T) {
+func TestSessionPrompterSkipsPromptWhenAssumeYesEnabled(testInstance *testing.T) {
 	base := &stubConfirmationPrompter{
 		defaultConfirmation: shared.ConfirmationResult{Confirmed: true},
 	}
-	state := NewPromptState(true)
-	dispatcher := newPromptDispatcher(base, state)
+	state := prompt.NewSessionState(true)
+	dispatcher := prompt.NewSessionPrompter(base, state)
 
 	result, err := dispatcher.Confirm("Confirm action? ")
 	require.NoError(testInstance, err)
@@ -39,14 +40,14 @@ func TestPromptDispatcherSkipsPromptWhenAssumeYesEnabled(testInstance *testing.T
 	require.Equal(testInstance, 0, base.calls)
 }
 
-func TestPromptDispatcherEnablesAssumeYesOnApplyAll(testInstance *testing.T) {
+func TestSessionPrompterEnablesAssumeYesOnApplyAll(testInstance *testing.T) {
 	base := &stubConfirmationPrompter{
 		responses: []shared.ConfirmationResult{
 			{Confirmed: true, ApplyToAll: true},
 		},
 	}
-	state := NewPromptState(false)
-	dispatcher := newPromptDispatcher(base, state)
+	state := prompt.NewSessionState(false)
+	dispatcher := prompt.NewSessionPrompter(base, state)
 
 	firstResult, firstError := dispatcher.Confirm("Confirm action? ")
 	require.NoError(testInstance, firstError)
