@@ -209,6 +209,86 @@ func TestHandleBranchChangeActionRefreshesBranch(t *testing.T) {
 	require.Equal(t, "true", reporter.events[0].Details["require_clean"])
 }
 
+func TestHandleBranchChangeActionConfiguresTrackingRemoteWhenMissing(t *testing.T) {
+	executor := newScriptedGitExecutor("origin\n", "")
+	executor.configError = commandFailedErrorWithExitCode("error: key does not contain a section", 1)
+	gitManager, managerError := gitrepo.NewRepositoryManager(executor)
+	require.NoError(t, managerError)
+	reporter := &recordingReporter{}
+	buffer := &strings.Builder{}
+	environment := &workflow.Environment{
+		GitExecutor:       executor,
+		RepositoryManager: gitManager,
+		Logger:            zap.NewNop(),
+		Output:            buffer,
+		Errors:            io.Discard,
+		Reporter:          reporter,
+	}
+	repository := &workflow.RepositoryState{Path: "/tmp/project"}
+
+	parameters := map[string]any{
+		taskOptionBranchName:     "feature/foo",
+		taskOptionBranchRemote:   shared.OriginRemoteNameConstant,
+		taskOptionRefreshEnabled: true,
+		taskOptionRequireClean:   true,
+	}
+
+	require.NoError(t, handleBranchChangeAction(context.Background(), environment, repository, parameters))
+	require.Contains(t, buffer.String(), "REFRESHED: /tmp/project (feature/foo)")
+	setUpstreamCommand := []string{"branch", "--set-upstream-to=origin/feature/foo", "feature/foo"}
+	found := false
+	for _, recorded := range executor.recorded {
+		if len(recorded.Arguments) != len(setUpstreamCommand) {
+			continue
+		}
+		match := true
+		for index := range setUpstreamCommand {
+			if recorded.Arguments[index] != setUpstreamCommand[index] {
+				match = false
+				break
+			}
+		}
+		if match {
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "expected branch --set-upstream-to to be invoked")
+	require.Len(t, reporter.events, 1)
+	require.Equal(t, shared.EventCodeRepoSwitched, reporter.events[0].Code)
+}
+
+func TestHandleBranchChangeActionWarnsWhenRemoteBranchMissing(t *testing.T) {
+	executor := newScriptedGitExecutor("origin\n", "")
+	executor.configError = commandFailedErrorWithExitCode("error: key does not contain a section", 1)
+	executor.revParseError = commandFailedError("fatal: ambiguous argument 'origin/feature/foo': unknown revision or path not in the working tree")
+	gitManager, managerError := gitrepo.NewRepositoryManager(executor)
+	require.NoError(t, managerError)
+	reporter := &recordingReporter{}
+	environment := &workflow.Environment{
+		GitExecutor:       executor,
+		RepositoryManager: gitManager,
+		Logger:            zap.NewNop(),
+		Output:            io.Discard,
+		Errors:            io.Discard,
+		Reporter:          reporter,
+	}
+	repository := &workflow.RepositoryState{Path: "/tmp/project"}
+
+	parameters := map[string]any{
+		taskOptionBranchName:     "feature/foo",
+		taskOptionBranchRemote:   shared.OriginRemoteNameConstant,
+		taskOptionRefreshEnabled: true,
+		taskOptionRequireClean:   true,
+	}
+
+	require.NoError(t, handleBranchChangeAction(context.Background(), environment, repository, parameters))
+	require.Len(t, reporter.events, 2)
+	require.Equal(t, shared.EventCodeTaskSkip, reporter.events[0].Code)
+	require.Equal(t, "origin/feature/foo", reporter.events[0].Details["remote_candidate"])
+	require.Equal(t, shared.EventCodeRepoSwitched, reporter.events[1].Code)
+}
+
 func TestHandleBranchChangeActionSkipsRefreshWhenDirty(t *testing.T) {
 	executor := newScriptedGitExecutor("origin\n", " M dirty.txt\n")
 	repoManager, managerErr := gitrepo.NewRepositoryManager(executor)

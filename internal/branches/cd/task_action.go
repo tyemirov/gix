@@ -221,14 +221,30 @@ func handleBranchChangeAction(ctx context.Context, environment *workflow.Environ
 			return trackingErr
 		}
 		if !hasTracking {
-			refreshRequested = false
-			environment.ReportRepositoryEvent(
-				repository,
-				shared.EventLevelWarn,
-				shared.EventCodeTaskSkip,
-				"refresh skipped (no tracking remote)",
-				map[string]string{"branch": result.BranchName},
-			)
+			remoteNameCandidate := strings.TrimSpace(result.TrackingRemoteName)
+			if len(remoteNameCandidate) > 0 {
+				configured, configureErr := ensureTrackingRemote(ctx, environment.GitExecutor, repository.Path, remoteNameCandidate, result.BranchName)
+				if configureErr != nil {
+					return configureErr
+				}
+				if configured {
+					hasTracking = true
+				}
+			}
+			if !hasTracking {
+				refreshRequested = false
+				messageDetails := map[string]string{"branch": result.BranchName}
+				if len(remoteNameCandidate) > 0 {
+					messageDetails["remote_candidate"] = fmt.Sprintf("%s/%s", remoteNameCandidate, result.BranchName)
+				}
+				environment.ReportRepositoryEvent(
+					repository,
+					shared.EventLevelWarn,
+					shared.EventCodeTaskSkip,
+					"refresh skipped (no tracking remote)",
+					messageDetails,
+				)
+			}
 		}
 		if refreshRequested && stashChanges && requireClean && len(untrackedStatus) > 0 {
 			stashPushCount++
@@ -339,6 +355,40 @@ func branchHasTrackingRemote(ctx context.Context, executor shared.GitExecutor, r
 		return false, nil
 	}
 	return false, err
+}
+
+func ensureTrackingRemote(ctx context.Context, executor shared.GitExecutor, repositoryPath string, remoteName string, branchName string) (bool, error) {
+	trimmedRemote := strings.TrimSpace(remoteName)
+	trimmedBranch := strings.TrimSpace(branchName)
+	if len(trimmedRemote) == 0 || len(trimmedBranch) == 0 {
+		return false, nil
+	}
+	if executor == nil {
+		return false, errors.New("git executor required to configure tracking remote")
+	}
+	environment := map[string]string{gitTerminalPromptEnvironmentNameConstant: gitTerminalPromptEnvironmentDisableValue}
+	remoteReference := fmt.Sprintf("%s/%s", trimmedRemote, trimmedBranch)
+	_, err := executor.ExecuteGit(ctx, execshell.CommandDetails{
+		Arguments:            []string{gitRevParseSubcommandConstant, gitVerifyFlagConstant, remoteReference},
+		WorkingDirectory:     repositoryPath,
+		EnvironmentVariables: environment,
+	})
+	if err != nil {
+		if isBranchMissingError(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to verify remote branch %q: %w", remoteReference, err)
+	}
+	setUpstreamFlag := fmt.Sprintf("%s=%s", gitSetUpstreamToFlagConstant, remoteReference)
+	_, err = executor.ExecuteGit(ctx, execshell.CommandDetails{
+		Arguments:            []string{gitBranchSubcommandConstant, setUpstreamFlag, trimmedBranch},
+		WorkingDirectory:     repositoryPath,
+		EnvironmentVariables: environment,
+	})
+	if err != nil {
+		return false, fmt.Errorf("failed to configure tracking remote for %s: %w", trimmedBranch, err)
+	}
+	return true, nil
 }
 
 func stringOption(options map[string]any, key string) (string, error) {
