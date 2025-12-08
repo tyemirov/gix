@@ -532,6 +532,6 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
 
 - Repository services accept domain types from `internal/repos/shared` (paths, owners, remotes, branches); CLI edges construct them so executors run without defensive validation.
 - Executor errors surface via the contextual catalog in `internal/repos/errors`, which prints `PLAN-*`, `*-DONE`, and `*-SKIP` banners through the shared reporter.
-- Confirmation prompts respect the `[A/N/y]` contract everywhere; passing `--yes` (or setting `assume_yes: true` in workflows) flips the shared confirmation policy to auto-accept, and selecting `A`/`all` at a prompt upgrades the remainder of the run to behave as if `--yes` had been provided.
+- Confirmation prompts respect the `[a/N/y]` contract everywhere (uppercase `N` remains the default decline); passing `--yes` (or setting `assume_yes: true` in workflows) flips the shared confirmation policy to auto-accept, and selecting `a`/`all` at a prompt upgrades the remainder of the run to behave as if `--yes` had been provided (uppercase responses continue to work as well).
 - Run `make ci` before submitting patches; it enforces formatting plus `go vet`, `staticcheck`, `ineffassign`, and the unit/integration test suites. At minimum, run `go run honnef.co/go/tools/cmd/staticcheck@master ./...` so lint blocks (SA1006, etc.) surface before you commit.
     - `mode: append-if-missing` preserves existing content and appends each missing line from `content`, making it ideal for `.gitignore` enforcement.
