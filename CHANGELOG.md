@@ -1,5 +1,30 @@
 # Changelog
 
+## [v0.3.0-rc2]
+
+### Features ✨
+- Introduce `TrackingRemoteConfigurator` smart constructor and move validation to edge.
+- `gix cd` now auto-configures branch tracking to the resolved remote when possible, streamlining refresh and pull workflows.
+
+### Improvements ⚙️
+- Enhance branch change action to automatically configure tracking remote if missing.
+- Added detailed tracking remote name reporting in branch change results.
+- Refactor test suites for branch change and tracking remote configuration logic.
+
+### Bug Fixes 🐛
+- Fix handling of branches without tracking information by auto-associating tracking remotes.
+- Avoid refresh action skips by creating tracking branches automatically when remote branch exists.
+- Improve error messaging and handling for missing remote branches during tracking configuration.
+
+### Testing 🧪
+- Add tests verifying automatic tracking remote configuration and related warnings.
+- Extend coverage for handling branch change actions with tracking configurations.
+- Test error scenarios when remote branch is missing or configuration commands fail.
+
+### Docs 📚
+- Updated `ISSUES.md` with details about automatic tracking remote configuration and related scenarios.
+- _No additional documentation changes._
+
 ## [v0.3.0-rc1]
 
 ### Features ✨
