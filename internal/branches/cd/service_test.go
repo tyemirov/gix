@@ -44,6 +44,8 @@ type scriptedGitExecutor struct {
 	remoteOutput         string
 	statusOutput         string
 	originalStatusOutput string
+	configError          error
+	revParseError        error
 }
 
 func newScriptedGitExecutor(remoteOutput string, statusOutput string) *scriptedGitExecutor {
@@ -64,6 +66,19 @@ func (executor *scriptedGitExecutor) ExecuteGit(_ context.Context, details execs
 		return execshell.ExecutionResult{StandardOutput: executor.remoteOutput}, nil
 	case "status":
 		return execshell.ExecutionResult{StandardOutput: executor.statusOutput}, nil
+	case "config":
+		if executor.configError != nil {
+			return execshell.ExecutionResult{}, executor.configError
+		}
+		return execshell.ExecutionResult{}, nil
+	case "rev-parse":
+		if len(details.Arguments) > 1 && details.Arguments[1] == "--verify" {
+			if executor.revParseError != nil {
+				return execshell.ExecutionResult{}, executor.revParseError
+			}
+			return execshell.ExecutionResult{}, nil
+		}
+		return execshell.ExecutionResult{}, nil
 	case "stash":
 		if len(details.Arguments) > 1 {
 			switch details.Arguments[1] {
@@ -388,13 +403,17 @@ func TestChangeIncludesDetailsWhenBranchCreationFails(t *testing.T) {
 }
 
 func commandFailedError(message string) error {
+	return commandFailedErrorWithExitCode(message, 128)
+}
+
+func commandFailedErrorWithExitCode(message string, exitCode int) error {
 	return execshell.CommandFailedError{
 		Command: execshell.ShellCommand{
 			Name:    execshell.CommandGit,
 			Details: execshell.CommandDetails{},
 		},
 		Result: execshell.ExecutionResult{
-			ExitCode:      128,
+			ExitCode:      exitCode,
 			StandardError: message,
 		},
 	}

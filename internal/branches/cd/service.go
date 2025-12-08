@@ -42,6 +42,8 @@ const (
 	gitSwitchSubcommandConstant               = "switch"
 	gitCreateBranchFlagConstant               = "-c"
 	gitTrackFlagConstant                      = "--track"
+	gitBranchSubcommandConstant               = "branch"
+	gitSetUpstreamToFlagConstant              = "--set-upstream-to"
 	gitPullSubcommandConstant                 = "pull"
 	gitPullRebaseFlagConstant                 = "--rebase"
 	gitRevParseSubcommandConstant             = "rev-parse"
@@ -76,10 +78,11 @@ type Options struct {
 
 // Result captures the outcome of a branch change.
 type Result struct {
-	RepositoryPath string
-	BranchName     string
-	BranchCreated  bool
-	Warnings       []string
+	RepositoryPath     string
+	BranchName         string
+	BranchCreated      bool
+	Warnings           []string
+	TrackingRemoteName string
 }
 
 // Service coordinates branch switching across repositories.
@@ -251,11 +254,17 @@ func (service *Service) Change(executionContext context.Context, options Options
 		}
 	}
 
+	trackingRemoteName := ""
+	if remoteEnumeration.requestedExists {
+		trackingRemoteName = selectedRemoteName
+	}
+
 	return Result{
-		RepositoryPath: trimmedRepositoryPath,
-		BranchName:     trimmedBranchName,
-		BranchCreated:  branchCreated,
-		Warnings:       warnings,
+		RepositoryPath:     trimmedRepositoryPath,
+		BranchName:         trimmedBranchName,
+		BranchCreated:      branchCreated,
+		Warnings:           warnings,
+		TrackingRemoteName: trackingRemoteName,
 	}, nil
 }
 
