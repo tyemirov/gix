@@ -1,5 +1,28 @@
 # Changelog
 
+## [v0.3.0-rc4]
+
+### Features ✨
+- _No changes._
+
+### Improvements ⚙️
+- `gix cd` warnings now include untracked file names, helping users identify blocking paths without running `git status`.
+- `git stage-commit` stages only files mutated by workflows, preventing unrelated changes from being committed.
+- Workflow file replacements honor recursive glob `**` patterns, enabling correct module import rewrites across nested folders.
+
+### Bug Fixes 🐛
+- Fixed recursive replacements in workflows to properly apply changes across nested files.
+- Corrected `gix cd` command behavior for refreshing branches with untracked files.
+- Resolved `git stage-commit` committing all files issue by limiting staging to mutated files only.
+
+### Testing 🧪
+- Added tests for session prompter supporting uppercase 'apply-all' option.
+- Added tests verifying `git stage-commit` correctly prefers recorded mutated files.
+- Added coverage for filtering staged files by requested patterns.
+
+### Docs 📚
+- _No changes._
+
 ## [v0.3.0-rc3]
 
 ### Features ✨
