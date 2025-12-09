@@ -199,6 +199,7 @@ func handleNamespaceRewriteAction(ctx context.Context, environment *Environment,
 	}
 
 	logNamespaceApply(environment, repository, result.BranchName, filesChanged, result.PushPerformed)
+	recordNamespaceMutations(environment, repository, result)
 
 	if environment != nil && environment.Variables != nil && result.PushPerformed {
 		if variableName, ok := namespaceBranchVariableName(repository); ok && len(strings.TrimSpace(result.BranchName)) > 0 {
@@ -236,6 +237,24 @@ func logNamespaceApply(environment *Environment, repository *RepositoryState, br
 			"push":          fmt.Sprintf("%t", pushed),
 		},
 	)
+}
+
+func recordNamespaceMutations(environment *Environment, repository *RepositoryState, result namespace.Result) {
+	if environment == nil || repository == nil {
+		return
+	}
+	if !result.GoModChanged && len(result.ChangedFiles) == 0 {
+		return
+	}
+	if result.GoModChanged {
+		environment.RecordMutatedFile(repository, "go.mod")
+	}
+	for _, relativePath := range result.ChangedFiles {
+		if len(strings.TrimSpace(relativePath)) == 0 {
+			continue
+		}
+		environment.RecordMutatedFile(repository, strings.TrimSpace(relativePath))
+	}
 }
 
 func logNamespaceReason(environment *Environment, repository *RepositoryState, code string, level shared.EventLevel, reason string) {

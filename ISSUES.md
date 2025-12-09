@@ -40,7 +40,7 @@ branch 'bugfix/IM-312-secure-join' set up to track 'origin/bugfix/IM-312-secure-
 ```
 - [x] [GX-256] When `gix cd` reports “untracked files present; refresh will continue”, include the untracked file names/status entries in the warning output so operators can see exactly which files are untracked without running a separate git status. (Warnings now list the precise untracked paths.)
 
-- [x] [GX-257] Ensure that we commit only the files that we have changed. When running @configs/account-rename.yaml it looks like we are committing all uncommitted files in a tree. (`git stage-commit` stages only workflow-mutated files, so existing local work stays untouched.)
+- [x] [GX-257] Ensure that we commit only the files that we have changed. When running @configs/account-rename.yaml it looks like we are committing all uncommitted files in a tree. (`git stage-commit` stages only workflow-mutated files, so existing local work stays untouched, and namespace rewrite steps now register their changed files so downstream commits see them.)
 
 ## BugFixes (340–399)
 

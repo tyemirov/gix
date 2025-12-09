@@ -44,6 +44,7 @@
 - Include the untracked file names in `gix cd` warnings so operators can see which paths block refresh without running `git status`.
 - `git stage-commit` now stages only the files mutated by the workflow (rather than `git add .`), preventing unrelated local changes from being committed.
 - Ignore `git check-ignore` failures that report “not a git repository” so workflows no longer abort when encountering non-repo folders.
+- Namespace workflow rewrites now register their changed files so subsequent `git stage-commit` steps pick up those modifications automatically.
 
 ### Testing 🧪
 - Add tests for session prompter covering applying 'apply-all' uppercase selection.
