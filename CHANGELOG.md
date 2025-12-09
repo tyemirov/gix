@@ -17,6 +17,7 @@
 ### Bug Fixes 🐛
 - Fix prompt template in branch deletion confirmation to include apply-all `[a/N/y]` option.
 - Correct renamed packages and internal references related to prompt state and session state.
+- Honor recursive glob patterns in workflow file replacements so presets like `configs/account-rename.yaml` actually rewrite Go module imports across nested folders.
 
 ### Testing 🧪
 - Add tests for session prompter covering applying 'apply-all' uppercase selection.

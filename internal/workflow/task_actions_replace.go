@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	pathpkg "path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -31,6 +32,7 @@ const (
 	fileReplaceMissingFindMessage     = "replacement action requires non-empty 'find'"
 	fileReplaceMissingPatternMessage  = "replacement action requires at least one 'pattern'"
 	fileReplaceMissingRepositoryError = "replacement action requires repository manager and filesystem"
+	doubleStarPatternToken            = "**"
 )
 
 type shellCommandExecutor interface {
@@ -272,8 +274,9 @@ func collectReplacementTargets(repositoryPath string, patterns []string) ([]stri
 			return relError
 		}
 
+		normalizedPath := filepath.ToSlash(relativePath)
 		for _, pattern := range patterns {
-			matched, matchError := filepath.Match(pattern, relativePath)
+			matched, matchError := matchReplacementPattern(pattern, normalizedPath)
 			if matchError != nil {
 				return matchError
 			}
@@ -293,6 +296,103 @@ func collectReplacementTargets(repositoryPath string, patterns []string) ([]stri
 
 	sort.Strings(matches)
 	return matches, nil
+}
+
+func matchReplacementPattern(pattern string, value string) (bool, error) {
+	normalizedPattern := filepath.ToSlash(pattern)
+	normalizedValue := filepath.ToSlash(value)
+
+	if strings.Contains(normalizedPattern, doubleStarPatternToken) {
+		return matchDoubleStarPattern(normalizedPattern, normalizedValue)
+	}
+
+	return pathpkg.Match(normalizedPattern, normalizedValue)
+}
+
+func matchDoubleStarPattern(pattern string, value string) (bool, error) {
+	patternSegments := splitPatternSegments(pattern)
+	valueSegments := splitPatternSegments(value)
+	memo := make(map[globMatchMemoKey]bool)
+	return matchDoubleStarSegments(patternSegments, valueSegments, 0, 0, memo)
+}
+
+func splitPatternSegments(value string) []string {
+	trimmed := strings.Trim(value, "/")
+	if len(trimmed) == 0 {
+		return nil
+	}
+	rawSegments := strings.Split(trimmed, "/")
+	segments := make([]string, 0, len(rawSegments))
+	for _, segment := range rawSegments {
+		if len(segment) == 0 {
+			continue
+		}
+		segments = append(segments, segment)
+	}
+	return segments
+}
+
+type globMatchMemoKey struct {
+	patternIndex int
+	valueIndex   int
+}
+
+func matchDoubleStarSegments(patternSegments []string, valueSegments []string, patternIndex int, valueIndex int, memo map[globMatchMemoKey]bool) (bool, error) {
+	key := globMatchMemoKey{patternIndex: patternIndex, valueIndex: valueIndex}
+	if cached, exists := memo[key]; exists {
+		return cached, nil
+	}
+
+	if patternIndex >= len(patternSegments) {
+		result := valueIndex >= len(valueSegments)
+		memo[key] = result
+		return result, nil
+	}
+
+	segment := patternSegments[patternIndex]
+	if segment == doubleStarPatternToken {
+		nextIndex := patternIndex + 1
+		for nextIndex < len(patternSegments) && patternSegments[nextIndex] == doubleStarPatternToken {
+			nextIndex++
+		}
+		if nextIndex >= len(patternSegments) {
+			memo[key] = true
+			return true, nil
+		}
+		for candidate := valueIndex; candidate <= len(valueSegments); candidate++ {
+			match, matchError := matchDoubleStarSegments(patternSegments, valueSegments, nextIndex, candidate, memo)
+			if matchError != nil {
+				return false, matchError
+			}
+			if match {
+				memo[key] = true
+				return true, nil
+			}
+		}
+		memo[key] = false
+		return false, nil
+	}
+
+	if valueIndex >= len(valueSegments) {
+		memo[key] = false
+		return false, nil
+	}
+
+	matched, matchError := pathpkg.Match(segment, valueSegments[valueIndex])
+	if matchError != nil {
+		return false, matchError
+	}
+	if !matched {
+		memo[key] = false
+		return false, nil
+	}
+
+	result, resultError := matchDoubleStarSegments(patternSegments, valueSegments, patternIndex+1, valueIndex+1, memo)
+	if resultError != nil {
+		return false, resultError
+	}
+	memo[key] = result
+	return result, nil
 }
 
 func buildReplacementPlans(fileSystem shared.FileSystem, repositoryPath string, files []string, find string, replace string) ([]replacementPlan, error) {
