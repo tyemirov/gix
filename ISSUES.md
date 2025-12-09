@@ -3,11 +3,13 @@
 
 Entries record newly discovered requests or changes, with their outcomes. No instructive content lives here. Read @NOTES.md for the process to follow when fixing issues.
 
-Read @AGENTS.md, @AGENTS.GO.md, @AGENTS.GIT.md @ARCHITECTURE.md, @POLICY.md, @NOTES.md,  @README.md and @ISSUES.md. Start working on open issues. Work autonomously and stack up PRs.
+Read @AGENTS.md, @AGENTS.GIT.md, @AGENTS.DOCKER.md, AGENTS.GO.md, @AGENTS.FRONTEND.md, @POLICY.md, PLANNING.md, @NOTES.md, and @ISSUES.md under issues.md/. Read @ARCHITECTURE.md, @README.md, @PRD.md. Start working on open issues. Work autonomously and stack up PRs. Prioritize bugfixes.
 
 Each issue is formatted as `- [ ] [GX-<number>]`. When resolved it becomes `- [x] [GX-<number>]`
 
 ## Features (110–199)
+
+- [ ] Add a website documenting all of the benefits the gix utility has. The web site shall be served from github so follow the convention for folders/file placement
 
 ## Improvements (251–299)
 
