@@ -110,6 +110,9 @@ func main() { dep.Do() }
 	branchValue, branchExists := environment.Variables.Get(namespaceVariable)
 	require.True(t, branchExists)
 	require.Contains(t, branchValue, "rewrite/")
+
+	mutatedFiles := environment.ConsumeMutatedFiles(repository)
+	require.ElementsMatch(t, []string{"go.mod", "main.go"}, mutatedFiles)
 }
 
 func TestHandleNamespaceRewriteActionPushFailure(t *testing.T) {

@@ -9,6 +9,7 @@
 - `gix cd` warnings now include untracked file names, helping users identify blocking paths without running `git status`.
 - `git stage-commit` stages only files mutated by workflows, preventing unrelated changes from being committed.
 - Workflow file replacements honor recursive glob `**` patterns, enabling correct module import rewrites across nested folders.
+- `gix message changelog` now suppresses duplicate “no changes detected” lines when the selected range contains no commits.
 
 ### Bug Fixes 🐛
 - Fixed recursive replacements in workflows to properly apply changes across nested files.
@@ -44,6 +45,7 @@
 - Include the untracked file names in `gix cd` warnings so operators can see which paths block refresh without running `git status`.
 - `git stage-commit` now stages only the files mutated by the workflow (rather than `git add .`), preventing unrelated local changes from being committed.
 - Ignore `git check-ignore` failures that report “not a git repository” so workflows no longer abort when encountering non-repo folders.
+- Namespace workflow rewrites now register their changed files so subsequent `git stage-commit` steps pick up those modifications automatically.
 
 ### Testing 🧪
 - Add tests for session prompter covering applying 'apply-all' uppercase selection.

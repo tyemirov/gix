@@ -152,6 +152,17 @@ func handleChangelogAction(ctx context.Context, environment *Environment, reposi
 
 	result, generateErr := generator.Generate(ctx, options)
 	if generateErr != nil {
+		if errors.Is(generateErr, changelog.ErrNoChanges) {
+			writer := environment.Errors
+			if writer == nil {
+				writer = environment.Output
+			}
+			if writer == nil {
+				writer = io.Discard
+			}
+			fmt.Fprintln(writer, generateErr.Error())
+			return nil
+		}
 		return generateErr
 	}
 
