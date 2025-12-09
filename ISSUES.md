@@ -38,15 +38,15 @@ If you wish to set tracking information for this branch you can do so with:
 15:26:03 tyemirov@Vadyms-MacBook-Pro:~/Development/tyemirov/Research/ISSUES.md - [bugfix/IM-312-secure-join] $ git branch --set-upstream-to=origin/bugfix/IM-312-secure-join bugfix/IM-312-secure-join
 branch 'bugfix/IM-312-secure-join' set up to track 'origin/bugfix/IM-312-secure-join' by rebasing.
 ```
-- [ ] [GX-256] When `gix cd` reports “untracked files present; refresh will continue”, include the untracked file names/status entries in the warning output so operators can see exactly which files are untracked without running a separate git status.
+- [x] [GX-256] When `gix cd` reports “untracked files present; refresh will continue”, include the untracked file names/status entries in the warning output so operators can see exactly which files are untracked without running a separate git status. (Warnings now list the precise untracked paths.)
 
-- [ ] [GX-256] Ensure that we commit only the files that we have changed. When running @configs/account-rename.yaml it looks like we are committing all uncommitted files in a tree
+- [x] [GX-257] Ensure that we commit only the files that we have changed. When running @configs/account-rename.yaml it looks like we are committing all uncommitted files in a tree. (`git stage-commit` stages only workflow-mutated files, so existing local work stays untouched.)
 
 ## BugFixes (340–399)
 
 - [x] [GX-340] Audit this: I think I saw a few times when `gix cd` command was telling me that the branch was untract when in fact git co <branch> worked perfectly fine. I maybe off, so it's a maybe bug. (Fixed by letting `gix cd` fall back to the lone configured remote so branch switches track upstreams just like `git checkout`; added regression coverage.)
 
-- [ ] [GX-341] I ran the workflow [text](configs/account-rename.yaml) but I am then getting errors
+- [x] [GX-341] I ran the workflow [text](configs/account-rename.yaml) but I am then getting errors
 ```
   Run make lint
 Error: main.go:7:2: no required module provides package github.com/temirov/ghttp/internal/app; to add it:
@@ -58,6 +58,8 @@ make: *** [Makefile:22: lint] Error 1
 Error: Process completed with exit code 2.
 ```
 It means the replacement were not executed
+
+(Resolved by teaching workflow file replacements to honor recursive `**` glob patterns so account-rename rewrites Go modules across nested folders; `make test` now passes.)
 
 ## Maintenance (422–499)
 

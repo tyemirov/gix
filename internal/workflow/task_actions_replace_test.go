@@ -3,6 +3,7 @@ package workflow
 import (
 	"bytes"
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -163,4 +164,50 @@ func TestHandleFileReplaceActionHardStopSafeguard(t *testing.T) {
 
 	err := handleFileReplaceAction(context.Background(), environment, repository, parameters)
 	require.ErrorIs(t, err, errRepositorySkipped)
+}
+
+func TestCollectReplacementTargetsSupportsRecursiveGlobs(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(tempDir, "nested", "level"), 0o755))
+
+	rootFile := filepath.Join(tempDir, "main.go")
+	nestedFile := filepath.Join(tempDir, "nested", "lib.go")
+	ignoredFile := filepath.Join(tempDir, "nested", "level", "README.md")
+
+	require.NoError(t, os.WriteFile(rootFile, []byte("package main"), 0o644))
+	require.NoError(t, os.WriteFile(nestedFile, []byte("package nested"), 0o644))
+	require.NoError(t, os.WriteFile(ignoredFile, []byte("contents"), 0o644))
+
+	targets, err := collectReplacementTargets(tempDir, []string{"**/*.go"})
+	require.NoError(t, err)
+	require.Equal(t, []string{rootFile, nestedFile}, targets)
+}
+
+func TestMatchReplacementPatternHandlesDoubleStarSegments(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		pattern  string
+		path     string
+		expected bool
+	}{
+		{name: "matches nested go files", pattern: "**/*.go", path: "nested/path/file.go", expected: true},
+		{name: "matches root files with recursive glob", pattern: "**/*.md", path: "README.md", expected: true},
+		{name: "respects directory prefix", pattern: "docs/**/*.md", path: "examples/docs/guide.md", expected: false},
+		{name: "matches directory prefix", pattern: "docs/**/*.md", path: "docs/manual/guide.md", expected: true},
+		{name: "handles multiple double-star segments", pattern: "**/nested/**/file.txt", path: "alpha/nested/beta/file.txt", expected: true},
+	}
+
+	for _, testCase := range testCases {
+		tc := testCase
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			result, err := matchReplacementPattern(tc.pattern, tc.path)
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, result)
+		})
+	}
 }
