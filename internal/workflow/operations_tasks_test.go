@@ -114,7 +114,7 @@ func TestTaskPlannerBuildPlanAppliesEnvironmentVariables(t *testing.T) {
 func TestPlanFileChangesReplaceMode(t *testing.T) {
 	tempDir := t.TempDir()
 	filePath := filepath.Join(tempDir, "go.mod")
-	require.NoError(t, os.WriteFile(filePath, []byte("module github.com/temirov/example\n"), 0o644))
+	require.NoError(t, os.WriteFile(filePath, []byte("module github.com/tyemirov/example\n"), 0o644))
 
 	repository := &RepositoryState{Path: tempDir}
 	taskDefinition := TaskDefinition{
@@ -122,7 +122,7 @@ func TestPlanFileChangesReplaceMode(t *testing.T) {
 			PathTemplate: "go.mod",
 			Mode:         taskFileModeReplace,
 			Replacements: []TaskReplacementDefinition{
-				{FromTemplate: "github.com/temirov", ToTemplate: "github.com/tyemirov"},
+				{FromTemplate: "github.com/tyemirov", ToTemplate: "github.com/tyemirov"},
 			},
 		}},
 	}
@@ -142,14 +142,14 @@ func TestPlanFileChangesReplaceModeSupportsGlob(t *testing.T) {
 	tempDir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(tempDir, "pkg"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "pkg", "one.go"), []byte(`package pkg
-import "github.com/temirov/foo"
+import "github.com/tyemirov/foo"
 `), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "pkg", "two.go"), []byte(`package pkg
-import "github.com/temirov/bar"
+import "github.com/tyemirov/bar"
 `), 0o644))
 	require.NoError(t, os.MkdirAll(filepath.Join(tempDir, "pkg", "nested", "inner"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "pkg", "nested", "inner", "three.go"), []byte(`package pkg
-import "github.com/temirov/baz"
+import "github.com/tyemirov/baz"
 `), 0o644))
 
 	repository := &RepositoryState{Path: tempDir}
@@ -158,7 +158,7 @@ import "github.com/temirov/baz"
 			PathTemplate: "**/*.go",
 			Mode:         taskFileModeReplace,
 			Replacements: []TaskReplacementDefinition{
-				{FromTemplate: "github.com/temirov", ToTemplate: "github.com/tyemirov"},
+				{FromTemplate: "github.com/tyemirov", ToTemplate: "github.com/tyemirov"},
 			},
 		}},
 	}
