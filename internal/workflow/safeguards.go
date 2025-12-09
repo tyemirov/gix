@@ -69,6 +69,23 @@ func EvaluateSafeguards(ctx context.Context, environment *Environment, repositor
 		}
 	}
 
+	requireChanges, requireChangesExists, requireChangesErr := reader.boolValue("require_changes")
+	if requireChangesErr != nil {
+		return false, "", requireChangesErr
+	}
+	if requireChangesExists && requireChanges {
+		if environment.RepositoryManager == nil {
+			return false, "", errSafeguardRepoManager
+		}
+		statusResult, statusError := worktree.CheckStatus(ctx, environment.RepositoryManager, repositoryPath, nil)
+		if statusError != nil {
+			return false, "", statusError
+		}
+		if len(statusResult.Entries) == 0 {
+			return false, "requires changes", nil
+		}
+	}
+
 	requiredBranch, branchExists, branchError := reader.stringValue("branch")
 	if branchError != nil {
 		return false, "", branchError

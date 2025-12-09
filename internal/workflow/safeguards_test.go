@@ -131,6 +131,34 @@ func TestEvaluateSafeguardsRequireCleanStringValue(t *testing.T) {
 	}
 }
 
+func TestEvaluateSafeguardsRequireChanges(t *testing.T) {
+	t.Parallel()
+
+	executor := &recordingGitExecutor{worktreeClean: true, currentBranch: "master"}
+	manager, err := gitrepo.NewRepositoryManager(executor)
+	require.NoError(t, err)
+
+	env := &Environment{RepositoryManager: manager}
+	repo := &RepositoryState{Path: "/repositories/sample"}
+
+	pass, reason, evalErr := EvaluateSafeguards(context.Background(), env, repo, map[string]any{
+		"require_changes": true,
+	})
+	require.NoError(t, evalErr)
+	require.False(t, pass)
+	require.Equal(t, "requires changes", reason)
+
+	executor.worktreeClean = false
+	executor.worktreeEntries = []string{" M README.md"}
+
+	pass, reason, evalErr = EvaluateSafeguards(context.Background(), env, repo, map[string]any{
+		"require_changes": true,
+	})
+	require.NoError(t, evalErr)
+	require.True(t, pass)
+	require.Empty(t, reason)
+}
+
 func TestEvaluateSafeguardsBranchAndPaths(t *testing.T) {
 	t.Parallel()
 

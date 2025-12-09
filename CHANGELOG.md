@@ -1,6 +1,6 @@
 # Changelog
 
-## [v0.3.0-rc5]
+## [v0.3.0-rc6]
 
 ### Features ✨
 - _No changes._
@@ -31,6 +31,7 @@
 - `gix cd` warnings now include untracked file names, helping users identify blocking paths without running `git status`.
 - `git stage-commit` stages only files mutated by workflows, preventing unrelated changes from being committed.
 - Workflow file replacements honor recursive glob `**` patterns, enabling correct module import rewrites across nested folders.
+- Added an explicit `require_changes` safeguard so git stage-commit/push/pull-request steps can skip themselves when no edits are present; the account-rename preset now opts in to the safeguard instead of relying on implicit behavior.
 - `gix message changelog` now suppresses duplicate “no changes detected” lines when the selected range contains no commits.
 
 ### Bug Fixes 🐛

@@ -106,6 +106,9 @@ workflow:
         paths:
           - "."
         commit_message: "refactor: rewrite module namespace after owner rename"
+        safeguards:
+          soft_skip:
+            require_changes: true
 
   - step:
       name: namespace-push
@@ -114,6 +117,9 @@ workflow:
       with:
         branch: "automation/ns-rewrite/{{ .Repository.Name }}-{{ index .Environment \"workflow_run_id\" }}"
         push_remote: origin
+        safeguards:
+          soft_skip:
+            require_changes: true
 
   - step:
       name: namespace-open-pr
@@ -126,6 +132,9 @@ workflow:
           Rewrites Go module imports from `github.com/temirov` to `github.com/tyemirov` after the owner rename.
         base: master
         push_remote: origin
+        safeguards:
+          soft_skip:
+            require_changes: true
 
   - step:
       name: restore-original-state

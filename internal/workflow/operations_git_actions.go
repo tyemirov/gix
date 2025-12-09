@@ -3,8 +3,11 @@ package workflow
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
+
+	"github.com/tyemirov/gix/internal/repos/shared"
 )
 
 type gitStageOperation struct {
@@ -151,6 +154,8 @@ type gitStageCommitOperation struct {
 	messageTemplate string
 	allowEmpty      bool
 	ensureClean     bool
+	hardSafeguards  map[string]any
+	softSafeguards  map[string]any
 }
 
 var _ RepositoryScopedOperation = (*gitStageCommitOperation)(nil)
@@ -183,11 +188,19 @@ func buildGitStageCommitOperation(options map[string]any) (Operation, error) {
 		return nil, ensureCleanErr
 	}
 
+	safeguards, _, safeguardsErr := reader.mapValue(optionTaskSafeguardsKeyConstant)
+	if safeguardsErr != nil {
+		return nil, safeguardsErr
+	}
+	hardSafeguards, softSafeguards := splitSafeguardSets(safeguards, safeguardDefaultSoftSkip)
+
 	return &gitStageCommitOperation{
 		paths:           pathValues,
 		messageTemplate: message,
 		allowEmpty:      allowEmpty,
 		ensureClean:     ensureClean,
+		hardSafeguards:  hardSafeguards,
+		softSafeguards:  softSafeguards,
 	}, nil
 }
 
@@ -204,6 +217,11 @@ func (operation *gitStageCommitOperation) Execute(ctx context.Context, environme
 func (operation *gitStageCommitOperation) ExecuteForRepository(ctx context.Context, environment *Environment, repository *RepositoryState) error {
 	variableSnapshot := snapshotVariables(environment)
 	templateData := buildTaskTemplateData(repository, TaskDefinition{Name: "Git Stage Commit"}, variableSnapshot)
+	if skip, guardErr := evaluateOperationSafeguards(ctx, environment, repository, "Git Stage Commit", operation.hardSafeguards, operation.softSafeguards); guardErr != nil {
+		return guardErr
+	} else if skip {
+		return nil
+	}
 	renderedPaths := make([]string, 0, len(operation.paths))
 	for _, rawPath := range operation.paths {
 		rendered, renderErr := renderTemplateValue(rawPath, "", templateData)
@@ -333,6 +351,8 @@ func stagePatternMatches(pattern string, path string) bool {
 type gitPushOperation struct {
 	branchTemplate string
 	remoteName     string
+	hardSafeguards map[string]any
+	softSafeguards map[string]any
 }
 
 var _ RepositoryScopedOperation = (*gitPushOperation)(nil)
@@ -355,7 +375,18 @@ func buildGitPushOperation(options map[string]any) (Operation, error) {
 		remote = defaultTaskPushRemote
 	}
 
-	return &gitPushOperation{branchTemplate: branch, remoteName: remote}, nil
+	safeguards, _, safeguardsErr := reader.mapValue(optionTaskSafeguardsKeyConstant)
+	if safeguardsErr != nil {
+		return nil, safeguardsErr
+	}
+	hardSafeguards, softSafeguards := splitSafeguardSets(safeguards, safeguardDefaultSoftSkip)
+
+	return &gitPushOperation{
+		branchTemplate: branch,
+		remoteName:     remote,
+		hardSafeguards: hardSafeguards,
+		softSafeguards: softSafeguards,
+	}, nil
 }
 
 func (operation *gitPushOperation) Name() string {
@@ -370,6 +401,11 @@ func (operation *gitPushOperation) Execute(ctx context.Context, environment *Env
 
 func (operation *gitPushOperation) ExecuteForRepository(ctx context.Context, environment *Environment, repository *RepositoryState) error {
 	if repository == nil {
+		return nil
+	}
+	if skip, guardErr := evaluateOperationSafeguards(ctx, environment, repository, "Git Push", operation.hardSafeguards, operation.softSafeguards); guardErr != nil {
+		return guardErr
+	} else if skip {
 		return nil
 	}
 	var variableSnapshot map[string]string
@@ -415,6 +451,8 @@ type pullRequestCreateOperation struct {
 	bodyTemplate   string
 	baseTemplate   string
 	draft          bool
+	hardSafeguards map[string]any
+	softSafeguards map[string]any
 }
 
 var _ RepositoryScopedOperation = (*pullRequestCreateOperation)(nil)
@@ -458,12 +496,20 @@ func buildPullRequestCreateOperation(options map[string]any) (Operation, error) 
 		return nil, draftErr
 	}
 
+	safeguards, _, safeguardsErr := reader.mapValue(optionTaskSafeguardsKeyConstant)
+	if safeguardsErr != nil {
+		return nil, safeguardsErr
+	}
+	hardSafeguards, softSafeguards := splitSafeguardSets(safeguards, safeguardDefaultSoftSkip)
+
 	return &pullRequestCreateOperation{
 		branchTemplate: branch,
 		titleTemplate:  title,
 		bodyTemplate:   body,
 		baseTemplate:   base,
 		draft:          draft,
+		hardSafeguards: hardSafeguards,
+		softSafeguards: softSafeguards,
 	}, nil
 }
 
@@ -479,6 +525,11 @@ func (operation *pullRequestCreateOperation) Execute(ctx context.Context, enviro
 
 func (operation *pullRequestCreateOperation) ExecuteForRepository(ctx context.Context, environment *Environment, repository *RepositoryState) error {
 	if repository == nil {
+		return nil
+	}
+	if skip, guardErr := evaluateOperationSafeguards(ctx, environment, repository, "Create Pull Request", operation.hardSafeguards, operation.softSafeguards); guardErr != nil {
+		return guardErr
+	} else if skip {
 		return nil
 	}
 	variableSnapshot := snapshotVariables(environment)
@@ -537,6 +588,8 @@ type pullRequestOpenOperation struct {
 	baseTemplate   string
 	remoteTemplate string
 	draft          bool
+	hardSafeguards map[string]any
+	softSafeguards map[string]any
 }
 
 var _ RepositoryScopedOperation = (*pullRequestOpenOperation)(nil)
@@ -588,6 +641,12 @@ func buildPullRequestOpenOperation(options map[string]any) (Operation, error) {
 		return nil, draftErr
 	}
 
+	safeguards, _, safeguardsErr := reader.mapValue(optionTaskSafeguardsKeyConstant)
+	if safeguardsErr != nil {
+		return nil, safeguardsErr
+	}
+	hardSafeguards, softSafeguards := splitSafeguardSets(safeguards, safeguardDefaultSoftSkip)
+
 	return &pullRequestOpenOperation{
 		branchTemplate: branch,
 		titleTemplate:  title,
@@ -595,6 +654,8 @@ func buildPullRequestOpenOperation(options map[string]any) (Operation, error) {
 		baseTemplate:   base,
 		remoteTemplate: remote,
 		draft:          draft,
+		hardSafeguards: hardSafeguards,
+		softSafeguards: softSafeguards,
 	}, nil
 }
 
@@ -609,6 +670,11 @@ func (operation *pullRequestOpenOperation) Execute(ctx context.Context, environm
 }
 
 func (operation *pullRequestOpenOperation) ExecuteForRepository(ctx context.Context, environment *Environment, repository *RepositoryState) error {
+	if skip, guardErr := evaluateOperationSafeguards(ctx, environment, repository, "Open Pull Request", operation.hardSafeguards, operation.softSafeguards); guardErr != nil {
+		return guardErr
+	} else if skip {
+		return nil
+	}
 	variableSnapshot := snapshotVariables(environment)
 	templateData := buildTaskTemplateData(repository, TaskDefinition{Name: "Pull Request"}, variableSnapshot)
 	branchName, branchErr := renderTemplateValue(operation.branchTemplate, "", templateData)
@@ -670,6 +736,71 @@ func (operation *pullRequestOpenOperation) ExecuteForRepository(ctx context.Cont
 
 func (operation *pullRequestOpenOperation) IsRepositoryScoped() bool {
 	return true
+}
+
+func evaluateOperationSafeguards(ctx context.Context, environment *Environment, repository *RepositoryState, operationName string, hard, soft map[string]any) (bool, error) {
+	if len(hard) > 0 {
+		pass, reason, evalErr := EvaluateSafeguards(ctx, environment, repository, hard)
+		if evalErr != nil {
+			return false, evalErr
+		}
+		if !pass {
+			logOperationSafeguard(environment, repository, operationName, reason, shared.EventLevelError)
+			return true, repositorySkipError{reason: reason}
+		}
+	}
+
+	if len(soft) > 0 {
+		pass, reason, evalErr := EvaluateSafeguards(ctx, environment, repository, soft)
+		if evalErr != nil {
+			return false, evalErr
+		}
+		if !pass {
+			logOperationSafeguard(environment, repository, operationName, reason, shared.EventLevelWarn)
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func logOperationSafeguard(environment *Environment, repository *RepositoryState, operationName string, reason string, level shared.EventLevel) {
+	if environment == nil {
+		return
+	}
+	message := strings.TrimSpace(reason)
+	if len(message) == 0 {
+		message = "safeguard check failed"
+	}
+	environment.ReportRepositoryEvent(
+		repository,
+		level,
+		shared.EventCodeTaskSkip,
+		fmt.Sprintf("%s: %s", operationName, message),
+		map[string]string{
+			"operation": operationName,
+			"reason":    sanitizeOperationReason(message),
+		},
+	)
+}
+
+func sanitizeOperationReason(reason string) string {
+	replaced := strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			return r
+		}
+		switch r {
+		case '-', '_', '.':
+			return r
+		default:
+			return '_'
+		}
+	}, strings.TrimSpace(reason))
+	replaced = strings.Trim(replaced, "_")
+	if replaced == "" {
+		return "safeguard"
+	}
+	return replaced
 }
 
 func snapshotVariables(environment *Environment) map[string]string {
