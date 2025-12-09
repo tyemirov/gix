@@ -12,7 +12,7 @@ Each issue is formatted as `- [ ] [GX-<number>]`. When resolved it becomes `- [x
 ## Improvements (251–299)
 
 - [x] [GX-251] `gix cd` doesnt work with --stash flag the way I would like it to: I want it to stash the modified tracked files, switch to the destination branch and restore the files. (Implemented tracked-file stashing around branch change plus restoration, with new regression coverage.)
-- [ ] [GX-252] `gix cd` output is noisy (“tasks apply …”) and lacks summaries when run against multiple roots. Redesign the reporter so workflow-backed commands keep per-repo sections, drop the “tasks apply” prefixes, and print a final summary only when more than one repository is processed.
+- [x] [GX-252] `gix cd` output is noisy (“tasks apply …”) and lacks summaries when run against multiple roots. Redesign the reporter so workflow-backed commands keep per-repo sections, drop the “tasks apply” prefixes, and print a final summary only when more than one repository is processed.
 - [x] [GX-253] Hide explicit `--refresh` flag on `gix cd`, keeping refresh behaviour wired internally for `--stash` and `--commit` flows only (removed the flag from CLI/config/docs, relying on stash/commit to opt into the stricter refresh stage).
 - [x] [GX-254] Add an `a` option to confirmation prompts that, when selected in a non-`--yes` run, treats all subsequent confirmation questions in the session as accepted (equivalent to having passed `--yes`), so operators can promote a single “accept all” decision without restarting the command. (Implemented shared session prompt state + `[a/N/y]` templates; `make test`, `make lint`, and `make ci` all pass.)
 - [x] [GX-255] In cases when There is no tracking information for the current branch, create and associate the branch so I wouldnt need to do it manually: `gix cd` now auto-configures tracking to the resolved remote when possible, so refresh/pull proceed without manual `git branch --set-upstream-to` steps (logs tested locally; automated suites blocked by sandbox bind/proxy limits).
@@ -61,11 +61,12 @@ It means the replacement were not executed
 
 (Resolved by teaching workflow file replacements to honor recursive `**` glob patterns so account-rename rewrites Go modules across nested folders; `make test` now passes.)
 
-- [ ] [GX-342] An error stopped running the workflow, even though the intermediate errors shall not be catastrophic and shall not halt the execution. Moreover, the rror is cryptic and dioesnt tell what has ahppened and how to fix it. Not a git repository is never a problem and we shall just ignore such cases.
+- [x] [GX-342] An error stopped running the workflow, even though the intermediate errors shall not be catastrophic and shall not halt the execution. Moreover, the rror is cryptic and dioesnt tell what has ahppened and how to fix it. Not a git repository is never a problem and we shall just ignore such cases.
 ```shell
 10:06:31 tyemirov@computercat:~/Development $ gix w tyemirov/gix/configs/account-rename.yaml --yes
 failed to inspect repositories: git command exited with code 128 (check-ignore --stdin): fatal: not a git repository: /home/tyemirov/Development/moving_map/images/CrunchyData/pg_tileserv/../../.git/modules/images/pg_tileserv
 ```
+(Now we swallow `git check-ignore` “not a git repository” failures so workflows skip those folders instead of aborting.)
 
 ## Maintenance (422–499)
 
