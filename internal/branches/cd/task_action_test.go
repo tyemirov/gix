@@ -353,6 +353,8 @@ func TestHandleBranchChangeActionRefreshesWithUntrackedChanges(t *testing.T) {
 	require.Contains(t, buffer.String(), "REFRESHED: /tmp/project (feature/foo)")
 	require.Len(t, reporter.events, 2)
 	require.Equal(t, shared.EventCodeRepoDirty, reporter.events[0].Code)
+	require.Contains(t, reporter.events[0].Message, "notes.tmp")
+	require.Equal(t, "notes.tmp", reporter.events[0].Details["paths"])
 	require.Equal(t, shared.EventCodeRepoSwitched, reporter.events[1].Code)
 }
 

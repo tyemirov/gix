@@ -196,6 +196,51 @@ func TestGitStageCommitOperationStagesAndCommits(t *testing.T) {
 	require.True(t, commandArgumentsExist(gitExecutor.commands, []string{"commit", "-m", "docs: update"}))
 }
 
+func TestGitStageCommitOperationPrefersRecordedMutations(t *testing.T) {
+	gitExecutor := &recordingGitExecutor{worktreeClean: true}
+	op, buildErr := buildGitStageCommitOperation(map[string]any{
+		"paths":          []any{"."},
+		"commit_message": "refactor: apply workflow changes",
+	})
+	require.NoError(t, buildErr)
+
+	repository := NewRepositoryState(audit.RepositoryInspection{Path: "/repositories/sample"})
+	state := &State{Repositories: []*RepositoryState{repository}}
+	env := &Environment{
+		GitExecutor: gitExecutor,
+		State:       state,
+	}
+	env.RecordMutatedFile(repository, "go.mod")
+	env.RecordMutatedFile(repository, "nested/lib.go")
+
+	require.NoError(t, op.Execute(context.Background(), env, state))
+	require.True(t, commandArgumentsExist(gitExecutor.commands, []string{"add", "go.mod"}))
+	require.True(t, commandArgumentsExist(gitExecutor.commands, []string{"add", "nested/lib.go"}))
+	require.False(t, commandArgumentsExist(gitExecutor.commands, []string{"add", "."}))
+}
+
+func TestGitStageCommitOperationFiltersMutationsByPatterns(t *testing.T) {
+	gitExecutor := &recordingGitExecutor{worktreeClean: true}
+	op, buildErr := buildGitStageCommitOperation(map[string]any{
+		"paths":          []any{"docs/**"},
+		"commit_message": "chore: docs",
+	})
+	require.NoError(t, buildErr)
+
+	repository := NewRepositoryState(audit.RepositoryInspection{Path: "/repositories/sample"})
+	state := &State{Repositories: []*RepositoryState{repository}}
+	env := &Environment{
+		GitExecutor: gitExecutor,
+		State:       state,
+	}
+	env.RecordMutatedFile(repository, "docs/guide.md")
+	env.RecordMutatedFile(repository, "go.mod")
+
+	require.NoError(t, op.Execute(context.Background(), env, state))
+	require.True(t, commandArgumentsExist(gitExecutor.commands, []string{"add", "docs/guide.md"}))
+	require.False(t, commandArgumentsExist(gitExecutor.commands, []string{"add", "go.mod"}))
+}
+
 func TestPullRequestOpenOperationPushesAndCreatesPR(t *testing.T) {
 	gitExecutor := &recordingGitExecutor{
 		worktreeClean: true,

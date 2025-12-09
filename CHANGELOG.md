@@ -18,6 +18,8 @@
 - Fix prompt template in branch deletion confirmation to include apply-all `[a/N/y]` option.
 - Correct renamed packages and internal references related to prompt state and session state.
 - Honor recursive glob patterns in workflow file replacements so presets like `configs/account-rename.yaml` actually rewrite Go module imports across nested folders.
+- Include the untracked file names in `gix cd` warnings so operators can see which paths block refresh without running `git status`.
+- `git stage-commit` now stages only the files mutated by the workflow (rather than `git add .`), preventing unrelated local changes from being committed.
 
 ### Testing 🧪
 - Add tests for session prompter covering applying 'apply-all' uppercase selection.

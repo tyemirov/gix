@@ -204,7 +204,7 @@ func (operation *gitStageCommitOperation) Execute(ctx context.Context, environme
 func (operation *gitStageCommitOperation) ExecuteForRepository(ctx context.Context, environment *Environment, repository *RepositoryState) error {
 	variableSnapshot := snapshotVariables(environment)
 	templateData := buildTaskTemplateData(repository, TaskDefinition{Name: "Git Stage Commit"}, variableSnapshot)
-	changes := make([]taskFileChange, 0, len(operation.paths))
+	renderedPaths := make([]string, 0, len(operation.paths))
 	for _, rawPath := range operation.paths {
 		rendered, renderErr := renderTemplateValue(rawPath, "", templateData)
 		if renderErr != nil {
@@ -214,14 +214,31 @@ func (operation *gitStageCommitOperation) ExecuteForRepository(ctx context.Conte
 			continue
 		}
 		cleanPath := strings.TrimSpace(rendered)
+		renderedPaths = append(renderedPaths, cleanPath)
+	}
+
+	stageTargets := renderedPaths
+	mutatedPaths := environment.ConsumeMutatedFiles(repository)
+	if len(mutatedPaths) > 0 {
+		selected := filterMutatedStageTargets(mutatedPaths, renderedPaths)
+		if len(selected) == 0 {
+			stageTargets = nil
+		} else {
+			stageTargets = selected
+		}
+	}
+
+	if len(stageTargets) == 0 {
+		return nil
+	}
+
+	changes := make([]taskFileChange, 0, len(stageTargets))
+	for _, path := range stageTargets {
 		changes = append(changes, taskFileChange{
-			relativePath: cleanPath,
-			absolutePath: filepath.Join(repository.Path, cleanPath),
+			relativePath: path,
+			absolutePath: filepath.Join(repository.Path, path),
 			apply:        true,
 		})
-	}
-	if len(changes) == 0 {
-		return nil
 	}
 
 	message, messageErr := renderTemplateValue(operation.messageTemplate, "", templateData)
@@ -255,6 +272,62 @@ func (operation *gitStageCommitOperation) ExecuteForRepository(ctx context.Conte
 
 func (operation *gitStageCommitOperation) IsRepositoryScoped() bool {
 	return true
+}
+
+func filterMutatedStageTargets(mutated []string, requested []string) []string {
+	if len(mutated) == 0 {
+		return nil
+	}
+	if len(requested) == 0 {
+		return append([]string(nil), mutated...)
+	}
+	selected := make([]string, 0, len(mutated))
+	for _, path := range mutated {
+		if stagePatternMatchesAny(requested, path) {
+			selected = append(selected, path)
+		}
+	}
+	return selected
+}
+
+func stagePatternMatchesAny(patterns []string, path string) bool {
+	for _, pattern := range patterns {
+		if stagePatternMatches(pattern, path) {
+			return true
+		}
+	}
+	return false
+}
+
+func stagePatternMatches(pattern string, path string) bool {
+	trimmedPattern := strings.TrimSpace(pattern)
+	if len(trimmedPattern) == 0 {
+		return false
+	}
+	normalizedPattern := filepath.ToSlash(strings.TrimPrefix(trimmedPattern, "./"))
+	if normalizedPattern == "" || normalizedPattern == "." {
+		return true
+	}
+	normalizedPath := filepath.ToSlash(strings.TrimPrefix(path, "./"))
+	if normalizedPath == normalizedPattern {
+		return true
+	}
+	if strings.HasSuffix(normalizedPattern, "/") {
+		normalizedPattern = strings.TrimSuffix(normalizedPattern, "/")
+		if len(normalizedPattern) == 0 {
+			return true
+		}
+		if normalizedPath == normalizedPattern || strings.HasPrefix(normalizedPath, normalizedPattern+"/") {
+			return true
+		}
+	}
+	if strings.ContainsAny(normalizedPattern, "*?[") {
+		matched, err := filepath.Match(normalizedPattern, normalizedPath)
+		if err == nil && matched {
+			return true
+		}
+	}
+	return false
 }
 
 type gitPushOperation struct {
