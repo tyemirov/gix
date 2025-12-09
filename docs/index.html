@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>gix — Fleet-Oriented Git Automation</title>
   <link rel="stylesheet" href="styles.css">
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.css"
+  />
+  <script
+    defer
+    src="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.js"
+  ></script>
 </head>
 <body>
   <header class="hero">
@@ -251,11 +259,18 @@
     </div>
   </section>
 
-  <footer class="footer">
-    <div class="container">
-      <p>© <span id="year"></span> gix · Built for large-scale Git/GitHub maintenance.</p>
-    </div>
-  </footer>
+  <mpr-footer
+    prefix-text="Built by Marco Polo Research Lab"
+    links='[
+      { "label": "gix on GitHub", "url": "https://github.com/tyemirov/gix", "target": "_blank", "rel": "noopener noreferrer" },
+      { "label": "CLI README", "url": "https://github.com/tyemirov/gix/blob/master/README.md", "target": "_blank", "rel": "noopener noreferrer" }
+    ]'
+    toggle-label="Theme"
+    privacy-link-label="Privacy &amp; Terms"
+    sticky="false"
+  >
+    <span slot="legal">© <span id="year"></span> gix · Git/GitHub fleet automation.</span>
+  </mpr-footer>
 
   <script>
     document.getElementById('year').textContent = new Date().getFullYear();
