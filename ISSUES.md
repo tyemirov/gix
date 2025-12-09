@@ -9,7 +9,7 @@ Each issue is formatted as `- [ ] [GX-<number>]`. When resolved it becomes `- [x
 
 ## Features (110–199)
 
-- [ ] Add a website documenting all of the benefits the gix utility has. The web site shall be served from github so follow the convention for folders/file placement
+- [ ] [GX-110] Add a website documenting all of the benefits the gix utility has. The web site shall be served from github so follow the convention for folders/file placement
 
 ## Improvements (251–299)
 
