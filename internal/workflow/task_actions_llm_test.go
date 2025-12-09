@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tyemirov/gix/internal/audit"
-	"github.com/tyemirov/gix/internal/execshell"
 	"github.com/tyemirov/gix/pkg/llm"
 )
 
@@ -49,17 +48,4 @@ type changelogStubChatClient struct{}
 
 func (changelogStubChatClient) Chat(ctx context.Context, request llm.ChatRequest) (string, error) {
 	return "", nil
-}
-
-type changelogStubGitExecutor struct {
-	commands []execshell.CommandDetails
-}
-
-func (executor *changelogStubGitExecutor) ExecuteGit(ctx context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
-	executor.commands = append(executor.commands, details)
-	return execshell.ExecutionResult{}, nil
-}
-
-func (executor *changelogStubGitExecutor) ExecuteGitHubCLI(ctx context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
-	return execshell.ExecutionResult{}, nil
 }
