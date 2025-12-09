@@ -216,6 +216,11 @@ func statusEntryPath(entry string) string {
 	return pathPart
 }
 
+// StatusEntryPath exposes the resolved path portion of a git status entry.
+func StatusEntryPath(entry string) string {
+	return statusEntryPath(entry)
+}
+
 const (
 	gitStatusUntrackedPrefix = "??"
 	gitStatusIgnoredPrefix   = "!!"

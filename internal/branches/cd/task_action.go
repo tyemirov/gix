@@ -176,12 +176,21 @@ func handleBranchChangeAction(ctx context.Context, environment *workflow.Environ
 	}
 
 	if refreshRequested && len(untrackedStatus) > 0 {
+		untrackedSummary := summarizeStatusEntries(untrackedStatus)
+		message := "untracked files present; refresh will continue"
+		if len(untrackedSummary) > 0 {
+			message = fmt.Sprintf("%s [%s]", message, untrackedSummary)
+		}
+		details := map[string]string{"status": strings.Join(untrackedStatus, ", ")}
+		if len(untrackedSummary) > 0 {
+			details["paths"] = untrackedSummary
+		}
 		environment.ReportRepositoryEvent(
 			repository,
 			shared.EventLevelWarn,
 			shared.EventCodeRepoDirty,
-			"untracked files present; refresh will continue",
-			map[string]string{"status": strings.Join(untrackedStatus, ", ")},
+			message,
+			details,
 		)
 	}
 
@@ -563,4 +572,25 @@ func boolOptionDefault(options map[string]any, key string, defaultValue bool) (b
 		return false, fmt.Errorf("%s must be boolean", key)
 	}
 	return false, fmt.Errorf("%s must be boolean", key)
+}
+
+func summarizeStatusEntries(entries []string) string {
+	if len(entries) == 0 {
+		return ""
+	}
+	paths := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		path := strings.TrimSpace(worktree.StatusEntryPath(entry))
+		if len(path) == 0 {
+			path = strings.TrimSpace(entry)
+		}
+		if len(path) == 0 {
+			continue
+		}
+		paths = append(paths, path)
+	}
+	if len(paths) == 0 {
+		return ""
+	}
+	return strings.Join(paths, ", ")
 }

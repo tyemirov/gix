@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
@@ -54,6 +56,7 @@ type environmentSharedState struct {
 	lastRepositoryKey   string
 	capturedKinds       map[string]map[string]CaptureKind
 	capturedValues      map[string]map[string]string
+	mutatedFiles        map[string]map[string]struct{}
 }
 
 func (environment *Environment) ensureSharedState() {
@@ -194,6 +197,78 @@ func (environment *Environment) CapturedValue(name VariableName) (string, bool) 
 	}
 	value, exists := valueMap[string(name)]
 	return value, exists
+}
+
+func (environment *Environment) RecordMutatedFile(repository *RepositoryState, relativePath string) {
+	if environment == nil {
+		return
+	}
+	trimmedPath := strings.TrimSpace(relativePath)
+	if len(trimmedPath) == 0 {
+		return
+	}
+	repositoryKey := repositoryStateKey(repository)
+	if repositoryKey == "" {
+		repositoryKey = environment.repositoryKey()
+	}
+	if repositoryKey == "" {
+		return
+	}
+	normalized := filepath.ToSlash(trimmedPath)
+
+	environment.ensureSharedState()
+	environment.sharedState.mutex.Lock()
+	defer environment.sharedState.mutex.Unlock()
+
+	if environment.sharedState.mutatedFiles == nil {
+		environment.sharedState.mutatedFiles = make(map[string]map[string]struct{})
+	}
+	fileSet, exists := environment.sharedState.mutatedFiles[repositoryKey]
+	if !exists {
+		fileSet = make(map[string]struct{})
+		environment.sharedState.mutatedFiles[repositoryKey] = fileSet
+	}
+	fileSet[normalized] = struct{}{}
+}
+
+func (environment *Environment) ConsumeMutatedFiles(repository *RepositoryState) []string {
+	if environment == nil {
+		return nil
+	}
+	repositoryKey := repositoryStateKey(repository)
+	if repositoryKey == "" {
+		repositoryKey = environment.repositoryKey()
+	}
+	if repositoryKey == "" {
+		return nil
+	}
+
+	environment.ensureSharedState()
+	environment.sharedState.mutex.Lock()
+	defer environment.sharedState.mutex.Unlock()
+
+	if environment.sharedState.mutatedFiles == nil {
+		return nil
+	}
+	fileSet, exists := environment.sharedState.mutatedFiles[repositoryKey]
+	if !exists || len(fileSet) == 0 {
+		return nil
+	}
+
+	paths := make([]string, 0, len(fileSet))
+	for path := range fileSet {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	delete(environment.sharedState.mutatedFiles, repositoryKey)
+	return paths
+}
+
+func repositoryStateKey(repository *RepositoryState) string {
+	if repository == nil {
+		return ""
+	}
+	return strings.TrimSpace(repository.Path)
 }
 
 // OperationDefaults captures fallback behaviors shared across operations.
