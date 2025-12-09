@@ -20,7 +20,7 @@
 - Added tests covering session prompter 'apply-all' uppercase selection.
 
 ### Docs 📚
-- _No changes._
+- Moved the static documentation site to `docs/index.html` so it can be served directly from GitHub Pages, aligning GX-110 with the standard `docs/` folder convention.
 
 ## [v0.3.0-rc4]
 
