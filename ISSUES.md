@@ -68,6 +68,8 @@ failed to inspect repositories: git command exited with code 128 (check-ignore -
 ```
 (Now we swallow `git check-ignore` “not a git repository” failures so workflows skip those folders instead of aborting.)
 
+- [x] [GX-343] `gix message changelog` prints “no changes detected for changelog generation” twice. (The command now treats the empty-range case as informational, prints the notice once, and exits successfully.)
+
 ## Maintenance (422–499)
 
 ## Planning 
