@@ -1,5 +1,27 @@
 # Changelog
 
+## [v0.3.0-rc5]
+
+### Features ✨
+- _No changes._
+
+### Improvements ⚙️
+- `gix message changelog` now suppresses duplicate “no changes detected” lines for empty commit ranges.
+- Namespace workflow rewrites register changed files, enabling `git stage-commit` to automatically include those modifications.
+- Workflow file replacements honor recursive glob `**` patterns for correct module import rewrites across nested folders.
+
+### Bug Fixes 🐛
+- Avoid duplicate changelog no-change notices in the changelog generation command.
+- Track namespace-mutated files to ensure proper staging of changes.
+- Fixed recursive replacements in workflows to properly apply changes across nested files.
+
+### Testing 🧪
+- Added tests for changelog action to verify handling of no-change scenarios and output behavior.
+- Added tests covering session prompter 'apply-all' uppercase selection.
+
+### Docs 📚
+- _No changes._
+
 ## [v0.3.0-rc4]
 
 ### Features ✨
