@@ -36,6 +36,9 @@ func CheckIgnoredPaths(ctx context.Context, executor GitExecutor, worktreeRoot s
 		if errors.As(err, &failed) && failed.Result.ExitCode == 1 {
 			return ignored, nil
 		}
+		if isNotGitRepositoryError(err) {
+			return ignored, nil
+		}
 		return nil, err
 	}
 
@@ -139,4 +142,23 @@ func closestAncestor(repositoryPath string, repositorySet map[string]struct{}) s
 		current = next
 	}
 	return ""
+}
+
+func isNotGitRepositoryError(err error) bool {
+	var failed execshell.CommandFailedError
+	if errors.As(err, &failed) {
+		normalized := normalizeGitErrorOutput(strings.TrimSpace(failed.Result.StandardError), failed.Error())
+		return strings.Contains(normalized, "not a git repository")
+	}
+	if err == nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(strings.TrimSpace(err.Error())), "not a git repository")
+}
+
+func normalizeGitErrorOutput(primary string, fallback string) string {
+	if trimmed := strings.ToLower(strings.TrimSpace(primary)); len(trimmed) > 0 {
+		return trimmed
+	}
+	return strings.ToLower(strings.TrimSpace(fallback))
 }

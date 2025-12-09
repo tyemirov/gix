@@ -61,11 +61,12 @@ It means the replacement were not executed
 
 (Resolved by teaching workflow file replacements to honor recursive `**` glob patterns so account-rename rewrites Go modules across nested folders; `make test` now passes.)
 
-- [ ] [GX-342] An error stopped running the workflow, even though the intermediate errors shall not be catastrophic and shall not halt the execution. Moreover, the rror is cryptic and dioesnt tell what has ahppened and how to fix it. Not a git repository is never a problem and we shall just ignore such cases.
+- [x] [GX-342] An error stopped running the workflow, even though the intermediate errors shall not be catastrophic and shall not halt the execution. Moreover, the rror is cryptic and dioesnt tell what has ahppened and how to fix it. Not a git repository is never a problem and we shall just ignore such cases.
 ```shell
 10:06:31 tyemirov@computercat:~/Development $ gix w tyemirov/gix/configs/account-rename.yaml --yes
 failed to inspect repositories: git command exited with code 128 (check-ignore --stdin): fatal: not a git repository: /home/tyemirov/Development/moving_map/images/CrunchyData/pg_tileserv/../../.git/modules/images/pg_tileserv
 ```
+(Now we swallow `git check-ignore` “not a git repository” failures so workflows skip those folders instead of aborting.)
 
 ## Maintenance (422–499)
 

@@ -76,6 +76,23 @@ func TestCheckIgnoredPathsHandlesWindowsSeparators(t *testing.T) {
 	require.Contains(t, result, "tools/licenser")
 }
 
+func TestCheckIgnoredPathsIgnoresNonRepositories(t *testing.T) {
+	t.Parallel()
+
+	executor := &stubGitExecutor{
+		err: execshell.CommandFailedError{
+			Result: execshell.ExecutionResult{
+				ExitCode:      128,
+				StandardError: "fatal: not a git repository (or any of the parent directories): .git",
+			},
+		},
+	}
+
+	result, err := CheckIgnoredPaths(context.Background(), executor, "/tmp/worktree", []string{"tools/licenser"})
+	require.NoError(t, err)
+	require.Empty(t, result)
+}
+
 func TestFilterIgnoredRepositoriesNilExecutor(t *testing.T) {
 	t.Parallel()
 
