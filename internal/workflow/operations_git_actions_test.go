@@ -241,6 +241,59 @@ func TestGitStageCommitOperationFiltersMutationsByPatterns(t *testing.T) {
 	require.False(t, commandArgumentsExist(gitExecutor.commands, []string{"add", "go.mod"}))
 }
 
+func TestGitStageCommitOperationRespectsRequireChangesSafeguard(t *testing.T) {
+	gitExecutor := &recordingGitExecutor{worktreeClean: true}
+	repoManager, managerErr := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(t, managerErr)
+
+	op, buildErr := buildGitStageCommitOperation(map[string]any{
+		"paths":          []any{"README.md"},
+		"commit_message": "docs: update",
+		"safeguards": map[string]any{
+			"soft_skip": map[string]any{"require_changes": true},
+		},
+	})
+	require.NoError(t, buildErr)
+
+	repository := NewRepositoryState(audit.RepositoryInspection{Path: "/repositories/sample"})
+	state := &State{Repositories: []*RepositoryState{repository}}
+	env := &Environment{
+		GitExecutor:       gitExecutor,
+		RepositoryManager: repoManager,
+	}
+
+	require.NoError(t, op.Execute(context.Background(), env, state))
+	require.False(t, commandArgumentsExist(gitExecutor.commands, []string{"commit", "-m", "docs: update"}))
+}
+
+func TestGitStageCommitOperationRequiresChangesWhenConfigured(t *testing.T) {
+	gitExecutor := &recordingGitExecutor{
+		worktreeClean:   false,
+		worktreeEntries: []string{" M README.md"},
+	}
+	repoManager, managerErr := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(t, managerErr)
+
+	op, buildErr := buildGitStageCommitOperation(map[string]any{
+		"paths":          []any{"README.md"},
+		"commit_message": "docs: update",
+		"safeguards": map[string]any{
+			"soft_skip": map[string]any{"require_changes": true},
+		},
+	})
+	require.NoError(t, buildErr)
+
+	repository := NewRepositoryState(audit.RepositoryInspection{Path: "/repositories/sample"})
+	state := &State{Repositories: []*RepositoryState{repository}}
+	env := &Environment{
+		GitExecutor:       gitExecutor,
+		RepositoryManager: repoManager,
+	}
+
+	require.NoError(t, op.Execute(context.Background(), env, state))
+	require.True(t, commandArgumentsExist(gitExecutor.commands, []string{"commit", "-m", "docs: update"}))
+}
+
 func TestPullRequestOpenOperationPushesAndCreatesPR(t *testing.T) {
 	gitExecutor := &recordingGitExecutor{
 		worktreeClean: true,
