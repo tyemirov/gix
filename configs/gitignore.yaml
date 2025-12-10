@@ -74,6 +74,9 @@ workflow:
         paths:
           - ".gitignore"
         commit_message: "chore: ensure gitignore entries"
+        safeguards:
+          soft_skip:
+            require_changes: true
 
   - step:
       name: gitignore-open-pr
@@ -86,6 +89,9 @@ workflow:
           Ensure `.gitignore` contains the standard secrets/tooling entries (.env, tools/, bin/).
         base: "{{ .Repository.DefaultBranch }}"
         push_remote: origin
+        safeguards:
+          soft_skip:
+            require_changes: true
 
   - step:
       name: restore-original-state
