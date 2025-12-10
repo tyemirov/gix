@@ -1,5 +1,30 @@
 # Changelog
 
+## [v0.3.0-rc7]
+
+### Features ✨
+- Added a new website documenting all the benefits of the gix utility, now served from GitHub Pages with the static site located under `docs/index.html`.
+- Introduced an About gix modal and integrated the mpr-ui footer aligned with the demo styling.
+- Web site improvements including footer alignment and overall style enhancements to present workflows, use cases, and documentation more clearly.
+
+### Improvements ⚙️
+- Added explicit safeguards requiring changes before git stage-commit, push, and pull-request steps run; updated account-rename workflow preset to opt into the `require_changes` safeguard.
+- Enhanced `gix cd` command to stash modified tracked files, switch branches, and restore files automatically.
+- Workflow file replacements now honor recursive glob patterns for correct module import rewrites across nested folders.
+- Modified changelog behavior to suppress duplicate "no changes detected" messages.
+
+### Bug Fixes 🐛
+- _No changes._
+
+### Testing 🧪
+- Added tests covering session prompter's uppercase 'apply-all' selection.
+- Extended coverage for tracked-file stashing and branch switching behavior.
+
+### Docs 📚
+- Moved static documentation site to `docs/index.html` and updated styling to support GitHub Pages hosting.
+- Updated ISSUES.md with detailed process improvements and issue tracking enhancements related to autonomous work and bugfix prioritization.
+- Added CNAME file to configure custom domain for GitHub Pages hosting (gix.mprlab.com).
+
 ## [v0.3.0-rc6]
 
 ### Features ✨
