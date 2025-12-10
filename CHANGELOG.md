@@ -1,5 +1,22 @@
 # Changelog
 
+## [v0.3.0-rc8]
+
+### Features ✨
+- _No changes._
+
+### Improvements ⚙️
+- Clarify messaging for require_changes safeguard to better explain when no workflow edits are detected and the implication for Git operations.
+
+### Bug Fixes 🐛
+- _No changes._
+
+### Testing 🧪
+- Adjust safeguard test expectation to match updated require_changes messaging.
+
+### Docs 📚
+- _No changes._
+
 ## [v0.3.0-rc7]
 
 ### Features ✨
