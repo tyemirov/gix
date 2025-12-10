@@ -68,17 +68,40 @@ func (formatter *workflowHumanFormatter) HandleEvent(event shared.Event, writer 
 		delete(formatter.pendingTasks, repositoryKey)
 		operation := strings.TrimSpace(event.Details["operation"])
 		if len(operation) > 0 {
-			message := strings.TrimSpace(event.Message)
-			if len(message) == 0 {
-				message = "skipped"
+			rawMessage := strings.TrimSpace(event.Message)
+			lowerMessage := strings.ToLower(rawMessage)
+
+			var suffix string
+			if strings.Contains(lowerMessage, "requires changes") {
+				switch operation {
+				case "Git Stage Commit":
+					suffix = "no-op: no workflow-edited files to commit for this repository (require_changes safeguard; clean worktree)"
+				case "Git Push":
+					suffix = "no-op: no commit produced by this workflow (require_changes safeguard)"
+				case "Open Pull Request", "Create Pull Request":
+					suffix = "no-op: no branch changes to review for this workflow (require_changes safeguard)"
+				default:
+					if len(rawMessage) > 0 {
+						suffix = fmt.Sprintf("no-op: %s", rawMessage)
+					} else {
+						suffix = "no-op (safeguard)"
+					}
+				}
+			} else {
+				if len(rawMessage) > 0 {
+					suffix = fmt.Sprintf("skipped: %s", rawMessage)
+				} else {
+					suffix = "skipped"
+				}
 			}
+
 			formatter.writePhaseEntry(
 				writer,
 				repositoryKey,
 				LogPhaseGit,
 				formatter.decoratePhaseMessage(
 					event.Level,
-					fmt.Sprintf("%s (skipped: %s)", operation, message),
+					fmt.Sprintf("%s (%s)", operation, suffix),
 				),
 			)
 			return
