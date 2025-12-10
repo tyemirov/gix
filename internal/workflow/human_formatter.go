@@ -66,6 +66,23 @@ func (formatter *workflowHumanFormatter) HandleEvent(event shared.Event, writer 
 		return
 	case shared.EventCodeTaskSkip:
 		delete(formatter.pendingTasks, repositoryKey)
+		operation := strings.TrimSpace(event.Details["operation"])
+		if len(operation) > 0 {
+			message := strings.TrimSpace(event.Message)
+			if len(message) == 0 {
+				message = "skipped"
+			}
+			formatter.writePhaseEntry(
+				writer,
+				repositoryKey,
+				LogPhaseGit,
+				formatter.decoratePhaseMessage(
+					event.Level,
+					fmt.Sprintf("%s (skipped: %s)", operation, message),
+				),
+			)
+			return
+		}
 		formatter.writeIssue(writer, state, event)
 		return
 	case shared.EventCodeRepoSwitched:
