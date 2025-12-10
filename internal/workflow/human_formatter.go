@@ -276,7 +276,7 @@ func (formatter *workflowHumanFormatter) writeIssue(writer io.Writer, state *rep
 	}
 
 	if !state.issuesPrinted {
-		fmt.Fprintln(writer, "  issues:")
+		fmt.Fprintln(writer, "    issues:")
 		state.issuesPrinted = true
 	}
 
@@ -323,7 +323,7 @@ func (formatter *workflowHumanFormatter) writeIssue(writer io.Writer, state *rep
 		line = fmt.Sprintf("%s%s", prefix, trimmedMessage)
 	}
 
-	fmt.Fprintf(writer, "    - %s\n", strings.TrimSpace(line))
+	fmt.Fprintf(writer, "      - %s\n", strings.TrimSpace(line))
 }
 
 func (formatter *workflowHumanFormatter) writeEventSummary(writer io.Writer, event shared.Event) {

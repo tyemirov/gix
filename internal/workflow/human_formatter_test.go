@@ -255,7 +255,7 @@ func TestWorkflowHumanFormatterRecordsIssues(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(buffer.String()), "\n")
 	require.Equal(t, []string{
 		"-- tyemirov/issues (/tmp/repos/issues) --",
-		"  issues:",
-		"    - ⚠ git pull declined",
+		"    issues:",
+		"      - ⚠ git pull declined",
 	}, lines)
 }
