@@ -82,7 +82,7 @@ func EvaluateSafeguards(ctx context.Context, environment *Environment, repositor
 			return false, "", statusError
 		}
 		if len(statusResult.Entries) == 0 {
-			return false, "requires changes", nil
+			return false, "requires changes (no workflow edits detected; clean worktree). This safeguard only allows Git operations when the current workflow has changed files. If you expected edits in this repository, confirm the workflow configuration and inputs. For namespace rewrite presets (for example, configs/account-rename.yaml), this usually means all module imports already reference the new owner, so there is nothing left to rewrite.", nil
 		}
 	}
 

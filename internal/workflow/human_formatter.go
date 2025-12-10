@@ -66,7 +66,7 @@ func (formatter *workflowHumanFormatter) HandleEvent(event shared.Event, writer 
 		return
 	case shared.EventCodeTaskSkip:
 		delete(formatter.pendingTasks, repositoryKey)
-		formatter.writeIssue(writer, state, fmt.Sprintf("⚠ %s", strings.TrimSpace(event.Message)))
+		formatter.writeIssue(writer, state, event)
 		return
 	case shared.EventCodeRepoSwitched:
 		formatter.handleBranchSwitch(writer, repositoryKey, state, event)
@@ -79,13 +79,9 @@ func (formatter *workflowHumanFormatter) HandleEvent(event shared.Event, writer 
 
 	switch event.Level {
 	case shared.EventLevelWarn:
-		formatter.writeIssue(writer, state, fmt.Sprintf("⚠ %s", strings.TrimSpace(event.Message)))
+		formatter.writeIssue(writer, state, event)
 	case shared.EventLevelError:
-		message := strings.TrimSpace(event.Message)
-		if len(message) == 0 {
-			message = "error"
-		}
-		formatter.writeIssue(writer, state, fmt.Sprintf("✖ %s", message))
+		formatter.writeIssue(writer, state, event)
 	default:
 		formatter.writeEventSummary(writer, event)
 	}
@@ -266,15 +262,68 @@ func (formatter *workflowHumanFormatter) writeBranchLine(writer io.Writer, repos
 	formatter.writePhaseEntry(writer, repository, LogPhaseBranch, message)
 }
 
-func (formatter *workflowHumanFormatter) writeIssue(writer io.Writer, state *repositoryLogState, message string) {
-	if len(message) == 0 || state == nil {
+func (formatter *workflowHumanFormatter) writeIssue(writer io.Writer, state *repositoryLogState, event shared.Event) {
+	if state == nil {
 		return
 	}
+
+	message := strings.TrimSpace(event.Message)
+	if len(message) == 0 && event.Level == shared.EventLevelError {
+		message = "error"
+	}
+	if len(message) == 0 {
+		return
+	}
+
 	if !state.issuesPrinted {
 		fmt.Fprintln(writer, "  issues:")
 		state.issuesPrinted = true
 	}
-	fmt.Fprintf(writer, "    - %s\n", message)
+
+	prefix := ""
+	switch event.Level {
+	case shared.EventLevelWarn:
+		prefix = "⚠ "
+	case shared.EventLevelError:
+		prefix = "✖ "
+	}
+
+	taskLabel := strings.TrimSpace(event.Details["task"])
+	operationLabel := strings.TrimSpace(event.Details["operation"])
+
+	label := ""
+	if len(taskLabel) > 0 {
+		label = taskLabel
+	} else if len(operationLabel) > 0 {
+		label = operationLabel
+	}
+
+	trimmedMessage := message
+	if label != "" {
+		lowerLabel := strings.ToLower(label)
+		lowerMessage := strings.ToLower(trimmedMessage)
+		if strings.HasPrefix(lowerMessage, lowerLabel) {
+			stripped := strings.TrimSpace(trimmedMessage[len(label):])
+			if strings.HasPrefix(stripped, ":") {
+				stripped = strings.TrimSpace(stripped[1:])
+			}
+			if len(stripped) > 0 {
+				trimmedMessage = stripped
+			}
+		}
+	}
+
+	var line string
+	switch {
+	case label != "" && len(trimmedMessage) > 0:
+		line = fmt.Sprintf("%s%s: %s", prefix, label, trimmedMessage)
+	case label != "":
+		line = fmt.Sprintf("%s%s", prefix, label)
+	default:
+		line = fmt.Sprintf("%s%s", prefix, trimmedMessage)
+	}
+
+	fmt.Fprintf(writer, "    - %s\n", strings.TrimSpace(line))
 }
 
 func (formatter *workflowHumanFormatter) writeEventSummary(writer io.Writer, event shared.Event) {

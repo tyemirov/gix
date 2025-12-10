@@ -146,7 +146,7 @@ func TestEvaluateSafeguardsRequireChanges(t *testing.T) {
 	})
 	require.NoError(t, evalErr)
 	require.False(t, pass)
-	require.Equal(t, "requires changes", reason)
+	require.Contains(t, reason, "requires changes")
 
 	executor.worktreeClean = false
 	executor.worktreeEntries = []string{" M README.md"}
