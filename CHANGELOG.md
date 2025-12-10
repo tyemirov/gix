@@ -1,5 +1,24 @@
 # Changelog
 
+## [v0.3.0-rc9]
+
+### Features ✨
+- _No changes._
+
+### Improvements ⚙️
+- Clarify per-step no-op messages for skipped tasks with detailed explanations.
+- Treat safeguard skips as non-issues to reduce noise in workflow outputs.
+- Nest issues under step outputs for better readability.
+
+### Bug Fixes 🐛
+- _No changes._
+
+### Testing 🧪
+- Adjusted tests to reflect updated issue formatting and nesting.
+
+### Docs 📚
+- _No changes._
+
 ## [v0.3.0-rc8]
 
 ### Features ✨
