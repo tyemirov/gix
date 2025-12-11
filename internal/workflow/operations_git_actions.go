@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/tyemirov/gix/internal/execshell"
 	"github.com/tyemirov/gix/internal/repos/shared"
 )
 
@@ -442,6 +443,97 @@ func (operation *gitPushOperation) ExecuteForRepository(ctx context.Context, env
 }
 
 func (operation *gitPushOperation) IsRepositoryScoped() bool {
+	return true
+}
+
+type gitBranchCleanupOperation struct {
+	branchTemplate string
+}
+
+var _ RepositoryScopedOperation = (*gitBranchCleanupOperation)(nil)
+
+func buildGitBranchCleanupOperation(options map[string]any) (Operation, error) {
+	reader := newOptionReader(options)
+	branch, branchExists, branchErr := reader.stringValue("branch")
+	if branchErr != nil {
+		return nil, branchErr
+	}
+	if !branchExists || len(branch) == 0 {
+		return nil, errors.New("git branch-cleanup step requires branch")
+	}
+
+	return &gitBranchCleanupOperation{branchTemplate: branch}, nil
+}
+
+func (operation *gitBranchCleanupOperation) Name() string {
+	return commandGitBranchCleanupKey
+}
+
+func (operation *gitBranchCleanupOperation) Execute(ctx context.Context, environment *Environment, state *State) error {
+	return iterateRepositories(state, func(repository *RepositoryState) error {
+		return operation.ExecuteForRepository(ctx, environment, repository)
+	})
+}
+
+func (operation *gitBranchCleanupOperation) ExecuteForRepository(ctx context.Context, environment *Environment, repository *RepositoryState) error {
+	if environment == nil || repository == nil || environment.GitExecutor == nil {
+		return nil
+	}
+
+	variableSnapshot := snapshotVariables(environment)
+	templateData := buildTaskTemplateData(repository, TaskDefinition{Name: "Git Branch Cleanup"}, variableSnapshot)
+	branchName, branchErr := renderTemplateValue(operation.branchTemplate, "", templateData)
+	if branchErr != nil {
+		return branchErr
+	}
+	branchName = strings.TrimSpace(branchName)
+	if len(branchName) == 0 {
+		return errors.New("branch resolved to empty value")
+	}
+
+	exists, existsErr := branchExists(ctx, environment.GitExecutor, repository.Path, branchName)
+	if existsErr != nil {
+		return existsErr
+	}
+
+	hasMutations := environment.RepositoryHasMutations(repository)
+
+	var message string
+	if !hasMutations {
+		if exists {
+			_, deleteErr := environment.GitExecutor.ExecuteGit(ctx, execshell.CommandDetails{
+				Arguments:        []string{"branch", "-D", branchName},
+				WorkingDirectory: repository.Path,
+			})
+			if deleteErr != nil {
+				return deleteErr
+			}
+			message = fmt.Sprintf("Git Branch Cleanup (deleted: no workflow-edited files for this repository; branch %s removed)", branchName)
+		} else {
+			message = fmt.Sprintf("Git Branch Cleanup (no-op: no workflow-edited files for this repository and branch %s does not exist)", branchName)
+		}
+	} else {
+		if exists {
+			message = fmt.Sprintf("Git Branch Cleanup (kept: workflow-edited files present for this repository; branch %s retained)", branchName)
+		} else {
+			message = fmt.Sprintf("Git Branch Cleanup (no-op: workflow-edited files present for this repository but branch %s does not exist)", branchName)
+		}
+	}
+
+	environment.ReportRepositoryEvent(
+		repository,
+		shared.EventLevelInfo,
+		shared.EventCodeTaskApply,
+		message,
+		map[string]string{
+			"phase": string(LogPhaseGit),
+		},
+	)
+
+	return nil
+}
+
+func (operation *gitBranchCleanupOperation) IsRepositoryScoped() bool {
 	return true
 }
 

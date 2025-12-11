@@ -57,6 +57,7 @@ type environmentSharedState struct {
 	capturedKinds       map[string]map[string]CaptureKind
 	capturedValues      map[string]map[string]string
 	mutatedFiles        map[string]map[string]struct{}
+	mutatedRepositories map[string]bool
 }
 
 func (environment *Environment) ensureSharedState() {
@@ -229,6 +230,10 @@ func (environment *Environment) RecordMutatedFile(repository *RepositoryState, r
 		environment.sharedState.mutatedFiles[repositoryKey] = fileSet
 	}
 	fileSet[normalized] = struct{}{}
+	if environment.sharedState.mutatedRepositories == nil {
+		environment.sharedState.mutatedRepositories = make(map[string]bool)
+	}
+	environment.sharedState.mutatedRepositories[repositoryKey] = true
 }
 
 func (environment *Environment) ConsumeMutatedFiles(repository *RepositoryState) []string {
@@ -262,6 +267,28 @@ func (environment *Environment) ConsumeMutatedFiles(repository *RepositoryState)
 	sort.Strings(paths)
 	delete(environment.sharedState.mutatedFiles, repositoryKey)
 	return paths
+}
+
+func (environment *Environment) RepositoryHasMutations(repository *RepositoryState) bool {
+	if environment == nil {
+		return false
+	}
+	repositoryKey := repositoryStateKey(repository)
+	if repositoryKey == "" {
+		repositoryKey = environment.repositoryKey()
+	}
+	if repositoryKey == "" {
+		return false
+	}
+
+	environment.ensureSharedState()
+	environment.sharedState.mutex.Lock()
+	defer environment.sharedState.mutex.Unlock()
+
+	if environment.sharedState.mutatedRepositories == nil {
+		return false
+	}
+	return environment.sharedState.mutatedRepositories[repositoryKey]
 }
 
 func repositoryStateKey(repository *RepositoryState) string {
