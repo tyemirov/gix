@@ -103,6 +103,23 @@ func EvaluateSafeguards(ctx context.Context, environment *Environment, repositor
 		}
 	}
 
+	disallowedBranch, disallowedBranchExists, disallowedBranchError := reader.stringValue("branch_not")
+	if disallowedBranchError != nil {
+		return false, "", disallowedBranchError
+	}
+	if disallowedBranchExists && len(strings.TrimSpace(disallowedBranch)) > 0 {
+		if environment.RepositoryManager == nil {
+			return false, "", errSafeguardRepoManager
+		}
+		currentBranch, branchReadError := environment.RepositoryManager.GetCurrentBranch(ctx, repositoryPath)
+		if branchReadError != nil {
+			return false, "", branchReadError
+		}
+		if matchesBranch(disallowedBranch, currentBranch) {
+			return false, fmt.Sprintf("skipped: already on branch %s", disallowedBranch), nil
+		}
+	}
+
 	for _, candidateBranch := range parseBranchList(raw["branch_in"]) {
 		if len(candidateBranch) == 0 {
 			continue
