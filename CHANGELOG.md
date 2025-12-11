@@ -1,5 +1,27 @@
 # Changelog
 
+## [v0.3.0-rc10]
+
+### Features ✨
+- _No changes._
+
+### Improvements ⚙️
+- Keep switch-branch capture when already on master branch.
+- Expose branch-not safeguard condition to workflow DSL.
+- Refine semantics for branch cleanup during workflows.
+- Add branch cleanup step to remove no-op automation branches after namespace rewrite workflows.
+- Add require_changes safeguard to gitignore workflow preset to skip commits when no changes.
+
+### Bug Fixes 🐛
+- _No changes._
+
+### Testing 🧪
+- Add tests for git branch-cleanup operation ensuring it deletes branches with no extra commits and retains branches with commits.
+- Add tests for branch-not safeguard preventing steps from running on disallowed branches.
+
+### Docs 📚
+- Update issues documentation to describe automated branch cleanup for empty workflow branches.
+
 ## [v0.3.0-rc9]
 
 ### Features ✨
