@@ -119,6 +119,57 @@ func TestGitPushOperationPushesBranch(t *testing.T) {
 	require.True(t, commandArgumentsExist(gitExecutor.commands, []string{"push", "--set-upstream", "origin", "feature/sample-docs"}))
 }
 
+func TestGitBranchCleanupOperationDeletesBranchWhenNoMutations(t *testing.T) {
+	gitExecutor := &recordingGitExecutor{
+		branchExists: true,
+	}
+	op, buildErr := buildGitBranchCleanupOperation(map[string]any{
+		"branch": "automation/{{ .Repository.Name }}-cleanup",
+		"base":   "master",
+	})
+	require.NoError(t, buildErr)
+
+	repository := NewRepositoryState(audit.RepositoryInspection{
+		Path:           "/repositories/sample",
+		FinalOwnerRepo: "octocat/sample",
+	})
+	state := &State{Repositories: []*RepositoryState{repository}}
+	env := &Environment{
+		GitExecutor: gitExecutor,
+		State:       state,
+	}
+
+	require.NoError(t, op.Execute(context.Background(), env, state))
+	require.True(t, commandArgumentsExist(gitExecutor.commands, []string{"branch", "-D", "automation/sample-cleanup"}))
+}
+
+func TestGitBranchCleanupOperationKeepsBranchWhenCommitsBeyondBase(t *testing.T) {
+	gitExecutor := &recordingGitExecutor{
+		branchExists: true,
+		revListOutput: map[string]string{
+			"master..automation/sample-cleanup": "abc123\n",
+		},
+	}
+	op, buildErr := buildGitBranchCleanupOperation(map[string]any{
+		"branch": "automation/{{ .Repository.Name }}-cleanup",
+		"base":   "master",
+	})
+	require.NoError(t, buildErr)
+
+	repository := NewRepositoryState(audit.RepositoryInspection{
+		Path:           "/repositories/sample",
+		FinalOwnerRepo: "octocat/sample",
+	})
+	state := &State{Repositories: []*RepositoryState{repository}}
+	env := &Environment{
+		GitExecutor: gitExecutor,
+		State:       state,
+	}
+
+	require.NoError(t, op.Execute(context.Background(), env, state))
+	require.False(t, commandArgumentsExist(gitExecutor.commands, []string{"branch", "-D", "automation/sample-cleanup"}))
+}
+
 func TestPullRequestCreateOperationCreatesPR(t *testing.T) {
 	gitExecutor := &recordingGitExecutor{}
 	client, clientErr := githubcli.NewClient(gitExecutor)

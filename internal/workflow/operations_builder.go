@@ -162,6 +162,8 @@ func buildOperationFromStep(step StepConfiguration) (Operation, error) {
 		return buildGitStageCommitOperation(normalizedOptions)
 	case commandGitPushKey:
 		return buildGitPushOperation(normalizedOptions)
+	case commandGitBranchCleanupKey:
+		return buildGitBranchCleanupOperation(normalizedOptions)
 	case commandPullRequestCreateKey:
 		return buildPullRequestCreateOperation(normalizedOptions)
 	case commandPullRequestOpenKey:

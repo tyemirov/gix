@@ -13,6 +13,7 @@ const (
 	commandGitCommitKey                       = "git commit"
 	commandGitStageCommitKey                  = "git stage-commit"
 	commandGitPushKey                         = "git push"
+	commandGitBranchCleanupKey                = "git branch-cleanup"
 	commandPullRequestCreateKey               = "pull-request create"
 	commandPullRequestOpenKey                 = "pull-request open"
 	legacyCommandRepoTasksApplyKey            = "repo tasks apply"

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/tyemirov/gix/internal/execshell"
 	"github.com/tyemirov/gix/internal/repos/shared"
 )
 
@@ -442,6 +443,184 @@ func (operation *gitPushOperation) ExecuteForRepository(ctx context.Context, env
 }
 
 func (operation *gitPushOperation) IsRepositoryScoped() bool {
+	return true
+}
+
+type gitBranchCleanupOperation struct {
+	branchTemplate string
+	baseTemplate   string
+}
+
+var _ RepositoryScopedOperation = (*gitBranchCleanupOperation)(nil)
+
+func buildGitBranchCleanupOperation(options map[string]any) (Operation, error) {
+	reader := newOptionReader(options)
+	branch, branchExists, branchErr := reader.stringValue("branch")
+	if branchErr != nil {
+		return nil, branchErr
+	}
+	if !branchExists || len(branch) == 0 {
+		return nil, errors.New("git branch-cleanup step requires branch")
+	}
+
+	base, baseExists, baseErr := reader.stringValue("base")
+	if baseErr != nil {
+		return nil, baseErr
+	}
+	if !baseExists || len(base) == 0 {
+		return nil, errors.New("git branch-cleanup step requires base")
+	}
+
+	return &gitBranchCleanupOperation{
+		branchTemplate: branch,
+		baseTemplate:   base,
+	}, nil
+}
+
+func (operation *gitBranchCleanupOperation) Name() string {
+	return commandGitBranchCleanupKey
+}
+
+func (operation *gitBranchCleanupOperation) Execute(ctx context.Context, environment *Environment, state *State) error {
+	return iterateRepositories(state, func(repository *RepositoryState) error {
+		return operation.ExecuteForRepository(ctx, environment, repository)
+	})
+}
+
+func (operation *gitBranchCleanupOperation) ExecuteForRepository(ctx context.Context, environment *Environment, repository *RepositoryState) error {
+	if environment == nil || repository == nil || environment.GitExecutor == nil {
+		return nil
+	}
+
+	variableSnapshot := snapshotVariables(environment)
+	templateData := buildTaskTemplateData(repository, TaskDefinition{Name: "Git Branch Cleanup"}, variableSnapshot)
+	branchName, branchErr := renderTemplateValue(operation.branchTemplate, "", templateData)
+	if branchErr != nil {
+		return branchErr
+	}
+	branchName = strings.TrimSpace(branchName)
+	if len(branchName) == 0 {
+		return errors.New("branch resolved to empty value")
+	}
+
+	baseName, baseErr := renderTemplateValue(operation.baseTemplate, "", templateData)
+	if baseErr != nil {
+		return baseErr
+	}
+	baseName = strings.TrimSpace(baseName)
+	if len(baseName) == 0 {
+		return errors.New("base branch resolved to empty value")
+	}
+
+	if strings.EqualFold(branchName, baseName) {
+		message := fmt.Sprintf("Git Branch Cleanup (no-op: branch %s matches base %s)", branchName, baseName)
+		environment.ReportRepositoryEvent(
+			repository,
+			shared.EventLevelInfo,
+			shared.EventCodeTaskApply,
+			message,
+			map[string]string{
+				"phase":  string(LogPhaseGit),
+				"branch": branchName,
+				"base":   baseName,
+			},
+		)
+		return nil
+	}
+
+	hasBranch, branchExistsErr := branchExists(ctx, environment.GitExecutor, repository.Path, branchName)
+	if branchExistsErr != nil {
+		return branchExistsErr
+	}
+	if !hasBranch {
+		message := fmt.Sprintf("Git Branch Cleanup (no-op: branch %s does not exist)", branchName)
+		environment.ReportRepositoryEvent(
+			repository,
+			shared.EventLevelInfo,
+			shared.EventCodeTaskApply,
+			message,
+			map[string]string{
+				"phase":  string(LogPhaseGit),
+				"branch": branchName,
+				"base":   baseName,
+			},
+		)
+		return nil
+	}
+
+	hasBase, baseExistsErr := branchExists(ctx, environment.GitExecutor, repository.Path, baseName)
+	if baseExistsErr != nil {
+		return baseExistsErr
+	}
+	if !hasBase {
+		message := fmt.Sprintf("Git Branch Cleanup (kept: base branch %s does not exist; branch %s retained)", baseName, branchName)
+		environment.ReportRepositoryEvent(
+			repository,
+			shared.EventLevelInfo,
+			shared.EventCodeTaskApply,
+			message,
+			map[string]string{
+				"phase":  string(LogPhaseGit),
+				"branch": branchName,
+				"base":   baseName,
+			},
+		)
+		return nil
+	}
+
+	rangeSpec := fmt.Sprintf("%s..%s", baseName, branchName)
+	result, diffErr := environment.GitExecutor.ExecuteGit(ctx, execshell.CommandDetails{
+		Arguments:        []string{"rev-list", "--max-count=1", rangeSpec},
+		WorkingDirectory: repository.Path,
+	})
+	if diffErr != nil {
+		message := fmt.Sprintf("Git Branch Cleanup (kept: unable to compare %s; branch %s retained)", rangeSpec, branchName)
+		environment.ReportRepositoryEvent(
+			repository,
+			shared.EventLevelInfo,
+			shared.EventCodeTaskApply,
+			message,
+			map[string]string{
+				"phase":  string(LogPhaseGit),
+				"branch": branchName,
+				"base":   baseName,
+			},
+		)
+		return nil
+	}
+
+	hasUniqueCommits := len(strings.TrimSpace(result.StandardOutput)) > 0
+
+	var message string
+	if hasUniqueCommits {
+		message = fmt.Sprintf("Git Branch Cleanup (kept: branch has commits beyond base %s)", baseName)
+	} else {
+		_, deleteErr := environment.GitExecutor.ExecuteGit(ctx, execshell.CommandDetails{
+			Arguments:        []string{"branch", "-D", branchName},
+			WorkingDirectory: repository.Path,
+		})
+		if deleteErr != nil {
+			return deleteErr
+		}
+		message = fmt.Sprintf("Git Branch Cleanup (deleted: no commits beyond base %s; branch %s removed)", baseName, branchName)
+	}
+
+	environment.ReportRepositoryEvent(
+		repository,
+		shared.EventLevelInfo,
+		shared.EventCodeTaskApply,
+		message,
+		map[string]string{
+			"phase":  string(LogPhaseGit),
+			"branch": branchName,
+			"base":   baseName,
+		},
+	)
+
+	return nil
+}
+
+func (operation *gitBranchCleanupOperation) IsRepositoryScoped() bool {
 	return true
 }
 

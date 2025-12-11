@@ -44,6 +44,8 @@ branch 'bugfix/IM-312-secure-join' set up to track 'origin/bugfix/IM-312-secure-
 
 - [x] [GX-257] Ensure that we commit only the files that we have changed. When running @configs/account-rename.yaml it looks like we are committing all uncommitted files in a tree. (`git stage-commit` stages only workflow-mutated files, so existing local work stays untouched, and namespace rewrite steps now register their changed files so downstream commits see them.)
 
+- [x] [GX-258] When running namespace rewrite workflows (for example, @configs/account-rename.yaml), avoid leaving behind empty automation branches in repositories where the workflow produced no file edits. (Introduced a generic `git branch-cleanup` workflow command that inspects the mutated-files registry to detect repositories with no workflow-edited files, deletes the corresponding automation branch locally when present, logs the outcome as an explicit no-op or deletion under the `git` phase, and wired it into the account-rename preset after branch restore so branches like `automation/ns-rewrite/<repo>-<workflow_run_id>` are removed automatically when nothing changed.)
+
 ## BugFixes (340–399)
 
 - [x] [GX-340] Audit this: I think I saw a few times when `gix cd` command was telling me that the branch was untract when in fact git co <branch> worked perfectly fine. I maybe off, so it's a maybe bug. (Fixed by letting `gix cd` fall back to the lone configured remote so branch switches track upstreams just like `git checkout`; added regression coverage.)

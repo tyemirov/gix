@@ -38,6 +38,8 @@ workflow:
               hard_stop:
                 require_clean:
                   enabled: true
+              soft_skip:
+                branch_not: master
             actions:
               - type: branch.change
                 options:
@@ -149,3 +151,11 @@ workflow:
                   restore:
                     from: initial_branch
                     value: branch
+
+  - step:
+      name: namespace-branch-cleanup
+      after: ["restore-original-state"]
+      command: ["git", "branch-cleanup"]
+      with:
+        branch: "automation/ns-rewrite/{{ .Repository.Name }}-{{ index .Environment \"workflow_run_id\" }}"
+        base: master
