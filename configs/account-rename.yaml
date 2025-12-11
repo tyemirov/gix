@@ -38,6 +38,8 @@ workflow:
               hard_stop:
                 require_clean:
                   enabled: true
+              soft_skip:
+                branch_not: master
             actions:
               - type: branch.change
                 options:

@@ -181,6 +181,33 @@ func TestEvaluateSafeguardsBranchAndPaths(t *testing.T) {
 	require.Equal(t, "requires branch master", reason)
 }
 
+func TestEvaluateSafeguardsBranchNot(t *testing.T) {
+	t.Parallel()
+
+	executor := &recordingGitExecutor{worktreeClean: true, currentBranch: "master"}
+	manager, err := gitrepo.NewRepositoryManager(executor)
+	require.NoError(t, err)
+
+	env := &Environment{RepositoryManager: manager}
+	repo := &RepositoryState{Path: "/repositories/sample"}
+
+	pass, reason, evalErr := EvaluateSafeguards(context.Background(), env, repo, map[string]any{
+		"branch_not": "master",
+	})
+	require.NoError(t, evalErr)
+	require.False(t, pass)
+	require.Equal(t, "skipped: already on branch master", reason)
+
+	executor.currentBranch = "develop"
+
+	pass, reason, evalErr = EvaluateSafeguards(context.Background(), env, repo, map[string]any{
+		"branch_not": "master",
+	})
+	require.NoError(t, evalErr)
+	require.True(t, pass)
+	require.Empty(t, reason)
+}
+
 func TestEvaluateSafeguardsPasses(t *testing.T) {
 	t.Parallel()
 
