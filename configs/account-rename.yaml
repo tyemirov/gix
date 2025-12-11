@@ -156,3 +156,4 @@ workflow:
       command: ["git", "branch-cleanup"]
       with:
         branch: "automation/ns-rewrite/{{ .Repository.Name }}-{{ index .Environment \"workflow_run_id\" }}"
+        base: master

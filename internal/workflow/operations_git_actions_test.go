@@ -125,6 +125,7 @@ func TestGitBranchCleanupOperationDeletesBranchWhenNoMutations(t *testing.T) {
 	}
 	op, buildErr := buildGitBranchCleanupOperation(map[string]any{
 		"branch": "automation/{{ .Repository.Name }}-cleanup",
+		"base":   "master",
 	})
 	require.NoError(t, buildErr)
 
@@ -142,12 +143,16 @@ func TestGitBranchCleanupOperationDeletesBranchWhenNoMutations(t *testing.T) {
 	require.True(t, commandArgumentsExist(gitExecutor.commands, []string{"branch", "-D", "automation/sample-cleanup"}))
 }
 
-func TestGitBranchCleanupOperationKeepsBranchWhenMutationsPresent(t *testing.T) {
+func TestGitBranchCleanupOperationKeepsBranchWhenCommitsBeyondBase(t *testing.T) {
 	gitExecutor := &recordingGitExecutor{
 		branchExists: true,
+		revListOutput: map[string]string{
+			"master..automation/sample-cleanup": "abc123\n",
+		},
 	}
 	op, buildErr := buildGitBranchCleanupOperation(map[string]any{
 		"branch": "automation/{{ .Repository.Name }}-cleanup",
+		"base":   "master",
 	})
 	require.NoError(t, buildErr)
 
@@ -160,8 +165,6 @@ func TestGitBranchCleanupOperationKeepsBranchWhenMutationsPresent(t *testing.T) 
 		GitExecutor: gitExecutor,
 		State:       state,
 	}
-	env.RecordMutatedFile(repository, "README.md")
-	_ = env.ConsumeMutatedFiles(repository)
 
 	require.NoError(t, op.Execute(context.Background(), env, state))
 	require.False(t, commandArgumentsExist(gitExecutor.commands, []string{"branch", "-D", "automation/sample-cleanup"}))

@@ -1466,6 +1466,7 @@ type recordingGitExecutor struct {
 	existingRefs    map[string]bool
 	remoteURLs      map[string]string
 	remoteErrors    map[string]error
+	revListOutput   map[string]string
 }
 
 func (executor *recordingGitExecutor) ExecuteGit(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
@@ -1517,6 +1518,20 @@ func (executor *recordingGitExecutor) ExecuteGit(_ context.Context, details exec
 				return execshell.ExecutionResult{StandardOutput: branch}, nil
 			}
 		}
+	case "rev-list":
+		rangeSpec := ""
+		for _, argument := range details.Arguments {
+			if strings.Contains(argument, "..") {
+				rangeSpec = argument
+				break
+			}
+		}
+		if executor.revListOutput != nil && rangeSpec != "" {
+			if output, exists := executor.revListOutput[rangeSpec]; exists {
+				return execshell.ExecutionResult{StandardOutput: output}, nil
+			}
+		}
+		return execshell.ExecutionResult{}, nil
 	case "remote":
 		if len(details.Arguments) >= 3 && details.Arguments[1] == "get-url" {
 			remoteName := details.Arguments[2]
