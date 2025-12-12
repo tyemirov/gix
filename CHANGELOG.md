@@ -1,5 +1,31 @@
 # Changelog
 
+## [v0.3.0-rc11]
+
+### Features ✨
+- Introduced per-step logging in workflows to provide clear step names instead of generic rubrics.
+- Added generic `git branch-cleanup` workflow command to automatically remove empty automation branches.
+- Branch cleanup now uses the repository default branch as the base for determining whether to delete branches.
+
+### Improvements ⚙️
+- Propagated workflow step names into logging for detailed event context.
+- Updated `account-rename` workflow to reference repository default branch dynamically for pushing and branch cleanup.
+- Enhanced human formatter to label task skips, phase events, and issues with step names.
+- Strengthened branch cleanup tests to cover behavior with repository default branch.
+
+### Bug Fixes 🐛
+- Fixed branch cleanup to correctly use the default branch as base, preventing unintended branch retention.
+- Clarified differences between logging improvements and branch cleanup behavior.
+
+### Testing 🧪
+- Added regression tests for branch cleanup behavior with default branch base.
+- Added logging tests covering step detail propagation and task skip labeling by step.
+- Extended human formatter tests for step-based logging.
+
+### Docs 📚
+- Expanded issue documentation with detailed explanations of per-step logging and branch cleanup changes.
+- Updated `ISSUES.md` with new workflow logging and branch cleanup item descriptions.
+
 ## [v0.3.0-rc10]
 
 ### Features ✨
