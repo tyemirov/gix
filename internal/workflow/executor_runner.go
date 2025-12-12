@@ -316,10 +316,7 @@ func executeRepositoryStageForRepository(
 	var failures []recordedOperationFailure
 	repositoryFailed := false
 	operationOutcomes := make(map[string]OperationOutcome)
-	previousStepName := ""
-	if environment != nil {
-		previousStepName = environment.currentStepName
-	}
+	previousStepName := environment.currentStepName
 
 	for _, node := range stage.Operations {
 		if node == nil || node.Operation == nil {
@@ -341,9 +338,7 @@ func executeRepositoryStageForRepository(
 			operationName = "operation"
 		}
 
-		if environment != nil {
-			environment.currentStepName = operationName
-		}
+		environment.currentStepName = operationName
 
 		compositeName := fmt.Sprintf("%s:%s", repoLabel, operationName)
 		stageOperationNames = append(stageOperationNames, compositeName)
@@ -404,9 +399,7 @@ func executeRepositoryStageForRepository(
 		repositoryFailed = true
 	}
 
-	if environment != nil {
-		environment.currentStepName = previousStepName
-	}
+	environment.currentStepName = previousStepName
 
 	if len(stageOperationNames) == 0 {
 		return nil, operationOutcomes, failures, repositoryFailed
