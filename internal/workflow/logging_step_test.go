@@ -20,6 +20,30 @@ func (formatter *capturingFormatter) HandleEvent(event shared.Event, _ io.Writer
 	formatter.events = append(formatter.events, event)
 }
 
+type stepLoggingGitRepositoryManager struct {
+	setRemoteURLError error
+}
+
+func (manager *stepLoggingGitRepositoryManager) CheckCleanWorktree(context.Context, string) (bool, error) {
+	return true, nil
+}
+
+func (manager *stepLoggingGitRepositoryManager) WorktreeStatus(context.Context, string) ([]string, error) {
+	return nil, nil
+}
+
+func (manager *stepLoggingGitRepositoryManager) GetCurrentBranch(context.Context, string) (string, error) {
+	return "master", nil
+}
+
+func (manager *stepLoggingGitRepositoryManager) GetRemoteURL(context.Context, string, string) (string, error) {
+	return "", nil
+}
+
+func (manager *stepLoggingGitRepositoryManager) SetRemoteURL(context.Context, string, string, string) error {
+	return manager.setRemoteURLError
+}
+
 func TestReportRepositoryEventIncludesStepDetail(t *testing.T) {
 	repository := &RepositoryState{
 		Path: "/tmp/repos/step-test",
@@ -66,17 +90,20 @@ func TestStepScopedReporterInjectsStepForRepositoryExecutors(t *testing.T) {
 	repositoryPath, err := shared.NewRepositoryPath("/tmp/repos/remotes-step-test")
 	require.NoError(t, err)
 
-	ownerRepository, err := shared.NewOwnerRepository("tyemirov/gix")
+	originOwnerRepository, err := shared.NewOwnerRepository("origin/example")
+	require.NoError(t, err)
+	canonicalOwnerRepository, err := shared.NewOwnerRepository("canonical/example")
 	require.NoError(t, err)
 
 	dependencies := remotes.Dependencies{
-		Reporter: environment.stepScopedReporter(),
+		GitManager: &stepLoggingGitRepositoryManager{},
+		Reporter:   environment.stepScopedReporter(),
 	}
 
 	options := remotes.Options{
 		RepositoryPath:           repositoryPath,
-		OriginOwnerRepository:    &ownerRepository,
-		CanonicalOwnerRepository: &ownerRepository,
+		OriginOwnerRepository:    &originOwnerRepository,
+		CanonicalOwnerRepository: &canonicalOwnerRepository,
 		RemoteProtocol:           shared.RemoteProtocolSSH,
 		ConfirmationPolicy:       shared.ConfirmationPolicyFromBool(true),
 	}
@@ -84,5 +111,6 @@ func TestStepScopedReporterInjectsStepForRepositoryExecutors(t *testing.T) {
 	require.NoError(t, remotes.Execute(context.Background(), dependencies, options))
 
 	require.Len(t, capture.events, 1)
+	require.Equal(t, shared.EventCodeRemoteUpdate, capture.events[0].Code)
 	require.Equal(t, "remotes", capture.events[0].Details["step"])
 }
