@@ -69,7 +69,11 @@ func logRepositoryOperationError(environment *Environment, err error) bool {
 	}
 
 	if environment.Reporter != nil {
-		environment.Reporter.Report(shared.Event{
+		reporter := environment.stepScopedReporter()
+		if reporter == nil {
+			reporter = environment.Reporter
+		}
+		reporter.Report(shared.Event{
 			Level:                shared.EventLevelError,
 			Code:                 eventCode,
 			RepositoryIdentifier: ownerRepository,

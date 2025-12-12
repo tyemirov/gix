@@ -61,7 +61,7 @@ func (operation *RenameOperation) ExecuteForRepository(
 		GitManager: environment.RepositoryManager,
 		Prompter:   environment.Prompter,
 		Clock:      shared.SystemClock{},
-		Reporter:   environment.Reporter,
+		Reporter:   environment.stepScopedReporter(),
 	}
 
 	repositoryPath, repositoryPathError := shared.NewRepositoryPath(repository.Path)
