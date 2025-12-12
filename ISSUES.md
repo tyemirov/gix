@@ -111,7 +111,7 @@ failed to inspect repositories: git command exited with code 128 (check-ignore -
 
 - [x] [GX-343] `gix message changelog` prints “no changes detected for changelog generation” twice. (The command now treats the empty-range case as informational, prints the notice once, and exits successfully.)
 
-- [ ] [GX-344] There are no step names and per step logging despite GX-259 marked as done.
+- [x] [GX-344] There are no step names and per step logging despite GX-259 marked as done. (Workflow now injects step names into all emitted events (including repo executors that report directly), so human logs consistently prefix entries with the active step; tests updated and `make ci` passes.)
 ```shell
 12:14:25 tyemirov@computercat:~/Development $ gix w tyemirov/gix/configs/account-rename.yaml --yes
 -- MarcoPoloResearchLab/PhotoFriend (/home/tyemirov/Development/tyemirov/Research/MarcoPoloResearchLab/PhotoFriend) --

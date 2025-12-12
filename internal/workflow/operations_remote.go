@@ -55,7 +55,7 @@ func (operation *CanonicalRemoteOperation) ExecuteForRepository(
 	dependencies := remotes.Dependencies{
 		GitManager: environment.RepositoryManager,
 		Prompter:   environment.Prompter,
-		Reporter:   environment.Reporter,
+		Reporter:   environment.stepScopedReporter(),
 	}
 
 	originOwnerRepository, originOwnerError := shared.ParseOwnerRepositoryOptional(repository.Inspection.OriginOwnerRepo)

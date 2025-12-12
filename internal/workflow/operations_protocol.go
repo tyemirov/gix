@@ -56,7 +56,7 @@ func (operation *ProtocolConversionOperation) ExecuteForRepository(
 	dependencies := conversion.Dependencies{
 		GitManager: environment.RepositoryManager,
 		Prompter:   environment.Prompter,
-		Reporter:   environment.Reporter,
+		Reporter:   environment.stepScopedReporter(),
 	}
 
 	actualProtocol, actualProtocolError := shared.ParseRemoteProtocol(string(repository.Inspection.RemoteProtocol))
