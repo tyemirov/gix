@@ -259,3 +259,29 @@ func TestWorkflowHumanFormatterRecordsIssues(t *testing.T) {
 		"      - ⚠ git pull declined",
 	}, lines)
 }
+
+func TestWorkflowHumanFormatterLabelsTaskSkipByStepWhenOperationMissing(t *testing.T) {
+	formatter := NewHumanEventFormatter()
+	var buffer bytes.Buffer
+
+	repo := "tyemirov/skip-step"
+	path := "/tmp/repos/skip-step"
+
+	formatter.HandleEvent(shared.Event{
+		Code:                 shared.EventCodeTaskSkip,
+		Level:                shared.EventLevelWarn,
+		RepositoryIdentifier: repo,
+		RepositoryPath:       path,
+		Message:              "requires changes (no workflow edits detected; clean worktree)",
+		Details: map[string]string{
+			"step": "namespace-stage-commit",
+		},
+	}, &buffer)
+
+	lines := strings.Split(strings.TrimSpace(buffer.String()), "\n")
+	require.Equal(t, []string{
+		"-- tyemirov/skip-step (/tmp/repos/skip-step) --",
+		"  • git:",
+		"    - ⚠ namespace-stage-commit (no-op: requires changes (no workflow edits detected; clean worktree))",
+	}, lines)
+}

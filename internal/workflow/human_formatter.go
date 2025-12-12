@@ -67,7 +67,8 @@ func (formatter *workflowHumanFormatter) HandleEvent(event shared.Event, writer 
 	case shared.EventCodeTaskSkip:
 		delete(formatter.pendingTasks, repositoryKey)
 		operation := strings.TrimSpace(event.Details["operation"])
-		if len(operation) > 0 {
+		stepName := strings.TrimSpace(event.Details["step"])
+		if len(operation) > 0 || len(stepName) > 0 {
 			rawMessage := strings.TrimSpace(event.Message)
 			lowerMessage := strings.ToLower(rawMessage)
 
@@ -96,14 +97,22 @@ func (formatter *workflowHumanFormatter) HandleEvent(event shared.Event, writer 
 			}
 
 			label := operation
-			if stepName := strings.TrimSpace(event.Details["step"]); len(stepName) > 0 {
+			if len(stepName) > 0 {
 				label = stepName
+			}
+			if len(strings.TrimSpace(label)) == 0 {
+				label = "step"
+			}
+
+			phase := LogPhaseGit
+			if phaseCandidate := formatter.determinePhase(event); phaseCandidate != LogPhaseUnknown {
+				phase = phaseCandidate
 			}
 
 			formatter.writePhaseEntry(
 				writer,
 				repositoryKey,
-				LogPhaseGit,
+				phase,
 				formatter.decoratePhaseMessage(
 					event.Level,
 					fmt.Sprintf("%s (%s)", label, suffix),
