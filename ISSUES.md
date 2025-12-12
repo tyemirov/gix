@@ -46,6 +46,40 @@ branch 'bugfix/IM-312-secure-join' set up to track 'origin/bugfix/IM-312-secure-
 
 - [x] [GX-258] When running namespace rewrite workflows (for example, @configs/account-rename.yaml), avoid leaving behind empty automation branches in repositories where the workflow produced no file edits. (Introduced a generic `git branch-cleanup` workflow command that inspects the mutated-files registry to detect repositories with no workflow-edited files, deletes the corresponding automation branch locally when present, logs the outcome as an explicit no-op or deletion under the `git` phase, and wired it into the account-rename preset after branch restore so branches like `automation/ns-rewrite/<repo>-<workflow_run_id>` are removed automatically when nothing changed.)
 
+- [ ] [GX-259] The logging should be per step. Each step has a name and we want to see the name of this step instead rather meaningless current rubrics
+instead of
+```shell
+-- tyemirov/zync (/home/tyemirov/Development/tyemirov/zync) --
+  • remote/folder:
+    - already canonical
+    - already normalized
+  • branch:
+    - master
+    - automation/ns-rewrite/zync-20251212T171313 (created)
+  • files:
+    - Rewrite module namespace
+  • git:
+    - ⚠ Git Stage Commit (no-op: no workflow-edited files to commit for this repository (require_changes safeguard; clean worktree))
+    - ⚠ Git Push (no-op: no commit produced by this workflow (require_changes safeguard))
+    - ⚠ Open Pull Request (no-op: no branch changes to review for this workflow (require_changes safeguard))
+    - Restore initial branch
+    - Restore initial branch
+```
+we need
+- step name: remotes
+  reason: already canonical
+- step: folders
+  outcome: no-op  
+  reason: already normalized
+- step name: protocol-to-git-https
+  outcome: no-op
+  reason: 
+
+etc etc
+
+Prepare a deltails planed of the sane loggin
+
+
 ## BugFixes (340–399)
 
 - [x] [GX-340] Audit this: I think I saw a few times when `gix cd` command was telling me that the branch was untract when in fact git co <branch> worked perfectly fine. I maybe off, so it's a maybe bug. (Fixed by letting `gix cd` fall back to the lone configured remote so branch switches track upstreams just like `git checkout`; added regression coverage.)
