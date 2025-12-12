@@ -21,7 +21,8 @@ func (formatter *capturingFormatter) HandleEvent(event shared.Event, _ io.Writer
 }
 
 type stepLoggingGitRepositoryManager struct {
-	setRemoteURLError error
+	setRemoteURLError  error
+	setRemoteURLCalled bool
 }
 
 func (manager *stepLoggingGitRepositoryManager) CheckCleanWorktree(context.Context, string) (bool, error) {
@@ -41,6 +42,7 @@ func (manager *stepLoggingGitRepositoryManager) GetRemoteURL(context.Context, st
 }
 
 func (manager *stepLoggingGitRepositoryManager) SetRemoteURL(context.Context, string, string, string) error {
+	manager.setRemoteURLCalled = true
 	return manager.setRemoteURLError
 }
 
@@ -95,8 +97,9 @@ func TestStepScopedReporterInjectsStepForRepositoryExecutors(t *testing.T) {
 	canonicalOwnerRepository, err := shared.NewOwnerRepository("canonical/example")
 	require.NoError(t, err)
 
+	gitManager := &stepLoggingGitRepositoryManager{}
 	dependencies := remotes.Dependencies{
-		GitManager: &stepLoggingGitRepositoryManager{},
+		GitManager: gitManager,
 		Reporter:   environment.stepScopedReporter(),
 	}
 
@@ -113,4 +116,5 @@ func TestStepScopedReporterInjectsStepForRepositoryExecutors(t *testing.T) {
 	require.Len(t, capture.events, 1)
 	require.Equal(t, shared.EventCodeRemoteUpdate, capture.events[0].Code)
 	require.Equal(t, "remotes", capture.events[0].Details["step"])
+	require.True(t, gitManager.setRemoteURLCalled)
 }
