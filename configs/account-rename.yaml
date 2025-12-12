@@ -130,7 +130,7 @@ workflow:
         title: 'refactor({{ .Repository.Name }}): rewrite module namespace'
         body: |
           Rewrites Go module imports from `github.com/temirov` to `github.com/tyemirov` after the owner rename.
-        base: master
+        base: "{{ .Repository.DefaultBranch }}"
         push_remote: origin
         safeguards:
           soft_skip:
@@ -156,4 +156,4 @@ workflow:
       command: ["git", "branch-cleanup"]
       with:
         branch: "automation/ns-rewrite/{{ .Repository.Name }}-{{ index .Environment \"workflow_run_id\" }}"
-        base: master
+        base: "{{ .Repository.DefaultBranch }}"

@@ -170,6 +170,31 @@ func TestGitBranchCleanupOperationKeepsBranchWhenCommitsBeyondBase(t *testing.T)
 	require.False(t, commandArgumentsExist(gitExecutor.commands, []string{"branch", "-D", "automation/sample-cleanup"}))
 }
 
+func TestGitBranchCleanupOperationUsesRepositoryDefaultBaseBranch(t *testing.T) {
+	gitExecutor := &recordingGitExecutor{
+		branchExists: true,
+	}
+	op, buildErr := buildGitBranchCleanupOperation(map[string]any{
+		"branch": "automation/{{ .Repository.Name }}-cleanup",
+		"base":   "{{ .Repository.DefaultBranch }}",
+	})
+	require.NoError(t, buildErr)
+
+	repository := NewRepositoryState(audit.RepositoryInspection{
+		Path:                "/repositories/sample",
+		FinalOwnerRepo:      "octocat/sample",
+		RemoteDefaultBranch: "main",
+	})
+	state := &State{Repositories: []*RepositoryState{repository}}
+	env := &Environment{
+		GitExecutor: gitExecutor,
+		State:       state,
+	}
+
+	require.NoError(t, op.Execute(context.Background(), env, state))
+	require.True(t, commandArgumentsExist(gitExecutor.commands, []string{"branch", "-D", "automation/sample-cleanup"}))
+}
+
 func TestPullRequestCreateOperationCreatesPR(t *testing.T) {
 	gitExecutor := &recordingGitExecutor{}
 	client, clientErr := githubcli.NewClient(gitExecutor)

@@ -46,7 +46,7 @@ branch 'bugfix/IM-312-secure-join' set up to track 'origin/bugfix/IM-312-secure-
 
 - [x] [GX-258] When running namespace rewrite workflows (for example, @configs/account-rename.yaml), avoid leaving behind empty automation branches in repositories where the workflow produced no file edits. (Introduced a generic `git branch-cleanup` workflow command that inspects the mutated-files registry to detect repositories with no workflow-edited files, deletes the corresponding automation branch locally when present, logs the outcome as an explicit no-op or deletion under the `git` phase, and wired it into the account-rename preset after branch restore so branches like `automation/ns-rewrite/<repo>-<workflow_run_id>` are removed automatically when nothing changed.)
 
-- [ ] [GX-259] The logging should be per step. Each step has a name and we want to see the name of this step instead rather meaningless current rubrics
+- [x] [GX-259] The logging should be per step. Each step has a name and we want to see the name of this step instead rather meaningless current rubrics
 instead of
 ```shell
 -- tyemirov/zync (/home/tyemirov/Development/tyemirov/zync) --
@@ -78,6 +78,7 @@ we need
 etc etc
 
 Prepare a deltails planed of the sane loggin
+Branch cleanup behavior for namespace workflows now also uses the repository default branch as the base (via `.Repository.DefaultBranch` in `configs/account-rename.yaml`), so automation branches created by account-rename are deleted when they have no commits beyond the default branch; this path is covered by regression tests.
 
 
 ## BugFixes (340–399)
