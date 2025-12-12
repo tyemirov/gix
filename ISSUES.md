@@ -111,6 +111,27 @@ failed to inspect repositories: git command exited with code 128 (check-ignore -
 
 - [x] [GX-343] `gix message changelog` prints “no changes detected for changelog generation” twice. (The command now treats the empty-range case as informational, prints the notice once, and exits successfully.)
 
+- [ ] [GX-344] There are no step names and per step logging despite GX-259 marked as done.
+```shell
+12:14:25 tyemirov@computercat:~/Development $ gix w tyemirov/gix/configs/account-rename.yaml --yes
+-- MarcoPoloResearchLab/PhotoFriend (/home/tyemirov/Development/tyemirov/Research/MarcoPoloResearchLab/PhotoFriend) --
+  • remote/folder:
+    - already canonical
+  • files:
+    - already normalized
+  • branch:
+    - master
+    - automation/ns-rewrite/PhotoFriend-20251212T201557 (created)
+  • files:
+    - namespace-rewrite: Rewrite module namespace
+  • git:
+    - ⚠ namespace-stage-commit (no-op: no workflow-edited files to commit for this repository (require_changes safeguard; clean worktree))
+    - ⚠ namespace-push (no-op: no commit produced by this workflow (require_changes safeguard))
+    - ⚠ namespace-open-pr (no-op: no branch changes to review for this workflow (require_changes safeguard))
+    - Restore initial branch
+    - namespace-branch-cleanup: Restore initial branch
+```
+
 ## Maintenance (422–499)
 
 ## Planning 
