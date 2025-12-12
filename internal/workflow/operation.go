@@ -45,6 +45,7 @@ type Environment struct {
 	Reporter          shared.SummaryReporter
 	Logger            *zap.Logger
 	Variables         *VariableStore
+	currentStepName   string
 	State             *State
 	sharedState       *environmentSharedState
 	suppressHeaders   bool

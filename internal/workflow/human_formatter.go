@@ -95,13 +95,18 @@ func (formatter *workflowHumanFormatter) HandleEvent(event shared.Event, writer 
 				}
 			}
 
+			label := operation
+			if stepName := strings.TrimSpace(event.Details["step"]); len(stepName) > 0 {
+				label = stepName
+			}
+
 			formatter.writePhaseEntry(
 				writer,
 				repositoryKey,
 				LogPhaseGit,
 				formatter.decoratePhaseMessage(
 					event.Level,
-					fmt.Sprintf("%s (%s)", operation, suffix),
+					fmt.Sprintf("%s (%s)", label, suffix),
 				),
 			)
 			return
@@ -154,7 +159,13 @@ func (formatter *workflowHumanFormatter) handleTaskApply(writer io.Writer, repos
 		return
 	}
 
-	formatter.writePhaseEntry(writer, repository, phase, taskName)
+	stepName := strings.TrimSpace(event.Details["step"])
+	message := taskName
+	if len(stepName) > 0 && !strings.EqualFold(stepName, taskName) {
+		message = fmt.Sprintf("%s: %s", stepName, taskName)
+	}
+
+	formatter.writePhaseEntry(writer, repository, phase, message)
 }
 
 func (formatter *workflowHumanFormatter) determinePhase(event shared.Event) LogPhase {
@@ -205,6 +216,9 @@ func (formatter *workflowHumanFormatter) handlePhaseEventByCode(writer io.Writer
 	message := strings.TrimSpace(event.Message)
 	if len(message) == 0 {
 		message = strings.TrimSpace(event.Code)
+	}
+	if stepName := strings.TrimSpace(event.Details["step"]); len(stepName) > 0 {
+		message = fmt.Sprintf("%s: %s", stepName, message)
 	}
 	formatter.writePhaseEntry(writer, repository, phase, formatter.decoratePhaseMessage(event.Level, message))
 	return true

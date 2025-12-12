@@ -32,6 +32,13 @@ func (environment *Environment) ReportRepositoryEvent(repository *RepositoryStat
 		metadata[key] = value
 	}
 
+	stepName := strings.TrimSpace(environment.currentStepName)
+	if stepName != "" {
+		if _, exists := metadata["step"]; !exists {
+			metadata["step"] = stepName
+		}
+	}
+
 	environment.Reporter.Report(shared.Event{
 		Level:                level,
 		Code:                 code,
