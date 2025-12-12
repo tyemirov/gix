@@ -173,6 +173,9 @@ func TestGitBranchCleanupOperationKeepsBranchWhenCommitsBeyondBase(t *testing.T)
 func TestGitBranchCleanupOperationUsesRepositoryDefaultBaseBranch(t *testing.T) {
 	gitExecutor := &recordingGitExecutor{
 		branchExists: true,
+		revListOutput: map[string]string{
+			"master..automation/sample-cleanup": "abc123\n",
+		},
 	}
 	op, buildErr := buildGitBranchCleanupOperation(map[string]any{
 		"branch": "automation/{{ .Repository.Name }}-cleanup",
@@ -192,6 +195,7 @@ func TestGitBranchCleanupOperationUsesRepositoryDefaultBaseBranch(t *testing.T) 
 	}
 
 	require.NoError(t, op.Execute(context.Background(), env, state))
+	require.True(t, commandArgumentsExist(gitExecutor.commands, []string{"rev-list", "--max-count=1", "main..automation/sample-cleanup"}))
 	require.True(t, commandArgumentsExist(gitExecutor.commands, []string{"branch", "-D", "automation/sample-cleanup"}))
 }
 
