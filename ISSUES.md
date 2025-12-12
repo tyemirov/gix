@@ -79,6 +79,8 @@ etc etc
 
 Prepare a deltails planed of the sane loggin
 
+- [x] [GX-260] Branch cleanup behavior for namespace workflows now also uses the repository default branch as the base (via `.Repository.DefaultBranch` in `configs/account-rename.yaml`), so automation branches created by account-rename are deleted when they have no commits beyond the default branch; this path is covered by regression tests.
+
 
 ## BugFixes (340–399)
 
