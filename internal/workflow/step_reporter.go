@@ -211,9 +211,25 @@ func classifyStepOutcome(event shared.Event) (stepOutcomeKind, string) {
 	case shared.EventCodeRemoteUpdate,
 		shared.EventCodeProtocolUpdate,
 		shared.EventCodeFolderRename,
-		shared.EventCodeNamespaceApply,
-		shared.EventCodeRepoSwitched,
-		shared.EventCodeTaskApply:
+		shared.EventCodeNamespaceApply:
+		if reason == "" {
+			reason = strings.TrimSpace(event.Code)
+		}
+		return stepOutcomeApplied, reason
+	case shared.EventCodeRepoSwitched:
+		branchName := strings.TrimSpace(details["branch"])
+		if branchName != "" {
+			return stepOutcomeApplied, branchName
+		}
+		if reason == "" {
+			reason = strings.TrimSpace(event.Code)
+		}
+		return stepOutcomeApplied, reason
+	case shared.EventCodeTaskApply:
+		taskName := strings.TrimSpace(details["task"])
+		if taskName != "" {
+			return stepOutcomeApplied, taskName
+		}
 		if reason == "" {
 			reason = strings.TrimSpace(event.Code)
 		}
