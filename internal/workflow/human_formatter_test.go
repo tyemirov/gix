@@ -31,9 +31,9 @@ func TestWorkflowHumanFormatterPrintsStepSummaries(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(buffer.String()), "\n")
 	require.Equal(t, []string{
 		"-- tyemirov/scheduler (/tmp/repos/scheduler) --",
-		"  step name: protocol-to-git-https",
+		"- stepName: protocol-to-git-https",
 		"  outcome: no-op",
-		"  reason: already canonical",
+		"  reason: 'already canonical'",
 	}, lines)
 }
 
@@ -66,13 +66,13 @@ func TestWorkflowHumanFormatterSeparatesRepositories(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(buffer.String()), "\n")
 	require.Equal(t, []string{
 		"-- tyemirov/alpha (/tmp/repos/alpha) --",
-		"  step name: folders",
+		"- stepName: folders",
 		"  outcome: no-op",
-		"  reason: already normalized",
+		"  reason: 'already normalized'",
 		"",
 		"-- tyemirov/beta (/tmp/repos/beta) --",
-		"  step name: remotes",
+		"- stepName: remotes",
 		"  outcome: applied",
-		"  reason: origin now git@github.com:tyemirov/beta.git",
+		"  reason: 'origin now git@github.com:tyemirov/beta.git'",
 	}, lines)
 }

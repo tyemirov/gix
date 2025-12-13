@@ -53,9 +53,9 @@ func (formatter *workflowHumanFormatter) HandleEvent(event shared.Event, writer 
 
 	reason := strings.TrimSpace(event.Details["reason"])
 
-	fmt.Fprintf(writer, "  step name: %s\n", stepName)
+	fmt.Fprintf(writer, "- stepName: %s\n", stepName)
 	fmt.Fprintf(writer, "  outcome: %s\n", outcome)
-	fmt.Fprintf(writer, "  reason: %s\n", reason)
+	fmt.Fprintf(writer, "  reason: %s\n", formatYAMLScalar(reason))
 }
 
 func (formatter *workflowHumanFormatter) ensureHeader(writer io.Writer, repository string) {
@@ -83,4 +83,14 @@ func formatRepositoryHeaderLabel(identifier string, path string) string {
 	default:
 		return ""
 	}
+}
+
+func formatYAMLScalar(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "''"
+	}
+	collapsed := strings.Join(strings.Fields(trimmed), " ")
+	escaped := strings.ReplaceAll(collapsed, "'", "''")
+	return "'" + escaped + "'"
 }

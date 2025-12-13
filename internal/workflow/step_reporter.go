@@ -237,10 +237,30 @@ func classifyStepOutcome(event shared.Event) (stepOutcomeKind, string) {
 		return stepOutcomeApplied, reason
 	case shared.EventCodeTaskApply:
 		taskName := strings.TrimSpace(details["task"])
+		messageLower := strings.ToLower(message)
+		if strings.Contains(messageLower, "(no-op:") || strings.Contains(messageLower, "(kept:") {
+			if reason == "" {
+				reason = "no-op"
+			}
+			return stepOutcomeNoop, reason
+		}
+
+		if strings.Contains(messageLower, "(deleted:") || strings.Contains(messageLower, "(created:") {
+			if reason == "" {
+				reason = "applied"
+			}
+			return stepOutcomeApplied, reason
+		}
+		if strings.EqualFold(message, "task applied") {
+			if taskName != "" {
+				return stepOutcomeApplied, taskName
+			}
+			return stepOutcomeApplied, ""
+		}
 		if taskName != "" {
 			return stepOutcomeApplied, taskName
 		}
-		return stepOutcomeApplied, ""
+		return stepOutcomeApplied, message
 	case shared.EventCodeRemoteDeclined,
 		shared.EventCodeProtocolDeclined:
 		if reason == "" {
@@ -326,6 +346,21 @@ func (environment *Environment) reportStepSummary(repository *RepositoryState, s
 
 	if outcomeLabel == "unknown" && executionError == nil && !repositorySkipped {
 		outcomeLabel = "ok"
+	}
+
+	if strings.TrimSpace(reason) == "" {
+		switch outcomeLabel {
+		case "no-op":
+			reason = "no-op"
+		case "skipped":
+			reason = "skipped"
+		case "applied":
+			reason = "applied"
+		case "failed":
+			reason = "failed"
+		default:
+			reason = "ok"
+		}
 	}
 
 	details := map[string]string{

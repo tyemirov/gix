@@ -111,7 +111,7 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				reposIntegrationRenameActionCommand,
 			},
 			expectedOutput: func(repositoryPath string) string {
-				return "  step name: folder-rename"
+				return "- stepName: folder-rename"
 			},
 			verify: func(testInstance *testing.T, repositoryPath string) {
 				absolutePath, absError := filepath.Abs(repositoryPath)
@@ -137,7 +137,7 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				reposIntegrationOwnerFlag,
 			},
 			expectedOutput: func(repositoryPath string) string {
-				return "  step name: folder-rename"
+				return "- stepName: folder-rename"
 			},
 			verify: func(testInstance *testing.T, repositoryPath string) {
 				absolutePath, absError := filepath.Abs(repositoryPath)
@@ -168,7 +168,7 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				reposIntegrationOwnerFlag,
 			},
 			expectedOutput: func(repositoryPath string) string {
-				return "  step name: folder-rename"
+				return "- stepName: folder-rename"
 			},
 			verify: func(testInstance *testing.T, repositoryPath string) {
 				parent := filepath.Dir(repositoryPath)
@@ -223,7 +223,7 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				reposIntegrationOwnerFlag,
 			},
 			expectedOutput: func(repositoryPath string) string {
-				return "  step name: folder-rename"
+				return "- stepName: folder-rename"
 			},
 			verify: func(testInstance *testing.T, repositoryPath string) {
 				absolutePath, absError := filepath.Abs(repositoryPath)
@@ -256,7 +256,7 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				reposIntegrationYesFlag,
 			},
 			expectedOutput: func(repositoryPath string) string {
-				return "  step name: remote-update-to-canonical"
+				return "- stepName: remote-update-to-canonical"
 			},
 			verify: func(testInstance *testing.T, repositoryPath string) {
 				remoteCommand := exec.Command(reposIntegrationGitExecutable, "-C", repositoryPath, reposIntegrationRemoteSubcommand, reposIntegrationGetURLSubcommand, reposIntegrationOriginRemoteName)
@@ -280,7 +280,7 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				reposIntegrationUpdateCanonicalAction,
 			},
 			expectedOutput: func(repositoryPath string) string {
-				return "  step name: remote-update-to-canonical"
+				return "- stepName: remote-update-to-canonical"
 			},
 			verify: func(testInstance *testing.T, repositoryPath string) {
 				remoteCommand := exec.Command(reposIntegrationGitExecutable, "-C", repositoryPath, reposIntegrationRemoteSubcommand, reposIntegrationGetURLSubcommand, reposIntegrationOriginRemoteName)
@@ -325,7 +325,7 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				reposIntegrationYesFlag,
 			},
 			expectedOutput: func(repositoryPath string) string {
-				return "  step name: remote-update-to-canonical"
+				return "- stepName: remote-update-to-canonical"
 			},
 			verify: func(testInstance *testing.T, repositoryPath string) {
 				remoteCommand := exec.Command(reposIntegrationGitExecutable, "-C", repositoryPath, reposIntegrationRemoteSubcommand, reposIntegrationGetURLSubcommand, reposIntegrationOriginRemoteName)
@@ -363,7 +363,7 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				reposIntegrationSSHProtocol,
 			},
 			expectedOutput: func(repositoryPath string) string {
-				return "  step name: remote-update-protocol"
+				return "- stepName: remote-update-protocol"
 			},
 			verify: func(testInstance *testing.T, repositoryPath string) {
 				remoteCommand := exec.Command(reposIntegrationGitExecutable, "-C", repositoryPath, reposIntegrationRemoteSubcommand, reposIntegrationGetURLSubcommand, reposIntegrationOriginRemoteName)
@@ -387,7 +387,7 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				reposIntegrationUpdateProtocolAction,
 			},
 			expectedOutput: func(repositoryPath string) string {
-				return "  step name: remote-update-protocol"
+				return "- stepName: remote-update-protocol"
 			},
 			verify: func(testInstance *testing.T, repositoryPath string) {
 				remoteCommand := exec.Command(reposIntegrationGitExecutable, "-C", repositoryPath, reposIntegrationRemoteSubcommand, reposIntegrationGetURLSubcommand, reposIntegrationOriginRemoteName)
@@ -419,7 +419,7 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				reposIntegrationUpdateProtocolAction,
 			},
 			expectedOutput: func(repositoryPath string) string {
-				return "  step name: remote-update-protocol"
+				return "- stepName: remote-update-protocol"
 			},
 			verify: func(testInstance *testing.T, repositoryPath string) {
 				remoteCommand := exec.Command(reposIntegrationGitExecutable, "-C", repositoryPath, reposIntegrationRemoteSubcommand, reposIntegrationGetURLSubcommand, reposIntegrationOriginRemoteName)
