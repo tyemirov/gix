@@ -51,10 +51,10 @@ const (
 	workflowIntegrationBranchCommitMessage     = "CI: switch workflow branch filters to master"
 	workflowIntegrationRepoViewJSONTemplate    = "{\"nameWithOwner\":\"canonical/example\",\"defaultBranchRef\":{\"name\":\"%s\"},\"description\":\"\"}\n"
 	workflowIntegrationConvertExpectedTemplate = "-- canonical/example (%s) --"
-	workflowIntegrationRemoteUpdateLine        = "    - remote update-protocol-1: origin now git@github.com:canonical/example.git"
-	workflowIntegrationRemoteSkipExpectedLine  = "    - remote update-to-canonical-2: already canonical"
-	workflowIntegrationStepsHeader             = "  • steps:"
-	workflowIntegrationProtocolStepSummaryLine = "    - remote update-protocol-1 (outcome: applied"
+	workflowIntegrationProtocolStepNameLine    = "  step name: remote update-protocol-1"
+	workflowIntegrationProtocolStepReasonLine  = "  reason: origin now git@github.com:canonical/example.git"
+	workflowIntegrationCanonicalStepNameLine   = "  step name: remote update-to-canonical-2"
+	workflowIntegrationCanonicalStepReasonLine = "  reason: already canonical"
 	workflowIntegrationDefaultExpectedTemplate = "WORKFLOW-DEFAULT: %s (main → master)"
 	workflowIntegrationAuditExpectedTemplate   = "WORKFLOW-AUDIT: wrote report to %s\n"
 	workflowIntegrationCSVHeader               = "folder_name,final_github_repo,name_matches,remote_default_branch,local_branch,in_sync,remote_protocol,origin_matches_canonical,worktree_dirty,dirty_files\n"
@@ -194,15 +194,14 @@ func TestWorkflowRunIntegration(testInstance *testing.T) {
 			filteredOutput := filterStructuredOutput(rawOutput)
 
 			expectedConversion := fmt.Sprintf(workflowIntegrationConvertExpectedTemplate, repositoryPath)
-			require.Contains(subtest, filteredOutput, workflowIntegrationRemoteUpdateLine)
-			expectedRemoteUpdate := workflowIntegrationRemoteSkipExpectedLine
 			expectedMigration := fmt.Sprintf(workflowIntegrationDefaultExpectedTemplate, repositoryPath)
 			expectedAudit := fmt.Sprintf(workflowIntegrationAuditExpectedTemplate, auditPath)
 
 			require.Contains(subtest, filteredOutput, expectedConversion)
-			require.Contains(subtest, filteredOutput, workflowIntegrationStepsHeader)
-			require.Contains(subtest, filteredOutput, workflowIntegrationProtocolStepSummaryLine)
-			require.Contains(subtest, filteredOutput, expectedRemoteUpdate)
+			require.Contains(subtest, filteredOutput, workflowIntegrationProtocolStepNameLine)
+			require.Contains(subtest, filteredOutput, workflowIntegrationProtocolStepReasonLine)
+			require.Contains(subtest, filteredOutput, workflowIntegrationCanonicalStepNameLine)
+			require.Contains(subtest, filteredOutput, workflowIntegrationCanonicalStepReasonLine)
 			require.Contains(subtest, filteredOutput, expectedMigration)
 			require.Contains(subtest, filteredOutput, expectedAudit)
 

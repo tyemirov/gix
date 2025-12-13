@@ -119,14 +119,34 @@ func (operation *TaskOperation) executeTask(executionContext context.Context, en
 		return nil
 	}
 
+	previousStepName := environment.currentStepName
+	stepName := strings.TrimSpace(previousStepName)
+	if stepName == "" || strings.EqualFold(stepName, commandTasksApplyKey) {
+		stepName = strings.TrimSpace(task.Name)
+		if stepName == "" {
+			stepName = commandTasksApplyKey
+		}
+		environment.currentStepName = stepName
+		environment.beginStep(repository.Path, stepName)
+		defer func() {
+			environment.currentStepName = previousStepName
+		}()
+	}
+
 	hardSafeguards, softSafeguards := splitSafeguardSets(task.Safeguards, safeguardDefaultHardStop)
 	if len(hardSafeguards) > 0 {
 		pass, reason, evalErr := EvaluateSafeguards(executionContext, environment, repository, hardSafeguards)
 		if evalErr != nil {
+			if stepName != "" {
+				environment.reportStepSummary(repository, stepName, evalErr, false)
+			}
 			return evalErr
 		}
 		if !pass {
 			environment.ReportRepositoryEvent(repository, shared.EventLevelWarn, shared.EventCodeTaskSkip, reason, nil)
+			if stepName != "" {
+				environment.reportStepSummary(repository, stepName, nil, true)
+			}
 			return repositorySkipError{reason: reason}
 		}
 	}
@@ -134,10 +154,16 @@ func (operation *TaskOperation) executeTask(executionContext context.Context, en
 	if len(softSafeguards) > 0 {
 		pass, reason, evalErr := EvaluateSafeguards(executionContext, environment, repository, softSafeguards)
 		if evalErr != nil {
+			if stepName != "" {
+				environment.reportStepSummary(repository, stepName, evalErr, false)
+			}
 			return evalErr
 		}
 		if !pass {
 			environment.ReportRepositoryEvent(repository, shared.EventLevelWarn, shared.EventCodeTaskSkip, reason, nil)
+			if stepName != "" {
+				environment.reportStepSummary(repository, stepName, nil, false)
+			}
 			return nil
 		}
 	}
@@ -152,12 +178,19 @@ func (operation *TaskOperation) executeTask(executionContext context.Context, en
 	planner := newTaskPlanner(task, templateData)
 	plan, planError := planner.BuildPlan(environment, repository)
 	if planError != nil {
+		if stepName != "" {
+			environment.reportStepSummary(repository, stepName, planError, false)
+		}
 		return planError
 	}
 	plan.variables = variableSnapshot
 
 	executor := newTaskExecutor(environment, repository, plan)
-	return executor.Execute(executionContext)
+	executionError := executor.Execute(executionContext)
+	if stepName != "" {
+		environment.reportStepSummary(repository, stepName, executionError, false)
+	}
+	return executionError
 }
 
 func isRepositoryScopedTaskOperation(tasks []TaskDefinition) bool {

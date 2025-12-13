@@ -176,7 +176,11 @@ func (environment *Environment) observeStepEvent(event shared.Event) {
 
 	current := stepMap[stepName]
 	if kind > current.kind {
-		stepMap[stepName] = stepOutcome{kind: kind, reason: reason}
+		nextReason := reason
+		if nextReason == "" {
+			nextReason = current.reason
+		}
+		stepMap[stepName] = stepOutcome{kind: kind, reason: nextReason}
 		return
 	}
 	if kind == current.kind && current.reason == "" && reason != "" {
@@ -208,6 +212,12 @@ func classifyStepOutcome(event shared.Event) (stepOutcomeKind, string) {
 	}
 
 	switch event.Code {
+	case shared.EventCodeTaskPlan:
+		taskName := strings.TrimSpace(details["task"])
+		if taskName != "" {
+			return stepOutcomeUnknown, taskName
+		}
+		return stepOutcomeUnknown, reason
 	case shared.EventCodeRemoteUpdate,
 		shared.EventCodeProtocolUpdate,
 		shared.EventCodeFolderRename,
@@ -230,10 +240,7 @@ func classifyStepOutcome(event shared.Event) (stepOutcomeKind, string) {
 		if taskName != "" {
 			return stepOutcomeApplied, taskName
 		}
-		if reason == "" {
-			reason = strings.TrimSpace(event.Code)
-		}
-		return stepOutcomeApplied, reason
+		return stepOutcomeApplied, ""
 	case shared.EventCodeRemoteDeclined,
 		shared.EventCodeProtocolDeclined:
 		if reason == "" {
