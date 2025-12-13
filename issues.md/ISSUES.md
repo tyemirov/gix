@@ -132,6 +132,8 @@ failed to inspect repositories: git command exited with code 128 (check-ignore -
     - namespace-branch-cleanup: Restore initial branch
 ```
 
+- [ ] [GX-345] First output appears late when running gix against 20–30 repositories because repository discovery/inspection emits no step summaries, so human output stays silent until the first repository finishes its first workflow step. (Unresolved: stream discovery progress or emit an initial discovery step summary.)
+
 ## Maintenance (422–499)
 
 ## Planning 
