@@ -58,6 +58,7 @@ type environmentSharedState struct {
 	capturedKinds       map[string]map[string]CaptureKind
 	capturedValues      map[string]map[string]string
 	mutatedFiles        map[string]map[string]struct{}
+	stepOutcomes        map[string]map[string]stepOutcome
 }
 
 func (environment *Environment) ensureSharedState() {

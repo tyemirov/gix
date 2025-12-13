@@ -39,14 +39,17 @@ func (environment *Environment) ReportRepositoryEvent(repository *RepositoryStat
 		}
 	}
 
-	environment.Reporter.Report(shared.Event{
+	reportedEvent := shared.Event{
 		Level:                level,
 		Code:                 code,
 		RepositoryIdentifier: repositoryIdentifier,
 		RepositoryPath:       repositoryPath,
 		Message:              message,
 		Details:              metadata,
-	})
+	}
+
+	environment.observeStepEvent(reportedEvent)
+	environment.Reporter.Report(reportedEvent)
 }
 
 // ReportPathEvent emits an event scoped to a repository path.

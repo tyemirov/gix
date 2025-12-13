@@ -8,6 +8,7 @@ type LogPhase string
 // Supported logging phases.
 const (
 	LogPhaseUnknown      LogPhase = ""
+	LogPhaseSteps        LogPhase = "steps"
 	LogPhaseRemoteFolder LogPhase = "remote_folder"
 	LogPhaseBranch       LogPhase = "branch"
 	LogPhaseFiles        LogPhase = "files"

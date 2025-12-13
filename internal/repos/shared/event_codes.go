@@ -28,4 +28,5 @@ const (
 	EventCodeFolderError              = "REPO_FOLDER_ERROR"
 	EventCodeWorkflowOperationSuccess = "WORKFLOW_OPERATION_SUCCESS"
 	EventCodeWorkflowOperationFailure = "WORKFLOW_OPERATION_FAILURE"
+	EventCodeWorkflowStepSummary      = "WORKFLOW_STEP_SUMMARY"
 )
