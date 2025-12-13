@@ -120,6 +120,7 @@ func (operation *TaskOperation) executeTask(executionContext context.Context, en
 	}
 
 	previousStepName := environment.currentStepName
+	shouldReportStepSummary := false
 	stepName := strings.TrimSpace(previousStepName)
 	if stepName == "" || strings.EqualFold(stepName, commandTasksApplyKey) {
 		stepName = strings.TrimSpace(task.Name)
@@ -128,6 +129,7 @@ func (operation *TaskOperation) executeTask(executionContext context.Context, en
 		}
 		environment.currentStepName = stepName
 		environment.beginStep(repository.Path, stepName)
+		shouldReportStepSummary = true
 		defer func() {
 			environment.currentStepName = previousStepName
 		}()
@@ -137,14 +139,14 @@ func (operation *TaskOperation) executeTask(executionContext context.Context, en
 	if len(hardSafeguards) > 0 {
 		pass, reason, evalErr := EvaluateSafeguards(executionContext, environment, repository, hardSafeguards)
 		if evalErr != nil {
-			if stepName != "" {
+			if shouldReportStepSummary {
 				environment.reportStepSummary(repository, stepName, evalErr, false)
 			}
 			return evalErr
 		}
 		if !pass {
 			environment.ReportRepositoryEvent(repository, shared.EventLevelWarn, shared.EventCodeTaskSkip, reason, nil)
-			if stepName != "" {
+			if shouldReportStepSummary {
 				environment.reportStepSummary(repository, stepName, nil, true)
 			}
 			return repositorySkipError{reason: reason}
@@ -154,14 +156,14 @@ func (operation *TaskOperation) executeTask(executionContext context.Context, en
 	if len(softSafeguards) > 0 {
 		pass, reason, evalErr := EvaluateSafeguards(executionContext, environment, repository, softSafeguards)
 		if evalErr != nil {
-			if stepName != "" {
+			if shouldReportStepSummary {
 				environment.reportStepSummary(repository, stepName, evalErr, false)
 			}
 			return evalErr
 		}
 		if !pass {
 			environment.ReportRepositoryEvent(repository, shared.EventLevelWarn, shared.EventCodeTaskSkip, reason, nil)
-			if stepName != "" {
+			if shouldReportStepSummary {
 				environment.reportStepSummary(repository, stepName, nil, false)
 			}
 			return nil
@@ -178,7 +180,7 @@ func (operation *TaskOperation) executeTask(executionContext context.Context, en
 	planner := newTaskPlanner(task, templateData)
 	plan, planError := planner.BuildPlan(environment, repository)
 	if planError != nil {
-		if stepName != "" {
+		if shouldReportStepSummary {
 			environment.reportStepSummary(repository, stepName, planError, false)
 		}
 		return planError
@@ -187,7 +189,7 @@ func (operation *TaskOperation) executeTask(executionContext context.Context, en
 
 	executor := newTaskExecutor(environment, repository, plan)
 	executionError := executor.Execute(executionContext)
-	if stepName != "" {
+	if shouldReportStepSummary {
 		environment.reportStepSummary(repository, stepName, executionError, false)
 	}
 	return executionError
