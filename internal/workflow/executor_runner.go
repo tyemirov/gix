@@ -339,6 +339,7 @@ func executeRepositoryStageForRepository(
 		}
 
 		environment.currentStepName = operationName
+		environment.beginStep(repository.Path, operationName)
 
 		compositeName := fmt.Sprintf("%s:%s", repoLabel, operationName)
 		stageOperationNames = append(stageOperationNames, compositeName)
@@ -346,6 +347,7 @@ func executeRepositoryStageForRepository(
 		startTime := time.Now()
 		executeError := repoOperation.ExecuteForRepository(ctx, environment, repository)
 		skipRepository := errors.Is(executeError, errRepositorySkipped)
+		environment.reportStepSummary(repository, operationName, executeError, skipRepository)
 		if skipRepository {
 			repositoryFailed = true
 		}

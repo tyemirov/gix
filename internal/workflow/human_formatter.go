@@ -10,6 +10,7 @@ import (
 )
 
 var phaseLabels = map[LogPhase]string{
+	LogPhaseSteps:        "steps",
 	LogPhaseRemoteFolder: "remote/folder",
 	LogPhaseBranch:       "branch",
 	LogPhaseFiles:        "files",
@@ -60,6 +61,9 @@ func (formatter *workflowHumanFormatter) HandleEvent(event shared.Event, writer 
 	switch event.Code {
 	case shared.EventCodeTaskPlan:
 		formatter.recordTaskPlan(repositoryKey, event)
+		return
+	case shared.EventCodeWorkflowStepSummary:
+		formatter.handleStepSummary(writer, repositoryKey, event)
 		return
 	case shared.EventCodeTaskApply:
 		formatter.handleTaskApply(writer, repositoryKey, state, event)
@@ -139,6 +143,34 @@ func (formatter *workflowHumanFormatter) HandleEvent(event shared.Event, writer 
 	default:
 		formatter.writeEventSummary(writer, event)
 	}
+}
+
+func (formatter *workflowHumanFormatter) handleStepSummary(writer io.Writer, repository string, event shared.Event) {
+	if formatter == nil || writer == nil {
+		return
+	}
+	stepName := strings.TrimSpace(event.Details["step"])
+	if stepName == "" {
+		stepName = strings.TrimSpace(event.Message)
+	}
+	if stepName == "" {
+		stepName = "step"
+	}
+
+	outcome := strings.TrimSpace(event.Details["outcome"])
+	if outcome == "" {
+		outcome = "ok"
+	}
+
+	reason := strings.TrimSpace(event.Details["reason"])
+	message := ""
+	if reason != "" {
+		message = fmt.Sprintf("%s (outcome: %s; reason: %s)", stepName, outcome, reason)
+	} else {
+		message = fmt.Sprintf("%s (outcome: %s)", stepName, outcome)
+	}
+
+	formatter.writePhaseEntry(writer, repository, LogPhaseSteps, message)
 }
 
 func (formatter *workflowHumanFormatter) recordTaskPlan(repository string, event shared.Event) {
