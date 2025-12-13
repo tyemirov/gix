@@ -1,5 +1,30 @@
 # Changelog
 
+## [v0.3.0-rc12]
+
+### Features ✨
+- Inject workflow step names into all emitted events to enhance logging clarity.
+- Added step-decorating reporter to automatically prefix events with current workflow step name.
+
+### Improvements ⚙️
+- Improved flow for automated coding with scoped step reporting.
+- Updated repo executor operations to use the step-scoped reporter consistently.
+- Enhanced integration test outputs to include descriptive step prefixes for folder renames and remote updates.
+- Renamed multiple documentation files into an organized `issues.md` directory.
+
+### Bug Fixes 🐛
+- Fixed missing step names and per-step logging in workflows, addressing issue GX-344.
+- Corrected workflow step name logging in step reporter tests.
+- Resolved test failures by injecting git manager stub into remotes step reporter test.
+
+### Testing 🧪
+- Added tests verifying step names injected into repository event reporting.
+- Updated integration tests to reflect new step-prefixed output format.
+
+### Docs 📚
+- Added issue documentation and planning notes into `issues.md` directory. 
+- Updated changelog behavior to print notices more consciously.
+
 ## [v0.3.0-rc11]
 
 ### Features ✨
