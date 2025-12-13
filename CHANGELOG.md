@@ -1,5 +1,25 @@
 # Changelog
 
+## [v0.3.0-rc13]
+
+### Features ✨
+- Avoid duplicate step summaries in workflows.
+- Add detailed step summary logging with step name, outcome, and reason.
+
+### Improvements ⚙️
+- Improve step-centric workflow logging.
+- Refine reasons in step summaries.
+- Enhance GX-259 step outcome logging.
+
+### Bug Fixes 🐛
+- _No changes._
+
+### Testing 🧪
+- Update tests to verify correct printing of step summaries.
+
+### Docs 📚
+- _No changes._
+
 ## [v0.3.0-rc12]
 
 ### Features ✨
