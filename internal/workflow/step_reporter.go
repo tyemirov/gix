@@ -330,6 +330,18 @@ func (environment *Environment) reportStepSummary(repository *RepositoryState, s
 	}
 
 	reason := strings.TrimSpace(outcome.reason)
+	if reason != "" {
+		reasonLower := strings.ToLower(reason)
+		switch {
+		case strings.Contains(reasonLower, "(deleted:"):
+			outcomeLabel = "deleted"
+		case strings.Contains(reasonLower, "(created:"):
+			outcomeLabel = "created"
+		case strings.Contains(reasonLower, "(kept:"):
+			outcomeLabel = "kept"
+		}
+	}
+
 	if repositorySkipped {
 		outcomeLabel = "skipped"
 		if reason == "" {
