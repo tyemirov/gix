@@ -141,6 +141,8 @@ failed to inspect repositories: git command exited with code 128 (check-ignore -
 
 - [x] [GX-348] Ensure workflow step summaries can surface destructive outcomes explicitly (e.g., `deleted`/`kept` for `git branch-cleanup`) and never emit blank `reason` fields. (Step summary events now include explicit outcomes and always render a non-empty `reason` scalar.)
 
+- [x] [GX-349] Non-workflow commands emit YAML step summaries instead of concise human-readable output. Restore the previous non-workflow logging format. (Non-workflow commands no longer install the workflow step-summary formatter, so they emit normal structured log lines again; regression tests updated.)
+
 ## Maintenance (422–499)
 
 ## Planning 

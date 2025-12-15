@@ -106,10 +106,12 @@ func BuildDependencies(config DependenciesConfig, options DependenciesOptions) (
 		HumanReadableLogging: true,
 	}
 
-	workflowDependencies.ReporterOptions = append(
-		workflowDependencies.ReporterOptions,
-		shared.WithEventFormatter(resolveWorkflowEventFormatter(options)),
-	)
+	if options.EventFormatter != nil {
+		workflowDependencies.ReporterOptions = append(
+			workflowDependencies.ReporterOptions,
+			shared.WithEventFormatter(options.EventFormatter),
+		)
+	}
 	workflowDependencies.DisableHeaderDecoration = true
 
 	return DependenciesResult{
@@ -120,13 +122,6 @@ func BuildDependencies(config DependenciesConfig, options DependenciesOptions) (
 		RepositoryDiscoverer: repositoryEnvironment.Discoverer,
 		FileSystem:           repositoryEnvironment.FileSystem,
 	}, nil
-}
-
-func resolveWorkflowEventFormatter(options DependenciesOptions) shared.EventFormatter {
-	if options.EventFormatter != nil {
-		return options.EventFormatter
-	}
-	return workflow.NewHumanEventFormatter()
 }
 
 // NewGitExecutionEnvironment constructs the logger, git executor, and manager stack.
