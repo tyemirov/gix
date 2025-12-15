@@ -147,3 +147,7 @@ failed to inspect repositories: git command exited with code 128 (check-ignore -
 **Do not work on these, not ready**
 
 - [ ] Add an ability to rollback changes. Make flows and complex commands transactional to allow for rollback when a flow that changes things fails
+- [ ] Cleanup:
+1. Review the completed issues and compare the code against the README.md and ARCHITECTURE.md files. 
+2. Update the README.md and ARCHITECTURE.md files if required. 
+3. Clean up the completed issues.
