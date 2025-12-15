@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tyemirov/gix/internal/audit"
-	"github.com/tyemirov/gix/pkg/llm"
+	"github.com/tyemirov/utils/llm"
 )
 
 func TestHandleChangelogActionSwallowsNoChangesErrors(t *testing.T) {

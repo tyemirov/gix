@@ -12,8 +12,8 @@ import (
 	flagutils "github.com/tyemirov/gix/internal/utils/flags"
 	rootutils "github.com/tyemirov/gix/internal/utils/roots"
 	"github.com/tyemirov/gix/internal/workflow"
-	"github.com/tyemirov/gix/pkg/llm"
 	"github.com/tyemirov/gix/pkg/taskrunner"
+	"github.com/tyemirov/utils/llm"
 )
 
 const (

@@ -21,7 +21,7 @@ import (
 	"github.com/tyemirov/gix/internal/gitrepo"
 	"github.com/tyemirov/gix/internal/repos/filesystem"
 	"github.com/tyemirov/gix/internal/repos/shared"
-	"github.com/tyemirov/gix/pkg/llm"
+	"github.com/tyemirov/utils/llm"
 )
 
 func TestTaskPlannerBuildPlanRendersTemplates(testInstance *testing.T) {

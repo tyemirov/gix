@@ -3,7 +3,7 @@
 
 Entries record newly discovered requests or changes, with their outcomes. No instructive content lives here. Read @NOTES.md for the process to follow when fixing issues.
 
-Read @AGENTS.md, @AGENTS.GIT.md, @AGENTS.DOCKER.md, AGENTS.GO.md, @AGENTS.FRONTEND.md, @POLICY.md, PLANNING.md, @NOTES.md, and @ISSUES.md under issues.md/. Read @ARCHITECTURE.md, @README.md, @PRD.md. Start working on open issues. Work autonomously and stack up PRs. Prioritize bugfixes.
+Read @AGENTS.md, @POLICY.md, PLANNING.md, @NOTES.md, and @ISSUES.md under issues.md/. Read @ARCHITECTURE.md, @README.md, @PRD.md. Start working on open issues. Work autonomously and stack up PRs. Prioritize bugfixes.
 
 Each issue is formatted as `- [ ] [GX-<number>]`. When resolved it becomes `- [x] [GX-<number>]`
 
@@ -82,7 +82,7 @@ Workflow logging now propagates each configuration step name into the environmen
 
 - [x] [GX-260] Branch cleanup behavior for namespace workflows now also uses the repository default branch as the base (via `.Repository.DefaultBranch` in `configs/account-rename.yaml`), so automation branches created by account-rename are deleted when they have no commits beyond the default branch; this path is covered by regression tests.
 
-- [ ] [GX-261] Migrate (move) the llm package unter tyemirov/utils. Use tools/utils folder to add the changes. Ensure that tools/utils/llm will be automous self-encapsulated package easy for integration. Have full test coverage. Deliverable: Use tyemirov/utils/llm instead of pkg/llm
+- [x] [GX-261] Migrate (move) the llm package unter tyemirov/utils. Use tools/utils folder to add the changes. Ensure that tools/utils/llm will be automous self-encapsulated package easy for integration. Have full test coverage. Deliverable: Use tyemirov/utils/llm instead of pkg/llm (gix now imports `github.com/tyemirov/utils/llm` and `pkg/llm` is removed; `github.com/tyemirov/utils/llm` has full statement coverage in its own repo.)
 
 ## BugFixes (340–399)
 
