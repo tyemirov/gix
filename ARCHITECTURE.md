@@ -9,7 +9,7 @@ gix is a Go 1.25 command-line application built with Cobra and Viper. The binary
 ├── main.go          # binary entrypoint
 ├── cmd/cli          # Cobra application, command registration, configuration bootstrap
 ├── internal         # feature domains (audit, repos, branches, etc.)
-├── pkg              # reusable libraries (currently LLM automation)
+├── pkg              # reusable libraries (task runner adapter)
 ├── docs             # design notes and developer references
 └── tests            # behavior-driven integration tests
 ```
@@ -207,7 +207,7 @@ workflow:
 
 ## Reusable Packages
 
-`pkg/llm` contains the reusable client abstractions for LLM-backed features such as commit message and changelog generators. The package exposes an interface-based design so that other programs can reuse the same client without duplicating API plumbing. `pkg/taskrunner` hosts the shared workflow dependency resolver and task-runner adapter used by CLI commands and tests to consistently wire Git, GitHub, filesystem, and confirmation collaborators.
+`github.com/tyemirov/utils/llm` contains reusable client abstractions for LLM-backed features such as commit message and changelog generators. The package exposes an interface-based design so that other programs can reuse the same client without duplicating API plumbing. `pkg/taskrunner` hosts the shared workflow dependency resolver and task-runner adapter used by CLI commands and tests to consistently wire Git, GitHub, filesystem, and confirmation collaborators.
 
 ## Testing Strategy
 

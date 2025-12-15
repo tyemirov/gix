@@ -11,7 +11,7 @@ import (
 
 	"github.com/tyemirov/gix/internal/execshell"
 	"github.com/tyemirov/gix/internal/repos/shared"
-	"github.com/tyemirov/gix/pkg/llm"
+	"github.com/tyemirov/utils/llm"
 )
 
 const (

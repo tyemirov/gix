@@ -1,5 +1,22 @@
 # Changelog
 
+## [v0.3.0-rc14]
+
+### Features ✨
+- _No changes._
+
+### Improvements ⚙️
+- Migrate LLM client utilities to `github.com/tyemirov/utils/llm` and retire `pkg/llm`.
+
+### Bug Fixes 🐛
+- _No changes._
+
+### Testing 🧪
+- Add full-coverage tests for `github.com/tyemirov/utils/llm`.
+
+### Docs 📚
+- Update architecture docs for the LLM package move.
+
 ## [v0.3.0-rc13]
 
 ### Features ✨

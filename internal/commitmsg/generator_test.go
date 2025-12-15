@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tyemirov/gix/internal/execshell"
-	"github.com/tyemirov/gix/pkg/llm"
+	"github.com/tyemirov/utils/llm"
 )
 
 func TestBuildRequestStagedDiff(t *testing.T) {

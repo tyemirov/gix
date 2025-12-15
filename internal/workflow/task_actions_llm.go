@@ -10,7 +10,7 @@ import (
 
 	"github.com/tyemirov/gix/internal/changelog"
 	"github.com/tyemirov/gix/internal/commitmsg"
-	"github.com/tyemirov/gix/pkg/llm"
+	"github.com/tyemirov/utils/llm"
 )
 
 const (

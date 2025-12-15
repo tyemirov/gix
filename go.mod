@@ -1,6 +1,6 @@
 module github.com/tyemirov/gix
 
-go 1.25
+go 1.25.4
 
 require (
 	github.com/go-viper/mapstructure/v2 v2.4.0
@@ -8,6 +8,7 @@ require (
 	github.com/spf13/pflag v1.0.10
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
+	github.com/tyemirov/utils v0.1.2
 	go.uber.org/zap v1.27.0
 	golang.org/x/mod v0.29.0
 	golang.org/x/tools v0.38.0

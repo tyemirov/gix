@@ -13,7 +13,7 @@ import (
 	"github.com/tyemirov/gix/internal/execshell"
 	"github.com/tyemirov/gix/internal/gitrepo"
 	flagutils "github.com/tyemirov/gix/internal/utils/flags"
-	"github.com/tyemirov/gix/pkg/llm"
+	"github.com/tyemirov/utils/llm"
 )
 
 func TestMessageCommandValidatesSinceInputs(t *testing.T) {

@@ -11,7 +11,7 @@ import (
 	"github.com/tyemirov/gix/internal/execshell"
 	flagutils "github.com/tyemirov/gix/internal/utils/flags"
 	"github.com/tyemirov/gix/internal/workflow"
-	"github.com/tyemirov/gix/pkg/llm"
+	"github.com/tyemirov/utils/llm"
 )
 
 func TestMessageCommandGeneratesCommitMessage(t *testing.T) {
