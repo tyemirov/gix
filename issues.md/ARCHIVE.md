@@ -1,0 +1,33 @@
+# ISSUES ARCHIVE
+
+Resolved issues archived from `issues.md/ISSUES.md` during backlog cleanup.
+
+Each issue is formatted as `- [x] [GX-<number>]`.
+
+## Features (110–199)
+
+- [x] [GX-110] Add a website documenting all of the benefits the gix utility has. The web site shall be served from github so follow the convention for folders/file placement (Static docs site now lives under `docs/index.html` with a marketing overview, workflows, and recipes, wired for GitHub Pages.)
+
+## Improvements (251–299)
+
+- [x] [GX-251] `gix cd` doesnt work with --stash flag the way I would like it to: I want it to stash the modified tracked files, switch to the destination branch and restore the files. (Implemented tracked-file stashing around branch change plus restoration, with new regression coverage.)
+- [x] [GX-252] `gix cd` output is noisy (“tasks apply …”) and lacks summaries when run against multiple roots. Redesign the reporter so workflow-backed commands keep per-repo sections, drop the “tasks apply” prefixes, and print a final summary only when more than one repository is processed.
+- [x] [GX-253] Hide explicit `--refresh` flag on `gix cd`, keeping refresh behaviour wired internally for `--stash` and `--commit` flows only (removed the flag from CLI/config/docs, relying on stash/commit to opt into the stricter refresh stage).
+- [x] [GX-254] Add an `a` option to confirmation prompts that, when selected in a non-`--yes` run, treats all subsequent confirmation questions in the session as accepted (equivalent to having passed `--yes`), so operators can promote a single “accept all” decision without restarting the command.
+- [x] [GX-255] In cases when There is no tracking information for the current branch, create and associate the branch so I wouldnt need to do it manually.
+- [x] [GX-256] When `gix cd` reports “untracked files present; refresh will continue”, include the untracked file names/status entries in the warning output so operators can see exactly which files are untracked without running a separate git status.
+- [x] [GX-257] Ensure that we commit only the files that we have changed. When running @configs/account-rename.yaml it looks like we are committing all uncommitted files in a tree.
+- [x] [GX-258] When running namespace rewrite workflows (for example, @configs/account-rename.yaml), avoid leaving behind empty automation branches in repositories where the workflow produced no file edits.
+- [x] [GX-261] Migrate (move) the llm package unter tyemirov/utils. Deliverable: Use tyemirov/utils/llm instead of pkg/llm.
+
+## BugFixes (340–399)
+
+- [x] [GX-340] Audit this: I think I saw a few times when `gix cd` command was telling me that the branch was untract when in fact git co <branch> worked perfectly fine.
+- [x] [GX-341] Workflow replacement did not execute across nested folders; `go vet`/`make lint` failed after account-rename.
+- [x] [GX-342] `git check-ignore` “not a git repository” failures should not halt workflows; errors should be contextual and non-catastrophic.
+- [x] [GX-343] `gix message changelog` prints “no changes detected for changelog generation” twice.
+- [x] [GX-344] Missing step names and per-step logging in workflow output.
+- [x] [GX-346] Split logging formats by command: keep human logs for singular/non-workflow commands, emit YAML step summaries for `gix workflow` runs.
+- [x] [GX-347] Restore end-of-run workflow summary output for `gix workflow`.
+- [x] [GX-348] Ensure workflow step summaries surface destructive outcomes and never emit blank `reason` fields.
+
