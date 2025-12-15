@@ -1,5 +1,31 @@
 # Changelog
 
+## [v0.3.0-rc15]
+
+### Features ✨
+- _No changes._
+
+### Improvements ⚙️
+- Restore succinct console logging for non-workflow commands by suppressing workflow-internal task events and omitting machine payload output.
+- Refactor output formatting: `gix workflow` emits YAML step summaries for automation while other commands retain human-readable console logs.
+- Move AGENTS.md to root folder for easier discoverability.
+- Synchronize README and ARCHITECTURE.md documentation with completed issues.
+- Archive resolved issues from ISSUES.md to ISSUES/ARCHIVE.md.
+
+### Bug Fixes 🐛
+- Fix workflow step logs and summary output for better clarity and accuracy.
+- Ensure non-workflow commands no longer emit workflow step summary YAML.
+- Prevent workflow step summaries from emitting blank reason fields.
+- Add informative event logging when repository protocol mismatches occur and skip operations accordingly.
+
+### Testing 🧪
+- Add full-coverage tests for migrated LLM package.
+
+### Docs 📚
+- Update README with usage notes about LLM client and `gix workflow` output formatting.
+- Update ARCHITECTURE.md to clarify workflow command logging behavior and formatting.
+- Relocate AGENTS.md and adjust references in policy documents accordingly.
+
 ## [v0.3.0-rc14]
 
 ### Features ✨
