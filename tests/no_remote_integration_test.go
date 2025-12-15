@@ -47,8 +47,8 @@ func TestBranchCommandsHandleRepositoriesWithoutRemotes(testInstance *testing.T)
 	testInstance.Logf("cd output:\n%s", output)
 
 	filtered := filterStructuredOutput(output)
-	require.Contains(testInstance, filtered, "step name:")
-	require.Contains(testInstance, filtered, "outcome:")
+	require.Contains(testInstance, filtered, "event=REPO_SWITCHED")
+	require.Contains(testInstance, filtered, "branch=master")
 	require.Contains(testInstance, filtered, "master")
 	require.NotContains(testInstance, strings.ToLower(output), "failed")
 }
