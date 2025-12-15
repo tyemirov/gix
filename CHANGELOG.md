@@ -13,6 +13,7 @@
 ### Bug Fixes 🐛
 - Fix workflow step logs and summary output for better clarity and accuracy.
 - Add informative event logging when repository protocol mismatches occur and skip operations accordingly.
+- Restore succinct console logging for non-workflow commands by suppressing workflow-internal `TASK_*` noise and dropping machine payloads.
 
 ### Testing 🧪
 - Add full-coverage tests for the migrated LLM package in `github.com/tyemirov/utils/llm`.

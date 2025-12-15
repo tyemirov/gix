@@ -148,3 +148,47 @@ func TestStructuredReporterHonorsDiscardWriters(t *testing.T) {
 	require.NoError(t, readErr)
 	require.Len(t, output, 0)
 }
+
+func TestStructuredReporterConsoleOutputOmitsMachinePart(t *testing.T) {
+	buffer := &bytes.Buffer{}
+	reporter := NewStructuredReporter(buffer, buffer, WithRepositoryHeaders(true))
+
+	reporter.Report(Event{
+		Code:                 EventCodeRepoSwitched,
+		RepositoryIdentifier: "tyemirov/gix",
+		RepositoryPath:       "/tmp/repos/gix",
+		Message:              "→ master",
+		Details:              map[string]string{"branch": "master"},
+	})
+
+	output := buffer.String()
+	require.Contains(t, output, "-- repo: tyemirov/gix")
+	require.Contains(t, output, EventCodeRepoSwitched)
+	require.Contains(t, output, "→ master")
+	require.NotContains(t, output, "event=")
+	require.NotContains(t, output, "branch=master")
+}
+
+func TestStructuredReporterConsoleSuppressesInternalTaskEvents(t *testing.T) {
+	buffer := &bytes.Buffer{}
+	reporter := NewStructuredReporter(buffer, buffer, WithRepositoryHeaders(true))
+
+	reporter.Report(Event{
+		Code:                 EventCodeTaskPlan,
+		RepositoryIdentifier: "tyemirov/gix",
+		RepositoryPath:       "/tmp/repos/gix",
+		Message:              "task plan ready",
+	})
+	reporter.Report(Event{
+		Code:                 EventCodeRepoSwitched,
+		RepositoryIdentifier: "tyemirov/gix",
+		RepositoryPath:       "/tmp/repos/gix",
+		Message:              "→ master",
+	})
+
+	output := buffer.String()
+	require.Contains(t, output, "-- repo: tyemirov/gix")
+	require.Contains(t, output, EventCodeRepoSwitched)
+	require.NotContains(t, output, EventCodeTaskPlan)
+	require.NotContains(t, output, "task plan ready")
+}
