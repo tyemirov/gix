@@ -328,6 +328,7 @@ func TestWorkflowProcessesRepositoriesSequentially(testInstance *testing.T) {
 	requireStageOrder(testInstance, slowLog, "slow-repo")
 
 	require.NotContains(testInstance, filteredOutput, "TASK_SKIP", "unexpected task skips in sequential workflow validation")
+	require.Contains(testInstance, rawOutput, "Summary: total.repos=2")
 }
 
 func TestWorkflowLogHeaderFormatting(testInstance *testing.T) {

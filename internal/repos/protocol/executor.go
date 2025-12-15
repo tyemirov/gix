@@ -72,6 +72,19 @@ func (executor *Executor) Execute(executionContext context.Context, options Opti
 
 	currentProtocol := detectProtocol(currentURL)
 	if currentProtocol != options.CurrentProtocol {
+		executor.report(
+			shared.EventLevelInfo,
+			shared.EventCodeProtocolSkip,
+			repositoryPath,
+			nil,
+			fmt.Sprintf("no-op: current protocol %s does not match from %s", currentProtocol, options.CurrentProtocol),
+			map[string]string{
+				"reason":           "protocol_mismatch",
+				"current_protocol": string(currentProtocol),
+				"from_protocol":    string(options.CurrentProtocol),
+				"target_protocol":  string(options.TargetProtocol),
+			},
+		)
 		return nil
 	}
 

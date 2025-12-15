@@ -21,7 +21,7 @@ func (executor fakeExecutor) Run(_ context.Context, _ []string, _ []workflow.Tas
 }
 
 func TestRenderSummaryLineSkipsSingleRepository(t *testing.T) {
-	summary := renderSummaryLine(shared.SummaryData{TotalRepositories: 1}, []string{"repo"})
+	summary := RenderSummaryLine(shared.SummaryData{TotalRepositories: 1}, []string{"repo"})
 	require.Equal(t, "", summary)
 }
 
@@ -33,7 +33,7 @@ func TestRenderSummaryLineFormatsCounts(t *testing.T) {
 		DurationHuman:        "1s",
 		DurationMilliseconds: 1000,
 	}
-	summary := renderSummaryLine(data, nil)
+	summary := RenderSummaryLine(data, nil)
 	require.Contains(t, summary, "Summary: total.repos=2")
 	require.Contains(t, summary, "repo_switched=2")
 	require.Contains(t, summary, "WARN=1")

@@ -65,6 +65,19 @@ func (operation *ProtocolConversionOperation) ExecuteForRepository(
 	}
 
 	if actualProtocol != operation.FromProtocol {
+		message := fmt.Sprintf("Protocol Conversion (no-op: current protocol %s does not match from %s)", actualProtocol, operation.FromProtocol)
+		environment.ReportRepositoryEvent(
+			repository,
+			shared.EventLevelInfo,
+			shared.EventCodeProtocolSkip,
+			message,
+			map[string]string{
+				"reason":           "protocol_mismatch",
+				"current_protocol": string(actualProtocol),
+				"from_protocol":    string(operation.FromProtocol),
+				"target_protocol":  string(operation.ToProtocol),
+			},
+		)
 		return nil
 	}
 

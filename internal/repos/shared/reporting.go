@@ -408,11 +408,16 @@ func (reporter *StructuredReporter) PrintSummary() {
 }
 
 func (reporter *StructuredReporter) computeSeenRepositoryKey(identifier string, path string) string {
-	if len(identifier) > 0 {
-		return identifier
+	trimmedIdentifier := strings.TrimSpace(identifier)
+	trimmedPath := strings.TrimSpace(path)
+	if trimmedIdentifier != "" && trimmedPath != "" {
+		return trimmedIdentifier + "|" + trimmedPath
 	}
-	if len(strings.TrimSpace(path)) > 0 {
-		return strings.TrimSpace(path)
+	if trimmedIdentifier != "" {
+		return trimmedIdentifier
+	}
+	if trimmedPath != "" {
+		return trimmedPath
 	}
 	return ""
 }
