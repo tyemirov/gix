@@ -136,8 +136,19 @@ func TestExecutorBehaviors(t *testing.T) {
 				CurrentProtocol:          shared.RemoteProtocolHTTPS,
 				TargetProtocol:           shared.RemoteProtocolSSH,
 			},
-			gitManager:     &stubGitManager{currentURL: protocolTestGitOriginURL},
-			expectNoEvents: true,
+			gitManager: &stubGitManager{currentURL: protocolTestGitOriginURL},
+			expectedEvents: []eventExpectation{
+				{
+					code: shared.EventCodeProtocolSkip,
+					assert: func(t *testing.T, event map[string]string) {
+						require.Equal(t, "protocol_mismatch", event["reason"])
+						require.Equal(t, protocolTestRepositoryPath, event["path"])
+						require.Equal(t, "git", event["current_protocol"])
+						require.Equal(t, "https", event["from_protocol"])
+						require.Equal(t, "ssh", event["target_protocol"])
+					},
+				},
+			},
 		},
 		{
 			name: "prompter_declines",
