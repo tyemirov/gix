@@ -7,15 +7,20 @@
 
 ### Improvements ⚙️
 - Migrate LLM client utilities to `github.com/tyemirov/utils/llm` and retire `pkg/llm`.
+- Update dependencies with minor upgrades including Cobra, Go modules, and Zap.
+- Add a new workflow YAML formatter for enhanced step log outputs.
 
 ### Bug Fixes 🐛
-- _No changes._
+- Fix workflow step logs and summary output for better clarity and accuracy.
+- Add informative event logging when repository protocol mismatches occur and skip operations accordingly.
 
 ### Testing 🧪
-- Add full-coverage tests for `github.com/tyemirov/utils/llm`.
+- Add full-coverage tests for the migrated LLM package in `github.com/tyemirov/utils/llm`.
+- Add tests covering protocol executor behaviors and workflow taskrunner summaries.
 
 ### Docs 📚
-- Update architecture docs for the LLM package move.
+- Update architecture documentation to reflect the migration of the LLM package to `github.com/tyemirov/utils/llm`.
+- Clarify usage of GX-261 with new utility package in documentation.
 
 ## [v0.3.0-rc13]
 
