@@ -167,6 +167,7 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 		dependencyOptions.Output = utils.NewFlushingWriter(command.OutOrStdout())
 		dependencyOptions.Errors = utils.NewFlushingWriter(command.ErrOrStderr())
 	}
+	dependencyOptions.EventFormatter = workflow.NewWorkflowYAMLFormatter()
 
 	dependencyResult, dependencyError := taskrunner.BuildDependencies(
 		taskrunner.DependenciesConfig{

@@ -42,6 +42,7 @@ type DependenciesOptions struct {
 	Prompter           shared.ConfirmationPrompter
 	DisablePrompter    bool
 	SkipGitHubResolver bool
+	EventFormatter     shared.EventFormatter
 }
 
 // DependenciesResult exposes resolved collaborators along with their workflow wrapper.
@@ -107,7 +108,7 @@ func BuildDependencies(config DependenciesConfig, options DependenciesOptions) (
 
 	workflowDependencies.ReporterOptions = append(
 		workflowDependencies.ReporterOptions,
-		shared.WithEventFormatter(workflow.NewHumanEventFormatter()),
+		shared.WithEventFormatter(resolveWorkflowEventFormatter(options)),
 	)
 	workflowDependencies.DisableHeaderDecoration = true
 
@@ -119,6 +120,13 @@ func BuildDependencies(config DependenciesConfig, options DependenciesOptions) (
 		RepositoryDiscoverer: repositoryEnvironment.Discoverer,
 		FileSystem:           repositoryEnvironment.FileSystem,
 	}, nil
+}
+
+func resolveWorkflowEventFormatter(options DependenciesOptions) shared.EventFormatter {
+	if options.EventFormatter != nil {
+		return options.EventFormatter
+	}
+	return workflow.NewHumanEventFormatter()
 }
 
 // NewGitExecutionEnvironment constructs the logger, git executor, and manager stack.
