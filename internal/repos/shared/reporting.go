@@ -19,6 +19,12 @@ const (
 	defaultTimestampLayout   = "15:04:05"
 )
 
+var consoleSuppressedEventCodes = map[string]struct{}{
+	EventCodeTaskPlan:            {},
+	EventCodeTaskApply:           {},
+	EventCodeWorkflowStepSummary: {},
+}
+
 // EventLevel describes the severity of a reported executor event.
 type EventLevel string
 
@@ -293,9 +299,22 @@ func (reporter *StructuredReporter) Report(event Event) {
 		return
 	}
 
-	if reporter.includeRepositoryHeaders && len(repositoryIdentifier) > 0 && repositoryIdentifier != reporter.lastRepository {
-		reporter.printRepositoryHeader(writer, repositoryIdentifier)
-		reporter.lastRepository = repositoryIdentifier
+	if reporter.includeRepositoryHeaders {
+		if reporter.shouldSuppressConsoleEvent(code, level) {
+			return
+		}
+
+		if len(repositoryIdentifier) > 0 && repositoryIdentifier != reporter.lastRepository {
+			reporter.printRepositoryHeader(writer, repositoryIdentifier)
+			reporter.lastRepository = repositoryIdentifier
+		}
+
+		consolePart := reporter.formatConsolePart(timestamp, level, code, message)
+		if len(consolePart) == 0 {
+			return
+		}
+		fmt.Fprintln(writer, consolePart)
+		return
 	}
 
 	humanPart := reporter.formatHumanPart(timestamp, level, code, repositoryIdentifier, message)
@@ -497,6 +516,25 @@ func (reporter *StructuredReporter) formatHumanPart(timestamp time.Time, level E
 	return fmt.Sprintf("%s %s %s %s %s", timestamp.Format(defaultTimestampLayout), levelField, codeField, repositoryField, messageField)
 }
 
+func (reporter *StructuredReporter) formatConsolePart(timestamp time.Time, level EventLevel, code string, message string) string {
+	trimmedMessage := strings.TrimSpace(message)
+	trimmedCode := strings.TrimSpace(code)
+
+	levelField := fmt.Sprintf("%-*s", reporter.columns.levelWidth, string(level))
+	codeField := fmt.Sprintf("%-*s", reporter.columns.codeWidth, trimmedCode)
+
+	switch {
+	case trimmedMessage != "" && trimmedCode != "":
+		return fmt.Sprintf("%s %s %s %s", timestamp.Format(defaultTimestampLayout), levelField, codeField, trimmedMessage)
+	case trimmedMessage != "":
+		return fmt.Sprintf("%s %s %s", timestamp.Format(defaultTimestampLayout), levelField, trimmedMessage)
+	case trimmedCode != "":
+		return fmt.Sprintf("%s %s %s", timestamp.Format(defaultTimestampLayout), levelField, trimmedCode)
+	default:
+		return ""
+	}
+}
+
 func (reporter *StructuredReporter) formatMachinePart(code string, repositoryIdentifier string, repositoryPath string, details map[string]string) string {
 	values := make(map[string]string, len(details)+3)
 	values["event"] = code
@@ -542,4 +580,12 @@ func normalizeCode(code string) string {
 	}
 	uppercased := strings.ToUpper(trimmed)
 	return strings.ReplaceAll(uppercased, " ", "_")
+}
+
+func (reporter *StructuredReporter) shouldSuppressConsoleEvent(code string, level EventLevel) bool {
+	if level == EventLevelError {
+		return false
+	}
+	_, suppressed := consoleSuppressedEventCodes[normalizeCode(code)]
+	return suppressed
 }

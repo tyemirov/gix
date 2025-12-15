@@ -101,7 +101,7 @@ Configuration is managed by Viper with an uppercase `GIX` environment prefix. Th
 3. `$XDG_CONFIG_HOME/gix/config.yaml`.
 4. `$HOME/.gix/config.yaml`.
 
-`gix --init` bootstraps either a local `./config.yaml` or a user-level configuration directory when invoked with `--init LOCAL` (default) or `--init user`. Logging relies on Uber's Zap; structured JSON is the default, and console mode is available through a flag or configuration.
+`gix --init` bootstraps either a local `./config.yaml` or a user-level configuration directory when invoked with `--init LOCAL` (default) or `--init user`. Logging relies on Uber's Zap; format is configurable (structured JSON or console) through a flag or configuration.
 
 The `workflow` command is special-cased: it uses a YAML formatter that emits machine-friendly step summaries (one per repository) and prints a final end-of-run summary line. Non-workflow commands continue to use the existing human-readable console logging format.
 

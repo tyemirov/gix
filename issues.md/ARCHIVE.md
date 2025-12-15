@@ -30,4 +30,5 @@ Each issue is formatted as `- [x] [GX-<number>]`.
 - [x] [GX-346] Split logging formats by command: keep human logs for singular/non-workflow commands, emit YAML step summaries for `gix workflow` runs.
 - [x] [GX-347] Restore end-of-run workflow summary output for `gix workflow`.
 - [x] [GX-348] Ensure workflow step summaries surface destructive outcomes and never emit blank `reason` fields.
-
+- [x] [GX-349] Stop emitting workflow step summary YAML for non-workflow commands by only installing the YAML event formatter for `gix workflow`.
+- [x] [GX-350] Restore succinct non-workflow console logging by suppressing workflow-internal `TASK_PLAN`/`TASK_APPLY`/`WORKFLOW_STEP_SUMMARY` events and omitting machine payload output.
