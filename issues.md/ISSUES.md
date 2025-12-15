@@ -135,11 +135,11 @@ failed to inspect repositories: git command exited with code 128 (check-ignore -
 
 - [ ] [GX-345] First output appears late when running gix against 20–30 repositories because repository discovery/inspection emits no user-facing progress until the first repository finishes its first workflow step. (Unresolved: stream discovery/inspection progress or emit an initial discovery step summary.)
 
-- [ ] [GX-346] Split logging formats by command: keep existing human-readable logs for singular/non-workflow commands, but emit YAML step summaries for `gix workflow` runs. (Unresolved: formatter selection is not command-aware.)
+- [x] [GX-346] Split logging formats by command: keep existing human-readable logs for singular/non-workflow commands, but emit YAML step summaries for `gix workflow` runs. (The `workflow` command now forces the YAML step-summary formatter while other commands keep human logs.)
 
-- [ ] [GX-347] Restore end-of-run workflow summary output (when more than one repository is processed) for `gix workflow`. (Unresolved: the workflow command bypasses `pkg/taskrunner`’s summary printing.)
+- [x] [GX-347] Restore end-of-run workflow summary output (when more than one repository is processed) for `gix workflow`. (Workflow now prints a final summary line using `pkg/taskrunner` summary rendering.)
 
-- [ ] [GX-348] Ensure workflow step summaries can surface destructive outcomes explicitly (e.g., `deleted`/`kept` for `git branch-cleanup`) and never emit blank `reason` fields. (Unresolved: some repo-scoped operations currently report outcomes in generic task messages that are not classified into step outcomes.)
+- [x] [GX-348] Ensure workflow step summaries can surface destructive outcomes explicitly (e.g., `deleted`/`kept` for `git branch-cleanup`) and never emit blank `reason` fields. (Step summary events now include explicit outcomes and always render a non-empty `reason` scalar.)
 
 ## Maintenance (422–499)
 
@@ -147,7 +147,3 @@ failed to inspect repositories: git command exited with code 128 (check-ignore -
 **Do not work on these, not ready**
 
 - [ ] Add an ability to rollback changes. Make flows and complex commands transactional to allow for rollback when a flow that changes things fails
-- [ ] Cleanup:
-1. Review the completed issues and compare the code against the README.md and ARCHITECTURE.md files. 
-2. Update the README.md and ARCHITECTURE.md files if required. 
-3. Clean up the completed issues.

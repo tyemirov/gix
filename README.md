@@ -74,7 +74,7 @@ gix message commit --roots .
 gix message changelog --since-tag v1.2.0 --version v1.3.0
 ```
 
-Use the reusable LLM client to summarise staged changes or recent history.
+Use the reusable LLM client (`github.com/tyemirov/utils/llm`) to summarise staged changes or recent history.
 
 ## Automate sequences with workflows
 
@@ -85,6 +85,10 @@ gix workflow maintenance.yml --roots ~/Development --yes
 ```
 
 Workflows reuse repository discovery, confirmation prompts, and logging so you can hand teammates a repeatable playbook.
+
+### Workflow output
+
+`gix workflow` emits YAML step summaries (one per repository) and prints a final summary line at the end of the run. Other commands keep the existing human-readable console logs.
 
 ### Embedded workflows
 
