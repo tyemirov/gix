@@ -6,16 +6,16 @@ gix keeps large fleets of Git repositories in a healthy state. It bundles the da
 
 ## Document Roles
 
-- NOTES.md: Read-only process playbook maintained by leads. Agents never edit it during implementation cycles.
-- ISSUES.md: Append-only log of newly discovered requests and changes. No instructive sections live here; each entry records what changed or what was discovered.
-- PLAN.md: Working plan for one concrete change/issue; ephemeral and replaced per change.
+- issues.md/NOTES.md: Read-only process playbook maintained by leads. Agents never edit it during implementation cycles.
+- issues.md/ISSUES.md: Append-only log of newly discovered requests and changes. No instructive sections live here; each entry records what changed or what was discovered.
+- issues.md/PLAN.md: Working plan for one concrete change/issue; ephemeral and replaced per change.
 
 ### Document Precedence
 
-- `POLICY.md` defines binding validation, error-handling, and “confident programming” rules.
+- `issues.md/POLICY.md` defines binding validation, error-handling, and “confident programming” rules.
 - `AGENTS.md` (this file) defines repo-wide workflow, testing philosophy, and agent behavior; stack-specific AGENTS.* guides refine these rules for each technology.
-- `AGENTS.*.md` files never contradict `AGENTS.md` or `POLICY.md`; if guidance appears inconsistent, defer to `POLICY.md` first, then `AGENTS.md`, and treat the stack guide as a refinement.
-- `NOTES.md` is process-only and must not introduce rules that conflict with `POLICY.md` or any `AGENTS*.md` files.
+- `issues.md/AGENTS.*.md` files never contradict `AGENTS.md` or `POLICY.md`; if guidance appears inconsistent, defer to `POLICY.md` first, then `AGENTS.md`, and treat the stack guide as a refinement.
+- `issues.md/NOTES.md` is process-only and must not introduce rules that conflict with `POLICY.md` or any `AGENTS*.md` files.
 
 ### Issue Status Terms
 
@@ -51,8 +51,6 @@ All rules for validation, error handling, invariants, and “confident programmi
 
 Stack-specific instructions now live in dedicated files. Apply the relevant guide alongside the shared policies above.
 
-- Front-End (Browser ES Modules with Alpine.js): `AGENTS.FRONTEND.md`
-- Backend (Go): `AGENTS.GO.md`
-- Backend (Python): `AGENTS.PY.md`
-- Docker and containerization: `AGENTS.DOCKER.md`
-- Git and version control workflow: `AGENTS.GIT.md`
+- Backend (Go): `issues.md/AGENTS.GO.md`
+- Docker and containerization: `issues.md/AGENTS.DOCKER.md`
+- Git and version control workflow: `Aissues.md/GENTS.GIT.md`
