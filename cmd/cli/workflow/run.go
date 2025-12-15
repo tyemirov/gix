@@ -216,7 +216,15 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 	}
 
 	executor := ResolveOperationExecutor(builder.OperationExecutorFactory, nodes, workflowDependencies)
-	_, runErr := executor.Execute(command.Context(), roots, runtimeOptions)
+	outcome, runErr := executor.Execute(command.Context(), roots, runtimeOptions)
+	summary := taskrunner.RenderSummaryLine(outcome.ReporterSummaryData, roots)
+	if len(strings.TrimSpace(summary)) > 0 {
+		if workflowDependencies.Errors != nil {
+			fmt.Fprintln(workflowDependencies.Errors, summary)
+		} else if workflowDependencies.Output != nil {
+			fmt.Fprintln(workflowDependencies.Output, summary)
+		}
+	}
 	return runErr
 }
 
