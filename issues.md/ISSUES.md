@@ -82,7 +82,7 @@ Workflow logging now propagates each configuration step name into the environmen
 
 - [x] [GX-260] Branch cleanup behavior for namespace workflows now also uses the repository default branch as the base (via `.Repository.DefaultBranch` in `configs/account-rename.yaml`), so automation branches created by account-rename are deleted when they have no commits beyond the default branch; this path is covered by regression tests.
 
-- [x] [GX-261] Migrate (move) the llm package unter tyemirov/utils. Use tools/utils folder to add the changes. Ensure that tools/utils/llm will be automous self-encapsulated package easy for integration. Have full test coverage. Deliverable: Use tyemirov/utils/llm instead of pkg/llm (gix now imports `github.com/tyemirov/utils/llm`; `tools/utils/llm` adds the package with 100% statement coverage and `pkg/llm` removed.)
+- [x] [GX-261] Migrate (move) the llm package unter tyemirov/utils. Use tools/utils folder to add the changes. Ensure that tools/utils/llm will be automous self-encapsulated package easy for integration. Have full test coverage. Deliverable: Use tyemirov/utils/llm instead of pkg/llm (gix now imports `github.com/tyemirov/utils/llm` and `pkg/llm` is removed; `github.com/tyemirov/utils/llm` has full statement coverage in its own repo.)
 
 ## BugFixes (340–399)
 
