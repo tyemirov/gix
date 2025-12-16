@@ -74,6 +74,9 @@ func EvaluateSafeguards(ctx context.Context, environment *Environment, repositor
 		return false, "", requireChangesErr
 	}
 	if requireChangesExists && requireChanges {
+		if environment.WorkflowChangesDetected(repository) {
+			return true, "", nil
+		}
 		if environment.RepositoryManager == nil {
 			return false, "", errSafeguardRepoManager
 		}
