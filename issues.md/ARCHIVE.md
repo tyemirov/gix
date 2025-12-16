@@ -32,3 +32,4 @@ Each issue is formatted as `- [x] [GX-<number>]`.
 - [x] [GX-348] Ensure workflow step summaries surface destructive outcomes and never emit blank `reason` fields.
 - [x] [GX-349] Stop emitting workflow step summary YAML for non-workflow commands by only installing the YAML event formatter for `gix workflow`.
 - [x] [GX-350] Restore succinct non-workflow console logging by suppressing workflow-internal `TASK_PLAN`/`TASK_APPLY`/`WORKFLOW_STEP_SUMMARY` events and omitting machine payload output.
+- [x] [GX-351] Fix `safeguards.*.require_changes` to remain true after `git stage-commit` so `git push` / `pull-request open` are not skipped when commits were created. (Implemented workflow change tracking and updated safeguards + tests.)

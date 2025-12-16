@@ -178,6 +178,9 @@ func (action gitCommitAction) Execute(ctx context.Context, execCtx *ExecutionCon
 		Arguments:        arguments,
 		WorkingDirectory: execCtx.Repository.Path,
 	})
+	if err == nil {
+		execCtx.Environment.RecordWorkflowChange(execCtx.Repository)
+	}
 	return err
 }
 

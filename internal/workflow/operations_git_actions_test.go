@@ -413,6 +413,49 @@ func TestPullRequestOpenOperationPushesAndCreatesPR(t *testing.T) {
 	require.Equal(t, "pr", firstArgument(gitExecutor.githubCommands[0].Arguments))
 }
 
+func TestPullRequestOpenOperationRespectsRequireChangesAfterCommit(t *testing.T) {
+	gitExecutor := &recordingGitExecutor{
+		worktreeClean: true,
+		currentBranch: "main",
+		remoteURLs:    map[string]string{"origin": "git@github.com:sample/repo.git"},
+		existingRefs:  map[string]bool{"feature-sample-docs": false},
+	}
+	repoManager, managerErr := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(t, managerErr)
+
+	client, clientErr := githubcli.NewClient(gitExecutor)
+	require.NoError(t, clientErr)
+
+	op, buildErr := buildPullRequestOpenOperation(map[string]any{
+		"branch": "feature/{{ .Repository.Name }}-docs",
+		"title":  "chore({{ .Repository.Name }}): gitignore",
+		"body":   "Ensure gitignore entries",
+		"base":   "{{ .Repository.DefaultBranch }}",
+		"safeguards": map[string]any{
+			"soft_skip": map[string]any{"require_changes": true},
+		},
+	})
+	require.NoError(t, buildErr)
+
+	repository := NewRepositoryState(audit.RepositoryInspection{
+		Path:                "/repositories/sample",
+		FinalOwnerRepo:      "octocat/sample",
+		RemoteDefaultBranch: "main",
+	})
+	state := &State{Repositories: []*RepositoryState{repository}}
+	env := &Environment{
+		GitExecutor:       gitExecutor,
+		RepositoryManager: repoManager,
+		GitHubClient:      client,
+	}
+	env.RecordWorkflowChange(repository)
+
+	require.NoError(t, op.Execute(context.Background(), env, state))
+	require.True(t, commandArgumentsExist(gitExecutor.commands, []string{"push", "--set-upstream", "origin", "feature/sample-docs"}))
+	require.NotEmpty(t, gitExecutor.githubCommands)
+	require.Equal(t, "pr", firstArgument(gitExecutor.githubCommands[0].Arguments))
+}
+
 func TestPullRequestOpenOperationSkipsWhenBranchMissing(t *testing.T) {
 	gitExecutor := &recordingGitExecutor{
 		worktreeClean: true,

@@ -159,6 +159,21 @@ func TestEvaluateSafeguardsRequireChanges(t *testing.T) {
 	require.Empty(t, reason)
 }
 
+func TestEvaluateSafeguardsRequireChangesPassesWhenWorkflowRecordedChanges(t *testing.T) {
+	t.Parallel()
+
+	env := &Environment{}
+	repo := &RepositoryState{Path: "/repositories/sample"}
+	env.RecordWorkflowChange(repo)
+
+	pass, reason, evalErr := EvaluateSafeguards(context.Background(), env, repo, map[string]any{
+		"require_changes": true,
+	})
+	require.NoError(t, evalErr)
+	require.True(t, pass)
+	require.Empty(t, reason)
+}
+
 func TestEvaluateSafeguardsBranchAndPaths(t *testing.T) {
 	t.Parallel()
 

@@ -58,6 +58,7 @@ type environmentSharedState struct {
 	capturedKinds       map[string]map[string]CaptureKind
 	capturedValues      map[string]map[string]string
 	mutatedFiles        map[string]map[string]struct{}
+	workflowChanges     map[string]struct{}
 	stepOutcomes        map[string]map[string]stepOutcome
 }
 
@@ -231,6 +232,11 @@ func (environment *Environment) RecordMutatedFile(repository *RepositoryState, r
 		environment.sharedState.mutatedFiles[repositoryKey] = fileSet
 	}
 	fileSet[normalized] = struct{}{}
+
+	if environment.sharedState.workflowChanges == nil {
+		environment.sharedState.workflowChanges = make(map[string]struct{})
+	}
+	environment.sharedState.workflowChanges[repositoryKey] = struct{}{}
 }
 
 func (environment *Environment) ConsumeMutatedFiles(repository *RepositoryState) []string {
@@ -264,6 +270,51 @@ func (environment *Environment) ConsumeMutatedFiles(repository *RepositoryState)
 	sort.Strings(paths)
 	delete(environment.sharedState.mutatedFiles, repositoryKey)
 	return paths
+}
+
+func (environment *Environment) RecordWorkflowChange(repository *RepositoryState) {
+	if environment == nil {
+		return
+	}
+	repositoryKey := repositoryStateKey(repository)
+	if repositoryKey == "" {
+		repositoryKey = environment.repositoryKey()
+	}
+	if repositoryKey == "" {
+		return
+	}
+
+	environment.ensureSharedState()
+	environment.sharedState.mutex.Lock()
+	defer environment.sharedState.mutex.Unlock()
+
+	if environment.sharedState.workflowChanges == nil {
+		environment.sharedState.workflowChanges = make(map[string]struct{})
+	}
+	environment.sharedState.workflowChanges[repositoryKey] = struct{}{}
+}
+
+func (environment *Environment) WorkflowChangesDetected(repository *RepositoryState) bool {
+	if environment == nil {
+		return false
+	}
+	repositoryKey := repositoryStateKey(repository)
+	if repositoryKey == "" {
+		repositoryKey = environment.repositoryKey()
+	}
+	if repositoryKey == "" {
+		return false
+	}
+
+	environment.ensureSharedState()
+	environment.sharedState.mutex.Lock()
+	defer environment.sharedState.mutex.Unlock()
+
+	if environment.sharedState.workflowChanges == nil {
+		return false
+	}
+	_, exists := environment.sharedState.workflowChanges[repositoryKey]
+	return exists
 }
 
 func repositoryStateKey(repository *RepositoryState) string {
