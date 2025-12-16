@@ -24,4 +24,3 @@ Each issue is formatted as `- [ ] [GX-<number>]`.
 **Do not work on these, not ready**
 
 - [ ] Add an ability to rollback changes. Make flows and complex commands transactional to allow for rollback when a flow that changes things fails
-

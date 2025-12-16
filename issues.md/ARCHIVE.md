@@ -33,3 +33,4 @@ Each issue is formatted as `- [x] [GX-<number>]`.
 - [x] [GX-349] Stop emitting workflow step summary YAML for non-workflow commands by only installing the YAML event formatter for `gix workflow`.
 - [x] [GX-350] Restore succinct non-workflow console logging by suppressing workflow-internal `TASK_PLAN`/`TASK_APPLY`/`WORKFLOW_STEP_SUMMARY` events and omitting machine payload output.
 - [x] [GX-351] Fix `safeguards.*.require_changes` to remain true after `git stage-commit` so `git push` / `pull-request open` are not skipped when commits were created. (Implemented workflow change tracking and updated safeguards + tests.)
+- [x] [GX-352] Fix `gix cd --stash` popping extra stashes when untracked files are present. (Pop only when a stash was actually pushed; added regression coverage.)

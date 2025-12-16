@@ -44,6 +44,7 @@ type scriptedGitExecutor struct {
 	remoteOutput         string
 	statusOutput         string
 	originalStatusOutput string
+	stashCount           int
 	configError          error
 	revParseError        error
 }
@@ -83,8 +84,13 @@ func (executor *scriptedGitExecutor) ExecuteGit(_ context.Context, details execs
 		if len(details.Arguments) > 1 {
 			switch details.Arguments[1] {
 			case "push":
+				executor.stashCount++
 				executor.statusOutput = ""
 			case "pop":
+				if executor.stashCount == 0 {
+					return execshell.ExecutionResult{}, commandFailedErrorWithExitCode("No stash entries found.", 1)
+				}
+				executor.stashCount--
 				executor.statusOutput = executor.originalStatusOutput
 			}
 		}
