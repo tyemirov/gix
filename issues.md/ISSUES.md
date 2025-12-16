@@ -32,4 +32,3 @@ add missing steps in the summary (like namespace rewrite, namespace delete etc)
 **Do not work on these, not ready**
 
 - [ ] Add an ability to rollback changes. Make flows and complex commands transactional to allow for rollback when a flow that changes things fails
-

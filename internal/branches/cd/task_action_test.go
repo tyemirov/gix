@@ -358,6 +358,76 @@ func TestHandleBranchChangeActionRefreshesWithUntrackedChanges(t *testing.T) {
 	require.Equal(t, shared.EventCodeRepoSwitched, reporter.events[1].Code)
 }
 
+func TestHandleBranchChangeActionStashesDoesNotPopWhenOnlyUntrackedChangesPresent(t *testing.T) {
+	executor := newScriptedGitExecutor("origin\n", "?? notes.tmp\n")
+	gitManager, managerErr := gitrepo.NewRepositoryManager(executor)
+	require.NoError(t, managerErr)
+	reporter := &recordingReporter{}
+	environment := &workflow.Environment{
+		GitExecutor:       executor,
+		RepositoryManager: gitManager,
+		Logger:            zap.NewNop(),
+		Output:            io.Discard,
+		Errors:            io.Discard,
+		Reporter:          reporter,
+	}
+	repository := &workflow.RepositoryState{Path: "/tmp/project"}
+
+	parameters := map[string]any{
+		taskOptionBranchName:     "feature/foo",
+		taskOptionBranchRemote:   shared.OriginRemoteNameConstant,
+		taskOptionRefreshEnabled: true,
+		taskOptionRequireClean:   true,
+		taskOptionStashChanges:   true,
+	}
+
+	require.NoError(t, handleBranchChangeAction(context.Background(), environment, repository, parameters))
+	for _, recorded := range executor.recorded {
+		require.NotEqual(t, []string{"stash", "pop"}, recorded.Arguments)
+	}
+}
+
+func TestHandleBranchChangeActionStashesTrackedChangesOnceWhenUntrackedPresent(t *testing.T) {
+	executor := newScriptedGitExecutor("origin\n", " M tracked.txt\n?? notes.tmp\n")
+	gitManager, managerErr := gitrepo.NewRepositoryManager(executor)
+	require.NoError(t, managerErr)
+	reporter := &recordingReporter{}
+	environment := &workflow.Environment{
+		GitExecutor:       executor,
+		RepositoryManager: gitManager,
+		Logger:            zap.NewNop(),
+		Output:            io.Discard,
+		Errors:            io.Discard,
+		Reporter:          reporter,
+	}
+	repository := &workflow.RepositoryState{Path: "/tmp/project"}
+
+	parameters := map[string]any{
+		taskOptionBranchName:     "feature/foo",
+		taskOptionBranchRemote:   shared.OriginRemoteNameConstant,
+		taskOptionRefreshEnabled: true,
+		taskOptionRequireClean:   true,
+		taskOptionStashChanges:   true,
+	}
+
+	require.NoError(t, handleBranchChangeAction(context.Background(), environment, repository, parameters))
+	stashPushCount := 0
+	stashPopCount := 0
+	for _, recorded := range executor.recorded {
+		if len(recorded.Arguments) < 2 || recorded.Arguments[0] != "stash" {
+			continue
+		}
+		switch recorded.Arguments[1] {
+		case "push":
+			stashPushCount++
+		case "pop":
+			stashPopCount++
+		}
+	}
+	require.Equal(t, 1, stashPushCount)
+	require.Equal(t, 1, stashPopCount)
+}
+
 func TestHandleBranchChangeActionStashesTrackedChangesAroundSwitch(t *testing.T) {
 	executor := newScriptedGitExecutor("origin\n", " M tracked.txt\n")
 	gitManager, managerError := gitrepo.NewRepositoryManager(executor)

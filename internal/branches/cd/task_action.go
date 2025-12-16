@@ -255,9 +255,6 @@ func handleBranchChangeAction(ctx context.Context, environment *workflow.Environ
 				)
 			}
 		}
-		if refreshRequested && stashChanges && requireClean && len(untrackedStatus) > 0 {
-			stashPushCount++
-		}
 	}
 
 	if refreshSkipped {
