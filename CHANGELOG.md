@@ -1,5 +1,24 @@
 # Changelog
 
+## [v0.3.0-rc16]
+
+### Features ✨
+- _No changes._
+
+### Improvements ⚙️
+- Fix `require_changes` safeguards so `git push` and `pull-request open` run after `git stage-commit` when workflow commits were created.
+- Track workflow changes after commits to improve safeguards evaluation.
+
+### Bug Fixes 🐛
+- Fix `gix cd --stash` failing by popping only stashes that were actually pushed when untracked files are present.
+
+### Testing 🧪
+- Add tests to ensure `gix cd --stash` handles untracked files without popping extra stashes.
+- Add tests to verify `require_changes` safeguard passes after workflow commits are recorded.
+
+### Docs 📚
+- _No changes._
+
 ## [v0.3.0-rc15]
 
 ### Features ✨
