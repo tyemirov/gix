@@ -109,10 +109,17 @@ func (commandError CommandFailedError) Error() string {
 		if len(lines) > maxLines {
 			lines = lines[:maxLines]
 		}
-		for index := range lines {
-			lines[index] = strings.TrimSpace(lines[index])
+		normalized := make([]string, 0, len(lines))
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if trimmed == "" {
+				continue
+			}
+			normalized = append(normalized, trimmed)
 		}
-		baseMessage = fmt.Sprintf("%s: %s", baseMessage, strings.Join(lines, " | "))
+		if len(normalized) > 0 {
+			baseMessage = fmt.Sprintf("%s: %s", baseMessage, strings.Join(normalized, " | "))
+		}
 	}
 
 	return baseMessage

@@ -16,6 +16,7 @@
 - Restore succinct console logging for non-workflow commands by suppressing workflow-internal `TASK_*` noise and dropping machine payloads.
 - Fix `require_changes` safeguards so `git push` and `pull-request open` run after `git stage-commit` when workflow commits were created.
 - Fix `gix cd --stash` failing when untracked files are present by popping only stashes that were actually pushed.
+- Trim blank stderr lines from `git` failures so `CommandFailedError` messages do not end with a trailing `|`.
 
 ### Testing 🧪
 - Add full-coverage tests for the migrated LLM package in `github.com/tyemirov/utils/llm`.

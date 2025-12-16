@@ -257,6 +257,27 @@ func TestCommandFailedErrorOmitsOptionalDetailsWhenUnavailable(testInstance *tes
 	require.Equal(testInstance, "git command exited with code 2", commandError.Error())
 }
 
+func TestCommandFailedErrorOmitsBlankStderrLines(testInstance *testing.T) {
+	commandError := execshell.CommandFailedError{
+		Command: execshell.ShellCommand{
+			Name: execshell.CommandGit,
+			Details: execshell.CommandDetails{
+				Arguments: []string{"push", "--set-upstream", "origin", "automation/branch"},
+			},
+		},
+		Result: execshell.ExecutionResult{
+			ExitCode:      128,
+			StandardError: "ERROR: Repository not found.\n\nfatal: Could not read from remote repository.\n\n",
+		},
+	}
+
+	require.Equal(
+		testInstance,
+		"git command exited with code 128 (push --set-upstream origin automation/branch): ERROR: Repository not found. | fatal: Could not read from remote repository.",
+		commandError.Error(),
+	)
+}
+
 func TestShellExecutorInjectsGitHubTokenFromEnvironment(testInstance *testing.T) {
 	testInstance.Setenv(githubauth.EnvGitHubCLIToken, "")
 	testInstance.Setenv(githubauth.EnvGitHubToken, "")

@@ -34,3 +34,4 @@ Each issue is formatted as `- [x] [GX-<number>]`.
 - [x] [GX-350] Restore succinct non-workflow console logging by suppressing workflow-internal `TASK_PLAN`/`TASK_APPLY`/`WORKFLOW_STEP_SUMMARY` events and omitting machine payload output.
 - [x] [GX-351] Fix `safeguards.*.require_changes` to remain true after `git stage-commit` so `git push` / `pull-request open` are not skipped when commits were created. (Implemented workflow change tracking and updated safeguards + tests.)
 - [x] [GX-352] Fix `gix cd --stash` popping extra stashes when untracked files are present. (Pop only when a stash was actually pushed; added regression coverage.)
+- [x] [GX-353] Trim blank stderr lines when formatting `execshell.CommandFailedError` to avoid trailing `|` delimiters in user-facing error messages.
