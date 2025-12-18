@@ -67,6 +67,7 @@ type SummaryData struct {
 	TotalRepositories    int                                 `json:"total_repositories"`
 	EventCounts          map[string]int                      `json:"event_counts"`
 	LevelCounts          map[EventLevel]int                  `json:"level_counts"`
+	StepOutcomeCounts    map[string]map[string]int           `json:"step_outcomes"`
 	DurationHuman        string                              `json:"duration_human"`
 	DurationMilliseconds int64                               `json:"duration_ms"`
 	OperationDurations   map[string]OperationDurationSummary `json:"operation_durations"`
@@ -127,6 +128,7 @@ type StructuredReporter struct {
 	seenRepositories   map[string]struct{}
 	operationDurations map[string]*operationDurationAccumulator
 	stageDurations     map[string]*operationDurationAccumulator
+	stepOutcomeCounts  map[string]map[string]int
 	columns            columnConfiguration
 	eventFormatter     EventFormatter
 }
@@ -164,6 +166,7 @@ func NewStructuredReporter(output io.Writer, errors io.Writer, options ...Report
 		seenRepositories:         make(map[string]struct{}),
 		operationDurations:       make(map[string]*operationDurationAccumulator),
 		stageDurations:           make(map[string]*operationDurationAccumulator),
+		stepOutcomeCounts:        make(map[string]map[string]int),
 		columns: columnConfiguration{
 			levelWidth:      defaultLevelFieldWidth,
 			codeWidth:       defaultEventFieldWidth,
@@ -293,6 +296,7 @@ func (reporter *StructuredReporter) Report(event Event) {
 	}
 	reporter.eventCounts[code]++
 	reporter.levelCounts[level]++
+	reporter.recordStepOutcomeCounts(code, event)
 
 	if reporter.eventFormatter != nil {
 		reporter.eventFormatter.HandleEvent(event, writer)
@@ -323,6 +327,33 @@ func (reporter *StructuredReporter) Report(event Event) {
 	fmt.Fprintf(writer, "%s | %s\n", humanPart, machinePart)
 }
 
+func (reporter *StructuredReporter) recordStepOutcomeCounts(code string, event Event) {
+	if reporter == nil {
+		return
+	}
+	if code != normalizeCode(EventCodeWorkflowStepSummary) {
+		return
+	}
+	details := event.Details
+	if len(details) == 0 {
+		return
+	}
+	stepName := strings.TrimSpace(details["step"])
+	if stepName == "" {
+		return
+	}
+	outcome := strings.TrimSpace(details["outcome"])
+	if outcome == "" {
+		outcome = "unknown"
+	}
+	outcomeCounts, exists := reporter.stepOutcomeCounts[stepName]
+	if !exists {
+		outcomeCounts = make(map[string]int)
+		reporter.stepOutcomeCounts[stepName] = outcomeCounts
+	}
+	outcomeCounts[outcome]++
+}
+
 // SummaryData produces a serializable snapshot of reporter metrics.
 func (reporter *StructuredReporter) SummaryData() SummaryData {
 	if reporter == nil {
@@ -347,6 +378,7 @@ func (reporter *StructuredReporter) SummaryData() SummaryData {
 	levelCounts := cloneLevelCountMap(reporter.levelCounts)
 	operationDurations := make(map[string]OperationDurationSummary, len(reporter.operationDurations))
 	stageDurations := make(map[string]OperationDurationSummary, len(reporter.stageDurations))
+	stepOutcomeCounts := cloneStepOutcomeCounts(reporter.stepOutcomeCounts)
 
 	for name, accumulator := range reporter.operationDurations {
 		if accumulator == nil || accumulator.count == 0 {
@@ -376,6 +408,7 @@ func (reporter *StructuredReporter) SummaryData() SummaryData {
 		TotalRepositories:    len(reporter.seenRepositories),
 		EventCounts:          eventCounts,
 		LevelCounts:          levelCounts,
+		StepOutcomeCounts:    stepOutcomeCounts,
 		DurationHuman:        reporter.formatDuration(duration),
 		DurationMilliseconds: reporter.durationMilliseconds(duration),
 		OperationDurations:   operationDurations,
@@ -386,28 +419,141 @@ func (reporter *StructuredReporter) SummaryData() SummaryData {
 // Summary renders the aggregate statistics collected during reporting.
 func (reporter *StructuredReporter) Summary() string {
 	data := reporter.SummaryData()
-	if data.TotalRepositories == 0 && len(data.EventCounts) == 0 {
-		return "Summary: total.repos=0 duration_human=0s duration_ms=0"
+	return FormatSummaryLine(data, data.TotalRepositories)
+}
+
+// FormatSummaryLine renders the reporter summary line for the supplied repository count.
+func FormatSummaryLine(data SummaryData, repositoryCount int) string {
+	if repositoryCount < 0 {
+		repositoryCount = 0
+	}
+	if repositoryCount == 0 && len(data.EventCounts) == 0 && len(data.StepOutcomeCounts) == 0 {
+		return "Summary: total.repos=0 duration=0s"
 	}
 
-	keys := make([]string, 0, len(data.EventCounts))
-	for key := range data.EventCounts {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-
-	parts := make([]string, 0, len(keys)+4)
-	parts = append(parts, fmt.Sprintf("Summary: total.repos=%d", data.TotalRepositories))
-	for _, key := range keys {
-		parts = append(parts, fmt.Sprintf("%s=%d", key, data.EventCounts[key]))
-	}
-
+	parts := []string{fmt.Sprintf("Summary: total.repos=%d", repositoryCount)}
+	parts = append(parts, formatSummaryEventCounts(data.EventCounts)...)
+	parts = append(parts, formatSummaryStepCounts(data.StepOutcomeCounts)...)
 	parts = append(parts, fmt.Sprintf("%s=%d", EventLevelWarn, data.LevelCounts[EventLevelWarn]))
 	parts = append(parts, fmt.Sprintf("%s=%d", EventLevelError, data.LevelCounts[EventLevelError]))
-	parts = append(parts, fmt.Sprintf("duration_human=%s", data.DurationHuman))
-	parts = append(parts, fmt.Sprintf("duration_ms=%d", data.DurationMilliseconds))
+
+	durationValue := strings.TrimSpace(data.DurationHuman)
+	if durationValue == "" {
+		durationValue = "0s"
+	}
+	parts = append(parts, fmt.Sprintf("duration=%s", durationValue))
 
 	return strings.Join(parts, " ")
+}
+
+func formatSummaryEventCounts(eventCounts map[string]int) []string {
+	if len(eventCounts) == 0 {
+		return nil
+	}
+
+	keys := make([]string, 0, len(eventCounts))
+	for code := range eventCounts {
+		if shouldIncludeSummaryEventCode(code) {
+			keys = append(keys, code)
+		}
+	}
+	if len(keys) == 0 {
+		return nil
+	}
+
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, code := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%d", code, eventCounts[code]))
+	}
+	return parts
+}
+
+func shouldIncludeSummaryEventCode(code string) bool {
+	normalizedCode := normalizeCode(code)
+	switch normalizedCode {
+	case EventCodeTaskPlan,
+		EventCodeTaskApply,
+		EventCodeTaskSkip,
+		EventCodeWorkflowOperationSuccess,
+		EventCodeWorkflowStepSummary:
+		return false
+	default:
+		return true
+	}
+}
+
+func formatSummaryStepCounts(stepOutcomeCounts map[string]map[string]int) []string {
+	if len(stepOutcomeCounts) == 0 {
+		return nil
+	}
+
+	stepNames := make([]string, 0, len(stepOutcomeCounts))
+	for stepName := range stepOutcomeCounts {
+		if strings.TrimSpace(stepName) == "" {
+			continue
+		}
+		stepNames = append(stepNames, stepName)
+	}
+	if len(stepNames) == 0 {
+		return nil
+	}
+
+	sort.Strings(stepNames)
+	parts := make([]string, 0, len(stepNames))
+	for _, stepName := range stepNames {
+		outcomeCounts := stepOutcomeCounts[stepName]
+		outcomeNames := make([]string, 0, len(outcomeCounts))
+		for outcomeName := range outcomeCounts {
+			if strings.TrimSpace(outcomeName) == "" {
+				continue
+			}
+			outcomeNames = append(outcomeNames, outcomeName)
+		}
+		sort.Strings(outcomeNames)
+		for _, outcomeName := range outcomeNames {
+			key := formatStepOutcomeKey(stepName, outcomeName)
+			parts = append(parts, fmt.Sprintf("%s=%d", key, outcomeCounts[outcomeName]))
+		}
+	}
+
+	return parts
+}
+
+func formatStepOutcomeKey(stepName string, outcomeName string) string {
+	normalizedStep := normalizeSummaryToken(stepName)
+	if normalizedStep == "" {
+		normalizedStep = "UNKNOWN_STEP"
+	}
+	normalizedOutcome := normalizeSummaryToken(outcomeName)
+	if normalizedOutcome == "" {
+		normalizedOutcome = "UNKNOWN"
+	}
+	return fmt.Sprintf("STEP_%s_%s", normalizedStep, normalizedOutcome)
+}
+
+func normalizeSummaryToken(value string) string {
+	trimmedValue := strings.TrimSpace(value)
+	if trimmedValue == "" {
+		return ""
+	}
+	upperValue := strings.ToUpper(trimmedValue)
+	var builder strings.Builder
+	for _, character := range upperValue {
+		if (character >= 'A' && character <= 'Z') || (character >= '0' && character <= '9') {
+			builder.WriteRune(character)
+			continue
+		}
+		builder.WriteRune('_')
+	}
+	normalized := strings.Trim(builder.String(), "_")
+	if normalized == "" {
+		return ""
+	}
+	segments := strings.FieldsFunc(normalized, func(separator rune) bool {
+		return separator == '_'
+	})
+	return strings.Join(segments, "_")
 }
 
 // PrintSummary writes the computed summary to the primary output writer.
@@ -448,6 +594,21 @@ func cloneStringIntMap(source map[string]int) map[string]int {
 	target := make(map[string]int, len(source))
 	for key, value := range source {
 		target[key] = value
+	}
+	return target
+}
+
+func cloneStepOutcomeCounts(source map[string]map[string]int) map[string]map[string]int {
+	if len(source) == 0 {
+		return make(map[string]map[string]int)
+	}
+	target := make(map[string]map[string]int, len(source))
+	for stepName, outcomeCounts := range source {
+		clonedOutcomes := make(map[string]int, len(outcomeCounts))
+		for outcomeName, count := range outcomeCounts {
+			clonedOutcomes[outcomeName] = count
+		}
+		target[stepName] = clonedOutcomes
 	}
 	return target
 }
