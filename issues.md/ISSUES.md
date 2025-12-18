@@ -1,9 +1,13 @@
 # ISSUES
 **Active backlog (open issues only)**
 
-Resolved issues are archived in `issues.md/ARCHIVE.md`.
+Entries record newly discovered requests or changes, with their outcomes.
 
-Each issue is formatted as `- [ ] [GX-<number>]`.
+Each issue is formatted as `- [ ] [GX-<number>]`. When resolved it becomes -` [x] [GX-<number>]`. Resolved issues are archived in `issues.md/ARCHIVE.md`.
+
+Read @AGENTS.md, @README.md and ARCHITECTURE.md. Read issues.md/@POLICY.md, issues.md/PLANNING.md, issues.md/@NOTES.md, and issues.md/@ISSUES.md. Start working on open issues. Prioritize bugfixes and maintenance. Work autonomously and stack up PRs. 
+
+Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse completed numbers; cleanup renumbers remaining entries so numbering stays monotonic.
 
 ## Features (110–199)
 
