@@ -48,6 +48,9 @@ workflow:
                     - ".idea/"
                     - "tools/"
                     - "bin/"
+                    - ".cache/"
+                    - ".gocache/"
+                    - "*apps.googleusercontent.com.json"
               soft_skip:
                 paths:
                   - ".gitignore"
@@ -64,6 +67,9 @@ workflow:
                   .idea/
                   tools/
                   bin/
+                  .cache/
+                  .gocache/
+                  *apps.googleusercontent.com.json
                 mode: append-if-missing
 
   - step:
