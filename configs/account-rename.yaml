@@ -99,8 +99,30 @@ workflow:
                     to: tyemirov
 
   - step:
-      name: namespace-stage-commit
+      name: go-deps-upgrade
       after: ["namespace-rewrite"]
+      command: ["command", "run"]
+      with:
+        command: ["go", "get", "-u", "./..."]
+        safeguards:
+          soft_skip:
+            paths:
+              - "go.mod"
+
+  - step:
+      name: go-mod-tidy
+      after: ["go-deps-upgrade"]
+      command: ["command", "run"]
+      with:
+        command: ["go", "mod", "tidy"]
+        safeguards:
+          soft_skip:
+            paths:
+              - "go.mod"
+
+  - step:
+      name: namespace-stage-commit
+      after: ["go-mod-tidy"]
       command: ["git", "stage-commit"]
       with:
         paths:
