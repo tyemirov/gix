@@ -110,8 +110,19 @@ workflow:
               - "go.mod"
 
   - step:
-      name: go-mod-tidy
+      name: go-version-update
       after: ["go-deps-upgrade"]
+      command: ["command", "run"]
+      with:
+        command: ["go", "mod", "edit", "-go=1.25.4"]
+        safeguards:
+          soft_skip:
+            paths:
+              - "go.mod"
+
+  - step:
+      name: go-mod-tidy
+      after: ["go-version-update"]
       command: ["command", "run"]
       with:
         command: ["go", "mod", "tidy"]

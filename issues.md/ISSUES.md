@@ -20,7 +20,7 @@ remove  TASK_APPLY=237 TASK_PLAN=191 TASK_SKIP=139 WORKFLOW_OPERATION_SUCCESS=58
 add missing steps in the summary (like namespace rewrite, namespace delete etc)
 
 - [x] [GX-252] Add steps to @configs/account-rename.yaml that allows to bump up the dependency versions of go.mod (see GX-110). (Added go get/go mod tidy workflow steps with go.mod safeguards.)
-- [ ] [GX-253] Add steps to @configs/account-rename.yaml to upgrade go version in go.mod to `go 1.25.4`
+- [x] [GX-253] Add steps to @configs/account-rename.yaml to upgrade go version in go.mod to `go 1.25.4`. (Added go mod edit step with go.mod safeguards before go mod tidy.)
 
 ## BugFixes (340–399)
 
