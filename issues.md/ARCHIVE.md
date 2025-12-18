@@ -7,6 +7,7 @@ Each issue is formatted as `- [x] [GX-<number>]`.
 ## Features (110–199)
 
 - [x] [GX-110] Add a website documenting all of the benefits the gix utility has. The web site shall be served from github so follow the convention for folders/file placement (Static docs site now lives under `docs/index.html` with a marketing overview, workflows, and recipes, wired for GitHub Pages.)
+- [x] [GX-111] Add a step that allows running an arbitrary command, such as `go get -u ./...` and `go mod tidy`. (Added `command run` workflow step with tests and docs; originally tracked as GX-110.)
 
 ## Improvements (251–299)
 
@@ -19,6 +20,9 @@ Each issue is formatted as `- [x] [GX-<number>]`.
 - [x] [GX-257] Ensure that we commit only the files that we have changed. When running @configs/account-rename.yaml it looks like we are committing all uncommitted files in a tree.
 - [x] [GX-258] When running namespace rewrite workflows (for example, @configs/account-rename.yaml), avoid leaving behind empty automation branches in repositories where the workflow produced no file edits.
 - [x] [GX-261] Migrate (move) the llm package unter tyemirov/utils. Deliverable: Use tyemirov/utils/llm instead of pkg/llm.
+- [x] [GX-262] Improve the workflow summary. (Updated summary formatting to report duration only, drop specified counters, and add step outcome counts; originally tracked as GX-251.)
+- [x] [GX-263] Add steps to @configs/account-rename.yaml that allows to bump up the dependency versions of go.mod (see GX-110). (Added go get/go mod tidy workflow steps with go.mod safeguards; originally tracked as GX-252.)
+- [x] [GX-264] Add steps to @configs/account-rename.yaml to upgrade go version in go.mod to `go 1.25.4`. (Added go mod edit step before go mod tidy; originally tracked as GX-253.)
 
 ## BugFixes (340–399)
 
@@ -35,3 +39,7 @@ Each issue is formatted as `- [x] [GX-<number>]`.
 - [x] [GX-351] Fix `safeguards.*.require_changes` to remain true after `git stage-commit` so `git push` / `pull-request open` are not skipped when commits were created. (Implemented workflow change tracking and updated safeguards + tests.)
 - [x] [GX-352] Fix `gix cd --stash` popping extra stashes when untracked files are present. (Pop only when a stash was actually pushed; added regression coverage.)
 - [x] [GX-353] Trim blank stderr lines when formatting `execshell.CommandFailedError` to avoid trailing `|` delimiters in user-facing error messages.
+
+## Maintenance (422–499)
+
+- [x] [GX-423] Cleanup docs and backlog. (Reviewed README/ARCHITECTURE for accuracy, updated workflow summary notes, and archived completed issues.)
