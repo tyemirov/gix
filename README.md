@@ -247,6 +247,8 @@ Other commands keep the existing human-readable console logs and suppress workfl
  - with: `output: <path>` (optional). When provided, writes a CSV file; otherwise prints to stdout.
 - `tasks apply`
  - with: `tasks: [...]` (see below) for fine-grained file changes, commits, PRs, and built-in actions.
+- `command run`
+ - with: `command: <string|list>` (required), `working_directory: <path>` (optional), `ensure_clean: <bool>` (optional), `safeguards: <map>` (optional)
 
 ### Example: Canonicalize after owner rename
 

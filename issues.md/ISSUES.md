@@ -7,6 +7,8 @@ Each issue is formatted as `- [ ] [GX-<number>]`.
 
 ## Features (110–199)
 
+- [x] [GX-110] Add a step that allows running an arbitrary command, such as `go get -u ./...` and `go mod tidy`. (Added `command run` workflow step with tests and docs.)
+
 ## Improvements (251–299)
 
 ## BugFixes (340–399)
