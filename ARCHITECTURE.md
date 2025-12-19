@@ -31,7 +31,7 @@ Workflow orchestration (`internal/workflow`) now splits planning, runner orchest
 - Operation outcomes/failures, which the CLI surfaces as needed while still emitting the structured reporter summary to stderr.
 - Snapshot of reporter summary data (`shared.SummaryData`) so automation layers (e.g., `pkg/taskrunner`, CLI commands, integration tests) can make decisions without re-parsing logs.
 
-CLI builders run their workflows through `pkg/taskrunner`, which adapts the outcome: commands other than `gix workflow` drop the metrics, while the `workflow` command prints a stage-by-stage summary (duration and operation list) after the reporter writes its structured log.
+CLI builders run their workflows through `pkg/taskrunner`, which adapts the outcome: commands other than `gix workflow` drop the metrics, while the `workflow` command prints a stage-by-stage summary (duration and operation list) after the reporter writes its structured log. The summary data now also includes per-step outcome counts derived from `WORKFLOW_STEP_SUMMARY` events.
 
 ## Workflow Task Operations
 
