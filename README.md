@@ -88,7 +88,7 @@ Workflows reuse repository discovery, confirmation prompts, and logging so you c
 
 ### Workflow output
 
-`gix workflow` emits YAML step summaries (one per repository) and prints a final summary line at the end of the run. Other commands keep the existing human-readable console logs.
+`gix workflow` emits YAML step summaries (one per repository) and prints a final summary line at the end of the run. The summary includes event counters, per-step outcomes (`STEP_<STEP>_<OUTCOME>`), WARN/ERROR counts, and a human duration. Other commands keep the existing human-readable console logs.
 
 ### Embedded workflows
 
@@ -247,6 +247,8 @@ Other commands keep the existing human-readable console logs and suppress workfl
  - with: `output: <path>` (optional). When provided, writes a CSV file; otherwise prints to stdout.
 - `tasks apply`
  - with: `tasks: [...]` (see below) for fine-grained file changes, commits, PRs, and built-in actions.
+- `command run`
+ - with: `command: <string|list>` (required), `working_directory: <path>` (optional), `ensure_clean: <bool>` (optional), `safeguards: <map>` (optional)
 
 ### Example: Canonicalize after owner rename
 

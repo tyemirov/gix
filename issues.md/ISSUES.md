@@ -1,9 +1,13 @@
 # ISSUES
 **Active backlog (open issues only)**
 
-Resolved issues are archived in `issues.md/ARCHIVE.md`.
+Entries record newly discovered requests or changes, with their outcomes.
 
-Each issue is formatted as `- [ ] [GX-<number>]`.
+Each issue is formatted as `- [ ] [GX-<number>]`. When resolved it becomes -` [x] [GX-<number>]`. Resolved issues are archived in `issues.md/ARCHIVE.md`.
+
+Read @AGENTS.md, @README.md and ARCHITECTURE.md. Read issues.md/@POLICY.md, issues.md/PLANNING.md, issues.md/@NOTES.md, and issues.md/@ISSUES.md. Start working on open issues. Prioritize bugfixes and maintenance. Work autonomously and stack up PRs. 
+
+Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse completed numbers; cleanup renumbers remaining entries so numbering stays monotonic.
 
 ## Features (110–199)
 
@@ -14,11 +18,6 @@ Each issue is formatted as `- [ ] [GX-<number>]`.
 - [ ] [GX-345] First output appears late when running gix against 20–30 repositories because repository discovery/inspection emits no user-facing progress until the first repository finishes its first workflow step. (Unresolved: stream discovery/inspection progress or emit an initial discovery step summary.)
 
 ## Maintenance (422–499)
-
-- [ ] [GX-423] Cleanup:
-  1. Review the completed issues and compare the code against the README.md and ARCHITECTURE.md files.
-  2. Update the README.md and ARCHITECTURE.
-  3. Clean up the completed issues.
 
 ## Planning
 **Do not work on these, not ready**
