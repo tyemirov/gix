@@ -22,22 +22,19 @@ const (
 	fileReplaceCommandOptionKey    = "command"
 	fileReplaceSafeguardsOptionKey = "safeguards"
 
-	fileReplacePlanMessageTemplate    = "REPLACE-PLAN: %s file=%s replacements=%d\n"
-	fileReplaceApplyMessageTemplate   = "REPLACE-APPLY: %s file=%s replacements=%d\n"
-	fileReplaceSkipMessageTemplate    = "REPLACE-SKIP: %s reason=%s\n"
-	fileReplaceNoopMessageTemplate    = "REPLACE-NOOP: %s reason=%s\n"
-	fileReplaceCommandPlanTemplate    = "REPLACE-COMMAND-PLAN: %s command=%s\n"
-	fileReplaceCommandApplyTemplate   = "REPLACE-COMMAND: %s command=%s\n"
-	fileReplaceCommandSupportMessage  = "replacement command execution requires shell support"
-	fileReplaceMissingFindMessage     = "replacement action requires non-empty 'find'"
-	fileReplaceMissingPatternMessage  = "replacement action requires at least one 'pattern'"
-	fileReplaceMissingRepositoryError = "replacement action requires repository manager and filesystem"
-	doubleStarPatternToken            = "**"
+	fileReplacePlanMessageTemplate       = "REPLACE-PLAN: %s file=%s replacements=%d\n"
+	fileReplaceApplyMessageTemplate      = "REPLACE-APPLY: %s file=%s replacements=%d\n"
+	fileReplaceSkipMessageTemplate       = "REPLACE-SKIP: %s reason=%s\n"
+	fileReplaceNoopMessageTemplate       = "REPLACE-NOOP: %s reason=%s\n"
+	fileReplaceCommandPlanTemplate       = "REPLACE-COMMAND-PLAN: %s command=%s\n"
+	fileReplaceCommandApplyTemplate      = "REPLACE-COMMAND: %s command=%s\n"
+	fileReplaceCommandSupportMessage     = "replacement command execution requires shell support"
+	fileReplaceMissingFindMessage        = "replacement action requires non-empty 'find'"
+	fileReplaceMissingPatternMessage     = "replacement action requires at least one 'pattern'"
+	fileReplaceMissingRepositoryError    = "replacement action requires repository manager and filesystem"
+	replacementCommandDescriptorConstant = "replacement command"
+	doubleStarPatternToken               = "**"
 )
-
-type shellCommandExecutor interface {
-	Execute(context.Context, execshell.ShellCommand) (execshell.ExecutionResult, error)
-}
 
 func handleFileReplaceAction(ctx context.Context, environment *Environment, repository *RepositoryState, parameters map[string]any) error {
 	if environment == nil || repository == nil {
@@ -218,43 +215,7 @@ func readReplacementPatterns(reader optionReader) ([]string, error) {
 }
 
 func parseReplacementCommand(raw any) ([]string, error) {
-	if raw == nil {
-		return nil, nil
-	}
-
-	switch typed := raw.(type) {
-	case []string:
-		return sanitizeCommandArguments(typed), nil
-	case []any:
-		values := make([]string, 0, len(typed))
-		for _, entry := range typed {
-			value, ok := entry.(string)
-			if !ok {
-				return nil, fmt.Errorf("replacement command entries must be strings")
-			}
-			values = append(values, value)
-		}
-		return sanitizeCommandArguments(values), nil
-	case string:
-		return sanitizeCommandArguments(strings.Fields(typed)), nil
-	default:
-		return nil, fmt.Errorf("replacement command must be a string or list of strings")
-	}
-}
-
-func sanitizeCommandArguments(arguments []string) []string {
-	sanitized := make([]string, 0, len(arguments))
-	for _, argument := range arguments {
-		trimmed := strings.TrimSpace(argument)
-		if len(trimmed) == 0 {
-			continue
-		}
-		sanitized = append(sanitized, trimmed)
-	}
-	if len(sanitized) == 0 {
-		return nil
-	}
-	return sanitized
+	return parseShellCommandArguments(raw, replacementCommandDescriptorConstant)
 }
 
 func collectReplacementTargets(repositoryPath string, patterns []string) ([]string, error) {

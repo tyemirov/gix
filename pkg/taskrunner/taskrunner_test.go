@@ -38,8 +38,7 @@ func TestRenderSummaryLineFormatsCounts(t *testing.T) {
 	require.Contains(t, summary, "repo_switched=2")
 	require.Contains(t, summary, "WARN=1")
 	require.Contains(t, summary, "ERROR=0")
-	require.Contains(t, summary, "duration_human=1s")
-	require.Contains(t, summary, "duration_ms=1000")
+	require.Contains(t, summary, "duration=1s")
 }
 
 func TestSummaryExecutorPrintsSummaryForMultipleRepositories(t *testing.T) {

@@ -154,6 +154,8 @@ func buildOperationFromStep(step StepConfiguration) (Operation, error) {
 		return buildAuditReportOperation(normalizedOptions)
 	case commandTasksApplyKey, legacyCommandRepoTasksApplyKey:
 		return buildTaskOperation(normalizedOptions)
+	case commandRunKey:
+		return buildCommandRunOperation(normalizedOptions)
 	case commandGitStageKey:
 		return buildGitStageOperation(normalizedOptions)
 	case commandGitCommitKey:

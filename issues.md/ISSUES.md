@@ -32,11 +32,6 @@ add missing steps in the summary (like namespace rewrite, namespace delete etc)
 
 ## Maintenance (422–499)
 
-- [ ] [GX-423] Cleanup:
-  1. Review the completed issues and compare the code against the README.md and ARCHITECTURE.md files.
-  2. Update the README.md and ARCHITECTURE.
-  3. Clean up the completed issues.
-
 ## Planning
 **Do not work on these, not ready**
 

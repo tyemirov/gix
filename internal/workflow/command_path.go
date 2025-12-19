@@ -9,6 +9,7 @@ const (
 	commandRemoteCanonicalKey                 = "remote update-to-canonical"
 	commandRemoteConvertProtocolKey           = "remote update-protocol"
 	commandTasksApplyKey                      = "tasks apply"
+	commandRunKey                             = "command run"
 	commandGitStageKey                        = "git stage"
 	commandGitCommitKey                       = "git commit"
 	commandGitStageCommitKey                  = "git stage-commit"

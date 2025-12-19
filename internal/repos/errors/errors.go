@@ -21,6 +21,8 @@ const (
 	OperationNamespaceRewrite Operation = "repo.namespace.rewrite"
 	// OperationReleaseTag denotes release tag creation executors.
 	OperationReleaseTag Operation = "repo.release.tag"
+	// OperationCommandRun denotes workflow command run executors.
+	OperationCommandRun Operation = "repo.command.run"
 )
 
 // Sentinel describes a stable error code shared across executors.
@@ -202,4 +204,6 @@ var (
 	ErrReleaseTagResolveFailed Sentinel = "release_tag_resolve_failed"
 	// ErrReleaseTagDeleteFailed indicates deleting an existing tag prior to retagging failed.
 	ErrReleaseTagDeleteFailed Sentinel = "release_tag_delete_failed"
+	// ErrCommandExecutionFailed indicates an arbitrary command execution failed.
+	ErrCommandExecutionFailed Sentinel = "command_execution_failed"
 )
