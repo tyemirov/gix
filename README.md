@@ -252,7 +252,7 @@ Other commands keep the existing human-readable console logs and suppress workfl
 
 ### Example: Canonicalize after owner rename
 
-This example updates remotes to canonical, renames folders to include owners, switches branch to `master` only when the worktree is clean, and rewrites Go module namespaces from `github.com/temirov` to `github.com/tyemirov`, creating a branch and pushing changes.
+This example updates remotes to canonical, renames folders to include owners, switches branch to `master` only when the worktree is clean, and rewrites Go module namespaces from `github.com/tyemirov` to `github.com/tyemirov`, creating a branch and pushing changes.
 
 ```yaml
 workflow:
@@ -331,17 +331,17 @@ workflow:
        - path: go.mod
         mode: replace
         replacements:
-         - from: github.com/temirov
+         - from: github.com/tyemirov
            to: github.com/tyemirov
        - path: go.sum
         mode: replace
         replacements:
-         - from: github.com/temirov
+         - from: github.com/tyemirov
            to: github.com/tyemirov
        - path: "**/*.go"
         mode: replace
         replacements:
-         - from: github.com/temirov
+         - from: github.com/tyemirov
            to: github.com/tyemirov
 
  - step:
@@ -369,7 +369,7 @@ workflow:
     branch: "automation/ns-rewrite/{{ .Repository.Name }}-{{ index .Environment \"workflow_run_id\" }}"
     title: "refactor({{ .Repository.Name }}): rewrite module namespace"
     body: |
-      Rewrites Go module imports from `github.com/temirov` to `github.com/tyemirov` after the owner rename.
+      Rewrites Go module imports from `github.com/tyemirov` to `github.com/tyemirov` after the owner rename.
     base: "{{ .Repository.DefaultBranch }}"
     push_remote: origin
 ```
