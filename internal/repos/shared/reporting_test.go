@@ -37,8 +37,7 @@ func TestStructuredReporterSummaryCountsRepositoriesAndFormatsDuration(t *testin
 	require.Contains(t, summary, "TEST_EVENT=1")
 	require.Contains(t, summary, "WARN=0")
 	require.Contains(t, summary, "ERROR=0")
-	require.Contains(t, summary, "duration_human=1.5s")
-	require.Contains(t, summary, "duration_ms=1500")
+	require.Contains(t, summary, "duration=1.5s")
 }
 
 func TestStructuredReporterRecordRepositoryIncludesObservedRoots(t *testing.T) {
@@ -60,9 +59,24 @@ func TestStructuredReporterRecordEventCountsWithoutEmittingLogs(t *testing.T) {
 	reporter.RecordEvent("workflow_operation_failure", EventLevelError)
 
 	summary := reporter.Summary()
-	require.Contains(t, summary, "WORKFLOW_OPERATION_SUCCESS=2")
+	require.NotContains(t, summary, "WORKFLOW_OPERATION_SUCCESS=2")
 	require.Contains(t, summary, "WORKFLOW_OPERATION_FAILURE=1")
 	require.Contains(t, summary, "ERROR=1")
+}
+
+func TestStructuredReporterSummaryIncludesStepOutcomes(t *testing.T) {
+	reporter := NewStructuredReporter(&bytes.Buffer{}, &bytes.Buffer{}, WithRepositoryHeaders(false))
+
+	reporter.Report(Event{
+		Code: EventCodeWorkflowStepSummary,
+		Details: map[string]string{
+			"step":    "namespace-rewrite",
+			"outcome": "applied",
+		},
+	})
+
+	summary := reporter.Summary()
+	require.Contains(t, summary, "STEP_NAMESPACE_REWRITE_APPLIED=1")
 }
 
 func TestStructuredReporterSummaryDataIncludesOperationDurations(t *testing.T) {

@@ -88,7 +88,7 @@ Workflows reuse repository discovery, confirmation prompts, and logging so you c
 
 ### Workflow output
 
-`gix workflow` emits YAML step summaries (one per repository) and prints a final summary line at the end of the run. Other commands keep the existing human-readable console logs.
+`gix workflow` emits YAML step summaries (one per repository) and prints a final summary line at the end of the run. The summary includes event counters, per-step outcomes (`STEP_<STEP>_<OUTCOME>`), WARN/ERROR counts, and a human duration. Other commands keep the existing human-readable console logs.
 
 ### Embedded workflows
 
