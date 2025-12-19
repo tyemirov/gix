@@ -11,11 +11,11 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
 
 ## Features (110–199)
 
-- [ ] [GX-110] Add a step that allows running an arbitrary command, such as `go get -u ./...` and `go mod tidy`. The changed files need to be committed after this step. Deliver both the DSL and the implementation.
+- [x] [GX-110] Add a step that allows running an arbitrary command, such as `go get -u ./...` and `go mod tidy`. The changed files need to be committed after this step. Deliver both the DSL and the implementation.
 
 ## Improvements (251–299)
 
-- [ ] [GX-251] Improve the workflow summary. I ran @configs/account-rename.yaml and I got:
+- [x] [GX-251] Improve the workflow summary. I ran @configs/account-rename.yaml and I got:
 
 Summary: total.repos=104 PROTOCOL_SKIP=104 REMOTE_MISSING=1 REMOTE_SKIP=51 REPO_FOLDER_SKIP=52 REPO_SWITCHED=92 TASK_APPLY=237 TASK_PLAN=191 TASK_SKIP=139 WORKFLOW_OPERATION_SUCCESS=582 WORKFLOW_STEP_SUMMARY=582 WARN=139 ERROR=1 duration_human=6m55.109s duration_ms=415109
 
@@ -23,8 +23,8 @@ Remove duration_ms Leave only human duration and rename it to duration.
 remove  TASK_APPLY=237 TASK_PLAN=191 TASK_SKIP=139 WORKFLOW_OPERATION_SUCCESS=582
 add missing steps in the summary (like namespace rewrite, namespace delete etc)
 
-- [ ] [GX-252] Add steps to @configs/account-rename.yaml that allows to bump up the dependency versions of go.mod (see GX-110). 
-- [ ] [GX-253] Add steps to @configs/account-rename.yaml to upgrade go version in go.mod to `go 1.25.4`
+- [x] [GX-252] Add steps to @configs/account-rename.yaml that allows to bump up the dependency versions of go.mod (see GX-110). 
+- [x] [GX-253] Add steps to @configs/account-rename.yaml to upgrade go version in go.mod to `go 1.25.4`
 
 ## BugFixes (340–399)
 

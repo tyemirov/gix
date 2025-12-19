@@ -1,5 +1,28 @@
 # Changelog
 
+## [v0.3.0-rc17]
+
+### Features ✨
+- Add workflow steps for Go version update, module upgrades, and command run support with validation moved to edge.
+- Refine workflow summary output to include per-step outcome counts for better automation decision-making.
+- Introduce structured summary format alignment in documentation.
+
+### Improvements ⚙️
+- Extend gitignore workflow to include commonly ignored folders like `.cache/` and `.gocache/`.
+- Improve automated coding flow and internal workflows for more robust execution.
+- Trim blank stderr lines in git command failure messages to improve error readability.
+
+### Bug Fixes 🐛
+- Fix issue causing trailing blank lines in stderr during command execution errors.
+
+### Testing 🧪
+- Add comprehensive tests to cover handling of blank stderr lines in CommandFailedError.
+- Add full-coverage tests for workflow operations command and related packages.
+
+### Docs 📚
+- Update README with details on new workflow summary output, step outcome counts, and new command run step.
+- Clarify workflow output and embedded workflow command syntax in documentation.
+
 ## [v0.3.0-rc16]
 
 ### Features ✨
