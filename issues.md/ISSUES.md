@@ -11,6 +11,8 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
 
 ## Features (110–199)
 
+- [x] [GX-110] Add a step that allows running an arbitrary command, such as `go get -u ./...` and `go mod tidy`. The changed files need to be committed after this step. Deliver both the DSL and the implementation.
+
 ## Improvements (251–299)
 
 - [x] [GX-251] Improve the workflow summary. I ran @configs/account-rename.yaml and I got:
