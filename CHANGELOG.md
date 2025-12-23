@@ -1,6 +1,6 @@
 # Changelog
 
-## [v0.3.0-rc18]
+## [v0.3.0]
 
 ### Features ✨
 - Introduce Go version update, Go module bump, and command run steps in workflows with validation moved to the edge.
