@@ -141,7 +141,9 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 		return variableError
 	}
 
-	applyVariableOverrides(&workflowConfiguration, variableAssignments)
+	if overrideError := applyVariableOverrides(&workflowConfiguration, variableAssignments); overrideError != nil {
+		return overrideError
+	}
 
 	nodes, operationsError := workflow.BuildOperations(workflowConfiguration)
 	if operationsError != nil {
@@ -281,9 +283,9 @@ func (builder *CommandBuilder) resolveVariables(command *cobra.Command, configur
 	return variableAssignments, nil
 }
 
-func applyVariableOverrides(configuration *workflow.Configuration, variables map[string]string) {
+func applyVariableOverrides(configuration *workflow.Configuration, variables map[string]string) error {
 	if configuration == nil || len(variables) == 0 {
-		return
+		return nil
 	}
 
 	ownerValue := strings.TrimSpace(variables["owner"])
@@ -358,6 +360,11 @@ func applyVariableOverrides(configuration *workflow.Configuration, variables map
 			)
 		}
 	}
+
+	if licenseOverrideError := applyLicenseTemplateOverrides(configuration, variables); licenseOverrideError != nil {
+		return licenseOverrideError
+	}
+	return nil
 }
 
 func parseWorkflowPathsVariable(rawValue string) []string {
