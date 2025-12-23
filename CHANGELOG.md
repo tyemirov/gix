@@ -1,5 +1,34 @@
 # Changelog
 
+## [v0.3.0-rc18]
+
+### Features ✨
+- Introduce Go version update, Go module bump, and command run steps in workflows with validation moved to the edge.
+- Add embedded license template support in workflows for BSL, MIT, and proprietary licenses.
+- Extend gitignore workflow with additional commonly ignored folders.
+
+### Improvements ⚙️
+- Refine workflow summary output with YAML step summaries for easier automation and machine parsing.
+- Align workflow license distribution to use templates and allow extensive license variable overrides.
+- Move AGENTS.md and related stack-specific guides to the root folder for better discoverability.
+- Enhance CLI logging with structured JSON by default and human console logs for non-workflow commands.
+- Archive resolved issues and synchronize README and ARCHITECTURE documentation with completed issues.
+
+### Bug Fixes 🐛
+- Fix workflow step logs and summary output for better clarity and accuracy.
+- Trim blank stderr lines in execshell errors for cleaner error messages.
+- Fix `gix cd --stash` to handle untracked files correctly by popping only pushed stashes.
+- Fix `require_changes` safeguard to correctly track commits created by workflows.
+- Restore concise non-workflow logging by suppressing workflow internal noise and machine payloads.
+
+### Testing 🧪
+- Add full-coverage tests for workflow command steps and internal workflow packages.
+
+### Docs 📚
+- Update README with usage details on workflow license presets and workflow output format.
+- Move AGENTS.md root and revise documentation links for policy and agent behavior.
+- Synchronize ARCHITECTURE.md description with latest workflow changes and command enhancements.
+
 ## [v0.3.0-rc14]
 
 ### Features ✨
