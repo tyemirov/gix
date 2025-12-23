@@ -1,5 +1,73 @@
 # Changelog
 
+## [v0.3.0-rc17]
+
+### Features ✨
+- Add workflow steps for Go version update, module upgrades, and command run support with validation moved to edge.
+- Refine workflow summary output to include per-step outcome counts for better automation decision-making.
+- Introduce structured summary format alignment in documentation.
+
+### Improvements ⚙️
+- Extend gitignore workflow to include commonly ignored folders like `.cache/` and `.gocache/`.
+- Improve automated coding flow and internal workflows for more robust execution.
+- Trim blank stderr lines in git command failure messages to improve error readability.
+
+### Bug Fixes 🐛
+- Fix issue causing trailing blank lines in stderr during command execution errors.
+
+### Testing 🧪
+- Add comprehensive tests to cover handling of blank stderr lines in CommandFailedError.
+- Add full-coverage tests for workflow operations command and related packages.
+
+### Docs 📚
+- Update README with details on new workflow summary output, step outcome counts, and new command run step.
+- Clarify workflow output and embedded workflow command syntax in documentation.
+
+## [v0.3.0-rc16]
+
+### Features ✨
+- _No changes._
+
+### Improvements ⚙️
+- Fix `require_changes` safeguards so `git push` and `pull-request open` run after `git stage-commit` when workflow commits were created.
+- Track workflow changes after commits to improve safeguards evaluation.
+
+### Bug Fixes 🐛
+- Fix `gix cd --stash` failing by popping only stashes that were actually pushed when untracked files are present.
+
+### Testing 🧪
+- Add tests to ensure `gix cd --stash` handles untracked files without popping extra stashes.
+- Add tests to verify `require_changes` safeguard passes after workflow commits are recorded.
+
+### Docs 📚
+- _No changes._
+
+## [v0.3.0-rc15]
+
+### Features ✨
+- _No changes._
+
+### Improvements ⚙️
+- Restore succinct console logging for non-workflow commands by suppressing workflow-internal task events and omitting machine payload output.
+- Refactor output formatting: `gix workflow` emits YAML step summaries for automation while other commands retain human-readable console logs.
+- Move AGENTS.md to root folder for easier discoverability.
+- Synchronize README and ARCHITECTURE.md documentation with completed issues.
+- Archive resolved issues from ISSUES.md to ISSUES/ARCHIVE.md.
+
+### Bug Fixes 🐛
+- Fix workflow step logs and summary output for better clarity and accuracy.
+- Ensure non-workflow commands no longer emit workflow step summary YAML.
+- Prevent workflow step summaries from emitting blank reason fields.
+- Add informative event logging when repository protocol mismatches occur and skip operations accordingly.
+
+### Testing 🧪
+- Add full-coverage tests for migrated LLM package.
+
+### Docs 📚
+- Update README with usage notes about LLM client and `gix workflow` output formatting.
+- Update ARCHITECTURE.md to clarify workflow command logging behavior and formatting.
+- Relocate AGENTS.md and adjust references in policy documents accordingly.
+
 ## [v0.3.0-rc14]
 
 ### Features ✨
