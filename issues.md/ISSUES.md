@@ -25,7 +25,7 @@ add missing steps in the summary (like namespace rewrite, namespace delete etc)
 
 - [x] [GX-252] Add steps to @configs/account-rename.yaml that allows to bump up the dependency versions of go.mod (see GX-110). 
 - [x] [GX-253] Add steps to @configs/account-rename.yaml to upgrade go version in go.mod to `go 1.25.4`
-
+- [x] [GX-254] Embed license templates and wire the license workflow preset to render them per repository.
 ## BugFixes (340–399)
 
 - [ ] [GX-345] First output appears late when running gix against 20–30 repositories because repository discovery/inspection emits no user-facing progress until the first repository finishes its first workflow step. (Unresolved: stream discovery/inspection progress or emit an initial discovery step summary.)
