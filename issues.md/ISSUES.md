@@ -33,8 +33,7 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
 - [ ] [GX-345] First output appears late when running gix against 20–30 repositories because repository discovery/inspection emits no user-facing progress until the first repository finishes its first workflow step.
   (Unresolved: stream discovery/inspection progress or emit an initial discovery step summary.)
 - [ ] [GX-346] (P0) gix prs delete --yes is silent under default console logging.
-- [ ] [GX-347] Saving edited issues is not working.
-  The error is: Autosave conflict: saved content differs from editor.
+- [ ] [GX-347] Saving edited issues is not working
 
 
 ## Maintenance (400–499)
