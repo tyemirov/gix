@@ -32,19 +32,23 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
 
 - [ ] [GX-345] First output appears late when running gix against 20–30 repositories because repository discovery/inspection emits no user-facing progress until the first repository finishes its first workflow step.
   (Unresolved: stream discovery/inspection progress or emit an initial discovery step summary.)
-- [ ] [GX-346] (P0) gix prs delete --yes runs silently with default logging.
+- [ ] [GX-346] (P0) gix prs delete --yes is silent under default console logging.
+  ## Summary
+  GX-346 (P0): `gix prs delete --yes` can finish with no user-facing output under the default config (console + error logging), especially for single-repo runs, so operators cannot tell whether any branches were deleted or whether there were zero matches.
+  
   ## Analysis
-  - The command is implemented as a workflow task in `internal/branches/command.go` using the `repo.branches.cleanup` action from `internal/branches/task_action.go`.
-  - Task execution emits `TASK_PLAN`/`TASK_APPLY` in `internal/workflow/task_plan.go` and `internal/workflow/task_execute.go`, but console output suppresses those codes in `internal/repos/shared/reporting.go`.
-  - Progress logs are Info-level in `internal/branches/service.go`, while the default config in `cmd/cli/default_config.yaml` sets `log_level: error`, so those logs are filtered out.
-  - The summary line is only printed for multi-repo runs in `pkg/taskrunner/summary.go`, so single-repo runs can end with no output even on success.
+  - The CLI command in `internal/branches/command.go` runs a workflow `TaskDefinition` that calls the `repo.branches.cleanup` action from `internal/branches/task_action.go`, so output is constrained to workflow reporting and the service logger rather than direct prints.
+  - The cleanup action does not write to `environment.Output` (unlike `branch.refresh` in the same file), so it emits no explicit success or no-op line.
+  - Workflow execution emits `TASK_PLAN` and `TASK_APPLY` events (`internal/workflow/task_plan.go`, `internal/workflow/task_execute.go`), but `internal/repos/shared/reporting.go` suppresses those event codes in console output via `consoleSuppressedEventCodes`.
+  - The cleanup service logs progress only at Info level (`internal/branches/service.go`), while the default config in `cmd/cli/default_config.yaml` sets `log_level: error`, so those logs are filtered.
+  - The summary renderer in `pkg/taskrunner/summary.go` returns an empty string for single-repo runs, leaving no fallback output.
   
   ## Deliverables
-  - Emit a human-readable, non-suppressed console message for `gix prs delete` success and no-op outcomes without requiring log-level changes.
-  - Preserve suppression for unrelated `TASK_*` workflow noise so other commands remain quiet.
-  - Add or extend an integration test (e.g., `tests/pr_cleanup_integration_test.go`) that asserts non-empty output for a single-repo `gix prs delete --yes` run.
-  - Acceptance: with default config (`log_format: console`, `log_level: error`) and a single repo, the command prints at least one line indicating the repo and outcome.
-  - Acceptance: when there are zero closed PR branches, output states a no-op or zero-deletion result instead of being silent. title=gix prs delete --yes runs silently with default logging)
+  - Emit a dedicated, non-suppressed console line for `gix prs delete` per repository that reports the outcome (deleted count or no-op) without requiring a log-level change.
+  - Keep suppression of `TASK_*` workflow noise intact so other commands remain quiet; only add the explicit output needed for branch cleanup.
+  - Extend `tests/pr_cleanup_integration_test.go` (or add a new adjacent integration test) to capture CLI output and assert it is non-empty for a single-repo `--yes` run.
+  - Acceptance: With default config (`log_format: console`, `log_level: error`) and a single repo, the command prints at least one line that includes the repo identifier/path and an outcome.
+  - Acceptance: When the GH CLI returns zero closed PR branches, output explicitly states a no-op or zero deletions instead of being silent.
 
 
 ## Maintenance (400–499)
