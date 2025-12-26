@@ -33,12 +33,6 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
 - [ ] [GX-345] First output appears late when running gix against 20–30 repositories because repository discovery/inspection emits no user-facing progress until the first repository finishes its first workflow step.
   (Unresolved: stream discovery/inspection progress or emit an initial discovery step summary.)
 - [ ] [GX-346] (P0) gix prs delete --yes runs silently with default logging.
-  ## Summary
-  - `gix prs delete --yes` completes without any visible output.
-  - Users cannot tell whether branches were scanned or deleted.
-  - The silence is most obvious with a single repo and default settings.
-  - This makes cleanup runs hard to trust or audit.
-  
   ## Analysis
   - The command is implemented as a workflow task in `internal/branches/command.go` using the `repo.branches.cleanup` action from `internal/branches/task_action.go`.
   - Task execution emits `TASK_PLAN`/`TASK_APPLY` in `internal/workflow/task_plan.go` and `internal/workflow/task_execute.go`, but console output suppresses those codes in `internal/repos/shared/reporting.go`.
@@ -50,7 +44,7 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - Preserve suppression for unrelated `TASK_*` workflow noise so other commands remain quiet.
   - Add or extend an integration test (e.g., `tests/pr_cleanup_integration_test.go`) that asserts non-empty output for a single-repo `gix prs delete --yes` run.
   - Acceptance: with default config (`log_format: console`, `log_level: error`) and a single repo, the command prints at least one line indicating the repo and outcome.
-  - Acceptance: when there are zero closed PR branches, output states a no-op or zero-deletion result instead of being silent.
+  - Acceptance: when there are zero closed PR branches, output states a no-op or zero-deletion result instead of being silent. title=gix prs delete --yes runs silently with default logging)
 
 
 ## Maintenance (400–499)
