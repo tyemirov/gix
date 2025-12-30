@@ -47,9 +47,28 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - Acceptance: With default config (`log_format: console`, `log_level: error`) and a single repo, the command prints at least one line that includes the repo identifier/path and an outcome.
   - Acceptance: When the GH CLI returns zero closed PR branches, output explicitly states a no-op or zero deletions instead of being silent. title=gix prs delete --yes is silent under default console logging)
 
+- [x] [GX-354] Workflow file replacements skip some files when glob uses `**/` (suspected in configs/account-rename.yaml).
+  ## Investigation
+  - `configs/account-rename.yaml` uses `files.apply` with `**/*.go` and `docs/**/*.md`.
+  - `internal/workflow/task_plan.go` builds replacement targets via `compileReplacementMatcher`.
+  - `compileReplacementMatcher` expands `**` to `.*` but still requires the following `/` in the pattern, so `**/*.go` compiles to `^.*/[^/]*\.go$` and does not match root files like `main.go`; similarly `docs/**/*.md` misses `docs/README.md`.
+  - `internal/workflow/executor_runner.go` uses a channel + waitgroup for repo work but does not early-exit the worker loop, so a channel/workgroup premature exit looks unlikely.
+  ## Repro
+  - Run `gix workflow configs/account-rename.yaml --roots <repo> --yes` on a repo with root-level `main.go` (containing `github.com/temirov`).
+  - Observe nested `pkg/**/*.go` files updated, but root-level `main.go` unchanged.
+  ## Deliverable
+  - Make `**/` match zero or more path segments so `**/*.go` includes root-level files and `docs/**/*.md` includes `docs/*.md`; add coverage for root-level matches.
+  ## Resolution
+  - Adjusted `**/` glob matching to allow root-level files and added regression coverage for `**/*.go` and `docs/**/*.md`.
+
 
 ## Maintenance (400–499)
 
+- [ ] [GX-424] `make ci`/`check-format` emits a Go parse error for `tools/llm-tasks/tasks/sort/task_test.go`.
+  ## Observation
+  - `gofmt -l` prints `tools/llm-tasks/tasks/sort/task_test.go:60:2: expected declaration, found base`.
+  ## Deliverable
+  - Fix the invalid test file or exclude it from `check-format` so formatting checks run cleanly.
+
 ## Planning
 *do not implement yet*
-

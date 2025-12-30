@@ -183,6 +183,62 @@ import "github.com/temirov/baz"
 	}, paths)
 }
 
+func TestPlanFileChangesReplaceModeMatchesRootFilesForDoubleStar(testContext *testing.T) {
+	tempDir := testContext.TempDir()
+	require.NoError(testContext, os.WriteFile(filepath.Join(tempDir, "main.go"), []byte(`package main
+import "github.com/temirov/example"
+`), 0o644))
+
+	repository := &RepositoryState{Path: tempDir}
+	taskDefinition := TaskDefinition{
+		Files: []TaskFileDefinition{{
+			PathTemplate: "**/*.go",
+			Mode:         taskFileModeReplace,
+			Replacements: []TaskReplacementDefinition{
+				{FromTemplate: "github.com/temirov", ToTemplate: "github.com/tyemirov"},
+			},
+		}},
+	}
+
+	environment := &Environment{FileSystem: filesystem.OSFileSystem{}}
+	templateData := buildTaskTemplateData(repository, taskDefinition, nil)
+	planner := newTaskPlanner(taskDefinition, templateData)
+
+	changes, planError := planner.planFileChanges(environment, repository)
+	require.NoError(testContext, planError)
+	require.Len(testContext, changes, 1)
+	require.Equal(testContext, "main.go", changes[0].relativePath)
+	require.Contains(testContext, string(changes[0].content), "github.com/tyemirov")
+}
+
+func TestPlanFileChangesReplaceModeMatchesDocsRootFilesForDoubleStar(testContext *testing.T) {
+	tempDir := testContext.TempDir()
+	docsDirectory := filepath.Join(tempDir, "docs")
+	require.NoError(testContext, os.MkdirAll(docsDirectory, 0o755))
+	require.NoError(testContext, os.WriteFile(filepath.Join(docsDirectory, "README.md"), []byte("temirov"), 0o644))
+
+	repository := &RepositoryState{Path: tempDir}
+	taskDefinition := TaskDefinition{
+		Files: []TaskFileDefinition{{
+			PathTemplate: "docs/**/*.md",
+			Mode:         taskFileModeReplace,
+			Replacements: []TaskReplacementDefinition{
+				{FromTemplate: "temirov", ToTemplate: "tyemirov"},
+			},
+		}},
+	}
+
+	environment := &Environment{FileSystem: filesystem.OSFileSystem{}}
+	templateData := buildTaskTemplateData(repository, taskDefinition, nil)
+	planner := newTaskPlanner(taskDefinition, templateData)
+
+	changes, planError := planner.planFileChanges(environment, repository)
+	require.NoError(testContext, planError)
+	require.Len(testContext, changes, 1)
+	require.Equal(testContext, "docs/README.md", changes[0].relativePath)
+	require.Contains(testContext, string(changes[0].content), "tyemirov")
+}
+
 func TestBuildTaskOperationInjectsLLMConfiguration(t *testing.T) {
 	options := map[string]any{
 		optionTaskLLMKeyConstant: map[string]any{
