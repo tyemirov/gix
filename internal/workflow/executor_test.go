@@ -129,7 +129,7 @@ func TestExecutorSkipsMetadataWhenGitHubClientMissing(testInstance *testing.T) {
 	require.Equal(testInstance, 1, outcome.RepositoryCount)
 }
 
-func TestExecutorSummaryCountsRepositoriesWithoutEmittedEvents(testInstance *testing.T) {
+func TestExecutorEmitsDiscoveryStepSummary(testInstance *testing.T) {
 	tempDirectory := testInstance.TempDir()
 	repositoryPath := filepath.Join(tempDirectory, "sample")
 	require.NoError(testInstance, os.Mkdir(repositoryPath, 0o755))
@@ -159,7 +159,10 @@ func TestExecutorSummaryCountsRepositoriesWithoutEmittedEvents(testInstance *tes
 
 	require.Equal(testInstance, 1, outcome.ReporterSummaryData.TotalRepositories)
 	require.Equal(testInstance, 1, outcome.RepositoryCount)
-	require.Empty(testInstance, strings.TrimSpace(outputBuffer.String()))
+	outputText := strings.TrimSpace(outputBuffer.String())
+	require.NotEmpty(testInstance, outputText)
+	require.Contains(testInstance, outputText, "step name: discovery")
+	require.Contains(testInstance, outputText, "reason: discovered")
 }
 
 func TestExecutorSeedsVariablesFromRuntimeOptions(testInstance *testing.T) {
