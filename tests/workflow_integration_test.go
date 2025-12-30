@@ -51,6 +51,8 @@ const (
 	workflowIntegrationBranchCommitMessage     = "CI: switch workflow branch filters to master"
 	workflowIntegrationRepoViewJSONTemplate    = "{\"nameWithOwner\":\"canonical/example\",\"defaultBranchRef\":{\"name\":\"%s\"},\"description\":\"\"}\n"
 	workflowIntegrationConvertExpectedTemplate = "-- canonical/example (%s) --"
+	workflowIntegrationDiscoveryStepNameLine   = "- stepName: discovery"
+	workflowIntegrationDiscoveryStepReasonLine = "  reason: 'discovered'"
 	workflowIntegrationProtocolStepNameLine    = "- stepName: remote update-protocol-1"
 	workflowIntegrationProtocolStepReasonLine  = "  reason: 'origin now git@github.com:canonical/example.git'"
 	workflowIntegrationCanonicalStepNameLine   = "- stepName: remote update-to-canonical-2"
@@ -198,6 +200,8 @@ func TestWorkflowRunIntegration(testInstance *testing.T) {
 			expectedAudit := fmt.Sprintf(workflowIntegrationAuditExpectedTemplate, auditPath)
 
 			require.Contains(subtest, filteredOutput, expectedConversion)
+			require.Contains(subtest, filteredOutput, workflowIntegrationDiscoveryStepNameLine)
+			require.Contains(subtest, filteredOutput, workflowIntegrationDiscoveryStepReasonLine)
 			require.Contains(subtest, filteredOutput, workflowIntegrationProtocolStepNameLine)
 			require.Contains(subtest, filteredOutput, workflowIntegrationProtocolStepReasonLine)
 			require.Contains(subtest, filteredOutput, workflowIntegrationCanonicalStepNameLine)

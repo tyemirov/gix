@@ -27,6 +27,9 @@ const (
 	workflowExecutorDependenciesMessage = "workflow executor requires repository discovery, git, and GitHub dependencies"
 	workflowExecutorMissingRootsMessage = "workflow executor requires at least one repository root"
 	workflowRepositoryLoadErrorTemplate = "failed to inspect repositories: %w"
+	workflowDiscoveryStepNameConstant   = "discovery"
+	workflowDiscoveryOutcomeConstant    = "ok"
+	workflowDiscoveryReasonConstant     = "discovered"
 )
 
 // Dependencies configures shared collaborators for workflow execution.
@@ -299,6 +302,11 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 		}
 	}
 
+	discoveryDetails := map[string]string{
+		"step":    workflowDiscoveryStepNameConstant,
+		"outcome": workflowDiscoveryOutcomeConstant,
+		"reason":  workflowDiscoveryReasonConstant,
+	}
 	for _, repository := range repositoryStates {
 		if repository == nil {
 			continue
@@ -310,6 +318,13 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 		if reporter != nil {
 			reporter.RecordRepository(identifier, repository.Path)
 		}
+		environment.ReportRepositoryEvent(
+			repository,
+			shared.EventLevelInfo,
+			shared.EventCodeWorkflowStepSummary,
+			"",
+			discoveryDetails,
+		)
 	}
 
 	stages, planError := planOperationStages(executor.nodes)

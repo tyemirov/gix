@@ -30,8 +30,10 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
 
 ## BugFixes (348–399)
 
-- [ ] [GX-345] First output appears late when running gix against 20–30 repositories because repository discovery/inspection emits no user-facing progress until the first repository finishes its first workflow step.
+- [x] [GX-345] First output appears late when running gix against 20–30 repositories because repository discovery/inspection emits no user-facing progress until the first repository finishes its first workflow step.
   (Unresolved: stream discovery/inspection progress or emit an initial discovery step summary.)
+  ## Resolution
+  - Emit an initial per-repository discovery step summary and add workflow integration coverage for the discovery output.
 - [x] [GX-346] (P0) gix prs delete --yes is silent under default console logging.
   ## Analysis
   - The CLI command in `internal/branches/command.go` runs a workflow `TaskDefinition` that calls the `repo.branches.cleanup` action from `internal/branches/task_action.go`, so output is constrained to workflow reporting and the service logger rather than direct prints.
