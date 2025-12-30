@@ -185,6 +185,7 @@ func TestServiceCleanupScenarios(testInstance *testing.T) {
 		remoteBranches        []string
 		pullRequestBranches   []string
 		options               branches.CleanupOptions
+		expectedSummary       branches.CleanupSummary
 		expectedCommandKeys   []string
 		expectedLogMessages   []string
 		unexpectedLogMessages []string
@@ -199,6 +200,10 @@ func TestServiceCleanupScenarios(testInstance *testing.T) {
 				RemoteName:       testRemoteNameConstant,
 				PullRequestLimit: testPullRequestLimitConstant,
 				WorkingDirectory: testWorkingDirectoryConstant,
+			},
+			expectedSummary: branches.CleanupSummary{
+				ClosedBranches:  1,
+				DeletedBranches: 1,
 			},
 			expectedCommandKeys: []string{
 				buildCommandKey(gitCommandLabelConstant, []string{gitListRemoteSubcommandConstant, gitHeadsFlagConstant, testRemoteNameConstant}),
@@ -227,6 +232,10 @@ func TestServiceCleanupScenarios(testInstance *testing.T) {
 				PullRequestLimit: testPullRequestLimitConstant,
 				WorkingDirectory: testWorkingDirectoryConstant,
 			},
+			expectedSummary: branches.CleanupSummary{
+				ClosedBranches:  1,
+				MissingBranches: 1,
+			},
 			expectedCommandKeys: []string{
 				buildCommandKey(gitCommandLabelConstant, []string{gitListRemoteSubcommandConstant, gitHeadsFlagConstant, testRemoteNameConstant}),
 				buildCommandKey(githubCommandLabelConstant, []string{
@@ -251,6 +260,10 @@ func TestServiceCleanupScenarios(testInstance *testing.T) {
 				RemoteName:       testRemoteNameConstant,
 				PullRequestLimit: testPullRequestLimitConstant,
 				WorkingDirectory: testWorkingDirectoryConstant,
+			},
+			expectedSummary: branches.CleanupSummary{
+				ClosedBranches:   1,
+				DeclinedBranches: 1,
 			},
 			expectedCommandKeys: []string{
 				buildCommandKey(gitCommandLabelConstant, []string{gitListRemoteSubcommandConstant, gitHeadsFlagConstant, testRemoteNameConstant}),
@@ -278,6 +291,10 @@ func TestServiceCleanupScenarios(testInstance *testing.T) {
 				RemoteName:       testRemoteNameConstant,
 				PullRequestLimit: testPullRequestLimitConstant,
 				WorkingDirectory: testWorkingDirectoryConstant,
+			},
+			expectedSummary: branches.CleanupSummary{
+				ClosedBranches:  1,
+				DeletedBranches: 1,
 			},
 			expectedCommandKeys: []string{
 				buildCommandKey(gitCommandLabelConstant, []string{gitListRemoteSubcommandConstant, gitHeadsFlagConstant, testRemoteNameConstant}),
@@ -343,8 +360,9 @@ func TestServiceCleanupScenarios(testInstance *testing.T) {
 			service, serviceError := branches.NewService(logger, fakeExecutorInstance, confirmationPrompter)
 			require.NoError(testInstance, serviceError)
 
-			cleanupError := service.Cleanup(context.Background(), testCase.options)
+			cleanupSummary, cleanupError := service.Cleanup(context.Background(), testCase.options)
 			require.NoError(testInstance, cleanupError)
+			require.Equal(testInstance, testCase.expectedSummary, cleanupSummary)
 
 			if testCase.expectedPrompts != nil {
 				require.Equal(testInstance, testCase.expectedPrompts, confirmationPrompter.prompts)
@@ -481,7 +499,7 @@ func TestServiceCleanupFailures(testInstance *testing.T) {
 			service, serviceError := branches.NewService(logger, fakeExecutorInstance, nil)
 			require.NoError(testInstance, serviceError)
 
-			cleanupError := service.Cleanup(context.Background(), testCase.options)
+			_, cleanupError := service.Cleanup(context.Background(), testCase.options)
 			require.Error(testInstance, cleanupError)
 			require.Contains(testInstance, cleanupError.Error(), testCase.expectedError)
 		})

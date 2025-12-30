@@ -30,9 +30,11 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
 
 ## BugFixes (348–399)
 
-- [ ] [GX-345] First output appears late when running gix against 20–30 repositories because repository discovery/inspection emits no user-facing progress until the first repository finishes its first workflow step.
+- [x] [GX-345] First output appears late when running gix against 20–30 repositories because repository discovery/inspection emits no user-facing progress until the first repository finishes its first workflow step.
   (Unresolved: stream discovery/inspection progress or emit an initial discovery step summary.)
-- [ ] [GX-346] (P0) gix prs delete --yes is silent under default console logging.
+  ## Resolution
+  - Emit an initial per-repository discovery step summary and add workflow integration coverage for the discovery output.
+- [x] [GX-346] (P0) gix prs delete --yes is silent under default console logging.
   ## Analysis
   - The CLI command in `internal/branches/command.go` runs a workflow `TaskDefinition` that calls the `repo.branches.cleanup` action from `internal/branches/task_action.go`, so output is constrained to workflow reporting and the service logger rather than direct prints.
   - The cleanup action does not write to `environment.Output` (unlike `branch.refresh` in the same file), so it emits no explicit success or no-op line.
@@ -46,6 +48,8 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - Extend `tests/pr_cleanup_integration_test.go` (or add a new adjacent integration test) to capture CLI output and assert it is non-empty for a single-repo `--yes` run.
   - Acceptance: With default config (`log_format: console`, `log_level: error`) and a single repo, the command prints at least one line that includes the repo identifier/path and an outcome.
   - Acceptance: When the GH CLI returns zero closed PR branches, output explicitly states a no-op or zero deletions instead of being silent. title=gix prs delete --yes is silent under default console logging)
+  ## Resolution
+  - Emit per-repo cleanup summaries (closed/deleted/missing/declined/failed) and add integration coverage for output and zero-branch runs.
 
 - [x] [GX-354] Workflow file replacements skip some files when glob uses `**/` (suspected in configs/account-rename.yaml).
   ## Investigation
