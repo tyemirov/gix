@@ -1,5 +1,34 @@
 # Changelog
 
+## [v0.3.1]
+
+### Features ✨
+- Add embedded license template support in workflows for BSL, MIT, and proprietary licenses.
+- Introduce Go version update, Go module bump, and command run steps in workflows with validation moved to the edge.
+- Extend gitignore workflow with additional commonly ignored folders.
+
+### Improvements ⚙️ 
+- Refine workflow summary output with YAML step summaries for easier automation and machine parsing.
+- Align workflow license distribution to use templates and allow extensive license variable overrides.
+- Enhance CLI logging with structured JSON by default and human console logs for non-workflow commands.
+
+### Bug Fixes 🐛
+- Fix workflow discovery output message formatting.
+- Fix workflow glob root matches.
+- Fix PRs delete command output.
+- Trim blank stderr lines in execshell errors for cleaner error messages.
+- Fix handling of untracked files in stash pop commands.
+- Fix require_changes safeguard to correctly track commits created by workflows.
+
+### Testing 🧪
+- Add comprehensive tests to cover handling of blank stderr lines in CommandFailedError.
+- Add full-coverage tests for workflow operations command and related packages.
+
+### Docs 📚
+- Update README with usage details on workflow license presets and workflow output format.
+- Clarify workflow output and embedded workflow command syntax in documentation.
+- Move AGENTS.md to root and revise documentation links for better discoverability.
+
 ## [v0.3.0]
 
 ### Features ✨
