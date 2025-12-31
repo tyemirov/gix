@@ -65,14 +65,46 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   ## Resolution
   - Adjusted `**/` glob matching to allow root-level files and added regression coverage for `**/*.go` and `docs/**/*.md`.
 
+- [x] [GX-355] Workflow replacements sometimes leave files unchanged when many files match.
+  ## Report
+  - Running `gix workflow configs/account-rename.yaml` across large repos occasionally leaves some `**/*.go` or `docs/**/*.md` matches untouched even though most files update.
+  - Suspected early exit from worker channels/workgroups.
+  ## Investigation
+  - `internal/workflow/executor_runner.go` drains a work channel with a waitgroup; it does not early-exit workers once launched, so a channel/workgroup bug seems unlikely.
+  - Repository pipelines stop early only on `repositorySkipError` or action failure; `taskExecutor` returns `repositorySkipError` when any guard/action returns a skip (e.g., dirty worktree), which halts remaining steps for that repo.
+  - Replacement planning/execution is sequential in `internal/workflow/task_plan.go` and `internal/workflow/action_builtin.go`; target collection is not concurrent.
+  - Partial updates remain possible if `files.apply` returns an error mid-apply (e.g., a write error), which would stop later changes but should surface as a failure/summary warning.
+  ## Repro Attempt (ProductScanner)
+  - Copied `../../MarcoPoloResearchLab/ProductScanner` to `/tmp/gix-diagnostics/ProductScanner` and ran a trimmed workflow containing only the `namespace-rewrite` task to avoid push/PR steps.
+  - Baseline counts: `github.com/temirov` in `**/*.go` = 322, in `go.mod`/`go.sum` = 4, `temirov` in `README.md` = 1, `temirov` in `docs/**/*.md` = 2.
+  - After `bin/gix workflow /tmp/gix-diagnostics/account-rename-namespace-only.yaml --roots /tmp/gix-diagnostics/ProductScanner --yes`, all counts dropped to 0; no missing replacements observed.
+  ## Repro Attempt (Multi-repo fanout)
+  - Copied `../../MarcoPoloResearchLab/ProductScanner` 10x under `/tmp/gix-diagnostics/multi/ProductScanner-*`.
+  - Baseline counts across all copies: `github.com/temirov` in `**/*.go` = 3220, in `**/go.mod`/`**/go.sum` = 150, `temirov` in `**/README.md` = 30, `temirov` in `**/docs/**/*.md` = 20.
+  - Ran `bin/gix workflow /tmp/gix-diagnostics/account-rename-namespace-only.yaml --roots /tmp/gix-diagnostics/multi --yes --workflow-workers 10` (summary: `STEP_NAMESPACE_REWRITE_APPLIED=10`).
+  - After run: `github.com/temirov` in `**/*.go` = 0, no matches in root `go.mod`/`go.sum` or root `README.md`; `**/docs/**/*.md` = 0. Remaining `github.com/temirov`/`temirov` hits were confined to nested `go.mod`/`go.sum` and README files not targeted by the workflow.
+  ## Repro Attempt (Multi-repo full workflow, no push/PR)
+  - Used `/tmp/gix-diagnostics/account-rename-no-push-pr.yaml` (full `configs/account-rename.yaml` minus `git push`/`pull-request open`; `restore-original-state` now follows `namespace-stage-commit`).
+  - Ran against 10 copies under `/tmp/gix-diagnostics/multi` with `--workflow-workers 10`.
+  - `folder rename` renamed one repo to `MarcoPoloResearchLab/ProductScanner` and failed for nine with `target exists`; total repos reported = 13.
+  - `go-deps-upgrade` failed for all repos (`go get -u ./...` error: module path mismatch `github.com/temirov/GAuss` vs `github.com/tyemirov/GAuss`), so later steps did not run.
+  - Despite the failures, no leftover `github.com/temirov` in `**/*.go`, root `go.mod`/`go.sum`, root `README.md`, or `docs/**/*.md` across the 10 repos.
+  ## Resolution
+  - Could not reproduce after single-repo, multi-repo namespace-only, and multi-repo full workflow (no push/PR) runs; marking as non-reproducible.
+  ## Next Steps
+  - Capture a repro repo + workflow output to confirm whether the run logged a skip/failure and which pattern was missed.
+  - Add integration coverage that asserts full replacement counts for a repo with large file fan-out once repro is confirmed.
+
 
 ## Maintenance (400–499)
 
-- [ ] [GX-424] `make ci`/`check-format` emits a Go parse error for `tools/llm-tasks/tasks/sort/task_test.go`.
+- [x] [GX-424] `make ci`/`check-format` emits a Go parse error for `tools/llm-tasks/tasks/sort/task_test.go`.
   ## Observation
   - `gofmt -l` prints `tools/llm-tasks/tasks/sort/task_test.go:60:2: expected declaration, found base`.
   ## Deliverable
   - Fix the invalid test file or exclude it from `check-format` so formatting checks run cleanly.
+  ## Resolution
+  - Restored the missing test wrapper so the file parses and gofmt/check-format pass.
 
 ## Planning
 *do not implement yet*

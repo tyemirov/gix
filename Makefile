@@ -1,4 +1,4 @@
-GO_SOURCES := $(shell find . -name '*.go' -not -path "./vendor/*" -not -path "./.git/*" -not -path "*/.git/*")
+GO_SOURCES := $(shell git ls-files '*.go')
 FAST_TEST_PACKAGES := $(shell go list ./... | grep -v '/tests$$')
 RELEASE_TARGETS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
 RELEASE_DIRECTORY := dist
