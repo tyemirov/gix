@@ -19,6 +19,7 @@ const (
 	branchCleanupLimitParseError = "branch cleanup action requires numeric 'limit': %w"
 	branchRefreshBranchError     = "branch refresh action requires 'branch'"
 	branchRefreshMessageTemplate = "REFRESHED: %s (%s)\n"
+	branchCleanupSummaryTemplate = "PR cleanup: %s closed=%d deleted=%d missing=%d declined=%d failed=%d\n"
 )
 
 func init() {
@@ -64,7 +65,25 @@ func handleBranchCleanupAction(ctx context.Context, environment *workflow.Enviro
 		AssumeYes:        assumeYes,
 	}
 
-	return service.Cleanup(ctx, options)
+	cleanupSummary, cleanupError := service.Cleanup(ctx, options)
+	if cleanupError != nil {
+		return cleanupError
+	}
+
+	if environment.Output != nil {
+		fmt.Fprintf(
+			environment.Output,
+			branchCleanupSummaryTemplate,
+			repository.Path,
+			cleanupSummary.ClosedBranches,
+			cleanupSummary.DeletedBranches,
+			cleanupSummary.MissingBranches,
+			cleanupSummary.DeclinedBranches,
+			cleanupSummary.FailedBranches,
+		)
+	}
+
+	return nil
 }
 
 func handleBranchRefreshAction(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, parameters map[string]any) error {

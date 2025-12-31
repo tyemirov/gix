@@ -550,6 +550,11 @@ func compileReplacementMatcher(pattern string) (func(string) bool, error) {
 		switch character {
 		case '*':
 			if index+1 < len(pattern) && pattern[index+1] == '*' {
+				if index+2 < len(pattern) && pattern[index+2] == '/' {
+					builder.WriteString("(?:.*/)?")
+					index += 2
+					continue
+				}
 				builder.WriteString(".*")
 				index++
 				continue

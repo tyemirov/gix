@@ -70,6 +70,15 @@ type CleanupOptions struct {
 	AssumeYes        bool
 }
 
+// CleanupSummary captures the cleanup outcomes for reporting.
+type CleanupSummary struct {
+	ClosedBranches   int
+	DeletedBranches  int
+	MissingBranches  int
+	DeclinedBranches int
+	FailedBranches   int
+}
+
 // Service orchestrates removal of remote and local branches tied to closed pull requests.
 type Service struct {
 	logger   *zap.Logger
@@ -97,30 +106,29 @@ func NewService(logger *zap.Logger, executor CommandExecutor, prompter shared.Co
 }
 
 // Cleanup removes stale branches based on closed pull requests.
-func (service *Service) Cleanup(executionContext context.Context, options CleanupOptions) error {
+func (service *Service) Cleanup(executionContext context.Context, options CleanupOptions) (CleanupSummary, error) {
 	trimmedRemoteName := strings.TrimSpace(options.RemoteName)
 	if len(trimmedRemoteName) == 0 {
-		return errRemoteNameRequired
+		return CleanupSummary{}, errRemoteNameRequired
 	}
 
 	if options.PullRequestLimit <= 0 {
-		return errLimitMustBePositive
+		return CleanupSummary{}, errLimitMustBePositive
 	}
 
 	remoteBranches, remoteBranchesError := service.fetchRemoteBranches(executionContext, trimmedRemoteName, options.WorkingDirectory)
 	if remoteBranchesError != nil {
-		return fmt.Errorf(remoteBranchesListErrorTemplateConstant, remoteBranchesError)
+		return CleanupSummary{}, fmt.Errorf(remoteBranchesListErrorTemplateConstant, remoteBranchesError)
 	}
 
 	closedBranches, pullRequestsError := service.fetchClosedPullRequestBranches(executionContext, options.PullRequestLimit, options.WorkingDirectory)
 	if pullRequestsError != nil {
-		return fmt.Errorf(pullRequestListErrorTemplateConstant, pullRequestsError)
+		return CleanupSummary{}, fmt.Errorf(pullRequestListErrorTemplateConstant, pullRequestsError)
 	}
 
 	confirmation := newBranchDeletionConfirmation(service.prompter, options.AssumeYes)
-	service.processBranches(executionContext, trimmedRemoteName, remoteBranches, closedBranches, confirmation, options)
-
-	return nil
+	summary := service.processBranches(executionContext, trimmedRemoteName, remoteBranches, closedBranches, confirmation, options)
+	return summary, nil
 }
 
 func (service *Service) fetchRemoteBranches(executionContext context.Context, remoteName string, workingDirectory string) (map[string]struct{}, error) {
@@ -182,7 +190,8 @@ func (service *Service) fetchClosedPullRequestBranches(executionContext context.
 	return pullRequestBranches, nil
 }
 
-func (service *Service) processBranches(executionContext context.Context, remoteName string, remoteBranches map[string]struct{}, pullRequestBranches []string, confirmation *branchDeletionConfirmation, options CleanupOptions) {
+func (service *Service) processBranches(executionContext context.Context, remoteName string, remoteBranches map[string]struct{}, pullRequestBranches []string, confirmation *branchDeletionConfirmation, options CleanupOptions) CleanupSummary {
+	summary := CleanupSummary{}
 	processedBranches := make(map[string]struct{})
 	for branchIndex := range pullRequestBranches {
 		branchName := strings.TrimSpace(pullRequestBranches[branchIndex])
@@ -194,21 +203,35 @@ func (service *Service) processBranches(executionContext context.Context, remote
 			continue
 		}
 		processedBranches[branchName] = struct{}{}
+		summary.ClosedBranches++
 
 		if _, existsInRemote := remoteBranches[branchName]; existsInRemote {
-			service.deleteRemoteAndLocalBranch(executionContext, remoteName, branchName, confirmation, options)
+			outcome := service.deleteRemoteAndLocalBranch(executionContext, remoteName, branchName, confirmation, options)
+			summary.DeletedBranches += outcome.deletedBranches
+			summary.DeclinedBranches += outcome.declinedBranches
+			summary.FailedBranches += outcome.failedBranches
 			continue
 		}
 
+		summary.MissingBranches++
 		service.logger.Info(logMessageSkippingMissingBranchConstant,
 			zap.String(logFieldBranchNameConstant, branchName),
 			zap.String(logFieldRemoteNameConstant, remoteName),
 			zap.String(logFieldWorkingDirectoryConstant, options.WorkingDirectory),
 		)
 	}
+
+	return summary
 }
 
-func (service *Service) deleteRemoteAndLocalBranch(executionContext context.Context, remoteName string, branchName string, confirmation *branchDeletionConfirmation, options CleanupOptions) {
+type branchDeletionOutcome struct {
+	deletedBranches  int
+	declinedBranches int
+	failedBranches   int
+}
+
+func (service *Service) deleteRemoteAndLocalBranch(executionContext context.Context, remoteName string, branchName string, confirmation *branchDeletionConfirmation, options CleanupOptions) branchDeletionOutcome {
+	outcome := branchDeletionOutcome{}
 	baseFields := []zap.Field{
 		zap.String(logFieldBranchNameConstant, branchName),
 		zap.String(logFieldRemoteNameConstant, remoteName),
@@ -221,11 +244,13 @@ func (service *Service) deleteRemoteAndLocalBranch(executionContext context.Cont
 			service.logger.Warn(logMessageDeletionPromptFailedConstant,
 				append(baseFields, zap.Error(confirmationError))...,
 			)
-			return
+			outcome.failedBranches = 1
+			return outcome
 		}
 		if !allowed {
 			service.logger.Info(logMessageDeletionSkippedByUserConstant, baseFields...)
-			return
+			outcome.declinedBranches = 1
+			return outcome
 		}
 	}
 
@@ -240,10 +265,12 @@ func (service *Service) deleteRemoteAndLocalBranch(executionContext context.Cont
 		WorkingDirectory: options.WorkingDirectory,
 	}
 
+	remoteDeletionFailed := false
 	if _, pushError := service.executor.ExecuteGit(executionContext, pushCommandDetails); pushError != nil {
 		service.logger.Warn(logMessageRemoteDeletionFailedConstant,
 			append(baseFields, zap.Error(pushError))...,
 		)
+		remoteDeletionFailed = true
 	}
 
 	service.logger.Info(logMessageDeletingLocalBranchConstant, baseFields...)
@@ -256,11 +283,21 @@ func (service *Service) deleteRemoteAndLocalBranch(executionContext context.Cont
 		WorkingDirectory: options.WorkingDirectory,
 	}
 
+	localDeletionFailed := false
 	if _, deleteError := service.executor.ExecuteGit(executionContext, deleteLocalCommand); deleteError != nil {
 		service.logger.Warn(logMessageLocalDeletionFailedConstant,
 			append(baseFields, zap.Error(deleteError))...,
 		)
+		localDeletionFailed = true
 	}
+
+	if remoteDeletionFailed || localDeletionFailed {
+		outcome.failedBranches = 1
+		return outcome
+	}
+
+	outcome.deletedBranches = 1
+	return outcome
 }
 
 func parseRemoteBranches(commandOutput string) (map[string]struct{}, error) {

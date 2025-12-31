@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -46,9 +47,12 @@ const (
 	integrationCommandLimitFlagConstant           = "--limit"
 	integrationRootFlagConstant                   = "--" + flagutils.DefaultRootFlagName
 	integrationFakeGHPayloadConstant              = "[{\"headRefName\":\"feature/delete\"},{\"headRefName\":\"feature/missing\"}]"
+	integrationEmptyGHPayloadConstant             = "[]"
 	integrationFakeGHScriptTemplateConstant       = "#!/bin/sh\ncat <<'JSON'\n%s\nJSON\n"
 	integrationExpectationMessageTemplateConstant = "expected branch state: %s"
 	prCleanupSubtestNameTemplateConstant          = "%d_%s"
+	prCleanupOutputDeletedTokenConstant           = "deleted="
+	prCleanupOutputClosedZeroTokenConstant        = "closed=0"
 )
 
 type automaticConfirmationPrompter struct{}
@@ -115,23 +119,36 @@ func TestPullRequestCleanupIntegration(testInstance *testing.T) {
 		},
 	}
 
-	cleanupCommand, buildError := cleanupCommandBuilder.Build()
-	require.NoError(testInstance, buildError)
+	runCleanupCommand := func() string {
+		cleanupCommand, buildError := cleanupCommandBuilder.Build()
+		require.NoError(testInstance, buildError)
 
-	flagutils.BindRootFlags(cleanupCommand, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Enabled: true})
+		outputBuffer := &bytes.Buffer{}
+		errorBuffer := &bytes.Buffer{}
+		cleanupCommand.SetOut(outputBuffer)
+		cleanupCommand.SetErr(errorBuffer)
 
-	cleanupCommand.SetContext(context.Background())
-	cleanupCommand.SetArgs([]string{
-		integrationCommandRemoteFlagConstant,
-		integrationRemoteNameConstant,
-		integrationCommandLimitFlagConstant,
-		strconv.Itoa(integrationPullRequestLimitConstant),
-		integrationRootFlagConstant,
-		localRepositoryPath,
-	})
+		flagutils.BindRootFlags(cleanupCommand, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Enabled: true})
 
-	executionError := cleanupCommand.Execute()
-	require.NoError(testInstance, executionError)
+		cleanupCommand.SetContext(context.Background())
+		cleanupCommand.SetArgs([]string{
+			integrationCommandRemoteFlagConstant,
+			integrationRemoteNameConstant,
+			integrationCommandLimitFlagConstant,
+			strconv.Itoa(integrationPullRequestLimitConstant),
+			integrationRootFlagConstant,
+			localRepositoryPath,
+		})
+
+		executionError := cleanupCommand.Execute()
+		require.NoError(testInstance, executionError, errorBuffer.String())
+		return strings.TrimSpace(outputBuffer.String())
+	}
+
+	initialOutput := runCleanupCommand()
+	require.NotEmpty(testInstance, initialOutput)
+	require.Contains(testInstance, initialOutput, localRepositoryPath)
+	require.Contains(testInstance, initialOutput, prCleanupOutputDeletedTokenConstant)
 
 	branchExpectations := []struct {
 		name        string
@@ -177,6 +194,14 @@ func TestPullRequestCleanupIntegration(testInstance *testing.T) {
 			}
 		})
 	}
+
+	emptyPayloadScript := fmt.Sprintf(integrationFakeGHScriptTemplateConstant, integrationEmptyGHPayloadConstant)
+	writeFile(testInstance, fakeGHScriptPath, emptyPayloadScript)
+
+	emptyOutput := runCleanupCommand()
+	require.NotEmpty(testInstance, emptyOutput)
+	require.Contains(testInstance, emptyOutput, localRepositoryPath)
+	require.Contains(testInstance, emptyOutput, prCleanupOutputClosedZeroTokenConstant)
 }
 
 func configureLocalRepository(testInstance *testing.T, repositoryPath string) {

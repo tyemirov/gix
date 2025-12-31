@@ -30,9 +30,11 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
 
 ## BugFixes (348–399)
 
-- [ ] [GX-345] First output appears late when running gix against 20–30 repositories because repository discovery/inspection emits no user-facing progress until the first repository finishes its first workflow step.
+- [x] [GX-345] First output appears late when running gix against 20–30 repositories because repository discovery/inspection emits no user-facing progress until the first repository finishes its first workflow step.
   (Unresolved: stream discovery/inspection progress or emit an initial discovery step summary.)
-- [ ] [GX-346] (P0) gix prs delete --yes is silent under default console logging.
+  ## Resolution
+  - Emit an initial per-repository discovery step summary and add workflow integration coverage for the discovery output.
+- [x] [GX-346] (P0) gix prs delete --yes is silent under default console logging.
   ## Analysis
   - The CLI command in `internal/branches/command.go` runs a workflow `TaskDefinition` that calls the `repo.branches.cleanup` action from `internal/branches/task_action.go`, so output is constrained to workflow reporting and the service logger rather than direct prints.
   - The cleanup action does not write to `environment.Output` (unlike `branch.refresh` in the same file), so it emits no explicit success or no-op line.
@@ -46,10 +48,31 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - Extend `tests/pr_cleanup_integration_test.go` (or add a new adjacent integration test) to capture CLI output and assert it is non-empty for a single-repo `--yes` run.
   - Acceptance: With default config (`log_format: console`, `log_level: error`) and a single repo, the command prints at least one line that includes the repo identifier/path and an outcome.
   - Acceptance: When the GH CLI returns zero closed PR branches, output explicitly states a no-op or zero deletions instead of being silent. title=gix prs delete --yes is silent under default console logging)
+  ## Resolution
+  - Emit per-repo cleanup summaries (closed/deleted/missing/declined/failed) and add integration coverage for output and zero-branch runs.
+
+- [x] [GX-354] Workflow file replacements skip some files when glob uses `**/` (suspected in configs/account-rename.yaml).
+  ## Investigation
+  - `configs/account-rename.yaml` uses `files.apply` with `**/*.go` and `docs/**/*.md`.
+  - `internal/workflow/task_plan.go` builds replacement targets via `compileReplacementMatcher`.
+  - `compileReplacementMatcher` expands `**` to `.*` but still requires the following `/` in the pattern, so `**/*.go` compiles to `^.*/[^/]*\.go$` and does not match root files like `main.go`; similarly `docs/**/*.md` misses `docs/README.md`.
+  - `internal/workflow/executor_runner.go` uses a channel + waitgroup for repo work but does not early-exit the worker loop, so a channel/workgroup premature exit looks unlikely.
+  ## Repro
+  - Run `gix workflow configs/account-rename.yaml --roots <repo> --yes` on a repo with root-level `main.go` (containing `github.com/temirov`).
+  - Observe nested `pkg/**/*.go` files updated, but root-level `main.go` unchanged.
+  ## Deliverable
+  - Make `**/` match zero or more path segments so `**/*.go` includes root-level files and `docs/**/*.md` includes `docs/*.md`; add coverage for root-level matches.
+  ## Resolution
+  - Adjusted `**/` glob matching to allow root-level files and added regression coverage for `**/*.go` and `docs/**/*.md`.
 
 
 ## Maintenance (400–499)
 
+- [ ] [GX-424] `make ci`/`check-format` emits a Go parse error for `tools/llm-tasks/tasks/sort/task_test.go`.
+  ## Observation
+  - `gofmt -l` prints `tools/llm-tasks/tasks/sort/task_test.go:60:2: expected declaration, found base`.
+  ## Deliverable
+  - Fix the invalid test file or exclude it from `check-format` so formatting checks run cleanly.
+
 ## Planning
 *do not implement yet*
-
