@@ -16,44 +16,48 @@ import (
 )
 
 const (
-	defaultRemoteNameConstant                = "origin"
-	defaultPullRequestLimitConstant          = 100
-	lsRemoteSubcommandConstant               = "ls-remote"
-	headsFlagConstant                        = "--heads"
-	pushSubcommandConstant                   = "push"
-	deleteFlagConstant                       = "--delete"
-	branchSubcommandConstant                 = "branch"
-	forceDeleteFlagConstant                  = "-D"
-	pullRequestSubcommandConstant            = "pr"
-	listSubcommandConstant                   = "list"
-	stateFlagConstant                        = "--state"
-	closedStateConstant                      = "closed"
-	jsonFlagConstant                         = "--json"
-	headRefFieldConstant                     = "headRefName"
-	limitFlagConstant                        = "--limit"
-	branchReferencePrefixConstant            = "refs/heads/"
-	logMessageListingRemoteBranchesConstant  = "Listing remote branches"
-	logMessageListingPullRequestsConstant    = "Listing closed pull request branches"
-	logMessageDeletingRemoteBranchConstant   = "Deleting remote branch"
-	logMessageSkippingMissingBranchConstant  = "Skipping branch (already gone)"
-	logMessageDeletingLocalBranchConstant    = "Deleting local branch"
-	logMessageRemoteDeletionFailedConstant   = "Remote branch deletion failed"
-	logMessageLocalDeletionFailedConstant    = "Local branch deletion failed"
-	logMessageDeletionSkippedByUserConstant  = "Skipping branch deletion (user declined)"
-	logMessageDeletionPromptFailedConstant   = "Branch deletion confirmation failed"
-	logFieldBranchNameConstant               = "branch"
-	logFieldRemoteNameConstant               = "remote"
-	logFieldWorkingDirectoryConstant         = "working_directory"
-	logFieldErrorConstant                    = "error"
-	logFieldPullRequestLimitConstant         = "pull_request_limit"
-	remoteBranchesListErrorTemplateConstant  = "unable to list remote branches: %w"
-	pullRequestListErrorTemplateConstant     = "unable to list closed pull requests: %w"
-	remoteBranchParsingErrorTemplateConstant = "unable to parse remote branch list: %w"
-	pullRequestDecodingErrorTemplateConstant = "unable to decode pull request response: %w"
-	remoteNameRequiredMessageConstant        = "remote name must be provided"
-	limitPositiveRequirementMessageConstant  = "pull request limit must be greater than zero"
-	executorNotConfiguredMessageConstant     = "command executor not configured"
-	branchDeletionPromptTemplateConstant     = "Delete pull request branch '%s' from remote '%s' and the local repository? [a/N/y] "
+	defaultRemoteNameConstant                    = "origin"
+	defaultPullRequestLimitConstant              = 100
+	lsRemoteSubcommandConstant                   = "ls-remote"
+	headsFlagConstant                            = "--heads"
+	pushSubcommandConstant                       = "push"
+	deleteFlagConstant                           = "--delete"
+	branchSubcommandConstant                     = "branch"
+	forceDeleteFlagConstant                      = "-D"
+	pullRequestSubcommandConstant                = "pr"
+	listSubcommandConstant                       = "list"
+	stateFlagConstant                            = "--state"
+	closedStateConstant                          = "closed"
+	jsonFlagConstant                             = "--json"
+	headRefFieldConstant                         = "headRefName"
+	limitFlagConstant                            = "--limit"
+	branchReferencePrefixConstant                = "refs/heads/"
+	logMessageListingRemoteBranchesConstant      = "Listing remote branches"
+	logMessageListingPullRequestsConstant        = "Listing closed pull request branches"
+	logMessageDeletingRemoteBranchConstant       = "Deleting remote branch"
+	logMessageSkippingMissingBranchConstant      = "Skipping branch (already gone)"
+	logMessageSkippingMissingLocalBranchConstant = "Skipping local branch (already gone)"
+	logMessageDeletingLocalBranchConstant        = "Deleting local branch"
+	logMessageRemoteDeletionFailedConstant       = "Remote branch deletion failed"
+	logMessageLocalDeletionFailedConstant        = "Local branch deletion failed"
+	logMessageDeletionSkippedByUserConstant      = "Skipping branch deletion (user declined)"
+	logMessageDeletionPromptFailedConstant       = "Branch deletion confirmation failed"
+	logFieldBranchNameConstant                   = "branch"
+	logFieldRemoteNameConstant                   = "remote"
+	logFieldWorkingDirectoryConstant             = "working_directory"
+	logFieldErrorConstant                        = "error"
+	logFieldPullRequestLimitConstant             = "pull_request_limit"
+	remoteBranchesListErrorTemplateConstant      = "unable to list remote branches: %w"
+	pullRequestListErrorTemplateConstant         = "unable to list closed pull requests: %w"
+	remoteBranchParsingErrorTemplateConstant     = "unable to parse remote branch list: %w"
+	pullRequestDecodingErrorTemplateConstant     = "unable to decode pull request response: %w"
+	remoteNameRequiredMessageConstant            = "remote name must be provided"
+	limitPositiveRequirementMessageConstant      = "pull request limit must be greater than zero"
+	executorNotConfiguredMessageConstant         = "command executor not configured"
+	branchDeletionPromptTemplateConstant         = "Delete pull request branch '%s' from remote '%s' and the local repository? [a/N/y] "
+	localBranchMissingIndicatorConstant          = "branch"
+	localBranchMissingSuffixConstant             = "not found"
+	remoteBranchMissingIndicatorConstant         = "remote ref does not exist"
 )
 
 // CommandExecutor coordinates git and GitHub CLI invocations required for cleanup.
@@ -70,6 +74,14 @@ type CleanupOptions struct {
 	AssumeYes        bool
 }
 
+// CleanupFailure captures details about a branch cleanup failure for reporting.
+type CleanupFailure struct {
+	BranchName          string
+	PromptError         string
+	RemoteDeletionError string
+	LocalDeletionError  string
+}
+
 // CleanupSummary captures the cleanup outcomes for reporting.
 type CleanupSummary struct {
 	ClosedBranches   int
@@ -77,6 +89,7 @@ type CleanupSummary struct {
 	MissingBranches  int
 	DeclinedBranches int
 	FailedBranches   int
+	Failures         []CleanupFailure
 }
 
 // Service orchestrates removal of remote and local branches tied to closed pull requests.
@@ -206,10 +219,13 @@ func (service *Service) processBranches(executionContext context.Context, remote
 		summary.ClosedBranches++
 
 		if _, existsInRemote := remoteBranches[branchName]; existsInRemote {
-			outcome := service.deleteRemoteAndLocalBranch(executionContext, remoteName, branchName, confirmation, options)
-			summary.DeletedBranches += outcome.deletedBranches
-			summary.DeclinedBranches += outcome.declinedBranches
-			summary.FailedBranches += outcome.failedBranches
+			deletionResult := service.deleteRemoteAndLocalBranch(executionContext, remoteName, branchName, confirmation, options)
+			summary.DeletedBranches += deletionResult.deletedBranches
+			summary.DeclinedBranches += deletionResult.declinedBranches
+			summary.FailedBranches += deletionResult.failedBranches
+			if deletionResult.failure != nil {
+				summary.Failures = append(summary.Failures, *deletionResult.failure)
+			}
 			continue
 		}
 
@@ -228,10 +244,12 @@ type branchDeletionOutcome struct {
 	deletedBranches  int
 	declinedBranches int
 	failedBranches   int
+	failure          *CleanupFailure
 }
 
 func (service *Service) deleteRemoteAndLocalBranch(executionContext context.Context, remoteName string, branchName string, confirmation *branchDeletionConfirmation, options CleanupOptions) branchDeletionOutcome {
 	outcome := branchDeletionOutcome{}
+	failureDetails := CleanupFailure{BranchName: branchName}
 	baseFields := []zap.Field{
 		zap.String(logFieldBranchNameConstant, branchName),
 		zap.String(logFieldRemoteNameConstant, remoteName),
@@ -244,7 +262,9 @@ func (service *Service) deleteRemoteAndLocalBranch(executionContext context.Cont
 			service.logger.Warn(logMessageDeletionPromptFailedConstant,
 				append(baseFields, zap.Error(confirmationError))...,
 			)
+			failureDetails.PromptError = confirmationError.Error()
 			outcome.failedBranches = 1
+			outcome.failure = &failureDetails
 			return outcome
 		}
 		if !allowed {
@@ -267,10 +287,17 @@ func (service *Service) deleteRemoteAndLocalBranch(executionContext context.Cont
 
 	remoteDeletionFailed := false
 	if _, pushError := service.executor.ExecuteGit(executionContext, pushCommandDetails); pushError != nil {
-		service.logger.Warn(logMessageRemoteDeletionFailedConstant,
-			append(baseFields, zap.Error(pushError))...,
-		)
-		remoteDeletionFailed = true
+		if isRemoteBranchMissingDeletionError(pushError) {
+			service.logger.Info(logMessageSkippingMissingBranchConstant,
+				append(baseFields, zap.Error(pushError))...,
+			)
+		} else {
+			service.logger.Warn(logMessageRemoteDeletionFailedConstant,
+				append(baseFields, zap.Error(pushError))...,
+			)
+			remoteDeletionFailed = true
+			failureDetails.RemoteDeletionError = pushError.Error()
+		}
 	}
 
 	service.logger.Info(logMessageDeletingLocalBranchConstant, baseFields...)
@@ -285,14 +312,22 @@ func (service *Service) deleteRemoteAndLocalBranch(executionContext context.Cont
 
 	localDeletionFailed := false
 	if _, deleteError := service.executor.ExecuteGit(executionContext, deleteLocalCommand); deleteError != nil {
-		service.logger.Warn(logMessageLocalDeletionFailedConstant,
-			append(baseFields, zap.Error(deleteError))...,
-		)
-		localDeletionFailed = true
+		if isLocalBranchMissingDeletionError(deleteError) {
+			service.logger.Info(logMessageSkippingMissingLocalBranchConstant,
+				append(baseFields, zap.Error(deleteError))...,
+			)
+		} else {
+			service.logger.Warn(logMessageLocalDeletionFailedConstant,
+				append(baseFields, zap.Error(deleteError))...,
+			)
+			localDeletionFailed = true
+			failureDetails.LocalDeletionError = deleteError.Error()
+		}
 	}
 
 	if remoteDeletionFailed || localDeletionFailed {
 		outcome.failedBranches = 1
+		outcome.failure = &failureDetails
 		return outcome
 	}
 
@@ -371,4 +406,22 @@ func (confirmation *branchDeletionConfirmation) Confirm(branchName string, remot
 		confirmation.confirmAll = true
 	}
 	return result.Confirmed, nil
+}
+
+func isLocalBranchMissingDeletionError(deletionError error) bool {
+	var commandFailedError execshell.CommandFailedError
+	if !errors.As(deletionError, &commandFailedError) {
+		return false
+	}
+	combined := strings.ToLower(strings.TrimSpace(commandFailedError.Result.StandardError + "\n" + commandFailedError.Result.StandardOutput))
+	return strings.Contains(combined, localBranchMissingIndicatorConstant) && strings.Contains(combined, localBranchMissingSuffixConstant)
+}
+
+func isRemoteBranchMissingDeletionError(deletionError error) bool {
+	var commandFailedError execshell.CommandFailedError
+	if !errors.As(deletionError, &commandFailedError) {
+		return false
+	}
+	combined := strings.ToLower(strings.TrimSpace(commandFailedError.Result.StandardError + "\n" + commandFailedError.Result.StandardOutput))
+	return strings.Contains(combined, remoteBranchMissingIndicatorConstant)
 }

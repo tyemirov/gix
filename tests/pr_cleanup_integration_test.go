@@ -23,36 +23,39 @@ import (
 )
 
 const (
-	integrationRemoteDirectoryNameConstant        = "remote.git"
-	integrationLocalDirectoryNameConstant         = "workspace"
-	integrationGitExecutableNameConstant          = "git"
-	integrationGHExecutableNameConstant           = "gh"
-	integrationFakeGHDirectoryNameConstant        = "fake_gh"
-	integrationInitialFileNameConstant            = "initial.txt"
-	integrationInitialFileContentsConstant        = "initial commit contents\n"
-	integrationUpdatedFileContentsConstant        = "updated contents\n"
-	integrationInitialCommitMessageConstant       = "Initial commit"
-	integrationFeatureDeleteCommitMessageConstant = "Feature delete changes"
-	integrationFeatureSkipCommitMessageConstant   = "Feature skip changes"
-	integrationUserNameConstant                   = "Integration Tester"
-	integrationUserEmailConstant                  = "tester@example.com"
-	integrationMainBranchNameConstant             = "main"
-	integrationFeatureDeleteBranchConstant        = "feature/delete"
-	integrationFeatureSkipBranchConstant          = "feature/skip"
-	integrationFeatureMissingBranchConstant       = "feature/missing"
-	integrationRemoteNameConstant                 = "origin"
-	integrationPullRequestLimitConstant           = 100
-	prCleanupCommandTimeoutConstant               = 10 * time.Second
-	integrationCommandRemoteFlagConstant          = "--remote"
-	integrationCommandLimitFlagConstant           = "--limit"
-	integrationRootFlagConstant                   = "--" + flagutils.DefaultRootFlagName
-	integrationFakeGHPayloadConstant              = "[{\"headRefName\":\"feature/delete\"},{\"headRefName\":\"feature/missing\"}]"
-	integrationEmptyGHPayloadConstant             = "[]"
-	integrationFakeGHScriptTemplateConstant       = "#!/bin/sh\ncat <<'JSON'\n%s\nJSON\n"
-	integrationExpectationMessageTemplateConstant = "expected branch state: %s"
-	prCleanupSubtestNameTemplateConstant          = "%d_%s"
-	prCleanupOutputDeletedTokenConstant           = "deleted="
-	prCleanupOutputClosedZeroTokenConstant        = "closed=0"
+	integrationRemoteDirectoryNameConstant            = "remote.git"
+	integrationLocalDirectoryNameConstant             = "workspace"
+	integrationGitExecutableNameConstant              = "git"
+	integrationGHExecutableNameConstant               = "gh"
+	integrationFakeGHDirectoryNameConstant            = "fake_gh"
+	integrationInitialFileNameConstant                = "initial.txt"
+	integrationInitialFileContentsConstant            = "initial commit contents\n"
+	integrationUpdatedFileContentsConstant            = "updated contents\n"
+	integrationInitialCommitMessageConstant           = "Initial commit"
+	integrationFeatureDeleteCommitMessageConstant     = "Feature delete changes"
+	integrationFeatureSkipCommitMessageConstant       = "Feature skip changes"
+	integrationFeatureRemoteOnlyCommitMessageConstant = "Feature remote-only changes"
+	integrationUserNameConstant                       = "Integration Tester"
+	integrationUserEmailConstant                      = "tester@example.com"
+	integrationMainBranchNameConstant                 = "main"
+	integrationFeatureDeleteBranchConstant            = "feature/delete"
+	integrationFeatureSkipBranchConstant              = "feature/skip"
+	integrationFeatureMissingBranchConstant           = "feature/missing"
+	integrationFeatureRemoteOnlyBranchConstant        = "feature/remote-only"
+	integrationRemoteNameConstant                     = "origin"
+	integrationPullRequestLimitConstant               = 100
+	prCleanupCommandTimeoutConstant                   = 10 * time.Second
+	integrationCommandRemoteFlagConstant              = "--remote"
+	integrationCommandLimitFlagConstant               = "--limit"
+	integrationRootFlagConstant                       = "--" + flagutils.DefaultRootFlagName
+	integrationFakeGHPayloadConstant                  = "[{\"headRefName\":\"feature/delete\"},{\"headRefName\":\"feature/missing\"},{\"headRefName\":\"feature/remote-only\"}]"
+	integrationEmptyGHPayloadConstant                 = "[]"
+	integrationFakeGHScriptTemplateConstant           = "#!/bin/sh\ncat <<'JSON'\n%s\nJSON\n"
+	integrationExpectationMessageTemplateConstant     = "expected branch state: %s"
+	prCleanupSubtestNameTemplateConstant              = "%d_%s"
+	prCleanupOutputDeletedTokenConstant               = "deleted="
+	prCleanupOutputClosedZeroTokenConstant            = "closed=0"
+	prCleanupOutputFailedZeroTokenConstant            = "failed=0"
 )
 
 type automaticConfirmationPrompter struct{}
@@ -87,6 +90,11 @@ func TestPullRequestCleanupIntegration(testInstance *testing.T) {
 	createFeatureBranch(testInstance, localRepositoryPath, integrationFeatureSkipBranchConstant, integrationFeatureSkipCommitMessageConstant, integrationUpdatedFileContentsConstant)
 	runGitCommand(testInstance, localRepositoryPath, []string{integrationGitExecutableNameConstant, "push", integrationRemoteNameConstant, integrationFeatureSkipBranchConstant})
 	runGitCommand(testInstance, localRepositoryPath, []string{integrationGitExecutableNameConstant, "checkout", integrationMainBranchNameConstant})
+
+	createFeatureBranch(testInstance, localRepositoryPath, integrationFeatureRemoteOnlyBranchConstant, integrationFeatureRemoteOnlyCommitMessageConstant, integrationUpdatedFileContentsConstant)
+	runGitCommand(testInstance, localRepositoryPath, []string{integrationGitExecutableNameConstant, "push", integrationRemoteNameConstant, integrationFeatureRemoteOnlyBranchConstant})
+	runGitCommand(testInstance, localRepositoryPath, []string{integrationGitExecutableNameConstant, "checkout", integrationMainBranchNameConstant})
+	runGitCommand(testInstance, localRepositoryPath, []string{integrationGitExecutableNameConstant, "branch", "-D", integrationFeatureRemoteOnlyBranchConstant})
 
 	runGitCommand(testInstance, localRepositoryPath, []string{integrationGitExecutableNameConstant, "branch", integrationFeatureMissingBranchConstant})
 
@@ -149,6 +157,7 @@ func TestPullRequestCleanupIntegration(testInstance *testing.T) {
 	require.NotEmpty(testInstance, initialOutput)
 	require.Contains(testInstance, initialOutput, localRepositoryPath)
 	require.Contains(testInstance, initialOutput, prCleanupOutputDeletedTokenConstant)
+	require.Contains(testInstance, initialOutput, prCleanupOutputFailedZeroTokenConstant)
 
 	branchExpectations := []struct {
 		name        string
@@ -163,6 +172,12 @@ func TestPullRequestCleanupIntegration(testInstance *testing.T) {
 			branchName:  integrationFeatureDeleteBranchConstant,
 		},
 		{
+			name:        "remote_remote_only_deleted",
+			command:     []string{integrationGitExecutableNameConstant, "ls-remote", "--heads", integrationRemoteNameConstant, integrationFeatureRemoteOnlyBranchConstant},
+			expectEmpty: true,
+			branchName:  integrationFeatureRemoteOnlyBranchConstant,
+		},
+		{
 			name:        "remote_preserved",
 			command:     []string{integrationGitExecutableNameConstant, "ls-remote", "--heads", integrationRemoteNameConstant, integrationFeatureSkipBranchConstant},
 			expectEmpty: false,
@@ -173,6 +188,12 @@ func TestPullRequestCleanupIntegration(testInstance *testing.T) {
 			command:     []string{integrationGitExecutableNameConstant, "branch", "--list", integrationFeatureDeleteBranchConstant},
 			expectEmpty: true,
 			branchName:  integrationFeatureDeleteBranchConstant,
+		},
+		{
+			name:        "local_remote_only_deleted",
+			command:     []string{integrationGitExecutableNameConstant, "branch", "--list", integrationFeatureRemoteOnlyBranchConstant},
+			expectEmpty: true,
+			branchName:  integrationFeatureRemoteOnlyBranchConstant,
 		},
 		{
 			name:        "local_missing_branch_retained",

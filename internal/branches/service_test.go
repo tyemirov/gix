@@ -506,6 +506,121 @@ func TestServiceCleanupFailures(testInstance *testing.T) {
 	}
 }
 
+func TestServiceCleanupTreatsMissingLocalBranchAsNoop(testInstance *testing.T) {
+	branchName := "feature/remote-only"
+	fakeExecutorInstance := &fakeCommandExecutor{}
+
+	remoteOutput := buildRemoteOutput([]string{branchName})
+	pullRequestJSON, jsonError := buildPullRequestJSON([]string{branchName})
+	require.NoError(testInstance, jsonError)
+
+	gitListArguments := []string{gitListRemoteSubcommandConstant, gitHeadsFlagConstant, testRemoteNameConstant}
+	registerResponse(fakeExecutorInstance, gitCommandLabelConstant, gitListArguments, execshell.ExecutionResult{StandardOutput: remoteOutput, ExitCode: 0}, nil)
+
+	githubListArguments := []string{
+		githubPullRequestSubcommandConstant,
+		githubListSubcommandConstant,
+		githubStateFlagConstant,
+		githubClosedStateConstant,
+		githubJSONFlagConstant,
+		pullRequestJSONFieldNameConstant,
+		githubLimitFlagConstant,
+		strconv.Itoa(testPullRequestLimitConstant),
+	}
+	registerResponse(fakeExecutorInstance, githubCommandLabelConstant, githubListArguments, execshell.ExecutionResult{StandardOutput: pullRequestJSON, ExitCode: 0}, nil)
+
+	registerResponse(fakeExecutorInstance, gitCommandLabelConstant, []string{gitPushSubcommandConstant, testRemoteNameConstant, gitDeleteFlagConstant, branchName}, execshell.ExecutionResult{ExitCode: 0}, nil)
+
+	commandFailedError := execshell.CommandFailedError{
+		Command: execshell.ShellCommand{
+			Name: execshell.CommandGit,
+			Details: execshell.CommandDetails{
+				Arguments:        []string{gitBranchSubcommandConstant, gitForceDeleteFlagConstant, branchName},
+				WorkingDirectory: testWorkingDirectoryConstant,
+			},
+		},
+		Result: execshell.ExecutionResult{StandardError: fmt.Sprintf("error: branch '%s' not found.\n", branchName), ExitCode: 1},
+	}
+	registerResponse(fakeExecutorInstance, gitCommandLabelConstant, []string{gitBranchSubcommandConstant, gitForceDeleteFlagConstant, branchName}, execshell.ExecutionResult{}, commandFailedError)
+
+	logCore, _ := observer.New(zap.DebugLevel)
+	logger := zap.New(logCore)
+
+	service, serviceError := branches.NewService(logger, fakeExecutorInstance, nil)
+	require.NoError(testInstance, serviceError)
+
+	cleanupSummary, cleanupError := service.Cleanup(context.Background(), branches.CleanupOptions{
+		RemoteName:       testRemoteNameConstant,
+		PullRequestLimit: testPullRequestLimitConstant,
+		WorkingDirectory: testWorkingDirectoryConstant,
+	})
+	require.NoError(testInstance, cleanupError)
+
+	require.Equal(testInstance, 1, cleanupSummary.ClosedBranches)
+	require.Equal(testInstance, 1, cleanupSummary.DeletedBranches)
+	require.Zero(testInstance, cleanupSummary.FailedBranches)
+	require.Empty(testInstance, cleanupSummary.Failures)
+}
+
+func TestServiceCleanupCapturesFailureDetails(testInstance *testing.T) {
+	branchName := "feature/failure"
+	fakeExecutorInstance := &fakeCommandExecutor{}
+
+	remoteOutput := buildRemoteOutput([]string{branchName})
+	pullRequestJSON, jsonError := buildPullRequestJSON([]string{branchName})
+	require.NoError(testInstance, jsonError)
+
+	gitListArguments := []string{gitListRemoteSubcommandConstant, gitHeadsFlagConstant, testRemoteNameConstant}
+	registerResponse(fakeExecutorInstance, gitCommandLabelConstant, gitListArguments, execshell.ExecutionResult{StandardOutput: remoteOutput, ExitCode: 0}, nil)
+
+	githubListArguments := []string{
+		githubPullRequestSubcommandConstant,
+		githubListSubcommandConstant,
+		githubStateFlagConstant,
+		githubClosedStateConstant,
+		githubJSONFlagConstant,
+		pullRequestJSONFieldNameConstant,
+		githubLimitFlagConstant,
+		strconv.Itoa(testPullRequestLimitConstant),
+	}
+	registerResponse(fakeExecutorInstance, githubCommandLabelConstant, githubListArguments, execshell.ExecutionResult{StandardOutput: pullRequestJSON, ExitCode: 0}, nil)
+
+	pushFailedError := execshell.CommandFailedError{
+		Command: execshell.ShellCommand{
+			Name: execshell.CommandGit,
+			Details: execshell.CommandDetails{
+				Arguments:        []string{gitPushSubcommandConstant, testRemoteNameConstant, gitDeleteFlagConstant, branchName},
+				WorkingDirectory: testWorkingDirectoryConstant,
+			},
+		},
+		Result: execshell.ExecutionResult{StandardError: "remote: Write access to repository not granted.\n", ExitCode: 128},
+	}
+	registerResponse(fakeExecutorInstance, gitCommandLabelConstant, []string{gitPushSubcommandConstant, testRemoteNameConstant, gitDeleteFlagConstant, branchName}, execshell.ExecutionResult{}, pushFailedError)
+	registerResponse(fakeExecutorInstance, gitCommandLabelConstant, []string{gitBranchSubcommandConstant, gitForceDeleteFlagConstant, branchName}, execshell.ExecutionResult{ExitCode: 0}, nil)
+
+	logCore, _ := observer.New(zap.DebugLevel)
+	logger := zap.New(logCore)
+
+	service, serviceError := branches.NewService(logger, fakeExecutorInstance, nil)
+	require.NoError(testInstance, serviceError)
+
+	cleanupSummary, cleanupError := service.Cleanup(context.Background(), branches.CleanupOptions{
+		RemoteName:       testRemoteNameConstant,
+		PullRequestLimit: testPullRequestLimitConstant,
+		WorkingDirectory: testWorkingDirectoryConstant,
+	})
+	require.NoError(testInstance, cleanupError)
+
+	require.Equal(testInstance, 1, cleanupSummary.ClosedBranches)
+	require.Zero(testInstance, cleanupSummary.DeletedBranches)
+	require.Equal(testInstance, 1, cleanupSummary.FailedBranches)
+	require.Len(testInstance, cleanupSummary.Failures, 1)
+	require.Equal(testInstance, branchName, cleanupSummary.Failures[0].BranchName)
+	require.Contains(testInstance, cleanupSummary.Failures[0].RemoteDeletionError, "Write access")
+	require.Empty(testInstance, cleanupSummary.Failures[0].LocalDeletionError)
+	require.Empty(testInstance, cleanupSummary.Failures[0].PromptError)
+}
+
 func TestNewServiceRequiresExecutor(testInstance *testing.T) {
 	service, serviceError := branches.NewService(zap.NewNop(), nil, nil)
 	require.Error(testInstance, serviceError)
