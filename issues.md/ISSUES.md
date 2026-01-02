@@ -65,6 +65,17 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   ## Resolution
   - Adjusted `**/` glob matching to allow root-level files and added regression coverage for `**/*.go` and `docs/**/*.md`.
 
+- [x] [GX-355] `gix prs delete` reports `failed=<N>` when local PR branches are already gone (common case).
+  ## Observation
+  - `gix prs delete --yes` runs `git push <remote> --delete <branch>` then `git branch -D <branch>`.
+  - When a closed PR branch exists on the remote but not locally, `git branch -D` exits non-zero, causing the branch to be counted as `failed` even if remote deletion succeeded.
+  ## Deliverable
+  - Treat missing local branches as a no-op (still count the PR branch cleanup as successful when remote deletion succeeds).
+  - When real failures occur, print a short stderr summary of failure reasons (bounded) so operators can diagnose without changing log level.
+  ## Resolution
+  - Treat missing local branches as already-clean, so successful remote deletions count as deleted.
+  - Record failure details in the cleanup summary and print bounded failure samples to stderr when failures occur; added regression coverage.
+
 
 ## Maintenance (400–499)
 

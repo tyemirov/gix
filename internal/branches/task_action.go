@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -12,15 +14,27 @@ import (
 )
 
 const (
-	taskActionNameBranchCleanup  = "repo.branches.cleanup"
-	taskActionNameBranchRefresh  = "branch.refresh"
-	defaultBranchCleanupLimit    = 100
-	branchCleanupRemoteError     = "branch cleanup action requires 'remote'"
-	branchCleanupLimitParseError = "branch cleanup action requires numeric 'limit': %w"
-	branchRefreshBranchError     = "branch refresh action requires 'branch'"
-	branchRefreshMessageTemplate = "REFRESHED: %s (%s)\n"
-	branchCleanupSummaryTemplate = "PR cleanup: %s closed=%d deleted=%d missing=%d declined=%d failed=%d\n"
+	taskActionNameBranchCleanup        = "repo.branches.cleanup"
+	taskActionNameBranchRefresh        = "branch.refresh"
+	defaultBranchCleanupLimit          = 100
+	branchCleanupRemoteError           = "branch cleanup action requires 'remote'"
+	branchCleanupLimitParseError       = "branch cleanup action requires numeric 'limit': %w"
+	branchRefreshBranchError           = "branch refresh action requires 'branch'"
+	branchRefreshMessageTemplate       = "REFRESHED: %s (%s)\n"
+	branchCleanupSummaryTemplate       = "PR cleanup: %s closed=%d deleted=%d missing=%d declined=%d failed=%d\n"
+	branchCleanupFailureHeaderTemplate = "PR cleanup failures: %s failed=%d showing=%d total=%d\n"
+	branchCleanupFailureLineTemplate   = "PR cleanup failure: %s branch=%s %s\n"
+	branchCleanupFailureRemainder      = "PR cleanup failures: %s remaining=%d\n"
+	branchCleanupFailureFallback       = "PR cleanup failures: %s failed=%d\n"
+	branchCleanupFailureDetailNone     = "detail=missing"
+	branchCleanupFailureDetailTemplate = "%s=%s"
+	branchCleanupFailureDetailPrompt   = "prompt"
+	branchCleanupFailureDetailRemote   = "remote"
+	branchCleanupFailureDetailLocal    = "local"
+	branchCleanupFailureMaxLines       = 5
 )
+
+var branchCleanupHTTPSCredentialPattern = regexp.MustCompile(`(?i)(https?://)[^/\s]+@`)
 
 func init() {
 	workflow.RegisterTaskAction(taskActionNameBranchCleanup, handleBranchCleanupAction)
@@ -82,6 +96,7 @@ func handleBranchCleanupAction(ctx context.Context, environment *workflow.Enviro
 			cleanupSummary.FailedBranches,
 		)
 	}
+	writeBranchCleanupFailureDetails(environment, repository.Path, cleanupSummary)
 
 	return nil
 }
@@ -176,4 +191,80 @@ func boolValueDefault(value any, defaultValue bool) (bool, error) {
 	}
 
 	return false, fmt.Errorf("option must be boolean, received %v", value)
+}
+
+func writeBranchCleanupFailureDetails(environment *workflow.Environment, repositoryPath string, summary CleanupSummary) {
+	if environment == nil || summary.FailedBranches == 0 {
+		return
+	}
+
+	errorWriter := resolveBranchCleanupFailureWriter(environment)
+	if errorWriter == nil {
+		return
+	}
+
+	failures := summary.Failures
+	if len(failures) == 0 {
+		fmt.Fprintf(errorWriter, branchCleanupFailureFallback, repositoryPath, summary.FailedBranches)
+		return
+	}
+
+	linesToPrint := branchCleanupFailureMaxLines
+	if len(failures) < linesToPrint {
+		linesToPrint = len(failures)
+	}
+
+	fmt.Fprintf(errorWriter, branchCleanupFailureHeaderTemplate, repositoryPath, summary.FailedBranches, linesToPrint, len(failures))
+	for failureIndex := 0; failureIndex < linesToPrint; failureIndex++ {
+		failure := failures[failureIndex]
+		formatted := formatBranchCleanupFailure(failure)
+		fmt.Fprintf(errorWriter, branchCleanupFailureLineTemplate, repositoryPath, failure.BranchName, formatted)
+	}
+
+	if remaining := len(failures) - linesToPrint; remaining > 0 {
+		fmt.Fprintf(errorWriter, branchCleanupFailureRemainder, repositoryPath, remaining)
+	}
+}
+
+func resolveBranchCleanupFailureWriter(environment *workflow.Environment) io.Writer {
+	if environment == nil {
+		return nil
+	}
+	if environment.Errors != nil {
+		return environment.Errors
+	}
+	return environment.Output
+}
+
+func formatBranchCleanupFailure(failure CleanupFailure) string {
+	details := make([]string, 0, 3)
+
+	promptDetail := strings.TrimSpace(failure.PromptError)
+	if len(promptDetail) > 0 {
+		details = append(details, fmt.Sprintf(branchCleanupFailureDetailTemplate, branchCleanupFailureDetailPrompt, sanitizeBranchCleanupFailureDetail(promptDetail)))
+	}
+
+	remoteDetail := strings.TrimSpace(failure.RemoteDeletionError)
+	if len(remoteDetail) > 0 {
+		details = append(details, fmt.Sprintf(branchCleanupFailureDetailTemplate, branchCleanupFailureDetailRemote, sanitizeBranchCleanupFailureDetail(remoteDetail)))
+	}
+
+	localDetail := strings.TrimSpace(failure.LocalDeletionError)
+	if len(localDetail) > 0 {
+		details = append(details, fmt.Sprintf(branchCleanupFailureDetailTemplate, branchCleanupFailureDetailLocal, sanitizeBranchCleanupFailureDetail(localDetail)))
+	}
+
+	if len(details) == 0 {
+		return branchCleanupFailureDetailNone
+	}
+	return strings.Join(details, " ")
+}
+
+func sanitizeBranchCleanupFailureDetail(detail string) string {
+	if len(detail) == 0 {
+		return detail
+	}
+	redacted := branchCleanupHTTPSCredentialPattern.ReplaceAllString(detail, "${1}***@")
+	redacted = strings.ReplaceAll(redacted, "\n", " | ")
+	return strings.TrimSpace(redacted)
 }
