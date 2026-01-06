@@ -9,10 +9,14 @@ Read @AGENTS.md, @README.md and ARCHITECTURE.md. Read issues.md/@POLICY.md, issu
 
 Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse completed numbers; cleanup renumbers remaining entries so numbering stays monotonic.
 
-## Features (111–199)
+## Features (112–199)
 
 - [x] [GX-110] Add a step that allows running an arbitrary command, such as `go get -u ./...` and `go mod tidy`.
   The changed files need to be committed after this step. Deliver both the DSL and the implementation.
+- [ ] [GX-111] (P1) Duplicate logging.
+  11:51:20 tyemirov@Vadyms-MacBook-Pro:~/Development/MarcoPoloResearchLab/ProductScanner - [feature/PS-402-merge-catalog-runs] $ gix cd
+  git command exited with code 1 (switch master): error: Your local changes to the following files would be overwritten by checkout: | issues.md/ISSUES.md | Please commit your changes or stash them before you switch branches.
+  git command exited with code 1 (switch master): error: Your local changes to the following files would be overwritten by checkout: | issues.md/ISSUES.md | Please commit your changes or stash them before you switch branches.
 
 
 ## Improvements (261–299)
@@ -28,7 +32,7 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
 - [x] [GX-254] Embed license templates and wire the license workflow preset to render them per repository.
 
 
-## BugFixes (348–399)
+## BugFixes (356–399)
 
 - [x] [GX-345] First output appears late when running gix against 20–30 repositories because repository discovery/inspection emits no user-facing progress until the first repository finishes its first workflow step.
   (Unresolved: stream discovery/inspection progress or emit an initial discovery step summary.)
@@ -50,7 +54,6 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - Acceptance: When the GH CLI returns zero closed PR branches, output explicitly states a no-op or zero deletions instead of being silent. title=gix prs delete --yes is silent under default console logging)
   ## Resolution
   - Emit per-repo cleanup summaries (closed/deleted/missing/declined/failed) and add integration coverage for output and zero-branch runs.
-
 - [x] [GX-354] Workflow file replacements skip some files when glob uses `**/` (suspected in configs/account-rename.yaml).
   ## Investigation
   - `configs/account-rename.yaml` uses `files.apply` with `**/*.go` and `docs/**/*.md`.
@@ -64,7 +67,6 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - Make `**/` match zero or more path segments so `**/*.go` includes root-level files and `docs/**/*.md` includes `docs/*.md`; add coverage for root-level matches.
   ## Resolution
   - Adjusted `**/` glob matching to allow root-level files and added regression coverage for `**/*.go` and `docs/**/*.md`.
-
 - [x] [GX-355] `gix prs delete` reports `failed=<N>` when local PR branches are already gone (common case).
   ## Observation
   - `gix prs delete --yes` runs `git push <remote> --delete <branch>` then `git branch -D <branch>`.
@@ -77,7 +79,7 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - Record failure details in the cleanup summary and print bounded failure samples to stderr when failures occur; added regression coverage.
 
 
-## Maintenance (400–499)
+## Maintenance (425–499)
 
 - [ ] [GX-424] `make ci`/`check-format` emits a Go parse error for `tools/llm-tasks/tasks/sort/task_test.go`.
   ## Observation
@@ -85,5 +87,7 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   ## Deliverable
   - Fix the invalid test file or exclude it from `check-format` so formatting checks run cleanly.
 
-## Planning
+
+## Planning (500–59999)
 *do not implement yet*
+
