@@ -110,26 +110,6 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - [ ] **Reporting Logic Alignment**: Update `internal/workflow/error_handling.go` to ensure that all repository-scoped errors are processed via the `StructuredReporter`, eliminating the need for manual fallback printing.
   - [ ] **CLI Exit Refinement**: Adjust the CLI execution flow to ensure that errors already emitted by the reporter do not trigger a second print at the application exit point.
   - [ ] **Verification**: Add an integration test case that triggers a predictable Git failure and asserts that the resulting error message appears exactly once in the combined output stream.
-- [ ] [F003] (P0) Polishing with gemini fails.
-  LegacyExternalID: GX-112
-  Return only JSON with keys "title" and "body".
-  The "body" value must be Markdown with sections:
-  - ### Summary
-  - ### Analysis
-  - ### Deliverables role=user type=message)
-  [2026-01-06T21:03:20.201Z] (content=I will begin by reading the file `tools/llm-tasks/tasks/sort/task_test.go` around line 60 to identify the cause of the Go parse error. delta=true role=assistant type=message)
-  [2026-01-06T21:03:20.238Z] (tool_id=read_file-1767733400238-83e1e8b7541bc tool_name=read_file type=tool_use)
-  (node:51) MaxListenersExceededWarning: Possible EventTarget memory leak detected. 11 abort listeners added to [AbortSignal]. MaxListeners is 10. Use events.setMaxListeners() to increase limit
-  (Use `node --trace-warnings ...` to show where the warning was created)
-  [2026-01-06T21:03:20.285Z] (output=Read lines 51-70 of 159 from tools/llm-tasks/tasks/sort/task_test.go status=success tool_id=read_file-1767733400238-83e1e8b7541bc type=tool_result)
-  [2026-01-06T21:03:24.406Z] (content=I will read the first 70 lines of `tools/llm-tasks/tasks/sort/task_test.go` to check for syntax errors, such as missing braces, that might be causing the parse error. delta=true role=assistant type=message)
-  [2026-01-06T21:03:24.439Z] (tool_id=read_file-1767733404439-5fcbe65e234cc tool_name=read_file type=tool_use)
-  [2026-01-06T21:03:24.472Z] (output=Read lines 1-70 of 159 from tools/llm-tasks/tasks/sort/task_test.go status=success tool_id=read_file-1767733404439-5fcbe65e234cc type=tool_result)
-  [2026-01-06T21:03:28.298Z] (content=I will check the `Makefile` to see how the `check-format` and `ci` targets are implemented. delta=true role=assistant type=message)
-  [2026-01-06T21:03:28.337Z] (tool_id=read_file-1767733408337-7b520d4ef0db4 tool_name=read_file type=tool_use)
-  [2026-01-06T21:03:28.373Z] (status=success tool_id=read_file-1767733408337-7b520d4ef0db4 type=tool_result)
-  [2026-01-06T21:03:34.388Z] (content=I will run `gofmt -l tools/llm-tasks/tasks/sort/task_test.go` to verify the error and confirm the exact line and column where it occurs. delta=true role=assistant type=message)
-  [2026-01-06T21:03:34.426Z] (tool_id=run_shell_command-1767733414426-eed1e3949035a tool_name=run_shell_command type=tool_use)
 
 
 ## Planning
