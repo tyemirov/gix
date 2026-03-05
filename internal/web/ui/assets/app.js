@@ -2,6 +2,22 @@
 
 /**
  * @typedef {{
+ *   repository_path?: string,
+ *   branches?: BranchDescriptor[],
+ *   error?: string,
+ * }} BranchCatalog
+ */
+
+/**
+ * @typedef {{
+ *   name: string,
+ *   current: boolean,
+ *   upstream?: string,
+ * }} BranchDescriptor
+ */
+
+/**
+ * @typedef {{
  *   application: string,
  *   commands: CommandDescriptor[],
  * }} CommandCatalog
@@ -48,19 +64,22 @@
  * }} RunSnapshot
  */
 
+const branchesEndpoint = "/api/branches";
 const commandsEndpoint = "/api/commands";
 const runsEndpoint = "/api/runs";
 const pollIntervalMilliseconds = 800;
 
-/** @type {{ catalog: CommandCatalog | null, commands: CommandDescriptor[], selectedPath: string, pollTimer: number | null }} */
+/** @type {{ commands: CommandDescriptor[], selectedPath: string, pollTimer: number | null }} */
 const state = {
-  catalog: null,
   commands: [],
   selectedPath: "",
   pollTimer: null,
 };
 
 const elements = {
+  branchCount: document.querySelector("#branch-count"),
+  branchRepoPath: document.querySelector("#branch-repo-path"),
+  branchList: document.querySelector("#branch-list"),
   commandCount: document.querySelector("#command-count"),
   commandFilter: document.querySelector("#command-filter"),
   commandList: document.querySelector("#command-list"),
@@ -88,17 +107,28 @@ initialize().catch((error) => {
 async function initialize() {
   bindEvents();
   setStatus("loading");
-  const response = await fetch(commandsEndpoint);
-  if (!response.ok) {
-    throw new Error(`Failed to load commands: ${response.status}`);
+
+  const [branchesResponse, commandsResponse] = await Promise.all([
+    fetch(branchesEndpoint),
+    fetch(commandsEndpoint),
+  ]);
+  if (!branchesResponse.ok) {
+    throw new Error(`Failed to load branches: ${branchesResponse.status}`);
+  }
+  if (!commandsResponse.ok) {
+    throw new Error(`Failed to load operations: ${commandsResponse.status}`);
   }
 
+  /** @type {BranchCatalog} */
+  const branches = await branchesResponse.json();
   /** @type {CommandCatalog} */
-  const catalog = await response.json();
-  const runnableCommands = catalog.commands.filter((command) => command.runnable);
+  const commandCatalog = await commandsResponse.json();
+
+  renderBranches(branches);
+
+  const runnableCommands = commandCatalog.commands.filter((command) => command.runnable);
   runnableCommands.sort((left, right) => left.path.localeCompare(right.path));
 
-  state.catalog = catalog;
   state.commands = runnableCommands;
   elements.commandCount.textContent = String(runnableCommands.length);
   renderCommandList("");
@@ -122,6 +152,45 @@ function bindEvents() {
 }
 
 /**
+ * @param {BranchCatalog} catalog
+ */
+function renderBranches(catalog) {
+  const branches = catalog.branches || [];
+  elements.branchCount.textContent = String(branches.length);
+  elements.branchRepoPath.textContent = catalog.repository_path || catalog.error || "No local repository context";
+  elements.branchList.innerHTML = "";
+
+  if (catalog.error) {
+    const emptyState = document.createElement("div");
+    emptyState.className = "empty-state";
+    emptyState.textContent = catalog.error;
+    elements.branchList.append(emptyState);
+    return;
+  }
+
+  if (branches.length === 0) {
+    const emptyState = document.createElement("div");
+    emptyState.className = "empty-state";
+    emptyState.textContent = "No local branches were detected in the launch repository.";
+    elements.branchList.append(emptyState);
+    return;
+  }
+
+  branches.forEach((branch) => {
+    const branchCard = document.createElement("div");
+    branchCard.className = `branch-item${branch.current ? " current" : ""}`;
+    branchCard.innerHTML = `
+      <div class="branch-row">
+        <span class="branch-name">${escapeHTML(branch.name)}</span>
+        ${branch.current ? '<span class="flag-token">current</span>' : ""}
+      </div>
+      <div class="branch-upstream">${escapeHTML(branch.upstream || "No upstream")}</div>
+    `;
+    elements.branchList.append(branchCard);
+  });
+}
+
+/**
  * @param {string} query
  */
 function renderCommandList(query) {
@@ -137,7 +206,7 @@ function renderCommandList(query) {
   if (filteredCommands.length === 0) {
     const emptyState = document.createElement("div");
     emptyState.className = "empty-state";
-    emptyState.textContent = "No commands match the current filter.";
+    emptyState.textContent = "No operations match the current filter.";
     elements.commandList.append(emptyState);
     return;
   }
@@ -221,7 +290,7 @@ function renderFlags(flags) {
   if (flags.length === 0) {
     const emptyState = document.createElement("div");
     emptyState.className = "empty-state";
-    emptyState.textContent = "This command does not expose public flags.";
+    emptyState.textContent = "This operation does not expose public flags.";
     elements.commandFlags.append(emptyState);
     return;
   }
@@ -264,7 +333,7 @@ async function submitRun() {
 
   const argumentsList = readArguments();
   if (argumentsList.length === 0) {
-    renderRunError("Add at least one argument before running a command.");
+    renderRunError("Add at least one argument before running an operation.");
     setStatus("failed");
     elements.runButton.disabled = false;
     return;

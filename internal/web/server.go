@@ -16,9 +16,12 @@ import (
 const (
 	indexRoutePathConstant              = "/"
 	assetsRoutePathConstant             = "/assets"
+	apiBranchesRoutePathConstant        = "/api/branches"
 	apiCommandsRoutePathConstant        = "/api/commands"
 	apiRunsRoutePathConstant            = "/api/runs"
 	apiRunRoutePathTemplateConstant     = "/api/runs/:id"
+	indexDocumentFilePathConstant       = "ui/index.html"
+	htmlContentTypeConstant             = "text/html; charset=utf-8"
 	serverShutdownTimeoutConstant       = 5 * time.Second
 	missingServerAddressErrorConstant   = "missing server address"
 	missingCommandExecutorErrorConstant = "missing command executor"
@@ -28,9 +31,10 @@ const (
 var embeddedUIFiles embed.FS
 
 type serverRuntimeOptions struct {
-	address string
-	catalog CommandCatalog
-	execute CommandExecutor
+	address  string
+	branches BranchCatalog
+	catalog  CommandCatalog
+	execute  CommandExecutor
 }
 
 // Server hosts the embedded gix browser interface and JSON API.
@@ -39,6 +43,7 @@ type Server struct {
 	httpServer *http.Server
 	runStore   *runStore
 	options    serverRuntimeOptions
+	indexHTML  []byte
 }
 
 // Run starts the configured server and blocks until the context is canceled or the server exits.
@@ -62,9 +67,9 @@ func NewServer(options ServerOptions) (*Server, error) {
 	engine := gin.New()
 	engine.Use(gin.Recovery())
 
-	uiFileSystem, uiFileSystemError := embeddedFileSystem("ui")
-	if uiFileSystemError != nil {
-		return nil, uiFileSystemError
+	indexHTML, indexHTMLError := embeddedFile(indexDocumentFilePathConstant)
+	if indexHTMLError != nil {
+		return nil, indexHTMLError
 	}
 	assetsFileSystem, assetsFileSystemError := embeddedFileSystem("ui/assets")
 	if assetsFileSystemError != nil {
@@ -72,15 +77,16 @@ func NewServer(options ServerOptions) (*Server, error) {
 	}
 
 	server := &Server{
-		engine:   engine,
-		runStore: newRunStore(),
-		options:  runtimeOptions,
+		engine:    engine,
+		runStore:  newRunStore(),
+		options:   runtimeOptions,
+		indexHTML: indexHTML,
 	}
 	server.httpServer = &http.Server{
 		Addr:    runtimeOptions.address,
 		Handler: engine,
 	}
-	server.registerRoutes(uiFileSystem, assetsFileSystem)
+	server.registerRoutes(assetsFileSystem)
 
 	return server, nil
 }
@@ -142,9 +148,10 @@ func newServerRuntimeOptions(options ServerOptions) (serverRuntimeOptions, error
 	}
 
 	return serverRuntimeOptions{
-		address: trimmedAddress,
-		catalog: options.Catalog,
-		execute: options.Execute,
+		address:  trimmedAddress,
+		branches: options.Branches,
+		catalog:  options.Catalog,
+		execute:  options.Execute,
 	}, nil
 }
 
@@ -156,14 +163,23 @@ func embeddedFileSystem(subdirectory string) (http.FileSystem, error) {
 	return http.FS(subtree), nil
 }
 
-func (server *Server) registerRoutes(uiFileSystem http.FileSystem, assetsFileSystem http.FileSystem) {
+func embeddedFile(path string) ([]byte, error) {
+	return embeddedUIFiles.ReadFile(path)
+}
+
+func (server *Server) registerRoutes(assetsFileSystem http.FileSystem) {
 	server.engine.GET(indexRoutePathConstant, func(requestContext *gin.Context) {
-		requestContext.FileFromFS("index.html", uiFileSystem)
+		requestContext.Data(http.StatusOK, htmlContentTypeConstant, server.indexHTML)
 	})
 	server.engine.StaticFS(assetsRoutePathConstant, assetsFileSystem)
+	server.engine.GET(apiBranchesRoutePathConstant, server.handleBranches)
 	server.engine.GET(apiCommandsRoutePathConstant, server.handleCommands)
 	server.engine.POST(apiRunsRoutePathConstant, server.handleCreateRun)
 	server.engine.GET(apiRunRoutePathTemplateConstant, server.handleGetRun)
+}
+
+func (server *Server) handleBranches(requestContext *gin.Context) {
+	requestContext.JSON(http.StatusOK, server.options.branches)
 }
 
 func (server *Server) handleCommands(requestContext *gin.Context) {

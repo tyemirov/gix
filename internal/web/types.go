@@ -10,9 +10,24 @@ type CommandExecutor func(context.Context, []string, io.Reader, io.Writer, io.Wr
 
 // ServerOptions configures the local web server.
 type ServerOptions struct {
-	Address string
-	Catalog CommandCatalog
-	Execute CommandExecutor
+	Address  string
+	Branches BranchCatalog
+	Catalog  CommandCatalog
+	Execute  CommandExecutor
+}
+
+// BranchCatalog describes the local repository branches visible to the web interface.
+type BranchCatalog struct {
+	RepositoryPath string             `json:"repository_path,omitempty"`
+	Branches       []BranchDescriptor `json:"branches,omitempty"`
+	Error          string             `json:"error,omitempty"`
+}
+
+// BranchDescriptor captures one local Git branch.
+type BranchDescriptor struct {
+	Name     string `json:"name"`
+	Current  bool   `json:"current"`
+	Upstream string `json:"upstream,omitempty"`
 }
 
 // CommandCatalog describes the CLI commands exposed through the web interface.

@@ -96,6 +96,13 @@ func TestWebServerExecutesVersionCommand(t *testing.T) {
 
 	server, serverError := web.NewServer(web.ServerOptions{
 		Address: "127.0.0.1:8080",
+		Branches: web.BranchCatalog{
+			RepositoryPath: "/tmp/example",
+			Branches: []web.BranchDescriptor{
+				{Name: "feature/demo", Current: true, Upstream: "origin/feature/demo"},
+				{Name: "master", Current: false, Upstream: "origin/master"},
+			},
+		},
 		Catalog: application.commandCatalog(),
 		Execute: application.newWebCommandExecutor(),
 	})
@@ -103,6 +110,16 @@ func TestWebServerExecutesVersionCommand(t *testing.T) {
 
 	httpServer := httptest.NewServer(server.Handler())
 	defer httpServer.Close()
+
+	indexResponse, indexError := http.Get(httpServer.URL)
+	require.NoError(t, indexError)
+	defer indexResponse.Body.Close()
+	require.Equal(t, http.StatusOK, indexResponse.StatusCode)
+
+	var indexDocument bytes.Buffer
+	_, copyError := indexDocument.ReadFrom(indexResponse.Body)
+	require.NoError(t, copyError)
+	require.Contains(t, indexDocument.String(), "<title>gix Control Surface</title>")
 
 	commandsResponse, commandsError := http.Get(httpServer.URL + "/api/commands")
 	require.NoError(t, commandsError)
@@ -113,6 +130,18 @@ func TestWebServerExecutesVersionCommand(t *testing.T) {
 	require.NoError(t, json.NewDecoder(commandsResponse.Body).Decode(&catalog))
 	require.NotEmpty(t, catalog.Commands)
 	require.True(t, catalogContainsCommand(catalog, "gix version"))
+
+	branchesResponse, branchesError := http.Get(httpServer.URL + "/api/branches")
+	require.NoError(t, branchesError)
+	defer branchesResponse.Body.Close()
+	require.Equal(t, http.StatusOK, branchesResponse.StatusCode)
+
+	var branches web.BranchCatalog
+	require.NoError(t, json.NewDecoder(branchesResponse.Body).Decode(&branches))
+	require.Equal(t, "/tmp/example", branches.RepositoryPath)
+	require.Len(t, branches.Branches, 2)
+	require.Equal(t, "feature/demo", branches.Branches[0].Name)
+	require.True(t, branches.Branches[0].Current)
 
 	runBody := strings.NewReader(`{"arguments":["version"]}`)
 	runResponse, runError := http.Post(httpServer.URL+"/api/runs", "application/json", runBody)

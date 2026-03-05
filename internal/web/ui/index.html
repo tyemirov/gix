@@ -12,28 +12,34 @@
         <div class="sidebar-panel brand-panel">
           <p class="eyebrow">Local Interface</p>
           <h1>gix Control Surface</h1>
-          <p class="lede">Run any gix command through the same in-process Cobra tree without leaving the browser.</p>
-          <p class="muted">Prefer <code>--yes</code> for prompt-heavy flows. Raw stdin is available when you need it.</p>
+          <p class="lede">Inspect local branches on the left, then choose a gix operation on the right and run it in-process.</p>
+          <p class="muted">Prefer <code>--yes</code> for prompt-heavy flows. Raw stdin is available when an operation expects input.</p>
         </div>
 
-        <div class="sidebar-panel search-panel">
-          <label class="field-label" for="command-filter">Command Filter</label>
-          <input id="command-filter" class="text-input" type="search" placeholder="Find a command">
-        </div>
-
-        <div class="sidebar-panel command-panel">
+        <div class="sidebar-panel branch-panel">
           <div class="panel-heading">
-            <h2>Runnable Commands</h2>
-            <span id="command-count" class="pill">0</span>
+            <h2>Branches</h2>
+            <span id="branch-count" class="pill">0</span>
           </div>
-          <div id="command-list" class="command-list" aria-live="polite"></div>
+          <p id="branch-repo-path" class="panel-note"></p>
+          <div id="branch-list" class="branch-list" aria-live="polite"></div>
         </div>
       </aside>
 
       <main class="workspace">
+        <section class="card operations-card">
+          <div class="panel-heading">
+            <h3>Operations</h3>
+            <span id="command-count" class="pill">0</span>
+          </div>
+          <label class="field-label" for="command-filter">Filter</label>
+          <input id="command-filter" class="text-input" type="search" placeholder="Find an operation">
+          <div id="command-list" class="operation-list" aria-live="polite"></div>
+        </section>
+
         <section class="hero-card">
           <div>
-            <p class="eyebrow">Selected Command</p>
+            <p class="eyebrow">Selected Operation</p>
             <h2 id="command-title">Loading...</h2>
           </div>
           <p id="command-summary" class="hero-summary"></p>
@@ -45,24 +51,24 @@
               <h3>Arguments</h3>
               <span class="panel-note">One argument per line</span>
             </div>
-            <p class="muted">The command path is prefilled when you pick a runnable command. Add flags and positional values below it.</p>
+            <p class="muted">The operation path is prefilled when you pick an item above. Add flags and positional values below it.</p>
             <textarea id="arguments-input" class="code-input" spellcheck="false"></textarea>
 
             <div class="panel-heading secondary-heading">
               <h3>Standard Input</h3>
               <span class="panel-note">Optional raw input</span>
             </div>
-            <textarea id="stdin-input" class="code-input stdin-input" spellcheck="false" placeholder="Type stdin payload here when a command expects input"></textarea>
+            <textarea id="stdin-input" class="code-input stdin-input" spellcheck="false" placeholder="Type stdin payload here when an operation expects input"></textarea>
 
             <div class="button-row">
-              <button id="run-command" class="primary-button" type="button">Run Command</button>
+              <button id="run-command" class="primary-button" type="button">Run Operation</button>
               <span id="run-status" class="status-pill status-idle">idle</span>
             </div>
           </section>
 
           <section class="card details-card">
             <div class="panel-heading">
-              <h3>Metadata</h3>
+              <h3>Operation Details</h3>
               <span id="selected-path" class="panel-note"></span>
             </div>
             <div class="metadata-grid">

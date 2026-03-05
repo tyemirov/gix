@@ -115,7 +115,7 @@ h1 {
 }
 
 h2 {
-  font-size: clamp(1.7rem, 2.6vw, 2.3rem);
+  font-size: clamp(1.5rem, 2vw, 2rem);
   line-height: 1;
 }
 
@@ -153,6 +153,7 @@ h4 {
 
 .text-input {
   padding: 0.85rem 0.95rem;
+  margin: 0.6rem 0 0.9rem;
   font: inherit;
 }
 
@@ -169,7 +170,9 @@ h4 {
 
 .field-label,
 .panel-heading,
-.secondary-heading {
+.secondary-heading,
+.branch-row,
+.flag-name-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -185,13 +188,54 @@ h4 {
   margin-top: 1.1rem;
 }
 
-.command-list {
+.branch-list,
+.operation-list,
+.flag-list {
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
+}
+
+.branch-list {
   max-height: 58vh;
   overflow: auto;
   padding-right: 0.2rem;
+}
+
+.operation-list {
+  max-height: 15rem;
+  overflow: auto;
+  padding-right: 0.2rem;
+}
+
+.branch-item,
+.command-button,
+.flag-item {
+  border-radius: 18px;
+}
+
+.branch-item,
+.flag-item {
+  padding: 0.8rem 0.85rem;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.56);
+}
+
+.branch-item.current {
+  border-color: rgba(41, 92, 67, 0.28);
+  background: linear-gradient(135deg, rgba(232, 247, 239, 0.96), rgba(255, 250, 243, 0.94));
+}
+
+.branch-name,
+.command-path {
+  font-size: 0.96rem;
+  font-weight: 700;
+}
+
+.branch-upstream,
+.command-short {
+  font-size: 0.84rem;
+  color: var(--muted);
 }
 
 .command-button {
@@ -201,7 +245,6 @@ h4 {
   width: 100%;
   padding: 0.9rem 0.95rem;
   border: 1px solid transparent;
-  border-radius: 18px;
   background: rgba(255, 255, 255, 0.46);
   color: inherit;
   text-align: left;
@@ -220,16 +263,6 @@ h4 {
 .command-button.active {
   border-color: rgba(183, 81, 46, 0.48);
   background: linear-gradient(135deg, rgba(255, 238, 211, 0.96), rgba(255, 247, 236, 0.98));
-}
-
-.command-path {
-  font-size: 0.96rem;
-  font-weight: 700;
-}
-
-.command-short {
-  font-size: 0.84rem;
-  color: var(--muted);
 }
 
 .workspace-grid,
@@ -340,26 +373,6 @@ h4 {
   color: #ffd7d7;
 }
 
-.flag-list {
-  display: grid;
-  gap: 0.55rem;
-}
-
-.flag-item {
-  padding: 0.8rem 0.85rem;
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.56);
-}
-
-.flag-name-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: 0.3rem;
-}
-
 .error-message {
   color: var(--danger);
   min-height: 1.2rem;
@@ -380,7 +393,8 @@ h4 {
     grid-template-columns: 1fr;
   }
 
-  .command-list {
+  .branch-list,
+  .operation-list {
     max-height: 22rem;
   }
 }

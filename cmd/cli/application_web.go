@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -12,11 +13,18 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	"github.com/tyemirov/gix/internal/execshell"
+	reposdeps "github.com/tyemirov/gix/internal/repos/dependencies"
 	flagutils "github.com/tyemirov/gix/internal/utils/flags"
 	"github.com/tyemirov/gix/internal/web"
 )
 
-const webInterfaceUnavailableMessageConstant = "web mode is unavailable from the web interface"
+const (
+	webInterfaceUnavailableMessageConstant    = "web mode is unavailable from the web interface"
+	gitForEachRefSubcommandConstant           = "for-each-ref"
+	gitBranchCatalogFormatArgumentConstant    = "--format=%(HEAD)|%(refname:short)|%(upstream:short)"
+	gitBranchCatalogReferenceArgumentConstant = "refs/heads/"
+)
 
 type webRunner func(context.Context, web.ServerOptions) error
 
@@ -74,9 +82,10 @@ func (application *Application) handleWebLaunch(command *cobra.Command) (bool, e
 	}
 
 	return true, application.webRunner(executionContext, web.ServerOptions{
-		Address: launchConfiguration.listenAddress(),
-		Catalog: application.commandCatalog(),
-		Execute: application.newWebCommandExecutor(),
+		Address:  launchConfiguration.listenAddress(),
+		Branches: application.branchCatalog(executionContext),
+		Catalog:  application.commandCatalog(),
+		Execute:  application.newWebCommandExecutor(),
 	})
 }
 
@@ -163,6 +172,83 @@ func commandArgumentsContainFlag(arguments []string, flagName string) bool {
 	}
 
 	return false
+}
+
+func (application *Application) branchCatalog(executionContext context.Context) web.BranchCatalog {
+	workingDirectory, workingDirectoryError := os.Getwd()
+	if workingDirectoryError != nil {
+		return web.BranchCatalog{Error: workingDirectoryError.Error()}
+	}
+
+	gitExecutor, executorError := reposdeps.ResolveGitExecutor(nil, application.logger, application.humanReadableLoggingEnabled())
+	if executorError != nil {
+		return web.BranchCatalog{
+			RepositoryPath: workingDirectory,
+			Error:          executorError.Error(),
+		}
+	}
+
+	branchResult, branchError := gitExecutor.ExecuteGit(executionContext, execshell.CommandDetails{
+		Arguments:        []string{gitForEachRefSubcommandConstant, gitBranchCatalogFormatArgumentConstant, gitBranchCatalogReferenceArgumentConstant},
+		WorkingDirectory: workingDirectory,
+	})
+	if branchError != nil {
+		return web.BranchCatalog{
+			RepositoryPath: workingDirectory,
+			Error:          branchError.Error(),
+		}
+	}
+
+	return web.BranchCatalog{
+		RepositoryPath: workingDirectory,
+		Branches:       parseBranchCatalog(branchResult.StandardOutput),
+	}
+}
+
+func parseBranchCatalog(rawOutput string) []web.BranchDescriptor {
+	trimmedOutput := strings.TrimSpace(rawOutput)
+	if len(trimmedOutput) == 0 {
+		return nil
+	}
+
+	branchDescriptors := make([]web.BranchDescriptor, 0)
+	for _, line := range strings.Split(trimmedOutput, "\n") {
+		trimmedLine := strings.TrimSpace(line)
+		if len(trimmedLine) == 0 {
+			continue
+		}
+
+		parts := strings.SplitN(trimmedLine, "|", 3)
+		if len(parts) < 2 {
+			continue
+		}
+
+		branchName := strings.TrimSpace(parts[1])
+		if len(branchName) == 0 {
+			continue
+		}
+
+		branchDescriptor := web.BranchDescriptor{
+			Name:    branchName,
+			Current: strings.TrimSpace(parts[0]) == "*",
+		}
+		if len(parts) == 3 {
+			branchDescriptor.Upstream = strings.TrimSpace(parts[2])
+		}
+
+		branchDescriptors = append(branchDescriptors, branchDescriptor)
+	}
+
+	sort.Slice(branchDescriptors, func(leftIndex int, rightIndex int) bool {
+		leftBranch := branchDescriptors[leftIndex]
+		rightBranch := branchDescriptors[rightIndex]
+		if leftBranch.Current != rightBranch.Current {
+			return leftBranch.Current
+		}
+		return leftBranch.Name < rightBranch.Name
+	})
+
+	return branchDescriptors
 }
 
 func (application *Application) commandCatalog() web.CommandCatalog {
