@@ -649,7 +649,7 @@ function renderBranches(query) {
   elements.branchList.innerHTML = "";
 
   if (!repository) {
-  elements.branchCount.textContent = "0";
+    elements.branchCount.textContent = "0";
     appendEmptyState(elements.branchList, "Select a repository to browse current, default, and local branch refs.");
     return;
   }
