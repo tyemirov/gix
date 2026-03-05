@@ -73,6 +73,38 @@ func (executor *branchCaptureExecutor) ExecuteGitHubCLI(context.Context, execshe
 	return execshell.ExecutionResult{}, nil
 }
 
+type statefulBranchCaptureExecutor struct {
+	commands      []execshell.CommandDetails
+	currentBranch string
+}
+
+func (executor *statefulBranchCaptureExecutor) ExecuteGit(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
+	executor.commands = append(executor.commands, details)
+	if len(details.Arguments) == 0 {
+		return execshell.ExecutionResult{}, nil
+	}
+	switch details.Arguments[0] {
+	case "status":
+		return execshell.ExecutionResult{}, nil
+	case "remote":
+		return execshell.ExecutionResult{StandardOutput: "origin\n"}, nil
+	case "rev-parse":
+		if len(details.Arguments) > 2 && details.Arguments[1] == "--abbrev-ref" && details.Arguments[2] == "HEAD" {
+			return execshell.ExecutionResult{StandardOutput: executor.currentBranch + "\n"}, nil
+		}
+	case "switch":
+		if len(details.Arguments) > 1 {
+			executor.currentBranch = details.Arguments[1]
+		}
+		return execshell.ExecutionResult{}, nil
+	}
+	return execshell.ExecutionResult{}, nil
+}
+
+func (executor *statefulBranchCaptureExecutor) ExecuteGitHubCLI(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
+	return execshell.ExecutionResult{}, nil
+}
+
 func TestHandleBranchChangeActionUsesRepositoryDefault(t *testing.T) {
 	executor := &stubGitExecutor{
 		responses: []stubGitResponse{
@@ -525,6 +557,45 @@ func TestHandleBranchChangeActionCapturesBranch(t *testing.T) {
 	kind, kindExists := environment.CaptureKindForVariable(variableName)
 	require.True(t, kindExists)
 	require.Equal(t, workflow.CaptureKindBranch, kind)
+}
+
+func TestHandleBranchChangeActionCapturesOriginalBranchBeforeSwitch(t *testing.T) {
+	executor := &statefulBranchCaptureExecutor{currentBranch: "feature/local-work"}
+	reporter := &recordingReporter{}
+	variableName, nameErr := workflow.NewVariableName("initial_branch")
+	require.NoError(t, nameErr)
+
+	gitManager, managerErr := gitrepo.NewRepositoryManager(executor)
+	require.NoError(t, managerErr)
+
+	environment := &workflow.Environment{
+		GitExecutor:       executor,
+		RepositoryManager: gitManager,
+		Logger:            zap.NewNop(),
+		Output:            io.Discard,
+		Errors:            io.Discard,
+		Reporter:          reporter,
+		Variables:         workflow.NewVariableStore(),
+	}
+	repository := &workflow.RepositoryState{
+		Path: "/tmp/project",
+		Inspection: audit.RepositoryInspection{
+			RemoteDefaultBranch: "master",
+		},
+	}
+	parameters := map[string]any{
+		taskOptionBranchRemote: shared.OriginRemoteNameConstant,
+		"capture": map[string]any{
+			"name":  "initial_branch",
+			"value": "branch",
+		},
+	}
+
+	require.NoError(t, handleBranchChangeAction(context.Background(), environment, repository, parameters))
+	value, exists := environment.Variables.Get(variableName)
+	require.True(t, exists)
+	require.Equal(t, "feature/local-work", value)
+	require.Equal(t, "master", executor.currentBranch)
 }
 
 func TestHandleBranchChangeActionCapturesCommit(t *testing.T) {

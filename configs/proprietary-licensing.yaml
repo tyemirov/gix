@@ -1,0 +1,119 @@
+workflow:
+  - step:
+      name: folder-rename
+      command: ["folder", "rename"]
+      with:
+        require_clean: false
+        include_owner: false
+
+  - step:
+      name: switch-default-branch
+      after: ["folder-rename"]
+      command: ["tasks", "apply"]
+      with:
+        tasks:
+          - name: "Switch to default branch"
+            ensure_clean: true
+            actions:
+              - type: branch.change
+                options:
+                  remote: origin
+                  create_if_missing: false
+                  capture:
+                    name: initial_branch
+                    value: branch
+
+  - step:
+      name: license-branch
+      after: ["switch-default-branch"]
+      command: ["tasks", "apply"]
+      with:
+        tasks:
+          - name: "Create license branch"
+            ensure_clean: true
+            actions:
+              - type: branch.change
+                options:
+                  branch: 'automation/license-proprietary/{{ .Repository.Name }}-{{ index .Environment "workflow_run_id" }}'
+                  remote: origin
+                  create_if_missing: true
+
+  - step:
+      name: license-apply
+      after: ["license-branch"]
+      command: ["tasks", "apply"]
+      with:
+        tasks:
+          - name: "Apply proprietary license"
+            ensure_clean: true
+            steps:
+              - files.apply
+            files:
+              - path: LICENSE
+                content: |
+                  SPDX-License-Identifier: LicenseRef-MPRL-Proprietary
+
+                  Proprietary License
+
+                  Copyright (c) {{ if .Environment.license_year }}{{ .Environment.license_year }}{{ else }}2026{{ end }} {{ if .Environment.license_company }}{{ .Environment.license_company }}{{ else }}Marco Polo Research Lab{{ end }}
+                  All rights reserved.
+
+                  This software and associated documentation files (the "Software") are the
+                  confidential and proprietary information of {{ if .Environment.license_company }}{{ .Environment.license_company }}{{ else }}Marco Polo Research Lab{{ end }}. Unauthorized copying,
+                  distribution, modification, or use of the Software, in whole or in part, is
+                  strictly prohibited without prior written permission from {{ if .Environment.license_company }}{{ .Environment.license_company }}{{ else }}Marco Polo Research Lab{{ end }}.
+
+                  No license is granted to the public. Use is restricted to customers and
+                  partners under written agreements with {{ if .Environment.license_company }}{{ .Environment.license_company }}{{ else }}Marco Polo Research Lab{{ end }}.
+
+                  The Software is provided "AS IS", without warranty of any kind, express or
+                  implied, including but not limited to the warranties of merchantability,
+                  fitness for a particular purpose, and noninfringement. In no event shall
+                  {{ if .Environment.license_company }}{{ .Environment.license_company }}{{ else }}Marco Polo Research Lab{{ end }} be liable for any claim, damages, or other liability, whether in
+                  an action of contract, tort, or otherwise, arising from, out of, or in
+                  connection with the Software or the use or other dealings in the Software.
+                mode: overwrite
+                permissions: 420
+
+  - step:
+      name: license-stage-commit
+      after: ["license-apply"]
+      command: ["git", "stage-commit"]
+      with:
+        paths:
+          - "LICENSE"
+        commit_message: "chore: update license (proprietary)"
+        safeguards:
+          soft_skip:
+            require_changes: true
+
+  - step:
+      name: license-open-pr
+      after: ["license-stage-commit"]
+      command: ["pull-request", "open"]
+      with:
+        branch: 'automation/license-proprietary/{{ .Repository.Name }}-{{ index .Environment "workflow_run_id" }}'
+        title: "chore({{ .Repository.Name }}): proprietary license"
+        body: |
+          Updates the repository license to an SPDX-tagged proprietary LICENSE file.
+        base: "{{ .Repository.DefaultBranch }}"
+        push_remote: origin
+        draft: true
+        safeguards:
+          soft_skip:
+            require_changes: true
+
+  - step:
+      name: restore-initial-branch
+      after: ["license-open-pr"]
+      command: ["tasks", "apply"]
+      with:
+        tasks:
+          - name: "Restore initial branch"
+            ensure_clean: true
+            actions:
+              - type: branch.change
+                options:
+                  restore:
+                    from: initial_branch
+                    value: branch

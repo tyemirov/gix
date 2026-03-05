@@ -205,6 +205,12 @@ func handleBranchChangeAction(ctx context.Context, environment *workflow.Environ
 		stashPushCount++
 	}
 
+	if captureSpec != nil {
+		if err := captureBranchState(ctx, environment, repository, captureSpec); err != nil {
+			return err
+		}
+	}
+
 	service, serviceError := NewService(ServiceDependencies{
 		GitExecutor: environment.GitExecutor,
 		Logger:      environment.Logger,
@@ -266,12 +272,6 @@ func handleBranchChangeAction(ctx context.Context, environment *workflow.Environ
 			"refresh skipped (dirty worktree)",
 			refreshSkippedDetails,
 		)
-	}
-
-	if captureSpec != nil {
-		if err := captureBranchState(ctx, environment, repository, captureSpec); err != nil {
-			return err
-		}
 	}
 
 	for _, warning := range result.Warnings {
