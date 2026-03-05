@@ -49,6 +49,17 @@
 
 /**
  * @typedef {{
+ *   group?: string,
+ *   repository: string,
+ *   ref: string,
+ *   path: string,
+ *   supports_batch: boolean,
+ *   draft_template?: string,
+ * }} CommandTargetDescriptor
+ */
+
+/**
+ * @typedef {{
  *   path: string,
  *   use: string,
  *   name: string,
@@ -58,6 +69,7 @@
  *   aliases?: string[],
  *   runnable: boolean,
  *   actionable: boolean,
+ *   target: CommandTargetDescriptor,
  *   flags?: FlagDescriptor[],
  *   subcommands?: string[],
  * }} CommandDescriptor
@@ -102,40 +114,81 @@ const commandsEndpoint = "/api/commands";
 const runsEndpoint = "/api/runs";
 const pollIntervalMilliseconds = 800;
 const currentRepoLaunchMode = "current_repo";
-const selectedScopeValue = "selected";
-const allScopeValue = "all";
+const scopeSelectedValue = "selected";
+const scopeCheckedValue = "checked";
+const scopeAllValue = "all";
+const refModeCurrentValue = "current";
+const refModeDefaultValue = "default";
+const refModeNamedValue = "named";
+const refModePatternValue = "pattern";
+const refModeAnyValue = "any";
+const pathModeNoneValue = "none";
+const pathModeRelativeValue = "relative";
+const pathModeGlobValue = "glob";
+const pathModeMultipleValue = "multiple";
+const targetRequirementNoneValue = "none";
+const targetRequirementOptionalValue = "optional";
+const targetRequirementRequiredValue = "required";
+const commandGroupBranchValue = "branch";
+const commandGroupRepositoryValue = "repository";
+const commandGroupRemoteValue = "remote";
+const commandGroupPullRequestsValue = "prs";
+const commandGroupPackagesValue = "packages";
+const commandGroupFilesValue = "files";
+const commandGroupGeneralValue = "general";
+const draftTemplateFilesAddValue = "files_add";
+const draftTemplateFilesReplaceValue = "files_replace";
+const draftTemplateFilesRemoveValue = "files_remove";
+const commandPathVersionValue = "gix version";
+const commandPathAuditValue = "gix audit";
+const commandPathBranchChangeValue = "gix cd";
+const commandPathDefaultValue = "gix default";
+const pathPlaceholderRelativeValue = "RELATIVE/PATH";
+const pathPlaceholderGlobValue = "**/*";
+const pathPlaceholderMultipleValue = "PATH/ONE\nPATH/TWO";
 
 /** @type {CommandGroupDefinition[]} */
 const commandGroupDefinitions = [
-  { id: "branch", title: "Branch Flow", description: "Switch branches and promote branch state inside the selected repository." },
-  { id: "repository", title: "Repository", description: "Inspect and normalize repository state." },
-  { id: "remote", title: "Remote", description: "Align remotes and transport settings." },
-  { id: "prs", title: "Pull Requests", description: "Clean up local and remote PR branches." },
-  { id: "packages", title: "Packages", description: "Prune package artifacts tied to the repository." },
-  { id: "general", title: "General", description: "Global commands that are not tied to one repository." },
+  { id: commandGroupBranchValue, title: "Branch Flow", description: "Switch branches and promote branch state across the target repositories." },
+  { id: commandGroupRepositoryValue, title: "Repository", description: "Inspect and normalize repository state." },
+  { id: commandGroupRemoteValue, title: "Remote", description: "Align remotes and transport settings." },
+  { id: commandGroupPullRequestsValue, title: "Pull Requests", description: "Clean up local and remote PR branches." },
+  { id: commandGroupPackagesValue, title: "Packages", description: "Prune package artifacts tied to the repository." },
+  { id: commandGroupFilesValue, title: "Files", description: "Draft file additions, replacements, and removals across repository targets." },
+  { id: commandGroupGeneralValue, title: "General", description: "Commands that are not tied to a repository target." },
 ];
 
 /** @type {{
  *   repositoryCatalog: RepositoryCatalog | null,
  *   repositories: RepositoryDescriptor[],
- *   allCommands: CommandDescriptor[],
+ *   checkedRepositoryIDs: string[],
  *   selectedRepositoryID: string,
  *   selectedScope: string,
+ *   targetRefMode: string,
+ *   targetRefValue: string,
+ *   targetPathMode: string,
+ *   targetPathValue: string,
  *   branches: BranchDescriptor[],
  *   selectedBranchName: string,
-  *   commands: CommandDescriptor[],
+ *   allCommands: CommandDescriptor[],
+ *   actionableCommands: CommandDescriptor[],
  *   selectedPath: string,
  *   pollTimer: number | null,
  * }} */
 const state = {
   repositoryCatalog: null,
   repositories: [],
-  allCommands: [],
+  checkedRepositoryIDs: [],
   selectedRepositoryID: "",
-  selectedScope: selectedScopeValue,
+  selectedScope: scopeSelectedValue,
+  targetRefMode: refModeCurrentValue,
+  targetRefValue: "",
+  targetPathMode: pathModeNoneValue,
+  targetPathValue: "",
   branches: [],
   selectedBranchName: "",
-  commands: [],
+  allCommands: [],
+  actionableCommands: [],
   selectedPath: "",
   pollTimer: null,
 };
@@ -149,15 +202,25 @@ const elements = {
   repoPath: document.querySelector("#repo-path"),
   repoSummary: document.querySelector("#repo-summary"),
   repoStateTokens: document.querySelector("#repo-state-tokens"),
+  targetRepoSummary: document.querySelector("#target-repo-summary"),
+  targetRepoDetail: document.querySelector("#target-repo-detail"),
+  scopeSelected: document.querySelector("#scope-selected"),
+  scopeChecked: document.querySelector("#scope-checked"),
+  scopeAll: document.querySelector("#scope-all"),
+  targetRefSummary: document.querySelector("#target-ref-summary"),
+  targetRefMode: document.querySelector("#target-ref-mode"),
+  targetRefValue: document.querySelector("#target-ref-value"),
+  targetPathSummary: document.querySelector("#target-path-summary"),
+  targetPathMode: document.querySelector("#target-path-mode"),
+  targetPathValue: document.querySelector("#target-path-value"),
   branchCount: document.querySelector("#branch-count"),
   branchFilter: document.querySelector("#branch-filter"),
   branchList: document.querySelector("#branch-list"),
   actionContext: document.querySelector("#action-context"),
-  scopeSelected: document.querySelector("#scope-selected"),
-  scopeAll: document.querySelector("#scope-all"),
   commandCount: document.querySelector("#command-count"),
   commandFilter: document.querySelector("#command-filter"),
   commandGroups: document.querySelector("#command-groups"),
+  draftList: document.querySelector("#draft-list"),
   selectedPath: document.querySelector("#selected-path"),
   commandSummary: document.querySelector("#command-summary"),
   commandUsage: document.querySelector("#command-usage"),
@@ -175,9 +238,6 @@ const elements = {
   actionSwitchDefault: document.querySelector("#action-switch-default"),
   actionSwitchSelected: document.querySelector("#action-switch-selected"),
   actionPromoteSelected: document.querySelector("#action-promote-selected"),
-  templateFilesAdd: document.querySelector("#template-files-add"),
-  templateFilesReplace: document.querySelector("#template-files-replace"),
-  templateFilesRemove: document.querySelector("#template-files-rm"),
 };
 
 initialize().catch((error) => {
@@ -208,28 +268,36 @@ async function initialize() {
   state.repositoryCatalog = repositoryCatalog;
   state.repositories = (repositoryCatalog.repositories || []).slice().sort(compareRepositories);
   state.allCommands = (commandCatalog.commands || []).slice().sort((left, right) => left.path.localeCompare(right.path));
-  state.commands = (commandCatalog.commands || []).filter((command) => command.actionable).sort((left, right) => left.path.localeCompare(right.path));
+  state.actionableCommands = state.allCommands.filter((command) => command.actionable);
+
+  const initialRepositoryID = repositoryCatalog.selected_repository_id || state.repositories[0]?.id || "";
+  if (initialRepositoryID) {
+    state.selectedRepositoryID = initialRepositoryID;
+    state.checkedRepositoryIDs = [initialRepositoryID];
+  }
 
   elements.repoCount.textContent = String(state.repositories.length);
-  elements.commandCount.textContent = String(state.commands.length);
+  elements.commandCount.textContent = String(state.actionableCommands.length);
+  elements.targetRefMode.value = state.targetRefMode;
+  elements.targetPathMode.value = state.targetPathMode;
 
   renderRepositoryLaunchSummary();
   renderRepositoryList("");
-  renderScopeToggle();
+  renderTargetState();
+  renderDraftList();
   renderActionGroups("");
 
-  const initialCommand = findCommand("gix audit") || findCommand("gix version") || state.commands[0] || null;
-  if (initialCommand) {
-    selectCommand(initialCommand.path);
-  }
-
-  const initialRepositoryID = repositoryCatalog.selected_repository_id || state.repositories[0]?.id || "";
   if (initialRepositoryID) {
     await selectRepository(initialRepositoryID);
   } else {
     renderSelectedRepository();
     renderBranches("");
     syncQuickActions();
+  }
+
+  const initialCommand = findCommand(commandPathAuditValue) || findCommand(commandPathVersionValue) || state.actionableCommands[0] || null;
+  if (initialCommand) {
+    selectCommand(initialCommand.path);
   }
 
   setStatus("idle");
@@ -245,11 +313,45 @@ function bindEvents() {
   });
 
   elements.scopeSelected.addEventListener("click", () => {
-    setScope(selectedScopeValue);
+    setScope(scopeSelectedValue);
+  });
+
+  elements.scopeChecked.addEventListener("click", () => {
+    setScope(scopeCheckedValue);
   });
 
   elements.scopeAll.addEventListener("click", () => {
-    setScope(allScopeValue);
+    setScope(scopeAllValue);
+  });
+
+  elements.targetRefMode.addEventListener("change", () => {
+    state.targetRefMode = elements.targetRefMode.value;
+    if (state.targetRefMode !== refModeNamedValue && state.targetRefMode !== refModePatternValue) {
+      state.targetRefValue = "";
+    }
+    renderTargetState();
+    repopulateSelectedCommand();
+  });
+
+  elements.targetRefValue.addEventListener("input", () => {
+    state.targetRefValue = elements.targetRefValue.value;
+    renderTargetState();
+    repopulateSelectedCommand();
+  });
+
+  elements.targetPathMode.addEventListener("change", () => {
+    state.targetPathMode = elements.targetPathMode.value;
+    if (state.targetPathMode === pathModeNoneValue) {
+      state.targetPathValue = "";
+    }
+    renderTargetState();
+    repopulateSelectedCommand();
+  });
+
+  elements.targetPathValue.addEventListener("input", () => {
+    state.targetPathValue = elements.targetPathValue.value;
+    renderTargetState();
+    repopulateSelectedCommand();
   });
 
   elements.commandFilter.addEventListener("input", () => {
@@ -275,18 +377,6 @@ function bindEvents() {
   elements.actionPromoteSelected.addEventListener("click", () => {
     loadQuickAction("promote-selected");
   });
-
-  elements.templateFilesAdd.addEventListener("click", () => {
-    loadFileDraft("gix files add");
-  });
-
-  elements.templateFilesReplace.addEventListener("click", () => {
-    loadFileDraft("gix files replace");
-  });
-
-  elements.templateFilesRemove.addEventListener("click", () => {
-    loadFileDraft("gix files rm");
-  });
 }
 
 function renderRepositoryLaunchSummary() {
@@ -306,30 +396,36 @@ function renderRepositoryLaunchSummary() {
   elements.repoLaunchSummary.textContent = launchPath ? `${launchMode} from ${launchPath}` : launchMode;
 }
 
-function renderScopeToggle() {
-  elements.scopeSelected.classList.toggle("active", state.selectedScope === selectedScopeValue);
-  elements.scopeAll.classList.toggle("active", state.selectedScope === allScopeValue);
+function renderTargetState() {
+  const scopeRepositories = repositoryScopeRepositories();
+  const scopeLabel = state.selectedScope === scopeSelectedValue
+    ? "selected"
+    : state.selectedScope === scopeCheckedValue
+      ? "checked"
+      : "all";
+
+  elements.scopeSelected.classList.toggle("active", state.selectedScope === scopeSelectedValue);
+  elements.scopeChecked.classList.toggle("active", state.selectedScope === scopeCheckedValue);
+  elements.scopeAll.classList.toggle("active", state.selectedScope === scopeAllValue);
+  elements.scopeChecked.disabled = checkedRepositories().length === 0;
   elements.scopeAll.disabled = state.repositories.length === 0;
-}
 
-/**
- * @param {string} scope
- */
-function setScope(scope) {
-  if (scope !== selectedScopeValue && scope !== allScopeValue) {
-    return;
-  }
+  elements.targetRepoSummary.textContent = `${scopeRepositories.length} ${scopeRepositories.length === 1 ? "repo" : "repos"}`;
+  elements.targetRepoDetail.textContent = buildRepositoryScopeDetail(scopeLabel, scopeRepositories);
 
-  if (scope === state.selectedScope) {
-    return;
-  }
+  elements.targetRefMode.value = state.targetRefMode;
+  elements.targetRefValue.disabled = state.targetRefMode !== refModeNamedValue && state.targetRefMode !== refModePatternValue;
+  elements.targetRefValue.placeholder = state.targetRefMode === refModePatternValue ? "branch-*" : "branch-name";
+  elements.targetRefValue.value = state.targetRefValue;
+  elements.targetRefSummary.textContent = buildRefSummary();
 
-  state.selectedScope = scope;
-  renderScopeToggle();
-  syncQuickActions();
+  elements.targetPathMode.value = state.targetPathMode;
+  elements.targetPathValue.disabled = state.targetPathMode === pathModeNoneValue;
+  elements.targetPathValue.placeholder = pathInputPlaceholder();
+  elements.targetPathValue.value = state.targetPathValue;
+  elements.targetPathSummary.textContent = buildPathSummary();
+
   updateActionContext();
-  renderActionGroups(elements.commandFilter.value.trim().toLowerCase());
-  repopulateSelectedCommand();
 }
 
 /**
@@ -353,6 +449,21 @@ function renderRepositoryList(query) {
   }
 
   filteredRepositories.forEach((repository) => {
+    const container = document.createElement("div");
+    container.className = `repo-entry${repository.id === state.selectedRepositoryID ? " selected" : ""}`;
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.className = "repo-checkbox";
+    checkbox.checked = state.checkedRepositoryIDs.includes(repository.id);
+    checkbox.setAttribute("aria-label", `Include ${repository.name} in checked repositories`);
+    checkbox.addEventListener("click", (event) => {
+      event.stopPropagation();
+    });
+    checkbox.addEventListener("change", () => {
+      toggleCheckedRepository(repository.id, checkbox.checked);
+    });
+
     const button = document.createElement("button");
     button.type = "button";
     button.className = `repo-button${repository.id === state.selectedRepositoryID ? " active" : ""}`;
@@ -369,7 +480,9 @@ function renderRepositoryList(query) {
     button.addEventListener("click", () => {
       void selectRepository(repository.id);
     });
-    elements.repoList.append(button);
+
+    container.append(checkbox, button);
+    elements.repoList.append(container);
   });
 }
 
@@ -383,15 +496,19 @@ async function selectRepository(repositoryID) {
   }
 
   state.selectedRepositoryID = repositoryID;
+  if (state.checkedRepositoryIDs.length === 0) {
+    state.checkedRepositoryIDs = [repositoryID];
+  }
   state.selectedBranchName = "";
   state.branches = [];
 
   renderRepositoryList(elements.repoFilter.value.trim().toLowerCase());
+  renderTargetState();
   renderSelectedRepository();
   renderBranches(elements.branchFilter.value.trim().toLowerCase());
-  syncQuickActions();
-  updateActionContext();
+  renderDraftList();
   renderActionGroups(elements.commandFilter.value.trim().toLowerCase());
+  syncQuickActions();
 
   const response = await fetch(`${repositoriesEndpoint}/${encodeURIComponent(repositoryID)}/branches`);
   if (!response.ok) {
@@ -413,13 +530,35 @@ async function selectRepository(repositoryID) {
   state.branches = (branchCatalog.branches || []).slice().sort(compareBranches);
   const initialBranch = state.branches.find((branch) => branch.current) || state.branches[0] || null;
   state.selectedBranchName = initialBranch ? initialBranch.name : "";
+  renderTargetState();
   renderBranches(elements.branchFilter.value.trim().toLowerCase());
   syncQuickActions();
+  repopulateSelectedCommand();
+}
 
-  const selectedCommand = findSelectedCommand();
-  if (selectedCommand) {
-    populateArguments(selectedCommand);
+/**
+ * @param {string} repositoryID
+ * @param {boolean} checked
+ */
+function toggleCheckedRepository(repositoryID, checked) {
+  const checkedRepositoryIDs = new Set(state.checkedRepositoryIDs);
+  if (checked) {
+    checkedRepositoryIDs.add(repositoryID);
+  } else {
+    checkedRepositoryIDs.delete(repositoryID);
   }
+  state.checkedRepositoryIDs = Array.from(checkedRepositoryIDs);
+
+  if (state.selectedScope === scopeCheckedValue && state.checkedRepositoryIDs.length === 0) {
+    state.selectedScope = scopeSelectedValue;
+  }
+
+  renderRepositoryList(elements.repoFilter.value.trim().toLowerCase());
+  renderTargetState();
+  renderDraftList();
+  renderActionGroups(elements.commandFilter.value.trim().toLowerCase());
+  syncQuickActions();
+  repopulateSelectedCommand();
 }
 
 function renderSelectedRepository() {
@@ -429,7 +568,6 @@ function renderSelectedRepository() {
     elements.repoPath.textContent = state.repositoryCatalog?.launch_path || "";
     elements.repoSummary.textContent = state.repositoryCatalog?.error || "Select a repository to scope branch and repository actions.";
     elements.repoStateTokens.innerHTML = "";
-    updateActionContext();
     return;
   }
 
@@ -449,30 +587,38 @@ function renderSelectedRepository() {
   if (repository.error) {
     appendToken(elements.repoStateTokens, "inspection warning", "token-warning");
   }
-
-  updateActionContext();
 }
 
 function updateActionContext() {
-  const repository = selectedRepository();
-  const scopeRoots = repositoryScopeRoots();
-  if (!repository) {
-    elements.actionContext.textContent = "General actions remain available. Repository-scoped actions need a selected repo or discovered repositories.";
+  const scopeRepositories = repositoryScopeRepositories();
+  const selectedCommand = findSelectedCommand();
+  const commandDraft = selectedCommand ? resolveCommandDraft(selectedCommand) : null;
+
+  if (selectedCommand && commandDraft?.reason) {
+    elements.actionContext.textContent = commandDraft.reason;
     return;
   }
 
-  if (state.selectedScope === allScopeValue && scopeRoots.length > 0) {
-    elements.actionContext.textContent = `Scoped to all ${scopeRoots.length} discovered repositories. Repository actions and file drafts will preload repeated --roots entries.`;
+  if (selectedCommand && selectedCommand.target.repository === targetRequirementNoneValue) {
+    elements.actionContext.textContent = "This action is global and ignores repository, ref, and path targets.";
     return;
   }
 
-  const branch = selectedBranch();
-  if (branch) {
-    elements.actionContext.textContent = `Scoped to ${repository.name} on branch ${branch.name}. Quick actions load branch-aware commands into the runner.`;
+  if (scopeRepositories.length === 0) {
+    elements.actionContext.textContent = "Choose a repository target set to enable repository-scoped actions and file drafts.";
     return;
   }
 
-  elements.actionContext.textContent = `Scoped to ${repository.name}. Repository actions will be prefilled with --roots ${repository.path}.`;
+  const repositorySummary = `${scopeRepositories.length} ${scopeRepositories.length === 1 ? "repo" : "repos"}`;
+  const refSummary = buildRefSummary();
+  const pathSummary = buildPathSummary();
+
+  if (selectedCommand && selectedCommand.target.path !== targetRequirementNoneValue) {
+    elements.actionContext.textContent = `Targeting ${repositorySummary}. Ref mode ${refSummary}. Path mode ${pathSummary}.`;
+    return;
+  }
+
+  elements.actionContext.textContent = `Targeting ${repositorySummary}. Ref mode ${refSummary}.`;
 }
 
 /**
@@ -516,26 +662,53 @@ function renderBranches(query) {
     `;
     button.addEventListener("click", () => {
       state.selectedBranchName = branch.name;
+      if (state.targetRefMode === refModeNamedValue) {
+        state.targetRefValue = branch.name;
+      }
+      renderTargetState();
       renderBranches(elements.branchFilter.value.trim().toLowerCase());
       syncQuickActions();
-      updateActionContext();
+      repopulateSelectedCommand();
     });
     elements.branchList.append(button);
+  });
+}
+
+function renderDraftList() {
+  const draftCommands = state.allCommands
+    .filter((command) => Boolean(command.target.draft_template))
+    .sort((left, right) => left.path.localeCompare(right.path));
+
+  elements.draftList.innerHTML = "";
+  if (draftCommands.length === 0) {
+    appendEmptyState(elements.draftList, "No file drafts are currently available.");
+    return;
+  }
+
+  const repositoryTargetsAvailable = repositoryScopeRoots().length > 0;
+  draftCommands.forEach((command) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `secondary-button draft-button${command.path === state.selectedPath ? " active" : ""}`;
+    button.disabled = !repositoryTargetsAvailable || (state.selectedScope !== scopeSelectedValue && !command.target.supports_batch);
+    button.textContent = command.short || command.path;
+    button.addEventListener("click", () => {
+      if (!button.disabled) {
+        selectCommand(command.path);
+      }
+    });
+    elements.draftList.append(button);
   });
 }
 
 function syncQuickActions(errorText = "") {
   const repository = selectedRepository();
   const branch = selectedBranch();
-  const branchQuickActionsDisabled = state.selectedScope === allScopeValue;
-  const fileDraftsDisabled = repositoryScopeRoots().length === 0;
+  const branchQuickActionsDisabled = state.selectedScope !== scopeSelectedValue;
 
   elements.actionSwitchDefault.disabled = !repository || branchQuickActionsDisabled;
   elements.actionSwitchSelected.disabled = !repository || !branch || branch.current || branchQuickActionsDisabled;
   elements.actionPromoteSelected.disabled = !repository || !branch || branchQuickActionsDisabled;
-  elements.templateFilesAdd.disabled = fileDraftsDisabled;
-  elements.templateFilesReplace.disabled = fileDraftsDisabled;
-  elements.templateFilesRemove.disabled = fileDraftsDisabled;
 
   elements.actionSwitchDefault.textContent = repository && repository.default_branch
     ? `Load switch to ${repository.default_branch}`
@@ -553,8 +726,6 @@ function syncQuickActions(errorText = "") {
 
   if (errorText) {
     elements.actionContext.textContent = errorText;
-  } else if (branchQuickActionsDisabled) {
-    elements.actionContext.textContent = "Branch quick actions stay on the selected repository only. Switch scope back to Selected Repo to load them.";
   }
 }
 
@@ -568,10 +739,10 @@ function loadQuickAction(quickActionID) {
     return;
   }
 
-  setScope(selectedScopeValue);
+  setScope(scopeSelectedValue);
 
   if (quickActionID === "switch-default") {
-    selectCommand("gix cd", { argumentsOverride: ["cd", "--roots", repository.path] });
+    selectCommand(commandPathBranchChangeValue, { argumentsOverride: ["cd", "--roots", repository.path] });
     return;
   }
 
@@ -580,23 +751,11 @@ function loadQuickAction(quickActionID) {
   }
 
   if (quickActionID === "switch-selected") {
-    selectCommand("gix cd", { argumentsOverride: ["cd", branch.name, "--roots", repository.path] });
+    selectCommand(commandPathBranchChangeValue, { argumentsOverride: ["cd", branch.name, "--roots", repository.path] });
     return;
   }
 
-  selectCommand("gix default", { argumentsOverride: ["default", branch.name, "--roots", repository.path] });
-}
-
-/**
- * @param {"gix files add" | "gix files replace" | "gix files rm"} commandPath
- */
-function loadFileDraft(commandPath) {
-  const command = findCommand(commandPath);
-  if (!command) {
-    return;
-  }
-
-  selectCommand(commandPath, { argumentsOverride: buildFileDraftArguments(commandPath) });
+  selectCommand(commandPathDefaultValue, { argumentsOverride: ["default", branch.name, "--roots", repository.path] });
 }
 
 /**
@@ -608,23 +767,27 @@ function renderActionGroups(query) {
     groupedCommands.set(group.id, []);
   });
 
-  state.commands.forEach((command) => {
+  state.actionableCommands.forEach((command) => {
     if (query) {
       const haystack = [command.path, command.short || "", ...(command.aliases || [])].join(" ").toLowerCase();
       if (!haystack.includes(query)) {
         return;
       }
     }
-    const group = groupForCommand(command);
-    const commands = groupedCommands.get(group.id);
+
+    const groupID = command.target.group || commandGroupGeneralValue;
+    const commands = groupedCommands.get(groupID);
     if (commands) {
       commands.push(command);
+      return;
     }
+
+    groupedCommands.set(groupID, [command]);
   });
 
   elements.commandGroups.innerHTML = "";
-
   let renderedAnyGroup = false;
+
   commandGroupDefinitions.forEach((group) => {
     const commands = groupedCommands.get(group.id) || [];
     if (commands.length === 0) {
@@ -647,8 +810,10 @@ function renderActionGroups(query) {
     list.className = "command-group-list";
     commands.forEach((command) => {
       const button = document.createElement("button");
-      const requiresRepository = commandNeedsRepository(command);
-      const disabled = requiresRepository && repositoryScopeRoots().length === 0;
+      const disabled = (
+        (command.target.repository !== targetRequirementNoneValue && repositoryScopeRoots().length === 0) ||
+        (command.target.repository !== targetRequirementNoneValue && state.selectedScope !== scopeSelectedValue && !command.target.supports_batch)
+      );
       button.type = "button";
       button.className = `command-button${command.path === state.selectedPath ? " active" : ""}`;
       button.disabled = disabled;
@@ -684,9 +849,11 @@ function selectCommand(commandPath, options = {}) {
   }
 
   state.selectedPath = command.path;
+  renderDraftList();
   renderActionGroups(elements.commandFilter.value.trim().toLowerCase());
   renderCommandDetails(command);
   populateArguments(command, options.argumentsOverride || null);
+  updateActionContext();
 }
 
 /**
@@ -705,73 +872,327 @@ function renderCommandDetails(command) {
  * @param {string[] | null} [argumentsOverride]
  */
 function populateArguments(command, argumentsOverride = null) {
-  const preparedArguments = argumentsOverride || buildCommandArguments(command);
+  const preparedArguments = argumentsOverride || resolveCommandDraft(command).arguments;
   elements.argumentsInput.value = preparedArguments.join("\n");
   renderCommandPreview();
 }
 
 /**
  * @param {CommandDescriptor} command
- * @returns {string[]}
+ * @returns {{ arguments: string[], reason: string }}
  */
-function buildCommandArguments(command) {
-  const argumentsList = command.path.split(" ").slice(1);
-  if (commandNeedsRepository(command)) {
-    argumentsList.push(...buildRootArgumentsForScope());
+function resolveCommandDraft(command) {
+  const rootArguments = buildRootArgumentsForScope(command);
+  if (command.target.repository !== targetRequirementNoneValue && rootArguments.length === 0) {
+    return {
+      arguments: [],
+      reason: "Select at least one repository in the target bar to load this action.",
+    };
   }
-  return argumentsList;
+
+  if (command.target.repository !== targetRequirementNoneValue && state.selectedScope !== scopeSelectedValue && !command.target.supports_batch) {
+    return {
+      arguments: [],
+      reason: "This action only supports Selected repo scope.",
+    };
+  }
+
+  if (command.target.draft_template === draftTemplateFilesAddValue || command.target.draft_template === draftTemplateFilesReplaceValue || command.target.draft_template === draftTemplateFilesRemoveValue) {
+    return buildDraftArguments(command, rootArguments);
+  }
+
+  if (command.path === commandPathBranchChangeValue) {
+    return buildBranchChangeArguments(rootArguments);
+  }
+
+  if (command.path === commandPathDefaultValue) {
+    return buildDefaultCommandArguments(rootArguments);
+  }
+
+  return {
+    arguments: [...command.path.split(" ").slice(1), ...rootArguments],
+    reason: "",
+  };
 }
 
 /**
- * @param {string} commandPath
- * @returns {string[]}
+ * @param {CommandDescriptor} command
+ * @param {string[]} rootArguments
+ * @returns {{ arguments: string[], reason: string }}
  */
-function buildFileDraftArguments(commandPath) {
-  const rootArguments = buildRootArgumentsForScope();
-  if (commandPath === "gix files add") {
-    return [
-      "files",
-      "add",
-      ...rootArguments,
-      "--path",
-      "RELATIVE/PATH",
-      "--content",
-      "FILE CONTENT",
-    ];
+function buildDraftArguments(command, rootArguments) {
+  const optionalRefValue = resolveOptionalGuardRefValue();
+  const pathValues = resolvePathValues();
+
+  if (command.target.draft_template === draftTemplateFilesAddValue) {
+    return {
+      arguments: ["files", "add", ...rootArguments, "--path", firstPathValue(pathValues), "--content", "FILE CONTENT"],
+      reason: "",
+    };
   }
 
-  if (commandPath === "gix files replace") {
-    return [
-      "files",
-      "replace",
-      ...rootArguments,
-      "--pattern",
-      "**/*",
-      "--find",
-      "TEXT_TO_FIND",
-      "--replace",
-      "TEXT_TO_REPLACE",
-    ];
+  if (command.target.draft_template === draftTemplateFilesReplaceValue) {
+    const argumentsList = ["files", "replace", ...rootArguments];
+    replacementPatterns(pathValues).forEach((patternValue) => {
+      argumentsList.push("--pattern", patternValue);
+    });
+    if (optionalRefValue) {
+      argumentsList.push("--branch", optionalRefValue);
+    }
+    argumentsList.push("--find", "TEXT_TO_FIND", "--replace", "TEXT_TO_REPLACE");
+    return { arguments: argumentsList, reason: "" };
   }
 
-  return [
-    "files",
-    "rm",
-    ...rootArguments,
-    "PATH_TO_REMOVE",
-  ];
+  return {
+    arguments: ["files", "rm", ...rootArguments, ...removePaths(pathValues)],
+    reason: "",
+  };
+}
+
+/**
+ * @param {string[]} rootArguments
+ * @returns {{ arguments: string[], reason: string }}
+ */
+function buildBranchChangeArguments(rootArguments) {
+  const selection = resolveBranchChangeSelection();
+  if (!selection.ready) {
+    return { arguments: [], reason: selection.reason };
+  }
+
+  const argumentsList = ["cd"];
+  if (selection.branch) {
+    argumentsList.push(selection.branch);
+  }
+  argumentsList.push(...rootArguments);
+  return { arguments: argumentsList, reason: "" };
+}
+
+/**
+ * @param {string[]} rootArguments
+ * @returns {{ arguments: string[], reason: string }}
+ */
+function buildDefaultCommandArguments(rootArguments) {
+  const selection = resolveDefaultTargetBranch();
+  if (!selection.ready) {
+    return { arguments: [], reason: selection.reason };
+  }
+
+  return {
+    arguments: ["default", selection.branch, ...rootArguments],
+    reason: "",
+  };
+}
+
+/**
+ * @returns {{ ready: boolean, branch: string, reason: string }}
+ */
+function resolveBranchChangeSelection() {
+  const repository = selectedRepository();
+
+  if (state.targetRefMode === refModeNamedValue) {
+    const namedBranch = state.targetRefValue.trim();
+    if (namedBranch) {
+      return { ready: true, branch: namedBranch, reason: "" };
+    }
+    return { ready: false, branch: "", reason: "Enter a named ref to load the switch-branch action." };
+  }
+
+  if (state.targetRefMode === refModeDefaultValue) {
+    if (state.selectedScope !== scopeSelectedValue) {
+      return { ready: true, branch: "", reason: "" };
+    }
+    return { ready: true, branch: repository?.default_branch || "", reason: "" };
+  }
+
+  if (state.targetRefMode === refModeCurrentValue) {
+    if (state.selectedScope !== scopeSelectedValue) {
+      return {
+        ready: false,
+        branch: "",
+        reason: "Current ref mode cannot be expanded across multiple repositories for switch-branch. Use Selected repo, Named, or Default mode.",
+      };
+    }
+    const currentBranch = currentRepositoryBranchName();
+    if (currentBranch) {
+      return { ready: true, branch: currentBranch, reason: "" };
+    }
+    return { ready: false, branch: "", reason: "No current branch is available for the selected repository." };
+  }
+
+  if (state.targetRefMode === refModePatternValue) {
+    return {
+      ready: false,
+      branch: "",
+      reason: "Switch-branch requires one concrete branch name. Use Named or Default ref mode.",
+    };
+  }
+
+  return {
+    ready: false,
+    branch: "",
+    reason: "Select a named or default ref to load the switch-branch action.",
+  };
+}
+
+/**
+ * @returns {{ ready: boolean, branch: string, reason: string }}
+ */
+function resolveDefaultTargetBranch() {
+  const repository = selectedRepository();
+
+  if (state.targetRefMode === refModeNamedValue) {
+    const namedBranch = state.targetRefValue.trim();
+    if (namedBranch) {
+      return { ready: true, branch: namedBranch, reason: "" };
+    }
+    return { ready: false, branch: "", reason: "Enter a named ref to load the promote-default action." };
+  }
+
+  if (state.selectedScope !== scopeSelectedValue) {
+    return {
+      ready: false,
+      branch: "",
+      reason: "Promoting a default branch across multiple repositories requires Named ref mode.",
+    };
+  }
+
+  if (state.targetRefMode === refModeCurrentValue) {
+    const currentBranch = currentRepositoryBranchName();
+    if (currentBranch) {
+      return { ready: true, branch: currentBranch, reason: "" };
+    }
+    return { ready: false, branch: "", reason: "No current branch is available for the selected repository." };
+  }
+
+  if (state.targetRefMode === refModeDefaultValue) {
+    if (repository?.default_branch) {
+      return { ready: true, branch: repository.default_branch, reason: "" };
+    }
+    return { ready: false, branch: "", reason: "The selected repository does not expose a default branch to promote." };
+  }
+
+  if (state.targetRefMode === refModePatternValue) {
+    return {
+      ready: false,
+      branch: "",
+      reason: "Promoting a default branch requires one concrete branch name. Use Named or Current mode.",
+    };
+  }
+
+  return {
+    ready: false,
+    branch: "",
+    reason: "Select a concrete ref to load the promote-default action.",
+  };
+}
+
+/**
+ * @returns {string}
+ */
+function resolveOptionalGuardRefValue() {
+  if (state.targetRefMode === refModeNamedValue) {
+    return state.targetRefValue.trim();
+  }
+
+  if (state.selectedScope !== scopeSelectedValue) {
+    return "";
+  }
+
+  if (state.targetRefMode === refModeCurrentValue) {
+    return currentRepositoryBranchName();
+  }
+
+  if (state.targetRefMode === refModeDefaultValue) {
+    return selectedRepository()?.default_branch || "";
+  }
+
+  return "";
 }
 
 /**
  * @returns {string[]}
  */
-function buildRootArgumentsForScope() {
-  const roots = repositoryScopeRoots();
+function buildRootArgumentsForScope(command) {
+  if (command.target.repository === targetRequirementNoneValue) {
+    return [];
+  }
+
   const argumentsList = [];
-  roots.forEach((rootPath) => {
+  repositoryScopeRoots().forEach((rootPath) => {
     argumentsList.push("--roots", rootPath);
   });
   return argumentsList;
+}
+
+/**
+ * @param {string[]} pathValues
+ * @returns {string}
+ */
+function firstPathValue(pathValues) {
+  if (pathValues.length > 0) {
+    return pathValues[0];
+  }
+
+  if (state.targetPathMode === pathModeGlobValue) {
+    return pathPlaceholderGlobValue;
+  }
+  return pathPlaceholderRelativeValue;
+}
+
+/**
+ * @param {string[]} pathValues
+ * @returns {string[]}
+ */
+function replacementPatterns(pathValues) {
+  if (pathValues.length > 0) {
+    return pathValues;
+  }
+
+  if (state.targetPathMode === pathModeMultipleValue) {
+    return pathPlaceholderMultipleValue.split("\n");
+  }
+  if (state.targetPathMode === pathModeGlobValue) {
+    return [pathPlaceholderGlobValue];
+  }
+  return [pathPlaceholderRelativeValue];
+}
+
+/**
+ * @param {string[]} pathValues
+ * @returns {string[]}
+ */
+function removePaths(pathValues) {
+  if (pathValues.length > 0) {
+    return pathValues;
+  }
+
+  if (state.targetPathMode === pathModeMultipleValue) {
+    return pathPlaceholderMultipleValue.split("\n");
+  }
+  return [firstPathValue(pathValues)];
+}
+
+/**
+ * @returns {string[]}
+ */
+function resolvePathValues() {
+  const sanitizedLines = state.targetPathValue
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (state.targetPathMode === pathModeNoneValue) {
+    return [];
+  }
+
+  if (state.targetPathMode === pathModeRelativeValue || state.targetPathMode === pathModeGlobValue) {
+    if (sanitizedLines.length === 0) {
+      return [];
+    }
+    return [sanitizedLines[0]];
+  }
+
+  return sanitizedLines;
 }
 
 /**
@@ -964,23 +1385,13 @@ function clearPolling() {
 }
 
 function repopulateSelectedCommand() {
-  if (!state.selectedPath) {
+  const selectedCommand = findSelectedCommand();
+  if (!selectedCommand) {
     renderCommandPreview();
     return;
   }
 
-  if (state.selectedPath === "gix files add" || state.selectedPath === "gix files replace" || state.selectedPath === "gix files rm") {
-    populateArguments(findCommand(state.selectedPath), buildFileDraftArguments(state.selectedPath));
-    return;
-  }
-
-  const command = findCommand(state.selectedPath);
-  if (!command) {
-    renderCommandPreview();
-    return;
-  }
-
-  populateArguments(command);
+  populateArguments(selectedCommand);
 }
 
 /**
@@ -1014,15 +1425,33 @@ function selectedRepository() {
 }
 
 /**
- * @returns {string[]}
+ * @returns {RepositoryDescriptor[]}
  */
-function repositoryScopeRoots() {
-  if (state.selectedScope === allScopeValue) {
-    return state.repositories.map((repository) => repository.path);
+function checkedRepositories() {
+  return state.repositories.filter((repository) => state.checkedRepositoryIDs.includes(repository.id));
+}
+
+/**
+ * @returns {RepositoryDescriptor[]}
+ */
+function repositoryScopeRepositories() {
+  if (state.selectedScope === scopeAllValue) {
+    return state.repositories.slice();
+  }
+
+  if (state.selectedScope === scopeCheckedValue) {
+    return checkedRepositories();
   }
 
   const repository = selectedRepository();
-  return repository ? [repository.path] : [];
+  return repository ? [repository] : [];
+}
+
+/**
+ * @returns {string[]}
+ */
+function repositoryScopeRoots() {
+  return repositoryScopeRepositories().map((repository) => repository.path);
 }
 
 /**
@@ -1033,6 +1462,13 @@ function selectedBranch() {
     return null;
   }
   return state.branches.find((branch) => branch.name === state.selectedBranchName) || null;
+}
+
+/**
+ * @returns {string}
+ */
+function currentRepositoryBranchName() {
+  return selectedRepository()?.current_branch || "";
 }
 
 /**
@@ -1078,34 +1514,74 @@ function buildRepositorySummary(repository) {
 }
 
 /**
- * @param {CommandDescriptor} command
- * @returns {CommandGroupDefinition}
+ * @param {string} scopeLabel
+ * @param {RepositoryDescriptor[]} repositories
+ * @returns {string}
  */
-function groupForCommand(command) {
-  if (command.path === "gix cd" || command.path === "gix default") {
-    return commandGroupDefinitions[0];
+function buildRepositoryScopeDetail(scopeLabel, repositories) {
+  if (repositories.length === 0) {
+    return `No repositories are active for the ${scopeLabel} scope.`;
   }
-  if (command.path.startsWith("gix remote ")) {
-    return commandGroupDefinitions[2];
+
+  const names = repositories.slice(0, 3).map((repository) => repository.name).join(", ");
+  if (repositories.length > 3) {
+    return `${scopeLabel} scope includes ${names}, and ${repositories.length - 3} more.`;
   }
-  if (command.path.startsWith("gix prs ")) {
-    return commandGroupDefinitions[3];
-  }
-  if (command.path.startsWith("gix packages ")) {
-    return commandGroupDefinitions[4];
-  }
-  if (command.path === "gix version") {
-    return commandGroupDefinitions[5];
-  }
-  return commandGroupDefinitions[1];
+  return `${scopeLabel} scope includes ${names}.`;
 }
 
 /**
- * @param {CommandDescriptor} command
- * @returns {boolean}
+ * @returns {string}
  */
-function commandNeedsRepository(command) {
-  return command.path !== "gix version";
+function buildRefSummary() {
+  if (state.targetRefMode === refModeNamedValue || state.targetRefMode === refModePatternValue) {
+    const value = state.targetRefValue.trim();
+    return value ? `${state.targetRefMode}:${value}` : state.targetRefMode;
+  }
+
+  if (state.targetRefMode === refModeCurrentValue) {
+    const currentBranch = currentRepositoryBranchName();
+    if (state.selectedScope === scopeSelectedValue && currentBranch) {
+      return `current:${currentBranch}`;
+    }
+    return state.selectedScope === scopeSelectedValue ? refModeCurrentValue : "current per repo";
+  }
+
+  if (state.targetRefMode === refModeDefaultValue) {
+    if (state.selectedScope === scopeSelectedValue && selectedRepository()?.default_branch) {
+      return `default:${selectedRepository()?.default_branch || ""}`;
+    }
+    return state.selectedScope === scopeSelectedValue ? refModeDefaultValue : "default per repo";
+  }
+
+  return state.targetRefMode;
+}
+
+/**
+ * @returns {string}
+ */
+function buildPathSummary() {
+  const values = resolvePathValues();
+  if (state.targetPathMode === pathModeNoneValue) {
+    return pathModeNoneValue;
+  }
+  if (values.length === 0) {
+    return state.targetPathMode;
+  }
+  return `${state.targetPathMode}:${values.length}`;
+}
+
+/**
+ * @returns {string}
+ */
+function pathInputPlaceholder() {
+  if (state.targetPathMode === pathModeGlobValue) {
+    return pathPlaceholderGlobValue;
+  }
+  if (state.targetPathMode === pathModeMultipleValue) {
+    return pathPlaceholderMultipleValue;
+  }
+  return pathPlaceholderRelativeValue;
 }
 
 /**
@@ -1130,6 +1606,30 @@ function compareBranches(left, right) {
     return left.current ? -1 : 1;
   }
   return left.name.localeCompare(right.name);
+}
+
+/**
+ * @param {string} scope
+ */
+function setScope(scope) {
+  if (scope !== scopeSelectedValue && scope !== scopeCheckedValue && scope !== scopeAllValue) {
+    return;
+  }
+
+  if (scope === scopeCheckedValue && checkedRepositories().length === 0) {
+    return;
+  }
+
+  if (scope === state.selectedScope) {
+    return;
+  }
+
+  state.selectedScope = scope;
+  renderTargetState();
+  renderDraftList();
+  renderActionGroups(elements.commandFilter.value.trim().toLowerCase());
+  syncQuickActions();
+  repopulateSelectedCommand();
 }
 
 /**

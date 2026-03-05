@@ -62,19 +62,39 @@ type CommandCatalog struct {
 	Commands    []CommandDescriptor `json:"commands"`
 }
 
+// CommandTargetRequirement describes whether a target axis is unused, optional, or required.
+type CommandTargetRequirement string
+
+const (
+	CommandTargetRequirementNone     CommandTargetRequirement = "none"
+	CommandTargetRequirementOptional CommandTargetRequirement = "optional"
+	CommandTargetRequirementRequired CommandTargetRequirement = "required"
+)
+
+// CommandTargetDescriptor captures how a command maps onto repository, ref, and path targets.
+type CommandTargetDescriptor struct {
+	Group         string                   `json:"group,omitempty"`
+	Repository    CommandTargetRequirement `json:"repository"`
+	Ref           CommandTargetRequirement `json:"ref"`
+	Path          CommandTargetRequirement `json:"path"`
+	SupportsBatch bool                     `json:"supports_batch"`
+	DraftTemplate string                   `json:"draft_template,omitempty"`
+}
+
 // CommandDescriptor captures one command available through the web interface.
 type CommandDescriptor struct {
-	Path        string           `json:"path"`
-	Use         string           `json:"use"`
-	Name        string           `json:"name"`
-	Short       string           `json:"short,omitempty"`
-	Long        string           `json:"long,omitempty"`
-	Example     string           `json:"example,omitempty"`
-	Aliases     []string         `json:"aliases,omitempty"`
-	Runnable    bool             `json:"runnable"`
-	Actionable  bool             `json:"actionable"`
-	Flags       []FlagDescriptor `json:"flags,omitempty"`
-	Subcommands []string         `json:"subcommands,omitempty"`
+	Path        string                  `json:"path"`
+	Use         string                  `json:"use"`
+	Name        string                  `json:"name"`
+	Short       string                  `json:"short,omitempty"`
+	Long        string                  `json:"long,omitempty"`
+	Example     string                  `json:"example,omitempty"`
+	Aliases     []string                `json:"aliases,omitempty"`
+	Runnable    bool                    `json:"runnable"`
+	Actionable  bool                    `json:"actionable"`
+	Target      CommandTargetDescriptor `json:"target"`
+	Flags       []FlagDescriptor        `json:"flags,omitempty"`
+	Subcommands []string                `json:"subcommands,omitempty"`
 }
 
 // FlagDescriptor captures the public metadata for one Cobra flag.

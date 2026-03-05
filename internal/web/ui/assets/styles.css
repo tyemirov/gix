@@ -189,6 +189,7 @@ h4 {
 }
 
 .text-input,
+.select-input,
 .code-input {
   width: 100%;
   border: 1px solid var(--line);
@@ -197,7 +198,8 @@ h4 {
   color: var(--ink);
 }
 
-.text-input {
+.text-input,
+.select-input {
   padding: 0.8rem 0.95rem;
 }
 
@@ -212,6 +214,19 @@ h4 {
   min-height: 7rem;
 }
 
+.select-input {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--accent) 50%),
+    linear-gradient(135deg, var(--accent) 50%, transparent 50%);
+  background-position:
+    calc(100% - 1.2rem) calc(50% - 0.15rem),
+    calc(100% - 0.85rem) calc(50% - 0.15rem);
+  background-size: 0.4rem 0.4rem, 0.4rem 0.4rem;
+  background-repeat: no-repeat;
+  padding-right: 2.4rem;
+}
+
 .repo-list,
 .branch-list,
 .command-groups,
@@ -219,7 +234,8 @@ h4 {
 .flag-list,
 .token-row,
 .quick-actions,
-.template-actions {
+.template-actions,
+.draft-list {
   display: flex;
   flex-direction: column;
   gap: 0.7rem;
@@ -240,6 +256,20 @@ h4 {
 .branch-list,
 .command-groups {
   max-height: 26rem;
+}
+
+.repo-entry {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.7rem;
+  align-items: start;
+}
+
+.repo-checkbox {
+  width: 1.05rem;
+  height: 1.05rem;
+  margin-top: 0.95rem;
+  accent-color: var(--accent);
 }
 
 .repo-button,
@@ -323,6 +353,24 @@ h4 {
   margin-top: 0.45rem;
 }
 
+.target-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.25rem;
+}
+
+.target-card {
+  padding: 1.05rem 1.1rem;
+}
+
+.target-detail {
+  min-height: 2.7rem;
+}
+
+.target-path-input {
+  min-height: 7.5rem;
+}
+
 .context-token,
 .flag-token,
 .pill,
@@ -399,7 +447,7 @@ h4 {
 
 .scope-toggle {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.55rem;
 }
 
@@ -413,6 +461,11 @@ h4 {
   border: 1px solid var(--line);
   border-radius: var(--radius-medium);
   background: rgba(255, 255, 255, 0.42);
+}
+
+.draft-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
 .template-heading {
@@ -584,6 +637,10 @@ h4 {
     grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
   }
 
+  .target-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .top-grid,
   .bottom-grid {
     grid-template-columns: minmax(0, 1fr);
@@ -594,6 +651,10 @@ h4 {
   .page-shell {
     grid-template-columns: 1fr;
     padding: 1rem;
+  }
+
+  .target-grid {
+    grid-template-columns: 1fr;
   }
 
   .repo-list,

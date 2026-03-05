@@ -12,7 +12,7 @@
         <section class="panel brand-panel">
           <p class="eyebrow">Local Interface</p>
           <h1>gix Control Surface</h1>
-          <p class="lede">Pick the repository first. Then move between branches, repository actions, and the raw runner without losing local context.</p>
+          <p class="lede">Build a target set first. Then apply repository, branch, and file operations against one repo or many repos without dropping into raw argv too early.</p>
         </section>
 
         <section class="panel repo-panel">
@@ -40,6 +40,54 @@
           <p id="repo-summary" class="hero-summary"></p>
         </section>
 
+        <section class="target-grid">
+          <section class="panel target-card">
+            <div class="panel-heading">
+              <h3>Repos</h3>
+              <span id="target-repo-summary" class="pill">0</span>
+            </div>
+            <div class="scope-toggle" role="group" aria-label="Repository scope">
+              <button id="scope-selected" class="scope-button active" type="button">Selected</button>
+              <button id="scope-checked" class="scope-button" type="button">Checked</button>
+              <button id="scope-all" class="scope-button" type="button">All</button>
+            </div>
+            <p id="target-repo-detail" class="panel-note target-detail"></p>
+          </section>
+
+          <section class="panel target-card">
+            <div class="panel-heading">
+              <h3>Refs</h3>
+              <span id="target-ref-summary" class="pill">current</span>
+            </div>
+            <label class="field-label" for="target-ref-mode">Mode</label>
+            <select id="target-ref-mode" class="select-input">
+              <option value="current">Current</option>
+              <option value="default">Default</option>
+              <option value="named">Named</option>
+              <option value="pattern">Pattern</option>
+              <option value="any">Any</option>
+            </select>
+            <label class="field-label" for="target-ref-value">Value</label>
+            <input id="target-ref-value" class="text-input" type="text" placeholder="branch-name or pattern" disabled>
+          </section>
+
+          <section class="panel target-card">
+            <div class="panel-heading">
+              <h3>Paths</h3>
+              <span id="target-path-summary" class="pill">none</span>
+            </div>
+            <label class="field-label" for="target-path-mode">Mode</label>
+            <select id="target-path-mode" class="select-input">
+              <option value="none">None</option>
+              <option value="relative">Relative Path</option>
+              <option value="glob">Glob</option>
+              <option value="multiple">Multiple Paths</option>
+            </select>
+            <label class="field-label" for="target-path-value">Value</label>
+            <textarea id="target-path-value" class="code-input target-path-input" spellcheck="false" placeholder="One path or glob per line" disabled></textarea>
+          </section>
+        </section>
+
         <section class="workspace-grid top-grid">
           <section class="panel branches-panel">
             <div class="panel-heading">
@@ -58,14 +106,6 @@
             </div>
             <p id="action-context" class="panel-note"></p>
 
-            <div class="scope-panel">
-              <span class="scope-label">Scope</span>
-              <div class="scope-toggle" role="group" aria-label="Repository scope">
-                <button id="scope-selected" class="scope-button active" type="button">Selected Repo</button>
-                <button id="scope-all" class="scope-button" type="button">All Repos</button>
-              </div>
-            </div>
-
             <div class="quick-actions" aria-label="Quick actions">
               <button id="action-switch-default" class="secondary-button" type="button">Switch to default branch</button>
               <button id="action-switch-selected" class="secondary-button" type="button">Switch to selected branch</button>
@@ -75,11 +115,9 @@
             <div class="template-actions" aria-label="File action drafts">
               <div class="template-heading">
                 <h4>File Drafts</h4>
-                <span class="panel-note">Scope-aware templates</span>
+                <span class="panel-note">Driven by target metadata</span>
               </div>
-              <button id="template-files-add" class="secondary-button" type="button">Draft add file</button>
-              <button id="template-files-replace" class="secondary-button" type="button">Draft replace text</button>
-              <button id="template-files-rm" class="secondary-button" type="button">Draft remove files</button>
+              <div id="draft-list" class="draft-list"></div>
             </div>
 
             <label class="field-label" for="command-filter">Find Action</label>
@@ -116,7 +154,7 @@
               <h3>Runner</h3>
               <span id="run-status" class="status-pill status-idle">idle</span>
             </div>
-            <p class="panel-note">The editor is prefilled from the selected repo and action. Adjust arguments directly when you need the raw CLI shape.</p>
+            <p class="panel-note">The runner is prefilled from the target bar and the selected action. Adjust arguments directly when you need the exact CLI shape.</p>
             <div class="preview-shell">
               <span class="preview-label">Preview</span>
               <pre id="command-preview" class="command-preview"></pre>

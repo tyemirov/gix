@@ -98,6 +98,7 @@ func TestCommandCatalogMarksInactionableCommands(t *testing.T) {
 	versionCommand := findCatalogCommand(catalog, "gix version")
 	require.NotNil(t, versionCommand)
 	require.True(t, versionCommand.Actionable)
+	require.Equal(t, web.CommandTargetRequirementNone, versionCommand.Target.Repository)
 
 	messageNamespace := findCatalogCommand(catalog, "gix message")
 	require.NotNil(t, messageNamespace)
@@ -110,6 +111,9 @@ func TestCommandCatalogMarksInactionableCommands(t *testing.T) {
 	defaultCommand := findCatalogCommand(catalog, "gix default")
 	require.NotNil(t, defaultCommand)
 	require.True(t, defaultCommand.Actionable)
+	require.Equal(t, web.CommandTargetRequirementRequired, defaultCommand.Target.Repository)
+	require.Equal(t, web.CommandTargetRequirementRequired, defaultCommand.Target.Ref)
+	require.True(t, defaultCommand.Target.SupportsBatch)
 
 	protocolCommand := findCatalogCommand(catalog, "gix remote update-protocol")
 	require.NotNil(t, protocolCommand)
@@ -131,9 +135,40 @@ func TestCommandCatalogMarksInactionableCommands(t *testing.T) {
 	require.NotNil(t, changelogMessageCommand)
 	require.False(t, changelogMessageCommand.Actionable)
 
+	filesReplaceCommand := findCatalogCommand(catalog, "gix files replace")
+	require.NotNil(t, filesReplaceCommand)
+	require.False(t, filesReplaceCommand.Actionable)
+	require.Equal(t, "files", filesReplaceCommand.Target.Group)
+	require.Equal(t, web.CommandTargetRequirementRequired, filesReplaceCommand.Target.Repository)
+	require.Equal(t, web.CommandTargetRequirementOptional, filesReplaceCommand.Target.Ref)
+	require.Equal(t, web.CommandTargetRequirementRequired, filesReplaceCommand.Target.Path)
+	require.True(t, filesReplaceCommand.Target.SupportsBatch)
+	require.Equal(t, "files_replace", filesReplaceCommand.Target.DraftTemplate)
+
+	filesAddCommand := findCatalogCommand(catalog, "gix files add")
+	require.NotNil(t, filesAddCommand)
+	require.False(t, filesAddCommand.Actionable)
+	require.Equal(t, "files", filesAddCommand.Target.Group)
+	require.Equal(t, web.CommandTargetRequirementRequired, filesAddCommand.Target.Repository)
+	require.Equal(t, web.CommandTargetRequirementNone, filesAddCommand.Target.Ref)
+	require.Equal(t, web.CommandTargetRequirementRequired, filesAddCommand.Target.Path)
+	require.True(t, filesAddCommand.Target.SupportsBatch)
+	require.Equal(t, "files_add", filesAddCommand.Target.DraftTemplate)
+
+	filesRemoveCommand := findCatalogCommand(catalog, "gix files rm")
+	require.NotNil(t, filesRemoveCommand)
+	require.False(t, filesRemoveCommand.Actionable)
+	require.Equal(t, "files", filesRemoveCommand.Target.Group)
+	require.Equal(t, web.CommandTargetRequirementRequired, filesRemoveCommand.Target.Repository)
+	require.Equal(t, web.CommandTargetRequirementNone, filesRemoveCommand.Target.Ref)
+	require.Equal(t, web.CommandTargetRequirementRequired, filesRemoveCommand.Target.Path)
+	require.True(t, filesRemoveCommand.Target.SupportsBatch)
+	require.Equal(t, "files_remove", filesRemoveCommand.Target.DraftTemplate)
+
 	renameCommand := findCatalogCommand(catalog, "gix folder rename")
 	require.NotNil(t, renameCommand)
 	require.True(t, renameCommand.Actionable)
+	require.Equal(t, "repository", renameCommand.Target.Group)
 }
 
 func TestRepositoryCatalogUsesCurrentRepositoryContext(t *testing.T) {
@@ -247,6 +282,9 @@ func TestWebServerExecutesVersionCommand(t *testing.T) {
 	_, copyError := indexDocument.ReadFrom(indexResponse.Body)
 	require.NoError(t, copyError)
 	require.Contains(t, indexDocument.String(), "<title>gix Control Surface</title>")
+	require.Contains(t, indexDocument.String(), "Build a target set first")
+	require.Contains(t, indexDocument.String(), "<h3>Repos</h3>")
+	require.Contains(t, indexDocument.String(), "<h3>Paths</h3>")
 
 	commandsResponse, commandsError := http.Get(httpServer.URL + "/api/commands")
 	require.NoError(t, commandsError)

@@ -44,6 +44,16 @@ const (
 	gitShortArgumentConstant                    = "--short"
 	gitOriginHeadReferenceConstant              = "refs/remotes/origin/HEAD"
 	gitOriginPrefixConstant                     = "origin/"
+	webCommandGroupBranchConstant               = "branch"
+	webCommandGroupRepositoryConstant           = "repository"
+	webCommandGroupRemoteConstant               = "remote"
+	webCommandGroupPullRequestsConstant         = "prs"
+	webCommandGroupPackagesConstant             = "packages"
+	webCommandGroupFilesConstant                = "files"
+	webCommandGroupGeneralConstant              = "general"
+	webDraftTemplateFilesAddConstant            = "files_add"
+	webDraftTemplateFilesReplaceConstant        = "files_replace"
+	webDraftTemplateFilesRemoveConstant         = "files_remove"
 )
 
 var nonActionableCommandPaths = map[string]struct{}{
@@ -512,9 +522,74 @@ func buildCommandDescriptor(command *cobra.Command) web.CommandDescriptor {
 		Aliases:     sortedStrings(command.Aliases),
 		Runnable:    command.Runnable(),
 		Actionable:  commandIsActionable(command),
+		Target:      buildCommandTargetDescriptor(command),
 		Flags:       collectFlagDescriptors(command),
 		Subcommands: visibleSubcommandNames,
 	}
+}
+
+func buildCommandTargetDescriptor(command *cobra.Command) web.CommandTargetDescriptor {
+	commandPath := ""
+	if command != nil {
+		commandPath = strings.TrimSpace(command.CommandPath())
+	}
+
+	descriptor := web.CommandTargetDescriptor{
+		Group:         webCommandGroupGeneralConstant,
+		Repository:    web.CommandTargetRequirementNone,
+		Ref:           web.CommandTargetRequirementNone,
+		Path:          web.CommandTargetRequirementNone,
+		SupportsBatch: false,
+	}
+
+	switch commandPath {
+	case applicationNameConstant + " " + branchChangeTopLevelUseNameConstant,
+		applicationNameConstant + " " + defaultCommandUseNameConstant:
+		descriptor.Group = webCommandGroupBranchConstant
+		descriptor.Repository = web.CommandTargetRequirementRequired
+		descriptor.Ref = web.CommandTargetRequirementRequired
+		descriptor.SupportsBatch = true
+	case applicationNameConstant + " " + auditOperationNameConstant,
+		applicationNameConstant + " " + repoFolderNamespaceUseNameConstant + " " + renameCommandUseNameConstant:
+		descriptor.Group = webCommandGroupRepositoryConstant
+		descriptor.Repository = web.CommandTargetRequirementRequired
+		descriptor.SupportsBatch = true
+	case applicationNameConstant + " " + repoRemoteNamespaceUseNameConstant + " " + updateRemoteCanonicalUseNameConstant:
+		descriptor.Group = webCommandGroupRemoteConstant
+		descriptor.Repository = web.CommandTargetRequirementRequired
+		descriptor.SupportsBatch = true
+	case applicationNameConstant + " " + repoPullRequestsNamespaceUseNameConstant + " " + prsDeleteCommandUseNameConstant:
+		descriptor.Group = webCommandGroupPullRequestsConstant
+		descriptor.Repository = web.CommandTargetRequirementRequired
+		descriptor.SupportsBatch = true
+	case applicationNameConstant + " " + repoPackagesNamespaceUseNameConstant + " " + packagesDeleteCommandUseNameConstant:
+		descriptor.Group = webCommandGroupPackagesConstant
+		descriptor.Repository = web.CommandTargetRequirementRequired
+		descriptor.SupportsBatch = true
+	case applicationNameConstant + " " + repoFilesNamespaceUseNameConstant + " " + filesAddCommandUseNameConstant:
+		descriptor.Group = webCommandGroupFilesConstant
+		descriptor.Repository = web.CommandTargetRequirementRequired
+		descriptor.Path = web.CommandTargetRequirementRequired
+		descriptor.SupportsBatch = true
+		descriptor.DraftTemplate = webDraftTemplateFilesAddConstant
+	case applicationNameConstant + " " + repoFilesNamespaceUseNameConstant + " " + filesReplaceCommandUseNameConstant:
+		descriptor.Group = webCommandGroupFilesConstant
+		descriptor.Repository = web.CommandTargetRequirementRequired
+		descriptor.Ref = web.CommandTargetRequirementOptional
+		descriptor.Path = web.CommandTargetRequirementRequired
+		descriptor.SupportsBatch = true
+		descriptor.DraftTemplate = webDraftTemplateFilesReplaceConstant
+	case applicationNameConstant + " " + repoFilesNamespaceUseNameConstant + " " + removeCommandUseNameConstant:
+		descriptor.Group = webCommandGroupFilesConstant
+		descriptor.Repository = web.CommandTargetRequirementRequired
+		descriptor.Path = web.CommandTargetRequirementRequired
+		descriptor.SupportsBatch = true
+		descriptor.DraftTemplate = webDraftTemplateFilesRemoveConstant
+	case applicationNameConstant + " " + versionCommandUseNameConstant:
+		descriptor.Group = webCommandGroupGeneralConstant
+	}
+
+	return descriptor
 }
 
 func commandIsActionable(command *cobra.Command) bool {
