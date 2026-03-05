@@ -8,70 +8,76 @@
   </head>
   <body>
     <div class="page-shell">
-      <aside class="sidebar">
-        <div class="sidebar-panel brand-panel">
+      <aside class="repo-sidebar">
+        <section class="panel brand-panel">
           <p class="eyebrow">Local Interface</p>
           <h1>gix Control Surface</h1>
-          <p class="lede">Inspect local branches on the left, then choose a gix operation on the right and run it in-process.</p>
-          <p class="muted">Prefer <code>--yes</code> for prompt-heavy flows. Raw stdin is available when an operation expects input.</p>
-        </div>
+          <p class="lede">Pick the repository first. Then move between branches, repository actions, and the raw runner without losing local context.</p>
+        </section>
 
-        <div class="sidebar-panel branch-panel">
+        <section class="panel repo-panel">
           <div class="panel-heading">
-            <h2>Branches</h2>
-            <span id="branch-count" class="pill">0</span>
+            <h2>Repositories</h2>
+            <span id="repo-count" class="pill">0</span>
           </div>
-          <p id="branch-repo-path" class="panel-note"></p>
-          <div id="branch-list" class="branch-list" aria-live="polite"></div>
-        </div>
+          <p id="repo-launch-summary" class="panel-note"></p>
+          <label class="field-label" for="repo-filter">Filter</label>
+          <input id="repo-filter" class="text-input" type="search" placeholder="Find a repository">
+          <div id="repo-list" class="repo-list" aria-live="polite"></div>
+        </section>
       </aside>
 
       <main class="workspace">
-        <section class="card operations-card">
-          <div class="panel-heading">
-            <h3>Operations</h3>
-            <span id="command-count" class="pill">0</span>
+        <section class="panel hero-panel">
+          <div class="hero-header">
+            <div>
+              <p class="eyebrow">Selected Repository</p>
+              <h2 id="repo-title">Loading...</h2>
+            </div>
+            <div id="repo-state-tokens" class="token-row"></div>
           </div>
-          <label class="field-label" for="command-filter">Filter</label>
-          <input id="command-filter" class="text-input" type="search" placeholder="Find an operation">
-          <div id="command-list" class="operation-list" aria-live="polite"></div>
+          <p id="repo-path" class="hero-path"></p>
+          <p id="repo-summary" class="hero-summary"></p>
         </section>
 
-        <section class="hero-card">
-          <div>
-            <p class="eyebrow">Selected Operation</p>
-            <h2 id="command-title">Loading...</h2>
-          </div>
-          <p id="command-summary" class="hero-summary"></p>
-        </section>
-
-        <section class="workspace-grid">
-          <section class="card editor-card">
+        <section class="workspace-grid top-grid">
+          <section class="panel branches-panel">
             <div class="panel-heading">
-              <h3>Arguments</h3>
-              <span class="panel-note">One argument per line</span>
+              <h3>Branches</h3>
+              <span id="branch-count" class="pill">0</span>
             </div>
-            <p class="muted">The operation path is prefilled when you pick an item above. Add flags and positional values below it.</p>
-            <textarea id="arguments-input" class="code-input" spellcheck="false"></textarea>
-
-            <div class="panel-heading secondary-heading">
-              <h3>Standard Input</h3>
-              <span class="panel-note">Optional raw input</span>
-            </div>
-            <textarea id="stdin-input" class="code-input stdin-input" spellcheck="false" placeholder="Type stdin payload here when an operation expects input"></textarea>
-
-            <div class="button-row">
-              <button id="run-command" class="primary-button" type="button">Run Operation</button>
-              <span id="run-status" class="status-pill status-idle">idle</span>
-            </div>
+            <label class="field-label" for="branch-filter">Filter</label>
+            <input id="branch-filter" class="text-input" type="search" placeholder="Find a branch">
+            <div id="branch-list" class="branch-list" aria-live="polite"></div>
           </section>
 
-          <section class="card details-card">
+          <section class="panel actions-panel">
             <div class="panel-heading">
-              <h3>Operation Details</h3>
+              <h3>Actions</h3>
+              <span id="command-count" class="pill">0</span>
+            </div>
+            <p id="action-context" class="panel-note"></p>
+
+            <div class="quick-actions" aria-label="Quick actions">
+              <button id="action-switch-default" class="secondary-button" type="button">Switch to default branch</button>
+              <button id="action-switch-selected" class="secondary-button" type="button">Switch to selected branch</button>
+              <button id="action-promote-selected" class="secondary-button" type="button">Promote selected branch</button>
+            </div>
+
+            <label class="field-label" for="command-filter">Find Action</label>
+            <input id="command-filter" class="text-input" type="search" placeholder="Find an action">
+            <div id="command-groups" class="command-groups" aria-live="polite"></div>
+          </section>
+        </section>
+
+        <section class="workspace-grid bottom-grid">
+          <section class="panel details-panel">
+            <div class="panel-heading">
+              <h3>Action Details</h3>
               <span id="selected-path" class="panel-note"></span>
             </div>
-            <div class="metadata-grid">
+            <p id="command-summary" class="panel-note"></p>
+            <div class="details-grid">
               <div>
                 <h4>Usage</h4>
                 <pre id="command-usage" class="code-preview"></pre>
@@ -86,12 +92,39 @@
               <div id="command-flags" class="flag-list"></div>
             </div>
           </section>
+
+          <section class="panel runner-panel">
+            <div class="panel-heading">
+              <h3>Runner</h3>
+              <span id="run-status" class="status-pill status-idle">idle</span>
+            </div>
+            <p class="panel-note">The editor is prefilled from the selected repo and action. Adjust arguments directly when you need the raw CLI shape.</p>
+            <div class="preview-shell">
+              <span class="preview-label">Preview</span>
+              <pre id="command-preview" class="command-preview"></pre>
+            </div>
+
+            <div class="editor-block">
+              <label class="field-label" for="arguments-input">Arguments</label>
+              <textarea id="arguments-input" class="code-input" spellcheck="false"></textarea>
+            </div>
+
+            <div class="editor-block">
+              <label class="field-label" for="stdin-input">Standard Input</label>
+              <textarea id="stdin-input" class="code-input stdin-input" spellcheck="false" placeholder="Paste stdin payload when a command expects it"></textarea>
+            </div>
+
+            <div class="button-row">
+              <button id="run-command" class="primary-button" type="button">Run</button>
+              <span id="run-id" class="panel-note">No run started</span>
+            </div>
+          </section>
         </section>
 
-        <section class="card output-card">
+        <section class="panel output-panel">
           <div class="panel-heading">
             <h3>Run Output</h3>
-            <span id="run-id" class="panel-note">No run started</span>
+            <span id="run-error" class="error-message"></span>
           </div>
           <div class="output-grid">
             <div>
@@ -102,9 +135,6 @@
               <h4>stderr</h4>
               <pre id="stderr-output" class="terminal-window terminal-window-error"></pre>
             </div>
-          </div>
-          <div class="output-footer">
-            <span id="run-error" class="error-message"></span>
           </div>
         </section>
       </main>

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -15,15 +16,34 @@ import (
 
 	"github.com/tyemirov/gix/internal/execshell"
 	reposdeps "github.com/tyemirov/gix/internal/repos/dependencies"
+	"github.com/tyemirov/gix/internal/repos/shared"
 	flagutils "github.com/tyemirov/gix/internal/utils/flags"
 	"github.com/tyemirov/gix/internal/web"
 )
 
 const (
-	webInterfaceUnavailableMessageConstant    = "web mode is unavailable from the web interface"
-	gitForEachRefSubcommandConstant           = "for-each-ref"
-	gitBranchCatalogFormatArgumentConstant    = "--format=%(HEAD)|%(refname:short)|%(upstream:short)"
-	gitBranchCatalogReferenceArgumentConstant = "refs/heads/"
+	webInterfaceUnavailableMessageConstant      = "web mode is unavailable from the web interface"
+	webLaunchModeCurrentRepositoryConstant      = "current_repo"
+	webLaunchModeDiscoveredRepositoriesConstant = "discovered_repositories"
+	webNoRepositoriesErrorTemplateConstant      = "no Git repositories found beneath %s"
+	webRepositoryIDTemplateConstant             = "repo-%03d"
+	webRepositoryPathRequiredErrorConstant      = "repository path is required"
+	webHelpCommandPathConstant                  = applicationNameConstant + " help"
+	webCompletionCommandPathConstant            = applicationNameConstant + " completion"
+	webCompletionBashCommandPathConstant        = webCompletionCommandPathConstant + " bash"
+	webCompletionFishCommandPathConstant        = webCompletionCommandPathConstant + " fish"
+	webCompletionPowershellCommandPathConstant  = webCompletionCommandPathConstant + " powershell"
+	webCompletionZshCommandPathConstant         = webCompletionCommandPathConstant + " zsh"
+	gitForEachRefSubcommandConstant             = "for-each-ref"
+	gitBranchCatalogFormatArgumentConstant      = "--format=%(HEAD)|%(refname:short)|%(upstream:short)"
+	gitBranchCatalogReferenceArgumentConstant   = "refs/heads/"
+	gitRevParseSubcommandConstant               = "rev-parse"
+	gitShowTopLevelArgumentConstant             = "--show-toplevel"
+	gitSymbolicRefSubcommandConstant            = "symbolic-ref"
+	gitSymbolicRefQuietArgumentConstant         = "--quiet"
+	gitShortArgumentConstant                    = "--short"
+	gitOriginHeadReferenceConstant              = "refs/remotes/origin/HEAD"
+	gitOriginPrefixConstant                     = "origin/"
 )
 
 var nonActionableCommandPaths = map[string]struct{}{
@@ -40,9 +60,21 @@ var nonActionableCommandPaths = map[string]struct{}{
 	applicationNameConstant + " " + repoFilesNamespaceUseNameConstant + " " + filesAddCommandUseNameConstant:        {},
 	applicationNameConstant + " " + repoFilesNamespaceUseNameConstant + " " + removeCommandUseNameConstant:          {},
 	applicationNameConstant + " " + repoReleaseCommandUseNameConstant + " " + releaseRetagCommandUseNameConstant:    {},
+	applicationNameConstant + " " + messageNamespaceUseNameConstant + " " + commitMessageUseNameConstant:            {},
+	applicationNameConstant + " " + messageNamespaceUseNameConstant + " " + changelogMessageUseNameConstant:         {},
+	applicationNameConstant + " " + repoReleaseCommandUseNameConstant:                                               {},
+	webHelpCommandPathConstant:                 {},
+	webCompletionCommandPathConstant:           {},
+	webCompletionBashCommandPathConstant:       {},
+	webCompletionFishCommandPathConstant:       {},
+	webCompletionPowershellCommandPathConstant: {},
+	webCompletionZshCommandPathConstant:        {},
 }
 
 type webRunner func(context.Context, web.ServerOptions) error
+
+type execshellGitExecutor = shared.GitExecutor
+type webGitRepositoryManager = shared.GitRepositoryManager
 
 type webLaunchConfiguration struct {
 	port int
@@ -97,11 +129,14 @@ func (application *Application) handleWebLaunch(command *cobra.Command) (bool, e
 		}
 	}
 
+	repositoryCatalog := application.repositoryCatalog(executionContext)
+
 	return true, application.webRunner(executionContext, web.ServerOptions{
-		Address:  launchConfiguration.listenAddress(),
-		Branches: application.branchCatalog(executionContext),
-		Catalog:  application.commandCatalog(),
-		Execute:  application.newWebCommandExecutor(),
+		Address:      launchConfiguration.listenAddress(),
+		Repositories: repositoryCatalog,
+		Catalog:      application.commandCatalog(),
+		LoadBranches: application.loadRepositoryBranches,
+		Execute:      application.newWebCommandExecutor(),
 	})
 }
 
@@ -190,35 +225,193 @@ func commandArgumentsContainFlag(arguments []string, flagName string) bool {
 	return false
 }
 
-func (application *Application) branchCatalog(executionContext context.Context) web.BranchCatalog {
+func (application *Application) repositoryCatalog(executionContext context.Context) web.RepositoryCatalog {
 	workingDirectory, workingDirectoryError := os.Getwd()
 	if workingDirectoryError != nil {
-		return web.BranchCatalog{Error: workingDirectoryError.Error()}
+		return web.RepositoryCatalog{Error: workingDirectoryError.Error()}
 	}
 
-	gitExecutor, executorError := reposdeps.ResolveGitExecutor(nil, application.logger, application.humanReadableLoggingEnabled())
-	if executorError != nil {
+	gitExecutor, repositoryManager, dependencyError := application.webGitDependencies()
+	if dependencyError != nil {
+		return web.RepositoryCatalog{
+			LaunchPath: workingDirectory,
+			Error:      dependencyError.Error(),
+		}
+	}
+
+	currentRepositoryRoot, currentRepositoryAvailable := application.currentRepositoryRoot(executionContext, gitExecutor, workingDirectory)
+	if currentRepositoryAvailable {
+		repositoryDescriptor := application.inspectRepository(executionContext, currentRepositoryRoot, 1, true, gitExecutor, repositoryManager)
+		return web.RepositoryCatalog{
+			LaunchPath:           workingDirectory,
+			LaunchMode:           webLaunchModeCurrentRepositoryConstant,
+			SelectedRepositoryID: repositoryDescriptor.ID,
+			Repositories:         []web.RepositoryDescriptor{repositoryDescriptor},
+		}
+	}
+
+	discoverer := reposdeps.ResolveRepositoryDiscoverer(nil)
+	discoveredRepositories, discoverError := discoverer.DiscoverRepositories([]string{workingDirectory})
+	if discoverError != nil {
+		return web.RepositoryCatalog{
+			LaunchPath: workingDirectory,
+			Error:      discoverError.Error(),
+		}
+	}
+
+	if len(discoveredRepositories) == 0 {
+		return web.RepositoryCatalog{
+			LaunchPath: workingDirectory,
+			LaunchMode: webLaunchModeDiscoveredRepositoriesConstant,
+			Error:      fmt.Sprintf(webNoRepositoriesErrorTemplateConstant, workingDirectory),
+		}
+	}
+
+	repositoryDescriptors := make([]web.RepositoryDescriptor, 0, len(discoveredRepositories))
+	for repositoryIndex, repositoryPath := range discoveredRepositories {
+		repositoryDescriptors = append(
+			repositoryDescriptors,
+			application.inspectRepository(executionContext, repositoryPath, repositoryIndex+1, false, gitExecutor, repositoryManager),
+		)
+	}
+
+	selectedRepositoryID := ""
+	if len(repositoryDescriptors) > 0 {
+		selectedRepositoryID = repositoryDescriptors[0].ID
+	}
+
+	return web.RepositoryCatalog{
+		LaunchPath:           workingDirectory,
+		LaunchMode:           webLaunchModeDiscoveredRepositoriesConstant,
+		SelectedRepositoryID: selectedRepositoryID,
+		Repositories:         repositoryDescriptors,
+	}
+}
+
+func (application *Application) loadRepositoryBranches(executionContext context.Context, repository web.RepositoryDescriptor) web.BranchCatalog {
+	gitExecutor, _, dependencyError := application.webGitDependencies()
+	if dependencyError != nil {
 		return web.BranchCatalog{
-			RepositoryPath: workingDirectory,
-			Error:          executorError.Error(),
+			RepositoryID:   repository.ID,
+			RepositoryPath: repository.Path,
+			Error:          dependencyError.Error(),
+		}
+	}
+
+	return loadRepositoryBranches(executionContext, repository, gitExecutor)
+}
+
+func loadRepositoryBranches(executionContext context.Context, repository web.RepositoryDescriptor, gitExecutor execshellGitExecutor) web.BranchCatalog {
+	trimmedRepositoryPath := strings.TrimSpace(repository.Path)
+	if len(trimmedRepositoryPath) == 0 {
+		return web.BranchCatalog{
+			RepositoryID: repository.ID,
+			Error:        webRepositoryPathRequiredErrorConstant,
 		}
 	}
 
 	branchResult, branchError := gitExecutor.ExecuteGit(executionContext, execshell.CommandDetails{
 		Arguments:        []string{gitForEachRefSubcommandConstant, gitBranchCatalogFormatArgumentConstant, gitBranchCatalogReferenceArgumentConstant},
-		WorkingDirectory: workingDirectory,
+		WorkingDirectory: trimmedRepositoryPath,
 	})
 	if branchError != nil {
 		return web.BranchCatalog{
-			RepositoryPath: workingDirectory,
+			RepositoryID:   repository.ID,
+			RepositoryPath: trimmedRepositoryPath,
 			Error:          branchError.Error(),
 		}
 	}
 
 	return web.BranchCatalog{
-		RepositoryPath: workingDirectory,
+		RepositoryID:   repository.ID,
+		RepositoryPath: trimmedRepositoryPath,
 		Branches:       parseBranchCatalog(branchResult.StandardOutput),
 	}
+}
+
+func (application *Application) webGitDependencies() (execshellGitExecutor, webGitRepositoryManager, error) {
+	gitExecutor, executorError := reposdeps.ResolveGitExecutor(nil, application.logger, application.humanReadableLoggingEnabled())
+	if executorError != nil {
+		return nil, nil, executorError
+	}
+
+	repositoryManager, managerError := reposdeps.ResolveGitRepositoryManager(nil, gitExecutor)
+	if managerError != nil {
+		return nil, nil, managerError
+	}
+
+	return gitExecutor, repositoryManager, nil
+}
+
+func (application *Application) currentRepositoryRoot(executionContext context.Context, gitExecutor execshellGitExecutor, workingDirectory string) (string, bool) {
+	repositoryRootResult, repositoryRootError := gitExecutor.ExecuteGit(executionContext, execshell.CommandDetails{
+		Arguments:        []string{gitRevParseSubcommandConstant, gitShowTopLevelArgumentConstant},
+		WorkingDirectory: workingDirectory,
+	})
+	if repositoryRootError != nil {
+		return "", false
+	}
+
+	trimmedRepositoryRoot := strings.TrimSpace(repositoryRootResult.StandardOutput)
+	if len(trimmedRepositoryRoot) == 0 {
+		return "", false
+	}
+
+	return trimmedRepositoryRoot, true
+}
+
+func (application *Application) inspectRepository(
+	executionContext context.Context,
+	repositoryPath string,
+	repositoryIndex int,
+	contextCurrent bool,
+	gitExecutor execshellGitExecutor,
+	repositoryManager webGitRepositoryManager,
+) web.RepositoryDescriptor {
+	descriptor := web.RepositoryDescriptor{
+		ID:             fmt.Sprintf(webRepositoryIDTemplateConstant, repositoryIndex),
+		Name:           filepath.Base(strings.TrimSpace(repositoryPath)),
+		Path:           strings.TrimSpace(repositoryPath),
+		ContextCurrent: contextCurrent,
+	}
+
+	currentBranch, currentBranchError := repositoryManager.GetCurrentBranch(executionContext, descriptor.Path)
+	if currentBranchError == nil {
+		descriptor.CurrentBranch = strings.TrimSpace(currentBranch)
+	} else {
+		descriptor.Error = currentBranchError.Error()
+	}
+
+	cleanWorktree, cleanWorktreeError := repositoryManager.CheckCleanWorktree(executionContext, descriptor.Path)
+	if cleanWorktreeError == nil {
+		descriptor.Dirty = !cleanWorktree
+	} else if len(descriptor.Error) == 0 {
+		descriptor.Error = cleanWorktreeError.Error()
+	}
+
+	defaultBranch, defaultBranchError := resolveRepositoryDefaultBranch(executionContext, gitExecutor, descriptor.Path)
+	if defaultBranchError == nil {
+		descriptor.DefaultBranch = defaultBranch
+	} else if len(descriptor.Error) == 0 {
+		descriptor.Error = defaultBranchError.Error()
+	}
+
+	return descriptor
+}
+
+func resolveRepositoryDefaultBranch(executionContext context.Context, gitExecutor execshellGitExecutor, repositoryPath string) (string, error) {
+	defaultBranchResult, defaultBranchError := gitExecutor.ExecuteGit(executionContext, execshell.CommandDetails{
+		Arguments:        []string{gitSymbolicRefSubcommandConstant, gitSymbolicRefQuietArgumentConstant, gitShortArgumentConstant, gitOriginHeadReferenceConstant},
+		WorkingDirectory: repositoryPath,
+	})
+	if defaultBranchError != nil {
+		return "", defaultBranchError
+	}
+
+	trimmedDefaultBranch := strings.TrimSpace(defaultBranchResult.StandardOutput)
+	trimmedDefaultBranch = strings.TrimPrefix(trimmedDefaultBranch, gitOriginPrefixConstant)
+
+	return trimmedDefaultBranch, nil
 }
 
 func parseBranchCatalog(rawOutput string) []web.BranchDescriptor {

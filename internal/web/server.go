@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"errors"
+	"fmt"
 	"io/fs"
 	"net"
 	"net/http"
@@ -16,6 +17,8 @@ import (
 const (
 	indexRoutePathConstant              = "/"
 	assetsRoutePathConstant             = "/assets"
+	apiRepositoriesRoutePathConstant    = "/api/repos"
+	apiRepositoryBranchesRouteConstant  = "/api/repos/:id/branches"
 	apiBranchesRoutePathConstant        = "/api/branches"
 	apiCommandsRoutePathConstant        = "/api/commands"
 	apiRunsRoutePathConstant            = "/api/runs"
@@ -25,25 +28,30 @@ const (
 	serverShutdownTimeoutConstant       = 5 * time.Second
 	missingServerAddressErrorConstant   = "missing server address"
 	missingCommandExecutorErrorConstant = "missing command executor"
+	missingBranchLoaderErrorConstant    = "missing branch loader"
+	missingRepositoryIDErrorConstant    = "missing repository identifier"
+	repositoryNotFoundTemplateConstant  = "repository %q was not found"
 )
 
 //go:embed ui/index.html ui/assets/app.js ui/assets/styles.css
 var embeddedUIFiles embed.FS
 
 type serverRuntimeOptions struct {
-	address  string
-	branches BranchCatalog
-	catalog  CommandCatalog
-	execute  CommandExecutor
+	address      string
+	repositories RepositoryCatalog
+	catalog      CommandCatalog
+	loadBranches BranchCatalogLoader
+	execute      CommandExecutor
 }
 
 // Server hosts the embedded gix browser interface and JSON API.
 type Server struct {
-	engine     *gin.Engine
-	httpServer *http.Server
-	runStore   *runStore
-	options    serverRuntimeOptions
-	indexHTML  []byte
+	engine          *gin.Engine
+	httpServer      *http.Server
+	runStore        *runStore
+	options         serverRuntimeOptions
+	indexHTML       []byte
+	repositoryIndex map[string]RepositoryDescriptor
 }
 
 // Run starts the configured server and blocks until the context is canceled or the server exits.
@@ -77,10 +85,11 @@ func NewServer(options ServerOptions) (*Server, error) {
 	}
 
 	server := &Server{
-		engine:    engine,
-		runStore:  newRunStore(),
-		options:   runtimeOptions,
-		indexHTML: indexHTML,
+		engine:          engine,
+		runStore:        newRunStore(),
+		options:         runtimeOptions,
+		indexHTML:       indexHTML,
+		repositoryIndex: buildRepositoryIndex(runtimeOptions.repositories),
 	}
 	server.httpServer = &http.Server{
 		Addr:    runtimeOptions.address,
@@ -146,12 +155,16 @@ func newServerRuntimeOptions(options ServerOptions) (serverRuntimeOptions, error
 	if options.Execute == nil {
 		return serverRuntimeOptions{}, errors.New(missingCommandExecutorErrorConstant)
 	}
+	if options.LoadBranches == nil {
+		return serverRuntimeOptions{}, errors.New(missingBranchLoaderErrorConstant)
+	}
 
 	return serverRuntimeOptions{
-		address:  trimmedAddress,
-		branches: options.Branches,
-		catalog:  options.Catalog,
-		execute:  options.Execute,
+		address:      trimmedAddress,
+		repositories: options.Repositories,
+		catalog:      options.Catalog,
+		loadBranches: options.LoadBranches,
+		execute:      options.Execute,
 	}, nil
 }
 
@@ -172,16 +185,68 @@ func (server *Server) registerRoutes(assetsFileSystem http.FileSystem) {
 		requestContext.Data(http.StatusOK, htmlContentTypeConstant, server.indexHTML)
 	})
 	server.engine.StaticFS(assetsRoutePathConstant, assetsFileSystem)
+	server.engine.GET(apiRepositoriesRoutePathConstant, server.handleRepositories)
+	server.engine.GET(apiRepositoryBranchesRouteConstant, server.handleRepositoryBranches)
 	server.engine.GET(apiBranchesRoutePathConstant, server.handleBranches)
 	server.engine.GET(apiCommandsRoutePathConstant, server.handleCommands)
 	server.engine.POST(apiRunsRoutePathConstant, server.handleCreateRun)
 	server.engine.GET(apiRunRoutePathTemplateConstant, server.handleGetRun)
 }
 
+func buildRepositoryIndex(catalog RepositoryCatalog) map[string]RepositoryDescriptor {
+	index := make(map[string]RepositoryDescriptor, len(catalog.Repositories))
+	for _, repository := range catalog.Repositories {
+		index[repository.ID] = repository
+	}
+	return index
+}
+
+func (server *Server) handleRepositories(requestContext *gin.Context) {
+	requestContext.JSON(http.StatusOK, server.options.repositories)
+}
+
+func (server *Server) handleRepositoryBranches(requestContext *gin.Context) {
+	repositoryID := strings.TrimSpace(requestContext.Param("id"))
+	if len(repositoryID) == 0 {
+		requestContext.JSON(http.StatusBadRequest, errorResponse{Error: missingRepositoryIDErrorConstant})
+		return
+	}
+
+	repository, exists := server.repositoryIndex[repositoryID]
+	if !exists {
+		requestContext.JSON(http.StatusNotFound, errorResponse{Error: fmt.Sprintf(repositoryNotFoundTemplateConstant, repositoryID)})
+		return
+	}
+
+	requestContext.JSON(http.StatusOK, server.options.loadBranches(requestContext.Request.Context(), repository))
+}
+
 func (server *Server) handleBranches(requestContext *gin.Context) {
-	requestContext.JSON(http.StatusOK, server.options.branches)
+	selectedRepository := server.selectedRepository()
+	if selectedRepository == nil {
+		requestContext.JSON(http.StatusOK, BranchCatalog{Error: server.options.repositories.Error})
+		return
+	}
+	requestContext.JSON(http.StatusOK, server.options.loadBranches(requestContext.Request.Context(), *selectedRepository))
 }
 
 func (server *Server) handleCommands(requestContext *gin.Context) {
 	requestContext.JSON(http.StatusOK, server.options.catalog)
+}
+
+func (server *Server) selectedRepository() *RepositoryDescriptor {
+	selectedRepositoryID := strings.TrimSpace(server.options.repositories.SelectedRepositoryID)
+	if len(selectedRepositoryID) > 0 {
+		if repository, exists := server.repositoryIndex[selectedRepositoryID]; exists {
+			repositoryCopy := repository
+			return &repositoryCopy
+		}
+	}
+
+	if len(server.options.repositories.Repositories) == 0 {
+		return nil
+	}
+
+	repository := server.options.repositories.Repositories[0]
+	return &repository
 }

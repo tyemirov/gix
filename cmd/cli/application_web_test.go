@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -116,9 +119,81 @@ func TestCommandCatalogMarksInactionableCommands(t *testing.T) {
 	require.NotNil(t, retagCommand)
 	require.False(t, retagCommand.Actionable)
 
+	releaseCommand := findCatalogCommand(catalog, "gix release")
+	require.NotNil(t, releaseCommand)
+	require.False(t, releaseCommand.Actionable)
+
+	commitMessageCommand := findCatalogCommand(catalog, "gix message commit")
+	require.NotNil(t, commitMessageCommand)
+	require.False(t, commitMessageCommand.Actionable)
+
+	changelogMessageCommand := findCatalogCommand(catalog, "gix message changelog")
+	require.NotNil(t, changelogMessageCommand)
+	require.False(t, changelogMessageCommand.Actionable)
+
 	renameCommand := findCatalogCommand(catalog, "gix folder rename")
 	require.NotNil(t, renameCommand)
 	require.True(t, renameCommand.Actionable)
+}
+
+func TestRepositoryCatalogUsesCurrentRepositoryContext(t *testing.T) {
+	repositoryPath := createTestRepository(t, filepath.Join(t.TempDir(), "workspace", "example"))
+	createTestBranch(t, repositoryPath, "feature/demo")
+
+	nestedWorkingDirectory := filepath.Join(repositoryPath, "internal")
+	require.NoError(t, os.MkdirAll(nestedWorkingDirectory, 0o755))
+	withWorkingDirectory(t, nestedWorkingDirectory, func() {
+		application := NewApplication()
+		catalog := application.repositoryCatalog(context.Background())
+
+		require.Equal(t, "current_repo", catalog.LaunchMode)
+		require.Equal(t, canonicalPath(t, nestedWorkingDirectory), canonicalPath(t, catalog.LaunchPath))
+		require.Len(t, catalog.Repositories, 1)
+		require.Equal(t, canonicalPath(t, repositoryPath), canonicalPath(t, catalog.Repositories[0].Path))
+		require.Equal(t, "feature/demo", catalog.Repositories[0].CurrentBranch)
+		require.True(t, catalog.Repositories[0].ContextCurrent)
+		require.Equal(t, catalog.Repositories[0].ID, catalog.SelectedRepositoryID)
+	})
+}
+
+func TestRepositoryCatalogDiscoversRepositoriesBeneathWorkingDirectory(t *testing.T) {
+	rootPath := t.TempDir()
+	firstRepository := createTestRepository(t, filepath.Join(rootPath, "alpha"))
+	secondRepository := createTestRepository(t, filepath.Join(rootPath, "nested", "beta"))
+	createTestBranch(t, secondRepository, "feature/demo")
+
+	withWorkingDirectory(t, rootPath, func() {
+		application := NewApplication()
+		catalog := application.repositoryCatalog(context.Background())
+
+		require.Equal(t, "discovered_repositories", catalog.LaunchMode)
+		require.Equal(t, canonicalPath(t, rootPath), canonicalPath(t, catalog.LaunchPath))
+		require.Len(t, catalog.Repositories, 2)
+		require.Equal(t, canonicalPath(t, firstRepository), canonicalPath(t, catalog.Repositories[0].Path))
+		require.Equal(t, canonicalPath(t, secondRepository), canonicalPath(t, catalog.Repositories[1].Path))
+		require.False(t, catalog.Repositories[0].ContextCurrent)
+		require.False(t, catalog.Repositories[1].ContextCurrent)
+		require.Equal(t, catalog.Repositories[0].ID, catalog.SelectedRepositoryID)
+	})
+}
+
+func TestLoadRepositoryBranchesReturnsLocalBranches(t *testing.T) {
+	repositoryPath := createTestRepository(t, filepath.Join(t.TempDir(), "workspace", "example"))
+	createTestBranch(t, repositoryPath, "feature/demo")
+
+	application := NewApplication()
+	branchCatalog := application.loadRepositoryBranches(context.Background(), web.RepositoryDescriptor{
+		ID:   "repo-001",
+		Path: repositoryPath,
+	})
+
+	require.Empty(t, branchCatalog.Error)
+	require.Equal(t, "repo-001", branchCatalog.RepositoryID)
+	require.Equal(t, repositoryPath, branchCatalog.RepositoryPath)
+	require.Len(t, branchCatalog.Branches, 2)
+	require.Equal(t, "feature/demo", branchCatalog.Branches[0].Name)
+	require.True(t, branchCatalog.Branches[0].Current)
+	require.Equal(t, "master", branchCatalog.Branches[1].Name)
 }
 
 func TestWebServerExecutesVersionCommand(t *testing.T) {
@@ -129,14 +204,33 @@ func TestWebServerExecutesVersionCommand(t *testing.T) {
 
 	server, serverError := web.NewServer(web.ServerOptions{
 		Address: "127.0.0.1:8080",
-		Branches: web.BranchCatalog{
-			RepositoryPath: "/tmp/example",
-			Branches: []web.BranchDescriptor{
-				{Name: "feature/demo", Current: true, Upstream: "origin/feature/demo"},
-				{Name: "master", Current: false, Upstream: "origin/master"},
+		Repositories: web.RepositoryCatalog{
+			LaunchPath:           "/tmp/example",
+			LaunchMode:           "current_repo",
+			SelectedRepositoryID: "repo-001",
+			Repositories: []web.RepositoryDescriptor{
+				{
+					ID:             "repo-001",
+					Name:           "example",
+					Path:           "/tmp/example",
+					CurrentBranch:  "feature/demo",
+					DefaultBranch:  "master",
+					Dirty:          false,
+					ContextCurrent: true,
+				},
 			},
 		},
 		Catalog: application.commandCatalog(),
+		LoadBranches: func(_ context.Context, repository web.RepositoryDescriptor) web.BranchCatalog {
+			return web.BranchCatalog{
+				RepositoryID:   repository.ID,
+				RepositoryPath: repository.Path,
+				Branches: []web.BranchDescriptor{
+					{Name: "feature/demo", Current: true, Upstream: "origin/feature/demo"},
+					{Name: "master", Current: false, Upstream: "origin/master"},
+				},
+			}
+		},
 		Execute: application.newWebCommandExecutor(),
 	})
 	require.NoError(t, serverError)
@@ -164,13 +258,26 @@ func TestWebServerExecutesVersionCommand(t *testing.T) {
 	require.NotEmpty(t, catalog.Commands)
 	require.True(t, catalogContainsCommand(catalog, "gix version"))
 
-	branchesResponse, branchesError := http.Get(httpServer.URL + "/api/branches")
+	repositoriesResponse, repositoriesError := http.Get(httpServer.URL + "/api/repos")
+	require.NoError(t, repositoriesError)
+	defer repositoriesResponse.Body.Close()
+	require.Equal(t, http.StatusOK, repositoriesResponse.StatusCode)
+
+	var repositories web.RepositoryCatalog
+	require.NoError(t, json.NewDecoder(repositoriesResponse.Body).Decode(&repositories))
+	require.Equal(t, "/tmp/example", repositories.LaunchPath)
+	require.Len(t, repositories.Repositories, 1)
+	require.Equal(t, "repo-001", repositories.Repositories[0].ID)
+	require.Equal(t, "feature/demo", repositories.Repositories[0].CurrentBranch)
+
+	branchesResponse, branchesError := http.Get(httpServer.URL + "/api/repos/repo-001/branches")
 	require.NoError(t, branchesError)
 	defer branchesResponse.Body.Close()
 	require.Equal(t, http.StatusOK, branchesResponse.StatusCode)
 
 	var branches web.BranchCatalog
 	require.NoError(t, json.NewDecoder(branchesResponse.Body).Decode(&branches))
+	require.Equal(t, "repo-001", branches.RepositoryID)
 	require.Equal(t, "/tmp/example", branches.RepositoryPath)
 	require.Len(t, branches.Branches, 2)
 	require.Equal(t, "feature/demo", branches.Branches[0].Name)
@@ -221,4 +328,58 @@ func findCatalogCommand(catalog web.CommandCatalog, commandPath string) *web.Com
 		}
 	}
 	return nil
+}
+
+func withWorkingDirectory(testingInstance *testing.T, workingDirectory string, callback func()) {
+	testingInstance.Helper()
+
+	previousWorkingDirectory, workingDirectoryError := os.Getwd()
+	require.NoError(testingInstance, workingDirectoryError)
+	require.NoError(testingInstance, os.Chdir(workingDirectory))
+	defer func() {
+		require.NoError(testingInstance, os.Chdir(previousWorkingDirectory))
+	}()
+
+	callback()
+}
+
+func createTestRepository(testingInstance *testing.T, repositoryPath string) string {
+	testingInstance.Helper()
+
+	require.NoError(testingInstance, os.MkdirAll(repositoryPath, 0o755))
+	runGitCommand(testingInstance, "", "init", "-b", "master", repositoryPath)
+	require.NoError(testingInstance, os.WriteFile(filepath.Join(repositoryPath, "README.md"), []byte("initial\n"), 0o644))
+	runGitCommand(testingInstance, repositoryPath, "add", "README.md")
+	runGitCommand(testingInstance, repositoryPath, "commit", "-m", "initial commit")
+	return repositoryPath
+}
+
+func createTestBranch(testingInstance *testing.T, repositoryPath string, branchName string) {
+	testingInstance.Helper()
+	runGitCommand(testingInstance, repositoryPath, "checkout", "-b", branchName)
+}
+
+func runGitCommand(testingInstance *testing.T, workingDirectory string, arguments ...string) {
+	testingInstance.Helper()
+
+	command := exec.Command("git", arguments...)
+	command.Dir = workingDirectory
+	command.Env = append(
+		os.Environ(),
+		"GIT_AUTHOR_NAME=gix-test",
+		"GIT_AUTHOR_EMAIL=test@example.com",
+		"GIT_COMMITTER_NAME=gix-test",
+		"GIT_COMMITTER_EMAIL=test@example.com",
+	)
+
+	output, commandError := command.CombinedOutput()
+	require.NoError(testingInstance, commandError, string(output))
+}
+
+func canonicalPath(testingInstance *testing.T, path string) string {
+	testingInstance.Helper()
+
+	resolvedPath, resolveError := filepath.EvalSymlinks(path)
+	require.NoError(testingInstance, resolveError)
+	return resolvedPath
 }
