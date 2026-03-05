@@ -286,6 +286,8 @@ func TestWebServerExecutesVersionCommand(t *testing.T) {
 	require.Contains(t, indexDocument.String(), "<h3>Repos</h3>")
 	require.Contains(t, indexDocument.String(), "<h3>Ref Browser</h3>")
 	require.Contains(t, indexDocument.String(), "<h3>Paths</h3>")
+	require.Contains(t, indexDocument.String(), "<h3>Tasks</h3>")
+	require.Contains(t, indexDocument.String(), "Load audit snapshot")
 
 	commandsResponse, commandsError := http.Get(httpServer.URL + "/api/commands")
 	require.NoError(t, commandsError)

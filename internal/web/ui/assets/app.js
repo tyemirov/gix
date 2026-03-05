@@ -143,6 +143,19 @@ const commandPathVersionValue = "gix version";
 const commandPathAuditValue = "gix audit";
 const commandPathBranchChangeValue = "gix cd";
 const commandPathDefaultValue = "gix default";
+const commandPathFilesAddValue = "gix files add";
+const commandPathFilesReplaceValue = "gix files replace";
+const commandPathFilesRemoveValue = "gix files rm";
+const commandPathPullRequestsDeleteValue = "gix prs delete";
+const commandPathPackagesDeleteValue = "gix packages delete";
+const taskInspectValue = "inspect";
+const taskBranchValue = "branch";
+const taskFilesValue = "files";
+const taskCleanupValue = "cleanup";
+const taskAdvancedValue = "advanced";
+const fileTaskModeAddValue = "add";
+const fileTaskModeReplaceValue = "replace";
+const fileTaskModeRemoveValue = "remove";
 const pathPlaceholderRelativeValue = "RELATIVE/PATH";
 const pathPlaceholderGlobValue = "**/*";
 const pathPlaceholderMultipleValue = "PATH/ONE\nPATH/TWO";
@@ -164,10 +177,12 @@ const commandGroupDefinitions = [
  *   checkedRepositoryIDs: string[],
  *   selectedRepositoryID: string,
  *   selectedScope: string,
+ *   activeTask: string,
  *   targetRefMode: string,
  *   targetRefValue: string,
  *   targetPathMode: string,
  *   targetPathValue: string,
+ *   fileTaskMode: string,
  *   branches: BranchDescriptor[],
  *   allCommands: CommandDescriptor[],
  *   actionableCommands: CommandDescriptor[],
@@ -180,10 +195,12 @@ const state = {
   checkedRepositoryIDs: [],
   selectedRepositoryID: "",
   selectedScope: scopeSelectedValue,
+  activeTask: taskInspectValue,
   targetRefMode: refModeCurrentValue,
   targetRefValue: "",
   targetPathMode: pathModeNoneValue,
   targetPathValue: "",
+  fileTaskMode: fileTaskModeAddValue,
   branches: [],
   allCommands: [],
   actionableCommands: [],
@@ -215,10 +232,31 @@ const elements = {
   branchFilter: document.querySelector("#branch-filter"),
   branchList: document.querySelector("#branch-list"),
   actionContext: document.querySelector("#action-context"),
+  taskCount: document.querySelector("#task-count"),
+  taskInspect: document.querySelector("#task-inspect"),
+  taskBranch: document.querySelector("#task-branch"),
+  taskFiles: document.querySelector("#task-files"),
+  taskCleanup: document.querySelector("#task-cleanup"),
+  taskAdvanced: document.querySelector("#task-advanced"),
+  taskPanelInspect: document.querySelector("#task-panel-inspect"),
+  taskPanelBranch: document.querySelector("#task-panel-branch"),
+  taskPanelFiles: document.querySelector("#task-panel-files"),
+  taskPanelCleanup: document.querySelector("#task-panel-cleanup"),
+  taskPanelAdvanced: document.querySelector("#task-panel-advanced"),
+  taskInspectLoad: document.querySelector("#task-inspect-load"),
+  fileTaskMode: document.querySelector("#file-task-mode"),
+  fileTaskAddFields: document.querySelector("#file-task-add-fields"),
+  fileTaskReplaceFields: document.querySelector("#file-task-replace-fields"),
+  fileContentInput: document.querySelector("#file-content-input"),
+  fileFindInput: document.querySelector("#file-find-input"),
+  fileReplaceInput: document.querySelector("#file-replace-input"),
+  fileTaskLoad: document.querySelector("#task-file-load"),
+  fileTaskSummary: document.querySelector("#file-task-summary"),
+  taskCleanupPullRequests: document.querySelector("#task-cleanup-prs"),
+  taskCleanupPackages: document.querySelector("#task-cleanup-packages"),
   commandCount: document.querySelector("#command-count"),
   commandFilter: document.querySelector("#command-filter"),
   commandGroups: document.querySelector("#command-groups"),
-  draftList: document.querySelector("#draft-list"),
   selectedPath: document.querySelector("#selected-path"),
   commandSummary: document.querySelector("#command-summary"),
   commandUsage: document.querySelector("#command-usage"),
@@ -275,14 +313,16 @@ async function initialize() {
   }
 
   elements.repoCount.textContent = String(state.repositories.length);
+  elements.taskCount.textContent = "5";
   elements.commandCount.textContent = String(state.actionableCommands.length);
   elements.targetRefMode.value = state.targetRefMode;
   elements.targetPathMode.value = state.targetPathMode;
+  elements.fileTaskMode.value = state.fileTaskMode;
 
   renderRepositoryLaunchSummary();
   renderRepositoryList("");
   renderTargetState();
-  renderDraftList();
+  renderTaskState();
   renderActionGroups("");
 
   if (initialRepositoryID) {
@@ -308,6 +348,30 @@ function bindEvents() {
 
   elements.branchFilter.addEventListener("input", () => {
     renderBranches(elements.branchFilter.value.trim().toLowerCase());
+  });
+
+  elements.taskInspect.addEventListener("click", () => {
+    setActiveTask(taskInspectValue);
+  });
+
+  elements.taskBranch.addEventListener("click", () => {
+    setActiveTask(taskBranchValue);
+  });
+
+  elements.taskFiles.addEventListener("click", () => {
+    setActiveTask(taskFilesValue);
+  });
+
+  elements.taskCleanup.addEventListener("click", () => {
+    setActiveTask(taskCleanupValue);
+  });
+
+  elements.taskAdvanced.addEventListener("click", () => {
+    setActiveTask(taskAdvancedValue);
+  });
+
+  elements.taskInspectLoad.addEventListener("click", () => {
+    selectCommand(commandPathAuditValue);
   });
 
   elements.scopeSelected.addEventListener("click", () => {
@@ -356,6 +420,38 @@ function bindEvents() {
     repopulateSelectedCommand();
   });
 
+  elements.fileTaskMode.addEventListener("change", () => {
+    state.fileTaskMode = elements.fileTaskMode.value;
+    renderTaskState();
+  });
+
+  elements.fileContentInput.addEventListener("input", () => {
+    renderTaskState();
+    repopulateSelectedCommand();
+  });
+
+  elements.fileFindInput.addEventListener("input", () => {
+    renderTaskState();
+    repopulateSelectedCommand();
+  });
+
+  elements.fileReplaceInput.addEventListener("input", () => {
+    renderTaskState();
+    repopulateSelectedCommand();
+  });
+
+  elements.fileTaskLoad.addEventListener("click", () => {
+    loadFileTaskCommand();
+  });
+
+  elements.taskCleanupPullRequests.addEventListener("click", () => {
+    selectCommand(commandPathPullRequestsDeleteValue);
+  });
+
+  elements.taskCleanupPackages.addEventListener("click", () => {
+    selectCommand(commandPathPackagesDeleteValue);
+  });
+
   elements.commandFilter.addEventListener("input", () => {
     renderActionGroups(elements.commandFilter.value.trim().toLowerCase());
   });
@@ -392,6 +488,84 @@ function setRefTarget(mode, value = "") {
   renderBranches(elements.branchFilter.value.trim().toLowerCase());
   syncQuickActions();
   repopulateSelectedCommand();
+}
+
+/**
+ * @param {string} taskID
+ */
+function setActiveTask(taskID) {
+  if (![taskInspectValue, taskBranchValue, taskFilesValue, taskCleanupValue, taskAdvancedValue].includes(taskID)) {
+    return;
+  }
+
+  state.activeTask = taskID;
+  renderTaskState();
+}
+
+function renderTaskState() {
+  const repositoryTargetsAvailable = repositoryScopeRoots().length > 0;
+  const taskButtons = [
+    [elements.taskInspect, taskInspectValue],
+    [elements.taskBranch, taskBranchValue],
+    [elements.taskFiles, taskFilesValue],
+    [elements.taskCleanup, taskCleanupValue],
+    [elements.taskAdvanced, taskAdvancedValue],
+  ];
+  taskButtons.forEach(([element, taskID]) => {
+    element.classList.toggle("active", state.activeTask === taskID);
+  });
+
+  elements.taskPanelInspect.hidden = state.activeTask !== taskInspectValue;
+  elements.taskPanelBranch.hidden = state.activeTask !== taskBranchValue;
+  elements.taskPanelFiles.hidden = state.activeTask !== taskFilesValue;
+  elements.taskPanelCleanup.hidden = state.activeTask !== taskCleanupValue;
+  elements.taskPanelAdvanced.hidden = state.activeTask !== taskAdvancedValue;
+
+  elements.taskInspectLoad.disabled = !repositoryTargetsAvailable;
+  elements.fileTaskLoad.disabled = !repositoryTargetsAvailable;
+  elements.taskCleanupPullRequests.disabled = !repositoryTargetsAvailable;
+  elements.taskCleanupPackages.disabled = !repositoryTargetsAvailable;
+
+  renderFileTaskState();
+  updateActionContext();
+}
+
+function renderFileTaskState() {
+  elements.fileTaskMode.value = state.fileTaskMode;
+  const addMode = state.fileTaskMode === fileTaskModeAddValue;
+  const replaceMode = state.fileTaskMode === fileTaskModeReplaceValue;
+  const removeMode = state.fileTaskMode === fileTaskModeRemoveValue;
+
+  elements.fileTaskAddFields.hidden = !addMode;
+  elements.fileTaskReplaceFields.hidden = !replaceMode;
+
+  const pathSummary = buildPathSummary();
+  if (addMode) {
+    elements.fileTaskSummary.textContent = `Add file draft. Path target ${pathSummary}.`;
+    elements.fileTaskLoad.textContent = "Load add file command";
+    return;
+  }
+  if (replaceMode) {
+    elements.fileTaskSummary.textContent = `Replace text draft. Path target ${pathSummary}.`;
+    elements.fileTaskLoad.textContent = "Load replace text command";
+    return;
+  }
+  if (removeMode) {
+    elements.fileTaskSummary.textContent = `Remove path draft. Path target ${pathSummary}.`;
+    elements.fileTaskLoad.textContent = "Load remove paths command";
+  }
+}
+
+function loadFileTaskCommand() {
+  if (state.fileTaskMode === fileTaskModeAddValue) {
+    selectCommand(commandPathFilesAddValue);
+    return;
+  }
+  if (state.fileTaskMode === fileTaskModeReplaceValue) {
+    selectCommand(commandPathFilesReplaceValue);
+    return;
+  }
+  selectCommand(commandPathFilesRemoveValue);
 }
 
 function renderRepositoryLaunchSummary() {
@@ -440,6 +614,7 @@ function renderTargetState() {
   elements.targetPathValue.value = state.targetPathValue;
   elements.targetPathSummary.textContent = buildPathSummary();
 
+  renderFileTaskState();
   updateActionContext();
 }
 
@@ -520,7 +695,6 @@ async function selectRepository(repositoryID) {
   renderTargetState();
   renderSelectedRepository();
   renderBranches(elements.branchFilter.value.trim().toLowerCase());
-  renderDraftList();
   renderActionGroups(elements.commandFilter.value.trim().toLowerCase());
   syncQuickActions();
 
@@ -567,7 +741,6 @@ function toggleCheckedRepository(repositoryID, checked) {
 
   renderRepositoryList(elements.repoFilter.value.trim().toLowerCase());
   renderTargetState();
-  renderDraftList();
   renderActionGroups(elements.commandFilter.value.trim().toLowerCase());
   syncQuickActions();
   repopulateSelectedCommand();
@@ -605,32 +778,69 @@ function updateActionContext() {
   const scopeRepositories = repositoryScopeRepositories();
   const selectedCommand = findSelectedCommand();
   const commandDraft = selectedCommand ? resolveCommandDraft(selectedCommand) : null;
-
-  if (selectedCommand && commandDraft?.reason) {
-    elements.actionContext.textContent = commandDraft.reason;
-    return;
-  }
-
-  if (selectedCommand && selectedCommand.target.repository === targetRequirementNoneValue) {
-    elements.actionContext.textContent = "This action is global and ignores repository, ref, and path targets.";
-    return;
-  }
-
-  if (scopeRepositories.length === 0) {
-    elements.actionContext.textContent = "Choose a repository target set to enable repository-scoped actions and file drafts.";
-    return;
-  }
-
   const repositorySummary = `${scopeRepositories.length} ${scopeRepositories.length === 1 ? "repo" : "repos"}`;
   const refSummary = buildRefSummary();
   const pathSummary = buildPathSummary();
 
-  if (selectedCommand && selectedCommand.target.path !== targetRequirementNoneValue) {
-    elements.actionContext.textContent = `Targeting ${repositorySummary}. Ref mode ${refSummary}. Path mode ${pathSummary}.`;
-    return;
+  switch (state.activeTask) {
+    case taskInspectValue:
+      if (scopeRepositories.length === 0) {
+        elements.actionContext.textContent = "Choose a repository target set to inspect.";
+        return;
+      }
+      elements.actionContext.textContent = `Inspect ${repositorySummary}. Load audit when you want a CLI snapshot of the current scope.`;
+      return;
+    case taskBranchValue:
+      if (selectedCommand && selectedCommand.target.group === commandGroupBranchValue && commandDraft?.reason) {
+        elements.actionContext.textContent = commandDraft.reason;
+        return;
+      }
+      if (scopeRepositories.length === 0) {
+        elements.actionContext.textContent = "Choose a repository target set before loading branch operations.";
+        return;
+      }
+      elements.actionContext.textContent = `Branch task targets ${repositorySummary}. Ref mode ${refSummary}.`;
+      return;
+    case taskFilesValue:
+      if (selectedCommand && selectedCommand.target.group === commandGroupFilesValue && commandDraft?.reason) {
+        elements.actionContext.textContent = commandDraft.reason;
+        return;
+      }
+      if (scopeRepositories.length === 0) {
+        elements.actionContext.textContent = "Choose a repository target set before loading file operations.";
+        return;
+      }
+      elements.actionContext.textContent = `Files task targets ${repositorySummary}. Ref mode ${refSummary}. Path mode ${pathSummary}.`;
+      return;
+    case taskCleanupValue:
+      if (scopeRepositories.length === 0) {
+        elements.actionContext.textContent = "Choose a repository target set before loading cleanup operations.";
+        return;
+      }
+      elements.actionContext.textContent = `Cleanup task targets ${repositorySummary}.`;
+      return;
+    case taskAdvancedValue:
+      if (selectedCommand && commandDraft?.reason) {
+        elements.actionContext.textContent = commandDraft.reason;
+        return;
+      }
+      if (selectedCommand && selectedCommand.target.repository === targetRequirementNoneValue) {
+        elements.actionContext.textContent = "This command is global and ignores repository, ref, and path targets.";
+        return;
+      }
+      if (scopeRepositories.length === 0) {
+        elements.actionContext.textContent = "Advanced mode exposes raw commands. Select repository targets when the command is repo-scoped.";
+        return;
+      }
+      if (selectedCommand && selectedCommand.target.path !== targetRequirementNoneValue) {
+        elements.actionContext.textContent = `Advanced mode targeting ${repositorySummary}. Ref mode ${refSummary}. Path mode ${pathSummary}.`;
+        return;
+      }
+      elements.actionContext.textContent = `Advanced mode targeting ${repositorySummary}. Ref mode ${refSummary}.`;
+      return;
+    default:
+      elements.actionContext.textContent = "";
   }
-
-  elements.actionContext.textContent = `Targeting ${repositorySummary}. Ref mode ${refSummary}.`;
 }
 
 /**
@@ -713,33 +923,6 @@ function renderBranches(query) {
     `;
     button.addEventListener("click", entry.onSelect);
     elements.branchList.append(button);
-  });
-}
-
-function renderDraftList() {
-  const draftCommands = state.allCommands
-    .filter((command) => Boolean(command.target.draft_template))
-    .sort((left, right) => left.path.localeCompare(right.path));
-
-  elements.draftList.innerHTML = "";
-  if (draftCommands.length === 0) {
-    appendEmptyState(elements.draftList, "No file drafts are currently available.");
-    return;
-  }
-
-  const repositoryTargetsAvailable = repositoryScopeRoots().length > 0;
-  draftCommands.forEach((command) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = `secondary-button draft-button${command.path === state.selectedPath ? " active" : ""}`;
-    button.disabled = !repositoryTargetsAvailable || (state.selectedScope !== scopeSelectedValue && !command.target.supports_batch);
-    button.textContent = command.short || command.path;
-    button.addEventListener("click", () => {
-      if (!button.disabled) {
-        selectCommand(command.path);
-      }
-    });
-    elements.draftList.append(button);
   });
 }
 
@@ -895,8 +1078,9 @@ function selectCommand(commandPath, options = {}) {
     return;
   }
 
+  state.activeTask = inferTaskForCommand(command);
   state.selectedPath = command.path;
-  renderDraftList();
+  renderTaskState();
   renderActionGroups(elements.commandFilter.value.trim().toLowerCase());
   renderCommandDetails(command);
   populateArguments(command, options.argumentsOverride || null);
@@ -972,13 +1156,16 @@ function buildDraftArguments(command, rootArguments) {
   const pathValues = resolvePathValues();
 
   if (command.target.draft_template === draftTemplateFilesAddValue) {
+    const fileContent = readTextValue(elements.fileContentInput, "FILE CONTENT");
     return {
-      arguments: ["files", "add", ...rootArguments, "--path", firstPathValue(pathValues), "--content", "FILE CONTENT"],
+      arguments: ["files", "add", ...rootArguments, "--path", firstPathValue(pathValues), "--content", fileContent],
       reason: "",
     };
   }
 
   if (command.target.draft_template === draftTemplateFilesReplaceValue) {
+    const findValue = readTextValue(elements.fileFindInput, "TEXT_TO_FIND");
+    const replaceValue = readTextValue(elements.fileReplaceInput, "TEXT_TO_REPLACE");
     const argumentsList = ["files", "replace", ...rootArguments];
     replacementPatterns(pathValues).forEach((patternValue) => {
       argumentsList.push("--pattern", patternValue);
@@ -986,7 +1173,7 @@ function buildDraftArguments(command, rootArguments) {
     if (optionalRefValue) {
       argumentsList.push("--branch", optionalRefValue);
     }
-    argumentsList.push("--find", "TEXT_TO_FIND", "--replace", "TEXT_TO_REPLACE");
+    argumentsList.push("--find", findValue, "--replace", replaceValue);
     return { arguments: argumentsList, reason: "" };
   }
 
@@ -1240,6 +1427,16 @@ function resolvePathValues() {
   }
 
   return sanitizedLines;
+}
+
+/**
+ * @param {HTMLTextAreaElement | null} element
+ * @param {string} fallback
+ * @returns {string}
+ */
+function readTextValue(element, fallback) {
+  const value = element?.value.trim() || "";
+  return value || fallback;
 }
 
 /**
@@ -1532,6 +1729,34 @@ function findCommand(commandPath) {
 }
 
 /**
+ * @param {CommandDescriptor} command
+ * @returns {string}
+ */
+function inferTaskForCommand(command) {
+  if (!command) {
+    return taskAdvancedValue;
+  }
+
+  if (command.path === commandPathAuditValue) {
+    return taskInspectValue;
+  }
+
+  if (command.target.group === commandGroupBranchValue) {
+    return taskBranchValue;
+  }
+
+  if (command.target.group === commandGroupFilesValue) {
+    return taskFilesValue;
+  }
+
+  if (command.target.group === commandGroupPullRequestsValue || command.target.group === commandGroupPackagesValue) {
+    return taskCleanupValue;
+  }
+
+  return taskAdvancedValue;
+}
+
+/**
  * @param {RepositoryDescriptor} repository
  * @returns {string}
  */
@@ -1663,7 +1888,6 @@ function setScope(scope) {
 
   state.selectedScope = scope;
   renderTargetState();
-  renderDraftList();
   renderActionGroups(elements.commandFilter.value.trim().toLowerCase());
   syncQuickActions();
   repopulateSelectedCommand();

@@ -451,6 +451,40 @@ h4 {
   gap: 0.55rem;
 }
 
+.task-switcher {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin-bottom: 1rem;
+}
+
+.task-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.task-panel[hidden] {
+  display: none;
+}
+
+.task-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.task-subpanel {
+  padding: 0.8rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-medium);
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.task-code-input {
+  min-height: 6rem;
+}
+
 .quick-actions {
   margin-bottom: 1rem;
 }
@@ -477,6 +511,7 @@ h4 {
 
 .secondary-button,
 .scope-button,
+.task-button,
 .primary-button {
   width: 100%;
   padding: 0.82rem 1rem;
@@ -485,11 +520,13 @@ h4 {
 }
 
 .secondary-button,
-.scope-button {
+.scope-button,
+.task-button {
   background: rgba(255, 255, 255, 0.78);
 }
 
-.scope-button {
+.scope-button,
+.task-button {
   border: 1px solid rgba(73, 46, 27, 0.11);
 }
 
@@ -499,8 +536,15 @@ h4 {
   box-shadow: 0 10px 22px rgba(137, 61, 34, 0.12);
 }
 
+.task-button.active {
+  border-color: rgba(173, 76, 40, 0.42);
+  background: linear-gradient(145deg, rgba(255, 239, 212, 0.96), rgba(255, 249, 238, 0.98));
+  box-shadow: 0 10px 22px rgba(137, 61, 34, 0.12);
+}
+
 .secondary-button:disabled,
-.scope-button:disabled {
+.scope-button:disabled,
+.task-button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
   transform: none;
@@ -645,6 +689,10 @@ h4 {
   .bottom-grid {
     grid-template-columns: minmax(0, 1fr);
   }
+
+  .task-switcher {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 860px) {
@@ -666,5 +714,9 @@ h4 {
   .details-grid,
   .output-grid {
     grid-template-columns: 1fr;
+  }
+
+  .task-switcher {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

@@ -101,35 +101,98 @@
 
           <section class="panel actions-panel">
             <div class="panel-heading">
-              <h3>Actions</h3>
-              <span id="command-count" class="pill">0</span>
+              <h3>Tasks</h3>
+              <span id="task-count" class="pill">5</span>
             </div>
             <p id="action-context" class="panel-note"></p>
 
-            <div class="quick-actions" aria-label="Quick actions">
-              <button id="action-switch-default" class="secondary-button" type="button">Switch to default branch</button>
-              <button id="action-switch-target" class="secondary-button" type="button">Switch to target ref</button>
-              <button id="action-promote-target" class="secondary-button" type="button">Promote target ref</button>
+            <div class="task-switcher" role="tablist" aria-label="Task switcher">
+              <button id="task-inspect" class="task-button active" type="button">Inspect</button>
+              <button id="task-branch" class="task-button" type="button">Branch</button>
+              <button id="task-files" class="task-button" type="button">Files</button>
+              <button id="task-cleanup" class="task-button" type="button">Cleanup</button>
+              <button id="task-advanced" class="task-button" type="button">Advanced</button>
             </div>
 
-            <div class="template-actions" aria-label="File action drafts">
-              <div class="template-heading">
-                <h4>File Drafts</h4>
-                <span class="panel-note">Driven by target metadata</span>
+            <section id="task-panel-inspect" class="task-panel">
+              <div class="task-copy">
+                <h4>Inspect Selected Scope</h4>
+                <p class="panel-note">Use the target bar to choose the repository scope, then load an audit snapshot into the runner when you want the CLI view of that state.</p>
               </div>
-              <div id="draft-list" class="draft-list"></div>
-            </div>
+              <button id="task-inspect-load" class="secondary-button" type="button">Load audit snapshot</button>
+            </section>
 
-            <label class="field-label" for="command-filter">Find Action</label>
-            <input id="command-filter" class="text-input" type="search" placeholder="Find an action">
-            <div id="command-groups" class="command-groups" aria-live="polite"></div>
+            <section id="task-panel-branch" class="task-panel" hidden>
+              <div class="task-copy">
+                <h4>Branch Operations</h4>
+                <p class="panel-note">The target bar defines which repositories and refs you are operating on. The ref browser writes directly into the target ref selector.</p>
+              </div>
+              <div class="quick-actions" aria-label="Branch quick actions">
+                <button id="action-switch-default" class="secondary-button" type="button">Switch to default branch</button>
+                <button id="action-switch-target" class="secondary-button" type="button">Switch to target ref</button>
+                <button id="action-promote-target" class="secondary-button" type="button">Promote target ref</button>
+              </div>
+            </section>
+
+            <section id="task-panel-files" class="task-panel" hidden>
+              <div class="task-copy">
+                <h4>File Changes</h4>
+                <p class="panel-note">Repos, refs, and paths come from the target bar. This task only captures the file-operation specific inputs.</p>
+              </div>
+
+              <label class="field-label" for="file-task-mode">Operation</label>
+              <select id="file-task-mode" class="select-input">
+                <option value="add">Add file</option>
+                <option value="replace">Replace text</option>
+                <option value="remove">Remove paths</option>
+              </select>
+
+              <div id="file-task-add-fields" class="task-subpanel">
+                <label class="field-label" for="file-content-input">File Content</label>
+                <textarea id="file-content-input" class="code-input task-code-input" spellcheck="false" placeholder="FILE CONTENT"></textarea>
+              </div>
+
+              <div id="file-task-replace-fields" class="task-subpanel" hidden>
+                <label class="field-label" for="file-find-input">Find</label>
+                <textarea id="file-find-input" class="code-input task-code-input" spellcheck="false" placeholder="TEXT_TO_FIND"></textarea>
+                <label class="field-label" for="file-replace-input">Replace With</label>
+                <textarea id="file-replace-input" class="code-input task-code-input" spellcheck="false" placeholder="TEXT_TO_REPLACE"></textarea>
+              </div>
+
+              <div class="button-row">
+                <button id="task-file-load" class="secondary-button" type="button">Load file command</button>
+                <span id="file-task-summary" class="panel-note"></span>
+              </div>
+            </section>
+
+            <section id="task-panel-cleanup" class="task-panel" hidden>
+              <div class="task-copy">
+                <h4>Cleanup Operations</h4>
+                <p class="panel-note">Use cleanup tasks for batched maintenance that targets repositories but does not require per-file editing.</p>
+              </div>
+              <div class="quick-actions" aria-label="Cleanup quick actions">
+                <button id="task-cleanup-prs" class="secondary-button" type="button">Load PR branch cleanup</button>
+                <button id="task-cleanup-packages" class="secondary-button" type="button">Load package cleanup</button>
+              </div>
+            </section>
+
+            <section id="task-panel-advanced" class="task-panel" hidden>
+              <div class="panel-heading">
+                <h4>Advanced Commands</h4>
+                <span id="command-count" class="pill">0</span>
+              </div>
+              <p class="panel-note">Use the command catalog when the dedicated task forms do not capture the operation you need.</p>
+              <label class="field-label" for="command-filter">Find Command</label>
+              <input id="command-filter" class="text-input" type="search" placeholder="Find an action">
+              <div id="command-groups" class="command-groups" aria-live="polite"></div>
+            </section>
           </section>
         </section>
 
         <section class="workspace-grid bottom-grid">
           <section class="panel details-panel">
             <div class="panel-heading">
-              <h3>Action Details</h3>
+              <h3>Command Details</h3>
               <span id="selected-path" class="panel-note"></span>
             </div>
             <p id="command-summary" class="panel-note"></p>
@@ -154,7 +217,7 @@
               <h3>Runner</h3>
               <span id="run-status" class="status-pill status-idle">idle</span>
             </div>
-            <p class="panel-note">The runner is prefilled from the target bar and the selected action. Adjust arguments directly when you need the exact CLI shape.</p>
+            <p class="panel-note">The runner is prefilled from the active task and the target bar. Adjust arguments directly when you need the exact CLI shape.</p>
             <div class="preview-shell">
               <span class="preview-label">Preview</span>
               <pre id="command-preview" class="command-preview"></pre>
