@@ -585,6 +585,10 @@ func buildCommandTargetDescriptor(command *cobra.Command) web.CommandTargetDescr
 		descriptor.Path = web.CommandTargetRequirementRequired
 		descriptor.SupportsBatch = true
 		descriptor.DraftTemplate = webDraftTemplateFilesRemoveConstant
+	case applicationNameConstant + " " + workflowCommandOperationNameConstant:
+		descriptor.Group = webCommandGroupGeneralConstant
+		descriptor.Repository = web.CommandTargetRequirementRequired
+		descriptor.SupportsBatch = true
 	case applicationNameConstant + " " + versionCommandUseNameConstant:
 		descriptor.Group = webCommandGroupGeneralConstant
 	}

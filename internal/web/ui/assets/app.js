@@ -146,12 +146,16 @@ const commandPathDefaultValue = "gix default";
 const commandPathFilesAddValue = "gix files add";
 const commandPathFilesReplaceValue = "gix files replace";
 const commandPathFilesRemoveValue = "gix files rm";
+const commandPathRemoteCanonicalValue = "gix remote update-to-canonical";
 const commandPathPullRequestsDeleteValue = "gix prs delete";
 const commandPathPackagesDeleteValue = "gix packages delete";
+const commandPathWorkflowValue = "gix workflow";
 const taskInspectValue = "inspect";
 const taskBranchValue = "branch";
 const taskFilesValue = "files";
+const taskRemotesValue = "remotes";
 const taskCleanupValue = "cleanup";
+const taskWorkflowsValue = "workflows";
 const taskAdvancedValue = "advanced";
 const fileTaskModeAddValue = "add";
 const fileTaskModeReplaceValue = "replace";
@@ -236,12 +240,16 @@ const elements = {
   taskInspect: document.querySelector("#task-inspect"),
   taskBranch: document.querySelector("#task-branch"),
   taskFiles: document.querySelector("#task-files"),
+  taskRemotes: document.querySelector("#task-remotes"),
   taskCleanup: document.querySelector("#task-cleanup"),
+  taskWorkflows: document.querySelector("#task-workflows"),
   taskAdvanced: document.querySelector("#task-advanced"),
   taskPanelInspect: document.querySelector("#task-panel-inspect"),
   taskPanelBranch: document.querySelector("#task-panel-branch"),
   taskPanelFiles: document.querySelector("#task-panel-files"),
+  taskPanelRemotes: document.querySelector("#task-panel-remotes"),
   taskPanelCleanup: document.querySelector("#task-panel-cleanup"),
+  taskPanelWorkflows: document.querySelector("#task-panel-workflows"),
   taskPanelAdvanced: document.querySelector("#task-panel-advanced"),
   taskInspectLoad: document.querySelector("#task-inspect-load"),
   fileTaskMode: document.querySelector("#file-task-mode"),
@@ -252,8 +260,16 @@ const elements = {
   fileReplaceInput: document.querySelector("#file-replace-input"),
   fileTaskLoad: document.querySelector("#task-file-load"),
   fileTaskSummary: document.querySelector("#file-task-summary"),
+  remoteOwnerInput: document.querySelector("#remote-owner-input"),
+  taskRemoteLoad: document.querySelector("#task-remote-load"),
   taskCleanupPullRequests: document.querySelector("#task-cleanup-prs"),
   taskCleanupPackages: document.querySelector("#task-cleanup-packages"),
+  workflowTargetInput: document.querySelector("#workflow-target-input"),
+  workflowVarsInput: document.querySelector("#workflow-vars-input"),
+  workflowVarFilesInput: document.querySelector("#workflow-var-files-input"),
+  workflowWorkersInput: document.querySelector("#workflow-workers-input"),
+  workflowRequireClean: document.querySelector("#workflow-require-clean"),
+  taskWorkflowLoad: document.querySelector("#task-workflow-load"),
   commandCount: document.querySelector("#command-count"),
   commandFilter: document.querySelector("#command-filter"),
   commandGroups: document.querySelector("#command-groups"),
@@ -313,7 +329,7 @@ async function initialize() {
   }
 
   elements.repoCount.textContent = String(state.repositories.length);
-  elements.taskCount.textContent = "5";
+  elements.taskCount.textContent = "7";
   elements.commandCount.textContent = String(state.actionableCommands.length);
   elements.targetRefMode.value = state.targetRefMode;
   elements.targetPathMode.value = state.targetPathMode;
@@ -362,8 +378,16 @@ function bindEvents() {
     setActiveTask(taskFilesValue);
   });
 
+  elements.taskRemotes.addEventListener("click", () => {
+    setActiveTask(taskRemotesValue);
+  });
+
   elements.taskCleanup.addEventListener("click", () => {
     setActiveTask(taskCleanupValue);
+  });
+
+  elements.taskWorkflows.addEventListener("click", () => {
+    setActiveTask(taskWorkflowsValue);
   });
 
   elements.taskAdvanced.addEventListener("click", () => {
@@ -444,12 +468,40 @@ function bindEvents() {
     loadFileTaskCommand();
   });
 
+  elements.remoteOwnerInput.addEventListener("input", () => {
+    updateActionContext();
+    if (state.selectedPath === commandPathRemoteCanonicalValue) {
+      loadRemoteTaskCommand();
+    }
+  });
+
+  elements.taskRemoteLoad.addEventListener("click", () => {
+    loadRemoteTaskCommand();
+  });
+
   elements.taskCleanupPullRequests.addEventListener("click", () => {
     selectCommand(commandPathPullRequestsDeleteValue);
   });
 
   elements.taskCleanupPackages.addEventListener("click", () => {
     selectCommand(commandPathPackagesDeleteValue);
+  });
+
+  const handleWorkflowDraftChange = () => {
+    updateActionContext();
+    if (state.selectedPath === commandPathWorkflowValue) {
+      loadWorkflowTaskCommand();
+    }
+  };
+
+  elements.workflowTargetInput.addEventListener("input", handleWorkflowDraftChange);
+  elements.workflowVarsInput.addEventListener("input", handleWorkflowDraftChange);
+  elements.workflowVarFilesInput.addEventListener("input", handleWorkflowDraftChange);
+  elements.workflowWorkersInput.addEventListener("input", handleWorkflowDraftChange);
+  elements.workflowRequireClean.addEventListener("change", handleWorkflowDraftChange);
+
+  elements.taskWorkflowLoad.addEventListener("click", () => {
+    loadWorkflowTaskCommand();
   });
 
   elements.commandFilter.addEventListener("input", () => {
@@ -494,7 +546,7 @@ function setRefTarget(mode, value = "") {
  * @param {string} taskID
  */
 function setActiveTask(taskID) {
-  if (![taskInspectValue, taskBranchValue, taskFilesValue, taskCleanupValue, taskAdvancedValue].includes(taskID)) {
+  if (![taskInspectValue, taskBranchValue, taskFilesValue, taskRemotesValue, taskCleanupValue, taskWorkflowsValue, taskAdvancedValue].includes(taskID)) {
     return;
   }
 
@@ -508,7 +560,9 @@ function renderTaskState() {
     [elements.taskInspect, taskInspectValue],
     [elements.taskBranch, taskBranchValue],
     [elements.taskFiles, taskFilesValue],
+    [elements.taskRemotes, taskRemotesValue],
     [elements.taskCleanup, taskCleanupValue],
+    [elements.taskWorkflows, taskWorkflowsValue],
     [elements.taskAdvanced, taskAdvancedValue],
   ];
   taskButtons.forEach(([element, taskID]) => {
@@ -518,13 +572,17 @@ function renderTaskState() {
   elements.taskPanelInspect.hidden = state.activeTask !== taskInspectValue;
   elements.taskPanelBranch.hidden = state.activeTask !== taskBranchValue;
   elements.taskPanelFiles.hidden = state.activeTask !== taskFilesValue;
+  elements.taskPanelRemotes.hidden = state.activeTask !== taskRemotesValue;
   elements.taskPanelCleanup.hidden = state.activeTask !== taskCleanupValue;
+  elements.taskPanelWorkflows.hidden = state.activeTask !== taskWorkflowsValue;
   elements.taskPanelAdvanced.hidden = state.activeTask !== taskAdvancedValue;
 
   elements.taskInspectLoad.disabled = !repositoryTargetsAvailable;
   elements.fileTaskLoad.disabled = !repositoryTargetsAvailable;
+  elements.taskRemoteLoad.disabled = !repositoryTargetsAvailable;
   elements.taskCleanupPullRequests.disabled = !repositoryTargetsAvailable;
   elements.taskCleanupPackages.disabled = !repositoryTargetsAvailable;
+  elements.taskWorkflowLoad.disabled = !repositoryTargetsAvailable;
 
   renderFileTaskState();
   updateActionContext();
@@ -566,6 +624,14 @@ function loadFileTaskCommand() {
     return;
   }
   selectCommand(commandPathFilesRemoveValue);
+}
+
+function loadRemoteTaskCommand() {
+  selectCommand(commandPathRemoteCanonicalValue);
+}
+
+function loadWorkflowTaskCommand() {
+  selectCommand(commandPathWorkflowValue);
 }
 
 function renderRepositoryLaunchSummary() {
@@ -812,6 +878,17 @@ function updateActionContext() {
       }
       elements.actionContext.textContent = `Files task targets ${repositorySummary}. Ref mode ${refSummary}. Path mode ${pathSummary}.`;
       return;
+    case taskRemotesValue:
+      if (scopeRepositories.length === 0) {
+        elements.actionContext.textContent = "Choose a repository target set before loading remote normalization.";
+        return;
+      }
+      if (selectedCommand && selectedCommand.target.group === commandGroupRemoteValue && commandDraft?.reason) {
+        elements.actionContext.textContent = commandDraft.reason;
+        return;
+      }
+      elements.actionContext.textContent = `Remote normalization targets ${repositorySummary}.`;
+      return;
     case taskCleanupValue:
       if (scopeRepositories.length === 0) {
         elements.actionContext.textContent = "Choose a repository target set before loading cleanup operations.";
@@ -819,6 +896,15 @@ function updateActionContext() {
       }
       elements.actionContext.textContent = `Cleanup task targets ${repositorySummary}.`;
       return;
+    case taskWorkflowsValue: {
+      const workflowTarget = elements.workflowTargetInput?.value.trim() || "WORKFLOW_OR_PRESET";
+      if (scopeRepositories.length === 0) {
+        elements.actionContext.textContent = "Choose a repository target set before loading workflow runs.";
+        return;
+      }
+      elements.actionContext.textContent = `Workflow task targets ${repositorySummary}. Workflow ${workflowTarget}.`;
+      return;
+    }
     case taskAdvancedValue:
       if (selectedCommand && commandDraft?.reason) {
         elements.actionContext.textContent = commandDraft.reason;
@@ -1113,6 +1199,10 @@ function populateArguments(command, argumentsOverride = null) {
  * @returns {{ arguments: string[], reason: string }}
  */
 function resolveCommandDraft(command) {
+  if (command.path === commandPathWorkflowValue) {
+    return buildWorkflowTaskArguments();
+  }
+
   const rootArguments = buildRootArgumentsForScope(command);
   if (command.target.repository !== targetRequirementNoneValue && rootArguments.length === 0) {
     return {
@@ -1132,6 +1222,10 @@ function resolveCommandDraft(command) {
     return buildDraftArguments(command, rootArguments);
   }
 
+  if (command.path === commandPathRemoteCanonicalValue) {
+    return buildRemoteTaskArguments(rootArguments);
+  }
+
   if (command.path === commandPathBranchChangeValue) {
     return buildBranchChangeArguments(rootArguments);
   }
@@ -1144,6 +1238,65 @@ function resolveCommandDraft(command) {
     arguments: [...command.path.split(" ").slice(1), ...rootArguments],
     reason: "",
   };
+}
+
+/**
+ * @param {string[]} rootArguments
+ * @returns {{ arguments: string[], reason: string }}
+ */
+function buildRemoteTaskArguments(rootArguments) {
+  if (rootArguments.length === 0) {
+    return {
+      arguments: [],
+      reason: "Select at least one repository in the target bar to load remote normalization.",
+    };
+  }
+
+  const ownerConstraint = elements.remoteOwnerInput?.value.trim() || "";
+  const argumentsList = ["remote", "update-to-canonical"];
+  if (ownerConstraint) {
+    argumentsList.push("--owner", ownerConstraint);
+  }
+  argumentsList.push(...rootArguments);
+  return { arguments: argumentsList, reason: "" };
+}
+
+/**
+ * @returns {{ arguments: string[], reason: string }}
+ */
+function buildWorkflowTaskArguments() {
+  const repositoryRoots = repositoryScopeRoots();
+  if (repositoryRoots.length === 0) {
+    return {
+      arguments: [],
+      reason: "Select at least one repository in the target bar to load a workflow run.",
+    };
+  }
+
+  const workflowTarget = elements.workflowTargetInput?.value.trim() || "WORKFLOW_OR_PRESET";
+  const variableAssignments = splitNonEmptyLines(elements.workflowVarsInput?.value || "");
+  const variableFiles = splitNonEmptyLines(elements.workflowVarFilesInput?.value || "");
+  const workflowWorkers = Math.max(1, Number.parseInt(elements.workflowWorkersInput?.value || "1", 10) || 1);
+  const requireClean = Boolean(elements.workflowRequireClean?.checked);
+
+  const argumentsList = ["workflow", workflowTarget];
+  if (requireClean) {
+    argumentsList.push("--require-clean");
+  }
+  variableAssignments.forEach((assignment) => {
+    argumentsList.push("--var", assignment);
+  });
+  variableFiles.forEach((filePath) => {
+    argumentsList.push("--var-file", filePath);
+  });
+  if (workflowWorkers !== 1) {
+    argumentsList.push("--workflow-workers", String(workflowWorkers));
+  }
+  repositoryRoots.forEach((rootPath) => {
+    argumentsList.push("--roots", rootPath);
+  });
+
+  return { arguments: argumentsList, reason: "" };
 }
 
 /**
@@ -1437,6 +1590,17 @@ function resolvePathValues() {
 function readTextValue(element, fallback) {
   const value = element?.value.trim() || "";
   return value || fallback;
+}
+
+/**
+ * @param {string} value
+ * @returns {string[]}
+ */
+function splitNonEmptyLines(value) {
+  return value
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
 }
 
 /**
@@ -1749,8 +1913,16 @@ function inferTaskForCommand(command) {
     return taskFilesValue;
   }
 
+  if (command.target.group === commandGroupRemoteValue) {
+    return taskRemotesValue;
+  }
+
   if (command.target.group === commandGroupPullRequestsValue || command.target.group === commandGroupPackagesValue) {
     return taskCleanupValue;
+  }
+
+  if (command.path === commandPathWorkflowValue) {
+    return taskWorkflowsValue;
   }
 
   return taskAdvancedValue;

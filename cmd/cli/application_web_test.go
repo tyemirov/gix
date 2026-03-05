@@ -107,6 +107,8 @@ func TestCommandCatalogMarksInactionableCommands(t *testing.T) {
 	workflowCommand := findCatalogCommand(catalog, "gix workflow")
 	require.NotNil(t, workflowCommand)
 	require.False(t, workflowCommand.Actionable)
+	require.Equal(t, web.CommandTargetRequirementRequired, workflowCommand.Target.Repository)
+	require.True(t, workflowCommand.Target.SupportsBatch)
 
 	defaultCommand := findCatalogCommand(catalog, "gix default")
 	require.NotNil(t, defaultCommand)
@@ -288,6 +290,8 @@ func TestWebServerExecutesVersionCommand(t *testing.T) {
 	require.Contains(t, indexDocument.String(), "<h3>Paths</h3>")
 	require.Contains(t, indexDocument.String(), "<h3>Tasks</h3>")
 	require.Contains(t, indexDocument.String(), "Load audit snapshot")
+	require.Contains(t, indexDocument.String(), "Load remote normalization")
+	require.Contains(t, indexDocument.String(), "Load workflow command")
 
 	commandsResponse, commandsError := http.Get(httpServer.URL + "/api/commands")
 	require.NoError(t, commandsError)

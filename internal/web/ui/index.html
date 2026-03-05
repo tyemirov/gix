@@ -102,7 +102,7 @@
           <section class="panel actions-panel">
             <div class="panel-heading">
               <h3>Tasks</h3>
-              <span id="task-count" class="pill">5</span>
+              <span id="task-count" class="pill">7</span>
             </div>
             <p id="action-context" class="panel-note"></p>
 
@@ -110,7 +110,9 @@
               <button id="task-inspect" class="task-button active" type="button">Inspect</button>
               <button id="task-branch" class="task-button" type="button">Branch</button>
               <button id="task-files" class="task-button" type="button">Files</button>
+              <button id="task-remotes" class="task-button" type="button">Remotes</button>
               <button id="task-cleanup" class="task-button" type="button">Cleanup</button>
+              <button id="task-workflows" class="task-button" type="button">Workflows</button>
               <button id="task-advanced" class="task-button" type="button">Advanced</button>
             </div>
 
@@ -174,6 +176,42 @@
                 <button id="task-cleanup-prs" class="secondary-button" type="button">Load PR branch cleanup</button>
                 <button id="task-cleanup-packages" class="secondary-button" type="button">Load package cleanup</button>
               </div>
+            </section>
+
+            <section id="task-panel-remotes" class="task-panel" hidden>
+              <div class="task-copy">
+                <h4>Remote Normalization</h4>
+                <p class="panel-note">Normalize `origin` URLs across the selected repository scope. Use an owner constraint only when you want to restrict canonical remotes to one organization or user.</p>
+              </div>
+              <label class="field-label" for="remote-owner-input">Owner Constraint</label>
+              <input id="remote-owner-input" class="text-input" type="text" placeholder="owner">
+              <button id="task-remote-load" class="secondary-button" type="button">Load remote normalization</button>
+            </section>
+
+            <section id="task-panel-workflows" class="task-panel" hidden>
+              <div class="task-copy">
+                <h4>Workflow Runner</h4>
+                <p class="panel-note">Run an embedded preset or a workflow configuration file against the current repository target set. Repositories still come from the target bar.</p>
+              </div>
+
+              <label class="field-label" for="workflow-target-input">Preset or Config</label>
+              <input id="workflow-target-input" class="text-input" type="text" placeholder="license or ./workflow.yaml">
+
+              <label class="field-label" for="workflow-vars-input">Variables</label>
+              <textarea id="workflow-vars-input" class="code-input task-code-input" spellcheck="false" placeholder="key=value"></textarea>
+
+              <label class="field-label" for="workflow-var-files-input">Variable Files</label>
+              <textarea id="workflow-var-files-input" class="code-input task-code-input" spellcheck="false" placeholder="./vars.yaml"></textarea>
+
+              <label class="field-label" for="workflow-workers-input">Workflow Workers</label>
+              <input id="workflow-workers-input" class="text-input" type="number" min="1" step="1" value="1">
+
+              <label class="checkbox-row" for="workflow-require-clean">
+                <input id="workflow-require-clean" type="checkbox">
+                <span>Require clean worktrees for rename operations</span>
+              </label>
+
+              <button id="task-workflow-load" class="secondary-button" type="button">Load workflow command</button>
             </section>
 
             <section id="task-panel-advanced" class="task-panel" hidden>

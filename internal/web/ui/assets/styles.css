@@ -453,7 +453,7 @@ h4 {
 
 .task-switcher {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
   gap: 0.55rem;
   margin-bottom: 1rem;
 }
@@ -483,6 +483,19 @@ h4 {
 
 .task-code-input {
   min-height: 6rem;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  color: var(--muted);
+}
+
+.checkbox-row input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--accent);
 }
 
 .quick-actions {
