@@ -91,11 +91,11 @@
         <section class="workspace-grid top-grid">
           <section class="panel branches-panel">
             <div class="panel-heading">
-              <h3>Branches</h3>
+              <h3>Ref Browser</h3>
               <span id="branch-count" class="pill">0</span>
             </div>
             <label class="field-label" for="branch-filter">Filter</label>
-            <input id="branch-filter" class="text-input" type="search" placeholder="Find a branch">
+            <input id="branch-filter" class="text-input" type="search" placeholder="Find a local branch">
             <div id="branch-list" class="branch-list" aria-live="polite"></div>
           </section>
 
@@ -108,8 +108,8 @@
 
             <div class="quick-actions" aria-label="Quick actions">
               <button id="action-switch-default" class="secondary-button" type="button">Switch to default branch</button>
-              <button id="action-switch-selected" class="secondary-button" type="button">Switch to selected branch</button>
-              <button id="action-promote-selected" class="secondary-button" type="button">Promote selected branch</button>
+              <button id="action-switch-target" class="secondary-button" type="button">Switch to target ref</button>
+              <button id="action-promote-target" class="secondary-button" type="button">Promote target ref</button>
             </div>
 
             <div class="template-actions" aria-label="File action drafts">

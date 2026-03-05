@@ -169,7 +169,6 @@ const commandGroupDefinitions = [
  *   targetPathMode: string,
  *   targetPathValue: string,
  *   branches: BranchDescriptor[],
- *   selectedBranchName: string,
  *   allCommands: CommandDescriptor[],
  *   actionableCommands: CommandDescriptor[],
  *   selectedPath: string,
@@ -186,7 +185,6 @@ const state = {
   targetPathMode: pathModeNoneValue,
   targetPathValue: "",
   branches: [],
-  selectedBranchName: "",
   allCommands: [],
   actionableCommands: [],
   selectedPath: "",
@@ -236,8 +234,8 @@ const elements = {
   stderrOutput: document.querySelector("#stderr-output"),
   runError: document.querySelector("#run-error"),
   actionSwitchDefault: document.querySelector("#action-switch-default"),
-  actionSwitchSelected: document.querySelector("#action-switch-selected"),
-  actionPromoteSelected: document.querySelector("#action-promote-selected"),
+  actionSwitchTarget: document.querySelector("#action-switch-target"),
+  actionPromoteTarget: document.querySelector("#action-promote-target"),
 };
 
 initialize().catch((error) => {
@@ -330,12 +328,16 @@ function bindEvents() {
       state.targetRefValue = "";
     }
     renderTargetState();
+    renderBranches(elements.branchFilter.value.trim().toLowerCase());
+    syncQuickActions();
     repopulateSelectedCommand();
   });
 
   elements.targetRefValue.addEventListener("input", () => {
     state.targetRefValue = elements.targetRefValue.value;
     renderTargetState();
+    renderBranches(elements.branchFilter.value.trim().toLowerCase());
+    syncQuickActions();
     repopulateSelectedCommand();
   });
 
@@ -370,13 +372,26 @@ function bindEvents() {
     loadQuickAction("switch-default");
   });
 
-  elements.actionSwitchSelected.addEventListener("click", () => {
-    loadQuickAction("switch-selected");
+  elements.actionSwitchTarget.addEventListener("click", () => {
+    loadQuickAction("switch-target");
   });
 
-  elements.actionPromoteSelected.addEventListener("click", () => {
-    loadQuickAction("promote-selected");
+  elements.actionPromoteTarget.addEventListener("click", () => {
+    loadQuickAction("promote-target");
   });
+}
+
+/**
+ * @param {string} mode
+ * @param {string} [value]
+ */
+function setRefTarget(mode, value = "") {
+  state.targetRefMode = mode;
+  state.targetRefValue = value;
+  renderTargetState();
+  renderBranches(elements.branchFilter.value.trim().toLowerCase());
+  syncQuickActions();
+  repopulateSelectedCommand();
 }
 
 function renderRepositoryLaunchSummary() {
@@ -499,7 +514,6 @@ async function selectRepository(repositoryID) {
   if (state.checkedRepositoryIDs.length === 0) {
     state.checkedRepositoryIDs = [repositoryID];
   }
-  state.selectedBranchName = "";
   state.branches = [];
 
   renderRepositoryList(elements.repoFilter.value.trim().toLowerCase());
@@ -528,8 +542,6 @@ async function selectRepository(repositoryID) {
   }
 
   state.branches = (branchCatalog.branches || []).slice().sort(compareBranches);
-  const initialBranch = state.branches.find((branch) => branch.current) || state.branches[0] || null;
-  state.selectedBranchName = initialBranch ? initialBranch.name : "";
   renderTargetState();
   renderBranches(elements.branchFilter.value.trim().toLowerCase());
   syncQuickActions();
@@ -635,41 +647,71 @@ function renderBranches(query) {
   });
 
   elements.branchList.innerHTML = "";
-  elements.branchCount.textContent = String(state.branches.length);
 
   if (!repository) {
-    appendEmptyState(elements.branchList, "Select a repository to inspect its local branches.");
+  elements.branchCount.textContent = "0";
+    appendEmptyState(elements.branchList, "Select a repository to browse current, default, and local branch refs.");
     return;
   }
 
-  if (visibleBranches.length === 0) {
-    appendEmptyState(elements.branchList, state.branches.length === 0 ? "No local branches were detected for the selected repository." : "No branches match the current filter.");
-    return;
+  const refEntries = [];
+  if (repository.current_branch) {
+    refEntries.push({
+      key: "current",
+      label: "Current branch",
+      meta: `${repository.current_branch} checked out`,
+      current: true,
+      isDefault: Boolean(repository.default_branch && repository.default_branch === repository.current_branch),
+      active: state.targetRefMode === refModeCurrentValue,
+      onSelect: () => setRefTarget(refModeCurrentValue),
+    });
+  }
+
+  if (repository.default_branch) {
+    refEntries.push({
+      key: "default",
+      label: "Default branch",
+      meta: `${repository.default_branch} inferred from origin/HEAD`,
+      current: Boolean(repository.current_branch && repository.current_branch === repository.default_branch),
+      isDefault: true,
+      active: state.targetRefMode === refModeDefaultValue,
+      onSelect: () => setRefTarget(refModeDefaultValue),
+    });
   }
 
   visibleBranches.forEach((branch) => {
+    refEntries.push({
+      key: `branch:${branch.name}`,
+      label: branch.name,
+      meta: branch.upstream || "No upstream",
+      current: branch.current,
+      isDefault: Boolean(repository.default_branch && repository.default_branch === branch.name),
+      active: state.targetRefMode === refModeNamedValue && state.targetRefValue.trim() === branch.name,
+      onSelect: () => setRefTarget(refModeNamedValue, branch.name),
+    });
+  });
+
+  elements.branchCount.textContent = String(refEntries.length);
+
+  if (refEntries.length === 0) {
+    appendEmptyState(elements.branchList, state.branches.length === 0 ? "No local branches were detected for the selected repository." : "No refs match the current filter.");
+    return;
+  }
+
+  refEntries.forEach((entry) => {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = `branch-button${branch.name === state.selectedBranchName ? " active" : ""}`;
-    const isDefaultBranch = repository.default_branch && repository.default_branch === branch.name;
+    button.className = `branch-button${entry.active ? " active" : ""}`;
     button.innerHTML = `
       <div class="branch-row">
-        <span class="branch-name">${escapeHTML(branch.name)}</span>
-        ${branch.current ? '<span class="flag-token flag-token-success">current</span>' : ""}
-        ${isDefaultBranch ? '<span class="flag-token">default</span>' : ""}
+        <span class="branch-name">${escapeHTML(entry.label)}</span>
+        ${entry.current ? '<span class="flag-token flag-token-success">current</span>' : ""}
+        ${entry.isDefault ? '<span class="flag-token">default</span>' : ""}
+        ${entry.active ? '<span class="flag-token">target</span>' : ""}
       </div>
-      <div class="branch-meta">${escapeHTML(branch.upstream || "No upstream")}</div>
+      <div class="branch-meta">${escapeHTML(entry.meta)}</div>
     `;
-    button.addEventListener("click", () => {
-      state.selectedBranchName = branch.name;
-      if (state.targetRefMode === refModeNamedValue) {
-        state.targetRefValue = branch.name;
-      }
-      renderTargetState();
-      renderBranches(elements.branchFilter.value.trim().toLowerCase());
-      syncQuickActions();
-      repopulateSelectedCommand();
-    });
+    button.addEventListener("click", entry.onSelect);
     elements.branchList.append(button);
   });
 }
@@ -703,26 +745,25 @@ function renderDraftList() {
 
 function syncQuickActions(errorText = "") {
   const repository = selectedRepository();
-  const branch = selectedBranch();
   const branchQuickActionsDisabled = state.selectedScope !== scopeSelectedValue;
+  const targetSwitchSelection = resolveBranchChangeSelection();
+  const promoteSelection = resolveDefaultTargetBranch();
 
   elements.actionSwitchDefault.disabled = !repository || branchQuickActionsDisabled;
-  elements.actionSwitchSelected.disabled = !repository || !branch || branch.current || branchQuickActionsDisabled;
-  elements.actionPromoteSelected.disabled = !repository || !branch || branchQuickActionsDisabled;
+  elements.actionSwitchTarget.disabled = !repository || branchQuickActionsDisabled || !targetSwitchSelection.ready;
+  elements.actionPromoteTarget.disabled = !repository || branchQuickActionsDisabled || !promoteSelection.ready;
 
   elements.actionSwitchDefault.textContent = repository && repository.default_branch
     ? `Load switch to ${repository.default_branch}`
     : "Load switch to default branch";
 
-  elements.actionSwitchSelected.textContent = branch
-    ? branch.current
-      ? `Already on ${branch.name}`
-      : `Load switch to ${branch.name}`
-    : "Load switch to selected branch";
+  elements.actionSwitchTarget.textContent = targetSwitchSelection.ready && targetSwitchSelection.branch
+    ? `Load switch to ${targetSwitchSelection.branch}`
+    : "Load switch to target ref";
 
-  elements.actionPromoteSelected.textContent = branch
-    ? `Load promote ${branch.name}`
-    : "Load promote selected branch";
+  elements.actionPromoteTarget.textContent = promoteSelection.ready && promoteSelection.branch
+    ? `Load promote ${promoteSelection.branch}`
+    : "Load promote target ref";
 
   if (errorText) {
     elements.actionContext.textContent = errorText;
@@ -730,11 +771,10 @@ function syncQuickActions(errorText = "") {
 }
 
 /**
- * @param {"switch-default" | "switch-selected" | "promote-selected"} quickActionID
+ * @param {"switch-default" | "switch-target" | "promote-target"} quickActionID
  */
 function loadQuickAction(quickActionID) {
   const repository = selectedRepository();
-  const branch = selectedBranch();
   if (!repository) {
     return;
   }
@@ -746,16 +786,23 @@ function loadQuickAction(quickActionID) {
     return;
   }
 
-  if (!branch) {
+  if (quickActionID === "switch-target") {
+    const selection = resolveBranchChangeSelection();
+    if (!selection.ready) {
+      return;
+    }
+    const argumentsOverride = selection.branch
+      ? ["cd", selection.branch, "--roots", repository.path]
+      : ["cd", "--roots", repository.path];
+    selectCommand(commandPathBranchChangeValue, { argumentsOverride });
     return;
   }
 
-  if (quickActionID === "switch-selected") {
-    selectCommand(commandPathBranchChangeValue, { argumentsOverride: ["cd", branch.name, "--roots", repository.path] });
+  const selection = resolveDefaultTargetBranch();
+  if (!selection.ready) {
     return;
   }
-
-  selectCommand(commandPathDefaultValue, { argumentsOverride: ["default", branch.name, "--roots", repository.path] });
+  selectCommand(commandPathDefaultValue, { argumentsOverride: ["default", selection.branch, "--roots", repository.path] });
 }
 
 /**
@@ -1452,16 +1499,6 @@ function repositoryScopeRepositories() {
  */
 function repositoryScopeRoots() {
   return repositoryScopeRepositories().map((repository) => repository.path);
-}
-
-/**
- * @returns {BranchDescriptor | null}
- */
-function selectedBranch() {
-  if (!state.selectedBranchName) {
-    return null;
-  }
-  return state.branches.find((branch) => branch.name === state.selectedBranchName) || null;
 }
 
 /**
