@@ -58,10 +58,28 @@
             </div>
             <p id="action-context" class="panel-note"></p>
 
+            <div class="scope-panel">
+              <span class="scope-label">Scope</span>
+              <div class="scope-toggle" role="group" aria-label="Repository scope">
+                <button id="scope-selected" class="scope-button active" type="button">Selected Repo</button>
+                <button id="scope-all" class="scope-button" type="button">All Repos</button>
+              </div>
+            </div>
+
             <div class="quick-actions" aria-label="Quick actions">
               <button id="action-switch-default" class="secondary-button" type="button">Switch to default branch</button>
               <button id="action-switch-selected" class="secondary-button" type="button">Switch to selected branch</button>
               <button id="action-promote-selected" class="secondary-button" type="button">Promote selected branch</button>
+            </div>
+
+            <div class="template-actions" aria-label="File action drafts">
+              <div class="template-heading">
+                <h4>File Drafts</h4>
+                <span class="panel-note">Scope-aware templates</span>
+              </div>
+              <button id="template-files-add" class="secondary-button" type="button">Draft add file</button>
+              <button id="template-files-replace" class="secondary-button" type="button">Draft replace text</button>
+              <button id="template-files-rm" class="secondary-button" type="button">Draft remove files</button>
             </div>
 
             <label class="field-label" for="command-filter">Find Action</label>
