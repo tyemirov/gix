@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>gix Control Surface</title>
+    <link rel="stylesheet" href="/assets/styles.css">
+  </head>
+  <body>
+    <div class="page-shell">
+      <aside class="sidebar">
+        <div class="sidebar-panel brand-panel">
+          <p class="eyebrow">Local Interface</p>
+          <h1>gix Control Surface</h1>
+          <p class="lede">Run any gix command through the same in-process Cobra tree without leaving the browser.</p>
+          <p class="muted">Prefer <code>--yes</code> for prompt-heavy flows. Raw stdin is available when you need it.</p>
+        </div>
+
+        <div class="sidebar-panel search-panel">
+          <label class="field-label" for="command-filter">Command Filter</label>
+          <input id="command-filter" class="text-input" type="search" placeholder="Find a command">
+        </div>
+
+        <div class="sidebar-panel command-panel">
+          <div class="panel-heading">
+            <h2>Runnable Commands</h2>
+            <span id="command-count" class="pill">0</span>
+          </div>
+          <div id="command-list" class="command-list" aria-live="polite"></div>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <section class="hero-card">
+          <div>
+            <p class="eyebrow">Selected Command</p>
+            <h2 id="command-title">Loading...</h2>
+          </div>
+          <p id="command-summary" class="hero-summary"></p>
+        </section>
+
+        <section class="workspace-grid">
+          <section class="card editor-card">
+            <div class="panel-heading">
+              <h3>Arguments</h3>
+              <span class="panel-note">One argument per line</span>
+            </div>
+            <p class="muted">The command path is prefilled when you pick a runnable command. Add flags and positional values below it.</p>
+            <textarea id="arguments-input" class="code-input" spellcheck="false"></textarea>
+
+            <div class="panel-heading secondary-heading">
+              <h3>Standard Input</h3>
+              <span class="panel-note">Optional raw input</span>
+            </div>
+            <textarea id="stdin-input" class="code-input stdin-input" spellcheck="false" placeholder="Type stdin payload here when a command expects input"></textarea>
+
+            <div class="button-row">
+              <button id="run-command" class="primary-button" type="button">Run Command</button>
+              <span id="run-status" class="status-pill status-idle">idle</span>
+            </div>
+          </section>
+
+          <section class="card details-card">
+            <div class="panel-heading">
+              <h3>Metadata</h3>
+              <span id="selected-path" class="panel-note"></span>
+            </div>
+            <div class="metadata-grid">
+              <div>
+                <h4>Usage</h4>
+                <pre id="command-usage" class="code-preview"></pre>
+              </div>
+              <div>
+                <h4>Aliases</h4>
+                <div id="command-aliases" class="token-row"></div>
+              </div>
+            </div>
+            <div>
+              <h4>Flags</h4>
+              <div id="command-flags" class="flag-list"></div>
+            </div>
+          </section>
+        </section>
+
+        <section class="card output-card">
+          <div class="panel-heading">
+            <h3>Run Output</h3>
+            <span id="run-id" class="panel-note">No run started</span>
+          </div>
+          <div class="output-grid">
+            <div>
+              <h4>stdout</h4>
+              <pre id="stdout-output" class="terminal-window"></pre>
+            </div>
+            <div>
+              <h4>stderr</h4>
+              <pre id="stderr-output" class="terminal-window terminal-window-error"></pre>
+            </div>
+          </div>
+          <div class="output-footer">
+            <span id="run-error" class="error-message"></span>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="/assets/app.js"></script>
+  </body>
+</html>

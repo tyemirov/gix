@@ -197,6 +197,48 @@ func TestNormalizeInitializationScopeArguments(t *testing.T) {
 	}
 }
 
+func TestNormalizeWebArguments(t *testing.T) {
+	testCases := []struct {
+		name         string
+		input        []string
+		expectedArgs []string
+	}{
+		{
+			name:         "NoArguments",
+			input:        nil,
+			expectedArgs: nil,
+		},
+		{
+			name:         "ImplicitDefaultPort",
+			input:        []string{"--web"},
+			expectedArgs: []string{"--web=8080"},
+		},
+		{
+			name:         "ExplicitPortSeparateArgument",
+			input:        []string{"--web", "18080"},
+			expectedArgs: []string{"--web=18080"},
+		},
+		{
+			name:         "ExplicitPortAssignment",
+			input:        []string{"--web=19090"},
+			expectedArgs: []string{"--web=19090"},
+		},
+		{
+			name:         "EmptyAssignmentDefaultsToStandardPort",
+			input:        []string{"--web="},
+			expectedArgs: []string{"--web=8080"},
+		},
+	}
+
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			normalized := normalizeWebArguments(testCase.input)
+			require.Equal(t, testCase.expectedArgs, normalized)
+		})
+	}
+}
+
 func TestApplicationCommandHierarchyAndAliases(t *testing.T) {
 	application := NewApplication()
 	rootCommand := application.rootCommand
