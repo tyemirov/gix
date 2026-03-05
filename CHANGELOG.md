@@ -1,5 +1,25 @@
 # Changelog
 
+## [v0.3.3]
+
+### Features ✨
+- Add proprietary licensing workflow with branch preservation and automated license updates.
+
+### Improvements ⚙️
+- Embed Google Analytics tags in documentation HTML.
+- Enhance branch change action to preserve and capture original branch state before switching.
+- Update proprietary license template with SPDX tagging and detailed license terms.
+
+### Bug Fixes 🐛
+- _No changes._
+
+### Testing 🧪
+- Add tests to verify branch capture behavior preserving original branch state.
+- Add tests for loading SPDX-tagged proprietary license template.
+
+### Docs 📚
+- Add Google Analytics tracking script to documentation index.html.
+
 ## [v0.3.2]
 
 ### Features ✨
