@@ -46,6 +46,7 @@ type CommandDescriptor struct {
 	Example     string           `json:"example,omitempty"`
 	Aliases     []string         `json:"aliases,omitempty"`
 	Runnable    bool             `json:"runnable"`
+	Actionable  bool             `json:"actionable"`
 	Flags       []FlagDescriptor `json:"flags,omitempty"`
 	Subcommands []string         `json:"subcommands,omitempty"`
 }

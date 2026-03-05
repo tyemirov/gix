@@ -26,6 +26,22 @@ const (
 	gitBranchCatalogReferenceArgumentConstant = "refs/heads/"
 )
 
+var nonActionableCommandPaths = map[string]struct{}{
+	applicationNameConstant: {},
+	applicationNameConstant + " " + repoFolderNamespaceUseNameConstant:                                              {},
+	applicationNameConstant + " " + repoRemoteNamespaceUseNameConstant:                                              {},
+	applicationNameConstant + " " + repoPullRequestsNamespaceUseNameConstant:                                        {},
+	applicationNameConstant + " " + repoPackagesNamespaceUseNameConstant:                                            {},
+	applicationNameConstant + " " + repoFilesNamespaceUseNameConstant:                                               {},
+	applicationNameConstant + " " + messageNamespaceUseNameConstant:                                                 {},
+	applicationNameConstant + " " + workflowCommandOperationNameConstant:                                            {},
+	applicationNameConstant + " " + repoRemoteNamespaceUseNameConstant + " " + updateProtocolCommandUseNameConstant: {},
+	applicationNameConstant + " " + repoFilesNamespaceUseNameConstant + " " + filesReplaceCommandUseNameConstant:    {},
+	applicationNameConstant + " " + repoFilesNamespaceUseNameConstant + " " + filesAddCommandUseNameConstant:        {},
+	applicationNameConstant + " " + repoFilesNamespaceUseNameConstant + " " + removeCommandUseNameConstant:          {},
+	applicationNameConstant + " " + repoReleaseCommandUseNameConstant + " " + releaseRetagCommandUseNameConstant:    {},
+}
+
 type webRunner func(context.Context, web.ServerOptions) error
 
 type webLaunchConfiguration struct {
@@ -302,9 +318,43 @@ func buildCommandDescriptor(command *cobra.Command) web.CommandDescriptor {
 		Example:     strings.TrimSpace(command.Example),
 		Aliases:     sortedStrings(command.Aliases),
 		Runnable:    command.Runnable(),
+		Actionable:  commandIsActionable(command),
 		Flags:       collectFlagDescriptors(command),
 		Subcommands: visibleSubcommandNames,
 	}
+}
+
+func commandIsActionable(command *cobra.Command) bool {
+	if command == nil || !command.Runnable() {
+		return false
+	}
+
+	commandPath := strings.TrimSpace(command.CommandPath())
+	if _, excluded := nonActionableCommandPaths[commandPath]; excluded {
+		return false
+	}
+
+	return commandSupportsBareExecution(command)
+}
+
+func commandSupportsBareExecution(command *cobra.Command) bool {
+	if command == nil {
+		return false
+	}
+
+	if validationError := command.ValidateArgs([]string{}); validationError != nil {
+		return false
+	}
+
+	if validationError := command.ValidateRequiredFlags(); validationError != nil {
+		return false
+	}
+
+	if validationError := command.ValidateFlagGroups(); validationError != nil {
+		return false
+	}
+
+	return true
 }
 
 func visibleSubcommands(command *cobra.Command) []*cobra.Command {

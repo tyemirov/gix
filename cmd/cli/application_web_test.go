@@ -88,6 +88,39 @@ func TestExecuteWithOptionsLaunchesWebRunnerWithExplicitPort(t *testing.T) {
 	require.Equal(t, "127.0.0.1:18080", capturedAddress)
 }
 
+func TestCommandCatalogMarksInactionableCommands(t *testing.T) {
+	application := NewApplication()
+	catalog := application.commandCatalog()
+
+	versionCommand := findCatalogCommand(catalog, "gix version")
+	require.NotNil(t, versionCommand)
+	require.True(t, versionCommand.Actionable)
+
+	messageNamespace := findCatalogCommand(catalog, "gix message")
+	require.NotNil(t, messageNamespace)
+	require.False(t, messageNamespace.Actionable)
+
+	workflowCommand := findCatalogCommand(catalog, "gix workflow")
+	require.NotNil(t, workflowCommand)
+	require.False(t, workflowCommand.Actionable)
+
+	defaultCommand := findCatalogCommand(catalog, "gix default")
+	require.NotNil(t, defaultCommand)
+	require.True(t, defaultCommand.Actionable)
+
+	protocolCommand := findCatalogCommand(catalog, "gix remote update-protocol")
+	require.NotNil(t, protocolCommand)
+	require.False(t, protocolCommand.Actionable)
+
+	retagCommand := findCatalogCommand(catalog, "gix release retag")
+	require.NotNil(t, retagCommand)
+	require.False(t, retagCommand.Actionable)
+
+	renameCommand := findCatalogCommand(catalog, "gix folder rename")
+	require.NotNil(t, renameCommand)
+	require.True(t, renameCommand.Actionable)
+}
+
 func TestWebServerExecutesVersionCommand(t *testing.T) {
 	application := NewApplication()
 	application.versionResolver = func(context.Context) string {
@@ -177,10 +210,15 @@ func TestWebServerExecutesVersionCommand(t *testing.T) {
 }
 
 func catalogContainsCommand(catalog web.CommandCatalog, commandPath string) bool {
+	return findCatalogCommand(catalog, commandPath) != nil
+}
+
+func findCatalogCommand(catalog web.CommandCatalog, commandPath string) *web.CommandDescriptor {
 	for _, command := range catalog.Commands {
 		if command.Path == commandPath {
-			return true
+			commandCopy := command
+			return &commandCopy
 		}
 	}
-	return false
+	return nil
 }

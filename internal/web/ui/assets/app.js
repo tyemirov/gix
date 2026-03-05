@@ -33,6 +33,7 @@
  *   example?: string,
  *   aliases?: string[],
  *   runnable: boolean,
+ *   actionable: boolean,
  *   flags?: FlagDescriptor[],
  *   subcommands?: string[],
  * }} CommandDescriptor
@@ -126,7 +127,7 @@ async function initialize() {
 
   renderBranches(branches);
 
-  const runnableCommands = commandCatalog.commands.filter((command) => command.runnable);
+  const runnableCommands = commandCatalog.commands.filter((command) => command.actionable);
   runnableCommands.sort((left, right) => left.path.localeCompare(right.path));
 
   state.commands = runnableCommands;
