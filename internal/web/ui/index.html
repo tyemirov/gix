@@ -67,8 +67,12 @@
               <option value="pattern">Pattern</option>
               <option value="any">Any</option>
             </select>
-            <label class="field-label" for="target-ref-value">Value</label>
-            <input id="target-ref-value" class="text-input" type="text" placeholder="branch-name or pattern" disabled>
+            <label class="field-label">Value</label>
+            <div class="ref-value-field">
+              <select id="target-ref-select" class="select-input" aria-label="Named ref selection" hidden disabled></select>
+              <input id="target-ref-value" class="text-input" type="text" aria-label="Ref value" placeholder="branch-name or pattern" disabled>
+            </div>
+            <p id="target-ref-detail" class="panel-note target-detail"></p>
           </section>
 
           <section class="panel target-card">
@@ -89,16 +93,6 @@
         </section>
 
         <section class="workspace-grid top-grid">
-          <section class="panel branches-panel">
-            <div class="panel-heading">
-              <h3>Ref Browser</h3>
-              <span id="branch-count" class="pill">0</span>
-            </div>
-            <label class="field-label" for="branch-filter">Filter</label>
-            <input id="branch-filter" class="text-input" type="search" placeholder="Find a local branch">
-            <div id="branch-list" class="branch-list" aria-live="polite"></div>
-          </section>
-
           <section class="panel actions-panel">
             <div class="panel-heading">
               <h3>Tasks</h3>
@@ -127,7 +121,7 @@
             <section id="task-panel-branch" class="task-panel" hidden>
               <div class="task-copy">
                 <h4>Branch Operations</h4>
-                <p class="panel-note">The target bar defines which repositories and refs you are operating on. The ref browser writes directly into the target ref selector.</p>
+                <p class="panel-note">The target bar defines which repositories and refs you are operating on. Use the Refs mode and value controls above to choose a concrete branch when the action needs one.</p>
               </div>
               <div class="quick-actions" aria-label="Branch quick actions">
                 <button id="action-switch-default" class="secondary-button" type="button">Switch to default branch</button>

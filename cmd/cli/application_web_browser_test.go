@@ -32,7 +32,7 @@ const (
 	workflowsTaskButtonSelectorConstant   = "#task-workflows"
 	scopeAllButtonSelectorConstant        = "#scope-all"
 	targetRefModeSelectorConstant         = "#target-ref-mode"
-	targetRefValueSelectorConstant        = "#target-ref-value"
+	targetRefSelectSelectorConstant       = "#target-ref-select"
 	targetPathModeSelectorConstant        = "#target-path-mode"
 	targetPathValueSelectorConstant       = "#target-path-value"
 	fileTaskModeSelectorConstant          = "#file-task-mode"
@@ -98,7 +98,7 @@ func TestWebInterfaceBrowserPrefillsBranchAndFileTasks(t *testing.T) {
 		chromedp.Click(branchTaskButtonSelectorConstant, chromedp.ByQuery),
 		chromedp.WaitVisible(switchTargetButtonSelectorConstant, chromedp.ByQuery),
 		setControlValue(targetRefModeSelectorConstant, refModeNamedConstant),
-		setControlValue(targetRefValueSelectorConstant, "master"),
+		setControlValue(targetRefSelectSelectorConstant, "master"),
 		chromedp.Click(switchTargetButtonSelectorConstant, chromedp.ByQuery),
 	))
 
@@ -113,7 +113,7 @@ func TestWebInterfaceBrowserPrefillsBranchAndFileTasks(t *testing.T) {
 	require.NoError(t, chromedp.Run(browserContext,
 		chromedp.Click(filesTaskButtonSelectorConstant, chromedp.ByQuery),
 		chromedp.WaitVisible(fileLoadButtonSelectorConstant, chromedp.ByQuery),
-		setControlValue(targetRefValueSelectorConstant, "feature/demo"),
+		setControlValue(targetRefSelectSelectorConstant, "feature/demo"),
 		setControlValue(targetPathModeSelectorConstant, pathModeRelativeConstant),
 		setControlValue(targetPathValueSelectorConstant, repositoryReadmePathConstant),
 		setControlValue(fileTaskModeSelectorConstant, fileTaskModeReplaceConstant),

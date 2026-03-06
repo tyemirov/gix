@@ -228,13 +228,12 @@ const elements = {
   scopeAll: document.querySelector("#scope-all"),
   targetRefSummary: document.querySelector("#target-ref-summary"),
   targetRefMode: document.querySelector("#target-ref-mode"),
+  targetRefSelect: document.querySelector("#target-ref-select"),
   targetRefValue: document.querySelector("#target-ref-value"),
+  targetRefDetail: document.querySelector("#target-ref-detail"),
   targetPathSummary: document.querySelector("#target-path-summary"),
   targetPathMode: document.querySelector("#target-path-mode"),
   targetPathValue: document.querySelector("#target-path-value"),
-  branchCount: document.querySelector("#branch-count"),
-  branchFilter: document.querySelector("#branch-filter"),
-  branchList: document.querySelector("#branch-list"),
   actionContext: document.querySelector("#action-context"),
   taskCount: document.querySelector("#task-count"),
   taskInspect: document.querySelector("#task-inspect"),
@@ -345,7 +344,6 @@ async function initialize() {
     await selectRepository(initialRepositoryID);
   } else {
     renderSelectedRepository();
-    renderBranches("");
     syncQuickActions();
   }
 
@@ -360,10 +358,6 @@ async function initialize() {
 function bindEvents() {
   elements.repoFilter.addEventListener("input", () => {
     renderRepositoryList(elements.repoFilter.value.trim().toLowerCase());
-  });
-
-  elements.branchFilter.addEventListener("input", () => {
-    renderBranches(elements.branchFilter.value.trim().toLowerCase());
   });
 
   elements.taskInspect.addEventListener("click", () => {
@@ -416,7 +410,13 @@ function bindEvents() {
       state.targetRefValue = "";
     }
     renderTargetState();
-    renderBranches(elements.branchFilter.value.trim().toLowerCase());
+    syncQuickActions();
+    repopulateSelectedCommand();
+  });
+
+  elements.targetRefSelect.addEventListener("change", () => {
+    state.targetRefValue = elements.targetRefSelect.value;
+    renderTargetState();
     syncQuickActions();
     repopulateSelectedCommand();
   });
@@ -424,7 +424,6 @@ function bindEvents() {
   elements.targetRefValue.addEventListener("input", () => {
     state.targetRefValue = elements.targetRefValue.value;
     renderTargetState();
-    renderBranches(elements.branchFilter.value.trim().toLowerCase());
     syncQuickActions();
     repopulateSelectedCommand();
   });
@@ -527,19 +526,6 @@ function bindEvents() {
   elements.actionPromoteTarget.addEventListener("click", () => {
     loadQuickAction("promote-target");
   });
-}
-
-/**
- * @param {string} mode
- * @param {string} [value]
- */
-function setRefTarget(mode, value = "") {
-  state.targetRefMode = mode;
-  state.targetRefValue = value;
-  renderTargetState();
-  renderBranches(elements.branchFilter.value.trim().toLowerCase());
-  syncQuickActions();
-  repopulateSelectedCommand();
 }
 
 /**
@@ -669,10 +655,9 @@ function renderTargetState() {
   elements.targetRepoDetail.textContent = buildRepositoryScopeDetail(scopeLabel, scopeRepositories);
 
   elements.targetRefMode.value = state.targetRefMode;
-  elements.targetRefValue.disabled = state.targetRefMode !== refModeNamedValue && state.targetRefMode !== refModePatternValue;
-  elements.targetRefValue.placeholder = state.targetRefMode === refModePatternValue ? "branch-*" : "branch-name";
-  elements.targetRefValue.value = state.targetRefValue;
+  renderRefValueField();
   elements.targetRefSummary.textContent = buildRefSummary();
+  elements.targetRefDetail.textContent = buildRefDetail();
 
   elements.targetPathMode.value = state.targetPathMode;
   elements.targetPathValue.disabled = state.targetPathMode === pathModeNoneValue;
@@ -682,6 +667,126 @@ function renderTargetState() {
 
   renderFileTaskState();
   updateActionContext();
+}
+
+function renderRefValueField() {
+  const namedMode = state.targetRefMode === refModeNamedValue;
+  const patternMode = state.targetRefMode === refModePatternValue;
+  const namedOptions = namedRefOptions();
+
+  elements.targetRefSelect.hidden = !namedMode;
+  elements.targetRefSelect.disabled = !namedMode || namedOptions.length === 0;
+  elements.targetRefValue.hidden = namedMode;
+  elements.targetRefValue.disabled = !patternMode;
+  elements.targetRefValue.placeholder = patternMode ? "branch-*" : "Resolved automatically";
+
+  if (namedMode) {
+    if (namedOptions.length > 0 && !namedOptions.some((option) => option.value === state.targetRefValue)) {
+      state.targetRefValue = namedOptions[0].value;
+    }
+    if (namedOptions.length === 0) {
+      state.targetRefValue = "";
+    }
+
+    elements.targetRefSelect.innerHTML = "";
+    if (namedOptions.length === 0) {
+      const emptyOption = document.createElement("option");
+      emptyOption.value = "";
+      emptyOption.textContent = "No named refs available";
+      elements.targetRefSelect.append(emptyOption);
+      elements.targetRefSelect.value = "";
+      return;
+    }
+
+    namedOptions.forEach((option) => {
+      const optionElement = document.createElement("option");
+      optionElement.value = option.value;
+      optionElement.textContent = option.label;
+      elements.targetRefSelect.append(optionElement);
+    });
+    elements.targetRefSelect.value = state.targetRefValue;
+    return;
+  }
+
+  elements.targetRefSelect.innerHTML = "";
+  elements.targetRefValue.value = patternMode ? state.targetRefValue : "";
+}
+
+/**
+ * @returns {{ value: string, label: string }[]}
+ */
+function namedRefOptions() {
+  const repository = selectedRepository();
+  const options = [];
+  const seenValues = new Set();
+
+  /**
+   * @param {string} value
+   * @param {string} label
+   */
+  const appendOption = (value, label) => {
+    const trimmedValue = value.trim();
+    if (!trimmedValue || seenValues.has(trimmedValue)) {
+      return;
+    }
+    seenValues.add(trimmedValue);
+    options.push({ value: trimmedValue, label });
+  };
+
+  if (repository?.current_branch) {
+    appendOption(repository.current_branch, `${repository.current_branch} · current`);
+  }
+  if (repository?.default_branch) {
+    appendOption(repository.default_branch, `${repository.default_branch} · default`);
+  }
+  state.branches.forEach((branch) => {
+    const branchSuffix = branch.current
+      ? "current"
+      : repository?.default_branch === branch.name
+        ? "default"
+        : branch.upstream || "local";
+    appendOption(branch.name, `${branch.name} · ${branchSuffix}`);
+  });
+
+  return options;
+}
+
+/**
+ * @returns {string}
+ */
+function buildRefDetail() {
+  const repository = selectedRepository();
+
+  if (!repository) {
+    return "Select a repository to resolve ref targets.";
+  }
+
+  if (state.targetRefMode === refModeNamedValue) {
+    if (namedRefOptions().length === 0) {
+      return "No local named refs are available for the selected repository.";
+    }
+    return state.selectedScope === scopeSelectedValue
+      ? "Named refs come from the selected repository branch list."
+      : "Named refs come from the selected repository branch list and apply across the active repository scope.";
+  }
+
+  if (state.targetRefMode === refModePatternValue) {
+    return "Enter a branch pattern when the command accepts pattern-based ref targeting.";
+  }
+
+  if (state.targetRefMode === refModeCurrentValue) {
+    return state.selectedScope === scopeSelectedValue
+      ? `Current resolves to ${repository.current_branch || "the checked out branch"}.`
+      : "Current resolves independently inside each active repository.";
+  }
+
+  if (state.targetRefMode === refModeDefaultValue) {
+    return state.selectedScope === scopeSelectedValue
+      ? `Default resolves to ${repository.default_branch || "the inferred default branch"}.`
+      : "Default resolves independently inside each active repository.";
+  }
+
+  return "Any leaves ref selection to the command or repository state.";
 }
 
 /**
@@ -760,14 +865,12 @@ async function selectRepository(repositoryID) {
   renderRepositoryList(elements.repoFilter.value.trim().toLowerCase());
   renderTargetState();
   renderSelectedRepository();
-  renderBranches(elements.branchFilter.value.trim().toLowerCase());
   renderActionGroups(elements.commandFilter.value.trim().toLowerCase());
   syncQuickActions();
 
   const response = await fetch(`${repositoriesEndpoint}/${encodeURIComponent(repositoryID)}/branches`);
   if (!response.ok) {
     state.branches = [];
-    renderBranches("");
     syncQuickActions(`Failed to load branches: ${response.status}`);
     return;
   }
@@ -776,14 +879,12 @@ async function selectRepository(repositoryID) {
   const branchCatalog = await response.json();
   if (branchCatalog.error) {
     state.branches = [];
-    renderBranches("");
     syncQuickActions(branchCatalog.error);
     return;
   }
 
   state.branches = (branchCatalog.branches || []).slice().sort(compareBranches);
   renderTargetState();
-  renderBranches(elements.branchFilter.value.trim().toLowerCase());
   syncQuickActions();
   repopulateSelectedCommand();
 }
@@ -927,89 +1028,6 @@ function updateActionContext() {
     default:
       elements.actionContext.textContent = "";
   }
-}
-
-/**
- * @param {string} query
- */
-function renderBranches(query) {
-  const repository = selectedRepository();
-  const visibleBranches = state.branches.filter((branch) => {
-    if (!query) {
-      return true;
-    }
-    const haystack = [branch.name, branch.upstream || ""].join(" ").toLowerCase();
-    return haystack.includes(query);
-  });
-
-  elements.branchList.innerHTML = "";
-
-  if (!repository) {
-    elements.branchCount.textContent = "0";
-    appendEmptyState(elements.branchList, "Select a repository to browse current, default, and local branch refs.");
-    return;
-  }
-
-  const refEntries = [];
-  if (repository.current_branch) {
-    refEntries.push({
-      key: "current",
-      label: "Current branch",
-      meta: `${repository.current_branch} checked out`,
-      current: true,
-      isDefault: Boolean(repository.default_branch && repository.default_branch === repository.current_branch),
-      active: state.targetRefMode === refModeCurrentValue,
-      onSelect: () => setRefTarget(refModeCurrentValue),
-    });
-  }
-
-  if (repository.default_branch) {
-    refEntries.push({
-      key: "default",
-      label: "Default branch",
-      meta: `${repository.default_branch} inferred from origin/HEAD`,
-      current: Boolean(repository.current_branch && repository.current_branch === repository.default_branch),
-      isDefault: true,
-      active: state.targetRefMode === refModeDefaultValue,
-      onSelect: () => setRefTarget(refModeDefaultValue),
-    });
-  }
-
-  visibleBranches.forEach((branch) => {
-    refEntries.push({
-      key: `branch:${branch.name}`,
-      label: branch.name,
-      meta: branch.upstream || "No upstream",
-      current: branch.current,
-      isDefault: Boolean(repository.default_branch && repository.default_branch === branch.name),
-      active: state.targetRefMode === refModeNamedValue && state.targetRefValue.trim() === branch.name,
-      onSelect: () => setRefTarget(refModeNamedValue, branch.name),
-    });
-  });
-
-  elements.branchCount.textContent = String(refEntries.length);
-
-  if (refEntries.length === 0) {
-    appendEmptyState(elements.branchList, state.branches.length === 0 ? "No local branches were detected for the selected repository." : "No refs match the current filter.");
-    return;
-  }
-
-  refEntries.forEach((entry) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = `branch-button${entry.active ? " active" : ""}`;
-    button.innerHTML = `
-      <div class="branch-row">
-        <span class="branch-name">${escapeHTML(entry.label)}</span>
-        ${entry.current ? '<span class="flag-token flag-token-success">current</span>' : ""}
-        ${entry.isDefault ? '<span class="flag-token">default</span>' : ""}
-        ${entry.active ? '<span class="flag-token">target</span>' : ""}
-      </div>
-      <div class="branch-meta">${escapeHTML(entry.meta)}</div>
-    `;
-    button.addEventListener("click", entry.onSelect);
-    elements.branchList.append(button);
-  });
 }
 
 function syncQuickActions(errorText = "") {
