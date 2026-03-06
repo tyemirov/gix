@@ -49,50 +49,48 @@
           <div id="repo-list" class="repo-list" aria-live="polite"></div>
         </section>
 
-        <section class="target-grid">
-          <section class="panel target-card">
-            <div class="panel-heading">
-              <h3>Refs</h3>
-              <span id="target-ref-summary" class="pill">current</span>
-            </div>
-            <label class="field-label" for="target-ref-mode">Mode</label>
-            <select id="target-ref-mode" class="select-input">
-              <option value="current">Current</option>
-              <option value="default">Default</option>
-              <option value="named">Named</option>
-              <option value="pattern">Pattern</option>
-              <option value="any">Any</option>
-            </select>
-            <div id="target-ref-value-block" class="ref-value-field">
-              <label id="target-ref-value-label" class="field-label">Value</label>
-              <select id="target-ref-select" class="select-input" aria-label="Named ref selection" hidden disabled></select>
-              <input id="target-ref-value" class="text-input" type="text" aria-label="Ref value" placeholder="branch-name or pattern" disabled>
-            </div>
-            <p id="target-ref-detail" class="panel-note target-detail"></p>
-          </section>
+        <section class="panel target-card">
+          <div class="panel-heading">
+            <h3>Refs</h3>
+            <span id="target-ref-summary" class="pill">current</span>
+          </div>
+          <label class="field-label" for="target-ref-mode">Mode</label>
+          <select id="target-ref-mode" class="select-input">
+            <option value="current">Current</option>
+            <option value="default">Default</option>
+            <option value="named">Named</option>
+            <option value="pattern">Pattern</option>
+            <option value="any">Any</option>
+          </select>
+          <div id="target-ref-value-block" class="ref-value-field">
+            <label id="target-ref-value-label" class="field-label">Value</label>
+            <select id="target-ref-select" class="select-input" aria-label="Named ref selection" hidden disabled></select>
+            <input id="target-ref-value" class="text-input" type="text" aria-label="Ref value" placeholder="branch-name or pattern" disabled>
+          </div>
+          <p id="target-ref-detail" class="panel-note target-detail"></p>
+        </section>
 
-          <section class="panel target-card">
-            <div class="panel-heading">
-              <h3>Paths</h3>
-              <span id="target-path-summary" class="pill">none</span>
-            </div>
-            <label class="field-label" for="target-path-mode">Mode</label>
-            <select id="target-path-mode" class="select-input">
-              <option value="none">None</option>
-              <option value="relative">Relative Path</option>
-              <option value="glob">Glob</option>
-              <option value="multiple">Multiple Paths</option>
-            </select>
-            <div id="target-path-value-block" class="target-path-value-block">
-              <label id="target-path-value-label" class="field-label" for="target-path-value">Value</label>
-              <textarea id="target-path-value" class="code-input target-path-input" spellcheck="false" placeholder="One path or glob per line" disabled></textarea>
-            </div>
-            <p id="target-path-detail" class="panel-note target-detail"></p>
-          </section>
+        <section class="panel target-card">
+          <div class="panel-heading">
+            <h3>Paths</h3>
+            <span id="target-path-summary" class="pill">none</span>
+          </div>
+          <label class="field-label" for="target-path-mode">Mode</label>
+          <select id="target-path-mode" class="select-input">
+            <option value="none">None</option>
+            <option value="relative">Relative Path</option>
+            <option value="glob">Glob</option>
+            <option value="multiple">Multiple Paths</option>
+          </select>
+          <div id="target-path-value-block" class="target-path-value-block">
+            <label id="target-path-value-label" class="field-label" for="target-path-value">Value</label>
+            <textarea id="target-path-value" class="code-input target-path-input" spellcheck="false" placeholder="One path or glob per line" disabled></textarea>
+          </div>
+          <p id="target-path-detail" class="panel-note target-detail"></p>
         </section>
       </section>
 
-      <section class="layout-row operations-row">
+      <section class="layout-row tasks-row">
         <section class="panel actions-panel">
           <div class="panel-heading">
             <h3>Tasks</h3>
@@ -217,31 +215,32 @@
             <label class="field-label" for="command-filter">Find Command</label>
             <input id="command-filter" class="text-input" type="search" placeholder="Find an action">
             <div id="command-groups" class="command-groups" aria-live="polite"></div>
+            <section class="advanced-details">
+              <div class="panel-heading">
+                <h4>Selected Command</h4>
+                <span id="selected-path" class="panel-note"></span>
+              </div>
+              <p id="command-summary" class="panel-note"></p>
+              <div class="details-grid">
+                <div>
+                  <h4>Usage</h4>
+                  <pre id="command-usage" class="code-preview"></pre>
+                </div>
+                <div>
+                  <h4>Aliases</h4>
+                  <div id="command-aliases" class="token-row"></div>
+                </div>
+              </div>
+              <div>
+                <h4>Flags</h4>
+                <div id="command-flags" class="flag-list"></div>
+              </div>
+            </section>
           </section>
         </section>
+      </section>
 
-        <section class="panel details-panel">
-          <div class="panel-heading">
-            <h3>Command Details</h3>
-            <span id="selected-path" class="panel-note"></span>
-          </div>
-          <p id="command-summary" class="panel-note"></p>
-          <div class="details-grid">
-            <div>
-              <h4>Usage</h4>
-              <pre id="command-usage" class="code-preview"></pre>
-            </div>
-            <div>
-              <h4>Aliases</h4>
-              <div id="command-aliases" class="token-row"></div>
-            </div>
-          </div>
-          <div>
-            <h4>Flags</h4>
-            <div id="command-flags" class="flag-list"></div>
-          </div>
-        </section>
-
+      <section class="layout-row runner-row">
         <section class="panel runner-panel">
           <div class="panel-heading">
             <h3>Runner</h3>

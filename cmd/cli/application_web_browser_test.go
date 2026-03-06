@@ -370,7 +370,11 @@ func splitArgumentLines(argumentsValue string) []string {
 
 func readTextContent(browserContext context.Context, selector string) (string, error) {
 	var textContent string
-	actionError := chromedp.Run(browserContext, chromedp.Text(selector, &textContent, chromedp.ByQuery))
+	script := fmt.Sprintf(`(() => {
+		const element = document.querySelector(%q);
+		return element ? element.textContent || "" : "";
+	})()`, selector)
+	actionError := chromedp.Run(browserContext, chromedp.Evaluate(script, &textContent))
 	return strings.TrimSpace(textContent), actionError
 }
 
