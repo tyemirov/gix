@@ -30,6 +30,7 @@ const (
 	filesTaskButtonSelectorConstant       = "#task-files"
 	remotesTaskButtonSelectorConstant     = "#task-remotes"
 	workflowsTaskButtonSelectorConstant   = "#task-workflows"
+	advancedTaskButtonSelectorConstant    = "#task-advanced"
 	scopeAllButtonSelectorConstant        = "#scope-all"
 	targetRefModeSelectorConstant         = "#target-ref-mode"
 	targetRefSelectSelectorConstant       = "#target-ref-select"
@@ -49,12 +50,15 @@ const (
 	workflowLoadButtonSelectorConstant    = "#task-workflow-load"
 	switchTargetButtonSelectorConstant    = "#action-switch-target"
 	selectedPathSelectorConstant          = "#selected-path"
+	commandGroupsSelectorConstant         = "#command-groups"
 	argumentsInputSelectorConstant        = "#arguments-input"
 	commandPreviewSelectorConstant        = "#command-preview"
+	auditCommandPathConstant              = "gix audit"
 	branchCommandPathConstant             = "gix cd"
 	filesReplaceCommandPathConstant       = "gix files replace"
 	remoteCanonicalCommandPathConstant    = "gix remote update-to-canonical"
 	workflowCommandPathConstant           = "gix workflow"
+	versionCommandPathConstant            = "gix version"
 	refModeNamedConstant                  = "named"
 	pathModeRelativeConstant              = "relative"
 	fileTaskModeReplaceConstant           = "replace"
@@ -206,6 +210,44 @@ func TestWebInterfaceBrowserPrefillsRemoteAndWorkflowTasksAcrossRepositoryScope(
 		"--roots",
 		secondCanonicalRepositoryPath,
 	})
+}
+
+func TestWebInterfaceBrowserAdvancedHidesTaskOwnedCommands(t *testing.T) {
+	repositoryPath := createTestRepository(t, filepath.Join(t.TempDir(), "workspace", "example"))
+
+	httpServer, repositoryCatalog := newBrowserTestServer(t, repositoryPath)
+	defer httpServer.Close()
+
+	browserContext := newBrowserTestContext(t)
+	expectedRepository := selectedRepositoryDescriptor(t, repositoryCatalog)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		chromedp.Navigate(httpServer.URL),
+		chromedp.WaitVisible(workflowsTaskButtonSelectorConstant, chromedp.ByQuery),
+	))
+	waitForControlSurfaceReady(t, browserContext, expectedRepository.Name)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		chromedp.Click(workflowsTaskButtonSelectorConstant, chromedp.ByQuery),
+		chromedp.WaitVisible(workflowLoadButtonSelectorConstant, chromedp.ByQuery),
+		chromedp.Click(workflowLoadButtonSelectorConstant, chromedp.ByQuery),
+	))
+	assertSelectedCommand(t, browserContext, workflowCommandPathConstant)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		chromedp.Click(advancedTaskButtonSelectorConstant, chromedp.ByQuery),
+		chromedp.WaitVisible(commandGroupsSelectorConstant, chromedp.ByQuery),
+	))
+	assertSelectedCommand(t, browserContext, versionCommandPathConstant)
+
+	commandGroupsText, commandGroupsError := readTextContent(browserContext, commandGroupsSelectorConstant)
+	require.NoError(t, commandGroupsError)
+	assert.Contains(t, commandGroupsText, versionCommandPathConstant)
+	assert.NotContains(t, commandGroupsText, auditCommandPathConstant)
+	assert.NotContains(t, commandGroupsText, branchCommandPathConstant)
+	assert.NotContains(t, commandGroupsText, filesReplaceCommandPathConstant)
+	assert.NotContains(t, commandGroupsText, remoteCanonicalCommandPathConstant)
+	assert.NotContains(t, commandGroupsText, workflowCommandPathConstant)
 }
 
 func newBrowserTestServer(testingInstance *testing.T, workingDirectory string) (*httptest.Server, web.RepositoryCatalog) {

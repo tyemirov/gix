@@ -190,6 +190,7 @@ const commandGroupDefinitions = [
  *   branches: BranchDescriptor[],
  *   allCommands: CommandDescriptor[],
  *   actionableCommands: CommandDescriptor[],
+ *   advancedCommands: CommandDescriptor[],
  *   selectedPath: string,
  *   pollTimer: number | null,
  * }} */
@@ -208,6 +209,7 @@ const state = {
   branches: [],
   allCommands: [],
   actionableCommands: [],
+  advancedCommands: [],
   selectedPath: "",
   pollTimer: null,
 };
@@ -325,6 +327,7 @@ async function initialize() {
   state.repositories = (repositoryCatalog.repositories || []).slice().sort(compareRepositories);
   state.allCommands = (commandCatalog.commands || []).slice().sort((left, right) => left.path.localeCompare(right.path));
   state.actionableCommands = state.allCommands.filter((command) => command.actionable);
+  state.advancedCommands = state.actionableCommands.filter((command) => inferTaskForCommand(command) === taskAdvancedValue);
 
   const initialRepositoryID = repositoryCatalog.selected_repository_id || state.repositories[0]?.id || "";
   if (initialRepositoryID) {
@@ -334,7 +337,7 @@ async function initialize() {
 
   elements.repoCount.textContent = String(state.repositories.length);
   elements.taskCount.textContent = "7";
-  elements.commandCount.textContent = String(state.actionableCommands.length);
+  elements.commandCount.textContent = String(state.advancedCommands.length);
   elements.targetRefMode.value = state.targetRefMode;
   elements.targetPathMode.value = state.targetPathMode;
   elements.fileTaskMode.value = state.fileTaskMode;
@@ -542,7 +545,35 @@ function setActiveTask(taskID) {
   }
 
   state.activeTask = taskID;
+  if (state.activeTask === taskAdvancedValue) {
+    syncAdvancedSelection();
+    renderActionGroups(elements.commandFilter.value.trim().toLowerCase());
+  }
   renderTaskState();
+}
+
+function syncAdvancedSelection() {
+  const selectedCommand = findSelectedCommand();
+  if (selectedCommand && inferTaskForCommand(selectedCommand) === taskAdvancedValue) {
+    return;
+  }
+
+  const preferredFallbackCommand = findCommand(commandPathVersionValue);
+  const fallbackCommand = preferredFallbackCommand && inferTaskForCommand(preferredFallbackCommand) === taskAdvancedValue
+    ? preferredFallbackCommand
+    : state.advancedCommands[0] || null;
+
+  if (!fallbackCommand) {
+    state.selectedPath = "";
+    clearCommandDetails();
+    elements.argumentsInput.value = "";
+    renderCommandPreview();
+    return;
+  }
+
+  state.selectedPath = fallbackCommand.path;
+  renderCommandDetails(fallbackCommand);
+  populateArguments(fallbackCommand);
 }
 
 function renderTaskState() {
@@ -1148,7 +1179,7 @@ function renderActionGroups(query) {
     groupedCommands.set(group.id, []);
   });
 
-  state.actionableCommands.forEach((command) => {
+  state.advancedCommands.forEach((command) => {
     if (query) {
       const haystack = [command.path, command.short || "", ...(command.aliases || [])].join(" ").toLowerCase();
       if (!haystack.includes(query)) {
@@ -1215,7 +1246,7 @@ function renderActionGroups(query) {
   });
 
   if (!renderedAnyGroup) {
-    appendEmptyState(elements.commandGroups, "No actions match the current filter.");
+    appendEmptyState(elements.commandGroups, query ? "No advanced actions match the current filter." : "All primary actions are covered by dedicated task views.");
   }
 }
 
@@ -1247,6 +1278,14 @@ function renderCommandDetails(command) {
   elements.commandUsage.textContent = command.use || command.path;
   renderAliases(command.aliases || []);
   renderFlags(command.flags || []);
+}
+
+function clearCommandDetails() {
+  elements.selectedPath.textContent = "";
+  elements.commandSummary.textContent = "Select an advanced command to inspect its metadata.";
+  elements.commandUsage.textContent = "";
+  renderAliases([]);
+  renderFlags([]);
 }
 
 /**
