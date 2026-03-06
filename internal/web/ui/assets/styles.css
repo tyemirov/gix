@@ -270,14 +270,14 @@ h4 {
 .repo-entry {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 0.7rem;
+  gap: 0.55rem;
   align-items: start;
 }
 
 .repo-checkbox {
   width: 1.05rem;
   height: 1.05rem;
-  margin-top: 0.95rem;
+  margin-top: 0.8rem;
   accent-color: var(--accent);
 }
 
@@ -296,7 +296,7 @@ h4 {
 .branch-button,
 .command-button {
   width: 100%;
-  padding: 0.9rem 0.95rem;
+  padding: 0.72rem 0.8rem;
   border-radius: var(--radius-medium);
   background: rgba(255, 255, 255, 0.52);
   text-align: left;
@@ -337,6 +337,43 @@ h4 {
 .branch-name,
 .command-path {
   font-weight: 700;
+}
+
+.repo-inline-tokens {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}
+
+.repo-detail-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  margin-top: 0.15rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.repo-branch-meta {
+  flex: 0 1 auto;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.repo-detail-row .repo-path-meta {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repo-detail-row .repo-path-meta::before {
+  content: "·";
+  display: inline-block;
+  margin-right: 0.45rem;
 }
 
 .repo-path-meta,

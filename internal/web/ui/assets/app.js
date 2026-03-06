@@ -829,14 +829,23 @@ function renderRepositoryList(query) {
     button.type = "button";
     button.className = `repo-button${repository.id === state.selectedRepositoryID ? " active" : ""}`;
     const dirtyLabel = repository.dirty ? "dirty" : "clean";
+    const branchLabel = repository.current_branch || "No current branch";
+    const detailParts = [branchLabel];
+    if (repository.path) {
+      detailParts.push(repository.path);
+    }
     button.innerHTML = `
       <div class="repo-row">
         <span class="repo-name">${escapeHTML(repository.name)}</span>
-        ${repository.context_current ? '<span class="flag-token">context</span>' : ""}
-        <span class="flag-token ${repository.dirty ? "flag-token-danger" : "flag-token-success"}">${dirtyLabel}</span>
+        <span class="repo-inline-tokens">
+          ${repository.context_current ? '<span class="flag-token">context</span>' : ""}
+          <span class="flag-token ${repository.dirty ? "flag-token-danger" : "flag-token-success"}">${dirtyLabel}</span>
+        </span>
       </div>
-      <div class="repo-meta">${escapeHTML(repository.current_branch || "No current branch")}</div>
-      <div class="repo-path-meta">${escapeHTML(repository.path)}</div>
+      <div class="repo-detail-row" title="${escapeHTML(detailParts.join(" · "))}">
+        <span class="repo-branch-meta">${escapeHTML(branchLabel)}</span>
+        ${repository.path ? `<span class="repo-path-meta">${escapeHTML(repository.path)}</span>` : ""}
+      </div>
     `;
     button.addEventListener("click", () => {
       void selectRepository(repository.id);
