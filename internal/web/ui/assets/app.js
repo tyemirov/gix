@@ -1951,14 +1951,7 @@ function inferTaskForCommand(command) {
  * @returns {string}
  */
 function buildRepositorySummary(repository) {
-  const fragments = [];
-  if (repository.current_branch) {
-    fragments.push(`Current branch ${repository.current_branch}`);
-  }
-  if (repository.default_branch) {
-    fragments.push(`default branch ${repository.default_branch}`);
-  }
-  fragments.push(repository.dirty ? "worktree has uncommitted changes" : "worktree is clean");
+  const fragments = [repository.context_current ? "Launch-context repository for selected scope actions" : "Selected repository for scope-sensitive actions"];
   if (repository.error) {
     fragments.push(`inspection warning: ${repository.error}`);
   }
