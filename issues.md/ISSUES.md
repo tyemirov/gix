@@ -92,6 +92,23 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
 - [x] [F001] Add a step that allows running an arbitrary command, such as `go get -u ./...` and `go mod tidy`.
   LegacyExternalID: GX-110
   The changed files need to be committed after this step. Deliver both the DSL and the implementation.
+- [ ] [F003] Add a local web interface for `gix`.
+  Requested on 2026-03-05.
+  ### Summary
+  Launching `gix --web <port:-8080>` should start a local HTTP server that exposes the existing CLI command surface through a browser UI, rather than requiring users to compose all operations in the terminal.
+
+  ### Constraints
+  - Reuse the existing command implementations rather than forking a second execution stack.
+  - Bind locally by default and treat the web UI as a localhost tool, not a remote multi-user service.
+  - Preserve the current CLI behavior and tests while adding the web mode behind an explicit flag.
+  - Support every current CLI command at least through a generic command runner, even if richer typed forms arrive incrementally.
+
+  ### Deliverables
+  - [ ] Add a root `--web` launch mode with default port `8080`.
+  - [ ] Serve a browser UI and JSON API from a local embedded HTTP server.
+  - [ ] Execute existing `gix` commands in-process from the web layer and stream logs/results back to the browser.
+  - [ ] Expose command metadata so the UI can render flags, args, defaults, and help text.
+  - [ ] Add integration coverage for web launch, command catalog, and at least one end-to-end command execution path.
 - [ ] [F002] (P1) Duplicate logging.
   LegacyExternalID: GX-111
   ### Summary
@@ -114,4 +131,3 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
 
 ## Planning
 *do not implement yet*
-

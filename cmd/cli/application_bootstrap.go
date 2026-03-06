@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -77,8 +78,11 @@ type Application struct {
 	configurationInitializationScope  string
 	configurationInitializationForced bool
 	versionFlag                       bool
+	webFlagValue                      string
 	versionResolver                   func(context.Context) string
+	versionExitEnabled                bool
 	exitFunction                      func(int)
+	webRunner                         webRunner
 }
 
 // NewApplication assembles a fully wired CLI application instance.
@@ -90,7 +94,9 @@ func NewApplication() *Application {
 		commandContextAccessor: utils.NewCommandContextAccessor(),
 	}
 	application.versionResolver = application.resolveVersion
+	application.versionExitEnabled = true
 	application.exitFunction = os.Exit
+	application.webRunner = application.launchWebInterface
 
 	application.configurationLoader = utils.NewConfigurationLoader(
 		configurationNameConstant,
@@ -122,8 +128,13 @@ func NewApplication() *Application {
 			}
 
 			if versionRequested {
-				application.printVersion(command.Context())
-				application.exitFunction(0)
+				if versionError := application.printVersion(command.Context(), command.OutOrStdout()); versionError != nil {
+					return versionError
+				}
+				if application.versionExitEnabled {
+					application.exitFunction(0)
+				}
+				return errVersionHandled
 			}
 
 			return nil
@@ -137,6 +148,11 @@ func NewApplication() *Application {
 	cobraCommand.PersistentFlags().StringVar(&application.configurationFilePath, configFileFlagNameConstant, "", configFileFlagUsageConstant)
 	cobraCommand.PersistentFlags().StringVar(&application.logLevelFlagValue, logLevelFlagNameConstant, "", logLevelFlagUsageConstant)
 	cobraCommand.PersistentFlags().StringVar(&application.logFormatFlagValue, logFormatFlagNameConstant, "", logFormatFlagUsageConstant)
+	cobraCommand.PersistentFlags().StringVar(&application.webFlagValue, webFlagNameConstant, "", webFlagUsageConstant)
+	webFlag := cobraCommand.PersistentFlags().Lookup(webFlagNameConstant)
+	if webFlag != nil {
+		webFlag.NoOptDefVal = webDefaultPortConstant
+	}
 	cobraCommand.PersistentFlags().StringVar(
 		&application.configurationInitializationScope,
 		configurationInitializationFlagNameConstant,
@@ -195,8 +211,7 @@ func NewApplication() *Application {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(command *cobra.Command, arguments []string) error {
-			application.printVersion(command.Context())
-			return nil
+			return application.printVersion(command.Context(), command.OutOrStdout())
 		},
 	}
 	cobraCommand.AddCommand(versionCommand)
@@ -210,15 +225,13 @@ func NewApplication() *Application {
 
 // Execute runs the configured Cobra command hierarchy and ensures logger flushing.
 func (application *Application) Execute() error {
-	normalizedArguments := flagutils.NormalizeToggleArguments(os.Args[1:])
-	normalizedArguments = normalizeInitializationScopeArguments(normalizedArguments)
-	application.rootCommand.SetArgs(normalizedArguments)
-
-	executionError := application.rootCommand.Execute()
-	if syncError := application.flushLogger(); syncError != nil {
-		return fmt.Errorf(loggerSyncErrorTemplateConstant, syncError)
-	}
-	return executionError
+	return application.ExecuteWithOptions(ExecutionOptions{
+		Arguments:      os.Args[1:],
+		StandardInput:  os.Stdin,
+		StandardOutput: os.Stdout,
+		StandardError:  os.Stderr,
+		ExitOnVersion:  true,
+	})
 }
 
 // Execute builds a fresh application instance and executes the root command hierarchy.
@@ -259,6 +272,53 @@ func normalizeInitializationScopeArguments(arguments []string) []string {
 				)
 				continue
 			}
+		}
+
+		normalizedArguments = append(normalizedArguments, currentArgument)
+	}
+
+	return normalizedArguments
+}
+
+func normalizeWebArguments(arguments []string) []string {
+	if len(arguments) == 0 {
+		return nil
+	}
+
+	normalizedArguments := make([]string, 0, len(arguments))
+	flagPrefix := "--" + webFlagNameConstant
+
+	for index := 0; index < len(arguments); index++ {
+		currentArgument := arguments[index]
+
+		if strings.HasPrefix(currentArgument, flagPrefix+"=") {
+			value := strings.TrimSpace(strings.TrimPrefix(currentArgument, flagPrefix+"="))
+			if len(value) == 0 {
+				normalizedArguments = append(
+					normalizedArguments,
+					fmt.Sprintf("%s=%s", flagPrefix, webDefaultPortConstant),
+				)
+				continue
+			}
+			normalizedArguments = append(normalizedArguments, currentArgument)
+			continue
+		}
+
+		if currentArgument == flagPrefix {
+			nextIndex := index + 1
+			if nextIndex >= len(arguments) || strings.HasPrefix(arguments[nextIndex], "-") {
+				normalizedArguments = append(
+					normalizedArguments,
+					fmt.Sprintf("%s=%s", flagPrefix, webDefaultPortConstant),
+				)
+				continue
+			}
+			normalizedArguments = append(
+				normalizedArguments,
+				fmt.Sprintf("%s=%s", flagPrefix, strings.TrimSpace(arguments[nextIndex])),
+			)
+			index++
+			continue
 		}
 
 		normalizedArguments = append(normalizedArguments, currentArgument)
@@ -528,9 +588,13 @@ func (application *Application) resolveVersion(executionContext context.Context)
 	return trimmed
 }
 
-func (application *Application) printVersion(executionContext context.Context) {
+func (application *Application) printVersion(executionContext context.Context, output io.Writer) error {
+	if output == nil {
+		output = io.Discard
+	}
 	versionString := application.versionResolver(executionContext)
-	fmt.Printf(versionOutputTemplateConstant, versionString)
+	_, writeError := fmt.Fprintf(output, versionOutputTemplateConstant, versionString)
+	return writeError
 }
 
 func (application *Application) reposRenameConfiguration() repos.RenameConfiguration {
@@ -905,6 +969,14 @@ func (application *Application) runRootCommand(command *cobra.Command, arguments
 		return initializationError
 	}
 	if initializationHandled {
+		return nil
+	}
+
+	webLaunchHandled, webLaunchError := application.handleWebLaunch(command)
+	if webLaunchError != nil {
+		return webLaunchError
+	}
+	if webLaunchHandled {
 		return nil
 	}
 
