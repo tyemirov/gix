@@ -285,6 +285,7 @@ func TestWebServerExecutesVersionCommand(t *testing.T) {
 	require.NoError(t, copyError)
 	require.Contains(t, indexDocument.String(), "<title>gix Control Surface</title>")
 	require.Contains(t, indexDocument.String(), "Build a target set first")
+	require.Contains(t, indexDocument.String(), "<h2>Repos</h2>")
 	require.Contains(t, indexDocument.String(), "<h3>Repos</h3>")
 	require.Contains(t, indexDocument.String(), "<h3>Paths</h3>")
 	require.Contains(t, indexDocument.String(), "<h3>Tasks</h3>")

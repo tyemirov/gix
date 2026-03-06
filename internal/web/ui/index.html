@@ -8,36 +8,33 @@
   </head>
   <body>
     <div class="page-shell">
-      <aside class="repo-sidebar">
-        <section class="panel brand-panel">
-          <p class="eyebrow">Local Interface</p>
-          <h1>gix Control Surface</h1>
-          <p class="lede">Build a target set first. Then apply repository, branch, and file operations against one repo or many repos without dropping into raw argv too early.</p>
-        </section>
+      <section class="panel brand-panel">
+        <p class="eyebrow">Local Interface</p>
+        <h1>gix Control Surface</h1>
+        <p class="lede">Build a target set first. Then apply repository, branch, and file operations against one repo or many repos without dropping into raw argv too early.</p>
+      </section>
 
+      <section class="layout-row context-row">
         <section class="panel repo-panel">
           <div class="panel-heading">
-            <h2>Repositories</h2>
+            <h2>Repos</h2>
             <span id="repo-count" class="pill">0</span>
+          </div>
+          <div class="repo-focus">
+            <div class="repo-focus-header">
+              <div>
+                <p class="eyebrow">Selected Repo</p>
+                <h3 id="repo-title">Loading...</h3>
+              </div>
+              <div id="repo-state-tokens" class="token-row"></div>
+            </div>
+            <p id="repo-path" class="repo-focus-path"></p>
+            <p id="repo-summary" class="repo-focus-summary"></p>
           </div>
           <p id="repo-launch-summary" class="panel-note"></p>
           <label class="field-label" for="repo-filter">Filter</label>
           <input id="repo-filter" class="text-input" type="search" placeholder="Find a repository">
           <div id="repo-list" class="repo-list" aria-live="polite"></div>
-        </section>
-      </aside>
-
-      <main class="workspace">
-        <section class="panel hero-panel">
-          <div class="hero-header">
-            <div>
-              <p class="eyebrow">Selected Repository</p>
-              <h2 id="repo-title">Loading...</h2>
-            </div>
-            <div id="repo-state-tokens" class="token-row"></div>
-          </div>
-          <p id="repo-path" class="hero-path"></p>
-          <p id="repo-summary" class="hero-summary"></p>
         </section>
 
         <section class="target-grid">
@@ -91,204 +88,202 @@
             <textarea id="target-path-value" class="code-input target-path-input" spellcheck="false" placeholder="One path or glob per line" disabled></textarea>
           </section>
         </section>
+      </section>
 
-        <section class="workspace-grid top-grid">
-          <section class="panel actions-panel">
-            <div class="panel-heading">
-              <h3>Tasks</h3>
-              <span id="task-count" class="pill">7</span>
+      <section class="layout-row operations-row">
+        <section class="panel actions-panel">
+          <div class="panel-heading">
+            <h3>Tasks</h3>
+            <span id="task-count" class="pill">7</span>
+          </div>
+          <p id="action-context" class="panel-note"></p>
+
+          <div class="task-switcher" role="tablist" aria-label="Task switcher">
+            <button id="task-inspect" class="task-button active" type="button">Inspect</button>
+            <button id="task-branch" class="task-button" type="button">Branch</button>
+            <button id="task-files" class="task-button" type="button">Files</button>
+            <button id="task-remotes" class="task-button" type="button">Remotes</button>
+            <button id="task-cleanup" class="task-button" type="button">Cleanup</button>
+            <button id="task-workflows" class="task-button" type="button">Workflows</button>
+            <button id="task-advanced" class="task-button" type="button">Advanced</button>
+          </div>
+
+          <section id="task-panel-inspect" class="task-panel">
+            <div class="task-copy">
+              <h4>Inspect Selected Scope</h4>
+              <p class="panel-note">Use the target bar to choose the repository scope, then load an audit snapshot into the runner when you want the CLI view of that state.</p>
             </div>
-            <p id="action-context" class="panel-note"></p>
-
-            <div class="task-switcher" role="tablist" aria-label="Task switcher">
-              <button id="task-inspect" class="task-button active" type="button">Inspect</button>
-              <button id="task-branch" class="task-button" type="button">Branch</button>
-              <button id="task-files" class="task-button" type="button">Files</button>
-              <button id="task-remotes" class="task-button" type="button">Remotes</button>
-              <button id="task-cleanup" class="task-button" type="button">Cleanup</button>
-              <button id="task-workflows" class="task-button" type="button">Workflows</button>
-              <button id="task-advanced" class="task-button" type="button">Advanced</button>
-            </div>
-
-            <section id="task-panel-inspect" class="task-panel">
-              <div class="task-copy">
-                <h4>Inspect Selected Scope</h4>
-                <p class="panel-note">Use the target bar to choose the repository scope, then load an audit snapshot into the runner when you want the CLI view of that state.</p>
-              </div>
-              <button id="task-inspect-load" class="secondary-button" type="button">Load audit snapshot</button>
-            </section>
-
-            <section id="task-panel-branch" class="task-panel" hidden>
-              <div class="task-copy">
-                <h4>Branch Operations</h4>
-                <p class="panel-note">The target bar defines which repositories and refs you are operating on. Use the Refs mode and value controls above to choose a concrete branch when the action needs one.</p>
-              </div>
-              <div class="quick-actions" aria-label="Branch quick actions">
-                <button id="action-switch-default" class="secondary-button" type="button">Switch to default branch</button>
-                <button id="action-switch-target" class="secondary-button" type="button">Switch to target ref</button>
-                <button id="action-promote-target" class="secondary-button" type="button">Promote target ref</button>
-              </div>
-            </section>
-
-            <section id="task-panel-files" class="task-panel" hidden>
-              <div class="task-copy">
-                <h4>File Changes</h4>
-                <p class="panel-note">Repos, refs, and paths come from the target bar. This task only captures the file-operation specific inputs.</p>
-              </div>
-
-              <label class="field-label" for="file-task-mode">Operation</label>
-              <select id="file-task-mode" class="select-input">
-                <option value="add">Add file</option>
-                <option value="replace">Replace text</option>
-                <option value="remove">Remove paths</option>
-              </select>
-
-              <div id="file-task-add-fields" class="task-subpanel">
-                <label class="field-label" for="file-content-input">File Content</label>
-                <textarea id="file-content-input" class="code-input task-code-input" spellcheck="false" placeholder="FILE CONTENT"></textarea>
-              </div>
-
-              <div id="file-task-replace-fields" class="task-subpanel" hidden>
-                <label class="field-label" for="file-find-input">Find</label>
-                <textarea id="file-find-input" class="code-input task-code-input" spellcheck="false" placeholder="TEXT_TO_FIND"></textarea>
-                <label class="field-label" for="file-replace-input">Replace With</label>
-                <textarea id="file-replace-input" class="code-input task-code-input" spellcheck="false" placeholder="TEXT_TO_REPLACE"></textarea>
-              </div>
-
-              <div class="button-row">
-                <button id="task-file-load" class="secondary-button" type="button">Load file command</button>
-                <span id="file-task-summary" class="panel-note"></span>
-              </div>
-            </section>
-
-            <section id="task-panel-cleanup" class="task-panel" hidden>
-              <div class="task-copy">
-                <h4>Cleanup Operations</h4>
-                <p class="panel-note">Use cleanup tasks for batched maintenance that targets repositories but does not require per-file editing.</p>
-              </div>
-              <div class="quick-actions" aria-label="Cleanup quick actions">
-                <button id="task-cleanup-prs" class="secondary-button" type="button">Load PR branch cleanup</button>
-                <button id="task-cleanup-packages" class="secondary-button" type="button">Load package cleanup</button>
-              </div>
-            </section>
-
-            <section id="task-panel-remotes" class="task-panel" hidden>
-              <div class="task-copy">
-                <h4>Remote Normalization</h4>
-                <p class="panel-note">Normalize `origin` URLs across the selected repository scope. Use an owner constraint only when you want to restrict canonical remotes to one organization or user.</p>
-              </div>
-              <label class="field-label" for="remote-owner-input">Owner Constraint</label>
-              <input id="remote-owner-input" class="text-input" type="text" placeholder="owner">
-              <button id="task-remote-load" class="secondary-button" type="button">Load remote normalization</button>
-            </section>
-
-            <section id="task-panel-workflows" class="task-panel" hidden>
-              <div class="task-copy">
-                <h4>Workflow Runner</h4>
-                <p class="panel-note">Run an embedded preset or a workflow configuration file against the current repository target set. Repositories still come from the target bar.</p>
-              </div>
-
-              <label class="field-label" for="workflow-target-input">Preset or Config</label>
-              <input id="workflow-target-input" class="text-input" type="text" placeholder="license or ./workflow.yaml">
-
-              <label class="field-label" for="workflow-vars-input">Variables</label>
-              <textarea id="workflow-vars-input" class="code-input task-code-input" spellcheck="false" placeholder="key=value"></textarea>
-
-              <label class="field-label" for="workflow-var-files-input">Variable Files</label>
-              <textarea id="workflow-var-files-input" class="code-input task-code-input" spellcheck="false" placeholder="./vars.yaml"></textarea>
-
-              <label class="field-label" for="workflow-workers-input">Workflow Workers</label>
-              <input id="workflow-workers-input" class="text-input" type="number" min="1" step="1" value="1">
-
-              <label class="checkbox-row" for="workflow-require-clean">
-                <input id="workflow-require-clean" type="checkbox">
-                <span>Require clean worktrees for rename operations</span>
-              </label>
-
-              <button id="task-workflow-load" class="secondary-button" type="button">Load workflow command</button>
-            </section>
-
-            <section id="task-panel-advanced" class="task-panel" hidden>
-              <div class="panel-heading">
-                <h4>Advanced Commands</h4>
-                <span id="command-count" class="pill">0</span>
-              </div>
-              <p class="panel-note">Use the command catalog when the dedicated task forms do not capture the operation you need.</p>
-              <label class="field-label" for="command-filter">Find Command</label>
-              <input id="command-filter" class="text-input" type="search" placeholder="Find an action">
-              <div id="command-groups" class="command-groups" aria-live="polite"></div>
-            </section>
+            <button id="task-inspect-load" class="secondary-button" type="button">Load audit snapshot</button>
           </section>
-        </section>
 
-        <section class="workspace-grid bottom-grid">
-          <section class="panel details-panel">
-            <div class="panel-heading">
-              <h3>Command Details</h3>
-              <span id="selected-path" class="panel-note"></span>
+          <section id="task-panel-branch" class="task-panel" hidden>
+            <div class="task-copy">
+              <h4>Branch Operations</h4>
+              <p class="panel-note">The target bar defines which repositories and refs you are operating on. Use the Refs mode and value controls above to choose a concrete branch when the action needs one.</p>
             </div>
-            <p id="command-summary" class="panel-note"></p>
-            <div class="details-grid">
-              <div>
-                <h4>Usage</h4>
-                <pre id="command-usage" class="code-preview"></pre>
-              </div>
-              <div>
-                <h4>Aliases</h4>
-                <div id="command-aliases" class="token-row"></div>
-              </div>
-            </div>
-            <div>
-              <h4>Flags</h4>
-              <div id="command-flags" class="flag-list"></div>
+            <div class="quick-actions" aria-label="Branch quick actions">
+              <button id="action-switch-default" class="secondary-button" type="button">Switch to default branch</button>
+              <button id="action-switch-target" class="secondary-button" type="button">Switch to target ref</button>
+              <button id="action-promote-target" class="secondary-button" type="button">Promote target ref</button>
             </div>
           </section>
 
-          <section class="panel runner-panel">
-            <div class="panel-heading">
-              <h3>Runner</h3>
-              <span id="run-status" class="status-pill status-idle">idle</span>
-            </div>
-            <p class="panel-note">The runner is prefilled from the active task and the target bar. Adjust arguments directly when you need the exact CLI shape.</p>
-            <div class="preview-shell">
-              <span class="preview-label">Preview</span>
-              <pre id="command-preview" class="command-preview"></pre>
+          <section id="task-panel-files" class="task-panel" hidden>
+            <div class="task-copy">
+              <h4>File Changes</h4>
+              <p class="panel-note">Repos, refs, and paths come from the target bar. This task only captures the file-operation specific inputs.</p>
             </div>
 
-            <div class="editor-block">
-              <label class="field-label" for="arguments-input">Arguments</label>
-              <textarea id="arguments-input" class="code-input" spellcheck="false"></textarea>
+            <label class="field-label" for="file-task-mode">Operation</label>
+            <select id="file-task-mode" class="select-input">
+              <option value="add">Add file</option>
+              <option value="replace">Replace text</option>
+              <option value="remove">Remove paths</option>
+            </select>
+
+            <div id="file-task-add-fields" class="task-subpanel">
+              <label class="field-label" for="file-content-input">File Content</label>
+              <textarea id="file-content-input" class="code-input task-code-input" spellcheck="false" placeholder="FILE CONTENT"></textarea>
             </div>
 
-            <div class="editor-block">
-              <label class="field-label" for="stdin-input">Standard Input</label>
-              <textarea id="stdin-input" class="code-input stdin-input" spellcheck="false" placeholder="Paste stdin payload when a command expects it"></textarea>
+            <div id="file-task-replace-fields" class="task-subpanel" hidden>
+              <label class="field-label" for="file-find-input">Find</label>
+              <textarea id="file-find-input" class="code-input task-code-input" spellcheck="false" placeholder="TEXT_TO_FIND"></textarea>
+              <label class="field-label" for="file-replace-input">Replace With</label>
+              <textarea id="file-replace-input" class="code-input task-code-input" spellcheck="false" placeholder="TEXT_TO_REPLACE"></textarea>
             </div>
 
             <div class="button-row">
-              <button id="run-command" class="primary-button" type="button">Run</button>
-              <span id="run-id" class="panel-note">No run started</span>
+              <button id="task-file-load" class="secondary-button" type="button">Load file command</button>
+              <span id="file-task-summary" class="panel-note"></span>
             </div>
+          </section>
+
+          <section id="task-panel-cleanup" class="task-panel" hidden>
+            <div class="task-copy">
+              <h4>Cleanup Operations</h4>
+              <p class="panel-note">Use cleanup tasks for batched maintenance that targets repositories but does not require per-file editing.</p>
+            </div>
+            <div class="quick-actions" aria-label="Cleanup quick actions">
+              <button id="task-cleanup-prs" class="secondary-button" type="button">Load PR branch cleanup</button>
+              <button id="task-cleanup-packages" class="secondary-button" type="button">Load package cleanup</button>
+            </div>
+          </section>
+
+          <section id="task-panel-remotes" class="task-panel" hidden>
+            <div class="task-copy">
+              <h4>Remote Normalization</h4>
+              <p class="panel-note">Normalize `origin` URLs across the selected repository scope. Use an owner constraint only when you want to restrict canonical remotes to one organization or user.</p>
+            </div>
+            <label class="field-label" for="remote-owner-input">Owner Constraint</label>
+            <input id="remote-owner-input" class="text-input" type="text" placeholder="owner">
+            <button id="task-remote-load" class="secondary-button" type="button">Load remote normalization</button>
+          </section>
+
+          <section id="task-panel-workflows" class="task-panel" hidden>
+            <div class="task-copy">
+              <h4>Workflow Runner</h4>
+              <p class="panel-note">Run an embedded preset or a workflow configuration file against the current repository target set. Repositories still come from the target bar.</p>
+            </div>
+
+            <label class="field-label" for="workflow-target-input">Preset or Config</label>
+            <input id="workflow-target-input" class="text-input" type="text" placeholder="license or ./workflow.yaml">
+
+            <label class="field-label" for="workflow-vars-input">Variables</label>
+            <textarea id="workflow-vars-input" class="code-input task-code-input" spellcheck="false" placeholder="key=value"></textarea>
+
+            <label class="field-label" for="workflow-var-files-input">Variable Files</label>
+            <textarea id="workflow-var-files-input" class="code-input task-code-input" spellcheck="false" placeholder="./vars.yaml"></textarea>
+
+            <label class="field-label" for="workflow-workers-input">Workflow Workers</label>
+            <input id="workflow-workers-input" class="text-input" type="number" min="1" step="1" value="1">
+
+            <label class="checkbox-row" for="workflow-require-clean">
+              <input id="workflow-require-clean" type="checkbox">
+              <span>Require clean worktrees for rename operations</span>
+            </label>
+
+            <button id="task-workflow-load" class="secondary-button" type="button">Load workflow command</button>
+          </section>
+
+          <section id="task-panel-advanced" class="task-panel" hidden>
+            <div class="panel-heading">
+              <h4>Advanced Commands</h4>
+              <span id="command-count" class="pill">0</span>
+            </div>
+            <p class="panel-note">Use the command catalog when the dedicated task forms do not capture the operation you need.</p>
+            <label class="field-label" for="command-filter">Find Command</label>
+            <input id="command-filter" class="text-input" type="search" placeholder="Find an action">
+            <div id="command-groups" class="command-groups" aria-live="polite"></div>
           </section>
         </section>
 
-        <section class="panel output-panel">
+        <section class="panel details-panel">
           <div class="panel-heading">
-            <h3>Run Output</h3>
-            <span id="run-error" class="error-message"></span>
+            <h3>Command Details</h3>
+            <span id="selected-path" class="panel-note"></span>
           </div>
-          <div class="output-grid">
+          <p id="command-summary" class="panel-note"></p>
+          <div class="details-grid">
             <div>
-              <h4>stdout</h4>
-              <pre id="stdout-output" class="terminal-window"></pre>
+              <h4>Usage</h4>
+              <pre id="command-usage" class="code-preview"></pre>
             </div>
             <div>
-              <h4>stderr</h4>
-              <pre id="stderr-output" class="terminal-window terminal-window-error"></pre>
+              <h4>Aliases</h4>
+              <div id="command-aliases" class="token-row"></div>
             </div>
+          </div>
+          <div>
+            <h4>Flags</h4>
+            <div id="command-flags" class="flag-list"></div>
           </div>
         </section>
-      </main>
+
+        <section class="panel runner-panel">
+          <div class="panel-heading">
+            <h3>Runner</h3>
+            <span id="run-status" class="status-pill status-idle">idle</span>
+          </div>
+          <p class="panel-note">The runner is prefilled from the active task and the target bar. Adjust arguments directly when you need the exact CLI shape.</p>
+          <div class="preview-shell">
+            <span class="preview-label">Preview</span>
+            <pre id="command-preview" class="command-preview"></pre>
+          </div>
+
+          <div class="editor-block">
+            <label class="field-label" for="arguments-input">Arguments</label>
+            <textarea id="arguments-input" class="code-input" spellcheck="false"></textarea>
+          </div>
+
+          <div class="editor-block">
+            <label class="field-label" for="stdin-input">Standard Input</label>
+            <textarea id="stdin-input" class="code-input stdin-input" spellcheck="false" placeholder="Paste stdin payload when a command expects it"></textarea>
+          </div>
+
+          <div class="button-row">
+            <button id="run-command" class="primary-button" type="button">Run</button>
+            <span id="run-id" class="panel-note">No run started</span>
+          </div>
+
+          <section class="runner-output">
+            <div class="panel-heading">
+              <h4>Run Output</h4>
+              <span id="run-error" class="error-message"></span>
+            </div>
+            <div class="output-grid">
+              <div>
+                <h4>stdout</h4>
+                <pre id="stdout-output" class="terminal-window"></pre>
+              </div>
+              <div>
+                <h4>stderr</h4>
+                <pre id="stderr-output" class="terminal-window terminal-window-error"></pre>
+              </div>
+            </div>
+          </section>
+        </section>
+      </section>
     </div>
 
     <script type="module" src="/assets/app.js"></script>
