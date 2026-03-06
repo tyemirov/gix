@@ -467,7 +467,8 @@ h4 {
 }
 
 .target-detail {
-  min-height: 2.7rem;
+  min-height: 0;
+  margin-top: 0.45rem;
 }
 
 .ref-value-field {
@@ -476,8 +477,17 @@ h4 {
   gap: 0.55rem;
 }
 
+.target-path-value-block {
+  display: flex;
+  flex-direction: column;
+}
+
 .target-path-input {
-  min-height: 7.5rem;
+  min-height: 4.5rem;
+}
+
+.target-path-input-expanded {
+  min-height: 7rem;
 }
 
 .context-token,

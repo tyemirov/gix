@@ -228,12 +228,17 @@ const elements = {
   scopeAll: document.querySelector("#scope-all"),
   targetRefSummary: document.querySelector("#target-ref-summary"),
   targetRefMode: document.querySelector("#target-ref-mode"),
+  targetRefValueBlock: document.querySelector("#target-ref-value-block"),
+  targetRefValueLabel: document.querySelector("#target-ref-value-label"),
   targetRefSelect: document.querySelector("#target-ref-select"),
   targetRefValue: document.querySelector("#target-ref-value"),
   targetRefDetail: document.querySelector("#target-ref-detail"),
   targetPathSummary: document.querySelector("#target-path-summary"),
   targetPathMode: document.querySelector("#target-path-mode"),
+  targetPathValueBlock: document.querySelector("#target-path-value-block"),
+  targetPathValueLabel: document.querySelector("#target-path-value-label"),
   targetPathValue: document.querySelector("#target-path-value"),
+  targetPathDetail: document.querySelector("#target-path-detail"),
   actionContext: document.querySelector("#action-context"),
   taskCount: document.querySelector("#task-count"),
   taskInspect: document.querySelector("#task-inspect"),
@@ -660,10 +665,9 @@ function renderTargetState() {
   elements.targetRefDetail.textContent = buildRefDetail();
 
   elements.targetPathMode.value = state.targetPathMode;
-  elements.targetPathValue.disabled = state.targetPathMode === pathModeNoneValue;
-  elements.targetPathValue.placeholder = pathInputPlaceholder();
-  elements.targetPathValue.value = state.targetPathValue;
+  renderPathValueField();
   elements.targetPathSummary.textContent = buildPathSummary();
+  elements.targetPathDetail.textContent = buildPathDetail();
 
   renderFileTaskState();
   updateActionContext();
@@ -672,8 +676,11 @@ function renderTargetState() {
 function renderRefValueField() {
   const namedMode = state.targetRefMode === refModeNamedValue;
   const patternMode = state.targetRefMode === refModePatternValue;
+  const explicitValueMode = namedMode || patternMode;
   const namedOptions = namedRefOptions();
 
+  elements.targetRefValueBlock.hidden = !explicitValueMode;
+  elements.targetRefValueLabel.hidden = !explicitValueMode;
   elements.targetRefSelect.hidden = !namedMode;
   elements.targetRefSelect.disabled = !namedMode || namedOptions.length === 0;
   elements.targetRefValue.hidden = namedMode;
@@ -710,6 +717,18 @@ function renderRefValueField() {
 
   elements.targetRefSelect.innerHTML = "";
   elements.targetRefValue.value = patternMode ? state.targetRefValue : "";
+}
+
+function renderPathValueField() {
+  const pathInputVisible = state.targetPathMode !== pathModeNoneValue;
+  const multilinePathMode = state.targetPathMode === pathModeMultipleValue;
+
+  elements.targetPathValueBlock.hidden = !pathInputVisible;
+  elements.targetPathValueLabel.hidden = !pathInputVisible;
+  elements.targetPathValue.disabled = !pathInputVisible;
+  elements.targetPathValue.placeholder = pathInputPlaceholder();
+  elements.targetPathValue.value = state.targetPathValue;
+  elements.targetPathValue.classList.toggle("target-path-input-expanded", multilinePathMode);
 }
 
 /**
@@ -787,6 +806,25 @@ function buildRefDetail() {
   }
 
   return "Any leaves ref selection to the command or repository state.";
+}
+
+/**
+ * @returns {string}
+ */
+function buildPathDetail() {
+  if (state.targetPathMode === pathModeNoneValue) {
+    return "No path filter will be applied.";
+  }
+
+  if (state.targetPathMode === pathModeRelativeValue) {
+    return "Target one relative path.";
+  }
+
+  if (state.targetPathMode === pathModeGlobValue) {
+    return "Target one glob pattern.";
+  }
+
+  return "Target multiple paths or patterns, one per line.";
 }
 
 /**

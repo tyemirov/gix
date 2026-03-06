@@ -63,8 +63,8 @@
               <option value="pattern">Pattern</option>
               <option value="any">Any</option>
             </select>
-            <label class="field-label">Value</label>
-            <div class="ref-value-field">
+            <div id="target-ref-value-block" class="ref-value-field">
+              <label id="target-ref-value-label" class="field-label">Value</label>
               <select id="target-ref-select" class="select-input" aria-label="Named ref selection" hidden disabled></select>
               <input id="target-ref-value" class="text-input" type="text" aria-label="Ref value" placeholder="branch-name or pattern" disabled>
             </div>
@@ -83,8 +83,11 @@
               <option value="glob">Glob</option>
               <option value="multiple">Multiple Paths</option>
             </select>
-            <label class="field-label" for="target-path-value">Value</label>
-            <textarea id="target-path-value" class="code-input target-path-input" spellcheck="false" placeholder="One path or glob per line" disabled></textarea>
+            <div id="target-path-value-block" class="target-path-value-block">
+              <label id="target-path-value-label" class="field-label" for="target-path-value">Value</label>
+              <textarea id="target-path-value" class="code-input target-path-input" spellcheck="false" placeholder="One path or glob per line" disabled></textarea>
+            </div>
+            <p id="target-path-detail" class="panel-note target-detail"></p>
           </section>
         </section>
       </section>
