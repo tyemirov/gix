@@ -31,16 +31,9 @@
             <p id="repo-path" class="repo-focus-path"></p>
             <p id="repo-summary" class="repo-focus-summary"></p>
           </div>
-          <p id="repo-launch-summary" class="panel-note"></p>
-          <label class="field-label" for="repo-filter">Filter</label>
-          <input id="repo-filter" class="text-input" type="search" placeholder="Find a repository">
-          <div id="repo-list" class="repo-list" aria-live="polite"></div>
-        </section>
-
-        <section class="target-grid">
-          <section class="panel target-card">
+          <section class="repo-scope">
             <div class="panel-heading">
-              <h3>Repos</h3>
+              <h3>Scope</h3>
               <span id="target-repo-summary" class="pill">0</span>
             </div>
             <div class="scope-toggle" role="group" aria-label="Repository scope">
@@ -50,7 +43,13 @@
             </div>
             <p id="target-repo-detail" class="panel-note target-detail"></p>
           </section>
+          <p id="repo-launch-summary" class="panel-note"></p>
+          <label class="field-label" for="repo-filter">Filter</label>
+          <input id="repo-filter" class="text-input" type="search" placeholder="Find a repository">
+          <div id="repo-list" class="repo-list" aria-live="polite"></div>
+        </section>
 
+        <section class="target-grid">
           <section class="panel target-card">
             <div class="panel-heading">
               <h3>Refs</h3>
