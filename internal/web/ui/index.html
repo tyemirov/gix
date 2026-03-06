@@ -99,7 +99,7 @@
           <p id="action-context" class="panel-note"></p>
 
           <div class="task-switcher" role="tablist" aria-label="Task switcher">
-            <button id="task-inspect" class="task-button active" type="button">Inspect</button>
+            <button id="task-inspect" class="task-button active" type="button">Audit</button>
             <button id="task-branch" class="task-button" type="button">Branch</button>
             <button id="task-files" class="task-button" type="button">Files</button>
             <button id="task-remotes" class="task-button" type="button">Remotes</button>
@@ -110,10 +110,10 @@
 
           <section id="task-panel-inspect" class="task-panel">
             <div class="task-copy">
-              <h4>Inspect Selected Scope</h4>
-              <p class="panel-note">Use the target bar to choose the repository scope, then load an audit snapshot into the runner when you want the CLI view of that state.</p>
+              <h4>Audit Selected Scope</h4>
+              <p class="panel-note">Use the target bar to choose the repository scope, then run the audit command when you want the CLI view of that state.</p>
             </div>
-            <button id="task-inspect-load" class="secondary-button" type="button">Load audit snapshot</button>
+            <button id="task-inspect-load" class="secondary-button" type="button">Run audit command</button>
           </section>
 
           <section id="task-panel-branch" class="task-panel" hidden>
@@ -122,9 +122,9 @@
               <p class="panel-note">The target bar defines which repositories and refs you are operating on. Use the Refs mode and value controls above to choose a concrete branch when the action needs one.</p>
             </div>
             <div class="quick-actions" aria-label="Branch quick actions">
-              <button id="action-switch-default" class="secondary-button" type="button">Switch to default branch</button>
-              <button id="action-switch-target" class="secondary-button" type="button">Switch to target ref</button>
-              <button id="action-promote-target" class="secondary-button" type="button">Promote target ref</button>
+              <button id="action-switch-default" class="secondary-button" type="button">Run switch to default branch command</button>
+              <button id="action-switch-target" class="secondary-button" type="button">Run switch to target ref command</button>
+              <button id="action-promote-target" class="secondary-button" type="button">Run promote target ref command</button>
             </div>
           </section>
 
@@ -154,7 +154,7 @@
             </div>
 
             <div class="button-row">
-              <button id="task-file-load" class="secondary-button" type="button">Load file command</button>
+              <button id="task-file-load" class="secondary-button" type="button">Run file command</button>
               <span id="file-task-summary" class="panel-note"></span>
             </div>
           </section>
@@ -165,8 +165,8 @@
               <p class="panel-note">Use cleanup tasks for batched maintenance that targets repositories but does not require per-file editing.</p>
             </div>
             <div class="quick-actions" aria-label="Cleanup quick actions">
-              <button id="task-cleanup-prs" class="secondary-button" type="button">Load PR branch cleanup</button>
-              <button id="task-cleanup-packages" class="secondary-button" type="button">Load package cleanup</button>
+              <button id="task-cleanup-prs" class="secondary-button" type="button">Run PR branch cleanup command</button>
+              <button id="task-cleanup-packages" class="secondary-button" type="button">Run package cleanup command</button>
             </div>
           </section>
 
@@ -177,7 +177,7 @@
             </div>
             <label class="field-label" for="remote-owner-input">Owner Constraint</label>
             <input id="remote-owner-input" class="text-input" type="text" placeholder="owner">
-            <button id="task-remote-load" class="secondary-button" type="button">Load remote normalization</button>
+            <button id="task-remote-load" class="secondary-button" type="button">Run remote normalization command</button>
           </section>
 
           <section id="task-panel-workflows" class="task-panel" hidden>
@@ -203,7 +203,7 @@
               <span>Require clean worktrees for rename operations</span>
             </label>
 
-            <button id="task-workflow-load" class="secondary-button" type="button">Load workflow command</button>
+            <button id="task-workflow-load" class="secondary-button" type="button">Run workflow command</button>
           </section>
 
           <section id="task-panel-advanced" class="task-panel" hidden>

@@ -167,7 +167,7 @@ const pathPlaceholderMultipleValue = "PATH/ONE\nPATH/TWO";
 /** @type {CommandGroupDefinition[]} */
 const commandGroupDefinitions = [
   { id: commandGroupBranchValue, title: "Branch Flow", description: "Switch branches and promote branch state across the target repositories." },
-  { id: commandGroupRepositoryValue, title: "Repository", description: "Inspect and normalize repository state." },
+  { id: commandGroupRepositoryValue, title: "Repository", description: "Audit and normalize repository state." },
   { id: commandGroupRemoteValue, title: "Remote", description: "Align remotes and transport settings." },
   { id: commandGroupPullRequestsValue, title: "Pull Requests", description: "Clean up local and remote PR branches." },
   { id: commandGroupPackagesValue, title: "Packages", description: "Prune package artifacts tied to the repository." },
@@ -622,17 +622,17 @@ function renderFileTaskState() {
   const pathSummary = buildPathSummary();
   if (addMode) {
     elements.fileTaskSummary.textContent = `Add file draft. Path target ${pathSummary}.`;
-    elements.fileTaskLoad.textContent = "Load add file command";
+    elements.fileTaskLoad.textContent = "Run add file command";
     return;
   }
   if (replaceMode) {
     elements.fileTaskSummary.textContent = `Replace text draft. Path target ${pathSummary}.`;
-    elements.fileTaskLoad.textContent = "Load replace text command";
+    elements.fileTaskLoad.textContent = "Run replace text command";
     return;
   }
   if (removeMode) {
     elements.fileTaskSummary.textContent = `Remove path draft. Path target ${pathSummary}.`;
-    elements.fileTaskLoad.textContent = "Load remove paths command";
+    elements.fileTaskLoad.textContent = "Run remove paths command";
   }
 }
 
@@ -1030,10 +1030,10 @@ function updateActionContext() {
   switch (state.activeTask) {
     case taskInspectValue:
       if (scopeRepositories.length === 0) {
-        elements.actionContext.textContent = "Choose a repository target set to inspect.";
+        elements.actionContext.textContent = "Choose a repository target set to audit.";
         return;
       }
-      elements.actionContext.textContent = `Inspect ${repositorySummary}. Load audit when you want a CLI snapshot of the current scope.`;
+      elements.actionContext.textContent = `Audit ${repositorySummary}. Run the audit command when you want a CLI snapshot of the current scope.`;
       return;
     case taskBranchValue:
       if (selectedCommand && selectedCommand.target.group === commandGroupBranchValue && commandDraft?.reason) {
@@ -1041,7 +1041,7 @@ function updateActionContext() {
         return;
       }
       if (scopeRepositories.length === 0) {
-        elements.actionContext.textContent = "Choose a repository target set before loading branch operations.";
+        elements.actionContext.textContent = "Choose a repository target set before running branch commands.";
         return;
       }
       elements.actionContext.textContent = `Branch task targets ${repositorySummary}. Ref mode ${refSummary}.`;
@@ -1052,14 +1052,14 @@ function updateActionContext() {
         return;
       }
       if (scopeRepositories.length === 0) {
-        elements.actionContext.textContent = "Choose a repository target set before loading file operations.";
+        elements.actionContext.textContent = "Choose a repository target set before running file commands.";
         return;
       }
       elements.actionContext.textContent = `Files task targets ${repositorySummary}. Ref mode ${refSummary}. Path mode ${pathSummary}.`;
       return;
     case taskRemotesValue:
       if (scopeRepositories.length === 0) {
-        elements.actionContext.textContent = "Choose a repository target set before loading remote normalization.";
+        elements.actionContext.textContent = "Choose a repository target set before running remote normalization.";
         return;
       }
       if (selectedCommand && selectedCommand.target.group === commandGroupRemoteValue && commandDraft?.reason) {
@@ -1070,7 +1070,7 @@ function updateActionContext() {
       return;
     case taskCleanupValue:
       if (scopeRepositories.length === 0) {
-        elements.actionContext.textContent = "Choose a repository target set before loading cleanup operations.";
+        elements.actionContext.textContent = "Choose a repository target set before running cleanup commands.";
         return;
       }
       elements.actionContext.textContent = `Cleanup task targets ${repositorySummary}.`;
@@ -1078,7 +1078,7 @@ function updateActionContext() {
     case taskWorkflowsValue: {
       const workflowTarget = elements.workflowTargetInput?.value.trim() || "WORKFLOW_OR_PRESET";
       if (scopeRepositories.length === 0) {
-        elements.actionContext.textContent = "Choose a repository target set before loading workflow runs.";
+        elements.actionContext.textContent = "Choose a repository target set before running workflow commands.";
         return;
       }
       elements.actionContext.textContent = `Workflow task targets ${repositorySummary}. Workflow ${workflowTarget}.`;
@@ -1119,16 +1119,16 @@ function syncQuickActions(errorText = "") {
   elements.actionPromoteTarget.disabled = !repository || branchQuickActionsDisabled || !promoteSelection.ready;
 
   elements.actionSwitchDefault.textContent = repository && repository.default_branch
-    ? `Load switch to ${repository.default_branch}`
-    : "Load switch to default branch";
+    ? `Run switch to ${repository.default_branch} command`
+    : "Run switch to default branch command";
 
   elements.actionSwitchTarget.textContent = targetSwitchSelection.ready && targetSwitchSelection.branch
-    ? `Load switch to ${targetSwitchSelection.branch}`
-    : "Load switch to target ref";
+    ? `Run switch to ${targetSwitchSelection.branch} command`
+    : "Run switch to target ref command";
 
   elements.actionPromoteTarget.textContent = promoteSelection.ready && promoteSelection.branch
-    ? `Load promote ${promoteSelection.branch}`
-    : "Load promote target ref";
+    ? `Run promote ${promoteSelection.branch} command`
+    : "Run promote target ref command";
 
   if (errorText) {
     elements.actionContext.textContent = errorText;
@@ -1311,7 +1311,7 @@ function resolveCommandDraft(command) {
   if (command.target.repository !== targetRequirementNoneValue && rootArguments.length === 0) {
     return {
       arguments: [],
-      reason: "Select at least one repository in the target bar to load this action.",
+      reason: "Select at least one repository in the target bar to run this command.",
     };
   }
 
@@ -1352,7 +1352,7 @@ function buildRemoteTaskArguments(rootArguments) {
   if (rootArguments.length === 0) {
     return {
       arguments: [],
-      reason: "Select at least one repository in the target bar to load remote normalization.",
+      reason: "Select at least one repository in the target bar to run remote normalization.",
     };
   }
 
@@ -1373,7 +1373,7 @@ function buildWorkflowTaskArguments() {
   if (repositoryRoots.length === 0) {
     return {
       arguments: [],
-      reason: "Select at least one repository in the target bar to load a workflow run.",
+      reason: "Select at least one repository in the target bar to run a workflow command.",
     };
   }
 
@@ -1485,7 +1485,7 @@ function resolveBranchChangeSelection() {
     if (namedBranch) {
       return { ready: true, branch: namedBranch, reason: "" };
     }
-    return { ready: false, branch: "", reason: "Enter a named ref to load the switch-branch action." };
+    return { ready: false, branch: "", reason: "Enter a named ref to run the switch-branch command." };
   }
 
   if (state.targetRefMode === refModeDefaultValue) {
@@ -1521,7 +1521,7 @@ function resolveBranchChangeSelection() {
   return {
     ready: false,
     branch: "",
-    reason: "Select a named or default ref to load the switch-branch action.",
+    reason: "Select a named or default ref to run the switch-branch command.",
   };
 }
 
@@ -1536,7 +1536,7 @@ function resolveDefaultTargetBranch() {
     if (namedBranch) {
       return { ready: true, branch: namedBranch, reason: "" };
     }
-    return { ready: false, branch: "", reason: "Enter a named ref to load the promote-default action." };
+    return { ready: false, branch: "", reason: "Enter a named ref to run the promote-default command." };
   }
 
   if (state.selectedScope !== scopeSelectedValue) {
@@ -1573,7 +1573,7 @@ function resolveDefaultTargetBranch() {
   return {
     ready: false,
     branch: "",
-    reason: "Select a concrete ref to load the promote-default action.",
+    reason: "Select a concrete ref to run the promote-default command.",
   };
 }
 

@@ -290,9 +290,9 @@ func TestWebServerExecutesVersionCommand(t *testing.T) {
 	require.Contains(t, indexDocument.String(), "<h3>Paths</h3>")
 	require.Contains(t, indexDocument.String(), "<h3>Tasks</h3>")
 	require.Contains(t, indexDocument.String(), "id=\"target-ref-select\"")
-	require.Contains(t, indexDocument.String(), "Load audit snapshot")
-	require.Contains(t, indexDocument.String(), "Load remote normalization")
-	require.Contains(t, indexDocument.String(), "Load workflow command")
+	require.Contains(t, indexDocument.String(), "Run audit command")
+	require.Contains(t, indexDocument.String(), "Run remote normalization command")
+	require.Contains(t, indexDocument.String(), "Run workflow command")
 
 	commandsResponse, commandsError := http.Get(httpServer.URL + "/api/commands")
 	require.NoError(t, commandsError)
