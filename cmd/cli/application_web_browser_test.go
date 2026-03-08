@@ -27,69 +27,70 @@ const (
 	browserReadyPollIntervalConstant       = 100 * time.Millisecond
 	repositoryTitleLoadingConstant         = "Loading..."
 
-	auditRootsInputSelectorConstant       = "#audit-roots-input"
-	auditIncludeAllSelectorConstant       = "#audit-include-all"
-	auditRunButtonSelectorConstant        = "#task-inspect-load"
-	auditResultsPanelSelectorConstant     = "#audit-results-panel"
-	auditResultsSummarySelectorConstant   = "#audit-results-summary"
-	auditResultsBodySelectorConstant      = "#audit-results-body"
-	auditQueuePanelSelectorConstant       = "#audit-queue-panel"
-	auditQueueSummarySelectorConstant     = "#audit-queue-summary"
-	auditQueueListSelectorConstant        = "#audit-queue-list"
-	auditQueueApplySelectorConstant       = "#audit-queue-apply"
-	auditQueueDeleteSelectorConstant      = "[data-audit-action='delete_folder']"
-	auditQueueDeleteConfirmSelector       = "[data-queue-confirm-delete]"
-	auditQueueProtocolSelectorConstant    = "[data-audit-action='convert_protocol']"
-	auditQueueRenameSelectorConstant      = "[data-audit-action='rename_folder']"
-	auditQueueSyncSelectorConstant        = "[data-audit-action='sync_with_remote']"
-	auditQueueTargetProtocolSelector      = "[data-queue-target-protocol]"
-	auditQueueSyncStrategySelector        = "[data-queue-sync-strategy]"
-	branchTaskButtonSelectorConstant      = "#task-branch"
-	filesTaskButtonSelectorConstant       = "#task-files"
-	remotesTaskButtonSelectorConstant     = "#task-remotes"
-	workflowsTaskButtonSelectorConstant   = "#task-workflows"
-	advancedTaskButtonSelectorConstant    = "#task-advanced"
-	scopeAllButtonSelectorConstant        = "#scope-all"
-	targetRefModeSelectorConstant         = "#target-ref-mode"
-	targetRefSelectSelectorConstant       = "#target-ref-select"
-	targetPathModeSelectorConstant        = "#target-path-mode"
-	targetPathValueSelectorConstant       = "#target-path-value"
-	fileTaskModeSelectorConstant          = "#file-task-mode"
-	fileFindInputSelectorConstant         = "#file-find-input"
-	fileReplaceInputSelectorConstant      = "#file-replace-input"
-	fileLoadButtonSelectorConstant        = "#task-file-load"
-	remoteOwnerInputSelectorConstant      = "#remote-owner-input"
-	remoteLoadButtonSelectorConstant      = "#task-remote-load"
-	workflowTargetInputSelectorConstant   = "#workflow-target-input"
-	workflowVarsInputSelectorConstant     = "#workflow-vars-input"
-	workflowVarFilesInputSelectorConstant = "#workflow-var-files-input"
-	workflowWorkersInputSelectorConstant  = "#workflow-workers-input"
-	workflowRequireCleanSelectorConstant  = "#workflow-require-clean"
-	workflowLoadButtonSelectorConstant    = "#task-workflow-load"
-	switchTargetButtonSelectorConstant    = "#action-switch-target"
-	selectedPathSelectorConstant          = "#selected-path"
-	commandGroupsSelectorConstant         = "#command-groups"
-	argumentsInputSelectorConstant        = "#arguments-input"
-	commandPreviewSelectorConstant        = "#command-preview"
-	runCommandSelectorConstant            = "#run-command"
-	auditCommandPathConstant              = "gix audit"
-	branchCommandPathConstant             = "gix cd"
-	filesReplaceCommandPathConstant       = "gix files replace"
-	remoteCanonicalCommandPathConstant    = "gix remote update-to-canonical"
-	workflowCommandPathConstant           = "gix workflow"
-	versionCommandPathConstant            = "gix version"
-	refModeNamedConstant                  = "named"
-	pathModeRelativeConstant              = "relative"
-	fileTaskModeReplaceConstant           = "replace"
-	repositoryReadmePathConstant          = "README.md"
-	replacementFindValueConstant          = "initial"
-	replacementTextValueConstant          = "updated"
-	remoteOwnerValueConstant              = "mprlab"
-	workflowTargetValueConstant           = "configs/proprietary-licensing.yaml"
-	workflowVariableAssignmentConstant    = "license_year=2026"
-	workflowVariableFileConstant          = "./vars.yaml"
-	workflowWorkersValueConstant          = "3"
-	auditCustomRootValueConstant          = "/tmp/browser-audit-root"
+	auditRootsInputSelectorConstant        = "#audit-roots-input"
+	auditIncludeAllSelectorConstant        = "#audit-include-all"
+	auditRunButtonSelectorConstant         = "#task-inspect-load"
+	auditResultsPanelSelectorConstant      = "#audit-results-panel"
+	auditResultsSummarySelectorConstant    = "#audit-results-summary"
+	auditResultsBodySelectorConstant       = "#audit-results-body"
+	auditNameMatchesFilterSelectorConstant = "[data-audit-column-filter='name_matches']"
+	auditQueuePanelSelectorConstant        = "#audit-queue-panel"
+	auditQueueSummarySelectorConstant      = "#audit-queue-summary"
+	auditQueueListSelectorConstant         = "#audit-queue-list"
+	auditQueueApplySelectorConstant        = "#audit-queue-apply"
+	auditQueueDeleteSelectorConstant       = "[data-audit-action='delete_folder']"
+	auditQueueDeleteConfirmSelector        = "[data-queue-confirm-delete]"
+	auditQueueProtocolSelectorConstant     = "[data-audit-action='convert_protocol']"
+	auditQueueRenameSelectorConstant       = "[data-audit-action='rename_folder']"
+	auditQueueSyncSelectorConstant         = "[data-audit-action='sync_with_remote']"
+	auditQueueTargetProtocolSelector       = "[data-queue-target-protocol]"
+	auditQueueSyncStrategySelector         = "[data-queue-sync-strategy]"
+	branchTaskButtonSelectorConstant       = "#task-branch"
+	filesTaskButtonSelectorConstant        = "#task-files"
+	remotesTaskButtonSelectorConstant      = "#task-remotes"
+	workflowsTaskButtonSelectorConstant    = "#task-workflows"
+	advancedTaskButtonSelectorConstant     = "#task-advanced"
+	scopeAllButtonSelectorConstant         = "#scope-all"
+	targetRefModeSelectorConstant          = "#target-ref-mode"
+	targetRefSelectSelectorConstant        = "#target-ref-select"
+	targetPathModeSelectorConstant         = "#target-path-mode"
+	targetPathValueSelectorConstant        = "#target-path-value"
+	fileTaskModeSelectorConstant           = "#file-task-mode"
+	fileFindInputSelectorConstant          = "#file-find-input"
+	fileReplaceInputSelectorConstant       = "#file-replace-input"
+	fileLoadButtonSelectorConstant         = "#task-file-load"
+	remoteOwnerInputSelectorConstant       = "#remote-owner-input"
+	remoteLoadButtonSelectorConstant       = "#task-remote-load"
+	workflowTargetInputSelectorConstant    = "#workflow-target-input"
+	workflowVarsInputSelectorConstant      = "#workflow-vars-input"
+	workflowVarFilesInputSelectorConstant  = "#workflow-var-files-input"
+	workflowWorkersInputSelectorConstant   = "#workflow-workers-input"
+	workflowRequireCleanSelectorConstant   = "#workflow-require-clean"
+	workflowLoadButtonSelectorConstant     = "#task-workflow-load"
+	switchTargetButtonSelectorConstant     = "#action-switch-target"
+	selectedPathSelectorConstant           = "#selected-path"
+	commandGroupsSelectorConstant          = "#command-groups"
+	argumentsInputSelectorConstant         = "#arguments-input"
+	commandPreviewSelectorConstant         = "#command-preview"
+	runCommandSelectorConstant             = "#run-command"
+	auditCommandPathConstant               = "gix audit"
+	branchCommandPathConstant              = "gix cd"
+	filesReplaceCommandPathConstant        = "gix files replace"
+	remoteCanonicalCommandPathConstant     = "gix remote update-to-canonical"
+	workflowCommandPathConstant            = "gix workflow"
+	versionCommandPathConstant             = "gix version"
+	refModeNamedConstant                   = "named"
+	pathModeRelativeConstant               = "relative"
+	fileTaskModeReplaceConstant            = "replace"
+	repositoryReadmePathConstant           = "README.md"
+	replacementFindValueConstant           = "initial"
+	replacementTextValueConstant           = "updated"
+	remoteOwnerValueConstant               = "mprlab"
+	workflowTargetValueConstant            = "configs/proprietary-licensing.yaml"
+	workflowVariableAssignmentConstant     = "license_year=2026"
+	workflowVariableFileConstant           = "./vars.yaml"
+	workflowWorkersValueConstant           = "3"
+	auditCustomRootValueConstant           = "/tmp/browser-audit-root"
 )
 
 var browserExecutableCandidates = []string{
@@ -216,6 +217,77 @@ func TestWebInterfaceBrowserInspectsAuditRootsAndDisplaysTable(t *testing.T) {
 	require.Contains(t, auditResultsText, "canonical/example")
 	require.Contains(t, auditResultsText, "missing")
 	require.Contains(t, auditResultsText, auditCustomRootValueConstant)
+}
+
+func TestWebInterfaceBrowserFiltersAuditRowsByColumnValue(t *testing.T) {
+	repositoryPath := createTestRepository(t, filepath.Join(t.TempDir(), "workspace", "example"))
+
+	httpServer, repositoryCatalog := newBrowserTestServerWithInspector(t, repositoryPath, func(_ context.Context, request web.AuditInspectionRequest) web.AuditInspectionResponse {
+		return web.AuditInspectionResponse{
+			Roots: request.Roots,
+			Rows: []web.AuditInspectionRow{
+				{
+					Path:                   filepath.Join(auditCustomRootValueConstant, "alpha"),
+					FolderName:             "alpha",
+					IsGitRepository:        true,
+					FinalGitHubRepository:  "canonical/alpha",
+					OriginRemoteStatus:     "configured",
+					NameMatches:            "yes",
+					RemoteDefaultBranch:    "main",
+					LocalBranch:            "main",
+					InSync:                 "yes",
+					RemoteProtocol:         "https",
+					OriginMatchesCanonical: "yes",
+					WorktreeDirty:          "no",
+					DirtyFiles:             "",
+				},
+				{
+					Path:                   filepath.Join(auditCustomRootValueConstant, "beta"),
+					FolderName:             "beta",
+					IsGitRepository:        true,
+					FinalGitHubRepository:  "canonical/beta",
+					OriginRemoteStatus:     "configured",
+					NameMatches:            "no",
+					RemoteDefaultBranch:    "main",
+					LocalBranch:            "main",
+					InSync:                 "yes",
+					RemoteProtocol:         "https",
+					OriginMatchesCanonical: "yes",
+					WorktreeDirty:          "no",
+					DirtyFiles:             "",
+				},
+			},
+		}
+	})
+	defer httpServer.Close()
+
+	browserContext := newBrowserTestContext(t)
+	expectedRepository := selectedRepositoryDescriptor(t, repositoryCatalog)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		chromedp.Navigate(httpServer.URL),
+		chromedp.WaitVisible(auditRunButtonSelectorConstant, chromedp.ByQuery),
+	))
+	waitForControlSurfaceReady(t, browserContext, expectedRepository.Name)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		setControlValue(auditRootsInputSelectorConstant, auditCustomRootValueConstant),
+		chromedp.Click(auditRunButtonSelectorConstant, chromedp.ByQuery),
+		chromedp.WaitVisible(auditResultsPanelSelectorConstant, chromedp.ByQuery),
+	))
+
+	require.NoError(t, chromedp.Run(browserContext,
+		setControlValue(auditNameMatchesFilterSelectorConstant, "no"),
+	))
+
+	auditSummary, auditSummaryError := readTextContent(browserContext, auditResultsSummarySelectorConstant)
+	require.NoError(t, auditSummaryError)
+	require.Equal(t, "1 of 2 rows", auditSummary)
+
+	auditResultsText, auditResultsError := readTextContent(browserContext, auditResultsBodySelectorConstant)
+	require.NoError(t, auditResultsError)
+	require.Contains(t, auditResultsText, "beta")
+	require.NotContains(t, auditResultsText, "alpha")
 }
 
 func TestWebInterfaceBrowserRunButtonUsesActionableAuditInspection(t *testing.T) {

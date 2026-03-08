@@ -334,6 +334,7 @@ const commandGroupDefinitions = [
  *   auditInspectionRoots: string[],
  *   auditInspectionRows: AuditInspectionRow[],
  *   auditInspectionIncludeAll: boolean,
+ *   auditColumnFilters: Record<string, string>,
  *   auditQueue: AuditQueueEntry[],
  *   auditQueueVisible: boolean,
  *   auditQueueApplying: boolean,
@@ -360,6 +361,7 @@ const state = {
   auditInspectionRoots: [],
   auditInspectionRows: [],
   auditInspectionIncludeAll: false,
+  auditColumnFilters: {},
   auditQueue: [],
   auditQueueVisible: false,
   auditQueueApplying: false,
@@ -574,6 +576,7 @@ function bindEvents() {
   elements.auditRootsInput.addEventListener("input", handleAuditDraftChange);
   elements.auditIncludeAll.addEventListener("change", handleAuditDraftChange);
   elements.auditResultsBody.addEventListener("click", handleAuditResultsClick);
+  elements.auditResultsHead.addEventListener("change", handleAuditResultsHeadChange);
   elements.auditQueueList.addEventListener("click", handleAuditQueueListClick);
   elements.auditQueueList.addEventListener("change", handleAuditQueueListChange);
   elements.auditQueueClear.addEventListener("click", clearAuditQueue);
@@ -2312,6 +2315,7 @@ function renderRunAuditResults(snapshot) {
  */
 function renderTypedAuditResults(inspection) {
   state.auditInspectionRows = (inspection.rows || []).slice();
+  state.auditColumnFilters = {};
   state.auditQueueVisible = true;
 
   renderTypedAuditTable(state.auditInspectionRows);
@@ -2387,7 +2391,19 @@ function renderTypedAuditTable(rows) {
     if (headerCellClassName) {
       headerCell.classList.add(headerCellClassName);
     }
-    headerCell.textContent = auditColumnLabels[headerName] || headerName;
+    const headerStack = document.createElement("div");
+    headerStack.className = "audit-header-stack";
+
+    const headerLabel = document.createElement("span");
+    headerLabel.textContent = auditColumnLabels[headerName] || headerName;
+    headerStack.append(headerLabel);
+
+    const filterControl = renderAuditColumnFilterControl(headerName, rows);
+    if (filterControl) {
+      headerStack.append(filterControl);
+    }
+
+    headerCell.append(headerStack);
     headerRow.append(headerCell);
   });
 
@@ -2397,15 +2413,18 @@ function renderTypedAuditTable(rows) {
   headerRow.append(actionsHeaderCell);
   elements.auditResultsHead.append(headerRow);
 
-  if (rows.length === 0) {
+  const filteredRows = filterTypedAuditRows(rows);
+  if (filteredRows.length === 0) {
     const emptyRow = document.createElement("tr");
     const emptyCell = document.createElement("td");
     emptyCell.colSpan = typedAuditHeaderColumns.length + 1;
-    emptyCell.textContent = "No repositories or folders matched the inspected roots.";
+    emptyCell.textContent = rows.length === 0
+      ? "No repositories or folders matched the inspected roots."
+      : "No audit rows match the current column filters.";
     emptyRow.append(emptyCell);
     elements.auditResultsBody.append(emptyRow);
   } else {
-    rows.forEach((row) => {
+    filteredRows.forEach((row) => {
       const rowElement = document.createElement("tr");
       const record = typedAuditRecord(row);
 
@@ -2452,8 +2471,7 @@ function renderTypedAuditTable(rows) {
     });
   }
 
-  const rowCount = rows.length;
-  elements.auditResultsSummary.textContent = `${rowCount} ${rowCount === 1 ? "row" : "rows"}`;
+  elements.auditResultsSummary.textContent = formatAuditResultsSummary(filteredRows.length, rows.length);
   elements.auditResultsPanel.hidden = false;
 }
 
@@ -2462,6 +2480,7 @@ function hideAuditResults() {
   elements.auditResultsSummary.textContent = "";
   elements.auditResultsHead.innerHTML = "";
   elements.auditResultsBody.innerHTML = "";
+  state.auditColumnFilters = {};
 }
 
 /**
@@ -2470,34 +2489,7 @@ function hideAuditResults() {
  */
 function typedAuditRecord(row) {
   return typedAuditHeaderColumns.map((headerName) => {
-    switch (headerName) {
-      case "path":
-        return row.path;
-      case "folder_name":
-        return row.folder_name;
-      case "final_github_repo":
-        return row.final_github_repo;
-      case "origin_remote_status":
-        return row.origin_remote_status;
-      case "name_matches":
-        return row.name_matches;
-      case "remote_default_branch":
-        return row.remote_default_branch;
-      case "local_branch":
-        return row.local_branch;
-      case "in_sync":
-        return row.in_sync;
-      case "remote_protocol":
-        return row.remote_protocol;
-      case "origin_matches_canonical":
-        return row.origin_matches_canonical;
-      case "worktree_dirty":
-        return row.worktree_dirty;
-      case "dirty_files":
-        return row.dirty_files;
-      default:
-        return "";
-    }
+    return typedAuditColumnValue(row, headerName);
   });
 }
 
@@ -2510,6 +2502,132 @@ function auditTableColumnClass(headerName) {
     return "audit-column-dirty-files";
   }
   return "";
+}
+
+/**
+ * @param {Event} event
+ */
+function handleAuditResultsHeadChange(event) {
+  const eventTarget = event.target;
+  if (!(eventTarget instanceof HTMLSelectElement)) {
+    return;
+  }
+
+  const headerName = eventTarget.dataset.auditColumnFilter || "";
+  if (!headerName) {
+    return;
+  }
+
+  const nextFilters = { ...state.auditColumnFilters };
+  if (eventTarget.value) {
+    nextFilters[headerName] = eventTarget.value;
+  } else {
+    delete nextFilters[headerName];
+  }
+  state.auditColumnFilters = nextFilters;
+  renderTypedAuditTable(state.auditInspectionRows);
+}
+
+/**
+ * @param {string} headerName
+ * @param {AuditInspectionRow[]} rows
+ * @returns {HTMLSelectElement | null}
+ */
+function renderAuditColumnFilterControl(headerName, rows) {
+  const optionValues = auditColumnFilterValues(headerName, rows);
+  if (optionValues.length <= 1) {
+    return null;
+  }
+
+  const filterControl = document.createElement("select");
+  filterControl.className = "select-input audit-column-filter";
+  filterControl.dataset.auditColumnFilter = headerName;
+
+  const allOption = document.createElement("option");
+  allOption.value = "";
+  allOption.textContent = "All";
+  filterControl.append(allOption);
+
+  optionValues.forEach((optionValue) => {
+    const option = document.createElement("option");
+    option.value = optionValue;
+    option.textContent = optionValue;
+    filterControl.append(option);
+  });
+
+  filterControl.value = state.auditColumnFilters[headerName] || "";
+  return filterControl;
+}
+
+/**
+ * @param {string} headerName
+ * @param {AuditInspectionRow[]} rows
+ * @returns {string[]}
+ */
+function auditColumnFilterValues(headerName, rows) {
+  return Array.from(new Set(rows.map((row) => typedAuditColumnValue(row, headerName)).filter(Boolean)))
+    .sort((left, right) => left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" }));
+}
+
+/**
+ * @param {AuditInspectionRow[]} rows
+ * @returns {AuditInspectionRow[]}
+ */
+function filterTypedAuditRows(rows) {
+  const activeFilters = Object.entries(state.auditColumnFilters).filter(([, filterValue]) => Boolean(filterValue));
+  if (activeFilters.length === 0) {
+    return rows;
+  }
+
+  return rows.filter((row) => activeFilters.every(([headerName, filterValue]) => typedAuditColumnValue(row, headerName) === filterValue));
+}
+
+/**
+ * @param {AuditInspectionRow} row
+ * @param {string} headerName
+ * @returns {string}
+ */
+function typedAuditColumnValue(row, headerName) {
+  switch (headerName) {
+    case "path":
+      return row.path;
+    case "folder_name":
+      return row.folder_name;
+    case "final_github_repo":
+      return row.final_github_repo;
+    case "origin_remote_status":
+      return row.origin_remote_status;
+    case "name_matches":
+      return row.name_matches;
+    case "remote_default_branch":
+      return row.remote_default_branch;
+    case "local_branch":
+      return row.local_branch;
+    case "in_sync":
+      return row.in_sync;
+    case "remote_protocol":
+      return row.remote_protocol;
+    case "origin_matches_canonical":
+      return row.origin_matches_canonical;
+    case "worktree_dirty":
+      return row.worktree_dirty;
+    case "dirty_files":
+      return row.dirty_files;
+    default:
+      return "";
+  }
+}
+
+/**
+ * @param {number} visibleCount
+ * @param {number} totalCount
+ * @returns {string}
+ */
+function formatAuditResultsSummary(visibleCount, totalCount) {
+  if (visibleCount === totalCount) {
+    return `${totalCount} ${totalCount === 1 ? "row" : "rows"}`;
+  }
+  return `${visibleCount} of ${totalCount} ${totalCount === 1 ? "row" : "rows"}`;
 }
 
 /**

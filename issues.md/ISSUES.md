@@ -330,6 +330,22 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - [x] Added a dedicated audit-table column class for `dirty_files` in both the typed and parsed audit table renderers.
   - [x] Applied a narrow fixed width plus line wrapping and word breaking to the `Dirty Files` column.
 
+- Update on 2026-03-08 for audit column-value filtering.
+  Added per-column header filters to the web audit table so operators can narrow rows to exact values directly from the column headers.
+  ### Summary
+  The audit table had no interactive filtering, which made it cumbersome to isolate subsets like `name_matches = no`, `in_sync = no`, or `origin_remote_status = missing` before queueing remediation actions.
+
+  ### Analysis
+  - The typed audit table already had a stable set of logical columns, so the right place for filtering is in the header itself rather than in a separate global search surface.
+  - Exact-value filters fit the audit data model well because many columns are categorical and operators typically want to isolate one specific state at a time.
+  - The implementation needed to preserve the existing row-action UX, which means filtering should only change which rows are rendered and summarized, not mutate the underlying inspection rows or queue semantics.
+  - Keeping filter state in the browser and re-rendering the table from the inspection rows is the lowest-risk approach because it does not alter the backend audit contract.
+
+  ### Deliverables
+  - [x] Added a browser regression that inspects multiple rows, filters the `Name Matches` column from the header, and verifies the table narrows to matching rows only.
+  - [x] Added per-column header select controls for typed audit columns when more than one distinct value exists in the inspected rows.
+  - [x] Added exact-value filtering and filtered row summaries (for example `1 of 2 rows`) without affecting queue actions or audit data.
+
 
 ## Planning
 *do not implement yet*
