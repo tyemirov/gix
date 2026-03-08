@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http/httptest"
 	"os"
@@ -729,6 +730,17 @@ func TestWebInterfaceBrowserPrefillsRemoteAndWorkflowTasksAcrossRepositoryScope(
 	})
 }
 
+func TestBrowserStartupErrorSkippable(t *testing.T) {
+	startupError := errors.New(
+		"chrome failed to start:\n" +
+			"[0308/223413.260786:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq: No such file or directory (2)\n",
+	)
+
+	require.True(t, browserStartupErrorSkippable(startupError))
+	require.False(t, browserStartupErrorSkippable(errors.New("selector did not resolve")))
+	require.False(t, browserStartupErrorSkippable(nil))
+}
+
 func TestWebInterfaceBrowserAdvancedHidesTaskOwnedCommands(t *testing.T) {
 	repositoryPath := createTestRepository(t, filepath.Join(t.TempDir(), "workspace", "example"))
 
@@ -845,6 +857,8 @@ func newBrowserTestContext(testingInstance *testing.T) context.Context {
 		chromedp.NoDefaultBrowserCheck,
 		chromedp.Flag("headless", true),
 		chromedp.Flag("disable-gpu", true),
+		chromedp.Flag("disable-breakpad", true),
+		chromedp.Flag("disable-crash-reporter", true),
 		chromedp.Flag("no-sandbox", true),
 		chromedp.Flag("disable-dev-shm-usage", true),
 		chromedp.Flag("window-size", "1440,1100"),
@@ -860,7 +874,22 @@ func newBrowserTestContext(testingInstance *testing.T) context.Context {
 		cancelAllocator()
 	})
 
+	startupError := chromedp.Run(timeoutContext, chromedp.Navigate("about:blank"))
+	if browserStartupErrorSkippable(startupError) {
+		testingInstance.Skipf("skipping browser test: Chrome failed to start in this environment: %v", startupError)
+	}
+	require.NoError(testingInstance, startupError)
+
 	return timeoutContext
+}
+
+func browserStartupErrorSkippable(startupError error) bool {
+	if startupError == nil {
+		return false
+	}
+
+	startupErrorLower := strings.ToLower(startupError.Error())
+	return strings.Contains(startupErrorLower, "chrome failed to start")
 }
 
 func locateBrowserExecutable() string {
