@@ -299,6 +299,23 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - [x] Routed main-button audit execution through the typed inspection flow instead of the generic run API.
   - [x] Updated the main button label to `Inspect audit table` when `gix audit` is the selected command so the UX matches the actual behavior.
 
+- Update on 2026-03-08 for audit root selection from the editable draft.
+  Fixed a mismatch between the editable `gix audit` argument draft and the actual inspection scope used by the Audit task.
+  ### Summary
+  The web UI allowed operators to edit the audit draft in the arguments textarea, but `Inspect audit table` still read only the dedicated Audit controls. Changing `--roots` in the visible draft therefore did not change the inspected folder, which made the UI show one audit command and execute another.
+
+  ### Analysis
+  - This was a state divergence bug inside the browser client. The audit task generated a draft command from `audit-roots-input` and `audit-include-all`, but manual edits to the shared arguments editor were not reflected back into those controls.
+  - Once the main Run button was routed through typed audit inspection, this mismatch became more visible because the web interface effectively had two editable audit surfaces pointing at one operation.
+  - The correct fix is to treat the supported typed audit flags in the draft (`--roots` and `--all`) as another valid edit surface for the Audit task and resolve inspection requests from that parsed draft when available.
+  - Unsupported or incomplete draft arguments should not clobber the task controls; the parser therefore only synchronizes when it can read a coherent audit request.
+
+  ### Deliverables
+  - [x] Added a browser regression that edits `gix audit` arguments directly, clicks `Inspect audit table`, and verifies the inspected root matches the edited `--roots` value.
+  - [x] Added browser-side parsing for `gix audit` draft arguments covering `--roots` and `--all`.
+  - [x] Synchronized parsed audit draft arguments back into the Audit task controls so the visible task state and the draft command stay aligned.
+  - [x] Resolved typed audit inspections from the parsed draft request when available, eliminating the scope mismatch between the draft editor and the Inspect action.
+
 
 ## Planning
 *do not implement yet*

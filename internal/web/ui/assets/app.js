@@ -697,6 +697,7 @@ function bindEvents() {
   });
 
   elements.argumentsInput.addEventListener("input", () => {
+    syncAuditDraftFromArguments();
     renderCommandPreview();
   });
 
@@ -855,10 +856,7 @@ async function runAuditTask() {
  * @param {boolean} clearOutput
  */
 async function inspectAuditRoots(clearOutput) {
-  const inspectionRequest = {
-    roots: resolveAuditRoots(),
-    include_all: Boolean(elements.auditIncludeAll.checked),
-  };
+  const inspectionRequest = resolveAuditInspectionRequest();
   if ((inspectionRequest.roots || []).length === 0) {
     hideAuditResults();
     clearPolling();
@@ -868,6 +866,24 @@ async function inspectAuditRoots(clearOutput) {
   }
 
   await inspectAuditRequest(inspectionRequest, clearOutput);
+}
+
+/**
+ * @returns {AuditInspectionRequest}
+ */
+function resolveAuditInspectionRequest() {
+  const parsedDraftRequest = parseAuditInspectionRequest(readArguments());
+  if (parsedDraftRequest) {
+    return {
+      roots: parsedDraftRequest.roots.length > 0 ? parsedDraftRequest.roots : repositoryScopeRoots(),
+      include_all: parsedDraftRequest.include_all,
+    };
+  }
+
+  return {
+    roots: resolveAuditRoots(),
+    include_all: Boolean(elements.auditIncludeAll.checked),
+  };
 }
 
 /**
@@ -2007,6 +2023,64 @@ function resolveAuditRoots() {
   const explicitRoots = splitNonEmptyLines(elements.auditRootsInput?.value || "");
   const rootValues = explicitRoots.length > 0 ? explicitRoots : repositoryScopeRoots();
   return Array.from(new Set(rootValues));
+}
+
+function syncAuditDraftFromArguments() {
+  if (state.selectedPath !== commandPathAuditValue) {
+    return;
+  }
+
+  const parsedDraftRequest = parseAuditInspectionRequest(readArguments());
+  if (!parsedDraftRequest) {
+    return;
+  }
+
+  elements.auditRootsInput.value = parsedDraftRequest.roots.join("\n");
+  elements.auditIncludeAll.checked = parsedDraftRequest.include_all;
+  renderTaskState();
+  updateActionContext();
+}
+
+/**
+ * @param {string[]} argumentsList
+ * @returns {AuditInspectionRequest | null}
+ */
+function parseAuditInspectionRequest(argumentsList) {
+  if (argumentsList.length === 0 || argumentsList[0] !== auditCommandNameValue) {
+    return null;
+  }
+
+  const roots = [];
+  let includeAll = false;
+
+  for (let argumentIndex = 1; argumentIndex < argumentsList.length; argumentIndex += 1) {
+    const argument = argumentsList[argumentIndex];
+    if (argument === "--all") {
+      includeAll = true;
+      continue;
+    }
+    if (argument === "--roots") {
+      const rootValue = argumentsList[argumentIndex + 1] || "";
+      if (!rootValue) {
+        return null;
+      }
+      roots.push(rootValue);
+      argumentIndex += 1;
+      continue;
+    }
+    if (argument.startsWith("--roots=")) {
+      const rootValue = argument.slice("--roots=".length).trim();
+      if (!rootValue) {
+        return null;
+      }
+      roots.push(rootValue);
+    }
+  }
+
+  return {
+    roots: Array.from(new Set(roots)),
+    include_all: includeAll,
+  };
 }
 
 /**
