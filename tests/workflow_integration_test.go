@@ -59,7 +59,7 @@ const (
 	workflowIntegrationCanonicalStepReasonLine = "  reason: 'already canonical'"
 	workflowIntegrationDefaultExpectedTemplate = "WORKFLOW-DEFAULT: %s (main → master)"
 	workflowIntegrationAuditExpectedTemplate   = "WORKFLOW-AUDIT: wrote report to %s\n"
-	workflowIntegrationCSVHeader               = "folder_name,final_github_repo,name_matches,remote_default_branch,local_branch,in_sync,remote_protocol,origin_matches_canonical,worktree_dirty,dirty_files\n"
+	workflowIntegrationCSVHeader               = "folder_name,final_github_repo,origin_remote_status,name_matches,remote_default_branch,local_branch,in_sync,remote_protocol,origin_matches_canonical,worktree_dirty,dirty_files\n"
 	workflowIntegrationSubtestNameTemplate     = "%d_%s"
 	workflowIntegrationDefaultCaseName         = "protocol_default_audit"
 	workflowIntegrationConfigFlagCaseName      = "config_flag_without_positional"
@@ -714,12 +714,13 @@ func verifyWorkflowRepositoryState(testInstance *testing.T, repositoryPath strin
 	require.Equal(testInstance, strings.Split(strings.TrimSuffix(workflowIntegrationCSVHeader, "\n"), ","), records[0])
 	require.Equal(testInstance, "legacy", records[1][0])
 	require.Equal(testInstance, "canonical/example", records[1][1])
-	require.Equal(testInstance, "no", records[1][2])
-	require.Equal(testInstance, "master", records[1][3])
+	require.Equal(testInstance, "configured", records[1][2])
+	require.Equal(testInstance, "no", records[1][3])
 	require.Equal(testInstance, "master", records[1][4])
-	require.Equal(testInstance, "n/a", records[1][5])
-	require.Equal(testInstance, "ssh", records[1][6])
-	require.Equal(testInstance, "yes", records[1][7])
+	require.Equal(testInstance, "master", records[1][5])
+	require.Equal(testInstance, "n/a", records[1][6])
+	require.Equal(testInstance, "ssh", records[1][7])
+	require.Equal(testInstance, "yes", records[1][8])
 }
 
 func parseStageEntries(orderLog string) []string {

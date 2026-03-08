@@ -21,6 +21,8 @@ const (
 	apiRepositoryBranchesRouteConstant  = "/api/repos/:id/branches"
 	apiBranchesRoutePathConstant        = "/api/branches"
 	apiCommandsRoutePathConstant        = "/api/commands"
+	apiAuditInspectRoutePathConstant    = "/api/audit/inspect"
+	apiAuditApplyRoutePathConstant      = "/api/audit/apply"
 	apiRunsRoutePathConstant            = "/api/runs"
 	apiRunRoutePathTemplateConstant     = "/api/runs/:id"
 	indexDocumentFilePathConstant       = "ui/index.html"
@@ -29,6 +31,8 @@ const (
 	missingServerAddressErrorConstant   = "missing server address"
 	missingCommandExecutorErrorConstant = "missing command executor"
 	missingBranchLoaderErrorConstant    = "missing branch loader"
+	missingAuditInspectorErrorConstant  = "missing audit inspector"
+	missingAuditChangeExecutorConstant  = "missing audit change executor"
 	missingRepositoryIDErrorConstant    = "missing repository identifier"
 	repositoryNotFoundTemplateConstant  = "repository %q was not found"
 )
@@ -42,6 +46,8 @@ type serverRuntimeOptions struct {
 	catalog      CommandCatalog
 	loadBranches BranchCatalogLoader
 	execute      CommandExecutor
+	inspectAudit AuditInspector
+	applyAudit   AuditChangeExecutor
 }
 
 // Server hosts the embedded gix browser interface and JSON API.
@@ -158,6 +164,12 @@ func newServerRuntimeOptions(options ServerOptions) (serverRuntimeOptions, error
 	if options.LoadBranches == nil {
 		return serverRuntimeOptions{}, errors.New(missingBranchLoaderErrorConstant)
 	}
+	if options.InspectAudit == nil {
+		return serverRuntimeOptions{}, errors.New(missingAuditInspectorErrorConstant)
+	}
+	if options.ApplyAuditChanges == nil {
+		return serverRuntimeOptions{}, errors.New(missingAuditChangeExecutorConstant)
+	}
 
 	return serverRuntimeOptions{
 		address:      trimmedAddress,
@@ -165,6 +177,8 @@ func newServerRuntimeOptions(options ServerOptions) (serverRuntimeOptions, error
 		catalog:      options.Catalog,
 		loadBranches: options.LoadBranches,
 		execute:      options.Execute,
+		inspectAudit: options.InspectAudit,
+		applyAudit:   options.ApplyAuditChanges,
 	}, nil
 }
 
@@ -189,6 +203,8 @@ func (server *Server) registerRoutes(assetsFileSystem http.FileSystem) {
 	server.engine.GET(apiRepositoryBranchesRouteConstant, server.handleRepositoryBranches)
 	server.engine.GET(apiBranchesRoutePathConstant, server.handleBranches)
 	server.engine.GET(apiCommandsRoutePathConstant, server.handleCommands)
+	server.engine.POST(apiAuditInspectRoutePathConstant, server.handleInspectAudit)
+	server.engine.POST(apiAuditApplyRoutePathConstant, server.handleApplyAuditChanges)
 	server.engine.POST(apiRunsRoutePathConstant, server.handleCreateRun)
 	server.engine.GET(apiRunRoutePathTemplateConstant, server.handleGetRun)
 }
@@ -232,6 +248,26 @@ func (server *Server) handleBranches(requestContext *gin.Context) {
 
 func (server *Server) handleCommands(requestContext *gin.Context) {
 	requestContext.JSON(http.StatusOK, server.options.catalog)
+}
+
+func (server *Server) handleInspectAudit(requestContext *gin.Context) {
+	var request AuditInspectionRequest
+	if bindError := requestContext.ShouldBindJSON(&request); bindError != nil {
+		requestContext.JSON(http.StatusBadRequest, errorResponse{Error: bindError.Error()})
+		return
+	}
+
+	requestContext.JSON(http.StatusOK, server.options.inspectAudit(requestContext.Request.Context(), request))
+}
+
+func (server *Server) handleApplyAuditChanges(requestContext *gin.Context) {
+	var request AuditChangeApplyRequest
+	if bindError := requestContext.ShouldBindJSON(&request); bindError != nil {
+		requestContext.JSON(http.StatusBadRequest, errorResponse{Error: bindError.Error()})
+		return
+	}
+
+	requestContext.JSON(http.StatusOK, server.options.applyAudit(requestContext.Request.Context(), request))
 }
 
 func (server *Server) selectedRepository() *RepositoryDescriptor {

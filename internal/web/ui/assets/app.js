@@ -103,6 +103,83 @@
 
 /**
  * @typedef {{
+ *   roots?: string[],
+ *   rows?: AuditInspectionRow[],
+ *   error?: string,
+ * }} AuditInspectionResponse
+ */
+
+/**
+ * @typedef {{
+ *   path: string,
+ *   folder_name: string,
+ *   is_git_repository: boolean,
+ *   final_github_repo: string,
+ *   origin_remote_status: string,
+ *   name_matches: string,
+ *   remote_default_branch: string,
+ *   local_branch: string,
+ *   in_sync: string,
+ *   remote_protocol: string,
+ *   origin_matches_canonical: string,
+ *   worktree_dirty: string,
+ *   dirty_files: string,
+ * }} AuditInspectionRow
+ */
+
+/**
+ * @typedef {{
+ *   id: string,
+ *   kind: string,
+ *   path: string,
+ *   include_owner?: boolean,
+ *   require_clean?: boolean,
+ *   source_protocol?: string,
+ *   target_protocol?: string,
+ *   sync_strategy?: string,
+ *   confirm_delete?: boolean,
+ * }} AuditQueuedChange
+ */
+
+/**
+ * @typedef {AuditQueuedChange & {
+ *   title: string,
+ *   description: string,
+ * }} AuditQueueEntry
+ */
+
+/**
+ * @typedef {{
+ *   results?: AuditChangeApplyResult[],
+ *   error?: string,
+ * }} AuditChangeApplyResponse
+ */
+
+/**
+ * @typedef {{
+ *   id: string,
+ *   kind: string,
+ *   path: string,
+ *   status: string,
+ *   message?: string,
+ *   stdout?: string,
+ *   stderr?: string,
+ *   error?: string,
+ * }} AuditChangeApplyResult
+ */
+
+/**
+ * @typedef {{
+ *   kind: string,
+ *   label: string,
+ *   title: string,
+ *   description: string,
+ *   buildChange: (row: AuditInspectionRow) => Partial<AuditQueuedChange>,
+ * }} AuditRowActionDefinition
+ */
+
+/**
+ * @typedef {{
  *   id: string,
  *   title: string,
  *   description: string,
@@ -111,6 +188,8 @@
 
 const repositoriesEndpoint = "/api/repos";
 const commandsEndpoint = "/api/commands";
+const auditInspectEndpoint = "/api/audit/inspect";
+const auditApplyEndpoint = "/api/audit/apply";
 const runsEndpoint = "/api/runs";
 const pollIntervalMilliseconds = 800;
 const currentRepoLaunchMode = "current_repo";
@@ -151,10 +230,28 @@ const commandPathPullRequestsDeleteValue = "gix prs delete";
 const commandPathPackagesDeleteValue = "gix packages delete";
 const commandPathWorkflowValue = "gix workflow";
 const auditCommandNameValue = "audit";
+const auditChangeKindRenameFolderValue = "rename_folder";
+const auditChangeKindUpdateCanonicalValue = "update_remote_canonical";
+const auditChangeStatusSucceededValue = "succeeded";
 const auditHeaderMarkerValue = "folder_name,final_github_repo";
 const auditHeaderColumns = [
   "folder_name",
   "final_github_repo",
+  "origin_remote_status",
+  "name_matches",
+  "remote_default_branch",
+  "local_branch",
+  "in_sync",
+  "remote_protocol",
+  "origin_matches_canonical",
+  "worktree_dirty",
+  "dirty_files",
+];
+const typedAuditHeaderColumns = [
+  "path",
+  "folder_name",
+  "final_github_repo",
+  "origin_remote_status",
   "name_matches",
   "remote_default_branch",
   "local_branch",
@@ -165,8 +262,10 @@ const auditHeaderColumns = [
   "dirty_files",
 ];
 const auditColumnLabels = Object.freeze({
+  path: "Path",
   folder_name: "Folder",
   final_github_repo: "GitHub Repo",
+  origin_remote_status: "Origin Remote",
   name_matches: "Name Matches",
   remote_default_branch: "Remote Default",
   local_branch: "Local Branch",
@@ -218,6 +317,13 @@ const commandGroupDefinitions = [
  *   actionableCommands: CommandDescriptor[],
  *   advancedCommands: CommandDescriptor[],
  *   selectedPath: string,
+ *   auditInspectionRoots: string[],
+ *   auditInspectionRows: AuditInspectionRow[],
+ *   auditInspectionIncludeAll: boolean,
+ *   auditQueue: AuditQueueEntry[],
+ *   auditQueueVisible: boolean,
+ *   auditQueueApplying: boolean,
+ *   nextAuditChangeSequence: number,
  *   pollTimer: number | null,
  * }} */
 const state = {
@@ -237,6 +343,13 @@ const state = {
   actionableCommands: [],
   advancedCommands: [],
   selectedPath: "",
+  auditInspectionRoots: [],
+  auditInspectionRows: [],
+  auditInspectionIncludeAll: false,
+  auditQueue: [],
+  auditQueueVisible: false,
+  auditQueueApplying: false,
+  nextAuditChangeSequence: 1,
   pollTimer: null,
 };
 
@@ -283,6 +396,8 @@ const elements = {
   taskPanelCleanup: document.querySelector("#task-panel-cleanup"),
   taskPanelWorkflows: document.querySelector("#task-panel-workflows"),
   taskPanelAdvanced: document.querySelector("#task-panel-advanced"),
+  auditRootsInput: document.querySelector("#audit-roots-input"),
+  auditIncludeAll: document.querySelector("#audit-include-all"),
   taskInspectLoad: document.querySelector("#task-inspect-load"),
   fileTaskMode: document.querySelector("#file-task-mode"),
   fileTaskAddFields: document.querySelector("#file-task-add-fields"),
@@ -320,6 +435,11 @@ const elements = {
   auditResultsSummary: document.querySelector("#audit-results-summary"),
   auditResultsHead: document.querySelector("#audit-results-head"),
   auditResultsBody: document.querySelector("#audit-results-body"),
+  auditQueuePanel: document.querySelector("#audit-queue-panel"),
+  auditQueueSummary: document.querySelector("#audit-queue-summary"),
+  auditQueueList: document.querySelector("#audit-queue-list"),
+  auditQueueClear: document.querySelector("#audit-queue-clear"),
+  auditQueueApply: document.querySelector("#audit-queue-apply"),
   stdoutOutput: document.querySelector("#stdout-output"),
   stderrOutput: document.querySelector("#stderr-output"),
   runError: document.querySelector("#run-error"),
@@ -428,6 +548,22 @@ function bindEvents() {
 
   elements.taskInspectLoad.addEventListener("click", () => {
     void runAuditTask();
+  });
+
+  const handleAuditDraftChange = () => {
+    renderTaskState();
+    if (state.selectedPath === commandPathAuditValue) {
+      repopulateSelectedCommand();
+    }
+  };
+
+  elements.auditRootsInput.addEventListener("input", handleAuditDraftChange);
+  elements.auditIncludeAll.addEventListener("change", handleAuditDraftChange);
+  elements.auditResultsBody.addEventListener("click", handleAuditResultsClick);
+  elements.auditQueueList.addEventListener("click", handleAuditQueueListClick);
+  elements.auditQueueClear.addEventListener("click", clearAuditQueue);
+  elements.auditQueueApply.addEventListener("click", () => {
+    void applyAuditQueue();
   });
 
   elements.scopeSelected.addEventListener("click", () => {
@@ -629,7 +765,7 @@ function renderTaskState() {
   elements.taskPanelWorkflows.hidden = state.activeTask !== taskWorkflowsValue;
   elements.taskPanelAdvanced.hidden = state.activeTask !== taskAdvancedValue;
 
-  elements.taskInspectLoad.disabled = !repositoryTargetsAvailable;
+  renderAuditTaskState();
   elements.fileTaskLoad.disabled = !repositoryTargetsAvailable;
   elements.taskRemoteLoad.disabled = !repositoryTargetsAvailable;
   elements.taskCleanupPullRequests.disabled = !repositoryTargetsAvailable;
@@ -666,6 +802,15 @@ function renderFileTaskState() {
   }
 }
 
+function renderAuditTaskState() {
+  const fallbackRoots = repositoryScopeRoots();
+  const placeholder = fallbackRoots.length > 0
+    ? `${fallbackRoots.join("\n")}\n`
+    : "One root per line. Leave blank to use the current repository scope.";
+  elements.auditRootsInput.placeholder = placeholder;
+  elements.taskInspectLoad.disabled = resolveAuditRoots().length === 0;
+}
+
 function loadFileTaskCommand() {
   if (state.fileTaskMode === fileTaskModeAddValue) {
     selectCommand(commandPathFilesAddValue);
@@ -688,7 +833,61 @@ function loadWorkflowTaskCommand() {
 
 async function runAuditTask() {
   selectCommand(commandPathAuditValue);
-  await submitRun();
+  await inspectAuditRoots(true);
+}
+
+/**
+ * @param {boolean} clearOutput
+ */
+async function inspectAuditRoots(clearOutput) {
+  const auditRoots = resolveAuditRoots();
+  if (auditRoots.length === 0) {
+    hideAuditResults();
+    clearPolling();
+    renderRunError("Enter at least one audit root or choose a repository scope to inspect.");
+    setStatus("failed");
+    return;
+  }
+
+  clearPolling();
+  hideAuditResults();
+  if (clearOutput) {
+    clearRunnerOutput();
+  }
+  renderRunError("");
+  setStatus("loading");
+  elements.runID.textContent = "audit inspect";
+  elements.taskInspectLoad.disabled = true;
+
+  try {
+    const response = await fetch(auditInspectEndpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        roots: auditRoots,
+        include_all: Boolean(elements.auditIncludeAll.checked),
+      }),
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+      throw new Error(payload.error || `Failed to inspect audit roots: ${response.status}`);
+    }
+
+    /** @type {AuditInspectionResponse} */
+    const inspection = await response.json();
+    if (inspection.error) {
+      throw new Error(inspection.error);
+    }
+
+    renderTypedAuditResults(inspection);
+    setStatus("succeeded");
+  } catch (error) {
+    hideAuditResults();
+    renderRunError(String(error));
+    setStatus("failed");
+  } finally {
+    renderTaskState();
+  }
 }
 
 function renderRepositoryLaunchSummary() {
@@ -1064,11 +1263,13 @@ function updateActionContext() {
 
   switch (state.activeTask) {
     case taskInspectValue:
-      if (scopeRepositories.length === 0) {
-        elements.actionContext.textContent = "Choose a repository target set to audit.";
+      if (resolveAuditRoots().length === 0) {
+        elements.actionContext.textContent = "Enter one or more audit roots or choose a repository target set to inspect.";
         return;
       }
-      elements.actionContext.textContent = `Audit ${repositorySummary}. Run the audit command when you want a CLI snapshot of the current scope.`;
+      elements.actionContext.textContent = elements.auditRootsInput.value.trim().length > 0
+        ? `Inspect ${resolveAuditRoots().length} explicit audit ${resolveAuditRoots().length === 1 ? "root" : "roots"}.`
+        : `Inspect ${repositorySummary} from the current scope.`;
       return;
     case taskBranchValue:
       if (selectedCommand && selectedCommand.target.group === commandGroupBranchValue && commandDraft?.reason) {
@@ -1338,6 +1539,10 @@ function populateArguments(command, argumentsOverride = null) {
  * @returns {{ arguments: string[], reason: string }}
  */
 function resolveCommandDraft(command) {
+  if (command.path === commandPathAuditValue) {
+    return buildAuditTaskArguments();
+  }
+
   if (command.path === commandPathWorkflowValue) {
     return buildWorkflowTaskArguments();
   }
@@ -1377,6 +1582,29 @@ function resolveCommandDraft(command) {
     arguments: [...command.path.split(" ").slice(1), ...rootArguments],
     reason: "",
   };
+}
+
+/**
+ * @returns {{ arguments: string[], reason: string }}
+ */
+function buildAuditTaskArguments() {
+  const auditRoots = resolveAuditRoots();
+  if (auditRoots.length === 0) {
+    return {
+      arguments: [],
+      reason: "Enter at least one audit root or choose a repository target set to inspect.",
+    };
+  }
+
+  const argumentsList = ["audit"];
+  if (elements.auditIncludeAll.checked) {
+    argumentsList.push("--all");
+  }
+  auditRoots.forEach((rootPath) => {
+    argumentsList.push("--roots", rootPath);
+  });
+
+  return { arguments: argumentsList, reason: "" };
 }
 
 /**
@@ -1743,6 +1971,15 @@ function splitNonEmptyLines(value) {
 }
 
 /**
+ * @returns {string[]}
+ */
+function resolveAuditRoots() {
+  const explicitRoots = splitNonEmptyLines(elements.auditRootsInput?.value || "");
+  const rootValues = explicitRoots.length > 0 ? explicitRoots : repositoryScopeRoots();
+  return Array.from(new Set(rootValues));
+}
+
+/**
  * @param {string[]} aliases
  */
 function renderAliases(aliases) {
@@ -1896,9 +2133,14 @@ function updateRun(snapshot) {
   elements.runID.textContent = snapshot.id;
   elements.stdoutOutput.textContent = snapshot.stdout || "";
   elements.stderrOutput.textContent = snapshot.stderr || "";
-  renderAuditResults(snapshot);
+  renderRunAuditResults(snapshot);
   renderRunError(snapshot.error || "");
   setStatus(snapshot.status);
+}
+
+function clearRunnerOutput() {
+  elements.stdoutOutput.textContent = "";
+  elements.stderrOutput.textContent = "";
 }
 
 /**
@@ -1940,18 +2182,40 @@ function clearPolling() {
 /**
  * @param {RunSnapshot | null} snapshot
  */
-function renderAuditResults(snapshot) {
+function renderRunAuditResults(snapshot) {
   const auditResults = resolveAuditResults(snapshot);
   if (!auditResults) {
     hideAuditResults();
     return;
   }
 
+  renderAuditTable(auditResults.headers, auditResults.rows, "No audit rows returned.");
+}
+
+/**
+ * @param {AuditInspectionResponse} inspection
+ */
+function renderTypedAuditResults(inspection) {
+  state.auditInspectionRoots = (inspection.roots || []).slice();
+  state.auditInspectionRows = (inspection.rows || []).slice();
+  state.auditInspectionIncludeAll = Boolean(elements.auditIncludeAll.checked);
+  state.auditQueueVisible = true;
+
+  renderTypedAuditTable(state.auditInspectionRows);
+  renderAuditQueue();
+}
+
+/**
+ * @param {string[]} headers
+ * @param {string[][]} rows
+ * @param {string} emptyMessage
+ */
+function renderAuditTable(headers, rows, emptyMessage) {
   elements.auditResultsHead.innerHTML = "";
   elements.auditResultsBody.innerHTML = "";
 
   const headerRow = document.createElement("tr");
-  auditResults.headers.forEach((headerName) => {
+  headers.forEach((headerName) => {
     const headerCell = document.createElement("th");
     headerCell.scope = "col";
     headerCell.textContent = auditColumnLabels[headerName] || headerName;
@@ -1959,20 +2223,105 @@ function renderAuditResults(snapshot) {
   });
   elements.auditResultsHead.append(headerRow);
 
-  auditResults.rows.forEach((record) => {
-    const rowElement = document.createElement("tr");
-    record.forEach((value, valueIndex) => {
-      const cell = document.createElement(valueIndex === 0 ? "th" : "td");
-      if (valueIndex === 0) {
-        cell.scope = "row";
-      }
-      cell.textContent = value || " ";
-      rowElement.append(cell);
+  if (rows.length === 0) {
+    const emptyRow = document.createElement("tr");
+    const emptyCell = document.createElement("td");
+    emptyCell.colSpan = headers.length;
+    emptyCell.textContent = emptyMessage;
+    emptyRow.append(emptyCell);
+    elements.auditResultsBody.append(emptyRow);
+  } else {
+    rows.forEach((record) => {
+      const rowElement = document.createElement("tr");
+      record.forEach((value, valueIndex) => {
+        const cell = document.createElement(valueIndex === 0 ? "th" : "td");
+        if (valueIndex === 0) {
+          cell.scope = "row";
+        }
+        cell.textContent = value || " ";
+        rowElement.append(cell);
+      });
+      elements.auditResultsBody.append(rowElement);
     });
-    elements.auditResultsBody.append(rowElement);
+  }
+
+  const rowCount = rows.length;
+  elements.auditResultsSummary.textContent = `${rowCount} ${rowCount === 1 ? "row" : "rows"}`;
+  elements.auditResultsPanel.hidden = false;
+}
+
+/**
+ * @param {AuditInspectionRow[]} rows
+ */
+function renderTypedAuditTable(rows) {
+  elements.auditResultsHead.innerHTML = "";
+  elements.auditResultsBody.innerHTML = "";
+
+  const headerRow = document.createElement("tr");
+  typedAuditHeaderColumns.forEach((headerName) => {
+    const headerCell = document.createElement("th");
+    headerCell.scope = "col";
+    headerCell.textContent = auditColumnLabels[headerName] || headerName;
+    headerRow.append(headerCell);
   });
 
-  const rowCount = auditResults.rows.length;
+  const actionsHeaderCell = document.createElement("th");
+  actionsHeaderCell.scope = "col";
+  actionsHeaderCell.textContent = "Actions";
+  headerRow.append(actionsHeaderCell);
+  elements.auditResultsHead.append(headerRow);
+
+  if (rows.length === 0) {
+    const emptyRow = document.createElement("tr");
+    const emptyCell = document.createElement("td");
+    emptyCell.colSpan = typedAuditHeaderColumns.length + 1;
+    emptyCell.textContent = "No repositories or folders matched the inspected roots.";
+    emptyRow.append(emptyCell);
+    elements.auditResultsBody.append(emptyRow);
+  } else {
+    rows.forEach((row) => {
+      const rowElement = document.createElement("tr");
+      const record = typedAuditRecord(row);
+
+      record.forEach((value, valueIndex) => {
+        const cell = document.createElement(valueIndex === 0 ? "th" : "td");
+        if (valueIndex === 0) {
+          cell.scope = "row";
+        }
+        cell.textContent = value || " ";
+        rowElement.append(cell);
+      });
+
+      const actionsCell = document.createElement("td");
+      actionsCell.className = "audit-actions-cell";
+
+      const actions = buildAuditRowActions(row);
+      if (actions.length === 0) {
+        const mutedLabel = document.createElement("span");
+        mutedLabel.className = "panel-note";
+        mutedLabel.textContent = "No queued fixes";
+        actionsCell.append(mutedLabel);
+      } else {
+        const actionsList = document.createElement("div");
+        actionsList.className = "audit-actions-list";
+        actions.forEach((action) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "secondary-button audit-action-button";
+          button.dataset.auditAction = action.kind;
+          button.dataset.auditPath = row.path;
+          button.textContent = action.label;
+          actionsList.append(button);
+        });
+        actionsCell.append(actionsList);
+      }
+
+      rowElement.append(actionsCell);
+      elements.auditResultsBody.append(rowElement);
+    });
+  }
+
+  const rowCount = rows.length;
   elements.auditResultsSummary.textContent = `${rowCount} ${rowCount === 1 ? "row" : "rows"}`;
   elements.auditResultsPanel.hidden = false;
 }
@@ -1982,6 +2331,387 @@ function hideAuditResults() {
   elements.auditResultsSummary.textContent = "";
   elements.auditResultsHead.innerHTML = "";
   elements.auditResultsBody.innerHTML = "";
+}
+
+/**
+ * @param {AuditInspectionRow} row
+ * @returns {string[]}
+ */
+function typedAuditRecord(row) {
+  return typedAuditHeaderColumns.map((headerName) => {
+    switch (headerName) {
+      case "path":
+        return row.path;
+      case "folder_name":
+        return row.folder_name;
+      case "final_github_repo":
+        return row.final_github_repo;
+      case "origin_remote_status":
+        return row.origin_remote_status;
+      case "name_matches":
+        return row.name_matches;
+      case "remote_default_branch":
+        return row.remote_default_branch;
+      case "local_branch":
+        return row.local_branch;
+      case "in_sync":
+        return row.in_sync;
+      case "remote_protocol":
+        return row.remote_protocol;
+      case "origin_matches_canonical":
+        return row.origin_matches_canonical;
+      case "worktree_dirty":
+        return row.worktree_dirty;
+      case "dirty_files":
+        return row.dirty_files;
+      default:
+        return "";
+    }
+  });
+}
+
+/**
+ * @param {MouseEvent} event
+ */
+function handleAuditResultsClick(event) {
+  const eventTarget = event.target;
+  if (!(eventTarget instanceof HTMLElement)) {
+    return;
+  }
+
+  const actionButton = eventTarget.closest("[data-audit-action]");
+  if (!(actionButton instanceof HTMLButtonElement)) {
+    return;
+  }
+
+  const actionKind = actionButton.dataset.auditAction || "";
+  const actionPath = actionButton.dataset.auditPath || "";
+  if (!actionKind || !actionPath) {
+    return;
+  }
+
+  const row = state.auditInspectionRows.find((candidate) => candidate.path === actionPath);
+  if (!row) {
+    renderRunError(`Audit row ${actionPath} is no longer available.`);
+    return;
+  }
+
+  const action = buildAuditRowActions(row).find((candidate) => candidate.kind === actionKind);
+  if (!action) {
+    renderRunError(`Audit action ${actionKind} is not available for ${actionPath}.`);
+    return;
+  }
+
+  queueAuditChange(row, action);
+}
+
+/**
+ * @param {MouseEvent} event
+ */
+function handleAuditQueueListClick(event) {
+  const eventTarget = event.target;
+  if (!(eventTarget instanceof HTMLElement)) {
+    return;
+  }
+
+  const removeButton = eventTarget.closest("[data-queue-remove-id]");
+  if (!(removeButton instanceof HTMLButtonElement)) {
+    return;
+  }
+
+  const changeID = removeButton.dataset.queueRemoveId || "";
+  if (!changeID) {
+    return;
+  }
+
+  state.auditQueue = state.auditQueue.filter((change) => change.id !== changeID);
+  renderRunError("");
+  renderAuditQueue();
+}
+
+/**
+ * @param {AuditInspectionRow} row
+ * @returns {AuditRowActionDefinition[]}
+ */
+function buildAuditRowActions(row) {
+  /** @type {AuditRowActionDefinition[]} */
+  const actions = [];
+  if (!row.is_git_repository) {
+    return actions;
+  }
+
+  if (row.name_matches === "no") {
+    actions.push({
+      kind: auditChangeKindRenameFolderValue,
+      label: "Queue rename",
+      title: "Rename folder",
+      description: row.final_github_repo && row.final_github_repo !== "n/a"
+        ? `Rename the folder to match ${row.final_github_repo}.`
+        : "Rename the folder to match the audited repository name.",
+      buildChange: () => ({
+        kind: auditChangeKindRenameFolderValue,
+        path: row.path,
+        require_clean: true,
+      }),
+    });
+  }
+
+  if (row.origin_remote_status === "configured" && row.origin_matches_canonical === "no") {
+    actions.push({
+      kind: auditChangeKindUpdateCanonicalValue,
+      label: "Queue remote fix",
+      title: "Fix canonical remote",
+      description: row.final_github_repo && row.final_github_repo !== "n/a"
+        ? `Update origin to the canonical repository ${row.final_github_repo}.`
+        : "Update origin to the canonical repository.",
+      buildChange: () => ({
+        kind: auditChangeKindUpdateCanonicalValue,
+        path: row.path,
+      }),
+    });
+  }
+
+  return actions;
+}
+
+/**
+ * @param {AuditInspectionRow} row
+ * @param {AuditRowActionDefinition} action
+ */
+function queueAuditChange(row, action) {
+  const nextChangeID = `audit-change-${state.nextAuditChangeSequence}`;
+  const changeDefinition = action.buildChange(row);
+  /** @type {AuditQueueEntry} */
+  const candidate = {
+    id: nextChangeID,
+    kind: action.kind,
+    path: row.path,
+    title: action.title,
+    description: action.description,
+    ...changeDefinition,
+  };
+
+  const existingDeleteChange = state.auditQueue.find((change) => change.path === candidate.path && change.kind === "delete_folder");
+  if (existingDeleteChange && candidate.kind !== "delete_folder") {
+    renderRunError(`Delete folder is already queued for ${candidate.path}. Remove it before adding another fix.`);
+    return;
+  }
+
+  const existingIndex = state.auditQueue.findIndex((change) => change.path === candidate.path && change.kind === candidate.kind);
+  if (candidate.kind === "delete_folder" && state.auditQueue.some((change) => change.path === candidate.path && change.kind !== candidate.kind)) {
+    renderRunError(`Remove existing queued fixes for ${candidate.path} before queueing folder deletion.`);
+    return;
+  }
+
+  if (existingIndex >= 0) {
+    const existingChange = state.auditQueue[existingIndex];
+    state.auditQueue[existingIndex] = {
+      ...existingChange,
+      ...candidate,
+      id: existingChange.id,
+    };
+  } else {
+    state.nextAuditChangeSequence += 1;
+    state.auditQueue = state.auditQueue.concat(candidate);
+  }
+
+  state.auditQueueVisible = true;
+  renderRunError("");
+  renderAuditQueue();
+}
+
+function clearAuditQueue() {
+  state.auditQueue = [];
+  renderRunError("");
+  renderAuditQueue();
+}
+
+function renderAuditQueue() {
+  const shouldShowQueue = state.auditQueueVisible || state.auditQueue.length > 0;
+  if (!shouldShowQueue) {
+    elements.auditQueuePanel.hidden = true;
+    elements.auditQueueSummary.textContent = "";
+    elements.auditQueueList.innerHTML = "";
+    return;
+  }
+
+  elements.auditQueuePanel.hidden = false;
+  elements.auditQueueSummary.textContent = auditQueueSummary(state.auditQueue.length);
+  elements.auditQueueList.innerHTML = "";
+
+  if (state.auditQueue.length === 0) {
+    appendEmptyState(elements.auditQueueList, "No pending changes queued from the current audit table.");
+  } else {
+    state.auditQueue.forEach((change) => {
+      const container = document.createElement("article");
+      container.className = "audit-queue-item";
+
+      const heading = document.createElement("div");
+      heading.className = "audit-queue-item-heading";
+
+      const title = document.createElement("strong");
+      title.textContent = change.title;
+      heading.append(title);
+
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.className = "secondary-button audit-queue-remove";
+      removeButton.dataset.queueRemoveId = change.id;
+      removeButton.textContent = "Remove";
+      heading.append(removeButton);
+
+      const description = document.createElement("p");
+      description.className = "audit-queue-description";
+      description.textContent = change.description;
+
+      const meta = document.createElement("div");
+      meta.className = "audit-queue-meta";
+      appendToken(meta, change.kind, "token-default");
+      appendToken(meta, change.path, "token-context");
+
+      container.append(heading, description, meta);
+      elements.auditQueueList.append(container);
+    });
+  }
+
+  elements.auditQueueClear.disabled = state.auditQueue.length === 0 || state.auditQueueApplying;
+  elements.auditQueueApply.disabled = state.auditQueue.length === 0 || state.auditQueueApplying;
+}
+
+async function applyAuditQueue() {
+  if (state.auditQueue.length === 0 || state.auditQueueApplying) {
+    return;
+  }
+
+  state.auditQueueApplying = true;
+  renderAuditQueue();
+  clearRunnerOutput();
+  clearPolling();
+  renderRunError("");
+  setStatus("loading");
+  elements.runID.textContent = "audit apply";
+
+  try {
+    const response = await fetch(auditApplyEndpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        changes: state.auditQueue.map((change) => ({
+          id: change.id,
+          kind: change.kind,
+          path: change.path,
+          include_owner: Boolean(change.include_owner),
+          require_clean: Boolean(change.require_clean),
+          source_protocol: change.source_protocol || "",
+          target_protocol: change.target_protocol || "",
+          sync_strategy: change.sync_strategy || "",
+          confirm_delete: Boolean(change.confirm_delete),
+        })),
+      }),
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+      throw new Error(payload.error || `Failed to apply queued audit changes: ${response.status}`);
+    }
+
+    /** @type {AuditChangeApplyResponse} */
+    const applyResponse = await response.json();
+    if (applyResponse.error) {
+      throw new Error(applyResponse.error);
+    }
+
+    const results = applyResponse.results || [];
+    renderAuditApplyResults(results);
+
+    const succeededIDs = new Set(
+      results
+        .filter((result) => result.status === auditChangeStatusSucceededValue)
+        .map((result) => result.id),
+    );
+    state.auditQueue = state.auditQueue.filter((change) => !succeededIDs.has(change.id));
+
+    if (state.auditInspectionRoots.length > 0) {
+      await inspectAuditRoots(false);
+    }
+
+    const failedResults = results.filter((result) => result.status !== auditChangeStatusSucceededValue);
+    if (failedResults.length > 0) {
+      renderRunError(failedResults.map((result) => result.error || `${result.kind} failed for ${result.path}`).join("\n"));
+      setStatus("failed");
+    } else {
+      setStatus("succeeded");
+    }
+  } catch (error) {
+    renderRunError(String(error));
+    setStatus("failed");
+  } finally {
+    state.auditQueueApplying = false;
+    renderAuditQueue();
+  }
+}
+
+/**
+ * @param {AuditChangeApplyResult[]} results
+ */
+function renderAuditApplyResults(results) {
+  const stdoutSections = [];
+  const stderrSections = [];
+
+  results.forEach((result) => {
+    const headingParts = [formatAuditChangeKind(result.kind)];
+    if (result.path) {
+      headingParts.push(result.path);
+    }
+    const heading = headingParts.join(" · ");
+
+    const stdoutLines = [];
+    if (result.message) {
+      stdoutLines.push(result.message);
+    }
+    if (result.stdout) {
+      stdoutLines.push(result.stdout.trim());
+    }
+    if (stdoutLines.length > 0) {
+      stdoutSections.push(`${heading}\n${stdoutLines.filter(Boolean).join("\n")}`.trim());
+    }
+
+    const stderrLines = [];
+    if (result.error) {
+      stderrLines.push(result.error);
+    }
+    if (result.stderr) {
+      stderrLines.push(result.stderr.trim());
+    }
+    if (stderrLines.length > 0) {
+      stderrSections.push(`${heading}\n${stderrLines.filter(Boolean).join("\n")}`.trim());
+    }
+  });
+
+  elements.stdoutOutput.textContent = stdoutSections.join("\n\n");
+  elements.stderrOutput.textContent = stderrSections.join("\n\n");
+}
+
+/**
+ * @param {number} count
+ * @returns {string}
+ */
+function auditQueueSummary(count) {
+  return `${count} pending ${count === 1 ? "change" : "changes"}`;
+}
+
+/**
+ * @param {string} kind
+ * @returns {string}
+ */
+function formatAuditChangeKind(kind) {
+  switch (kind) {
+    case auditChangeKindRenameFolderValue:
+      return "Rename folder";
+    case auditChangeKindUpdateCanonicalValue:
+      return "Fix canonical remote";
+    default:
+      return kind;
+  }
 }
 
 /**

@@ -135,6 +135,7 @@ func (service *Service) writeAuditReport(inspections []RepositoryInspection) err
 	header := []string{
 		csvHeaderFolderName,
 		csvHeaderFinalRepository,
+		csvHeaderOriginRemoteStatus,
 		csvHeaderNameMatches,
 		csvHeaderRemoteDefault,
 		csvHeaderLocalBranch,
@@ -238,6 +239,7 @@ func (service *Service) inspectRepository(executionContext context.Context, repo
 			CanonicalOwnerRepo:     "",
 			FinalOwnerRepo:         "",
 			DesiredFolderName:      folderName,
+			OriginRemoteStatus:     OriginRemoteStatusMissing,
 			RemoteProtocol:         RemoteProtocolOther,
 			RemoteDefaultBranch:    "",
 			LocalBranch:            localBranch,
@@ -297,6 +299,7 @@ func (service *Service) inspectRepository(executionContext context.Context, repo
 		CanonicalOwnerRepo:     canonicalOwnerRepo,
 		FinalOwnerRepo:         finalOwnerRepo,
 		DesiredFolderName:      finalRepositoryName(finalOwnerRepo),
+		OriginRemoteStatus:     OriginRemoteStatusConfigured,
 		RemoteProtocol:         remoteProtocol,
 		RemoteDefaultBranch:    remoteDefaultBranch,
 		LocalBranch:            localBranch,
@@ -336,12 +339,14 @@ func inspectionReportRow(inspection RepositoryInspection) AuditReportRow {
 	localBranch := inspection.LocalBranch
 	inSync := inspection.InSyncStatus
 	remoteProtocol := inspection.RemoteProtocol
+	originRemoteStatus := inspection.OriginRemoteStatus
 	originMatches := inspection.OriginMatchesCanonical
 	var worktreeDirty TernaryValue
 	dirtyFilesValue := ""
 
 	if !inspection.IsGitRepository {
 		finalRepo = string(TernaryValueNotApplicable)
+		originRemoteStatus = OriginRemoteStatusNotApplicable
 		remoteDefaultBranch = string(TernaryValueNotApplicable)
 		localBranch = string(TernaryValueNotApplicable)
 		inSync = TernaryValueNotApplicable
@@ -349,6 +354,10 @@ func inspectionReportRow(inspection RepositoryInspection) AuditReportRow {
 		originMatches = TernaryValueNotApplicable
 		worktreeDirty = TernaryValueNotApplicable
 	} else {
+		if originRemoteStatus == OriginRemoteStatusMissing {
+			finalRepo = string(TernaryValueNotApplicable)
+			remoteProtocol = RemoteProtocolType(string(TernaryValueNotApplicable))
+		}
 		if len(inspection.WorktreeDirtyFiles) > 0 {
 			worktreeDirty = TernaryValueYes
 			dirtyFilesValue = strings.Join(inspection.WorktreeDirtyFiles, "; ")
@@ -359,6 +368,7 @@ func inspectionReportRow(inspection RepositoryInspection) AuditReportRow {
 	return AuditReportRow{
 		FolderName:             inspection.FolderName,
 		FinalRepository:        finalRepo,
+		OriginRemoteStatus:     originRemoteStatus,
 		NameMatches:            nameMatches,
 		RemoteDefaultBranch:    remoteDefaultBranch,
 		LocalBranch:            localBranch,
@@ -463,6 +473,7 @@ func buildNonRepositoryInspection(path string, folderName string) RepositoryInsp
 	return RepositoryInspection{
 		Path:                   filepath.Clean(path),
 		FolderName:             folderName,
+		OriginRemoteStatus:     OriginRemoteStatusNotApplicable,
 		RemoteDefaultBranch:    placeholder,
 		LocalBranch:            placeholder,
 		InSyncStatus:           TernaryValueNotApplicable,
