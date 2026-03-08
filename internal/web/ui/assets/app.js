@@ -104,6 +104,13 @@
 /**
  * @typedef {{
  *   roots?: string[],
+ *   include_all?: boolean,
+ * }} AuditInspectionRequest
+ */
+
+/**
+ * @typedef {{
+ *   roots?: string[],
  *   rows?: AuditInspectionRow[],
  *   error?: string,
  * }} AuditInspectionResponse
@@ -232,8 +239,14 @@ const commandPathWorkflowValue = "gix workflow";
 const auditCommandNameValue = "audit";
 const auditChangeKindRenameFolderValue = "rename_folder";
 const auditChangeKindUpdateCanonicalValue = "update_remote_canonical";
+const auditChangeKindConvertProtocolValue = "convert_protocol";
 const auditChangeKindDeleteFolderValue = "delete_folder";
+const auditChangeKindSyncWithRemoteValue = "sync_with_remote";
+const auditSyncStrategyRequireCleanValue = "require_clean";
+const auditSyncStrategyStashChangesValue = "stash_changes";
+const auditSyncStrategyCommitChangesValue = "commit_changes";
 const auditChangeStatusSucceededValue = "succeeded";
+const auditChangeStatusSkippedValue = "skipped";
 const auditHeaderMarkerValue = "folder_name,final_github_repo";
 const auditHeaderColumns = [
   "folder_name",
@@ -842,14 +855,27 @@ async function runAuditTask() {
  * @param {boolean} clearOutput
  */
 async function inspectAuditRoots(clearOutput) {
-  const auditRoots = resolveAuditRoots();
-  if (auditRoots.length === 0) {
+  const inspectionRequest = {
+    roots: resolveAuditRoots(),
+    include_all: Boolean(elements.auditIncludeAll.checked),
+  };
+  if ((inspectionRequest.roots || []).length === 0) {
     hideAuditResults();
     clearPolling();
     renderRunError("Enter at least one audit root or choose a repository scope to inspect.");
     setStatus("failed");
     return;
   }
+
+  await inspectAuditRequest(inspectionRequest, clearOutput);
+}
+
+/**
+ * @param {AuditInspectionRequest} inspectionRequest
+ * @param {boolean} clearOutput
+ */
+async function inspectAuditRequest(inspectionRequest, clearOutput) {
+  const auditRoots = (inspectionRequest.roots || []).slice();
 
   clearPolling();
   hideAuditResults();
@@ -867,7 +893,7 @@ async function inspectAuditRoots(clearOutput) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         roots: auditRoots,
-        include_all: Boolean(elements.auditIncludeAll.checked),
+        include_all: Boolean(inspectionRequest.include_all),
       }),
     });
     if (!response.ok) {
@@ -881,6 +907,8 @@ async function inspectAuditRoots(clearOutput) {
       throw new Error(inspection.error);
     }
 
+    state.auditInspectionRoots = auditRoots;
+    state.auditInspectionIncludeAll = Boolean(inspectionRequest.include_all);
     renderTypedAuditResults(inspection);
     setStatus("succeeded");
   } catch (error) {
@@ -2198,9 +2226,7 @@ function renderRunAuditResults(snapshot) {
  * @param {AuditInspectionResponse} inspection
  */
 function renderTypedAuditResults(inspection) {
-  state.auditInspectionRoots = (inspection.roots || []).slice();
   state.auditInspectionRows = (inspection.rows || []).slice();
-  state.auditInspectionIncludeAll = Boolean(elements.auditIncludeAll.checked);
   state.auditQueueVisible = true;
 
   renderTypedAuditTable(state.auditInspectionRows);
@@ -2442,10 +2468,40 @@ function handleAuditQueueListChange(event) {
 
   const deleteCheckbox = eventTarget.closest("[data-queue-confirm-delete]");
   if (!(deleteCheckbox instanceof HTMLInputElement)) {
+    const renameIncludeOwnerCheckbox = eventTarget.closest("[data-queue-include-owner]");
+    if (renameIncludeOwnerCheckbox instanceof HTMLInputElement) {
+      updateAuditQueueBoolean(renameIncludeOwnerCheckbox.dataset.queueIncludeOwner || "", "include_owner", renameIncludeOwnerCheckbox.checked);
+      return;
+    }
+
+    const renameRequireCleanCheckbox = eventTarget.closest("[data-queue-require-clean]");
+    if (renameRequireCleanCheckbox instanceof HTMLInputElement) {
+      updateAuditQueueBoolean(renameRequireCleanCheckbox.dataset.queueRequireClean || "", "require_clean", renameRequireCleanCheckbox.checked);
+      return;
+    }
+
+    const targetProtocolSelect = eventTarget.closest("[data-queue-target-protocol]");
+    if (targetProtocolSelect instanceof HTMLSelectElement) {
+      updateAuditQueueText(targetProtocolSelect.dataset.queueTargetProtocol || "", "target_protocol", targetProtocolSelect.value);
+      return;
+    }
+
+    const syncStrategySelect = eventTarget.closest("[data-queue-sync-strategy]");
+    if (syncStrategySelect instanceof HTMLSelectElement) {
+      updateAuditQueueText(syncStrategySelect.dataset.queueSyncStrategy || "", "sync_strategy", syncStrategySelect.value);
+    }
     return;
   }
 
-  const changeID = deleteCheckbox.dataset.queueConfirmDelete || "";
+  updateAuditQueueBoolean(deleteCheckbox.dataset.queueConfirmDelete || "", "confirm_delete", deleteCheckbox.checked);
+}
+
+/**
+ * @param {string} changeID
+ * @param {"confirm_delete" | "include_owner" | "require_clean"} fieldName
+ * @param {boolean} fieldValue
+ */
+function updateAuditQueueBoolean(changeID, fieldName, fieldValue) {
   if (!changeID) {
     return;
   }
@@ -2456,7 +2512,30 @@ function handleAuditQueueListChange(event) {
     }
     return {
       ...change,
-      confirm_delete: deleteCheckbox.checked,
+      [fieldName]: fieldValue,
+    };
+  });
+  renderRunError("");
+  renderAuditQueue();
+}
+
+/**
+ * @param {string} changeID
+ * @param {"target_protocol" | "sync_strategy"} fieldName
+ * @param {string} fieldValue
+ */
+function updateAuditQueueText(changeID, fieldName, fieldValue) {
+  if (!changeID) {
+    return;
+  }
+
+  state.auditQueue = state.auditQueue.map((change) => {
+    if (change.id !== changeID) {
+      return change;
+    }
+    return {
+      ...change,
+      [fieldName]: fieldValue,
     };
   });
   renderRunError("");
@@ -2487,6 +2566,21 @@ function buildAuditRowActions(row) {
       });
     }
 
+    if (protocolFixAvailable(row)) {
+      actions.push({
+        kind: auditChangeKindConvertProtocolValue,
+        label: "Queue protocol fix",
+        title: "Fix protocol",
+        description: `Convert origin from ${row.remote_protocol} to a reviewed target protocol.`,
+        buildChange: () => ({
+          kind: auditChangeKindConvertProtocolValue,
+          path: row.path,
+          source_protocol: row.remote_protocol,
+          target_protocol: defaultTargetProtocol(row.remote_protocol),
+        }),
+      });
+    }
+
     if (row.origin_remote_status === "configured" && row.origin_matches_canonical === "no") {
       actions.push({
         kind: auditChangeKindUpdateCanonicalValue,
@@ -2498,6 +2592,20 @@ function buildAuditRowActions(row) {
         buildChange: () => ({
           kind: auditChangeKindUpdateCanonicalValue,
           path: row.path,
+        }),
+      });
+    }
+
+    if (row.origin_remote_status === "configured" && row.in_sync === "no" && row.remote_default_branch && row.remote_default_branch !== "n/a") {
+      actions.push({
+        kind: auditChangeKindSyncWithRemoteValue,
+        label: "Queue sync",
+        title: "Sync with remote",
+        description: `Refresh the local repository state against ${row.remote_default_branch} using a reviewed dirty-worktree policy.`,
+        buildChange: () => ({
+          kind: auditChangeKindSyncWithRemoteValue,
+          path: row.path,
+          sync_strategy: auditSyncStrategyRequireCleanValue,
         }),
       });
     }
@@ -2612,7 +2720,7 @@ function renderAuditQueue() {
 
       const meta = document.createElement("div");
       meta.className = "audit-queue-meta";
-      appendToken(meta, change.kind, "token-default");
+      appendToken(meta, formatAuditChangeKind(change.kind), "token-default");
       appendToken(meta, change.path, "token-context");
 
       container.append(heading, description, meta);
@@ -2650,7 +2758,7 @@ async function applyAuditQueue() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        changes: state.auditQueue.map((change) => ({
+        changes: sortAuditQueueForApply(state.auditQueue).map((change) => ({
           id: change.id,
           kind: change.kind,
           path: change.path,
@@ -2685,12 +2793,18 @@ async function applyAuditQueue() {
     state.auditQueue = state.auditQueue.filter((change) => !succeededIDs.has(change.id));
 
     if (state.auditInspectionRoots.length > 0) {
-      await inspectAuditRoots(false);
+      await inspectAuditRequest(
+        {
+          roots: state.auditInspectionRoots.slice(),
+          include_all: state.auditInspectionIncludeAll,
+        },
+        false,
+      );
     }
 
     const failedResults = results.filter((result) => result.status !== auditChangeStatusSucceededValue);
     if (failedResults.length > 0) {
-      renderRunError(failedResults.map((result) => result.error || `${result.kind} failed for ${result.path}`).join("\n"));
+      renderRunError(failedResults.map(formatAuditApplyIssue).join("\n"));
       setStatus("failed");
     } else {
       setStatus("succeeded");
@@ -2746,6 +2860,20 @@ function renderAuditApplyResults(results) {
 }
 
 /**
+ * @param {AuditChangeApplyResult} result
+ * @returns {string}
+ */
+function formatAuditApplyIssue(result) {
+  if (result.error) {
+    return result.error;
+  }
+  if (result.status === auditChangeStatusSkippedValue) {
+    return `${formatAuditChangeKind(result.kind)} skipped for ${result.path}`;
+  }
+  return `${formatAuditChangeKind(result.kind)} failed for ${result.path}`;
+}
+
+/**
  * @param {number} count
  * @returns {string}
  */
@@ -2761,8 +2889,12 @@ function formatAuditChangeKind(kind) {
   switch (kind) {
     case auditChangeKindRenameFolderValue:
       return "Rename folder";
+    case auditChangeKindConvertProtocolValue:
+      return "Fix protocol";
     case auditChangeKindUpdateCanonicalValue:
       return "Fix canonical remote";
+    case auditChangeKindSyncWithRemoteValue:
+      return "Sync with remote";
     case auditChangeKindDeleteFolderValue:
       return "Delete folder";
     default:
@@ -2775,10 +2907,45 @@ function formatAuditChangeKind(kind) {
  * @returns {HTMLElement | null}
  */
 function renderAuditQueueOptions(change) {
-  if (change.kind !== auditChangeKindDeleteFolderValue) {
-    return null;
+  switch (change.kind) {
+    case auditChangeKindRenameFolderValue:
+      return renderRenameQueueOptions(change);
+    case auditChangeKindConvertProtocolValue:
+      return renderProtocolQueueOptions(change);
+    case auditChangeKindSyncWithRemoteValue:
+      return renderSyncQueueOptions(change);
+    case auditChangeKindDeleteFolderValue:
+      return renderDeleteQueueOptions(change);
+    default:
+      return null;
   }
+}
 
+/**
+ * @returns {boolean}
+ */
+function auditQueueCanApply() {
+  return state.auditQueue.every((change) => {
+    if (change.kind === auditChangeKindDeleteFolderValue) {
+      return Boolean(change.confirm_delete);
+    }
+    if (change.kind === auditChangeKindConvertProtocolValue) {
+      const sourceProtocol = String(change.source_protocol || "").trim();
+      const targetProtocol = String(change.target_protocol || "").trim();
+      return protocolValueAllowed(sourceProtocol) && protocolValueAllowed(targetProtocol) && sourceProtocol !== targetProtocol;
+    }
+    if (change.kind === auditChangeKindSyncWithRemoteValue) {
+      return syncStrategyAllowed(String(change.sync_strategy || ""));
+    }
+    return true;
+  });
+}
+
+/**
+ * @param {AuditQueueEntry} change
+ * @returns {HTMLElement}
+ */
+function renderDeleteQueueOptions(change) {
   const container = document.createElement("div");
   container.className = "audit-queue-options";
 
@@ -2803,15 +2970,209 @@ function renderAuditQueueOptions(change) {
 }
 
 /**
+ * @param {AuditQueueEntry} change
+ * @returns {HTMLElement}
+ */
+function renderRenameQueueOptions(change) {
+  const container = document.createElement("div");
+  container.className = "audit-queue-options";
+
+  const heading = document.createElement("div");
+  heading.className = "audit-queue-options-heading";
+  heading.textContent = "Rename options";
+
+  const includeOwnerLabel = document.createElement("label");
+  includeOwnerLabel.className = "checkbox-row audit-queue-confirm";
+
+  const includeOwnerCheckbox = document.createElement("input");
+  includeOwnerCheckbox.type = "checkbox";
+  includeOwnerCheckbox.checked = Boolean(change.include_owner);
+  includeOwnerCheckbox.dataset.queueIncludeOwner = change.id;
+
+  const includeOwnerCopy = document.createElement("span");
+  includeOwnerCopy.textContent = "Include the owner in the destination folder name";
+
+  includeOwnerLabel.append(includeOwnerCheckbox, includeOwnerCopy);
+
+  const requireCleanLabel = document.createElement("label");
+  requireCleanLabel.className = "checkbox-row audit-queue-confirm";
+
+  const requireCleanCheckbox = document.createElement("input");
+  requireCleanCheckbox.type = "checkbox";
+  requireCleanCheckbox.checked = Boolean(change.require_clean);
+  requireCleanCheckbox.dataset.queueRequireClean = change.id;
+
+  const requireCleanCopy = document.createElement("span");
+  requireCleanCopy.textContent = "Require a clean worktree before renaming";
+
+  requireCleanLabel.append(requireCleanCheckbox, requireCleanCopy);
+
+  container.append(heading, includeOwnerLabel, requireCleanLabel);
+  return container;
+}
+
+/**
+ * @param {AuditQueueEntry} change
+ * @returns {HTMLElement}
+ */
+function renderProtocolQueueOptions(change) {
+  const container = document.createElement("div");
+  container.className = "audit-queue-options";
+
+  const heading = document.createElement("div");
+  heading.className = "audit-queue-options-heading";
+  heading.textContent = "Protocol options";
+
+  const source = document.createElement("p");
+  source.className = "audit-queue-option-note";
+  source.textContent = `Current protocol: ${change.source_protocol || "unknown"}`;
+
+  const label = document.createElement("label");
+  label.className = "audit-queue-option-row";
+  label.textContent = "Target protocol";
+
+  const select = document.createElement("select");
+  select.className = "select-input audit-queue-select";
+  select.dataset.queueTargetProtocol = change.id;
+
+  protocolOptionValues().forEach((value) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = value;
+    select.append(option);
+  });
+
+  if (change.target_protocol && protocolValueAllowed(change.target_protocol)) {
+    select.value = change.target_protocol;
+  }
+
+  container.append(heading, source, label, select);
+  return container;
+}
+
+/**
+ * @param {AuditQueueEntry} change
+ * @returns {HTMLElement}
+ */
+function renderSyncQueueOptions(change) {
+  const container = document.createElement("div");
+  container.className = "audit-queue-options";
+
+  const heading = document.createElement("div");
+  heading.className = "audit-queue-options-heading";
+  heading.textContent = "Sync options";
+
+  const label = document.createElement("label");
+  label.className = "audit-queue-option-row";
+  label.textContent = "Dirty-worktree policy";
+
+  const select = document.createElement("select");
+  select.className = "select-input audit-queue-select";
+  select.dataset.queueSyncStrategy = change.id;
+
+  syncStrategyOptions().forEach((optionValue) => {
+    const option = document.createElement("option");
+    option.value = optionValue.value;
+    option.textContent = optionValue.label;
+    select.append(option);
+  });
+
+  const syncStrategy = change.sync_strategy || auditSyncStrategyRequireCleanValue;
+  if (syncStrategyAllowed(syncStrategy)) {
+    select.value = syncStrategy;
+  }
+
+  container.append(heading, label, select);
+  return container;
+}
+
+/**
+ * @param {string} protocolValue
  * @returns {boolean}
  */
-function auditQueueCanApply() {
-  return state.auditQueue.every((change) => {
-    if (change.kind === auditChangeKindDeleteFolderValue) {
-      return Boolean(change.confirm_delete);
-    }
-    return true;
-  });
+function protocolFixAvailableRowValue(protocolValue) {
+  return protocolValueAllowed(protocolValue);
+}
+
+/**
+ * @param {AuditInspectionRow} row
+ * @returns {boolean}
+ */
+function protocolFixAvailable(row) {
+  return row.origin_remote_status === "configured" && protocolFixAvailableRowValue(row.remote_protocol);
+}
+
+/**
+ * @param {string} currentProtocol
+ * @returns {string}
+ */
+function defaultTargetProtocol(currentProtocol) {
+  return currentProtocol === "ssh" ? "https" : "ssh";
+}
+
+/**
+ * @returns {string[]}
+ */
+function protocolOptionValues() {
+  return ["git", "ssh", "https"];
+}
+
+/**
+ * @param {string} protocolValue
+ * @returns {boolean}
+ */
+function protocolValueAllowed(protocolValue) {
+  return protocolOptionValues().includes(protocolValue);
+}
+
+/**
+ * @returns {{ value: string, label: string }[]}
+ */
+function syncStrategyOptions() {
+  return [
+    { value: auditSyncStrategyRequireCleanValue, label: "Require clean worktree" },
+    { value: auditSyncStrategyStashChangesValue, label: "Stash tracked changes" },
+    { value: auditSyncStrategyCommitChangesValue, label: "Commit tracked changes" },
+  ];
+}
+
+/**
+ * @param {string} syncStrategy
+ * @returns {boolean}
+ */
+function syncStrategyAllowed(syncStrategy) {
+  return syncStrategyOptions().some((optionValue) => optionValue.value === syncStrategy);
+}
+
+/**
+ * @param {AuditQueueEntry[]} changes
+ * @returns {AuditQueueEntry[]}
+ */
+function sortAuditQueueForApply(changes) {
+  return changes
+    .slice()
+    .sort((left, right) => auditApplyPriority(left.kind) - auditApplyPriority(right.kind));
+}
+
+/**
+ * @param {string} kind
+ * @returns {number}
+ */
+function auditApplyPriority(kind) {
+  switch (kind) {
+    case auditChangeKindUpdateCanonicalValue:
+      return 10;
+    case auditChangeKindConvertProtocolValue:
+      return 20;
+    case auditChangeKindSyncWithRemoteValue:
+      return 30;
+    case auditChangeKindRenameFolderValue:
+      return 40;
+    case auditChangeKindDeleteFolderValue:
+      return 50;
+    default:
+      return 100;
+  }
 }
 
 /**

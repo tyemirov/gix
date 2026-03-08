@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,7 +16,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/tyemirov/gix/internal/repos/shared"
 	"github.com/tyemirov/gix/internal/web"
+	"github.com/tyemirov/gix/internal/workflow"
 )
 
 func TestExecuteWithOptionsVersionFlagWritesToProvidedOutput(t *testing.T) {
@@ -424,6 +427,41 @@ func TestWebServerExecutesVersionCommand(t *testing.T) {
 	require.Contains(t, finalRun.StandardOutput, "gix version: v4.5.6")
 	require.Empty(t, finalRun.StandardError)
 	require.Empty(t, finalRun.Error)
+}
+
+func TestWebAuditChangeExecutorRejectsRelativePaths(t *testing.T) {
+	application := NewApplication()
+	response := application.newWebAuditChangeExecutor()(context.Background(), web.AuditChangeApplyRequest{
+		Changes: []web.AuditQueuedChange{
+			{
+				ID:            "chg-001",
+				Kind:          web.AuditChangeKindDeleteFolder,
+				Path:          "../sibling",
+				ConfirmDelete: true,
+			},
+		},
+	})
+
+	require.Empty(t, response.Error)
+	require.Len(t, response.Results, 1)
+	require.Equal(t, "failed", response.Results[0].Status)
+	require.Contains(t, response.Results[0].Error, "absolute")
+}
+
+func TestWebAuditChangeResultStatusMarksSkippedOutcomes(t *testing.T) {
+	outcome := workflow.ExecutionOutcome{
+		ReporterSummaryData: shared.SummaryData{
+			StepOutcomeCounts: map[string]map[string]int{
+				"audit-sync": {
+					"skipped": 1,
+				},
+			},
+		},
+	}
+
+	require.Equal(t, webAuditChangeStatusSkippedConstant, webAuditChangeResultStatus(outcome, nil))
+	require.Equal(t, webAuditChangeStatusSucceededConstant, webAuditChangeResultStatus(workflow.ExecutionOutcome{}, nil))
+	require.Equal(t, webAuditChangeStatusFailedConstant, webAuditChangeResultStatus(workflow.ExecutionOutcome{}, errors.New("boom")))
 }
 
 func catalogContainsCommand(catalog web.CommandCatalog, commandPath string) bool {
