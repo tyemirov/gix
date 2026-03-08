@@ -266,6 +266,23 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - [x] Changed workflow-backed apply execution to derive result status from `workflow.ExecutionOutcome`, preserving skipped items in the queue and avoiding misleading success messages.
   - [x] Hardened `/api/audit/apply` path normalization so only absolute paths are accepted for queued audit changes.
 
+- Update on 2026-03-08 for browser-test harness stability in CI.
+  Addressed a CI-only Chrome startup failure that surfaced after the audit browser suite expanded.
+  ### Summary
+  The browser integration suite could fail in Linux CI even when a Chrome executable was present because the process exited during startup with crashpad-related output before DevTools became available.
+
+  ### Analysis
+  - The previous guard only skipped browser tests when no browser executable could be found. That was insufficient for CI runners where Chrome exists on disk but cannot boot cleanly in the available kernel/container environment.
+  - The observed failure occurred before any page assertions ran and presented as `chrome failed to start` with crashpad file access errors under `/sys/devices/system/cpu/...`. That places the defect in the shared test harness, not in any specific browser test case.
+  - Without a startup probe, each browser test assumed allocator creation implied a usable browser session. In practice, chromedp can return a startup failure only when the first action is executed, which makes the suite brittle and produces noisy failures unrelated to product behavior.
+  - Disabling crash-reporting flags reduces the chance of environment-specific startup exits, while an explicit startup probe lets the suite distinguish “browser unavailable in this runner” from real DOM or workflow regressions.
+
+  ### Deliverables
+  - [x] Added a small regression test for the browser-startup skip classifier.
+  - [x] Hardened the shared browser allocator with crash-reporting disable flags.
+  - [x] Added an explicit `about:blank` startup probe in `newBrowserTestContext` and skip browser tests only when Chrome cannot start in the runner environment.
+  - [x] Revalidated the previously failing protocol/sync browser test plus the full `make format`, `make test`, `make lint`, and `make ci` sequence.
+
 
 ## Planning
 *do not implement yet*
