@@ -38,7 +38,11 @@ const (
 	auditQueueApplySelectorConstant       = "#audit-queue-apply"
 	auditQueueDeleteSelectorConstant      = "[data-audit-action='delete_folder']"
 	auditQueueDeleteConfirmSelector       = "[data-queue-confirm-delete]"
+	auditQueueProtocolSelectorConstant    = "[data-audit-action='convert_protocol']"
 	auditQueueRenameSelectorConstant      = "[data-audit-action='rename_folder']"
+	auditQueueSyncSelectorConstant        = "[data-audit-action='sync_with_remote']"
+	auditQueueTargetProtocolSelector      = "[data-queue-target-protocol]"
+	auditQueueSyncStrategySelector        = "[data-queue-sync-strategy]"
 	branchTaskButtonSelectorConstant      = "#task-branch"
 	filesTaskButtonSelectorConstant       = "#task-files"
 	remotesTaskButtonSelectorConstant     = "#task-remotes"
@@ -417,6 +421,133 @@ func TestWebInterfaceBrowserQueuesDeleteChangeAndRequiresConfirmation(t *testing
 	auditSummary, auditSummaryError := readTextContent(browserContext, auditResultsSummarySelectorConstant)
 	require.NoError(t, auditSummaryError)
 	require.Equal(t, "0 rows", auditSummary)
+}
+
+func TestWebInterfaceBrowserQueuesProtocolAndSyncChangesWithEditableOptions(t *testing.T) {
+	repositoryPath := createTestRepository(t, filepath.Join(t.TempDir(), "workspace", "example"))
+
+	protocolUpdated := false
+	syncUpdated := false
+	httpServer, repositoryCatalog := newBrowserTestServerWithAuditHandlers(
+		t,
+		repositoryPath,
+		func(_ context.Context, request web.AuditInspectionRequest) web.AuditInspectionResponse {
+			remoteProtocol := "https"
+			inSyncStatus := "no"
+			if protocolUpdated {
+				remoteProtocol = "ssh"
+			}
+			if syncUpdated {
+				inSyncStatus = "yes"
+			}
+			return web.AuditInspectionResponse{
+				Roots: request.Roots,
+				Rows: []web.AuditInspectionRow{
+					{
+						Path:                   filepath.Join(auditCustomRootValueConstant, "example"),
+						FolderName:             "example",
+						IsGitRepository:        true,
+						FinalGitHubRepository:  "canonical/example",
+						OriginRemoteStatus:     "configured",
+						NameMatches:            "yes",
+						RemoteDefaultBranch:    "main",
+						LocalBranch:            "feature/demo",
+						InSync:                 inSyncStatus,
+						RemoteProtocol:         remoteProtocol,
+						OriginMatchesCanonical: "yes",
+						WorktreeDirty:          "no",
+						DirtyFiles:             "",
+					},
+				},
+			}
+		},
+		func(_ context.Context, request web.AuditChangeApplyRequest) web.AuditChangeApplyResponse {
+			require.Len(t, request.Changes, 2)
+
+			for _, change := range request.Changes {
+				switch change.Kind {
+				case web.AuditChangeKindConvertProtocol:
+					require.Equal(t, "https", change.SourceProtocol)
+					require.Equal(t, "ssh", change.TargetProtocol)
+					protocolUpdated = true
+				case web.AuditChangeKindSyncWithRemote:
+					require.Equal(t, web.AuditChangeSyncStrategyStashChanges, change.SyncStrategy)
+					syncUpdated = true
+				default:
+					t.Fatalf("unexpected change kind %s", change.Kind)
+				}
+			}
+
+			return web.AuditChangeApplyResponse{
+				Results: []web.AuditChangeApplyResult{
+					{
+						ID:      request.Changes[0].ID,
+						Kind:    request.Changes[0].Kind,
+						Path:    request.Changes[0].Path,
+						Status:  "succeeded",
+						Message: "change applied",
+					},
+					{
+						ID:      request.Changes[1].ID,
+						Kind:    request.Changes[1].Kind,
+						Path:    request.Changes[1].Path,
+						Status:  "succeeded",
+						Message: "change applied",
+					},
+				},
+			}
+		},
+	)
+	defer httpServer.Close()
+
+	browserContext := newBrowserTestContext(t)
+	expectedRepository := selectedRepositoryDescriptor(t, repositoryCatalog)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		chromedp.Navigate(httpServer.URL),
+		chromedp.WaitVisible(auditRunButtonSelectorConstant, chromedp.ByQuery),
+	))
+	waitForControlSurfaceReady(t, browserContext, expectedRepository.Name)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		setControlValue(auditRootsInputSelectorConstant, auditCustomRootValueConstant),
+		chromedp.Click(auditRunButtonSelectorConstant, chromedp.ByQuery),
+		chromedp.WaitVisible(auditResultsPanelSelectorConstant, chromedp.ByQuery),
+		chromedp.Click(auditQueueProtocolSelectorConstant, chromedp.ByQuery),
+		chromedp.Click(auditQueueSyncSelectorConstant, chromedp.ByQuery),
+		chromedp.WaitVisible(auditQueuePanelSelectorConstant, chromedp.ByQuery),
+	))
+
+	require.NoError(t, chromedp.Run(browserContext,
+		setControlValue(auditQueueTargetProtocolSelector, "ssh"),
+		setControlValue(auditQueueSyncStrategySelector, web.AuditChangeSyncStrategyStashChanges),
+	))
+
+	queueSummary, queueSummaryError := readTextContent(browserContext, auditQueueSummarySelectorConstant)
+	require.NoError(t, queueSummaryError)
+	require.Equal(t, "2 pending changes", queueSummary)
+
+	queueText, queueTextError := readTextContent(browserContext, auditQueueListSelectorConstant)
+	require.NoError(t, queueTextError)
+	require.Contains(t, queueText, "Fix protocol")
+	require.Contains(t, queueText, "Sync with remote")
+
+	require.NoError(t, chromedp.Run(browserContext,
+		chromedp.Click(auditQueueApplySelectorConstant, chromedp.ByQuery),
+	))
+
+	require.Eventually(t, func() bool {
+		summaryText, summaryError := readTextContent(browserContext, auditQueueSummarySelectorConstant)
+		if summaryError != nil {
+			return false
+		}
+		return summaryText == "0 pending changes"
+	}, browserReadyTimeoutConstant, browserReadyPollIntervalConstant)
+
+	auditResultsText, auditResultsError := readTextContent(browserContext, auditResultsBodySelectorConstant)
+	require.NoError(t, auditResultsError)
+	require.Contains(t, auditResultsText, "ssh")
+	require.Contains(t, auditResultsText, "yes")
 }
 
 func TestWebInterfaceBrowserPrefillsRemoteAndWorkflowTasksAcrossRepositoryScope(t *testing.T) {

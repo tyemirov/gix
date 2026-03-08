@@ -148,8 +148,9 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - [x] Preserve the generic command runner for raw CLI access; the audit workspace should not depend on it for table rendering.
   - [x] Add server/API and browser coverage for user-selected roots and typed audit table rendering.
 
-- [ ] [F005] Audit remediation in the web client must be modeled as a pending change queue before execution.
+- [x] [F005] Audit remediation in the web client must be modeled as a pending change queue before execution.
   Requested on 2026-03-08 while defining follow-up UX after the audit table landed.
+  Resolved on 2026-03-08 by adding a typed pending-change queue to the web audit workspace, surfacing editable per-item options in the queue, and applying queued changes in a deterministic order so path-changing rename operations run after repository-state fixes.
   ### Summary
   Row-level fixes in the browser should never execute immediately. The user wants every remediation action to become a queued pending change first, with explicit review before apply.
 
@@ -160,11 +161,11 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - If the queue is modeled as raw argv strings, the browser will be forced to reverse-engineer conflicts and capabilities from command text. The queue needs typed operations instead.
 
   ### Deliverables
-  - [ ] Define a typed pending-change model shared by web UI and backend execution.
-  - [ ] Add queue operations in the UI: add, edit options, remove, clear, and review.
-  - [ ] Reject or merge conflicting queued operations deterministically.
-  - [ ] Execute queued changes through typed backend handlers or workflow operations rather than ad hoc shell text.
-  - [ ] Re-run audit for affected roots after queue execution and refresh the table from typed results.
+  - [x] Define a typed pending-change model shared by web UI and backend execution.
+  - [x] Add queue operations in the UI: add, edit options, remove, clear, and review.
+  - [x] Reject or merge conflicting queued operations deterministically.
+  - [x] Execute queued changes through typed backend handlers or workflow operations rather than ad hoc shell text.
+  - [x] Re-run audit for affected roots after queue execution and refresh the table from typed results.
 
 - [x] [F006] Audit output must report remote presence explicitly in both CLI and web/API contracts.
   Requested on 2026-03-08 after reviewing how missing remotes appear in audit results.
@@ -198,13 +199,14 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - The queue model from [F005] is a prerequisite because this action must never execute immediately from a table row.
 
   ### Deliverables
-  - [ ] Define a web-only queued delete-folder operation with explicit confirmation requirements.
-  - [ ] Restrict or phase the scope intentionally (for example non-git folders first, then repositories if approved).
-  - [ ] Surface the operation only in the web audit workspace, not in the generic CLI runner.
-  - [ ] Add end-to-end tests that verify deletion is queued first and only applied after explicit confirmation.
+  - [x] Define a web-only queued delete-folder operation with explicit confirmation requirements.
+  - [x] Restrict or phase the scope intentionally (for example non-git folders first, then repositories if approved).
+  - [x] Surface the operation only in the web audit workspace, not in the generic CLI runner.
+  - [x] Add end-to-end tests that verify deletion is queued first and only applied after explicit confirmation.
 
-- [ ] [F008] The web audit queue needs repository sync and protocol-fix actions backed by existing operations.
+- [x] [F008] The web audit queue needs repository sync and protocol-fix actions backed by existing operations.
   Requested on 2026-03-08 as part of the audit remediation UX.
+  Resolved on 2026-03-08 by surfacing queued protocol-fix and sync row actions in the web audit table, adding editable target-protocol and dirty-worktree-policy controls in the queue, and covering the queue/apply/refresh flow with a browser test.
   ### Summary
   The audit table should let operators queue protocol fixes and “sync local with remote” changes directly from mismatched rows.
 
@@ -215,10 +217,10 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - These fixes should refresh audit state after apply so the table becomes the post-change source of truth.
 
   ### Deliverables
-  - [ ] Add queued protocol-fix actions backed by the existing protocol conversion operation.
-  - [ ] Add queued local-sync actions backed by an explicit branch-refresh/change workflow, not default-branch migration.
-  - [ ] Surface per-item options needed for safe execution (branch target, dirty-worktree handling, protocol target).
-  - [ ] Add integration/browser coverage that verifies queueing plus execution updates the table state.
+  - [x] Add queued protocol-fix actions backed by the existing protocol conversion operation.
+  - [x] Add queued local-sync actions backed by an explicit branch-refresh/change workflow, not default-branch migration.
+  - [x] Surface per-item options needed for safe execution (branch target, dirty-worktree handling, protocol target).
+  - [x] Add integration/browser coverage that verifies queueing plus execution updates the table state.
 
 - Update on 2026-03-08 for [F005].
   Implemented the queue foundation without closing the full remediation program.
@@ -240,10 +242,10 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - Successful apply results are removed from the pending queue; failed items remain queued.
   - After apply, the web client reruns typed audit inspection for the previously inspected roots so the table reflects post-change state instead of stale pre-apply rows.
 
-  ### Remaining Gaps
-  - The queue UI does not yet expose editable per-item options. Current surfaced row actions use fixed defaults.
-  - The browser currently exposes row actions only for rename and canonical-remote fixes; protocol, sync, and delete execution paths exist on the backend but are intentionally not yet surfaced pending the UX work tracked in [F007] and [F008].
-  - Conflict handling is implemented for same-item replacement and delete exclusivity, but broader merge policy across protocol/sync/remote changes remains part of the remaining [F005]/[F008] work.
+  ### Completion Notes
+  - The queue now exposes editable options for rename, delete, protocol conversion, and sync items.
+  - The browser now surfaces row actions for rename, canonical-remote fixes, protocol fixes, sync, and web-only folder deletion.
+  - Queue application is ordered deterministically so repository-state fixes run before rename and delete, avoiding stale-path execution during multi-step remediation.
 
 
 ## Planning

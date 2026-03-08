@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -260,9 +261,14 @@ func (application *Application) newWebAuditChangeExecutor() web.AuditChangeExecu
 			return web.AuditChangeApplyResponse{Error: webAuditQueuedChangesRequiredConstant}
 		}
 
-		results := make([]web.AuditChangeApplyResult, 0, len(request.Changes))
-		for changeIndex := range request.Changes {
-			results = append(results, application.applyWebAuditChange(executionContext, request.Changes[changeIndex]))
+		changes := append([]web.AuditQueuedChange(nil), request.Changes...)
+		slices.SortStableFunc(changes, func(left web.AuditQueuedChange, right web.AuditQueuedChange) int {
+			return cmpWebAuditChangePriority(left.Kind, right.Kind)
+		})
+
+		results := make([]web.AuditChangeApplyResult, 0, len(changes))
+		for changeIndex := range changes {
+			results = append(results, application.applyWebAuditChange(executionContext, changes[changeIndex]))
 		}
 
 		return web.AuditChangeApplyResponse{Results: results}
@@ -599,6 +605,27 @@ func webAuditChangeMessage(kind web.AuditChangeKind) string {
 		return "Folder deleted"
 	default:
 		return ""
+	}
+}
+
+func cmpWebAuditChangePriority(left web.AuditChangeKind, right web.AuditChangeKind) int {
+	return webAuditChangePriority(left) - webAuditChangePriority(right)
+}
+
+func webAuditChangePriority(kind web.AuditChangeKind) int {
+	switch kind {
+	case web.AuditChangeKindUpdateCanonical:
+		return 10
+	case web.AuditChangeKindConvertProtocol:
+		return 20
+	case web.AuditChangeKindSyncWithRemote:
+		return 30
+	case web.AuditChangeKindRenameFolder:
+		return 40
+	case web.AuditChangeKindDeleteFolder:
+		return 50
+	default:
+		return 100
 	}
 }
 
