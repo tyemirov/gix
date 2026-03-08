@@ -1,24 +1,30 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"go.uber.org/zap"
 
+	"github.com/tyemirov/gix/internal/audit"
 	"github.com/tyemirov/gix/internal/execshell"
 	reposdeps "github.com/tyemirov/gix/internal/repos/dependencies"
 	"github.com/tyemirov/gix/internal/repos/shared"
 	flagutils "github.com/tyemirov/gix/internal/utils/flags"
 	"github.com/tyemirov/gix/internal/web"
+	"github.com/tyemirov/gix/internal/workflow"
+	"github.com/tyemirov/gix/pkg/taskrunner"
 )
 
 const (
@@ -54,6 +60,17 @@ const (
 	webDraftTemplateFilesAddConstant            = "files_add"
 	webDraftTemplateFilesReplaceConstant        = "files_replace"
 	webDraftTemplateFilesRemoveConstant         = "files_remove"
+	webAuditQueuedChangesRequiredConstant       = "at least one queued audit change is required"
+	webAuditChangePathRequiredConstant          = "audit change path is required"
+	webAuditChangePathAbsoluteRequiredConstant  = "audit change path must be absolute"
+	webAuditChangeDeleteRejectedConstant        = "delete_folder requires confirm_delete"
+	webAuditChangeDeleteRootRejectedConstant    = "delete_folder does not allow deleting filesystem roots"
+	webAuditChangeProtocolMissingConstant       = "convert_protocol requires source_protocol and target_protocol"
+	webAuditChangeSyncStrategyTemplateConstant  = "unsupported sync strategy %q"
+	webAuditChangeKindTemplateConstant          = "unsupported audit change kind %q"
+	webAuditChangeStatusSucceededConstant       = "succeeded"
+	webAuditChangeStatusSkippedConstant         = "skipped"
+	webAuditChangeStatusFailedConstant          = "failed"
 )
 
 var nonActionableCommandPaths = map[string]struct{}{
@@ -85,6 +102,7 @@ type webRunner func(context.Context, web.ServerOptions) error
 
 type execshellGitExecutor = shared.GitExecutor
 type webGitRepositoryManager = shared.GitRepositoryManager
+type webGitHubMetadataResolver = shared.GitHubMetadataResolver
 
 type webLaunchConfiguration struct {
 	port int
@@ -142,11 +160,13 @@ func (application *Application) handleWebLaunch(command *cobra.Command) (bool, e
 	repositoryCatalog := application.repositoryCatalog(executionContext)
 
 	return true, application.webRunner(executionContext, web.ServerOptions{
-		Address:      launchConfiguration.listenAddress(),
-		Repositories: repositoryCatalog,
-		Catalog:      application.commandCatalog(),
-		LoadBranches: application.loadRepositoryBranches,
-		Execute:      application.newWebCommandExecutor(),
+		Address:           launchConfiguration.listenAddress(),
+		Repositories:      repositoryCatalog,
+		Catalog:           application.commandCatalog(),
+		LoadBranches:      application.loadRepositoryBranches,
+		Execute:           application.newWebCommandExecutor(),
+		InspectAudit:      application.newWebAuditInspector(),
+		ApplyAuditChanges: application.newWebAuditChangeExecutor(),
 	})
 }
 
@@ -198,6 +218,65 @@ func (application *Application) newWebCommandExecutor() web.CommandExecutor {
 	}
 }
 
+func (application *Application) newWebAuditInspector() web.AuditInspector {
+	return func(executionContext context.Context, request web.AuditInspectionRequest) web.AuditInspectionResponse {
+		discoverer, gitExecutor, repositoryManager, githubResolver, dependencyError := application.webAuditDependencies()
+		if dependencyError != nil {
+			return web.AuditInspectionResponse{Error: dependencyError.Error()}
+		}
+
+		auditService := audit.NewService(
+			discoverer,
+			repositoryManager,
+			gitExecutor,
+			githubResolver,
+			io.Discard,
+			io.Discard,
+		)
+
+		inspections, inspectionError := auditService.DiscoverInspections(
+			executionContext,
+			append([]string(nil), request.Roots...),
+			request.IncludeAll,
+			false,
+			audit.InspectionDepthFull,
+		)
+		if inspectionError != nil {
+			return web.AuditInspectionResponse{Roots: append([]string(nil), request.Roots...), Error: inspectionError.Error()}
+		}
+
+		rows := make([]web.AuditInspectionRow, 0, len(inspections))
+		for inspectionIndex := range inspections {
+			rows = append(rows, mapAuditInspectionRow(inspections[inspectionIndex]))
+		}
+
+		return web.AuditInspectionResponse{
+			Roots: append([]string(nil), request.Roots...),
+			Rows:  rows,
+		}
+	}
+}
+
+func (application *Application) newWebAuditChangeExecutor() web.AuditChangeExecutor {
+	return func(executionContext context.Context, request web.AuditChangeApplyRequest) web.AuditChangeApplyResponse {
+		if len(request.Changes) == 0 {
+			return web.AuditChangeApplyResponse{Error: webAuditQueuedChangesRequiredConstant}
+		}
+
+		changes := append([]web.AuditQueuedChange(nil), request.Changes...)
+		slices.SortStableFunc(changes, func(left web.AuditQueuedChange, right web.AuditQueuedChange) int {
+			return cmpWebAuditChangePriority(left.Kind, right.Kind)
+		})
+
+		results := make([]web.AuditChangeApplyResult, 0, len(changes))
+		for changeIndex := range changes {
+			results = append(results, application.applyWebAuditChange(executionContext, changes[changeIndex]))
+		}
+
+		return web.AuditChangeApplyResponse{Results: results}
+	}
+}
+
 func (application *Application) webInheritedArguments(arguments []string) []string {
 	inheritedArguments := make([]string, 0, len(arguments)+6)
 
@@ -217,6 +296,72 @@ func (application *Application) webInheritedArguments(arguments []string) []stri
 	}
 
 	return append(inheritedArguments, arguments...)
+}
+
+func (application *Application) applyWebAuditChange(executionContext context.Context, change web.AuditQueuedChange) web.AuditChangeApplyResult {
+	normalizedPath, pathError := normalizeWebAuditChangePath(change.Path)
+	result := web.AuditChangeApplyResult{
+		ID:   change.ID,
+		Kind: change.Kind,
+		Path: normalizedPath,
+	}
+	if pathError != nil {
+		result.Status = webAuditChangeStatusFailedConstant
+		result.Error = pathError.Error()
+		return result
+	}
+
+	outputBuffer := &bytes.Buffer{}
+	errorBuffer := &bytes.Buffer{}
+
+	applyError := error(nil)
+	executionOutcome := workflow.ExecutionOutcome{}
+	message := ""
+
+	switch change.Kind {
+	case web.AuditChangeKindDeleteFolder:
+		if !change.ConfirmDelete {
+			applyError = errors.New(webAuditChangeDeleteRejectedConstant)
+			break
+		}
+		if filepath.Dir(normalizedPath) == normalizedPath {
+			applyError = errors.New(webAuditChangeDeleteRootRejectedConstant)
+			break
+		}
+		if deleteError := os.RemoveAll(normalizedPath); deleteError != nil {
+			applyError = deleteError
+			break
+		}
+		_, _ = fmt.Fprintf(outputBuffer, "DELETED: %s\n", normalizedPath)
+	default:
+		dependencies, dependencyError := application.webTaskRunnerDependencies(outputBuffer, errorBuffer)
+		if dependencyError != nil {
+			applyError = dependencyError
+			break
+		}
+
+		executionOutcome, applyError = executeWebAuditWorkflowChange(executionContext, dependencies.Workflow, normalizedPath, change)
+	}
+
+	result.Stdout = outputBuffer.String()
+	result.Stderr = errorBuffer.String()
+	result.Status = webAuditChangeResultStatus(executionOutcome, applyError)
+	if result.Status == webAuditChangeStatusFailedConstant {
+		result.Status = webAuditChangeStatusFailedConstant
+		result.Error = applyError.Error()
+		return result
+	}
+
+	if result.Status == webAuditChangeStatusSkippedConstant {
+		message = webAuditChangeSkippedMessage(change.Kind)
+	} else {
+		message = webAuditChangeMessage(change.Kind)
+	}
+	if len(message) > 0 {
+		result.Message = message
+	}
+
+	return result
 }
 
 func commandArgumentsContainFlag(arguments []string, flagName string) bool {
@@ -311,6 +456,296 @@ func (application *Application) loadRepositoryBranches(executionContext context.
 	return loadRepositoryBranches(executionContext, repository, gitExecutor)
 }
 
+func mapAuditInspectionRow(inspection audit.RepositoryInspection) web.AuditInspectionRow {
+	row := auditInspectionReportRow(inspection)
+	return web.AuditInspectionRow{
+		Path:                   inspection.Path,
+		FolderName:             row.FolderName,
+		IsGitRepository:        inspection.IsGitRepository,
+		FinalGitHubRepository:  row.FinalRepository,
+		OriginRemoteStatus:     string(row.OriginRemoteStatus),
+		NameMatches:            string(row.NameMatches),
+		RemoteDefaultBranch:    row.RemoteDefaultBranch,
+		LocalBranch:            row.LocalBranch,
+		InSync:                 string(row.InSync),
+		RemoteProtocol:         string(row.RemoteProtocol),
+		OriginMatchesCanonical: string(row.OriginMatchesCanonical),
+		WorktreeDirty:          string(row.WorktreeDirty),
+		DirtyFiles:             row.DirtyFiles,
+	}
+}
+
+func executeWebAuditWorkflowChange(
+	executionContext context.Context,
+	dependencies workflow.Dependencies,
+	repositoryPath string,
+	change web.AuditQueuedChange,
+) (workflow.ExecutionOutcome, error) {
+	switch change.Kind {
+	case web.AuditChangeKindRenameFolder:
+		return executeWebAuditOperation(
+			executionContext,
+			dependencies,
+			repositoryPath,
+			&workflow.RenameOperation{
+				RequireCleanWorktree: change.RequireClean,
+				IncludeOwner:         change.IncludeOwner,
+			},
+		)
+	case web.AuditChangeKindUpdateCanonical:
+		return executeWebAuditOperation(
+			executionContext,
+			dependencies,
+			repositoryPath,
+			&workflow.CanonicalRemoteOperation{},
+		)
+	case web.AuditChangeKindConvertProtocol:
+		sourceProtocol, sourceError := shared.ParseRemoteProtocol(change.SourceProtocol)
+		if sourceError != nil {
+			return workflow.ExecutionOutcome{}, errors.New(webAuditChangeProtocolMissingConstant)
+		}
+		targetProtocol, targetError := shared.ParseRemoteProtocol(change.TargetProtocol)
+		if targetError != nil {
+			return workflow.ExecutionOutcome{}, errors.New(webAuditChangeProtocolMissingConstant)
+		}
+		return executeWebAuditOperation(
+			executionContext,
+			dependencies,
+			repositoryPath,
+			&workflow.ProtocolConversionOperation{
+				FromProtocol: sourceProtocol,
+				ToProtocol:   targetProtocol,
+			},
+		)
+	case web.AuditChangeKindSyncWithRemote:
+		taskDefinition, taskDefinitionError := webAuditSyncTaskDefinition(change.SyncStrategy)
+		if taskDefinitionError != nil {
+			return workflow.ExecutionOutcome{}, taskDefinitionError
+		}
+		return executeWebAuditTasks(
+			executionContext,
+			dependencies,
+			repositoryPath,
+			[]workflow.TaskDefinition{taskDefinition},
+		)
+	default:
+		return workflow.ExecutionOutcome{}, fmt.Errorf(webAuditChangeKindTemplateConstant, change.Kind)
+	}
+}
+
+func executeWebAuditOperation(
+	executionContext context.Context,
+	dependencies workflow.Dependencies,
+	repositoryPath string,
+	operation workflow.Operation,
+) (workflow.ExecutionOutcome, error) {
+	executor := workflow.NewExecutor([]workflow.Operation{operation}, dependencies)
+	return executor.Execute(
+		executionContext,
+		[]string{repositoryPath},
+		workflow.RuntimeOptions{
+			AssumeYes:           true,
+			WorkflowParallelism: 1,
+		},
+	)
+}
+
+func executeWebAuditTasks(
+	executionContext context.Context,
+	dependencies workflow.Dependencies,
+	repositoryPath string,
+	definitions []workflow.TaskDefinition,
+) (workflow.ExecutionOutcome, error) {
+	runner := workflow.NewTaskRunner(dependencies)
+	return runner.Run(
+		executionContext,
+		[]string{repositoryPath},
+		definitions,
+		workflow.RuntimeOptions{
+			AssumeYes:           true,
+			WorkflowParallelism: 1,
+		},
+	)
+}
+
+func webAuditSyncTaskDefinition(syncStrategy string) (workflow.TaskDefinition, error) {
+	options := map[string]any{
+		"refresh": true,
+	}
+
+	switch strings.TrimSpace(syncStrategy) {
+	case "", web.AuditChangeSyncStrategyRequireClean:
+		options["require_clean"] = true
+	case web.AuditChangeSyncStrategyStashChanges:
+		options["stash"] = true
+	case web.AuditChangeSyncStrategyCommitChanges:
+		options["commit"] = true
+	default:
+		return workflow.TaskDefinition{}, fmt.Errorf(webAuditChangeSyncStrategyTemplateConstant, syncStrategy)
+	}
+
+	return workflow.TaskDefinition{
+		Name:  "audit-sync",
+		Steps: []workflow.TaskExecutionStep{workflow.TaskExecutionStepCustomActions},
+		Actions: []workflow.TaskActionDefinition{
+			{
+				Type:    "branch.change",
+				Options: options,
+			},
+		},
+	}, nil
+}
+
+func webAuditChangeMessage(kind web.AuditChangeKind) string {
+	switch kind {
+	case web.AuditChangeKindRenameFolder:
+		return "Rename folder applied"
+	case web.AuditChangeKindUpdateCanonical:
+		return "Canonical remote updated"
+	case web.AuditChangeKindConvertProtocol:
+		return "Remote protocol updated"
+	case web.AuditChangeKindSyncWithRemote:
+		return "Repository synchronized with remote"
+	case web.AuditChangeKindDeleteFolder:
+		return "Folder deleted"
+	default:
+		return ""
+	}
+}
+
+func webAuditChangeSkippedMessage(kind web.AuditChangeKind) string {
+	switch kind {
+	case web.AuditChangeKindRenameFolder:
+		return "Rename folder skipped"
+	case web.AuditChangeKindUpdateCanonical:
+		return "Canonical remote update skipped"
+	case web.AuditChangeKindConvertProtocol:
+		return "Remote protocol update skipped"
+	case web.AuditChangeKindSyncWithRemote:
+		return "Repository synchronization skipped"
+	case web.AuditChangeKindDeleteFolder:
+		return "Folder deletion skipped"
+	default:
+		return ""
+	}
+}
+
+func webAuditChangeResultStatus(executionOutcome workflow.ExecutionOutcome, executionError error) string {
+	if executionError != nil {
+		return webAuditChangeStatusFailedConstant
+	}
+	if webAuditExecutionOutcomeContainsStepOutcome(executionOutcome, webAuditChangeStatusSkippedConstant) {
+		return webAuditChangeStatusSkippedConstant
+	}
+	return webAuditChangeStatusSucceededConstant
+}
+
+func webAuditExecutionOutcomeContainsStepOutcome(executionOutcome workflow.ExecutionOutcome, outcomeLabel string) bool {
+	if len(outcomeLabel) == 0 {
+		return false
+	}
+
+	for _, stepOutcomeCounts := range executionOutcome.ReporterSummaryData.StepOutcomeCounts {
+		if stepOutcomeCounts[outcomeLabel] > 0 {
+			return true
+		}
+	}
+
+	return false
+}
+
+func cmpWebAuditChangePriority(left web.AuditChangeKind, right web.AuditChangeKind) int {
+	return webAuditChangePriority(left) - webAuditChangePriority(right)
+}
+
+func webAuditChangePriority(kind web.AuditChangeKind) int {
+	switch kind {
+	case web.AuditChangeKindUpdateCanonical:
+		return 10
+	case web.AuditChangeKindConvertProtocol:
+		return 20
+	case web.AuditChangeKindSyncWithRemote:
+		return 30
+	case web.AuditChangeKindRenameFolder:
+		return 40
+	case web.AuditChangeKindDeleteFolder:
+		return 50
+	default:
+		return 100
+	}
+}
+
+func normalizeWebAuditChangePath(rawPath string) (string, error) {
+	trimmedPath := strings.TrimSpace(rawPath)
+	if len(trimmedPath) == 0 {
+		return "", errors.New(webAuditChangePathRequiredConstant)
+	}
+	cleanPath := filepath.Clean(trimmedPath)
+	if !filepath.IsAbs(cleanPath) {
+		return "", errors.New(webAuditChangePathAbsoluteRequiredConstant)
+	}
+	return cleanPath, nil
+}
+
+func auditInspectionReportRow(inspection audit.RepositoryInspection) audit.AuditReportRow {
+	finalRepository := strings.TrimSpace(inspection.CanonicalOwnerRepo)
+	if len(finalRepository) == 0 {
+		finalRepository = inspection.OriginOwnerRepo
+	}
+
+	nameMatches := audit.TernaryValueNotApplicable
+	if inspection.IsGitRepository {
+		nameMatches = audit.TernaryValueNo
+		folderBaseName := filepath.Base(inspection.FolderName)
+		if len(inspection.DesiredFolderName) > 0 && inspection.DesiredFolderName == folderBaseName {
+			nameMatches = audit.TernaryValueYes
+		}
+	}
+
+	remoteDefaultBranch := inspection.RemoteDefaultBranch
+	localBranch := inspection.LocalBranch
+	inSync := inspection.InSyncStatus
+	originRemoteStatus := inspection.OriginRemoteStatus
+	remoteProtocol := inspection.RemoteProtocol
+	originMatches := inspection.OriginMatchesCanonical
+	worktreeDirty := audit.TernaryValueNo
+	dirtyFiles := ""
+
+	if !inspection.IsGitRepository {
+		finalRepository = string(audit.TernaryValueNotApplicable)
+		originRemoteStatus = audit.OriginRemoteStatusNotApplicable
+		remoteDefaultBranch = string(audit.TernaryValueNotApplicable)
+		localBranch = string(audit.TernaryValueNotApplicable)
+		inSync = audit.TernaryValueNotApplicable
+		remoteProtocol = audit.RemoteProtocolType(string(audit.TernaryValueNotApplicable))
+		originMatches = audit.TernaryValueNotApplicable
+		worktreeDirty = audit.TernaryValueNotApplicable
+	} else {
+		if originRemoteStatus == audit.OriginRemoteStatusMissing {
+			finalRepository = string(audit.TernaryValueNotApplicable)
+			remoteProtocol = audit.RemoteProtocolType(string(audit.TernaryValueNotApplicable))
+		}
+		if len(inspection.WorktreeDirtyFiles) > 0 {
+			worktreeDirty = audit.TernaryValueYes
+			dirtyFiles = strings.Join(inspection.WorktreeDirtyFiles, "; ")
+		}
+	}
+
+	return audit.AuditReportRow{
+		FolderName:             inspection.FolderName,
+		FinalRepository:        finalRepository,
+		OriginRemoteStatus:     originRemoteStatus,
+		NameMatches:            nameMatches,
+		RemoteDefaultBranch:    remoteDefaultBranch,
+		LocalBranch:            localBranch,
+		InSync:                 inSync,
+		RemoteProtocol:         remoteProtocol,
+		OriginMatchesCanonical: originMatches,
+		WorktreeDirty:          worktreeDirty,
+		DirtyFiles:             dirtyFiles,
+	}
+}
+
 func loadRepositoryBranches(executionContext context.Context, repository web.RepositoryDescriptor, gitExecutor execshellGitExecutor) web.BranchCatalog {
 	trimmedRepositoryPath := strings.TrimSpace(repository.Path)
 	if len(trimmedRepositoryPath) == 0 {
@@ -351,6 +786,37 @@ func (application *Application) webGitDependencies() (execshellGitExecutor, webG
 	}
 
 	return gitExecutor, repositoryManager, nil
+}
+
+func (application *Application) webTaskRunnerDependencies(outputWriter io.Writer, errorWriter io.Writer) (taskrunner.DependenciesResult, error) {
+	return taskrunner.BuildDependencies(
+		taskrunner.DependenciesConfig{
+			LoggerProvider: func() *zap.Logger {
+				return application.logger
+			},
+			HumanReadableLoggingProvider: application.humanReadableLoggingEnabled,
+		},
+		taskrunner.DependenciesOptions{
+			Output:          outputWriter,
+			Errors:          errorWriter,
+			DisablePrompter: true,
+		},
+	)
+}
+
+func (application *Application) webAuditDependencies() (shared.RepositoryDiscoverer, execshellGitExecutor, webGitRepositoryManager, webGitHubMetadataResolver, error) {
+	discoverer := reposdeps.ResolveRepositoryDiscoverer(nil)
+	gitExecutor, repositoryManager, dependencyError := application.webGitDependencies()
+	if dependencyError != nil {
+		return nil, nil, nil, nil, dependencyError
+	}
+
+	githubResolver, resolverError := reposdeps.ResolveGitHubResolver(nil, gitExecutor)
+	if resolverError != nil {
+		return nil, nil, nil, nil, resolverError
+	}
+
+	return discoverer, gitExecutor, repositoryManager, githubResolver, nil
 }
 
 func (application *Application) currentRepositoryRoot(executionContext context.Context, gitExecutor execshellGitExecutor, workingDirectory string) (string, bool) {

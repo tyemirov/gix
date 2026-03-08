@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,7 +16,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/tyemirov/gix/internal/repos/shared"
 	"github.com/tyemirov/gix/internal/web"
+	"github.com/tyemirov/gix/internal/workflow"
 )
 
 func TestExecuteWithOptionsVersionFlagWritesToProvidedOutput(t *testing.T) {
@@ -269,6 +272,41 @@ func TestWebServerExecutesVersionCommand(t *testing.T) {
 			}
 		},
 		Execute: application.newWebCommandExecutor(),
+		InspectAudit: func(_ context.Context, request web.AuditInspectionRequest) web.AuditInspectionResponse {
+			return web.AuditInspectionResponse{
+				Roots: request.Roots,
+				Rows: []web.AuditInspectionRow{
+					{
+						Path:                   "/tmp/custom/example",
+						FolderName:             "example",
+						IsGitRepository:        true,
+						FinalGitHubRepository:  "canonical/example",
+						OriginRemoteStatus:     "configured",
+						NameMatches:            "yes",
+						RemoteDefaultBranch:    "main",
+						LocalBranch:            "main",
+						InSync:                 "yes",
+						RemoteProtocol:         "https",
+						OriginMatchesCanonical: "yes",
+						WorktreeDirty:          "no",
+						DirtyFiles:             "",
+					},
+				},
+			}
+		},
+		ApplyAuditChanges: func(_ context.Context, request web.AuditChangeApplyRequest) web.AuditChangeApplyResponse {
+			return web.AuditChangeApplyResponse{
+				Results: []web.AuditChangeApplyResult{
+					{
+						ID:      request.Changes[0].ID,
+						Kind:    request.Changes[0].Kind,
+						Path:    request.Changes[0].Path,
+						Status:  "succeeded",
+						Message: "queued change applied",
+					},
+				},
+			}
+		},
 	})
 	require.NoError(t, serverError)
 
@@ -290,7 +328,11 @@ func TestWebServerExecutesVersionCommand(t *testing.T) {
 	require.Contains(t, indexDocument.String(), "<h3>Paths</h3>")
 	require.Contains(t, indexDocument.String(), "<h3>Tasks</h3>")
 	require.Contains(t, indexDocument.String(), "id=\"target-ref-select\"")
-	require.Contains(t, indexDocument.String(), "Run audit command")
+	require.Contains(t, indexDocument.String(), "id=\"audit-roots-input\"")
+	require.Contains(t, indexDocument.String(), "Inspect audit table")
+	require.Contains(t, indexDocument.String(), "id=\"audit-results-panel\"")
+	require.Contains(t, indexDocument.String(), "id=\"audit-queue-panel\"")
+	require.Contains(t, indexDocument.String(), "Pending Changes")
 	require.Contains(t, indexDocument.String(), "Run remote normalization command")
 	require.Contains(t, indexDocument.String(), "Run workflow command")
 
@@ -329,6 +371,31 @@ func TestWebServerExecutesVersionCommand(t *testing.T) {
 	require.Equal(t, "feature/demo", branches.Branches[0].Name)
 	require.True(t, branches.Branches[0].Current)
 
+	auditBody := strings.NewReader(`{"roots":["/tmp/custom"],"include_all":true}`)
+	auditResponse, auditError := http.Post(httpServer.URL+"/api/audit/inspect", "application/json", auditBody)
+	require.NoError(t, auditError)
+	defer auditResponse.Body.Close()
+	require.Equal(t, http.StatusOK, auditResponse.StatusCode)
+
+	var auditInspection web.AuditInspectionResponse
+	require.NoError(t, json.NewDecoder(auditResponse.Body).Decode(&auditInspection))
+	require.Equal(t, []string{"/tmp/custom"}, auditInspection.Roots)
+	require.Len(t, auditInspection.Rows, 1)
+	require.Equal(t, "/tmp/custom/example", auditInspection.Rows[0].Path)
+	require.Equal(t, "configured", auditInspection.Rows[0].OriginRemoteStatus)
+
+	applyBody := strings.NewReader(`{"changes":[{"id":"chg-001","kind":"rename_folder","path":"/tmp/custom/example","require_clean":true}]}`)
+	applyResponse, applyError := http.Post(httpServer.URL+"/api/audit/apply", "application/json", applyBody)
+	require.NoError(t, applyError)
+	defer applyResponse.Body.Close()
+	require.Equal(t, http.StatusOK, applyResponse.StatusCode)
+
+	var applyInspection web.AuditChangeApplyResponse
+	require.NoError(t, json.NewDecoder(applyResponse.Body).Decode(&applyInspection))
+	require.Len(t, applyInspection.Results, 1)
+	require.Equal(t, "chg-001", applyInspection.Results[0].ID)
+	require.Equal(t, "succeeded", applyInspection.Results[0].Status)
+
 	runBody := strings.NewReader(`{"arguments":["version"]}`)
 	runResponse, runError := http.Post(httpServer.URL+"/api/runs", "application/json", runBody)
 	require.NoError(t, runError)
@@ -360,6 +427,41 @@ func TestWebServerExecutesVersionCommand(t *testing.T) {
 	require.Contains(t, finalRun.StandardOutput, "gix version: v4.5.6")
 	require.Empty(t, finalRun.StandardError)
 	require.Empty(t, finalRun.Error)
+}
+
+func TestWebAuditChangeExecutorRejectsRelativePaths(t *testing.T) {
+	application := NewApplication()
+	response := application.newWebAuditChangeExecutor()(context.Background(), web.AuditChangeApplyRequest{
+		Changes: []web.AuditQueuedChange{
+			{
+				ID:            "chg-001",
+				Kind:          web.AuditChangeKindDeleteFolder,
+				Path:          "../sibling",
+				ConfirmDelete: true,
+			},
+		},
+	})
+
+	require.Empty(t, response.Error)
+	require.Len(t, response.Results, 1)
+	require.Equal(t, "failed", response.Results[0].Status)
+	require.Contains(t, response.Results[0].Error, "absolute")
+}
+
+func TestWebAuditChangeResultStatusMarksSkippedOutcomes(t *testing.T) {
+	outcome := workflow.ExecutionOutcome{
+		ReporterSummaryData: shared.SummaryData{
+			StepOutcomeCounts: map[string]map[string]int{
+				"audit-sync": {
+					"skipped": 1,
+				},
+			},
+		},
+	}
+
+	require.Equal(t, webAuditChangeStatusSkippedConstant, webAuditChangeResultStatus(outcome, nil))
+	require.Equal(t, webAuditChangeStatusSucceededConstant, webAuditChangeResultStatus(workflow.ExecutionOutcome{}, nil))
+	require.Equal(t, webAuditChangeStatusFailedConstant, webAuditChangeResultStatus(workflow.ExecutionOutcome{}, errors.New("boom")))
 }
 
 func catalogContainsCommand(catalog web.CommandCatalog, commandPath string) bool {

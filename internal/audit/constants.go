@@ -14,6 +14,7 @@ const (
 	debugCheckingTemplate                       = "DEBUG: checking %s\n"
 	csvHeaderFinalRepository                    = "final_github_repo"
 	csvHeaderFolderName                         = "folder_name"
+	csvHeaderOriginRemoteStatus                 = "origin_remote_status"
 	csvHeaderNameMatches                        = "name_matches"
 	csvHeaderRemoteDefault                      = "remote_default_branch"
 	csvHeaderLocalBranch                        = "local_branch"

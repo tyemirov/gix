@@ -110,10 +110,16 @@
 
           <section id="task-panel-inspect" class="task-panel">
             <div class="task-copy">
-              <h4>Audit Selected Scope</h4>
-              <p class="panel-note">Use the target bar to choose the repository scope, then run the audit command when you want the CLI view of that state.</p>
+              <h4>Inspect Audit Roots</h4>
+              <p class="panel-note">Leave roots blank to inspect the current repository scope from the target bar, or enter explicit filesystem roots when you want to audit a wider workspace.</p>
             </div>
-            <button id="task-inspect-load" class="secondary-button" type="button">Run audit command</button>
+            <label class="field-label" for="audit-roots-input">Audit Roots</label>
+            <textarea id="audit-roots-input" class="code-input audit-roots-input" spellcheck="false" placeholder="One root per line. Leave blank to use the current repository scope."></textarea>
+            <label class="checkbox-row" for="audit-include-all">
+              <input id="audit-include-all" type="checkbox">
+              <span>Include non-Git folders in the inspected roots</span>
+            </label>
+            <button id="task-inspect-load" class="secondary-button" type="button">Inspect audit table</button>
           </section>
 
           <section id="task-panel-branch" class="task-panel" hidden>
@@ -272,6 +278,29 @@
               <h4>Run Output</h4>
               <span id="run-error" class="error-message"></span>
             </div>
+            <section id="audit-results-panel" class="audit-results-panel" hidden>
+              <div class="panel-heading">
+                <h4>Audit Results</h4>
+                <span id="audit-results-summary" class="panel-note"></span>
+              </div>
+              <div class="audit-table-shell">
+                <table class="audit-table">
+                  <thead id="audit-results-head"></thead>
+                  <tbody id="audit-results-body"></tbody>
+                </table>
+              </div>
+            </section>
+            <section id="audit-queue-panel" class="audit-queue-panel" hidden>
+              <div class="panel-heading">
+                <h4>Pending Changes</h4>
+                <span id="audit-queue-summary" class="panel-note"></span>
+              </div>
+              <div id="audit-queue-list" class="audit-queue-list"></div>
+              <div class="button-row">
+                <button id="audit-queue-clear" class="secondary-button" type="button">Clear queue</button>
+                <button id="audit-queue-apply" class="primary-button" type="button">Apply queue</button>
+              </div>
+            </section>
             <div class="output-grid">
               <div>
                 <h4>stdout</h4>

@@ -18,7 +18,7 @@ import (
 
 const (
 	currentDirectoryRelativePathConstant = "."
-	auditServiceCSVHeader                = "folder_name,final_github_repo,name_matches,remote_default_branch,local_branch,in_sync,remote_protocol,origin_matches_canonical,worktree_dirty,dirty_files\n"
+	auditServiceCSVHeader                = "folder_name,final_github_repo,origin_remote_status,name_matches,remote_default_branch,local_branch,in_sync,remote_protocol,origin_matches_canonical,worktree_dirty,dirty_files\n"
 )
 
 type stubDiscoverer struct {
@@ -151,7 +151,7 @@ func TestServiceRunBehaviors(testInstance *testing.T) {
 					DefaultBranch: "main",
 				},
 			},
-			expectedOutput: auditServiceCSVHeader + "example,canonical/example,yes,main,main,n/a,https,no,no,\n",
+			expectedOutput: auditServiceCSVHeader + "example,canonical/example,configured,yes,main,main,n/a,https,no,no,\n",
 			expectedError:  "",
 		},
 		{
@@ -179,7 +179,7 @@ func TestServiceRunBehaviors(testInstance *testing.T) {
 					DefaultBranch: "main",
 				},
 			},
-			expectedOutput: auditServiceCSVHeader + "example,canonical/example,yes,main,main,n/a,https,no,yes,M main.go; ?? README.md\n",
+			expectedOutput: auditServiceCSVHeader + "example,canonical/example,configured,yes,main,main,n/a,https,no,yes,M main.go; ?? README.md\n",
 			expectedError:  "",
 		},
 		{
@@ -204,7 +204,7 @@ func TestServiceRunBehaviors(testInstance *testing.T) {
 					DefaultBranch: "main",
 				},
 			},
-			expectedOutput:       auditServiceCSVHeader + "example,canonical/example,yes,main,,n/a,https,no,no,\n",
+			expectedOutput:       auditServiceCSVHeader + "example,canonical/example,configured,yes,main,,n/a,https,no,no,\n",
 			expectedError:        "",
 			panicOnUnexpectedGit: true,
 		},
@@ -230,7 +230,7 @@ func TestServiceRunBehaviors(testInstance *testing.T) {
 					DefaultBranch: "main",
 				},
 			},
-			expectedOutput: auditServiceCSVHeader + "example,canonical/example,yes,main,main,n/a,https,no,no,\n",
+			expectedOutput: auditServiceCSVHeader + "example,canonical/example,configured,yes,main,main,n/a,https,no,no,\n",
 			expectedError:  "DEBUG: discovered 1 candidate repos under: /tmp/example\nDEBUG: checking /tmp/example\n",
 		},
 		{
@@ -249,7 +249,26 @@ func TestServiceRunBehaviors(testInstance *testing.T) {
 				branchName:    "main",
 				remoteURL:     "https://github.com/origin/example.git",
 			},
-			expectedOutput: auditServiceCSVHeader + "example,origin/example,yes,main,,n/a,https,n/a,no,\n",
+			expectedOutput: auditServiceCSVHeader + "example,origin/example,configured,yes,main,,n/a,https,n/a,no,\n",
+			expectedError:  "",
+		},
+		{
+			name: "missing_origin_remote_reports_missing_status",
+			options: audit.CommandOptions{
+				Roots:           []string{"/tmp/example"},
+				InspectionDepth: audit.InspectionDepthMinimal,
+			},
+			discoverer: stubDiscoverer{repositories: []string{"/tmp/example"}},
+			executorOutputs: map[string]execshell.ExecutionResult{
+				"rev-parse --is-inside-work-tree": {StandardOutput: "true"},
+			},
+			gitManager: stubGitManager{
+				cleanWorktree:       true,
+				branchName:          "main",
+				remoteURL:           "",
+				panicOnBranchLookup: true,
+			},
+			expectedOutput: auditServiceCSVHeader + "example,n/a,missing,yes,,,n/a,n/a,n/a,no,\n",
 			expectedError:  "",
 		},
 		{
@@ -274,7 +293,7 @@ func TestServiceRunBehaviors(testInstance *testing.T) {
 					DefaultBranch: "main",
 				},
 			},
-			expectedOutput: auditServiceCSVHeader + "example,canonical/example,yes,main,,n/a,https,no,no,\n",
+			expectedOutput: auditServiceCSVHeader + "example,canonical/example,configured,yes,main,,n/a,https,no,no,\n",
 			expectedError:  "",
 		},
 	}
@@ -352,7 +371,7 @@ func TestServiceRunNormalizesRepositoryPaths(testInstance *testing.T) {
 	}
 
 	expectedCSVOutput := fmt.Sprintf(
-		auditServiceCSVHeader+"%s,canonical/example,%s,main,,n/a,https,no,no,\n",
+		auditServiceCSVHeader+"%s,canonical/example,configured,%s,main,,n/a,https,no,no,\n",
 		repositoryFolderName,
 		expectedNameMatches,
 	)
@@ -411,8 +430,8 @@ func TestServiceRunIncludesAllFolders(testInstance *testing.T) {
 
 	expectedOutput := fmt.Sprintf(
 		auditServiceCSVHeader+
-			"%s,canonical/example,no,main,,n/a,https,no,no,\n"+
-			"%s,n/a,n/a,n/a,n/a,n/a,n/a,n/a,n/a,\n",
+			"%s,canonical/example,configured,no,main,,n/a,https,no,no,\n"+
+			"%s,n/a,n/a,n/a,n/a,n/a,n/a,n/a,n/a,n/a,\n",
 		gitRepositoryFolderName,
 		nonRepositoryFolderName,
 	)
@@ -457,7 +476,7 @@ func TestServiceRunUsesRelativeFolderNames(testInstance *testing.T) {
 	require.NoError(testInstance, runError)
 
 	expectedOutput := fmt.Sprintf(
-		auditServiceCSVHeader+"%s,canonical/git-project,yes,main,,n/a,https,no,no,\n",
+		auditServiceCSVHeader+"%s,canonical/git-project,configured,yes,main,,n/a,https,no,no,\n",
 		filepath.ToSlash(relativeFolderPath),
 	)
 	require.Equal(testInstance, expectedOutput, outputBuffer.String())

@@ -13,6 +13,16 @@ const (
 	RemoteProtocolOther RemoteProtocolType = shared.RemoteProtocolOther
 )
 
+// OriginRemoteStatus describes whether the origin remote is configured.
+type OriginRemoteStatus string
+
+// Supported origin-remote status values.
+const (
+	OriginRemoteStatusConfigured    OriginRemoteStatus = "configured"
+	OriginRemoteStatusMissing       OriginRemoteStatus = "missing"
+	OriginRemoteStatusNotApplicable OriginRemoteStatus = "n/a"
+)
+
 // TernaryValue represents yes/no/not-applicable values used in reports.
 type TernaryValue string
 
@@ -49,6 +59,7 @@ type RepositoryInspection struct {
 	CanonicalOwnerRepo     string
 	FinalOwnerRepo         string
 	DesiredFolderName      string
+	OriginRemoteStatus     OriginRemoteStatus
 	RemoteProtocol         RemoteProtocolType
 	RemoteDefaultBranch    string
 	LocalBranch            string
@@ -62,6 +73,7 @@ type RepositoryInspection struct {
 type AuditReportRow struct {
 	FolderName             string
 	FinalRepository        string
+	OriginRemoteStatus     OriginRemoteStatus
 	NameMatches            TernaryValue
 	RemoteDefaultBranch    string
 	LocalBranch            string
@@ -77,6 +89,7 @@ func (row AuditReportRow) CSVRecord() []string {
 	return []string{
 		row.FolderName,
 		row.FinalRepository,
+		string(row.OriginRemoteStatus),
 		string(row.NameMatches),
 		row.RemoteDefaultBranch,
 		row.LocalBranch,

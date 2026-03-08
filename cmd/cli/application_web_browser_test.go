@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http/httptest"
 	"os"
@@ -26,6 +27,23 @@ const (
 	browserReadyPollIntervalConstant       = 100 * time.Millisecond
 	repositoryTitleLoadingConstant         = "Loading..."
 
+	auditRootsInputSelectorConstant       = "#audit-roots-input"
+	auditIncludeAllSelectorConstant       = "#audit-include-all"
+	auditRunButtonSelectorConstant        = "#task-inspect-load"
+	auditResultsPanelSelectorConstant     = "#audit-results-panel"
+	auditResultsSummarySelectorConstant   = "#audit-results-summary"
+	auditResultsBodySelectorConstant      = "#audit-results-body"
+	auditQueuePanelSelectorConstant       = "#audit-queue-panel"
+	auditQueueSummarySelectorConstant     = "#audit-queue-summary"
+	auditQueueListSelectorConstant        = "#audit-queue-list"
+	auditQueueApplySelectorConstant       = "#audit-queue-apply"
+	auditQueueDeleteSelectorConstant      = "[data-audit-action='delete_folder']"
+	auditQueueDeleteConfirmSelector       = "[data-queue-confirm-delete]"
+	auditQueueProtocolSelectorConstant    = "[data-audit-action='convert_protocol']"
+	auditQueueRenameSelectorConstant      = "[data-audit-action='rename_folder']"
+	auditQueueSyncSelectorConstant        = "[data-audit-action='sync_with_remote']"
+	auditQueueTargetProtocolSelector      = "[data-queue-target-protocol]"
+	auditQueueSyncStrategySelector        = "[data-queue-sync-strategy]"
 	branchTaskButtonSelectorConstant      = "#task-branch"
 	filesTaskButtonSelectorConstant       = "#task-files"
 	remotesTaskButtonSelectorConstant     = "#task-remotes"
@@ -70,6 +88,7 @@ const (
 	workflowVariableAssignmentConstant    = "license_year=2026"
 	workflowVariableFileConstant          = "./vars.yaml"
 	workflowWorkersValueConstant          = "3"
+	auditCustomRootValueConstant          = "/tmp/browser-audit-root"
 )
 
 var browserExecutableCandidates = []string{
@@ -143,6 +162,505 @@ func TestWebInterfaceBrowserPrefillsBranchAndFileTasks(t *testing.T) {
 	})
 }
 
+func TestWebInterfaceBrowserInspectsAuditRootsAndDisplaysTable(t *testing.T) {
+	repositoryPath := createTestRepository(t, filepath.Join(t.TempDir(), "workspace", "example"))
+
+	httpServer, repositoryCatalog := newBrowserTestServerWithInspector(t, repositoryPath, func(_ context.Context, request web.AuditInspectionRequest) web.AuditInspectionResponse {
+		return web.AuditInspectionResponse{
+			Roots: request.Roots,
+			Rows: []web.AuditInspectionRow{
+				{
+					Path:                   filepath.Join(auditCustomRootValueConstant, "example"),
+					FolderName:             "example",
+					IsGitRepository:        true,
+					FinalGitHubRepository:  "canonical/example",
+					OriginRemoteStatus:     "missing",
+					NameMatches:            "no",
+					RemoteDefaultBranch:    "",
+					LocalBranch:            "",
+					InSync:                 "n/a",
+					RemoteProtocol:         "n/a",
+					OriginMatchesCanonical: "n/a",
+					WorktreeDirty:          "no",
+					DirtyFiles:             "",
+				},
+			},
+		}
+	})
+	defer httpServer.Close()
+
+	browserContext := newBrowserTestContext(t)
+	expectedRepository := selectedRepositoryDescriptor(t, repositoryCatalog)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		chromedp.Navigate(httpServer.URL),
+		chromedp.WaitVisible(auditRunButtonSelectorConstant, chromedp.ByQuery),
+	))
+	waitForControlSurfaceReady(t, browserContext, expectedRepository.Name)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		setControlValue(auditRootsInputSelectorConstant, auditCustomRootValueConstant),
+		setCheckboxValue(auditIncludeAllSelectorConstant, true),
+		chromedp.Click(auditRunButtonSelectorConstant, chromedp.ByQuery),
+		chromedp.WaitVisible(auditResultsPanelSelectorConstant, chromedp.ByQuery),
+	))
+
+	auditSummary, auditSummaryError := readTextContent(browserContext, auditResultsSummarySelectorConstant)
+	require.NoError(t, auditSummaryError)
+	require.Equal(t, "1 row", auditSummary)
+
+	auditResultsText, auditResultsError := readTextContent(browserContext, auditResultsBodySelectorConstant)
+	require.NoError(t, auditResultsError)
+	require.Contains(t, auditResultsText, "example")
+	require.Contains(t, auditResultsText, "canonical/example")
+	require.Contains(t, auditResultsText, "missing")
+	require.Contains(t, auditResultsText, auditCustomRootValueConstant)
+}
+
+func TestWebInterfaceBrowserQueuesRenameChangeAndAppliesIt(t *testing.T) {
+	repositoryPath := createTestRepository(t, filepath.Join(t.TempDir(), "workspace", "example"))
+
+	renameQueued := false
+	httpServer, repositoryCatalog := newBrowserTestServerWithAuditHandlers(
+		t,
+		repositoryPath,
+		func(_ context.Context, request web.AuditInspectionRequest) web.AuditInspectionResponse {
+			nameMatchStatus := "no"
+			if renameQueued {
+				nameMatchStatus = "yes"
+			}
+			return web.AuditInspectionResponse{
+				Roots: request.Roots,
+				Rows: []web.AuditInspectionRow{
+					{
+						Path:                   filepath.Join(auditCustomRootValueConstant, "example"),
+						FolderName:             "example",
+						IsGitRepository:        true,
+						FinalGitHubRepository:  "canonical/example",
+						OriginRemoteStatus:     "configured",
+						NameMatches:            nameMatchStatus,
+						RemoteDefaultBranch:    "main",
+						LocalBranch:            "main",
+						InSync:                 "yes",
+						RemoteProtocol:         "https",
+						OriginMatchesCanonical: "yes",
+						WorktreeDirty:          "no",
+						DirtyFiles:             "",
+					},
+				},
+			}
+		},
+		func(_ context.Context, request web.AuditChangeApplyRequest) web.AuditChangeApplyResponse {
+			if len(request.Changes) == 1 && request.Changes[0].Kind == "rename_folder" {
+				renameQueued = true
+			}
+			return web.AuditChangeApplyResponse{
+				Results: []web.AuditChangeApplyResult{
+					{
+						ID:      request.Changes[0].ID,
+						Kind:    request.Changes[0].Kind,
+						Path:    request.Changes[0].Path,
+						Status:  "succeeded",
+						Message: "rename applied",
+					},
+				},
+			}
+		},
+	)
+	defer httpServer.Close()
+
+	browserContext := newBrowserTestContext(t)
+	expectedRepository := selectedRepositoryDescriptor(t, repositoryCatalog)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		chromedp.Navigate(httpServer.URL),
+		chromedp.WaitVisible(auditRunButtonSelectorConstant, chromedp.ByQuery),
+	))
+	waitForControlSurfaceReady(t, browserContext, expectedRepository.Name)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		setControlValue(auditRootsInputSelectorConstant, auditCustomRootValueConstant),
+		chromedp.Click(auditRunButtonSelectorConstant, chromedp.ByQuery),
+		chromedp.WaitVisible(auditResultsPanelSelectorConstant, chromedp.ByQuery),
+		chromedp.Click(auditQueueRenameSelectorConstant, chromedp.ByQuery),
+		chromedp.WaitVisible(auditQueuePanelSelectorConstant, chromedp.ByQuery),
+	))
+
+	queueSummary, queueSummaryError := readTextContent(browserContext, auditQueueSummarySelectorConstant)
+	require.NoError(t, queueSummaryError)
+	require.Equal(t, "1 pending change", queueSummary)
+
+	queueText, queueTextError := readTextContent(browserContext, auditQueueListSelectorConstant)
+	require.NoError(t, queueTextError)
+	require.Contains(t, queueText, "Rename folder")
+	require.Contains(t, queueText, "canonical/example")
+
+	require.NoError(t, chromedp.Run(browserContext,
+		chromedp.Click(auditQueueApplySelectorConstant, chromedp.ByQuery),
+	))
+
+	require.Eventually(t, func() bool {
+		summaryText, summaryError := readTextContent(browserContext, auditQueueSummarySelectorConstant)
+		if summaryError != nil {
+			return false
+		}
+		return summaryText == "0 pending changes"
+	}, browserReadyTimeoutConstant, browserReadyPollIntervalConstant)
+
+	auditResultsText, auditResultsError := readTextContent(browserContext, auditResultsBodySelectorConstant)
+	require.NoError(t, auditResultsError)
+	require.Contains(t, auditResultsText, "yes")
+}
+
+func TestWebInterfaceBrowserAppliesQueueUsingLastInspectedScope(t *testing.T) {
+	repositoryPath := createTestRepository(t, filepath.Join(t.TempDir(), "workspace", "example"))
+
+	renameQueued := false
+	alternateRoot := "/tmp/browser-audit-root-alternate"
+	httpServer, repositoryCatalog := newBrowserTestServerWithAuditHandlers(
+		t,
+		repositoryPath,
+		func(_ context.Context, request web.AuditInspectionRequest) web.AuditInspectionResponse {
+			if len(request.Roots) == 1 && request.Roots[0] == alternateRoot {
+				return web.AuditInspectionResponse{
+					Roots: request.Roots,
+					Rows: []web.AuditInspectionRow{
+						{
+							Path:                   filepath.Join(alternateRoot, "other"),
+							FolderName:             "other",
+							IsGitRepository:        true,
+							FinalGitHubRepository:  "canonical/other",
+							OriginRemoteStatus:     "configured",
+							NameMatches:            "no",
+							RemoteDefaultBranch:    "main",
+							LocalBranch:            "main",
+							InSync:                 "yes",
+							RemoteProtocol:         "https",
+							OriginMatchesCanonical: "yes",
+							WorktreeDirty:          "no",
+							DirtyFiles:             "",
+						},
+					},
+				}
+			}
+
+			nameMatchStatus := "no"
+			if renameQueued {
+				nameMatchStatus = "yes"
+			}
+			return web.AuditInspectionResponse{
+				Roots: request.Roots,
+				Rows: []web.AuditInspectionRow{
+					{
+						Path:                   filepath.Join(auditCustomRootValueConstant, "example"),
+						FolderName:             "example",
+						IsGitRepository:        true,
+						FinalGitHubRepository:  "canonical/example",
+						OriginRemoteStatus:     "configured",
+						NameMatches:            nameMatchStatus,
+						RemoteDefaultBranch:    "main",
+						LocalBranch:            "main",
+						InSync:                 "yes",
+						RemoteProtocol:         "https",
+						OriginMatchesCanonical: "yes",
+						WorktreeDirty:          "no",
+						DirtyFiles:             "",
+					},
+				},
+			}
+		},
+		func(_ context.Context, request web.AuditChangeApplyRequest) web.AuditChangeApplyResponse {
+			require.Len(t, request.Changes, 1)
+			require.Equal(t, web.AuditChangeKindRenameFolder, request.Changes[0].Kind)
+			renameQueued = true
+			return web.AuditChangeApplyResponse{
+				Results: []web.AuditChangeApplyResult{
+					{
+						ID:      request.Changes[0].ID,
+						Kind:    request.Changes[0].Kind,
+						Path:    request.Changes[0].Path,
+						Status:  "succeeded",
+						Message: "rename applied",
+					},
+				},
+			}
+		},
+	)
+	defer httpServer.Close()
+
+	browserContext := newBrowserTestContext(t)
+	expectedRepository := selectedRepositoryDescriptor(t, repositoryCatalog)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		chromedp.Navigate(httpServer.URL),
+		chromedp.WaitVisible(auditRunButtonSelectorConstant, chromedp.ByQuery),
+	))
+	waitForControlSurfaceReady(t, browserContext, expectedRepository.Name)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		setControlValue(auditRootsInputSelectorConstant, auditCustomRootValueConstant),
+		chromedp.Click(auditRunButtonSelectorConstant, chromedp.ByQuery),
+		chromedp.WaitVisible(auditResultsPanelSelectorConstant, chromedp.ByQuery),
+		chromedp.Click(auditQueueRenameSelectorConstant, chromedp.ByQuery),
+		chromedp.WaitVisible(auditQueuePanelSelectorConstant, chromedp.ByQuery),
+		setControlValue(auditRootsInputSelectorConstant, alternateRoot),
+		chromedp.Click(auditQueueApplySelectorConstant, chromedp.ByQuery),
+	))
+
+	require.Eventually(t, func() bool {
+		summaryText, summaryError := readTextContent(browserContext, auditQueueSummarySelectorConstant)
+		if summaryError != nil {
+			return false
+		}
+		return summaryText == "0 pending changes"
+	}, browserReadyTimeoutConstant, browserReadyPollIntervalConstant)
+
+	auditResultsText, auditResultsError := readTextContent(browserContext, auditResultsBodySelectorConstant)
+	require.NoError(t, auditResultsError)
+	require.Contains(t, auditResultsText, auditCustomRootValueConstant)
+	require.Contains(t, auditResultsText, "yes")
+	require.NotContains(t, auditResultsText, alternateRoot)
+}
+
+func TestWebInterfaceBrowserQueuesDeleteChangeAndRequiresConfirmation(t *testing.T) {
+	repositoryPath := createTestRepository(t, filepath.Join(t.TempDir(), "workspace", "example"))
+
+	deleteApplied := false
+	httpServer, repositoryCatalog := newBrowserTestServerWithAuditHandlers(
+		t,
+		repositoryPath,
+		func(_ context.Context, request web.AuditInspectionRequest) web.AuditInspectionResponse {
+			rows := []web.AuditInspectionRow{
+				{
+					Path:                   filepath.Join(auditCustomRootValueConstant, "example"),
+					FolderName:             "example",
+					IsGitRepository:        true,
+					FinalGitHubRepository:  "canonical/example",
+					OriginRemoteStatus:     "configured",
+					NameMatches:            "yes",
+					RemoteDefaultBranch:    "main",
+					LocalBranch:            "main",
+					InSync:                 "yes",
+					RemoteProtocol:         "https",
+					OriginMatchesCanonical: "yes",
+					WorktreeDirty:          "no",
+					DirtyFiles:             "",
+				},
+			}
+			if deleteApplied {
+				rows = nil
+			}
+			return web.AuditInspectionResponse{
+				Roots: request.Roots,
+				Rows:  rows,
+			}
+		},
+		func(_ context.Context, request web.AuditChangeApplyRequest) web.AuditChangeApplyResponse {
+			require.Len(t, request.Changes, 1)
+			require.Equal(t, web.AuditChangeKindDeleteFolder, request.Changes[0].Kind)
+			require.True(t, request.Changes[0].ConfirmDelete)
+			deleteApplied = true
+			return web.AuditChangeApplyResponse{
+				Results: []web.AuditChangeApplyResult{
+					{
+						ID:      request.Changes[0].ID,
+						Kind:    request.Changes[0].Kind,
+						Path:    request.Changes[0].Path,
+						Status:  "succeeded",
+						Message: "delete applied",
+					},
+				},
+			}
+		},
+	)
+	defer httpServer.Close()
+
+	browserContext := newBrowserTestContext(t)
+	expectedRepository := selectedRepositoryDescriptor(t, repositoryCatalog)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		chromedp.Navigate(httpServer.URL),
+		chromedp.WaitVisible(auditRunButtonSelectorConstant, chromedp.ByQuery),
+	))
+	waitForControlSurfaceReady(t, browserContext, expectedRepository.Name)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		setControlValue(auditRootsInputSelectorConstant, auditCustomRootValueConstant),
+		chromedp.Click(auditRunButtonSelectorConstant, chromedp.ByQuery),
+		chromedp.WaitVisible(auditResultsPanelSelectorConstant, chromedp.ByQuery),
+		chromedp.Click(auditQueueDeleteSelectorConstant, chromedp.ByQuery),
+		chromedp.WaitVisible(auditQueuePanelSelectorConstant, chromedp.ByQuery),
+	))
+
+	queueSummary, queueSummaryError := readTextContent(browserContext, auditQueueSummarySelectorConstant)
+	require.NoError(t, queueSummaryError)
+	require.Equal(t, "1 pending change", queueSummary)
+
+	queueText, queueTextError := readTextContent(browserContext, auditQueueListSelectorConstant)
+	require.NoError(t, queueTextError)
+	require.Contains(t, queueText, "Delete folder")
+	require.Contains(t, queueText, auditCustomRootValueConstant)
+
+	applyDisabled, applyDisabledError := readDisabledState(browserContext, auditQueueApplySelectorConstant)
+	require.NoError(t, applyDisabledError)
+	require.True(t, applyDisabled)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		setCheckboxValue(auditQueueDeleteConfirmSelector, true),
+	))
+
+	require.Eventually(t, func() bool {
+		disabled, disabledError := readDisabledState(browserContext, auditQueueApplySelectorConstant)
+		if disabledError != nil {
+			return false
+		}
+		return !disabled
+	}, browserReadyTimeoutConstant, browserReadyPollIntervalConstant)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		chromedp.Click(auditQueueApplySelectorConstant, chromedp.ByQuery),
+	))
+
+	require.Eventually(t, func() bool {
+		summaryText, summaryError := readTextContent(browserContext, auditQueueSummarySelectorConstant)
+		if summaryError != nil {
+			return false
+		}
+		return summaryText == "0 pending changes"
+	}, browserReadyTimeoutConstant, browserReadyPollIntervalConstant)
+
+	auditSummary, auditSummaryError := readTextContent(browserContext, auditResultsSummarySelectorConstant)
+	require.NoError(t, auditSummaryError)
+	require.Equal(t, "0 rows", auditSummary)
+}
+
+func TestWebInterfaceBrowserQueuesProtocolAndSyncChangesWithEditableOptions(t *testing.T) {
+	repositoryPath := createTestRepository(t, filepath.Join(t.TempDir(), "workspace", "example"))
+
+	protocolUpdated := false
+	syncUpdated := false
+	httpServer, repositoryCatalog := newBrowserTestServerWithAuditHandlers(
+		t,
+		repositoryPath,
+		func(_ context.Context, request web.AuditInspectionRequest) web.AuditInspectionResponse {
+			remoteProtocol := "https"
+			inSyncStatus := "no"
+			if protocolUpdated {
+				remoteProtocol = "ssh"
+			}
+			if syncUpdated {
+				inSyncStatus = "yes"
+			}
+			return web.AuditInspectionResponse{
+				Roots: request.Roots,
+				Rows: []web.AuditInspectionRow{
+					{
+						Path:                   filepath.Join(auditCustomRootValueConstant, "example"),
+						FolderName:             "example",
+						IsGitRepository:        true,
+						FinalGitHubRepository:  "canonical/example",
+						OriginRemoteStatus:     "configured",
+						NameMatches:            "yes",
+						RemoteDefaultBranch:    "main",
+						LocalBranch:            "feature/demo",
+						InSync:                 inSyncStatus,
+						RemoteProtocol:         remoteProtocol,
+						OriginMatchesCanonical: "yes",
+						WorktreeDirty:          "no",
+						DirtyFiles:             "",
+					},
+				},
+			}
+		},
+		func(_ context.Context, request web.AuditChangeApplyRequest) web.AuditChangeApplyResponse {
+			require.Len(t, request.Changes, 2)
+
+			for _, change := range request.Changes {
+				switch change.Kind {
+				case web.AuditChangeKindConvertProtocol:
+					require.Equal(t, "https", change.SourceProtocol)
+					require.Equal(t, "ssh", change.TargetProtocol)
+					protocolUpdated = true
+				case web.AuditChangeKindSyncWithRemote:
+					require.Equal(t, web.AuditChangeSyncStrategyStashChanges, change.SyncStrategy)
+					syncUpdated = true
+				default:
+					t.Fatalf("unexpected change kind %s", change.Kind)
+				}
+			}
+
+			return web.AuditChangeApplyResponse{
+				Results: []web.AuditChangeApplyResult{
+					{
+						ID:      request.Changes[0].ID,
+						Kind:    request.Changes[0].Kind,
+						Path:    request.Changes[0].Path,
+						Status:  "succeeded",
+						Message: "change applied",
+					},
+					{
+						ID:      request.Changes[1].ID,
+						Kind:    request.Changes[1].Kind,
+						Path:    request.Changes[1].Path,
+						Status:  "succeeded",
+						Message: "change applied",
+					},
+				},
+			}
+		},
+	)
+	defer httpServer.Close()
+
+	browserContext := newBrowserTestContext(t)
+	expectedRepository := selectedRepositoryDescriptor(t, repositoryCatalog)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		chromedp.Navigate(httpServer.URL),
+		chromedp.WaitVisible(auditRunButtonSelectorConstant, chromedp.ByQuery),
+	))
+	waitForControlSurfaceReady(t, browserContext, expectedRepository.Name)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		setControlValue(auditRootsInputSelectorConstant, auditCustomRootValueConstant),
+		chromedp.Click(auditRunButtonSelectorConstant, chromedp.ByQuery),
+		chromedp.WaitVisible(auditResultsPanelSelectorConstant, chromedp.ByQuery),
+		chromedp.Click(auditQueueProtocolSelectorConstant, chromedp.ByQuery),
+		chromedp.Click(auditQueueSyncSelectorConstant, chromedp.ByQuery),
+		chromedp.WaitVisible(auditQueuePanelSelectorConstant, chromedp.ByQuery),
+	))
+
+	require.NoError(t, chromedp.Run(browserContext,
+		setControlValue(auditQueueTargetProtocolSelector, "ssh"),
+		setControlValue(auditQueueSyncStrategySelector, web.AuditChangeSyncStrategyStashChanges),
+	))
+
+	queueSummary, queueSummaryError := readTextContent(browserContext, auditQueueSummarySelectorConstant)
+	require.NoError(t, queueSummaryError)
+	require.Equal(t, "2 pending changes", queueSummary)
+
+	queueText, queueTextError := readTextContent(browserContext, auditQueueListSelectorConstant)
+	require.NoError(t, queueTextError)
+	require.Contains(t, queueText, "Fix protocol")
+	require.Contains(t, queueText, "Sync with remote")
+
+	require.NoError(t, chromedp.Run(browserContext,
+		chromedp.Click(auditQueueApplySelectorConstant, chromedp.ByQuery),
+	))
+
+	require.Eventually(t, func() bool {
+		summaryText, summaryError := readTextContent(browserContext, auditQueueSummarySelectorConstant)
+		if summaryError != nil {
+			return false
+		}
+		return summaryText == "0 pending changes"
+	}, browserReadyTimeoutConstant, browserReadyPollIntervalConstant)
+
+	auditResultsText, auditResultsError := readTextContent(browserContext, auditResultsBodySelectorConstant)
+	require.NoError(t, auditResultsError)
+	require.Contains(t, auditResultsText, "ssh")
+	require.Contains(t, auditResultsText, "yes")
+}
+
 func TestWebInterfaceBrowserPrefillsRemoteAndWorkflowTasksAcrossRepositoryScope(t *testing.T) {
 	rootPath := t.TempDir()
 	firstRepositoryPath := createTestRepository(t, filepath.Join(rootPath, "alpha"))
@@ -212,6 +730,17 @@ func TestWebInterfaceBrowserPrefillsRemoteAndWorkflowTasksAcrossRepositoryScope(
 	})
 }
 
+func TestBrowserStartupErrorSkippable(t *testing.T) {
+	startupError := errors.New(
+		"chrome failed to start:\n" +
+			"[0308/223413.260786:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq: No such file or directory (2)\n",
+	)
+
+	require.True(t, browserStartupErrorSkippable(startupError))
+	require.False(t, browserStartupErrorSkippable(errors.New("selector did not resolve")))
+	require.False(t, browserStartupErrorSkippable(nil))
+}
+
 func TestWebInterfaceBrowserAdvancedHidesTaskOwnedCommands(t *testing.T) {
 	repositoryPath := createTestRepository(t, filepath.Join(t.TempDir(), "workspace", "example"))
 
@@ -251,6 +780,29 @@ func TestWebInterfaceBrowserAdvancedHidesTaskOwnedCommands(t *testing.T) {
 }
 
 func newBrowserTestServer(testingInstance *testing.T, workingDirectory string) (*httptest.Server, web.RepositoryCatalog) {
+	return newBrowserTestServerWithOptions(testingInstance, workingDirectory, nil, nil, nil)
+}
+
+func newBrowserTestServerWithInspector(testingInstance *testing.T, workingDirectory string, inspectAudit web.AuditInspector) (*httptest.Server, web.RepositoryCatalog) {
+	return newBrowserTestServerWithOptions(testingInstance, workingDirectory, nil, inspectAudit, nil)
+}
+
+func newBrowserTestServerWithAuditHandlers(
+	testingInstance *testing.T,
+	workingDirectory string,
+	inspectAudit web.AuditInspector,
+	applyAuditChanges web.AuditChangeExecutor,
+) (*httptest.Server, web.RepositoryCatalog) {
+	return newBrowserTestServerWithOptions(testingInstance, workingDirectory, nil, inspectAudit, applyAuditChanges)
+}
+
+func newBrowserTestServerWithOptions(
+	testingInstance *testing.T,
+	workingDirectory string,
+	execute web.CommandExecutor,
+	inspectAudit web.AuditInspector,
+	applyAuditChanges web.AuditChangeExecutor,
+) (*httptest.Server, web.RepositoryCatalog) {
 	testingInstance.Helper()
 
 	var httpServer *httptest.Server
@@ -259,13 +811,27 @@ func newBrowserTestServer(testingInstance *testing.T, workingDirectory string) (
 	withWorkingDirectory(testingInstance, workingDirectory, func() {
 		application := NewApplication()
 		repositoryCatalog = application.repositoryCatalog(context.Background())
+		commandExecutor := execute
+		if commandExecutor == nil {
+			commandExecutor = application.newWebCommandExecutor()
+		}
+		auditInspector := inspectAudit
+		if auditInspector == nil {
+			auditInspector = application.newWebAuditInspector()
+		}
+		auditChangeExecutor := applyAuditChanges
+		if auditChangeExecutor == nil {
+			auditChangeExecutor = application.newWebAuditChangeExecutor()
+		}
 
 		server, serverError := web.NewServer(web.ServerOptions{
-			Address:      testServerAddressConstant,
-			Repositories: repositoryCatalog,
-			Catalog:      application.commandCatalog(),
-			LoadBranches: application.loadRepositoryBranches,
-			Execute:      application.newWebCommandExecutor(),
+			Address:           testServerAddressConstant,
+			Repositories:      repositoryCatalog,
+			Catalog:           application.commandCatalog(),
+			LoadBranches:      application.loadRepositoryBranches,
+			Execute:           commandExecutor,
+			InspectAudit:      auditInspector,
+			ApplyAuditChanges: auditChangeExecutor,
 		})
 		require.NoError(testingInstance, serverError)
 
@@ -291,6 +857,8 @@ func newBrowserTestContext(testingInstance *testing.T) context.Context {
 		chromedp.NoDefaultBrowserCheck,
 		chromedp.Flag("headless", true),
 		chromedp.Flag("disable-gpu", true),
+		chromedp.Flag("disable-breakpad", true),
+		chromedp.Flag("disable-crash-reporter", true),
 		chromedp.Flag("no-sandbox", true),
 		chromedp.Flag("disable-dev-shm-usage", true),
 		chromedp.Flag("window-size", "1440,1100"),
@@ -306,7 +874,22 @@ func newBrowserTestContext(testingInstance *testing.T) context.Context {
 		cancelAllocator()
 	})
 
+	startupError := chromedp.Run(timeoutContext, chromedp.Navigate("about:blank"))
+	if browserStartupErrorSkippable(startupError) {
+		testingInstance.Skipf("skipping browser test: Chrome failed to start in this environment: %v", startupError)
+	}
+	require.NoError(testingInstance, startupError)
+
 	return timeoutContext
+}
+
+func browserStartupErrorSkippable(startupError error) bool {
+	if startupError == nil {
+		return false
+	}
+
+	startupErrorLower := strings.ToLower(startupError.Error())
+	return strings.Contains(startupErrorLower, "chrome failed to start")
 }
 
 func locateBrowserExecutable() string {
@@ -424,6 +1007,16 @@ func readValue(browserContext context.Context, selector string) (string, error) 
 	var controlValue string
 	actionError := chromedp.Run(browserContext, chromedp.Value(selector, &controlValue, chromedp.ByQuery))
 	return controlValue, actionError
+}
+
+func readDisabledState(browserContext context.Context, selector string) (bool, error) {
+	var disabled bool
+	script := fmt.Sprintf(`(() => {
+		const element = document.querySelector(%q);
+		return element ? Boolean(element.disabled) : false;
+	})()`, selector)
+	actionError := chromedp.Run(browserContext, chromedp.Evaluate(script, &disabled))
+	return disabled, actionError
 }
 
 func setControlValue(selector string, value string) chromedp.Action {
