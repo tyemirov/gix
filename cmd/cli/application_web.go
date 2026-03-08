@@ -62,12 +62,14 @@ const (
 	webDraftTemplateFilesRemoveConstant         = "files_remove"
 	webAuditQueuedChangesRequiredConstant       = "at least one queued audit change is required"
 	webAuditChangePathRequiredConstant          = "audit change path is required"
+	webAuditChangePathAbsoluteRequiredConstant  = "audit change path must be absolute"
 	webAuditChangeDeleteRejectedConstant        = "delete_folder requires confirm_delete"
 	webAuditChangeDeleteRootRejectedConstant    = "delete_folder does not allow deleting filesystem roots"
 	webAuditChangeProtocolMissingConstant       = "convert_protocol requires source_protocol and target_protocol"
 	webAuditChangeSyncStrategyTemplateConstant  = "unsupported sync strategy %q"
 	webAuditChangeKindTemplateConstant          = "unsupported audit change kind %q"
 	webAuditChangeStatusSucceededConstant       = "succeeded"
+	webAuditChangeStatusSkippedConstant         = "skipped"
 	webAuditChangeStatusFailedConstant          = "failed"
 )
 
@@ -313,6 +315,7 @@ func (application *Application) applyWebAuditChange(executionContext context.Con
 	errorBuffer := &bytes.Buffer{}
 
 	applyError := error(nil)
+	executionOutcome := workflow.ExecutionOutcome{}
 	message := ""
 
 	switch change.Kind {
@@ -330,7 +333,6 @@ func (application *Application) applyWebAuditChange(executionContext context.Con
 			break
 		}
 		_, _ = fmt.Fprintf(outputBuffer, "DELETED: %s\n", normalizedPath)
-		message = "Folder deleted"
 	default:
 		dependencies, dependencyError := application.webTaskRunnerDependencies(outputBuffer, errorBuffer)
 		if dependencyError != nil {
@@ -338,22 +340,27 @@ func (application *Application) applyWebAuditChange(executionContext context.Con
 			break
 		}
 
-		applyError = executeWebAuditWorkflowChange(executionContext, dependencies.Workflow, normalizedPath, change)
-		message = webAuditChangeMessage(change.Kind)
+		executionOutcome, applyError = executeWebAuditWorkflowChange(executionContext, dependencies.Workflow, normalizedPath, change)
 	}
 
 	result.Stdout = outputBuffer.String()
 	result.Stderr = errorBuffer.String()
-	if len(message) > 0 {
-		result.Message = message
-	}
-	if applyError != nil {
+	result.Status = webAuditChangeResultStatus(executionOutcome, applyError)
+	if result.Status == webAuditChangeStatusFailedConstant {
 		result.Status = webAuditChangeStatusFailedConstant
 		result.Error = applyError.Error()
 		return result
 	}
 
-	result.Status = webAuditChangeStatusSucceededConstant
+	if result.Status == webAuditChangeStatusSkippedConstant {
+		message = webAuditChangeSkippedMessage(change.Kind)
+	} else {
+		message = webAuditChangeMessage(change.Kind)
+	}
+	if len(message) > 0 {
+		result.Message = message
+	}
+
 	return result
 }
 
@@ -473,7 +480,7 @@ func executeWebAuditWorkflowChange(
 	dependencies workflow.Dependencies,
 	repositoryPath string,
 	change web.AuditQueuedChange,
-) error {
+) (workflow.ExecutionOutcome, error) {
 	switch change.Kind {
 	case web.AuditChangeKindRenameFolder:
 		return executeWebAuditOperation(
@@ -495,11 +502,11 @@ func executeWebAuditWorkflowChange(
 	case web.AuditChangeKindConvertProtocol:
 		sourceProtocol, sourceError := shared.ParseRemoteProtocol(change.SourceProtocol)
 		if sourceError != nil {
-			return errors.New(webAuditChangeProtocolMissingConstant)
+			return workflow.ExecutionOutcome{}, errors.New(webAuditChangeProtocolMissingConstant)
 		}
 		targetProtocol, targetError := shared.ParseRemoteProtocol(change.TargetProtocol)
 		if targetError != nil {
-			return errors.New(webAuditChangeProtocolMissingConstant)
+			return workflow.ExecutionOutcome{}, errors.New(webAuditChangeProtocolMissingConstant)
 		}
 		return executeWebAuditOperation(
 			executionContext,
@@ -513,7 +520,7 @@ func executeWebAuditWorkflowChange(
 	case web.AuditChangeKindSyncWithRemote:
 		taskDefinition, taskDefinitionError := webAuditSyncTaskDefinition(change.SyncStrategy)
 		if taskDefinitionError != nil {
-			return taskDefinitionError
+			return workflow.ExecutionOutcome{}, taskDefinitionError
 		}
 		return executeWebAuditTasks(
 			executionContext,
@@ -522,7 +529,7 @@ func executeWebAuditWorkflowChange(
 			[]workflow.TaskDefinition{taskDefinition},
 		)
 	default:
-		return fmt.Errorf(webAuditChangeKindTemplateConstant, change.Kind)
+		return workflow.ExecutionOutcome{}, fmt.Errorf(webAuditChangeKindTemplateConstant, change.Kind)
 	}
 }
 
@@ -531,9 +538,9 @@ func executeWebAuditOperation(
 	dependencies workflow.Dependencies,
 	repositoryPath string,
 	operation workflow.Operation,
-) error {
+) (workflow.ExecutionOutcome, error) {
 	executor := workflow.NewExecutor([]workflow.Operation{operation}, dependencies)
-	_, executionError := executor.Execute(
+	return executor.Execute(
 		executionContext,
 		[]string{repositoryPath},
 		workflow.RuntimeOptions{
@@ -541,7 +548,6 @@ func executeWebAuditOperation(
 			WorkflowParallelism: 1,
 		},
 	)
-	return executionError
 }
 
 func executeWebAuditTasks(
@@ -549,9 +555,9 @@ func executeWebAuditTasks(
 	dependencies workflow.Dependencies,
 	repositoryPath string,
 	definitions []workflow.TaskDefinition,
-) error {
+) (workflow.ExecutionOutcome, error) {
 	runner := workflow.NewTaskRunner(dependencies)
-	_, executionError := runner.Run(
+	return runner.Run(
 		executionContext,
 		[]string{repositoryPath},
 		definitions,
@@ -560,7 +566,6 @@ func executeWebAuditTasks(
 			WorkflowParallelism: 1,
 		},
 	)
-	return executionError
 }
 
 func webAuditSyncTaskDefinition(syncStrategy string) (workflow.TaskDefinition, error) {
@@ -608,6 +613,47 @@ func webAuditChangeMessage(kind web.AuditChangeKind) string {
 	}
 }
 
+func webAuditChangeSkippedMessage(kind web.AuditChangeKind) string {
+	switch kind {
+	case web.AuditChangeKindRenameFolder:
+		return "Rename folder skipped"
+	case web.AuditChangeKindUpdateCanonical:
+		return "Canonical remote update skipped"
+	case web.AuditChangeKindConvertProtocol:
+		return "Remote protocol update skipped"
+	case web.AuditChangeKindSyncWithRemote:
+		return "Repository synchronization skipped"
+	case web.AuditChangeKindDeleteFolder:
+		return "Folder deletion skipped"
+	default:
+		return ""
+	}
+}
+
+func webAuditChangeResultStatus(executionOutcome workflow.ExecutionOutcome, executionError error) string {
+	if executionError != nil {
+		return webAuditChangeStatusFailedConstant
+	}
+	if webAuditExecutionOutcomeContainsStepOutcome(executionOutcome, webAuditChangeStatusSkippedConstant) {
+		return webAuditChangeStatusSkippedConstant
+	}
+	return webAuditChangeStatusSucceededConstant
+}
+
+func webAuditExecutionOutcomeContainsStepOutcome(executionOutcome workflow.ExecutionOutcome, outcomeLabel string) bool {
+	if len(outcomeLabel) == 0 {
+		return false
+	}
+
+	for _, stepOutcomeCounts := range executionOutcome.ReporterSummaryData.StepOutcomeCounts {
+		if stepOutcomeCounts[outcomeLabel] > 0 {
+			return true
+		}
+	}
+
+	return false
+}
+
 func cmpWebAuditChangePriority(left web.AuditChangeKind, right web.AuditChangeKind) int {
 	return webAuditChangePriority(left) - webAuditChangePriority(right)
 }
@@ -634,7 +680,11 @@ func normalizeWebAuditChangePath(rawPath string) (string, error) {
 	if len(trimmedPath) == 0 {
 		return "", errors.New(webAuditChangePathRequiredConstant)
 	}
-	return filepath.Clean(trimmedPath), nil
+	cleanPath := filepath.Clean(trimmedPath)
+	if !filepath.IsAbs(cleanPath) {
+		return "", errors.New(webAuditChangePathAbsoluteRequiredConstant)
+	}
+	return cleanPath, nil
 }
 
 func auditInspectionReportRow(inspection audit.RepositoryInspection) audit.AuditReportRow {

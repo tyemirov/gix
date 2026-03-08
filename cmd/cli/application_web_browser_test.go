@@ -311,6 +311,116 @@ func TestWebInterfaceBrowserQueuesRenameChangeAndAppliesIt(t *testing.T) {
 	require.Contains(t, auditResultsText, "yes")
 }
 
+func TestWebInterfaceBrowserAppliesQueueUsingLastInspectedScope(t *testing.T) {
+	repositoryPath := createTestRepository(t, filepath.Join(t.TempDir(), "workspace", "example"))
+
+	renameQueued := false
+	alternateRoot := "/tmp/browser-audit-root-alternate"
+	httpServer, repositoryCatalog := newBrowserTestServerWithAuditHandlers(
+		t,
+		repositoryPath,
+		func(_ context.Context, request web.AuditInspectionRequest) web.AuditInspectionResponse {
+			if len(request.Roots) == 1 && request.Roots[0] == alternateRoot {
+				return web.AuditInspectionResponse{
+					Roots: request.Roots,
+					Rows: []web.AuditInspectionRow{
+						{
+							Path:                   filepath.Join(alternateRoot, "other"),
+							FolderName:             "other",
+							IsGitRepository:        true,
+							FinalGitHubRepository:  "canonical/other",
+							OriginRemoteStatus:     "configured",
+							NameMatches:            "no",
+							RemoteDefaultBranch:    "main",
+							LocalBranch:            "main",
+							InSync:                 "yes",
+							RemoteProtocol:         "https",
+							OriginMatchesCanonical: "yes",
+							WorktreeDirty:          "no",
+							DirtyFiles:             "",
+						},
+					},
+				}
+			}
+
+			nameMatchStatus := "no"
+			if renameQueued {
+				nameMatchStatus = "yes"
+			}
+			return web.AuditInspectionResponse{
+				Roots: request.Roots,
+				Rows: []web.AuditInspectionRow{
+					{
+						Path:                   filepath.Join(auditCustomRootValueConstant, "example"),
+						FolderName:             "example",
+						IsGitRepository:        true,
+						FinalGitHubRepository:  "canonical/example",
+						OriginRemoteStatus:     "configured",
+						NameMatches:            nameMatchStatus,
+						RemoteDefaultBranch:    "main",
+						LocalBranch:            "main",
+						InSync:                 "yes",
+						RemoteProtocol:         "https",
+						OriginMatchesCanonical: "yes",
+						WorktreeDirty:          "no",
+						DirtyFiles:             "",
+					},
+				},
+			}
+		},
+		func(_ context.Context, request web.AuditChangeApplyRequest) web.AuditChangeApplyResponse {
+			require.Len(t, request.Changes, 1)
+			require.Equal(t, web.AuditChangeKindRenameFolder, request.Changes[0].Kind)
+			renameQueued = true
+			return web.AuditChangeApplyResponse{
+				Results: []web.AuditChangeApplyResult{
+					{
+						ID:      request.Changes[0].ID,
+						Kind:    request.Changes[0].Kind,
+						Path:    request.Changes[0].Path,
+						Status:  "succeeded",
+						Message: "rename applied",
+					},
+				},
+			}
+		},
+	)
+	defer httpServer.Close()
+
+	browserContext := newBrowserTestContext(t)
+	expectedRepository := selectedRepositoryDescriptor(t, repositoryCatalog)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		chromedp.Navigate(httpServer.URL),
+		chromedp.WaitVisible(auditRunButtonSelectorConstant, chromedp.ByQuery),
+	))
+	waitForControlSurfaceReady(t, browserContext, expectedRepository.Name)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		setControlValue(auditRootsInputSelectorConstant, auditCustomRootValueConstant),
+		chromedp.Click(auditRunButtonSelectorConstant, chromedp.ByQuery),
+		chromedp.WaitVisible(auditResultsPanelSelectorConstant, chromedp.ByQuery),
+		chromedp.Click(auditQueueRenameSelectorConstant, chromedp.ByQuery),
+		chromedp.WaitVisible(auditQueuePanelSelectorConstant, chromedp.ByQuery),
+		setControlValue(auditRootsInputSelectorConstant, alternateRoot),
+		chromedp.Click(auditQueueApplySelectorConstant, chromedp.ByQuery),
+	))
+
+	require.Eventually(t, func() bool {
+		summaryText, summaryError := readTextContent(browserContext, auditQueueSummarySelectorConstant)
+		if summaryError != nil {
+			return false
+		}
+		return summaryText == "0 pending changes"
+	}, browserReadyTimeoutConstant, browserReadyPollIntervalConstant)
+
+	auditResultsText, auditResultsError := readTextContent(browserContext, auditResultsBodySelectorConstant)
+	require.NoError(t, auditResultsError)
+	require.Contains(t, auditResultsText, auditCustomRootValueConstant)
+	require.Contains(t, auditResultsText, "yes")
+	require.NotContains(t, auditResultsText, alternateRoot)
+}
+
 func TestWebInterfaceBrowserQueuesDeleteChangeAndRequiresConfirmation(t *testing.T) {
 	repositoryPath := createTestRepository(t, filepath.Join(t.TempDir(), "workspace", "example"))
 

@@ -247,6 +247,25 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - The browser now surfaces row actions for rename, canonical-remote fixes, protocol fixes, sync, and web-only folder deletion.
   - Queue application is ordered deterministically so repository-state fixes run before rename and delete, avoiding stale-path execution during multi-step remediation.
 
+- Update on 2026-03-08 for review follow-up on [F005], [F007], and [F008].
+  Addressed three post-review correctness regressions in the queued web audit flow and locked them with regression coverage before patching.
+  ### Summary
+  The initial queued-remediation implementation had three edge-case failures: apply could refresh the wrong audit scope, workflow-backed changes that reported `skipped` were surfaced as successful, and the apply endpoint accepted relative paths for destructive operations.
+
+  ### Analysis
+  - The browser stored the last successful audit rows, but `applyAuditQueue()` refreshed via `inspectAuditRoots(false)`, which rebuilt the request from the live form and repository catalog. That was incorrect because queued changes semantically belong to the last inspected scope, not whatever the controls happen to contain at apply time.
+  - This mismatch was especially dangerous after path-changing operations. If the operator edited the roots input after queueing, or if the repository catalog was stale relative to rename/delete actions, the table refresh could show an unrelated scope or fail to reflect the just-applied changes.
+  - The Go apply executor treated `nil` workflow errors as unconditional success. That was too optimistic because workflow/task execution already communicates `skipped` outcomes through `workflow.ExecutionOutcome.ReporterSummaryData.StepOutcomeCounts`, and some remediation actions intentionally skip without returning a hard error.
+  - Surfacing `skipped` as `succeeded` caused the browser to drop queued items that had not actually been applied and to report a misleading success state to the operator.
+  - `normalizeWebAuditChangePath` only trimmed and cleaned the submitted path. That allowed relative inputs such as `../sibling` to escape the inspected directory context at the API boundary, which is unacceptable now that `/api/audit/apply` can drive destructive filesystem operations.
+
+  ### Deliverables
+  - [x] Added a browser regression test that queues a rename, mutates the roots input, applies the queue, and verifies the post-apply refresh still uses the last inspected audit scope.
+  - [x] Split audit inspection in the web client into “build request from controls” and “rerun a saved request,” then updated queue apply to re-inspect with `state.auditInspectionRoots` and `state.auditInspectionIncludeAll`.
+  - [x] Added backend regression coverage for relative-path rejection and for mapping workflow execution outcomes to `succeeded` vs `skipped` vs `failed`.
+  - [x] Changed workflow-backed apply execution to derive result status from `workflow.ExecutionOutcome`, preserving skipped items in the queue and avoiding misleading success messages.
+  - [x] Hardened `/api/audit/apply` path normalization so only absolute paths are accepted for queued audit changes.
+
 
 ## Planning
 *do not implement yet*

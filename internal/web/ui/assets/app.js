@@ -104,6 +104,13 @@
 /**
  * @typedef {{
  *   roots?: string[],
+ *   include_all?: boolean,
+ * }} AuditInspectionRequest
+ */
+
+/**
+ * @typedef {{
+ *   roots?: string[],
  *   rows?: AuditInspectionRow[],
  *   error?: string,
  * }} AuditInspectionResponse
@@ -239,6 +246,7 @@ const auditSyncStrategyRequireCleanValue = "require_clean";
 const auditSyncStrategyStashChangesValue = "stash_changes";
 const auditSyncStrategyCommitChangesValue = "commit_changes";
 const auditChangeStatusSucceededValue = "succeeded";
+const auditChangeStatusSkippedValue = "skipped";
 const auditHeaderMarkerValue = "folder_name,final_github_repo";
 const auditHeaderColumns = [
   "folder_name",
@@ -847,14 +855,27 @@ async function runAuditTask() {
  * @param {boolean} clearOutput
  */
 async function inspectAuditRoots(clearOutput) {
-  const auditRoots = resolveAuditRoots();
-  if (auditRoots.length === 0) {
+  const inspectionRequest = {
+    roots: resolveAuditRoots(),
+    include_all: Boolean(elements.auditIncludeAll.checked),
+  };
+  if ((inspectionRequest.roots || []).length === 0) {
     hideAuditResults();
     clearPolling();
     renderRunError("Enter at least one audit root or choose a repository scope to inspect.");
     setStatus("failed");
     return;
   }
+
+  await inspectAuditRequest(inspectionRequest, clearOutput);
+}
+
+/**
+ * @param {AuditInspectionRequest} inspectionRequest
+ * @param {boolean} clearOutput
+ */
+async function inspectAuditRequest(inspectionRequest, clearOutput) {
+  const auditRoots = (inspectionRequest.roots || []).slice();
 
   clearPolling();
   hideAuditResults();
@@ -872,7 +893,7 @@ async function inspectAuditRoots(clearOutput) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         roots: auditRoots,
-        include_all: Boolean(elements.auditIncludeAll.checked),
+        include_all: Boolean(inspectionRequest.include_all),
       }),
     });
     if (!response.ok) {
@@ -886,6 +907,8 @@ async function inspectAuditRoots(clearOutput) {
       throw new Error(inspection.error);
     }
 
+    state.auditInspectionRoots = auditRoots;
+    state.auditInspectionIncludeAll = Boolean(inspectionRequest.include_all);
     renderTypedAuditResults(inspection);
     setStatus("succeeded");
   } catch (error) {
@@ -2203,9 +2226,7 @@ function renderRunAuditResults(snapshot) {
  * @param {AuditInspectionResponse} inspection
  */
 function renderTypedAuditResults(inspection) {
-  state.auditInspectionRoots = (inspection.roots || []).slice();
   state.auditInspectionRows = (inspection.rows || []).slice();
-  state.auditInspectionIncludeAll = Boolean(elements.auditIncludeAll.checked);
   state.auditQueueVisible = true;
 
   renderTypedAuditTable(state.auditInspectionRows);
@@ -2772,12 +2793,18 @@ async function applyAuditQueue() {
     state.auditQueue = state.auditQueue.filter((change) => !succeededIDs.has(change.id));
 
     if (state.auditInspectionRoots.length > 0) {
-      await inspectAuditRoots(false);
+      await inspectAuditRequest(
+        {
+          roots: state.auditInspectionRoots.slice(),
+          include_all: state.auditInspectionIncludeAll,
+        },
+        false,
+      );
     }
 
     const failedResults = results.filter((result) => result.status !== auditChangeStatusSucceededValue);
     if (failedResults.length > 0) {
-      renderRunError(failedResults.map((result) => result.error || `${result.kind} failed for ${result.path}`).join("\n"));
+      renderRunError(failedResults.map(formatAuditApplyIssue).join("\n"));
       setStatus("failed");
     } else {
       setStatus("succeeded");
@@ -2830,6 +2857,20 @@ function renderAuditApplyResults(results) {
 
   elements.stdoutOutput.textContent = stdoutSections.join("\n\n");
   elements.stderrOutput.textContent = stderrSections.join("\n\n");
+}
+
+/**
+ * @param {AuditChangeApplyResult} result
+ * @returns {string}
+ */
+function formatAuditApplyIssue(result) {
+  if (result.error) {
+    return result.error;
+  }
+  if (result.status === auditChangeStatusSkippedValue) {
+    return `${formatAuditChangeKind(result.kind)} skipped for ${result.path}`;
+  }
+  return `${formatAuditChangeKind(result.kind)} failed for ${result.path}`;
 }
 
 /**
