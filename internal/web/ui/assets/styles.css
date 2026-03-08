@@ -841,6 +841,15 @@ h4 {
   min-width: 14rem;
 }
 
+.audit-column-dirty-files {
+  width: 12rem;
+  min-width: 12rem;
+  max-width: 12rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .audit-actions-list {
   display: flex;
   flex-wrap: wrap;

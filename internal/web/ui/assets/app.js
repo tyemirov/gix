@@ -2331,6 +2331,10 @@ function renderAuditTable(headers, rows, emptyMessage) {
   headers.forEach((headerName) => {
     const headerCell = document.createElement("th");
     headerCell.scope = "col";
+    const headerCellClassName = auditTableColumnClass(headerName);
+    if (headerCellClassName) {
+      headerCell.classList.add(headerCellClassName);
+    }
     headerCell.textContent = auditColumnLabels[headerName] || headerName;
     headerRow.append(headerCell);
   });
@@ -2348,8 +2352,13 @@ function renderAuditTable(headers, rows, emptyMessage) {
       const rowElement = document.createElement("tr");
       record.forEach((value, valueIndex) => {
         const cell = document.createElement(valueIndex === 0 ? "th" : "td");
+        const headerName = headers[valueIndex] || "";
+        const cellClassName = auditTableColumnClass(headerName);
         if (valueIndex === 0) {
           cell.scope = "row";
+        }
+        if (cellClassName) {
+          cell.classList.add(cellClassName);
         }
         cell.textContent = value || " ";
         rowElement.append(cell);
@@ -2374,6 +2383,10 @@ function renderTypedAuditTable(rows) {
   typedAuditHeaderColumns.forEach((headerName) => {
     const headerCell = document.createElement("th");
     headerCell.scope = "col";
+    const headerCellClassName = auditTableColumnClass(headerName);
+    if (headerCellClassName) {
+      headerCell.classList.add(headerCellClassName);
+    }
     headerCell.textContent = auditColumnLabels[headerName] || headerName;
     headerRow.append(headerCell);
   });
@@ -2398,8 +2411,13 @@ function renderTypedAuditTable(rows) {
 
       record.forEach((value, valueIndex) => {
         const cell = document.createElement(valueIndex === 0 ? "th" : "td");
+        const headerName = typedAuditHeaderColumns[valueIndex] || "";
+        const cellClassName = auditTableColumnClass(headerName);
         if (valueIndex === 0) {
           cell.scope = "row";
+        }
+        if (cellClassName) {
+          cell.classList.add(cellClassName);
         }
         cell.textContent = value || " ";
         rowElement.append(cell);
@@ -2481,6 +2499,17 @@ function typedAuditRecord(row) {
         return "";
     }
   });
+}
+
+/**
+ * @param {string} headerName
+ * @returns {string}
+ */
+function auditTableColumnClass(headerName) {
+  if (headerName === "dirty_files") {
+    return "audit-column-dirty-files";
+  }
+  return "";
 }
 
 /**

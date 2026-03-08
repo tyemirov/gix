@@ -316,6 +316,20 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - [x] Synchronized parsed audit draft arguments back into the Audit task controls so the visible task state and the draft command stay aligned.
   - [x] Resolved typed audit inspections from the parsed draft request when available, eliminating the scope mismatch between the draft editor and the Inspect action.
 
+- Update on 2026-03-08 for audit dirty-files column layout.
+  Adjusted the audit table so the `Dirty Files` column stays narrow and wraps long file lists inside the cell instead of expanding the whole table width.
+  ### Summary
+  The typed audit table rendered `dirty_files` as an unconstrained content-width column, which let long file lists stretch the table horizontally and made the row harder to scan.
+
+  ### Analysis
+  - The table renderer already knew each logical audit column name, but it did not assign column-specific classes. Styling therefore had to treat every cell the same way.
+  - The `Dirty Files` column has different content characteristics from the rest of the audit data: it is often a semicolon-separated list of paths and benefits from a constrained width with aggressive wrapping.
+  - A targeted column class is the lowest-risk change because it keeps the rest of the table layout unchanged while making the path-heavy column fill vertical space instead of horizontal space.
+
+  ### Deliverables
+  - [x] Added a dedicated audit-table column class for `dirty_files` in both the typed and parsed audit table renderers.
+  - [x] Applied a narrow fixed width plus line wrapping and word breaking to the `Dirty Files` column.
+
 
 ## Planning
 *do not implement yet*
