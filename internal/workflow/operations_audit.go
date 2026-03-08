@@ -19,6 +19,7 @@ const (
 	auditDirectoryPermissionsConstant     = 0o755
 	auditCSVHeaderFinalRepositoryConstant = "final_github_repo"
 	auditCSVHeaderFolderNameConstant      = "folder_name"
+	auditCSVHeaderRemoteStatusConstant    = "origin_remote_status"
 	auditCSVHeaderNameMatchesConstant     = "name_matches"
 	auditCSVHeaderRemoteDefaultConstant   = "remote_default_branch"
 	auditCSVHeaderLocalBranchConstant     = "local_branch"
@@ -89,6 +90,7 @@ func (operation *AuditReportOperation) Execute(executionContext context.Context,
 	header := []string{
 		auditCSVHeaderFolderNameConstant,
 		auditCSVHeaderFinalRepositoryConstant,
+		auditCSVHeaderRemoteStatusConstant,
 		auditCSVHeaderNameMatchesConstant,
 		auditCSVHeaderRemoteDefaultConstant,
 		auditCSVHeaderLocalBranchConstant,
@@ -140,6 +142,7 @@ func buildAuditReportRow(inspection audit.RepositoryInspection) []string {
 	remoteDefaultBranch := inspection.RemoteDefaultBranch
 	localBranch := inspection.LocalBranch
 	inSync := inspection.InSyncStatus
+	originRemoteStatus := inspection.OriginRemoteStatus
 	remoteProtocol := string(inspection.RemoteProtocol)
 	originMatches := string(inspection.OriginMatchesCanonical)
 
@@ -148,6 +151,7 @@ func buildAuditReportRow(inspection audit.RepositoryInspection) []string {
 
 	if !inspection.IsGitRepository {
 		finalRepository = string(audit.TernaryValueNotApplicable)
+		originRemoteStatus = audit.OriginRemoteStatusNotApplicable
 		remoteDefaultBranch = string(audit.TernaryValueNotApplicable)
 		localBranch = string(audit.TernaryValueNotApplicable)
 		inSync = audit.TernaryValueNotApplicable
@@ -155,6 +159,10 @@ func buildAuditReportRow(inspection audit.RepositoryInspection) []string {
 		originMatches = string(audit.TernaryValueNotApplicable)
 		worktreeDirty = audit.TernaryValueNotApplicable
 	} else {
+		if originRemoteStatus == audit.OriginRemoteStatusMissing {
+			finalRepository = string(audit.TernaryValueNotApplicable)
+			remoteProtocol = string(audit.TernaryValueNotApplicable)
+		}
 		if len(inspection.WorktreeDirtyFiles) > 0 {
 			worktreeDirty = audit.TernaryValueYes
 			dirtyFiles = strings.Join(inspection.WorktreeDirtyFiles, "; ")
@@ -166,6 +174,7 @@ func buildAuditReportRow(inspection audit.RepositoryInspection) []string {
 	return []string{
 		inspection.FolderName,
 		finalRepository,
+		string(originRemoteStatus),
 		string(nameMatches),
 		remoteDefaultBranch,
 		localBranch,
