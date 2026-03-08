@@ -232,6 +232,7 @@ const commandPathWorkflowValue = "gix workflow";
 const auditCommandNameValue = "audit";
 const auditChangeKindRenameFolderValue = "rename_folder";
 const auditChangeKindUpdateCanonicalValue = "update_remote_canonical";
+const auditChangeKindDeleteFolderValue = "delete_folder";
 const auditChangeStatusSucceededValue = "succeeded";
 const auditHeaderMarkerValue = "folder_name,final_github_repo";
 const auditHeaderColumns = [
@@ -561,6 +562,7 @@ function bindEvents() {
   elements.auditIncludeAll.addEventListener("change", handleAuditDraftChange);
   elements.auditResultsBody.addEventListener("click", handleAuditResultsClick);
   elements.auditQueueList.addEventListener("click", handleAuditQueueListClick);
+  elements.auditQueueList.addEventListener("change", handleAuditQueueListChange);
   elements.auditQueueClear.addEventListener("click", clearAuditQueue);
   elements.auditQueueApply.addEventListener("click", () => {
     void applyAuditQueue();
@@ -2430,43 +2432,87 @@ function handleAuditQueueListClick(event) {
 }
 
 /**
+ * @param {Event} event
+ */
+function handleAuditQueueListChange(event) {
+  const eventTarget = event.target;
+  if (!(eventTarget instanceof HTMLElement)) {
+    return;
+  }
+
+  const deleteCheckbox = eventTarget.closest("[data-queue-confirm-delete]");
+  if (!(deleteCheckbox instanceof HTMLInputElement)) {
+    return;
+  }
+
+  const changeID = deleteCheckbox.dataset.queueConfirmDelete || "";
+  if (!changeID) {
+    return;
+  }
+
+  state.auditQueue = state.auditQueue.map((change) => {
+    if (change.id !== changeID) {
+      return change;
+    }
+    return {
+      ...change,
+      confirm_delete: deleteCheckbox.checked,
+    };
+  });
+  renderRunError("");
+  renderAuditQueue();
+}
+
+/**
  * @param {AuditInspectionRow} row
  * @returns {AuditRowActionDefinition[]}
  */
 function buildAuditRowActions(row) {
   /** @type {AuditRowActionDefinition[]} */
   const actions = [];
-  if (!row.is_git_repository) {
-    return actions;
-  }
-
-  if (row.name_matches === "no") {
-    actions.push({
-      kind: auditChangeKindRenameFolderValue,
-      label: "Queue rename",
-      title: "Rename folder",
-      description: row.final_github_repo && row.final_github_repo !== "n/a"
-        ? `Rename the folder to match ${row.final_github_repo}.`
-        : "Rename the folder to match the audited repository name.",
-      buildChange: () => ({
+  if (row.is_git_repository) {
+    if (row.name_matches === "no") {
+      actions.push({
         kind: auditChangeKindRenameFolderValue,
-        path: row.path,
-        require_clean: true,
-      }),
-    });
+        label: "Queue rename",
+        title: "Rename folder",
+        description: row.final_github_repo && row.final_github_repo !== "n/a"
+          ? `Rename the folder to match ${row.final_github_repo}.`
+          : "Rename the folder to match the audited repository name.",
+        buildChange: () => ({
+          kind: auditChangeKindRenameFolderValue,
+          path: row.path,
+          require_clean: true,
+        }),
+      });
+    }
+
+    if (row.origin_remote_status === "configured" && row.origin_matches_canonical === "no") {
+      actions.push({
+        kind: auditChangeKindUpdateCanonicalValue,
+        label: "Queue remote fix",
+        title: "Fix canonical remote",
+        description: row.final_github_repo && row.final_github_repo !== "n/a"
+          ? `Update origin to the canonical repository ${row.final_github_repo}.`
+          : "Update origin to the canonical repository.",
+        buildChange: () => ({
+          kind: auditChangeKindUpdateCanonicalValue,
+          path: row.path,
+        }),
+      });
+    }
   }
 
-  if (row.origin_remote_status === "configured" && row.origin_matches_canonical === "no") {
+  if (row.path) {
     actions.push({
-      kind: auditChangeKindUpdateCanonicalValue,
-      label: "Queue remote fix",
-      title: "Fix canonical remote",
-      description: row.final_github_repo && row.final_github_repo !== "n/a"
-        ? `Update origin to the canonical repository ${row.final_github_repo}.`
-        : "Update origin to the canonical repository.",
+      kind: auditChangeKindDeleteFolderValue,
+      label: "Queue delete",
+      title: "Delete folder",
+      description: `Delete ${row.path} from disk from the web audit workspace after explicit confirmation.`,
       buildChange: () => ({
-        kind: auditChangeKindUpdateCanonicalValue,
+        kind: auditChangeKindDeleteFolderValue,
         path: row.path,
+        confirm_delete: false,
       }),
     });
   }
@@ -2491,14 +2537,14 @@ function queueAuditChange(row, action) {
     ...changeDefinition,
   };
 
-  const existingDeleteChange = state.auditQueue.find((change) => change.path === candidate.path && change.kind === "delete_folder");
-  if (existingDeleteChange && candidate.kind !== "delete_folder") {
+  const existingDeleteChange = state.auditQueue.find((change) => change.path === candidate.path && change.kind === auditChangeKindDeleteFolderValue);
+  if (existingDeleteChange && candidate.kind !== auditChangeKindDeleteFolderValue) {
     renderRunError(`Delete folder is already queued for ${candidate.path}. Remove it before adding another fix.`);
     return;
   }
 
   const existingIndex = state.auditQueue.findIndex((change) => change.path === candidate.path && change.kind === candidate.kind);
-  if (candidate.kind === "delete_folder" && state.auditQueue.some((change) => change.path === candidate.path && change.kind !== candidate.kind)) {
+  if (candidate.kind === auditChangeKindDeleteFolderValue && state.auditQueue.some((change) => change.path === candidate.path && change.kind !== candidate.kind)) {
     renderRunError(`Remove existing queued fixes for ${candidate.path} before queueing folder deletion.`);
     return;
   }
@@ -2570,16 +2616,24 @@ function renderAuditQueue() {
       appendToken(meta, change.path, "token-context");
 
       container.append(heading, description, meta);
+      const options = renderAuditQueueOptions(change);
+      if (options) {
+        container.append(options);
+      }
       elements.auditQueueList.append(container);
     });
   }
 
   elements.auditQueueClear.disabled = state.auditQueue.length === 0 || state.auditQueueApplying;
-  elements.auditQueueApply.disabled = state.auditQueue.length === 0 || state.auditQueueApplying;
+  elements.auditQueueApply.disabled = state.auditQueue.length === 0 || state.auditQueueApplying || !auditQueueCanApply();
 }
 
 async function applyAuditQueue() {
   if (state.auditQueue.length === 0 || state.auditQueueApplying) {
+    return;
+  }
+  if (!auditQueueCanApply()) {
+    renderRunError("Review the pending changes and complete all required confirmations before applying the queue.");
     return;
   }
 
@@ -2709,9 +2763,55 @@ function formatAuditChangeKind(kind) {
       return "Rename folder";
     case auditChangeKindUpdateCanonicalValue:
       return "Fix canonical remote";
+    case auditChangeKindDeleteFolderValue:
+      return "Delete folder";
     default:
       return kind;
   }
+}
+
+/**
+ * @param {AuditQueueEntry} change
+ * @returns {HTMLElement | null}
+ */
+function renderAuditQueueOptions(change) {
+  if (change.kind !== auditChangeKindDeleteFolderValue) {
+    return null;
+  }
+
+  const container = document.createElement("div");
+  container.className = "audit-queue-options";
+
+  const warning = document.createElement("p");
+  warning.className = "audit-queue-warning";
+  warning.textContent = "This permanently removes the folder from disk. Confirm before applying.";
+
+  const label = document.createElement("label");
+  label.className = "checkbox-row audit-queue-confirm";
+
+  const checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  checkbox.checked = Boolean(change.confirm_delete);
+  checkbox.dataset.queueConfirmDelete = change.id;
+
+  const copy = document.createElement("span");
+  copy.textContent = "I understand this deletes the folder permanently";
+
+  label.append(checkbox, copy);
+  container.append(warning, label);
+  return container;
+}
+
+/**
+ * @returns {boolean}
+ */
+function auditQueueCanApply() {
+  return state.auditQueue.every((change) => {
+    if (change.kind === auditChangeKindDeleteFolderValue) {
+      return Boolean(change.confirm_delete);
+    }
+    return true;
+  });
 }
 
 /**

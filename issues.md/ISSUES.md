@@ -185,8 +185,9 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - [x] Update CLI and integration tests that assert audit CSV headers and rows.
   - [x] Keep current `origin_matches_canonical` semantics for real remotes; do not repurpose it to mean remote absence.
 
-- [ ] [F007] The web audit workspace needs a UX-only folder deletion operation, queued before apply.
+- [x] [F007] The web audit workspace needs a UX-only folder deletion operation, queued before apply.
   Requested on 2026-03-08 as part of the row-action audit UX.
+  Resolved on 2026-03-08 by surfacing a web-only `delete_folder` row action in the audit table, requiring explicit queue confirmation before apply, and covering the queue/apply/refresh flow with a browser test. The current scope intentionally allows deleting any audited folder path from the web queue, including repository folders, while still blocking filesystem-root deletion in the backend.
   ### Summary
   The browser should support deleting a folder directly from the audit workspace, but only as a queued web action rather than a new immediate CLI behavior.
 

@@ -36,6 +36,8 @@ const (
 	auditQueueSummarySelectorConstant     = "#audit-queue-summary"
 	auditQueueListSelectorConstant        = "#audit-queue-list"
 	auditQueueApplySelectorConstant       = "#audit-queue-apply"
+	auditQueueDeleteSelectorConstant      = "[data-audit-action='delete_folder']"
+	auditQueueDeleteConfirmSelector       = "[data-queue-confirm-delete]"
 	auditQueueRenameSelectorConstant      = "[data-audit-action='rename_folder']"
 	branchTaskButtonSelectorConstant      = "#task-branch"
 	filesTaskButtonSelectorConstant       = "#task-files"
@@ -303,6 +305,118 @@ func TestWebInterfaceBrowserQueuesRenameChangeAndAppliesIt(t *testing.T) {
 	auditResultsText, auditResultsError := readTextContent(browserContext, auditResultsBodySelectorConstant)
 	require.NoError(t, auditResultsError)
 	require.Contains(t, auditResultsText, "yes")
+}
+
+func TestWebInterfaceBrowserQueuesDeleteChangeAndRequiresConfirmation(t *testing.T) {
+	repositoryPath := createTestRepository(t, filepath.Join(t.TempDir(), "workspace", "example"))
+
+	deleteApplied := false
+	httpServer, repositoryCatalog := newBrowserTestServerWithAuditHandlers(
+		t,
+		repositoryPath,
+		func(_ context.Context, request web.AuditInspectionRequest) web.AuditInspectionResponse {
+			rows := []web.AuditInspectionRow{
+				{
+					Path:                   filepath.Join(auditCustomRootValueConstant, "example"),
+					FolderName:             "example",
+					IsGitRepository:        true,
+					FinalGitHubRepository:  "canonical/example",
+					OriginRemoteStatus:     "configured",
+					NameMatches:            "yes",
+					RemoteDefaultBranch:    "main",
+					LocalBranch:            "main",
+					InSync:                 "yes",
+					RemoteProtocol:         "https",
+					OriginMatchesCanonical: "yes",
+					WorktreeDirty:          "no",
+					DirtyFiles:             "",
+				},
+			}
+			if deleteApplied {
+				rows = nil
+			}
+			return web.AuditInspectionResponse{
+				Roots: request.Roots,
+				Rows:  rows,
+			}
+		},
+		func(_ context.Context, request web.AuditChangeApplyRequest) web.AuditChangeApplyResponse {
+			require.Len(t, request.Changes, 1)
+			require.Equal(t, web.AuditChangeKindDeleteFolder, request.Changes[0].Kind)
+			require.True(t, request.Changes[0].ConfirmDelete)
+			deleteApplied = true
+			return web.AuditChangeApplyResponse{
+				Results: []web.AuditChangeApplyResult{
+					{
+						ID:      request.Changes[0].ID,
+						Kind:    request.Changes[0].Kind,
+						Path:    request.Changes[0].Path,
+						Status:  "succeeded",
+						Message: "delete applied",
+					},
+				},
+			}
+		},
+	)
+	defer httpServer.Close()
+
+	browserContext := newBrowserTestContext(t)
+	expectedRepository := selectedRepositoryDescriptor(t, repositoryCatalog)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		chromedp.Navigate(httpServer.URL),
+		chromedp.WaitVisible(auditRunButtonSelectorConstant, chromedp.ByQuery),
+	))
+	waitForControlSurfaceReady(t, browserContext, expectedRepository.Name)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		setControlValue(auditRootsInputSelectorConstant, auditCustomRootValueConstant),
+		chromedp.Click(auditRunButtonSelectorConstant, chromedp.ByQuery),
+		chromedp.WaitVisible(auditResultsPanelSelectorConstant, chromedp.ByQuery),
+		chromedp.Click(auditQueueDeleteSelectorConstant, chromedp.ByQuery),
+		chromedp.WaitVisible(auditQueuePanelSelectorConstant, chromedp.ByQuery),
+	))
+
+	queueSummary, queueSummaryError := readTextContent(browserContext, auditQueueSummarySelectorConstant)
+	require.NoError(t, queueSummaryError)
+	require.Equal(t, "1 pending change", queueSummary)
+
+	queueText, queueTextError := readTextContent(browserContext, auditQueueListSelectorConstant)
+	require.NoError(t, queueTextError)
+	require.Contains(t, queueText, "Delete folder")
+	require.Contains(t, queueText, auditCustomRootValueConstant)
+
+	applyDisabled, applyDisabledError := readDisabledState(browserContext, auditQueueApplySelectorConstant)
+	require.NoError(t, applyDisabledError)
+	require.True(t, applyDisabled)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		setCheckboxValue(auditQueueDeleteConfirmSelector, true),
+	))
+
+	require.Eventually(t, func() bool {
+		disabled, disabledError := readDisabledState(browserContext, auditQueueApplySelectorConstant)
+		if disabledError != nil {
+			return false
+		}
+		return !disabled
+	}, browserReadyTimeoutConstant, browserReadyPollIntervalConstant)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		chromedp.Click(auditQueueApplySelectorConstant, chromedp.ByQuery),
+	))
+
+	require.Eventually(t, func() bool {
+		summaryText, summaryError := readTextContent(browserContext, auditQueueSummarySelectorConstant)
+		if summaryError != nil {
+			return false
+		}
+		return summaryText == "0 pending changes"
+	}, browserReadyTimeoutConstant, browserReadyPollIntervalConstant)
+
+	auditSummary, auditSummaryError := readTextContent(browserContext, auditResultsSummarySelectorConstant)
+	require.NoError(t, auditSummaryError)
+	require.Equal(t, "0 rows", auditSummary)
 }
 
 func TestWebInterfaceBrowserPrefillsRemoteAndWorkflowTasksAcrossRepositoryScope(t *testing.T) {
@@ -623,6 +737,16 @@ func readValue(browserContext context.Context, selector string) (string, error) 
 	var controlValue string
 	actionError := chromedp.Run(browserContext, chromedp.Value(selector, &controlValue, chromedp.ByQuery))
 	return controlValue, actionError
+}
+
+func readDisabledState(browserContext context.Context, selector string) (bool, error) {
+	var disabled bool
+	script := fmt.Sprintf(`(() => {
+		const element = document.querySelector(%q);
+		return element ? Boolean(element.disabled) : false;
+	})()`, selector)
+	actionError := chromedp.Run(browserContext, chromedp.Evaluate(script, &disabled))
+	return disabled, actionError
 }
 
 func setControlValue(selector string, value string) chromedp.Action {
