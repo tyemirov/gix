@@ -71,6 +71,7 @@ const (
 	commandGroupsSelectorConstant         = "#command-groups"
 	argumentsInputSelectorConstant        = "#arguments-input"
 	commandPreviewSelectorConstant        = "#command-preview"
+	runCommandSelectorConstant            = "#run-command"
 	auditCommandPathConstant              = "gix audit"
 	branchCommandPathConstant             = "gix cd"
 	filesReplaceCommandPathConstant       = "gix files replace"
@@ -215,6 +216,55 @@ func TestWebInterfaceBrowserInspectsAuditRootsAndDisplaysTable(t *testing.T) {
 	require.Contains(t, auditResultsText, "canonical/example")
 	require.Contains(t, auditResultsText, "missing")
 	require.Contains(t, auditResultsText, auditCustomRootValueConstant)
+}
+
+func TestWebInterfaceBrowserRunButtonUsesActionableAuditInspection(t *testing.T) {
+	repositoryPath := createTestRepository(t, filepath.Join(t.TempDir(), "workspace", "example"))
+
+	httpServer, repositoryCatalog := newBrowserTestServerWithInspector(t, repositoryPath, func(_ context.Context, request web.AuditInspectionRequest) web.AuditInspectionResponse {
+		return web.AuditInspectionResponse{
+			Roots: request.Roots,
+			Rows: []web.AuditInspectionRow{
+				{
+					Path:                   filepath.Join(auditCustomRootValueConstant, "example"),
+					FolderName:             "example",
+					IsGitRepository:        true,
+					FinalGitHubRepository:  "canonical/example",
+					OriginRemoteStatus:     "missing",
+					NameMatches:            "no",
+					RemoteDefaultBranch:    "",
+					LocalBranch:            "",
+					InSync:                 "n/a",
+					RemoteProtocol:         "n/a",
+					OriginMatchesCanonical: "n/a",
+					WorktreeDirty:          "no",
+					DirtyFiles:             "",
+				},
+			},
+		}
+	})
+	defer httpServer.Close()
+
+	browserContext := newBrowserTestContext(t)
+	expectedRepository := selectedRepositoryDescriptor(t, repositoryCatalog)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		chromedp.Navigate(httpServer.URL),
+		chromedp.WaitVisible(runCommandSelectorConstant, chromedp.ByQuery),
+	))
+	waitForControlSurfaceReady(t, browserContext, expectedRepository.Name)
+	assertSelectedCommand(t, browserContext, auditCommandPathConstant)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		setControlValue(auditRootsInputSelectorConstant, auditCustomRootValueConstant),
+		chromedp.Click(runCommandSelectorConstant, chromedp.ByQuery),
+		chromedp.WaitVisible(auditResultsPanelSelectorConstant, chromedp.ByQuery),
+		chromedp.WaitVisible(auditQueueRenameSelectorConstant, chromedp.ByQuery),
+	))
+
+	runButtonLabel, runButtonLabelError := readTextContent(browserContext, runCommandSelectorConstant)
+	require.NoError(t, runButtonLabelError)
+	require.Equal(t, "Inspect audit table", runButtonLabel)
 }
 
 func TestWebInterfaceBrowserQueuesRenameChangeAndAppliesIt(t *testing.T) {

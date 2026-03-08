@@ -283,6 +283,22 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - [x] Added an explicit `about:blank` startup probe in `newBrowserTestContext` and skip browser tests only when Chrome cannot start in the runner environment.
   - [x] Revalidated the previously failing protocol/sync browser test plus the full `make format`, `make test`, `make lint`, and `make ci` sequence.
 
+- Update on 2026-03-08 for web audit runner UX.
+  Fixed a mismatch between the main Run button and the action-capable audit table.
+  ### Summary
+  The web client exposed two audit render paths: the Audit task’s typed inspection flow, which supports row actions, and the generic runner flow, which only parsed stdout into a read-only table. Operators could therefore click the main Run button while `gix audit` was selected, see an audit table, and still have no remediation actions available.
+
+  ### Analysis
+  - This was a real product bug, not just a discoverability issue. The initial command selection is `gix audit`, and the main runner affordance remained active, so the UI naturally suggested that running audit from there should produce the same actionable table as the task panel.
+  - The generic runner path cannot support queued remediation safely because parsed audit stdout does not carry the typed row contract the browser uses for path-based actions.
+  - Leaving both paths active meant the same visible command produced two materially different audit experiences, one actionable and one read-only, depending only on which button the user clicked.
+  - The correct fix is to route `gix audit` through the typed inspection API regardless of whether the user clicks the Audit task button or the main Run button, and to label the button accordingly.
+
+  ### Deliverables
+  - [x] Added a browser regression that selects `gix audit`, clicks the main Run button, and asserts the resulting table includes row-action controls.
+  - [x] Routed main-button audit execution through the typed inspection flow instead of the generic run API.
+  - [x] Updated the main button label to `Inspect audit table` when `gix audit` is the selected command so the UX matches the actual behavior.
+
 
 ## Planning
 *do not implement yet*

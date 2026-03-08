@@ -2063,6 +2063,7 @@ function renderFlags(flags) {
 }
 
 function renderCommandPreview() {
+  renderRunButtonLabel();
   const argumentsList = readArguments();
   if (argumentsList.length === 0) {
     elements.commandPreview.textContent = "gix";
@@ -2073,8 +2074,18 @@ function renderCommandPreview() {
   elements.commandPreview.textContent = `gix ${quotedArguments.join(" ")}`;
 }
 
+function renderRunButtonLabel() {
+  const selectedCommand = findSelectedCommand();
+  elements.runButton.textContent = selectedCommand?.path === commandPathAuditValue ? "Inspect audit table" : "Run";
+}
+
 async function submitRun() {
   if (elements.runButton.disabled) {
+    return;
+  }
+
+  if (findSelectedCommand()?.path === commandPathAuditValue) {
+    await runAuditTask();
     return;
   }
 
