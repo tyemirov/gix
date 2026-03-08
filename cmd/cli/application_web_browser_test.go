@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -26,6 +27,11 @@ const (
 	browserReadyPollIntervalConstant       = 100 * time.Millisecond
 	repositoryTitleLoadingConstant         = "Loading..."
 
+	auditRunButtonSelectorConstant        = "#task-inspect-load"
+	auditResultsPanelSelectorConstant     = "#audit-results-panel"
+	auditResultsSummarySelectorConstant   = "#audit-results-summary"
+	auditResultsBodySelectorConstant      = "#audit-results-body"
+	runStatusSelectorConstant             = "#run-status"
 	branchTaskButtonSelectorConstant      = "#task-branch"
 	filesTaskButtonSelectorConstant       = "#task-files"
 	remotesTaskButtonSelectorConstant     = "#task-remotes"
@@ -70,6 +76,7 @@ const (
 	workflowVariableAssignmentConstant    = "license_year=2026"
 	workflowVariableFileConstant          = "./vars.yaml"
 	workflowWorkersValueConstant          = "3"
+	auditBrowserOutputConstant            = "folder_name,final_github_repo,name_matches,remote_default_branch,local_branch,in_sync,remote_protocol,origin_matches_canonical,worktree_dirty,dirty_files\nexample,canonical/example,no,main,feature/demo,n/a,https,no,no,\n"
 )
 
 var browserExecutableCandidates = []string{
@@ -141,6 +148,58 @@ func TestWebInterfaceBrowserPrefillsBranchAndFileTasks(t *testing.T) {
 		"--replace",
 		replacementTextValueConstant,
 	})
+}
+
+func TestWebInterfaceBrowserRunsAuditAndDisplaysTable(t *testing.T) {
+	repositoryPath := createTestRepository(t, filepath.Join(t.TempDir(), "workspace", "example"))
+
+	httpServer, repositoryCatalog := newBrowserTestServerWithExecutor(t, repositoryPath, func(_ context.Context, arguments []string, _ io.Reader, standardOutput io.Writer, _ io.Writer) error {
+		if len(arguments) == 0 || arguments[0] != "audit" {
+			return nil
+		}
+		_, writeError := io.WriteString(standardOutput, auditBrowserOutputConstant)
+		return writeError
+	})
+	defer httpServer.Close()
+
+	browserContext := newBrowserTestContext(t)
+	expectedRepository := selectedRepositoryDescriptor(t, repositoryCatalog)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		chromedp.Navigate(httpServer.URL),
+		chromedp.WaitVisible(auditRunButtonSelectorConstant, chromedp.ByQuery),
+	))
+	waitForControlSurfaceReady(t, browserContext, expectedRepository.Name)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		chromedp.Click(auditRunButtonSelectorConstant, chromedp.ByQuery),
+		chromedp.WaitVisible(auditResultsPanelSelectorConstant, chromedp.ByQuery),
+	))
+
+	assertSelectedCommand(t, browserContext, auditCommandPathConstant)
+	assertRunnerArguments(t, browserContext, []string{
+		"audit",
+		"--roots",
+		expectedRepository.Path,
+	})
+
+	require.Eventually(t, func() bool {
+		runStatus, runStatusError := readTextContent(browserContext, runStatusSelectorConstant)
+		if runStatusError != nil {
+			return false
+		}
+		return runStatus == "succeeded"
+	}, browserReadyTimeoutConstant, browserReadyPollIntervalConstant)
+
+	auditSummary, auditSummaryError := readTextContent(browserContext, auditResultsSummarySelectorConstant)
+	require.NoError(t, auditSummaryError)
+	require.Equal(t, "1 row", auditSummary)
+
+	auditResultsText, auditResultsError := readTextContent(browserContext, auditResultsBodySelectorConstant)
+	require.NoError(t, auditResultsError)
+	require.Contains(t, auditResultsText, "example")
+	require.Contains(t, auditResultsText, "canonical/example")
+	require.Contains(t, auditResultsText, "feature/demo")
 }
 
 func TestWebInterfaceBrowserPrefillsRemoteAndWorkflowTasksAcrossRepositoryScope(t *testing.T) {
@@ -251,6 +310,10 @@ func TestWebInterfaceBrowserAdvancedHidesTaskOwnedCommands(t *testing.T) {
 }
 
 func newBrowserTestServer(testingInstance *testing.T, workingDirectory string) (*httptest.Server, web.RepositoryCatalog) {
+	return newBrowserTestServerWithExecutor(testingInstance, workingDirectory, nil)
+}
+
+func newBrowserTestServerWithExecutor(testingInstance *testing.T, workingDirectory string, execute web.CommandExecutor) (*httptest.Server, web.RepositoryCatalog) {
 	testingInstance.Helper()
 
 	var httpServer *httptest.Server
@@ -259,13 +322,17 @@ func newBrowserTestServer(testingInstance *testing.T, workingDirectory string) (
 	withWorkingDirectory(testingInstance, workingDirectory, func() {
 		application := NewApplication()
 		repositoryCatalog = application.repositoryCatalog(context.Background())
+		commandExecutor := execute
+		if commandExecutor == nil {
+			commandExecutor = application.newWebCommandExecutor()
+		}
 
 		server, serverError := web.NewServer(web.ServerOptions{
 			Address:      testServerAddressConstant,
 			Repositories: repositoryCatalog,
 			Catalog:      application.commandCatalog(),
 			LoadBranches: application.loadRepositoryBranches,
-			Execute:      application.newWebCommandExecutor(),
+			Execute:      commandExecutor,
 		})
 		require.NoError(testingInstance, serverError)
 

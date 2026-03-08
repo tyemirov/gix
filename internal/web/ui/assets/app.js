@@ -150,6 +150,32 @@ const commandPathRemoteCanonicalValue = "gix remote update-to-canonical";
 const commandPathPullRequestsDeleteValue = "gix prs delete";
 const commandPathPackagesDeleteValue = "gix packages delete";
 const commandPathWorkflowValue = "gix workflow";
+const auditCommandNameValue = "audit";
+const auditHeaderMarkerValue = "folder_name,final_github_repo";
+const auditHeaderColumns = [
+  "folder_name",
+  "final_github_repo",
+  "name_matches",
+  "remote_default_branch",
+  "local_branch",
+  "in_sync",
+  "remote_protocol",
+  "origin_matches_canonical",
+  "worktree_dirty",
+  "dirty_files",
+];
+const auditColumnLabels = Object.freeze({
+  folder_name: "Folder",
+  final_github_repo: "GitHub Repo",
+  name_matches: "Name Matches",
+  remote_default_branch: "Remote Default",
+  local_branch: "Local Branch",
+  in_sync: "In Sync",
+  remote_protocol: "Protocol",
+  origin_matches_canonical: "Origin Matches Canonical",
+  worktree_dirty: "Worktree Dirty",
+  dirty_files: "Dirty Files",
+});
 const taskInspectValue = "inspect";
 const taskBranchValue = "branch";
 const taskFilesValue = "files";
@@ -290,6 +316,10 @@ const elements = {
   runButton: document.querySelector("#run-command"),
   runStatus: document.querySelector("#run-status"),
   runID: document.querySelector("#run-id"),
+  auditResultsPanel: document.querySelector("#audit-results-panel"),
+  auditResultsSummary: document.querySelector("#audit-results-summary"),
+  auditResultsHead: document.querySelector("#audit-results-head"),
+  auditResultsBody: document.querySelector("#audit-results-body"),
   stdoutOutput: document.querySelector("#stdout-output"),
   stderrOutput: document.querySelector("#stderr-output"),
   runError: document.querySelector("#run-error"),
@@ -397,7 +427,7 @@ function bindEvents() {
   });
 
   elements.taskInspectLoad.addEventListener("click", () => {
-    selectCommand(commandPathAuditValue);
+    void runAuditTask();
   });
 
   elements.scopeSelected.addEventListener("click", () => {
@@ -654,6 +684,11 @@ function loadRemoteTaskCommand() {
 
 function loadWorkflowTaskCommand() {
   selectCommand(commandPathWorkflowValue);
+}
+
+async function runAuditTask() {
+  selectCommand(commandPathAuditValue);
+  await submitRun();
 }
 
 function renderRepositoryLaunchSummary() {
@@ -1772,8 +1807,13 @@ function renderCommandPreview() {
 }
 
 async function submitRun() {
+  if (elements.runButton.disabled) {
+    return;
+  }
+
   clearPolling();
   renderRunError("");
+  hideAuditResults();
   setStatus("running");
   elements.runButton.disabled = true;
 
@@ -1856,6 +1896,7 @@ function updateRun(snapshot) {
   elements.runID.textContent = snapshot.id;
   elements.stdoutOutput.textContent = snapshot.stdout || "";
   elements.stderrOutput.textContent = snapshot.stderr || "";
+  renderAuditResults(snapshot);
   renderRunError(snapshot.error || "");
   setStatus(snapshot.status);
 }
@@ -1894,6 +1935,203 @@ function clearPolling() {
     window.clearTimeout(state.pollTimer);
     state.pollTimer = null;
   }
+}
+
+/**
+ * @param {RunSnapshot | null} snapshot
+ */
+function renderAuditResults(snapshot) {
+  const auditResults = resolveAuditResults(snapshot);
+  if (!auditResults) {
+    hideAuditResults();
+    return;
+  }
+
+  elements.auditResultsHead.innerHTML = "";
+  elements.auditResultsBody.innerHTML = "";
+
+  const headerRow = document.createElement("tr");
+  auditResults.headers.forEach((headerName) => {
+    const headerCell = document.createElement("th");
+    headerCell.scope = "col";
+    headerCell.textContent = auditColumnLabels[headerName] || headerName;
+    headerRow.append(headerCell);
+  });
+  elements.auditResultsHead.append(headerRow);
+
+  auditResults.rows.forEach((record) => {
+    const rowElement = document.createElement("tr");
+    record.forEach((value, valueIndex) => {
+      const cell = document.createElement(valueIndex === 0 ? "th" : "td");
+      if (valueIndex === 0) {
+        cell.scope = "row";
+      }
+      cell.textContent = value || " ";
+      rowElement.append(cell);
+    });
+    elements.auditResultsBody.append(rowElement);
+  });
+
+  const rowCount = auditResults.rows.length;
+  elements.auditResultsSummary.textContent = `${rowCount} ${rowCount === 1 ? "row" : "rows"}`;
+  elements.auditResultsPanel.hidden = false;
+}
+
+function hideAuditResults() {
+  elements.auditResultsPanel.hidden = true;
+  elements.auditResultsSummary.textContent = "";
+  elements.auditResultsHead.innerHTML = "";
+  elements.auditResultsBody.innerHTML = "";
+}
+
+/**
+ * @param {RunSnapshot | null} snapshot
+ * @returns {{ headers: string[], rows: string[][] } | null}
+ */
+function resolveAuditResults(snapshot) {
+  if (!snapshot || !isAuditRun(snapshot)) {
+    return null;
+  }
+
+  const parsedRecords = parseAuditCSV(snapshot.stdout || "");
+  if (!parsedRecords || parsedRecords.length === 0) {
+    return null;
+  }
+
+  const [headers, ...records] = parsedRecords;
+  if (!auditHeadersMatch(headers)) {
+    return null;
+  }
+
+  const rows = [];
+  for (const record of records) {
+    if (record.length === 1 && record[0].trim().length === 0) {
+      continue;
+    }
+    if (record.length !== headers.length) {
+      return null;
+    }
+    rows.push(record);
+  }
+
+  return { headers, rows };
+}
+
+/**
+ * @param {RunSnapshot} snapshot
+ * @returns {boolean}
+ */
+function isAuditRun(snapshot) {
+  return Array.isArray(snapshot.arguments) && snapshot.arguments[0] === auditCommandNameValue;
+}
+
+/**
+ * @param {string} rawOutput
+ * @returns {string[][] | null}
+ */
+function parseAuditCSV(rawOutput) {
+  const headerIndex = rawOutput.indexOf(auditHeaderMarkerValue);
+  if (headerIndex === -1) {
+    return null;
+  }
+
+  const csvPayload = rawOutput.slice(headerIndex).trim();
+  if (!csvPayload) {
+    return null;
+  }
+
+  return parseCSVRecords(csvPayload);
+}
+
+/**
+ * @param {string[]} headers
+ * @returns {boolean}
+ */
+function auditHeadersMatch(headers) {
+  if (headers.length !== auditHeaderColumns.length) {
+    return false;
+  }
+
+  return headers.every((headerValue, headerIndex) => headerValue === auditHeaderColumns[headerIndex]);
+}
+
+/**
+ * @param {string} rawCSV
+ * @returns {string[][] | null}
+ */
+function parseCSVRecords(rawCSV) {
+  if (!rawCSV) {
+    return null;
+  }
+
+  /** @type {string[][]} */
+  const records = [];
+  /** @type {string[]} */
+  let currentRecord = [];
+  let currentField = "";
+  let insideQuotes = false;
+
+  const commitField = () => {
+    currentRecord.push(currentField);
+    currentField = "";
+  };
+
+  const commitRecord = () => {
+    commitField();
+    records.push(currentRecord);
+    currentRecord = [];
+  };
+
+  for (let characterIndex = 0; characterIndex < rawCSV.length; characterIndex += 1) {
+    const character = rawCSV[characterIndex];
+
+    if (insideQuotes) {
+      if (character === "\"") {
+        const nextCharacter = rawCSV[characterIndex + 1];
+        if (nextCharacter === "\"") {
+          currentField += "\"";
+          characterIndex += 1;
+          continue;
+        }
+        insideQuotes = false;
+        continue;
+      }
+
+      currentField += character;
+      continue;
+    }
+
+    if (character === "\"") {
+      insideQuotes = true;
+      continue;
+    }
+
+    if (character === ",") {
+      commitField();
+      continue;
+    }
+
+    if (character === "\r") {
+      continue;
+    }
+
+    if (character === "\n") {
+      commitRecord();
+      continue;
+    }
+
+    currentField += character;
+  }
+
+  if (insideQuotes) {
+    return null;
+  }
+
+  if (currentField.length > 0 || currentRecord.length > 0) {
+    commitRecord();
+  }
+
+  return records;
 }
 
 function repopulateSelectedCommand() {

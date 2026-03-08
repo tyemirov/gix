@@ -786,6 +786,53 @@ h4 {
   border-top: 1px solid var(--line);
 }
 
+.audit-results-panel {
+  margin-top: 0.9rem;
+  padding: 0.95rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-medium);
+  background: rgba(255, 255, 255, 0.48);
+}
+
+.audit-table-shell {
+  overflow: auto;
+  margin-top: 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-medium);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.audit-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.audit-table th,
+.audit-table td {
+  padding: 0.72rem 0.8rem;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.audit-table thead th {
+  position: sticky;
+  top: 0;
+  background: rgba(246, 235, 220, 0.98);
+  z-index: 1;
+}
+
+.audit-table tbody tr:nth-child(even) {
+  background: rgba(239, 230, 214, 0.35);
+}
+
+.audit-table tbody tr:last-child th,
+.audit-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
 .flag-item {
   padding: 0.85rem 0.9rem;
   border: 1px solid var(--line);
