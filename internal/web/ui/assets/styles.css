@@ -890,6 +890,40 @@ h4 {
   gap: 0.45rem;
 }
 
+.audit-queue-options {
+  margin-top: 0.8rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid rgba(73, 46, 27, 0.12);
+}
+
+.audit-queue-options-heading {
+  margin-bottom: 0.55rem;
+  font-size: 0.84rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.audit-queue-option-note {
+  margin: 0 0 0.65rem;
+  color: var(--text-soft);
+}
+
+.audit-queue-option-row {
+  display: block;
+  margin-top: 0.65rem;
+  color: var(--muted);
+}
+
+.audit-queue-select {
+  margin-top: 0.45rem;
+}
+
+.audit-queue-warning {
+  margin: 0 0 0.65rem;
+  color: var(--danger);
+}
+
 .audit-queue-remove {
   white-space: nowrap;
 }
