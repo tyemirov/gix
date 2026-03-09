@@ -276,7 +276,7 @@ func TestParseRemoteProtocol(t *testing.T) {
 		expect      shared.RemoteProtocol
 		expectError bool
 	}{
-		{name: "git_protocol", input: "git", expect: shared.RemoteProtocolGit},
+		{name: "git_protocol_aliases_ssh", input: "git", expect: shared.RemoteProtocolSSH},
 		{name: "ssh_protocol", input: "SSH", expect: shared.RemoteProtocolSSH},
 		{name: "https_protocol", input: " https ", expect: shared.RemoteProtocolHTTPS},
 		{name: "empty_defaults_other", input: " ", expect: shared.RemoteProtocolOther},

@@ -370,7 +370,7 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				remoteCommand.Env = buildGitCommandEnvironment(nil)
 				outputBytes, remoteError := remoteCommand.CombinedOutput()
 				require.NoError(testInstance, remoteError, string(outputBytes))
-				require.Equal(testInstance, "ssh://git@github.com/canonical/example.git\n", string(outputBytes))
+				require.Equal(testInstance, "git@github.com:canonical/example.git\n", string(outputBytes))
 			},
 		},
 		{
@@ -394,7 +394,7 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				remoteCommand.Env = buildGitCommandEnvironment(nil)
 				outputBytes, remoteError := remoteCommand.CombinedOutput()
 				require.NoError(testInstance, remoteError, string(outputBytes))
-				require.Equal(testInstance, "ssh://git@github.com/canonical/example.git\n", string(outputBytes))
+				require.Equal(testInstance, "git@github.com:canonical/example.git\n", string(outputBytes))
 			},
 			prepare: func(testInstance *testing.T, repositoryPath string, arguments *[]string) {
 				configDirectory := testInstance.TempDir()
@@ -426,7 +426,7 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				remoteCommand.Env = buildGitCommandEnvironment(nil)
 				outputBytes, remoteError := remoteCommand.CombinedOutput()
 				require.NoError(testInstance, remoteError, string(outputBytes))
-				require.Equal(testInstance, "ssh://git@github.com/canonical/example.git\n", string(outputBytes))
+				require.Equal(testInstance, "git@github.com:canonical/example.git\n", string(outputBytes))
 			},
 			prepare: func(testInstance *testing.T, repositoryPath string, arguments *[]string) {
 				configDirectory := testInstance.TempDir()

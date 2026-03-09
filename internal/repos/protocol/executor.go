@@ -245,7 +245,7 @@ func (executor *Executor) report(level shared.EventLevel, code string, repositor
 func detectProtocol(remoteURL string) shared.RemoteProtocol {
 	switch {
 	case strings.HasPrefix(remoteURL, shared.GitProtocolURLPrefixConstant):
-		return shared.RemoteProtocolGit
+		return shared.RemoteProtocolSSH
 	case strings.HasPrefix(remoteURL, shared.SSHProtocolURLPrefixConstant):
 		return shared.RemoteProtocolSSH
 	case strings.HasPrefix(remoteURL, shared.HTTPSProtocolURLPrefixConstant):

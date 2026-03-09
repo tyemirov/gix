@@ -67,7 +67,7 @@ func TestReportRepositoryEventIncludesStepDetail(t *testing.T) {
 		repository,
 		shared.EventLevelInfo,
 		shared.EventCodeRemoteUpdate,
-		"origin now ssh://git@github.com/canonical/example.git",
+		"origin now git@github.com:canonical/example.git",
 		map[string]string{},
 	)
 

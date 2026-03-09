@@ -394,18 +394,52 @@ func (application *Application) repositoryCatalog(executionContext context.Conte
 		}
 	}
 
+	discoverer := reposdeps.ResolveRepositoryDiscoverer(nil)
 	currentRepositoryRoot, currentRepositoryAvailable := application.currentRepositoryRoot(executionContext, gitExecutor, workingDirectory)
 	if currentRepositoryAvailable {
-		repositoryDescriptor := application.inspectRepository(executionContext, currentRepositoryRoot, 1, true, gitExecutor, repositoryManager)
+		explorerRoot := currentRepositoryExplorerRoot(currentRepositoryRoot)
+		discoveredRepositories, discoverError := discoverer.DiscoverRepositories([]string{explorerRoot})
+		if discoverError != nil || len(discoveredRepositories) == 0 {
+			repositoryDescriptor := application.inspectRepository(executionContext, currentRepositoryRoot, 1, true, gitExecutor, repositoryManager)
+			return web.RepositoryCatalog{
+				LaunchPath:           workingDirectory,
+				ExplorerRoot:         explorerRoot,
+				LaunchMode:           webLaunchModeCurrentRepositoryConstant,
+				SelectedRepositoryID: repositoryDescriptor.ID,
+				Repositories:         []web.RepositoryDescriptor{repositoryDescriptor},
+			}
+		}
+
+		repositoryDescriptors := make([]web.RepositoryDescriptor, 0, len(discoveredRepositories))
+		selectedRepositoryID := ""
+		for repositoryIndex, repositoryPath := range discoveredRepositories {
+			contextCurrent := canonicalWebPath(repositoryPath) == canonicalWebPath(currentRepositoryRoot)
+			repositoryDescriptor := application.inspectRepository(
+				executionContext,
+				repositoryPath,
+				repositoryIndex+1,
+				contextCurrent,
+				gitExecutor,
+				repositoryManager,
+			)
+			if contextCurrent {
+				selectedRepositoryID = repositoryDescriptor.ID
+			}
+			repositoryDescriptors = append(repositoryDescriptors, repositoryDescriptor)
+		}
+		if len(selectedRepositoryID) == 0 && len(repositoryDescriptors) > 0 {
+			selectedRepositoryID = repositoryDescriptors[0].ID
+		}
+
 		return web.RepositoryCatalog{
 			LaunchPath:           workingDirectory,
+			ExplorerRoot:         explorerRoot,
 			LaunchMode:           webLaunchModeCurrentRepositoryConstant,
-			SelectedRepositoryID: repositoryDescriptor.ID,
-			Repositories:         []web.RepositoryDescriptor{repositoryDescriptor},
+			SelectedRepositoryID: selectedRepositoryID,
+			Repositories:         repositoryDescriptors,
 		}
 	}
 
-	discoverer := reposdeps.ResolveRepositoryDiscoverer(nil)
 	discoveredRepositories, discoverError := discoverer.DiscoverRepositories([]string{workingDirectory})
 	if discoverError != nil {
 		return web.RepositoryCatalog{
@@ -437,10 +471,39 @@ func (application *Application) repositoryCatalog(executionContext context.Conte
 
 	return web.RepositoryCatalog{
 		LaunchPath:           workingDirectory,
+		ExplorerRoot:         workingDirectory,
 		LaunchMode:           webLaunchModeDiscoveredRepositoriesConstant,
 		SelectedRepositoryID: selectedRepositoryID,
 		Repositories:         repositoryDescriptors,
 	}
+}
+
+func currentRepositoryExplorerRoot(currentRepositoryRoot string) string {
+	trimmedRepositoryRoot := strings.TrimSpace(currentRepositoryRoot)
+	if len(trimmedRepositoryRoot) == 0 {
+		return ""
+	}
+
+	parentPath := filepath.Dir(trimmedRepositoryRoot)
+	if len(strings.TrimSpace(parentPath)) == 0 || canonicalWebPath(parentPath) == canonicalWebPath(trimmedRepositoryRoot) {
+		return trimmedRepositoryRoot
+	}
+
+	return parentPath
+}
+
+func canonicalWebPath(path string) string {
+	trimmedPath := strings.TrimSpace(path)
+	if len(trimmedPath) == 0 {
+		return ""
+	}
+
+	absolutePath, absolutePathError := filepath.Abs(trimmedPath)
+	if absolutePathError != nil {
+		return filepath.Clean(trimmedPath)
+	}
+
+	return filepath.Clean(absolutePath)
 }
 
 func (application *Application) loadRepositoryBranches(executionContext context.Context, repository web.RepositoryDescriptor) web.BranchCatalog {

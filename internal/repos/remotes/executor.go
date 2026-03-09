@@ -15,7 +15,6 @@ const (
 	ownerRepoNotDetectedErrorMessage = "owner repository not detected"
 	unknownProtocolErrorTemplate     = "unknown protocol %s"
 	gitProtocolURLTemplate           = "git@github.com:%s.git"
-	sshProtocolURLTemplate           = "ssh://git@github.com/%s.git"
 	httpsProtocolURLTemplate         = "https://github.com/%s.git"
 	declinedReason                   = "user declined"
 )
@@ -198,7 +197,7 @@ func BuildRemoteURL(protocol shared.RemoteProtocol, ownerRepo string) (string, e
 	case shared.RemoteProtocolGit:
 		return fmt.Sprintf(gitProtocolURLTemplate, trimmedOwnerRepo), nil
 	case shared.RemoteProtocolSSH:
-		return fmt.Sprintf(sshProtocolURLTemplate, trimmedOwnerRepo), nil
+		return fmt.Sprintf(gitProtocolURLTemplate, trimmedOwnerRepo), nil
 	case shared.RemoteProtocolHTTPS:
 		return fmt.Sprintf(httpsProtocolURLTemplate, trimmedOwnerRepo), nil
 	default:

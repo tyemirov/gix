@@ -294,16 +294,14 @@ func buildAuditReportOperation(options map[string]any) (Operation, error) {
 }
 
 func parseProtocolValue(raw string) (shared.RemoteProtocol, error) {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case string(shared.RemoteProtocolGit):
-		return shared.RemoteProtocolGit, nil
-	case string(shared.RemoteProtocolSSH):
-		return shared.RemoteProtocolSSH, nil
-	case string(shared.RemoteProtocolHTTPS):
-		return shared.RemoteProtocolHTTPS, nil
-	default:
+	parsedProtocol, parseError := shared.ParseRemoteProtocol(raw)
+	if parseError != nil {
 		return "", fmt.Errorf("unsupported protocol value: %s", raw)
 	}
+	if parsedProtocol == shared.RemoteProtocolOther {
+		return "", fmt.Errorf("unsupported protocol value: %s", raw)
+	}
+	return parsedProtocol, nil
 }
 
 func defaultRemoteName(explicit bool, value string) string {

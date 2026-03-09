@@ -1,8 +1,11 @@
 // @ts-check
 
+import { Wunderbaum } from "https://cdn.jsdelivr.net/npm/wunderbaum@0/+esm";
+
 /**
  * @typedef {{
  *   launch_path?: string,
+ *   explorer_root?: string,
  *   launch_mode?: string,
  *   selected_repository_id?: string,
  *   repositories?: RepositoryDescriptor[],
@@ -193,6 +196,19 @@
  * }} CommandGroupDefinition
  */
 
+/**
+ * @typedef {{
+ *   key: string,
+ *   title: string,
+ *   path: string,
+ *   absolute_path?: string,
+ *   kind: "folder" | "repository",
+ *   search_text: string,
+ *   repository?: RepositoryDescriptor,
+ *   children: RepoTreeNodeModel[],
+ * }} RepoTreeNodeModel
+ */
+
 const repositoriesEndpoint = "/api/repos";
 const commandsEndpoint = "/api/commands";
 const auditInspectEndpoint = "/api/audit/inspect";
@@ -314,6 +330,22 @@ const commandGroupDefinitions = [
   { id: commandGroupGeneralValue, title: "General", description: "Commands that are not tied to a repository target." },
 ];
 
+const repositoryTreeIconMap = Object.freeze({
+  expanderCollapsed: "repo-tree-expander-icon repo-tree-expander-collapsed",
+  expanderExpanded: "repo-tree-expander-icon repo-tree-expander-expanded",
+  checkUnchecked: "repo-tree-checkbox-icon repo-tree-checkbox-unchecked",
+  checkChecked: "repo-tree-checkbox-icon repo-tree-checkbox-checked",
+  checkUnknown: "repo-tree-checkbox-icon repo-tree-checkbox-partial",
+  folder: "repo-tree-node-icon repo-tree-folder-icon",
+  folderOpen: "repo-tree-node-icon repo-tree-folder-open-icon",
+  doc: "repo-tree-node-icon repo-tree-repository-icon",
+  loading: "repo-tree-node-icon repo-tree-loading-icon",
+  error: "repo-tree-node-icon repo-tree-error-icon",
+});
+
+/** @type {any | null} */
+let repositoryTreeControl = null;
+
 /** @type {{
  *   repositoryCatalog: RepositoryCatalog | null,
  *   repositories: RepositoryDescriptor[],
@@ -339,6 +371,8 @@ const commandGroupDefinitions = [
  *   auditQueueVisible: boolean,
  *   auditQueueApplying: boolean,
  *   nextAuditChangeSequence: number,
+ *   currentRepoAncestorDepth: number,
+ *   currentRepoTreeExpanded: boolean,
  *   pollTimer: number | null,
  * }} */
 const state = {
@@ -366,6 +400,8 @@ const state = {
   auditQueueVisible: false,
   auditQueueApplying: false,
   nextAuditChangeSequence: 1,
+  currentRepoAncestorDepth: 1,
+  currentRepoTreeExpanded: false,
   pollTimer: null,
 };
 
@@ -373,7 +409,7 @@ const elements = {
   repoCount: document.querySelector("#repo-count"),
   repoLaunchSummary: document.querySelector("#repo-launch-summary"),
   repoFilter: document.querySelector("#repo-filter"),
-  repoList: document.querySelector("#repo-list"),
+  repoTree: document.querySelector("#repo-tree"),
   repoTitle: document.querySelector("#repo-title"),
   repoPath: document.querySelector("#repo-path"),
   repoSummary: document.querySelector("#repo-summary"),
@@ -488,14 +524,19 @@ async function initialize() {
   const repositoryCatalog = await repositoriesResponse.json();
   /** @type {CommandCatalog} */
   const commandCatalog = await commandsResponse.json();
+  const visibleRepositories = topLevelRepositories((repositoryCatalog.repositories || []).slice().sort(compareRepositories));
 
   state.repositoryCatalog = repositoryCatalog;
-  state.repositories = (repositoryCatalog.repositories || []).slice().sort(compareRepositories);
+  state.repositories = visibleRepositories;
+  state.currentRepoAncestorDepth = repositoryCatalog.launch_mode === currentRepoLaunchMode ? 1 : 0;
+  state.currentRepoTreeExpanded = false;
   state.allCommands = (commandCatalog.commands || []).slice().sort((left, right) => left.path.localeCompare(right.path));
   state.actionableCommands = state.allCommands.filter((command) => command.actionable);
   state.advancedCommands = state.actionableCommands.filter((command) => inferTaskForCommand(command) === taskAdvancedValue);
 
-  const initialRepositoryID = repositoryCatalog.selected_repository_id || state.repositories[0]?.id || "";
+  const initialRepositoryID = state.repositories.some((repository) => repository.id === repositoryCatalog.selected_repository_id)
+    ? repositoryCatalog.selected_repository_id || ""
+    : state.repositories[0]?.id || "";
   if (initialRepositoryID) {
     state.selectedRepositoryID = initialRepositoryID;
     state.checkedRepositoryIDs = [initialRepositoryID];
@@ -509,7 +550,7 @@ async function initialize() {
   elements.fileTaskMode.value = state.fileTaskMode;
 
   renderRepositoryLaunchSummary();
-  renderRepositoryList("");
+  await renderRepositoryTree("");
   renderTargetState();
   renderTaskState();
   renderActionGroups("");
@@ -531,8 +572,9 @@ async function initialize() {
 
 function bindEvents() {
   elements.repoFilter.addEventListener("input", () => {
-    renderRepositoryList(elements.repoFilter.value.trim().toLowerCase());
+    void renderRepositoryTree(elements.repoFilter.value.trim().toLowerCase());
   });
+  elements.repoTree.addEventListener("click", handleRepositoryTreeAuditRootSelection);
 
   elements.taskInspect.addEventListener("click", () => {
     setActiveTask(taskInspectValue);
@@ -824,8 +866,8 @@ function renderFileTaskState() {
 function renderAuditTaskState() {
   const fallbackRoots = repositoryScopeRoots();
   const placeholder = fallbackRoots.length > 0
-    ? `${fallbackRoots.join("\n")}\n`
-    : "One root per line. Leave blank to use the current repository scope.";
+    ? `${fallbackRoots.join(", ")}`
+    : "Separate roots with commas or new lines. Leave blank to use the current repository scope.";
   elements.auditRootsInput.placeholder = placeholder;
   elements.taskInspectLoad.disabled = resolveAuditRoots().length === 0;
 }
@@ -1144,68 +1186,666 @@ function buildPathDetail() {
 /**
  * @param {string} query
  */
-function renderRepositoryList(query) {
-  const filteredRepositories = state.repositories.filter((repository) => {
-    if (!query) {
-      return true;
-    }
-    const haystack = [repository.name, repository.path, repository.current_branch || "", repository.default_branch || ""]
-      .join(" ")
-      .toLowerCase();
-    return haystack.includes(query);
-  });
-
-  elements.repoList.innerHTML = "";
-  if (filteredRepositories.length === 0) {
-    appendEmptyState(elements.repoList, state.repositoryCatalog?.error || "No repositories match the current filter.");
+async function renderRepositoryTree(query) {
+  if (!(elements.repoTree instanceof HTMLElement)) {
     return;
   }
 
-  filteredRepositories.forEach((repository) => {
-    const container = document.createElement("div");
-    container.className = `repo-entry${repository.id === state.selectedRepositoryID ? " selected" : ""}`;
+  elements.repoTree.classList.remove("wb-skeleton", "wb-initializing");
 
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.className = "repo-checkbox";
-    checkbox.checked = state.checkedRepositoryIDs.includes(repository.id);
-    checkbox.setAttribute("aria-label", `Include ${repository.name} in checked repositories`);
-    checkbox.addEventListener("click", (event) => {
-      event.stopPropagation();
-    });
-    checkbox.addEventListener("change", () => {
-      toggleCheckedRepository(repository.id, checkbox.checked);
-    });
+  const treeModel = buildRepositoryTreeModel(state.repositories);
+  if (treeModel.length === 0) {
+    elements.repoTree.innerHTML = "";
+    repositoryTreeControl = null;
+    appendEmptyState(elements.repoTree, state.repositoryCatalog?.error || "No repositories match the current filter.");
+    return;
+  }
 
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = `repo-button${repository.id === state.selectedRepositoryID ? " active" : ""}`;
-    const dirtyLabel = repository.dirty ? "dirty" : "clean";
-    const branchLabel = repository.current_branch || "No current branch";
-    const detailParts = [branchLabel];
-    if (repository.path) {
-      detailParts.push(repository.path);
-    }
-    button.innerHTML = `
-      <div class="repo-row">
-        <span class="repo-name">${escapeHTML(repository.name)}</span>
-        <span class="repo-inline-tokens">
-          ${repository.context_current ? '<span class="flag-token">context</span>' : ""}
-          <span class="flag-token ${repository.dirty ? "flag-token-danger" : "flag-token-success"}">${dirtyLabel}</span>
-        </span>
-      </div>
-      <div class="repo-detail-row" title="${escapeHTML(detailParts.join(" · "))}">
-        <span class="repo-branch-meta">${escapeHTML(branchLabel)}</span>
-        ${repository.path ? `<span class="repo-path-meta">${escapeHTML(repository.path)}</span>` : ""}
-      </div>
-    `;
-    button.addEventListener("click", () => {
-      void selectRepository(repository.id);
-    });
+  if (!repositoryTreeControl) {
+    elements.repoTree.innerHTML = "";
+  }
 
-    container.append(checkbox, button);
-    elements.repoList.append(container);
+  const expandedKeys = repositoryTreeExpandedKeys();
+  repositoryTreeControl = ensureRepositoryTreeControl();
+  await repositoryTreeControl.load(buildRepositoryTreeSource(treeModel, new Set(expandedKeys)));
+  applyRepositoryTreeFilter(query);
+  await focusSelectedRepositoryTreeNode();
+}
+
+function ensureRepositoryTreeControl() {
+  if (repositoryTreeControl) {
+    return repositoryTreeControl;
+  }
+
+  repositoryTreeControl = new Wunderbaum({
+    element: elements.repoTree,
+    source: [],
+    selectMode: "multi",
+    checkbox: (event) => String(event.node?.data?.kind || "") === "repository",
+    iconMap: repositoryTreeIconMap,
+    filter: {
+      autoApply: true,
+      autoExpand: true,
+      mode: "hide",
+      noData: "No repositories match the current filter.",
+    },
+    click: (event) => {
+      const nodeKind = String(event.node?.data?.kind || "");
+      if (nodeKind === "repository") {
+        if (expandCurrentRepoExplorerFromLeaf()) {
+          return false;
+        }
+        return;
+      }
+
+      if (nodeKind !== "folder") {
+        return;
+      }
+
+      if (expandCurrentRepoExplorerFromFolder(String(event.node?.data?.path || ""))) {
+        return false;
+      }
+
+      if (revealCurrentRepoAncestor(String(event.node?.data?.path || ""))) {
+        return false;
+      }
+
+      const expanded = typeof event.node?.isExpanded === "function"
+        ? Boolean(event.node.isExpanded())
+        : Boolean(event.node?.expanded);
+      if (typeof event.node?.setExpanded === "function") {
+        void event.node.setExpanded(!expanded);
+        return false;
+      }
+    },
+    activate: (event) => {
+      const repositoryID = String(event.node.data?.repository_id || "");
+      if (!repositoryID || repositoryID === state.selectedRepositoryID) {
+        return;
+      }
+      void selectRepository(repositoryID);
+    },
+    select: (event) => {
+      const repositoryID = String(event.node.data?.repository_id || "");
+      if (!repositoryID) {
+        return;
+      }
+      toggleCheckedRepository(repositoryID, Boolean(event.node.selected));
+    },
+    render: annotateRepositoryTreeNode,
   });
+
+  return repositoryTreeControl;
+}
+
+function repositoryTreeExpandedKeys() {
+  if (!repositoryTreeControl) {
+    return [];
+  }
+
+  const treeState = repositoryTreeControl.getState({ expandedKeys: true, selectedKeys: false });
+  if (!Array.isArray(treeState.expandedKeys)) {
+    return [];
+  }
+  return treeState.expandedKeys.slice();
+}
+
+/**
+ * @param {string} query
+ */
+function applyRepositoryTreeFilter(query) {
+  if (!repositoryTreeControl) {
+    return;
+  }
+
+  if (!query) {
+    repositoryTreeControl.clearFilter();
+    return;
+  }
+
+  repositoryTreeControl.filterNodes((node) => repositoryTreeNodeMatchesQuery(node, query), {
+    autoExpand: true,
+    mode: "hide",
+    noData: "No repositories match the current filter.",
+  });
+}
+
+async function focusSelectedRepositoryTreeNode() {
+  if (!repositoryTreeControl || !state.selectedRepositoryID) {
+    return;
+  }
+
+  const selectedNode = repositoryTreeControl.findKey(state.selectedRepositoryID);
+  if (!selectedNode) {
+    return;
+  }
+
+  await selectedNode.setActive(true, { noEvents: true });
+}
+
+/**
+ * @param {any} node
+ * @param {string} query
+ * @returns {boolean | "branch"}
+ */
+function repositoryTreeNodeMatchesQuery(node, query) {
+  const searchText = String(node.data?.search_text || "").toLowerCase();
+  if (!searchText.includes(query)) {
+    return false;
+  }
+  return String(node.data?.kind || "") === "folder" ? "branch" : true;
+}
+
+/**
+ * @param {RepoTreeNodeModel[]} treeModel
+ * @param {Set<string>} expandedKeys
+ * @returns {object[]}
+ */
+function buildRepositoryTreeSource(treeModel, expandedKeys) {
+  return treeModel.map((node) => {
+    if (node.kind === "folder") {
+      return {
+        key: node.key,
+        title: node.title,
+        expanded: repositoryTreeShouldExpandFolder(node, expandedKeys),
+        unselectable: true,
+        checkbox: false,
+        kind: node.kind,
+        label: node.title,
+        path: node.path,
+        absolute_path: node.absolute_path || "",
+        search_text: node.search_text,
+        children: buildRepositoryTreeSource(node.children, expandedKeys),
+      };
+    }
+
+    return {
+      key: node.key,
+      title: node.title,
+      selected: state.checkedRepositoryIDs.includes(node.repository?.id || ""),
+      checkbox: true,
+      kind: node.kind,
+      label: node.title,
+      path: node.path,
+      repository_id: node.repository?.id || "",
+      repository_name: node.repository?.name || node.title,
+      repository_path: node.repository?.path || node.path,
+      search_text: node.search_text,
+    };
+  });
+}
+
+/**
+ * @param {RepositoryDescriptor[]} repositories
+ * @returns {RepoTreeNodeModel[]}
+ */
+function buildRepositoryTreeModel(repositories) {
+  /** @type {Map<string, RepoTreeNodeModel>} */
+  const folderIndex = new Map();
+  /** @type {RepoTreeNodeModel[]} */
+  const treeModel = [];
+
+  repositories.forEach((repository) => {
+    if (!repositoryVisibleInTree(repository)) {
+      return;
+    }
+
+    const relativeSegments = repositoryTreeSegments(repository);
+    const folderSegments = relativeSegments.slice(0, -1);
+    const folderPathSegments = [];
+
+    /** @type {RepoTreeNodeModel[]} */
+    let currentChildren = treeModel;
+    folderSegments.forEach((segment) => {
+      folderPathSegments.push(segment);
+      const folderKey = `folder:${folderPathSegments.join("/")}`;
+      let folderNode = folderIndex.get(folderKey);
+      if (!folderNode) {
+        folderNode = {
+          key: folderKey,
+          title: segment,
+          path: folderPathSegments.join("/"),
+          absolute_path: repositoryTreeFolderAbsolutePath(repository.path, relativeSegments, folderPathSegments.length),
+          kind: "folder",
+          search_text: folderPathSegments.join(" ").toLowerCase(),
+          children: [],
+        };
+        folderIndex.set(folderKey, folderNode);
+        currentChildren.push(folderNode);
+      }
+      currentChildren = folderNode.children;
+    });
+
+    currentChildren.push({
+      key: repository.id,
+      title: repository.name,
+      path: repository.path,
+      kind: "repository",
+      search_text: repositorySearchText(repository),
+      repository,
+      children: [],
+    });
+  });
+
+  sortRepositoryTreeNodes(treeModel);
+  return treeModel;
+}
+
+/**
+ * @param {RepositoryDescriptor} repository
+ * @returns {boolean}
+ */
+function repositoryVisibleInTree(repository) {
+  if (state.repositoryCatalog?.launch_mode !== currentRepoLaunchMode || state.currentRepoTreeExpanded) {
+    return true;
+  }
+
+  return Boolean(repository.context_current);
+}
+
+/**
+ * @param {RepoTreeNodeModel[]} nodes
+ */
+function sortRepositoryTreeNodes(nodes) {
+  nodes.sort((left, right) => {
+    return left.title.localeCompare(right.title, undefined, { numeric: true, sensitivity: "base" });
+  });
+  nodes.forEach((node) => {
+    if (node.children.length > 0) {
+      sortRepositoryTreeNodes(node.children);
+    }
+  });
+}
+
+/**
+ * @param {string} repositoryPath
+ * @param {string[]} relativeSegments
+ * @param {number} folderDepth
+ * @returns {string}
+ */
+function repositoryTreeFolderAbsolutePath(repositoryPath, relativeSegments, folderDepth) {
+  const normalizedRepositoryPath = normalizeRepositoryTreePath(repositoryPath);
+  if (!normalizedRepositoryPath) {
+    return "";
+  }
+
+  const suffixSegments = relativeSegments.slice(folderDepth);
+  if (suffixSegments.length === 0) {
+    return normalizedRepositoryPath;
+  }
+
+  const suffixPath = `/${suffixSegments.join("/")}`;
+  if (!normalizedRepositoryPath.endsWith(suffixPath)) {
+    return "";
+  }
+
+  return normalizedRepositoryPath.slice(0, normalizedRepositoryPath.length - suffixPath.length);
+}
+
+/**
+ * @param {RepositoryDescriptor} repository
+ * @returns {string}
+ */
+function repositorySearchText(repository) {
+  return [repository.name, repository.path, repository.current_branch || "", repository.default_branch || ""]
+    .join(" ")
+    .toLowerCase();
+}
+
+/**
+ * @param {RepositoryDescriptor} repository
+ * @returns {string[]}
+ */
+function repositoryTreeSegments(repository) {
+  const repositoryPath = normalizeRepositoryTreePath(repository.path);
+  if (state.repositoryCatalog?.launch_mode === currentRepoLaunchMode) {
+    const currentRepoSegments = currentRepositoryModeTreeSegments(repositoryPath);
+    if (currentRepoSegments.length > 0) {
+      return currentRepoSegments;
+    }
+  }
+
+  const launchPath = normalizeRepositoryTreePath(state.repositoryCatalog?.launch_path || "");
+  if (!repositoryPath) {
+    return [repository.name];
+  }
+
+  if (launchPath && (repositoryPath === launchPath || repositoryPath.startsWith(`${launchPath}/`))) {
+    const relativePath = repositoryPath === launchPath
+      ? repository.name
+      : repositoryPath.slice(launchPath.length + 1);
+    return splitRepositoryTreePath(relativePath);
+  }
+
+  return splitRepositoryTreePath(repositoryPath).slice(-1);
+}
+
+/**
+ * @returns {boolean}
+ */
+function repositoryTreeShouldAutoExpandFolders() {
+  return state.repositoryCatalog?.launch_mode === currentRepoLaunchMode && !state.currentRepoTreeExpanded;
+}
+
+/**
+ * @param {RepoTreeNodeModel} node
+ * @param {Set<string>} expandedKeys
+ * @returns {boolean}
+ */
+function repositoryTreeShouldExpandFolder(node, expandedKeys) {
+  if (repositoryTreeShouldAutoExpandFolders()) {
+    return true;
+  }
+
+  if (expandedKeys.has(node.key)) {
+    return true;
+  }
+
+  if (state.repositoryCatalog?.launch_mode === currentRepoLaunchMode && state.currentRepoTreeExpanded) {
+    return currentRepositoryAutoExpandFolderPaths().has(node.path);
+  }
+
+  return false;
+}
+
+/**
+ * @returns {boolean}
+ */
+function expandCurrentRepoExplorerFromLeaf() {
+  if (state.repositoryCatalog?.launch_mode !== currentRepoLaunchMode || state.currentRepoTreeExpanded) {
+    return false;
+  }
+
+  state.currentRepoTreeExpanded = true;
+  state.currentRepoAncestorDepth = 1;
+  void renderRepositoryTree(elements.repoFilter.value.trim().toLowerCase());
+  return true;
+}
+
+/**
+ * @param {string} folderPath
+ * @returns {boolean}
+ */
+function expandCurrentRepoExplorerFromFolder(folderPath) {
+  if (state.repositoryCatalog?.launch_mode !== currentRepoLaunchMode || state.currentRepoTreeExpanded) {
+    return false;
+  }
+
+  const explorerRootPath = currentRepositoryExplorerRootPath();
+  const absoluteFolderPath = currentRepositoryVisibleFolderAbsolutePath(folderPath);
+  if (!explorerRootPath || !absoluteFolderPath || absoluteFolderPath !== explorerRootPath) {
+    return false;
+  }
+
+  state.currentRepoTreeExpanded = true;
+  state.currentRepoAncestorDepth = 1;
+  void renderRepositoryTree(elements.repoFilter.value.trim().toLowerCase());
+  return true;
+}
+
+/**
+ * @param {string} folderPath
+ * @returns {boolean}
+ */
+function revealCurrentRepoAncestor(folderPath) {
+  if (state.repositoryCatalog?.launch_mode !== currentRepoLaunchMode) {
+    return false;
+  }
+
+  const anchorSegments = splitRepositoryTreePath(currentRepositoryAnchorPath());
+  const visibleSegments = currentRepositoryVisibleAncestorSegments();
+  if (visibleSegments.length === 0 || anchorSegments.length <= visibleSegments.length) {
+    return false;
+  }
+
+  const topVisibleFolderPath = visibleSegments.length <= 1 ? "" : visibleSegments[0];
+  if (!topVisibleFolderPath || normalizeRepositoryTreePath(folderPath) !== topVisibleFolderPath) {
+    return false;
+  }
+
+  state.currentRepoAncestorDepth += 1;
+  void renderRepositoryTree(elements.repoFilter.value.trim().toLowerCase());
+  return true;
+}
+
+/**
+ * @param {string} repositoryPath
+ * @returns {string[]}
+ */
+function currentRepositoryModeTreeSegments(repositoryPath) {
+  const normalizedRepositoryPath = normalizeRepositoryTreePath(repositoryPath);
+  if (!normalizedRepositoryPath) {
+    return [];
+  }
+
+  const visibleAncestorSegments = currentRepositoryVisibleAncestorSegments();
+  if (visibleAncestorSegments.length === 0) {
+    return [];
+  }
+
+  if (state.currentRepoTreeExpanded) {
+    const explorerRootPath = currentRepositoryExplorerRootPath();
+    if (explorerRootPath && (normalizedRepositoryPath === explorerRootPath || normalizedRepositoryPath.startsWith(`${explorerRootPath}/`))) {
+      const relativePath = normalizedRepositoryPath === explorerRootPath
+        ? ""
+        : normalizedRepositoryPath.slice(explorerRootPath.length + 1);
+      const relativeSegments = splitRepositoryTreePath(relativePath);
+      return relativeSegments.length > 0
+        ? visibleAncestorSegments.concat(relativeSegments)
+        : visibleAncestorSegments.slice();
+    }
+    return [];
+  }
+
+  const currentRepositoryPath = currentRepositoryPathValue();
+  if (normalizedRepositoryPath === currentRepositoryPath) {
+    return visibleAncestorSegments;
+  }
+
+  return [];
+}
+
+/**
+ * @returns {string}
+ */
+function currentRepositoryPathValue() {
+  return normalizeRepositoryTreePath(selectedRepository()?.path || state.repositories[0]?.path || "");
+}
+
+/**
+ * @returns {string}
+ */
+function currentRepositoryExplorerRootPath() {
+  return normalizeRepositoryTreePath(state.repositoryCatalog?.explorer_root || "");
+}
+
+/**
+ * @returns {string}
+ */
+function currentRepositoryAnchorPath() {
+  return state.currentRepoTreeExpanded ? currentRepositoryExplorerRootPath() : currentRepositoryPathValue();
+}
+
+/**
+ * @returns {string[]}
+ */
+function currentRepositoryVisibleAncestorSegments() {
+  const anchorSegments = splitRepositoryTreePath(currentRepositoryAnchorPath());
+  if (anchorSegments.length === 0) {
+    return [];
+  }
+
+  const visibleDepth = Math.min(
+    anchorSegments.length,
+    Math.max(1, (state.currentRepoAncestorDepth || 0) + 1),
+  );
+  return anchorSegments.slice(anchorSegments.length - visibleDepth);
+}
+
+/**
+ * @returns {Set<string>}
+ */
+function currentRepositoryAutoExpandFolderPaths() {
+  const visibleAncestorSegments = currentRepositoryVisibleAncestorSegments();
+  const autoExpandedPaths = new Set();
+  visibleAncestorSegments.forEach((_, segmentIndex) => {
+    autoExpandedPaths.add(visibleAncestorSegments.slice(0, segmentIndex + 1).join("/"));
+  });
+  return autoExpandedPaths;
+}
+
+/**
+ * @param {string} folderPath
+ * @returns {string}
+ */
+function currentRepositoryVisibleFolderAbsolutePath(folderPath) {
+  const currentRepositoryPath = currentRepositoryPathValue();
+  if (!currentRepositoryPath) {
+    return "";
+  }
+
+  const visibleSegments = currentRepositoryVisibleAncestorSegments();
+  const visibleFolderSegments = visibleSegments.slice(0, -1);
+  if (visibleFolderSegments.length === 0) {
+    return "";
+  }
+
+  const normalizedFolderPath = normalizeRepositoryTreePath(folderPath);
+  for (let folderDepth = 1; folderDepth <= visibleFolderSegments.length; folderDepth += 1) {
+    const relativeFolderPath = visibleFolderSegments.slice(0, folderDepth).join("/");
+    if (relativeFolderPath !== normalizedFolderPath) {
+      continue;
+    }
+
+    const suffixSegments = visibleSegments.slice(folderDepth);
+    if (suffixSegments.length === 0) {
+      return currentRepositoryPath;
+    }
+
+    const suffixPath = `/${suffixSegments.join("/")}`;
+    if (!currentRepositoryPath.endsWith(suffixPath)) {
+      return "";
+    }
+
+    return currentRepositoryPath.slice(0, currentRepositoryPath.length - suffixPath.length);
+  }
+
+  return "";
+}
+
+/**
+ * @param {string} rawPath
+ * @returns {string[]}
+ */
+function splitRepositoryTreePath(rawPath) {
+  return normalizeRepositoryTreePath(rawPath)
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+}
+
+/**
+ * @param {string} rawPath
+ * @returns {string}
+ */
+function normalizeRepositoryTreePath(rawPath) {
+  return String(rawPath || "")
+    .replace(/\\/g, "/")
+    .replace(/\/+/g, "/")
+    .replace(/\/$/, "");
+}
+
+/**
+ * @param {{ node: any, nodeElem: HTMLElement }} event
+ */
+function annotateRepositoryTreeNode(event) {
+  const nodeElement = event.nodeElem;
+  const rowElement = nodeElement.closest(".wb-row");
+  const titleElement = nodeElement.querySelector(".wb-title");
+  const checkboxElement = nodeElement.querySelector(".wb-checkbox");
+  const expanderElement = nodeElement.querySelector(".wb-expander");
+  const iconElement = nodeElement.querySelector(".wb-icon");
+  const label = String(event.node.data?.label || event.node.title || "");
+  const kind = String(event.node.data?.kind || "");
+  const absolutePath = String(event.node.data?.absolute_path || "");
+  let checkboxSpacer = nodeElement.querySelector(".repo-tree-checkbox-spacer");
+
+  if (rowElement instanceof HTMLElement) {
+    rowElement.dataset.repoTreeKind = kind;
+    rowElement.dataset.repoTreeKey = String(event.node.key || "");
+    if (absolutePath) {
+      rowElement.dataset.repoTreeAbsolutePath = absolutePath;
+    } else {
+      delete rowElement.dataset.repoTreeAbsolutePath;
+    }
+  }
+  if (titleElement instanceof HTMLElement && label) {
+    titleElement.dataset.repoTreeNode = label;
+    if (absolutePath) {
+      titleElement.dataset.repoTreeAbsolutePath = absolutePath;
+    } else {
+      delete titleElement.dataset.repoTreeAbsolutePath;
+    }
+  }
+  if (checkboxElement instanceof HTMLElement && label && kind === "repository") {
+    checkboxElement.dataset.repoTreeCheckbox = label;
+    checkboxElement.setAttribute("aria-label", `Include ${label} in checked repositories`);
+  }
+  if (expanderElement instanceof HTMLElement && label && kind === "folder") {
+    expanderElement.dataset.repoTreeExpander = label;
+    expanderElement.setAttribute("aria-label", `Toggle ${label} folder`);
+  }
+  if (kind === "folder") {
+    if (!(checkboxSpacer instanceof HTMLElement) && iconElement instanceof HTMLElement) {
+      checkboxSpacer = document.createElement("span");
+      checkboxSpacer.className = "repo-tree-checkbox-spacer";
+      checkboxSpacer.setAttribute("aria-hidden", "true");
+      iconElement.parentNode?.insertBefore(checkboxSpacer, iconElement);
+    }
+  } else if (checkboxSpacer instanceof HTMLElement) {
+    checkboxSpacer.remove();
+  }
+}
+
+/**
+ * @param {MouseEvent} event
+ */
+function handleRepositoryTreeAuditRootSelection(event) {
+  const eventTarget = event.target;
+  if (!(eventTarget instanceof HTMLElement) || eventTarget.closest(".wb-expander")) {
+    return;
+  }
+
+  const rowElement = eventTarget.closest(".wb-row");
+  if (!(rowElement instanceof HTMLElement) || rowElement.dataset.repoTreeKind !== "folder") {
+    return;
+  }
+
+  const absolutePath = String(rowElement.dataset.repoTreeAbsolutePath || "");
+  if (!absolutePath) {
+    return;
+  }
+
+  applyAuditRootSelectionFromTree(absolutePath, Boolean(event.metaKey || event.ctrlKey));
+}
+
+/**
+ * @param {string} rootPath
+ * @param {boolean} additive
+ */
+function applyAuditRootSelectionFromTree(rootPath, additive) {
+  const normalizedRootPath = String(rootPath || "").trim();
+  if (!normalizedRootPath) {
+    return;
+  }
+
+  const existingRoots = additive ? resolveAuditRoots() : [];
+  const nextRoots = additive
+    ? existingRoots.concat(existingRoots.includes(normalizedRootPath) ? [] : [normalizedRootPath])
+    : [normalizedRootPath];
+
+  elements.auditRootsInput.value = formatAuditRootsInput(nextRoots);
+  elements.auditRootsInput.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 /**
@@ -1223,7 +1863,7 @@ async function selectRepository(repositoryID) {
   }
   state.branches = [];
 
-  renderRepositoryList(elements.repoFilter.value.trim().toLowerCase());
+  await renderRepositoryTree(elements.repoFilter.value.trim().toLowerCase());
   renderTargetState();
   renderSelectedRepository();
   renderActionGroups(elements.commandFilter.value.trim().toLowerCase());
@@ -1245,6 +1885,7 @@ async function selectRepository(repositoryID) {
   }
 
   state.branches = (branchCatalog.branches || []).slice().sort(compareBranches);
+  await renderRepositoryTree(elements.repoFilter.value.trim().toLowerCase());
   renderTargetState();
   syncQuickActions();
   repopulateSelectedCommand();
@@ -1267,7 +1908,7 @@ function toggleCheckedRepository(repositoryID, checked) {
     state.selectedScope = scopeSelectedValue;
   }
 
-  renderRepositoryList(elements.repoFilter.value.trim().toLowerCase());
+  void renderRepositoryTree(elements.repoFilter.value.trim().toLowerCase());
   renderTargetState();
   renderActionGroups(elements.commandFilter.value.trim().toLowerCase());
   syncQuickActions();
@@ -2023,9 +2664,31 @@ function splitNonEmptyLines(value) {
  * @returns {string[]}
  */
 function resolveAuditRoots() {
-  const explicitRoots = splitNonEmptyLines(elements.auditRootsInput?.value || "");
+  const explicitRoots = parseAuditRootsInput(elements.auditRootsInput?.value || "");
   const rootValues = explicitRoots.length > 0 ? explicitRoots : repositoryScopeRoots();
   return Array.from(new Set(rootValues));
+}
+
+/**
+ * @param {string} value
+ * @returns {string[]}
+ */
+function parseAuditRootsInput(value) {
+  return String(value || "")
+    .split(/[\n,]/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+}
+
+/**
+ * @param {string[]} roots
+ * @returns {string}
+ */
+function formatAuditRootsInput(roots) {
+  return roots
+    .map((root) => String(root || "").trim())
+    .filter(Boolean)
+    .join(", ");
 }
 
 function syncAuditDraftFromArguments() {
@@ -2038,7 +2701,7 @@ function syncAuditDraftFromArguments() {
     return;
   }
 
-  elements.auditRootsInput.value = parsedDraftRequest.roots.join("\n");
+  elements.auditRootsInput.value = formatAuditRootsInput(parsedDraftRequest.roots);
   elements.auditIncludeAll.checked = parsedDraftRequest.include_all;
   renderTaskState();
   updateActionContext();
@@ -3164,7 +3827,7 @@ function auditQueueCanApply() {
     if (change.kind === auditChangeKindConvertProtocolValue) {
       const sourceProtocol = String(change.source_protocol || "").trim();
       const targetProtocol = String(change.target_protocol || "").trim();
-      return protocolValueAllowed(sourceProtocol) && protocolValueAllowed(targetProtocol) && sourceProtocol !== targetProtocol;
+      return protocolSourceValueAllowed(sourceProtocol) && protocolValueAllowed(targetProtocol) && sourceProtocol !== targetProtocol;
     }
     if (change.kind === auditChangeKindSyncWithRemoteValue) {
       return syncStrategyAllowed(String(change.sync_strategy || ""));
@@ -3257,7 +3920,7 @@ function renderProtocolQueueOptions(change) {
 
   const source = document.createElement("p");
   source.className = "audit-queue-option-note";
-  source.textContent = `Current protocol: ${change.source_protocol || "unknown"}`;
+  source.textContent = `Current protocol: ${protocolDisplayValue(change.source_protocol || "unknown")}`;
 
   const label = document.createElement("label");
   label.className = "audit-queue-option-row";
@@ -3323,7 +3986,7 @@ function renderSyncQueueOptions(change) {
  * @returns {boolean}
  */
 function protocolFixAvailableRowValue(protocolValue) {
-  return protocolValueAllowed(protocolValue);
+  return protocolSourceValueAllowed(protocolValue);
 }
 
 /**
@@ -3339,14 +4002,14 @@ function protocolFixAvailable(row) {
  * @returns {string}
  */
 function defaultTargetProtocol(currentProtocol) {
-  return currentProtocol === "ssh" ? "https" : "ssh";
+  return currentProtocol === "https" ? "ssh" : "https";
 }
 
 /**
  * @returns {string[]}
  */
 function protocolOptionValues() {
-  return ["git", "ssh", "https"];
+  return ["ssh", "https"];
 }
 
 /**
@@ -3355,6 +4018,22 @@ function protocolOptionValues() {
  */
 function protocolValueAllowed(protocolValue) {
   return protocolOptionValues().includes(protocolValue);
+}
+
+/**
+ * @param {string} protocolValue
+ * @returns {boolean}
+ */
+function protocolSourceValueAllowed(protocolValue) {
+  return protocolValueAllowed(protocolValue) || protocolValue === "git";
+}
+
+/**
+ * @param {string} protocolValue
+ * @returns {string}
+ */
+function protocolDisplayValue(protocolValue) {
+  return protocolValue === "git" ? "ssh" : protocolValue;
 }
 
 /**
@@ -3786,6 +4465,53 @@ function compareRepositories(left, right) {
     return left.context_current ? -1 : 1;
   }
   return left.name.localeCompare(right.name) || left.path.localeCompare(right.path);
+}
+
+/**
+ * @param {RepositoryDescriptor[]} repositories
+ * @returns {RepositoryDescriptor[]}
+ */
+function topLevelRepositories(repositories) {
+  /** @type {RepositoryDescriptor[]} */
+  const topLevel = [];
+
+  repositories
+    .slice()
+    .sort((left, right) => {
+      const leftPath = normalizeRepositoryTreePath(left.path);
+      const rightPath = normalizeRepositoryTreePath(right.path);
+      if (leftPath.length !== rightPath.length) {
+        return leftPath.length - rightPath.length;
+      }
+      return compareRepositories(left, right);
+    })
+    .forEach((repository) => {
+      const repositoryPath = normalizeRepositoryTreePath(repository.path);
+      if (!repositoryPath) {
+        topLevel.push(repository);
+        return;
+      }
+      if (topLevel.some((candidate) => repositoryPathNestedWithinRepository(repositoryPath, candidate.path))) {
+        return;
+      }
+      topLevel.push(repository);
+    });
+
+  return topLevel.sort(compareRepositories);
+}
+
+/**
+ * @param {string} repositoryPath
+ * @param {string} ancestorRepositoryPath
+ * @returns {boolean}
+ */
+function repositoryPathNestedWithinRepository(repositoryPath, ancestorRepositoryPath) {
+  const normalizedRepositoryPath = normalizeRepositoryTreePath(repositoryPath);
+  const normalizedAncestorPath = normalizeRepositoryTreePath(ancestorRepositoryPath);
+  if (!normalizedRepositoryPath || !normalizedAncestorPath || normalizedRepositoryPath === normalizedAncestorPath) {
+    return false;
+  }
+  return normalizedRepositoryPath.startsWith(`${normalizedAncestorPath}/`);
 }
 
 /**
