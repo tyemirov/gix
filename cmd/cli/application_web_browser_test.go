@@ -976,6 +976,58 @@ func TestWebInterfaceBrowserRendersRepositoryTreeAndPreservesCheckedScopeAcrossF
 	require.NotEqual(t, canonicalPath(t, firstRepositoryPath), secondCanonicalRepositoryPath)
 }
 
+func TestWebInterfaceBrowserRepositoryTreeShowsOnlyTopLevelRepositories(t *testing.T) {
+	rootPath := t.TempDir()
+	topLevelRepositoryPath := createTestRepository(t, filepath.Join(rootPath, "alpha"))
+	nestedRepositoryPath := createTestRepository(t, filepath.Join(topLevelRepositoryPath, "plugins", "child"))
+	siblingRepositoryPath := createTestRepository(t, filepath.Join(rootPath, "gamma"))
+	topLevelCanonicalRepositoryPath := canonicalPath(t, topLevelRepositoryPath)
+	siblingCanonicalRepositoryPath := canonicalPath(t, siblingRepositoryPath)
+
+	httpServer, repositoryCatalog := newBrowserTestServer(t, rootPath)
+	defer httpServer.Close()
+
+	browserContext := newBrowserTestContext(t)
+	expectedRepository := selectedRepositoryDescriptor(t, repositoryCatalog)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		chromedp.Navigate(httpServer.URL),
+		chromedp.WaitVisible(repoTreeSelectorConstant, chromedp.ByQuery),
+	))
+	waitForControlSurfaceReady(t, browserContext, expectedRepository.Name)
+
+	treeText, treeTextError := readTextContent(browserContext, repoTreeSelectorConstant)
+	require.NoError(t, treeTextError)
+	require.Contains(t, treeText, "alpha")
+	require.Contains(t, treeText, "gamma")
+	require.NotContains(t, treeText, "child")
+
+	repoCountText, repoCountError := readTextContent(browserContext, "#repo-count")
+	require.NoError(t, repoCountError)
+	require.Equal(t, "2", repoCountText)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		chromedp.Click(scopeAllButtonSelectorConstant, chromedp.ByQuery),
+		chromedp.Click(remotesTaskButtonSelectorConstant, chromedp.ByQuery),
+		chromedp.WaitVisible(remoteLoadButtonSelectorConstant, chromedp.ByQuery),
+		setControlValue(remoteOwnerInputSelectorConstant, remoteOwnerValueConstant),
+		chromedp.Click(remoteLoadButtonSelectorConstant, chromedp.ByQuery),
+	))
+
+	assertSelectedCommand(t, browserContext, remoteCanonicalCommandPathConstant)
+	assertRunnerArguments(t, browserContext, []string{
+		"remote",
+		"update-to-canonical",
+		"--owner",
+		remoteOwnerValueConstant,
+		"--roots",
+		topLevelCanonicalRepositoryPath,
+		"--roots",
+		siblingCanonicalRepositoryPath,
+	})
+	require.NotEqual(t, topLevelCanonicalRepositoryPath, canonicalPath(t, nestedRepositoryPath))
+}
+
 func TestBrowserStartupErrorSkippable(t *testing.T) {
 	startupError := errors.New(
 		"chrome failed to start:\n" +

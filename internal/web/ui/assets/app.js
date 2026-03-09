@@ -518,14 +518,17 @@ async function initialize() {
   const repositoryCatalog = await repositoriesResponse.json();
   /** @type {CommandCatalog} */
   const commandCatalog = await commandsResponse.json();
+  const visibleRepositories = topLevelRepositories((repositoryCatalog.repositories || []).slice().sort(compareRepositories));
 
   state.repositoryCatalog = repositoryCatalog;
-  state.repositories = (repositoryCatalog.repositories || []).slice().sort(compareRepositories);
+  state.repositories = visibleRepositories;
   state.allCommands = (commandCatalog.commands || []).slice().sort((left, right) => left.path.localeCompare(right.path));
   state.actionableCommands = state.allCommands.filter((command) => command.actionable);
   state.advancedCommands = state.actionableCommands.filter((command) => inferTaskForCommand(command) === taskAdvancedValue);
 
-  const initialRepositoryID = repositoryCatalog.selected_repository_id || state.repositories[0]?.id || "";
+  const initialRepositoryID = state.repositories.some((repository) => repository.id === repositoryCatalog.selected_repository_id)
+    ? repositoryCatalog.selected_repository_id || ""
+    : state.repositories[0]?.id || "";
   if (initialRepositoryID) {
     state.selectedRepositoryID = initialRepositoryID;
     state.checkedRepositoryIDs = [initialRepositoryID];
@@ -4060,6 +4063,53 @@ function compareRepositories(left, right) {
     return left.context_current ? -1 : 1;
   }
   return left.name.localeCompare(right.name) || left.path.localeCompare(right.path);
+}
+
+/**
+ * @param {RepositoryDescriptor[]} repositories
+ * @returns {RepositoryDescriptor[]}
+ */
+function topLevelRepositories(repositories) {
+  /** @type {RepositoryDescriptor[]} */
+  const topLevel = [];
+
+  repositories
+    .slice()
+    .sort((left, right) => {
+      const leftPath = normalizeRepositoryTreePath(left.path);
+      const rightPath = normalizeRepositoryTreePath(right.path);
+      if (leftPath.length !== rightPath.length) {
+        return leftPath.length - rightPath.length;
+      }
+      return compareRepositories(left, right);
+    })
+    .forEach((repository) => {
+      const repositoryPath = normalizeRepositoryTreePath(repository.path);
+      if (!repositoryPath) {
+        topLevel.push(repository);
+        return;
+      }
+      if (topLevel.some((candidate) => repositoryPathNestedWithinRepository(repositoryPath, candidate.path))) {
+        return;
+      }
+      topLevel.push(repository);
+    });
+
+  return topLevel.sort(compareRepositories);
+}
+
+/**
+ * @param {string} repositoryPath
+ * @param {string} ancestorRepositoryPath
+ * @returns {boolean}
+ */
+function repositoryPathNestedWithinRepository(repositoryPath, ancestorRepositoryPath) {
+  const normalizedRepositoryPath = normalizeRepositoryTreePath(repositoryPath);
+  const normalizedAncestorPath = normalizeRepositoryTreePath(ancestorRepositoryPath);
+  if (!normalizedRepositoryPath || !normalizedAncestorPath || normalizedRepositoryPath === normalizedAncestorPath) {
+    return false;
+  }
+  return normalizedRepositoryPath.startsWith(`${normalizedAncestorPath}/`);
 }
 
 /**

@@ -382,3 +382,18 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - Resolved on 2026-03-08 by replacing the flat repository list with a Wunderbaum-backed folder tree in the web client, loading the widget stylesheet from jsDelivr in `index.html` and importing the ESM module from jsDelivr in `app.js`.
   - Added a browser-side folder/repository tree model derived from `RepositoryCatalog.Repositories`, kept repository selection and checked-scope state in the existing application model, and mapped those semantics onto Wunderbaum activation and checkbox events.
   - Preserved repository filtering and checked-scope workflows across tree updates, added local icon styling so the tree does not depend on an extra icon-font CDN, and covered the explorer behavior with browser and HTML integration tests.
+
+- Update on 2026-03-08 for [F009].
+  Tightened the repository tree so the web client only exposes top-level Git repositories as selectable targets.
+  ### Summary
+  The initial tree implementation used the full discovered repository catalog, so a Git repository nested inside another Git repository still appeared in the left panel and leaked into `All` scope operations. That contradicted the intended UX of operating on top-level repositories only.
+
+  ### Analysis
+  - Filtering only at the tree renderer would have been insufficient, because the rest of the web client derives counts, checked scope, and `All` scope command roots from `state.repositories`.
+  - The correct boundary for the fix is therefore the browser-side repository set loaded during initialization: once nested repositories are removed there, the tree, the repo count, and all repository-scoped commands stay consistent.
+  - Top-level determination is path-based: a repository is excluded when its normalized path is a strict descendant of another discovered repository path.
+
+  ### Deliverables
+  - [x] Added a browser regression covering a top-level repository, a nested child repository under it, and an unrelated sibling repository.
+  - [x] Filtered the browser-side repository set down to top-level repositories before selection, counts, tree rendering, and scope resolution.
+  - [x] Revalidated `make format`, `make test`, `make lint`, and `make ci`.
