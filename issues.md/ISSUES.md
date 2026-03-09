@@ -429,3 +429,17 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - [x] Added a browser regression covering current-repo launch mode and asserting the tree shows both the parent folder name and the repository leaf.
   - [x] Updated the tree-model builder so current-repo mode renders `parent-folder -> repository` instead of a single leaf.
   - [x] Auto-expanded current-repo folders and added pointer cursors for folder and repository tree rows.
+
+- Update on 2026-03-08 for [F009].
+  Extended current-repo explorer navigation so clicking the top visible folder reveals the next ancestor above it instead of leaving the tree stuck at a single synthetic parent level.
+  ### Summary
+  After the first current-repo explorer fix, the tree showed one visible parent folder above the repository leaf, but operators still could not climb farther up the hierarchy from the tree itself. Clicking that folder did not reveal the next ancestor, so the explorer still felt truncated.
+
+  ### Analysis
+  - The browser-side current-repo tree model was still derived from a fixed two-segment window (`parent -> repo`), so higher ancestors were absent from the rendered node graph.
+  - The requested behavior maps naturally to a progressive reveal model: keep the tree compact by default, but when the top visible folder is clicked, expand the visible window upward by one ancestor and rerender.
+  - Folder clicks below the top visible node should remain normal tree interactions; only the top visible folder in current-repo mode needs to trigger upward reveal while hidden ancestors remain.
+
+  ### Deliverables
+  - [x] Updated browser coverage so current-repo mode starts with the immediate parent visible and reveals the next ancestor when that top folder is clicked.
+  - [x] Replaced the fixed current-repo segment builder with a depth-based ancestor window that can grow upward on demand.

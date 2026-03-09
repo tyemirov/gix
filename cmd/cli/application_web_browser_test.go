@@ -1038,7 +1038,7 @@ func TestWebInterfaceBrowserDisplaysRepositoryTreeInLeftSidebar(t *testing.T) {
 }
 
 func TestWebInterfaceBrowserCurrentRepoModeShowsParentFolderInTree(t *testing.T) {
-	repositoryPath := createTestRepository(t, filepath.Join(t.TempDir(), "workspace", "example"))
+	repositoryPath := createTestRepository(t, filepath.Join(t.TempDir(), "fleet", "workspace", "example"))
 
 	httpServer, repositoryCatalog := newBrowserTestServer(t, repositoryPath)
 	defer httpServer.Close()
@@ -1052,21 +1052,27 @@ func TestWebInterfaceBrowserCurrentRepoModeShowsParentFolderInTree(t *testing.T)
 	))
 	waitForControlSurfaceReady(t, browserContext, expectedRepository.Name)
 
+	grandparentFolderName := filepath.Base(filepath.Dir(filepath.Dir(repositoryPath)))
 	parentFolderName := filepath.Base(filepath.Dir(repositoryPath))
 	repositoryName := filepath.Base(repositoryPath)
 
 	treeText, treeTextError := readTextContent(browserContext, repoTreeSelectorConstant)
 	require.NoError(t, treeTextError)
+	require.NotContains(t, treeText, grandparentFolderName)
 	require.Contains(t, treeText, parentFolderName)
 	require.Contains(t, treeText, repositoryName)
 
 	require.NoError(t, chromedp.Run(browserContext,
-		clickRepositoryTreeTitle(repositoryName),
+		clickRepositoryTreeTitle(parentFolderName),
 	))
 
-	repositoryTitle, repositoryTitleError := readTextContent(browserContext, "#repo-title")
-	require.NoError(t, repositoryTitleError)
-	require.Equal(t, repositoryName, repositoryTitle)
+	require.Eventually(t, func() bool {
+		expandedTreeText, expandedTreeError := readTextContent(browserContext, repoTreeSelectorConstant)
+		if expandedTreeError != nil {
+			return false
+		}
+		return strings.Contains(expandedTreeText, grandparentFolderName)
+	}, browserReadyTimeoutConstant, browserReadyPollIntervalConstant)
 }
 
 func TestWebInterfaceBrowserRepositoryTreeShowsOnlyTopLevelRepositories(t *testing.T) {
