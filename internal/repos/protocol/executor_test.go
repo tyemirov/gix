@@ -73,8 +73,8 @@ const (
 	protocolTestCanonicalOwnerRepo     = "canonical/example"
 	protocolTestOriginURL              = "https://github.com/origin/example.git"
 	protocolTestGitOriginURL           = "git@github.com:origin/example.git"
-	protocolTestTargetURL              = "ssh://git@github.com/canonical/example.git"
-	protocolTestOriginTargetURL        = "ssh://git@github.com/origin/example.git"
+	protocolTestTargetURL              = "git@github.com:canonical/example.git"
+	protocolTestOriginTargetURL        = "git@github.com:origin/example.git"
 	protocolTestTargetDisplayURL       = "git@github.com:canonical/example.git"
 	protocolTestOriginTargetDisplayURL = "git@github.com:origin/example.git"
 )
@@ -143,7 +143,7 @@ func TestExecutorBehaviors(t *testing.T) {
 					assert: func(t *testing.T, event map[string]string) {
 						require.Equal(t, "protocol_mismatch", event["reason"])
 						require.Equal(t, protocolTestRepositoryPath, event["path"])
-						require.Equal(t, "git", event["current_protocol"])
+						require.Equal(t, "ssh", event["current_protocol"])
 						require.Equal(t, "https", event["from_protocol"])
 						require.Equal(t, "ssh", event["target_protocol"])
 					},

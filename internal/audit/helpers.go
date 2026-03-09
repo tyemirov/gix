@@ -34,7 +34,7 @@ var errOwnerRepoNotDetected = errors.New("owner repository not detected")
 func detectRemoteProtocol(remote string) RemoteProtocolType {
 	switch {
 	case strings.HasPrefix(remote, shared.GitProtocolURLPrefixConstant):
-		return RemoteProtocolGit
+		return RemoteProtocolSSH
 	case strings.HasPrefix(remote, shared.SSHProtocolURLPrefixConstant):
 		return RemoteProtocolSSH
 	case strings.HasPrefix(remote, shared.HTTPSProtocolURLPrefixConstant):

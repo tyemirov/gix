@@ -28,13 +28,13 @@ const (
 	auditIntegrationRemoteSubcommand           = "remote"
 	auditIntegrationAddSubcommand              = "add"
 	auditIntegrationOriginRemoteName           = "origin"
-	auditIntegrationOriginURL                  = "https://github.com/origin/example.git"
+	auditIntegrationOriginURL                  = "git@github.com:origin/example.git"
 	auditIntegrationStubExecutableName         = "gh"
 	auditIntegrationStubScript                 = "#!/bin/sh\nif [ \"$1\" = \"repo\" ] && [ \"$2\" = \"view\" ]; then\n  cat <<'EOF'\n{\"nameWithOwner\":\"canonical/example\",\"defaultBranchRef\":{\"name\":\"main\"},\"description\":\"\"}\nEOF\n  exit 0\nfi\nexit 0\n"
 	auditIntegrationRepositoryPrefixConstant   = "audit-integration-repository-"
 	auditIntegrationHomeShortcutPrefixConstant = "~/"
 	auditIntegrationCSVHeaderConstant          = "folder_name,final_github_repo,origin_remote_status,name_matches,remote_default_branch,local_branch,in_sync,remote_protocol,origin_matches_canonical,worktree_dirty,dirty_files\n"
-	auditIntegrationCSVRowTemplate             = "%[1]s,canonical/example,configured,no,main,,n/a,https,no,no,\n"
+	auditIntegrationCSVRowTemplate             = "%[1]s,canonical/example,configured,no,main,,n/a,ssh,no,no,\n"
 	auditIntegrationCSVTemplate                = auditIntegrationCSVHeaderConstant + auditIntegrationCSVRowTemplate
 	auditIntegrationCSVCaseNameConstant        = "audit_csv"
 	auditIntegrationDebugCaseNameConstant      = "audit_debug"
@@ -155,7 +155,7 @@ func TestAuditRunCommandIntegration(testInstance *testing.T) {
 			name:      auditIntegrationIncludeAllCaseNameConstant,
 			arguments: includeAllArguments,
 			expectedOutput: fmt.Sprintf(
-				"folder_name,final_github_repo,origin_remote_status,name_matches,remote_default_branch,local_branch,in_sync,remote_protocol,origin_matches_canonical,worktree_dirty,dirty_files\n%[1]s,canonical/example,configured,no,main,,n/a,https,no,no,\n%[2]s,n/a,n/a,n/a,n/a,n/a,n/a,n/a,n/a,n/a,\n",
+				"folder_name,final_github_repo,origin_remote_status,name_matches,remote_default_branch,local_branch,in_sync,remote_protocol,origin_matches_canonical,worktree_dirty,dirty_files\n%[1]s,canonical/example,configured,no,main,,n/a,ssh,no,no,\n%[2]s,n/a,n/a,n/a,n/a,n/a,n/a,n/a,n/a,n/a,\n",
 				includeAllRepositoryFolderName,
 				nonGitFolderName,
 			),

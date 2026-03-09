@@ -31,6 +31,7 @@ type ServerOptions struct {
 // RepositoryCatalog describes the repositories visible to the web interface at launch time.
 type RepositoryCatalog struct {
 	LaunchPath           string                 `json:"launch_path,omitempty"`
+	ExplorerRoot         string                 `json:"explorer_root,omitempty"`
 	LaunchMode           string                 `json:"launch_mode,omitempty"`
 	SelectedRepositoryID string                 `json:"selected_repository_id,omitempty"`
 	Repositories         []RepositoryDescriptor `json:"repositories,omitempty"`

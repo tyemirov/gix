@@ -53,7 +53,7 @@ func TestWorkflowPresetRemoteUpdateProtocolIntegration(testInstance *testing.T) 
 	remoteCommand.Env = buildGitCommandEnvironment(nil)
 	remoteOutput, remoteError := remoteCommand.CombinedOutput()
 	require.NoError(testInstance, remoteError, string(remoteOutput))
-	require.Equal(testInstance, "ssh://git@github.com/canonical/example.git", strings.TrimSpace(string(remoteOutput)))
+	require.Equal(testInstance, "git@github.com:canonical/example.git", strings.TrimSpace(string(remoteOutput)))
 }
 
 func TestWorkflowPresetHistoryRemoveIntegration(testInstance *testing.T) {

@@ -177,7 +177,9 @@ func TestCommandCatalogMarksInactionableCommands(t *testing.T) {
 }
 
 func TestRepositoryCatalogUsesCurrentRepositoryContext(t *testing.T) {
-	repositoryPath := createTestRepository(t, filepath.Join(t.TempDir(), "workspace", "example"))
+	rootPath := t.TempDir()
+	repositoryPath := createTestRepository(t, filepath.Join(rootPath, "workspace", "example"))
+	siblingRepositoryPath := createTestRepository(t, filepath.Join(rootPath, "workspace", "other"))
 	createTestBranch(t, repositoryPath, "feature/demo")
 
 	nestedWorkingDirectory := filepath.Join(repositoryPath, "internal")
@@ -188,10 +190,13 @@ func TestRepositoryCatalogUsesCurrentRepositoryContext(t *testing.T) {
 
 		require.Equal(t, "current_repo", catalog.LaunchMode)
 		require.Equal(t, canonicalPath(t, nestedWorkingDirectory), canonicalPath(t, catalog.LaunchPath))
-		require.Len(t, catalog.Repositories, 1)
+		require.Equal(t, canonicalPath(t, filepath.Dir(repositoryPath)), canonicalPath(t, catalog.ExplorerRoot))
+		require.Len(t, catalog.Repositories, 2)
 		require.Equal(t, canonicalPath(t, repositoryPath), canonicalPath(t, catalog.Repositories[0].Path))
+		require.Equal(t, canonicalPath(t, siblingRepositoryPath), canonicalPath(t, catalog.Repositories[1].Path))
 		require.Equal(t, "feature/demo", catalog.Repositories[0].CurrentBranch)
 		require.True(t, catalog.Repositories[0].ContextCurrent)
+		require.False(t, catalog.Repositories[1].ContextCurrent)
 		require.Equal(t, catalog.Repositories[0].ID, catalog.SelectedRepositoryID)
 	})
 }
@@ -208,6 +213,7 @@ func TestRepositoryCatalogDiscoversRepositoriesBeneathWorkingDirectory(t *testin
 
 		require.Equal(t, "discovered_repositories", catalog.LaunchMode)
 		require.Equal(t, canonicalPath(t, rootPath), canonicalPath(t, catalog.LaunchPath))
+		require.Equal(t, canonicalPath(t, rootPath), canonicalPath(t, catalog.ExplorerRoot))
 		require.Len(t, catalog.Repositories, 2)
 		require.Equal(t, canonicalPath(t, firstRepository), canonicalPath(t, catalog.Repositories[0].Path))
 		require.Equal(t, canonicalPath(t, secondRepository), canonicalPath(t, catalog.Repositories[1].Path))
@@ -246,6 +252,7 @@ func TestWebServerExecutesVersionCommand(t *testing.T) {
 		Address: "127.0.0.1:8080",
 		Repositories: web.RepositoryCatalog{
 			LaunchPath:           "/tmp/example",
+			ExplorerRoot:         "/tmp/example",
 			LaunchMode:           "current_repo",
 			SelectedRepositoryID: "repo-001",
 			Repositories: []web.RepositoryDescriptor{
@@ -323,11 +330,16 @@ func TestWebServerExecutesVersionCommand(t *testing.T) {
 	require.NoError(t, copyError)
 	require.Contains(t, indexDocument.String(), "<title>gix Control Surface</title>")
 	require.Contains(t, indexDocument.String(), "Build a target set first")
+	require.Contains(t, indexDocument.String(), "id=\"workspace-layout\"")
+	require.Contains(t, indexDocument.String(), "id=\"repo-sidebar\"")
+	require.Contains(t, indexDocument.String(), "id=\"workspace-main\"")
 	require.Contains(t, indexDocument.String(), "<h2>Repos</h2>")
+	require.Contains(t, indexDocument.String(), "cdn.jsdelivr.net/npm/wunderbaum@0/dist/wunderbaum.min.css")
 	require.Contains(t, indexDocument.String(), "<h3>Scope</h3>")
 	require.Contains(t, indexDocument.String(), "<h3>Paths</h3>")
 	require.Contains(t, indexDocument.String(), "<h3>Tasks</h3>")
 	require.Contains(t, indexDocument.String(), "id=\"target-ref-select\"")
+	require.Contains(t, indexDocument.String(), "id=\"repo-tree\"")
 	require.Contains(t, indexDocument.String(), "id=\"audit-roots-input\"")
 	require.Contains(t, indexDocument.String(), "Inspect audit table")
 	require.Contains(t, indexDocument.String(), "id=\"audit-results-panel\"")
@@ -354,6 +366,7 @@ func TestWebServerExecutesVersionCommand(t *testing.T) {
 	var repositories web.RepositoryCatalog
 	require.NoError(t, json.NewDecoder(repositoriesResponse.Body).Decode(&repositories))
 	require.Equal(t, "/tmp/example", repositories.LaunchPath)
+	require.Equal(t, "/tmp/example", repositories.ExplorerRoot)
 	require.Len(t, repositories.Repositories, 1)
 	require.Equal(t, "repo-001", repositories.Repositories[0].ID)
 	require.Equal(t, "feature/demo", repositories.Repositories[0].CurrentBranch)
