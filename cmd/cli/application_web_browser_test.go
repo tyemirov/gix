@@ -1075,6 +1075,41 @@ func TestWebInterfaceBrowserCurrentRepoModeShowsParentFolderInTree(t *testing.T)
 	}, browserReadyTimeoutConstant, browserReadyPollIntervalConstant)
 }
 
+func TestWebInterfaceBrowserCurrentRepoLeafExpandsToSiblingRepositories(t *testing.T) {
+	rootPath := t.TempDir()
+	repositoryPath := createTestRepository(t, filepath.Join(rootPath, "workspace", "example"))
+	createTestRepository(t, filepath.Join(rootPath, "workspace", "other"))
+
+	httpServer, repositoryCatalog := newBrowserTestServer(t, repositoryPath)
+	defer httpServer.Close()
+
+	browserContext := newBrowserTestContext(t)
+	expectedRepository := selectedRepositoryDescriptor(t, repositoryCatalog)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		chromedp.Navigate(httpServer.URL),
+		chromedp.WaitVisible(repoTreeSelectorConstant, chromedp.ByQuery),
+	))
+	waitForControlSurfaceReady(t, browserContext, expectedRepository.Name)
+
+	initialTreeText, initialTreeError := readTextContent(browserContext, repoTreeSelectorConstant)
+	require.NoError(t, initialTreeError)
+	require.Contains(t, initialTreeText, "example")
+	require.NotContains(t, initialTreeText, "other")
+
+	require.NoError(t, chromedp.Run(browserContext,
+		clickRepositoryTreeTitle("example"),
+	))
+
+	require.Eventually(t, func() bool {
+		treeText, treeTextError := readTextContent(browserContext, repoTreeSelectorConstant)
+		if treeTextError != nil {
+			return false
+		}
+		return strings.Contains(treeText, "other")
+	}, browserReadyTimeoutConstant, browserReadyPollIntervalConstant)
+}
+
 func TestWebInterfaceBrowserRepositoryTreeShowsOnlyTopLevelRepositories(t *testing.T) {
 	rootPath := t.TempDir()
 	topLevelRepositoryPath := createTestRepository(t, filepath.Join(rootPath, "alpha"))

@@ -443,3 +443,19 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   ### Deliverables
   - [x] Updated browser coverage so current-repo mode starts with the immediate parent visible and reveals the next ancestor when that top folder is clicked.
   - [x] Replaced the fixed current-repo segment builder with a depth-based ancestor window that can grow upward on demand.
+
+- Update on 2026-03-08 for [F009].
+  Changed current-repo mode so clicking the repository leaf pivots the sidebar into a real explorer rooted at the repository parent and restyled the tree to read like a filesystem pane instead of site chrome.
+  ### Summary
+  Even after the ancestor reveal fix, the compact current-repo tree still behaved like a synthetic path widget rather than a file explorer. Operators expected the repository leaf click to populate the full set of Git-enabled sibling folders under the parent directory, and the themed badge-like tree styling made the widget feel unlike a normal explorer.
+
+  ### Analysis
+  - The backend catalog for `current_repo` mode only exposed the current repository before the frontend pivoted into full explorer mode, so the browser had no sibling repositories to show when the leaf was clicked.
+  - The right boundary for the data fix is the initial repository catalog: when launched from inside a repo, the server should still discover all repositories beneath the current repository's parent folder while keeping the current repo selected.
+  - The frontend then needs an explicit compact-vs-explorer mode: compact mode can show the path-oriented current repo context, and clicking the repo leaf should switch into full explorer mode rooted at the discovered parent.
+  - The tree styling should be intentionally decoupled from the rest of the site shell so the pane reads as a neutral filesystem explorer with flat rows, standard selection colors, and folder/file-style icons.
+
+  ### Deliverables
+  - [x] Added browser coverage that clicks the current-repo leaf and verifies sibling repositories appear in the tree.
+  - [x] Updated the current-repo repository catalog to preload repositories beneath the current repository parent and expose that parent as the explorer root.
+  - [x] Added compact/explorer switching in the browser tree model and restyled the tree pane with a flatter file-explorer visual language.

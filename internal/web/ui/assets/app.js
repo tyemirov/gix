@@ -5,6 +5,7 @@ import { Wunderbaum } from "https://cdn.jsdelivr.net/npm/wunderbaum@0/+esm";
 /**
  * @typedef {{
  *   launch_path?: string,
+ *   explorer_root?: string,
  *   launch_mode?: string,
  *   selected_repository_id?: string,
  *   repositories?: RepositoryDescriptor[],
@@ -370,6 +371,7 @@ let repositoryTreeControl = null;
  *   auditQueueApplying: boolean,
  *   nextAuditChangeSequence: number,
  *   currentRepoTreeDepth: number,
+ *   currentRepoTreeExpanded: boolean,
  *   pollTimer: number | null,
  * }} */
 const state = {
@@ -398,6 +400,7 @@ const state = {
   auditQueueApplying: false,
   nextAuditChangeSequence: 1,
   currentRepoTreeDepth: 2,
+  currentRepoTreeExpanded: false,
   pollTimer: null,
 };
 
@@ -525,6 +528,7 @@ async function initialize() {
   state.repositoryCatalog = repositoryCatalog;
   state.repositories = visibleRepositories;
   state.currentRepoTreeDepth = repositoryCatalog.launch_mode === currentRepoLaunchMode ? 2 : 0;
+  state.currentRepoTreeExpanded = false;
   state.allCommands = (commandCatalog.commands || []).slice().sort((left, right) => left.path.localeCompare(right.path));
   state.actionableCommands = state.allCommands.filter((command) => command.actionable);
   state.advancedCommands = state.actionableCommands.filter((command) => inferTaskForCommand(command) === taskAdvancedValue);
@@ -1224,7 +1228,15 @@ function ensureRepositoryTreeControl() {
       noData: "No repositories match the current filter.",
     },
     click: (event) => {
-      if (String(event.node?.data?.kind || "") !== "folder") {
+      const nodeKind = String(event.node?.data?.kind || "");
+      if (nodeKind === "repository") {
+        if (expandCurrentRepoExplorerFromLeaf()) {
+          return false;
+        }
+        return;
+      }
+
+      if (nodeKind !== "folder") {
         return;
       }
 
@@ -1367,6 +1379,10 @@ function buildRepositoryTreeModel(repositories) {
   const treeModel = [];
 
   repositories.forEach((repository) => {
+    if (!repositoryVisibleInTree(repository)) {
+      return;
+    }
+
     const relativeSegments = repositoryTreeSegments(repository);
     const folderSegments = relativeSegments.slice(0, -1);
     const folderPathSegments = [];
@@ -1408,6 +1424,18 @@ function buildRepositoryTreeModel(repositories) {
 }
 
 /**
+ * @param {RepositoryDescriptor} repository
+ * @returns {boolean}
+ */
+function repositoryVisibleInTree(repository) {
+  if (state.repositoryCatalog?.launch_mode !== currentRepoLaunchMode || state.currentRepoTreeExpanded) {
+    return true;
+  }
+
+  return Boolean(repository.context_current);
+}
+
+/**
  * @param {RepoTreeNodeModel[]} nodes
  */
 function sortRepositoryTreeNodes(nodes) {
@@ -1441,6 +1469,13 @@ function repositorySearchText(repository) {
 function repositoryTreeSegments(repository) {
   const repositoryPath = normalizeRepositoryTreePath(repository.path);
   if (state.repositoryCatalog?.launch_mode === currentRepoLaunchMode) {
+    if (state.currentRepoTreeExpanded) {
+      const expandedSegments = currentRepositoryExpandedTreeSegments(repositoryPath);
+      if (expandedSegments.length > 0) {
+        return expandedSegments;
+      }
+    }
+
     const currentRepoSegments = currentRepositoryTreeSegments(repositoryPath);
     if (currentRepoSegments.length > 0) {
       return currentRepoSegments;
@@ -1466,7 +1501,21 @@ function repositoryTreeSegments(repository) {
  * @returns {boolean}
  */
 function repositoryTreeShouldAutoExpandFolders() {
-  return state.repositoryCatalog?.launch_mode === currentRepoLaunchMode;
+  return state.repositoryCatalog?.launch_mode === currentRepoLaunchMode && !state.currentRepoTreeExpanded;
+}
+
+/**
+ * @returns {boolean}
+ */
+function expandCurrentRepoExplorerFromLeaf() {
+  if (state.repositoryCatalog?.launch_mode !== currentRepoLaunchMode || state.currentRepoTreeExpanded) {
+    return false;
+  }
+
+  state.currentRepoTreeExpanded = true;
+  state.currentRepoTreeDepth = 0;
+  void renderRepositoryTree(elements.repoFilter.value.trim().toLowerCase());
+  return true;
 }
 
 /**
@@ -1474,7 +1523,7 @@ function repositoryTreeShouldAutoExpandFolders() {
  * @returns {boolean}
  */
 function revealCurrentRepoAncestor(folderPath) {
-  if (state.repositoryCatalog?.launch_mode !== currentRepoLaunchMode) {
+  if (state.repositoryCatalog?.launch_mode !== currentRepoLaunchMode || state.currentRepoTreeExpanded) {
     return false;
   }
 
@@ -1515,6 +1564,30 @@ function currentRepositoryTreeSegments(repositoryPath) {
   }
 
   return allSegments.slice(allSegments.length - visibleDepth);
+}
+
+/**
+ * @param {string} repositoryPath
+ * @returns {string[]}
+ */
+function currentRepositoryExpandedTreeSegments(repositoryPath) {
+  const explorerRootPath = normalizeRepositoryTreePath(state.repositoryCatalog?.explorer_root || "");
+  const normalizedRepositoryPath = normalizeRepositoryTreePath(repositoryPath);
+  if (!normalizedRepositoryPath) {
+    return [];
+  }
+
+  if (explorerRootPath && (normalizedRepositoryPath === explorerRootPath || normalizedRepositoryPath.startsWith(`${explorerRootPath}/`))) {
+    const relativePath = normalizedRepositoryPath === explorerRootPath
+      ? ""
+      : normalizedRepositoryPath.slice(explorerRootPath.length + 1);
+    const relativeSegments = splitRepositoryTreePath(relativePath);
+    if (relativeSegments.length > 0) {
+      return relativeSegments;
+    }
+  }
+
+  return splitRepositoryTreePath(normalizedRepositoryPath).slice(-1);
 }
 
 /**
