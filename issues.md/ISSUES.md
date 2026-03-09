@@ -474,3 +474,81 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - [x] Added a browser regression that verifies the rename action button exposes non-transparent styling and does not consume the full width of its table cell.
   - [x] Made `.secondary-button` text and border styling explicit.
   - [x] Updated audit action pills to size to content and wrap their labels within the button.
+
+- Update on 2026-03-08 for [F009].
+  Changed compact current-repo folder clicks so selecting the current repo parent pivots into the full sibling-repository explorer instead of only revealing one higher ancestor.
+  ### Summary
+  In current-repo launch mode, clicking the visible parent folder above the current repository still followed the old ancestor-reveal flow. Operators expected that click to populate the tree with all Git-enabled repositories under that parent folder, matching the behavior already available on the repository leaf itself.
+
+  ### Analysis
+  - The backend catalog already contained the discovered repositories beneath `ExplorerRoot`, so the missing behavior was entirely in the browser click handler.
+  - The folder node path in compact mode is relative, so the browser needs to resolve that visible folder path back to the absolute compact-tree folder path before deciding whether it represents the current explorer root.
+  - Once the clicked compact folder resolves to `ExplorerRoot`, the UI should enter the same expanded explorer mode used by the repo-leaf click and reuse the preloaded sibling repository catalog.
+
+  ### Deliverables
+  - [x] Added a browser regression that clicks the visible current-repo parent folder and verifies sibling repositories appear in the tree.
+  - [x] Updated compact folder clicks so the current repo parent folder expands into the full sibling-repository explorer.
+
+- Update on 2026-03-08 for [F009].
+  Fixed repository-tree sibling ordering and indent so mixed sibling sets render like a file explorer instead of grouping expandable folders first and offsetting leaf repos to the right.
+  ### Summary
+  Under one parent folder, the tree still sorted intermediate folders ahead of repository leaves and rendered repository titles farther to the right because repo rows carried a checkbox slot while folder rows did not. That made the tree look unlike a normal file explorer and broke the expected alphabetical sibling order.
+
+  ### Analysis
+  - The ordering bug was in the browser-side tree sort, which still preferred `folder` nodes over `repository` nodes before comparing titles.
+  - The indent bug was structural in the rendered row chrome: repository rows include a checkbox slot for checked-scope selection, while folder rows only include the expander slot. Without a matching spacer, sibling titles cannot line up.
+  - The correct fix is to sort sibling nodes purely by title and reserve the checkbox slot width on folder rows with a hidden spacer so the expander remains the only visible difference between expandable and non-expandable siblings.
+
+  ### Deliverables
+  - [x] Added a browser regression that expands a sibling set containing both a repository leaf and an intermediate folder, then asserts alphabetical order and matching title indent.
+  - [x] Removed folder-first sorting from the repository tree model.
+  - [x] Added a hidden checkbox-width spacer on folder rows so sibling titles align.
+
+- Update on 2026-03-08 for [F009].
+  Restored upward ancestor reveal after current-repo expansion so the top of the explorer remains a parent folder and can keep climbing toward the filesystem root one level at a time.
+  ### Summary
+  The sibling-explorer change made current-repo expansion stop at the explorer root, so after promoting the current repo parent into the tree, operators no longer saw the next higher parent folder above it. That regressed the earlier expectation that the current-repo tree can continue revealing one more parent at the top on each click.
+
+  ### Analysis
+  - The repository catalog already had enough data for sibling expansion; the missing behavior was that expanded mode rendered repositories directly under `ExplorerRoot` without wrapping them in the visible ancestor chain above that root.
+  - Expanded current-repo mode therefore needs its own ancestor-depth state separate from the compact `parent -> repo` reveal depth.
+  - The correct browser behavior is:
+    1. compact mode starts at `parent-folder -> repo`
+    2. clicking the repo leaf or current parent folder switches to sibling explorer mode
+    3. sibling explorer mode renders the current parent folder beneath one visible higher ancestor when available
+    4. clicking the top visible ancestor reveals the next one above it
+
+  ### Deliverables
+  - [x] Extended the browser regression so expanding the current repo parent must reveal both sibling repositories and the next higher parent folder, then allow one more upward reveal on the new top folder.
+  - [x] Added expanded-mode ancestor wrapping and top-folder reveal logic for current-repo explorer mode.
+
+- Update on 2026-03-08 for [F009].
+  Simplified current-repo tree construction so compact mode and expanded sibling-explorer mode both use one ancestor-depth model anchored to a single path instead of separate compact and expanded depth implementations.
+  ### Summary
+  The earlier implementation worked, but it carried two different reveal counters and separate helpers for compact and expanded current-repo trees. That made a straightforward rule harder to read in code than it needed to be.
+
+  ### Analysis
+  - Both modes follow the same shape: show a visible ancestor chain above an anchor path, then append repository-relative path segments beneath that anchor.
+  - In compact mode the anchor path is the selected current repository path.
+  - In expanded mode the anchor path is `ExplorerRoot`.
+  - A single `currentRepoAncestorDepth` plus `currentRepositoryAnchorPath()` and `currentRepositoryVisibleAncestorSegments()` is enough to express both flows.
+
+  ### Deliverables
+  - [x] Collapsed the separate compact and expanded current-repo depth logic into one shared ancestor-depth model in the browser tree renderer.
+  - [x] Preserved the existing browser regressions for repo-leaf expansion, parent-folder expansion, alphabetical sibling order, and upward ancestor reveal.
+
+- Update on 2026-03-08 for [F009].
+  Added folder-to-audit-root selection in the repository tree so clicking a folder writes that folder path into the audit draft, and Cmd-click appends more folder roots.
+  ### Summary
+  Operators wanted the tree to serve as the source for audit scope selection. Clicking a folder should make that folder the audit root, and Cmd-clicking additional folders should accumulate multiple roots without leaving the tree.
+
+  ### Analysis
+  - The existing audit draft plumbing already rebuilds the `gix audit` arguments from `#audit-roots-input`, so the cleanest implementation is to reuse that input rather than introduce separate tree-selection state.
+  - Folder tree nodes therefore need their absolute filesystem path available in the browser, not just the relative visible path segments used for rendering.
+  - Once folder nodes expose their absolute path, a container-level click handler can update the audit roots field directly while preserving the tree’s existing expand/reveal behavior.
+  - The audit roots parser should accept both commas and newlines so tree-driven multi-selection and manual edits share one format.
+
+  ### Deliverables
+  - [x] Added browser coverage for plain folder click replacing the audit root and Cmd-click appending another folder root.
+  - [x] Added absolute folder paths to browser tree nodes.
+  - [x] Reused the audit roots input as the single source of truth, with comma-or-newline parsing and comma-separated formatting.

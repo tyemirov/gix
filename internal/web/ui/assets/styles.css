@@ -461,6 +461,7 @@ h4 {
 }
 
 .repo-tree .wb-checkbox,
+.repo-tree .repo-tree-checkbox-spacer,
 .repo-tree .wb-expander,
 .repo-tree .wb-icon {
   display: inline-flex;
@@ -469,6 +470,10 @@ h4 {
   min-width: 1.25rem;
   color: #5b6472;
   font-style: normal;
+}
+
+.repo-tree .repo-tree-checkbox-spacer {
+  visibility: hidden;
 }
 
 .repo-tree .repo-tree-expander-collapsed::before {
