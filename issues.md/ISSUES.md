@@ -552,3 +552,22 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - [x] Added browser coverage for plain folder click replacing the audit root and Cmd-click appending another folder root.
   - [x] Added absolute folder paths to browser tree nodes.
   - [x] Reused the audit roots input as the single source of truth, with comma-or-newline parsing and comma-separated formatting.
+
+- Update on 2026-03-09 for [F008].
+  Fixed web audit protocol changes for GitHub SCP-style remotes so `git@github.com:owner/repo.git` is treated as SSH instead of a separate `git` protocol, and SSH conversions now write the standard `git@github.com:` form instead of `ssh://git@github.com/...`.
+  ### Summary
+  The web audit flow exposed a misleading protocol fix on repositories whose `origin` already used the common SSH shorthand form `git@github.com:owner/repo.git`. Audit reported that transport as `git`, the web queue offered a follow-up change to `ssh`, and applying it rewrote the remote to `ssh://git@github.com/owner/repo.git`. From the operator’s perspective that looked like the protocol change flow was not behaving properly.
+
+  ### Analysis
+  - The bug was semantic, not transport-level: the code treated GitHub SCP-style SSH URLs and `ssh://git@github.com/...` URLs as two distinct protocols.
+  - That split leaked through three layers:
+    - audit classified `git@github.com:` as `git`
+    - workflow protocol conversion detected `git@github.com:` as `git`
+    - remote builders emitted `ssh://git@github.com/...` for the `ssh` target
+  - The correct behavior for GitHub remotes is to treat the SCP-style `git@github.com:` form as the SSH transport and present only `ssh` and `https` in the web UX.
+  - The existing `git` token is preserved only as a backward-compatible input alias so older CLI/config values still parse, but it is normalized to SSH behavior.
+
+  ### Deliverables
+  - [x] Added failing expectations that `git@github.com:` audits as `ssh` and SSH conversions materialize as `git@github.com:owner/repo.git`.
+  - [x] Normalized the shared/web/workflow protocol handling so the legacy `git` label aliases to SSH behavior instead of remaining a separate user-visible transport.
+  - [x] Reduced the web protocol picker to the two meaningful user-facing choices: `ssh` and `https`.

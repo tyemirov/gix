@@ -60,7 +60,9 @@ func ParseRemoteProtocol(rawValue string) (RemoteProtocol, error) {
 		return RemoteProtocolOther, nil
 	}
 	switch RemoteProtocol(trimmed) {
-	case RemoteProtocolGit, RemoteProtocolSSH, RemoteProtocolHTTPS, RemoteProtocolOther:
+	case RemoteProtocolGit, RemoteProtocolSSH:
+		return RemoteProtocolSSH, nil
+	case RemoteProtocolHTTPS, RemoteProtocolOther:
 		return RemoteProtocol(trimmed), nil
 	default:
 		return "", fmt.Errorf("%w: %s", ErrRemoteProtocolInvalid, rawValue)

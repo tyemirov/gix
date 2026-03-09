@@ -68,7 +68,7 @@ const (
 	remotesTestOriginOwnerRepository  = "origin/example"
 	remotesTestCanonicalOwnerRepo     = "canonical/example"
 	remotesTestCanonicalURL           = "https://github.com/canonical/example.git"
-	remotesTestCanonicalSSHURL        = "ssh://git@github.com/canonical/example.git"
+	remotesTestCanonicalSSHURL        = "git@github.com:canonical/example.git"
 	remotesTestCanonicalSSHDisplayURL = "git@github.com:canonical/example.git"
 )
 

@@ -691,7 +691,7 @@ func verifyWorkflowRepositoryState(testInstance *testing.T, repositoryPath strin
 	remoteCommand.Env = buildGitCommandEnvironment(nil)
 	remoteOutput, remoteError := remoteCommand.CombinedOutput()
 	require.NoError(testInstance, remoteError, string(remoteOutput))
-	require.Equal(testInstance, "ssh://git@github.com/canonical/example.git\n", string(remoteOutput))
+	require.Equal(testInstance, "git@github.com:canonical/example.git\n", string(remoteOutput))
 
 	workflowPath := filepath.Join(repositoryPath, workflowIntegrationWorkflowDirectory, workflowIntegrationWorkflowFileName)
 	workflowBytes, workflowReadError := os.ReadFile(workflowPath)

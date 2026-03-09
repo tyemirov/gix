@@ -884,6 +884,16 @@ func TestWebInterfaceBrowserQueuesProtocolAndSyncChangesWithEditableOptions(t *t
 		setControlValue(auditQueueSyncStrategySelector, web.AuditChangeSyncStrategyStashChanges),
 	))
 
+	var protocolOptions []string
+	require.NoError(t, chromedp.Run(browserContext, chromedp.Evaluate(`(() => {
+		const select = document.querySelector("[data-queue-target-protocol]");
+		if (!select) {
+			throw new Error("missing protocol target select");
+		}
+		return Array.from(select.options).map((option) => option.value);
+	})()`, &protocolOptions)))
+	require.Equal(t, []string{"ssh", "https"}, protocolOptions)
+
 	queueSummary, queueSummaryError := readTextContent(browserContext, auditQueueSummarySelectorConstant)
 	require.NoError(t, queueSummaryError)
 	require.Equal(t, "2 pending changes", queueSummary)

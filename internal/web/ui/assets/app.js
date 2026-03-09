@@ -3827,7 +3827,7 @@ function auditQueueCanApply() {
     if (change.kind === auditChangeKindConvertProtocolValue) {
       const sourceProtocol = String(change.source_protocol || "").trim();
       const targetProtocol = String(change.target_protocol || "").trim();
-      return protocolValueAllowed(sourceProtocol) && protocolValueAllowed(targetProtocol) && sourceProtocol !== targetProtocol;
+      return protocolSourceValueAllowed(sourceProtocol) && protocolValueAllowed(targetProtocol) && sourceProtocol !== targetProtocol;
     }
     if (change.kind === auditChangeKindSyncWithRemoteValue) {
       return syncStrategyAllowed(String(change.sync_strategy || ""));
@@ -3920,7 +3920,7 @@ function renderProtocolQueueOptions(change) {
 
   const source = document.createElement("p");
   source.className = "audit-queue-option-note";
-  source.textContent = `Current protocol: ${change.source_protocol || "unknown"}`;
+  source.textContent = `Current protocol: ${protocolDisplayValue(change.source_protocol || "unknown")}`;
 
   const label = document.createElement("label");
   label.className = "audit-queue-option-row";
@@ -3986,7 +3986,7 @@ function renderSyncQueueOptions(change) {
  * @returns {boolean}
  */
 function protocolFixAvailableRowValue(protocolValue) {
-  return protocolValueAllowed(protocolValue);
+  return protocolSourceValueAllowed(protocolValue);
 }
 
 /**
@@ -4002,14 +4002,14 @@ function protocolFixAvailable(row) {
  * @returns {string}
  */
 function defaultTargetProtocol(currentProtocol) {
-  return currentProtocol === "ssh" ? "https" : "ssh";
+  return currentProtocol === "https" ? "ssh" : "https";
 }
 
 /**
  * @returns {string[]}
  */
 function protocolOptionValues() {
-  return ["git", "ssh", "https"];
+  return ["ssh", "https"];
 }
 
 /**
@@ -4018,6 +4018,22 @@ function protocolOptionValues() {
  */
 function protocolValueAllowed(protocolValue) {
   return protocolOptionValues().includes(protocolValue);
+}
+
+/**
+ * @param {string} protocolValue
+ * @returns {boolean}
+ */
+function protocolSourceValueAllowed(protocolValue) {
+  return protocolValueAllowed(protocolValue) || protocolValue === "git";
+}
+
+/**
+ * @param {string} protocolValue
+ * @returns {string}
+ */
+function protocolDisplayValue(protocolValue) {
+  return protocolValue === "git" ? "ssh" : protocolValue;
 }
 
 /**
