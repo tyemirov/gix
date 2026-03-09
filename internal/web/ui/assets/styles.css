@@ -60,11 +60,22 @@ textarea {
 }
 
 .page-shell {
+  min-height: 100vh;
+  padding: 1.5rem;
+}
+
+.workspace-layout {
+  display: grid;
+  grid-template-columns: minmax(18rem, 1fr) minmax(0, 4fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.workspace-main {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
-  min-height: 100vh;
-  padding: 1.5rem;
+  min-width: 0;
 }
 
 .layout-row {
@@ -73,7 +84,7 @@ textarea {
 }
 
 .context-row {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: start;
 }
 
@@ -231,7 +242,6 @@ h4 {
 }
 
 .repo-list,
-.repo-tree,
 .branch-list,
 .command-groups,
 .command-group-list,
@@ -251,7 +261,6 @@ h4 {
 }
 
 .repo-list,
-.repo-tree,
 .branch-list,
 .command-groups {
   min-height: 0;
@@ -259,8 +268,7 @@ h4 {
   padding-right: 0.15rem;
 }
 
-.repo-list,
-.repo-tree {
+.repo-list {
   max-height: 26rem;
 }
 
@@ -387,13 +395,25 @@ h4 {
 .repo-panel {
   display: flex;
   flex-direction: column;
+  gap: 0.85rem;
+  position: sticky;
+  top: 1.5rem;
+  height: calc(100vh - 3rem);
+  max-height: calc(100vh - 3rem);
+  overflow: hidden;
 }
 
 .repo-tree {
+  flex: 1 1 auto;
+  display: block;
+  height: 100%;
+  min-height: 24rem;
+  max-height: none;
   padding: 0.45rem;
   border: 1px solid var(--line);
   border-radius: var(--radius-medium);
   background: rgba(255, 255, 255, 0.46);
+  overflow: auto;
 }
 
 .repo-tree .wunderbaum {
@@ -499,7 +519,6 @@ h4 {
 }
 
 .repo-focus {
-  margin: 0.9rem 0 1rem;
   padding: 0.85rem 0.95rem;
   border: 1px solid var(--line);
   border-radius: var(--radius-medium);
@@ -542,7 +561,6 @@ h4 {
 }
 
 .repo-scope {
-  margin-bottom: 0.85rem;
   padding: 0.75rem 0.85rem;
   border: 1px solid var(--line);
   border-radius: var(--radius-medium);
@@ -1087,12 +1105,12 @@ h4 {
 }
 
 @media (max-width: 1200px) {
-  .context-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .workspace-layout {
+    grid-template-columns: minmax(17rem, 18rem) minmax(0, 1fr);
   }
 
-  .repo-panel {
-    grid-column: 1 / -1;
+  .context-row {
+    grid-template-columns: 1fr;
   }
 
   .task-switcher {
@@ -1105,13 +1123,26 @@ h4 {
     padding: 1rem;
   }
 
+  .workspace-layout,
+  .workspace-main {
+    gap: 1rem;
+  }
+
+  .workspace-layout,
   .context-row,
   .tasks-row,
   .runner-row {
     grid-template-columns: 1fr;
   }
 
+  .repo-panel {
+    position: static;
+    height: auto;
+    max-height: none;
+  }
+
   .repo-list,
+  .repo-tree,
   .branch-list,
   .command-groups {
     max-height: none;

@@ -46,7 +46,10 @@ const (
 	auditQueueTargetProtocolSelector       = "[data-queue-target-protocol]"
 	auditQueueSyncStrategySelector         = "[data-queue-sync-strategy]"
 	repoFilterSelectorConstant             = "#repo-filter"
+	repoSidebarSelectorConstant            = "#repo-sidebar"
 	repoTreeSelectorConstant               = "#repo-tree"
+	workspaceLayoutSelectorConstant        = "#workspace-layout"
+	workspaceMainSelectorConstant          = "#workspace-main"
 	branchTaskButtonSelectorConstant       = "#task-branch"
 	filesTaskButtonSelectorConstant        = "#task-files"
 	remotesTaskButtonSelectorConstant      = "#task-remotes"
@@ -974,6 +977,64 @@ func TestWebInterfaceBrowserRendersRepositoryTreeAndPreservesCheckedScopeAcrossF
 		secondCanonicalRepositoryPath,
 	})
 	require.NotEqual(t, canonicalPath(t, firstRepositoryPath), secondCanonicalRepositoryPath)
+}
+
+func TestWebInterfaceBrowserDisplaysRepositoryTreeInLeftSidebar(t *testing.T) {
+	rootPath := t.TempDir()
+	createTestRepository(t, filepath.Join(rootPath, "alpha"))
+	createTestRepository(t, filepath.Join(rootPath, "nested", "beta"))
+
+	httpServer, repositoryCatalog := newBrowserTestServer(t, rootPath)
+	defer httpServer.Close()
+
+	browserContext := newBrowserTestContext(t)
+	expectedRepository := selectedRepositoryDescriptor(t, repositoryCatalog)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		chromedp.Navigate(httpServer.URL),
+		chromedp.WaitVisible(repoSidebarSelectorConstant, chromedp.ByQuery),
+		chromedp.WaitVisible(repoTreeSelectorConstant, chromedp.ByQuery),
+	))
+	waitForControlSurfaceReady(t, browserContext, expectedRepository.Name)
+
+	require.Eventually(t, func() bool {
+		treeText, treeTextError := readTextContent(browserContext, repoTreeSelectorConstant)
+		if treeTextError != nil {
+			return false
+		}
+		return strings.Contains(treeText, "alpha") && strings.Contains(treeText, "nested")
+	}, browserReadyTimeoutConstant, browserReadyPollIntervalConstant)
+
+	var layoutMetrics struct {
+		SidebarWidthRatio float64 `json:"sidebarWidthRatio"`
+		TreeHeight        float64 `json:"treeHeight"`
+		SidebarLeft       float64 `json:"sidebarLeft"`
+		MainLeft          float64 `json:"mainLeft"`
+	}
+	require.NoError(t, chromedp.Run(browserContext, chromedp.Evaluate(fmt.Sprintf(`(() => {
+		const workspaceLayout = document.querySelector(%q);
+		const repoSidebar = document.querySelector(%q);
+		const workspaceMain = document.querySelector(%q);
+		const repoTree = document.querySelector(%q);
+		if (!workspaceLayout || !repoSidebar || !workspaceMain || !repoTree) {
+			throw new Error("missing layout elements");
+		}
+		const workspaceLayoutRect = workspaceLayout.getBoundingClientRect();
+		const repoSidebarRect = repoSidebar.getBoundingClientRect();
+		const workspaceMainRect = workspaceMain.getBoundingClientRect();
+		const repoTreeRect = repoTree.getBoundingClientRect();
+		return {
+			sidebarWidthRatio: repoSidebarRect.width / workspaceLayoutRect.width,
+			treeHeight: repoTreeRect.height,
+			sidebarLeft: repoSidebarRect.left,
+			mainLeft: workspaceMainRect.left
+		};
+	})()`, workspaceLayoutSelectorConstant, repoSidebarSelectorConstant, workspaceMainSelectorConstant, repoTreeSelectorConstant), &layoutMetrics)))
+
+	require.Greater(t, layoutMetrics.SidebarWidthRatio, 0.17)
+	require.Less(t, layoutMetrics.SidebarWidthRatio, 0.23)
+	require.Greater(t, layoutMetrics.TreeHeight, 180.0)
+	require.Less(t, layoutMetrics.SidebarLeft, layoutMetrics.MainLeft)
 }
 
 func TestWebInterfaceBrowserRepositoryTreeShowsOnlyTopLevelRepositories(t *testing.T) {

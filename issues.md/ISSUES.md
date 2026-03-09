@@ -397,3 +397,19 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - [x] Added a browser regression covering a top-level repository, a nested child repository under it, and an unrelated sibling repository.
   - [x] Filtered the browser-side repository set down to top-level repositories before selection, counts, tree rendering, and scope resolution.
   - [x] Revalidated `make format`, `make test`, `make lint`, and `make ci`.
+
+- Update on 2026-03-08 for [F009].
+  Moved the repository explorer into a persistent left sidebar that occupies roughly one fifth of the desktop control surface and lets the folder tree fill the panel vertically.
+  ### Summary
+  The initial repository-tree delivery rendered the tree inside the old top-row repository card instead of as a true left explorer panel. That made the tree easy to miss, did not read as a file-explorer layout, and did not satisfy the requested 1/5-page sidebar UX.
+
+  ### Analysis
+  - The problem was structural, not data-related: the tree control already existed and rendered repository folders correctly, but it lived in the same top context row as the target cards.
+  - A CSS-only tweak would not have been enough because the page DOM still treated the repository area as one card in a horizontal trio rather than as a dedicated navigation region.
+  - The correct fix is to split the page into a sidebar/main workspace, keep the existing repository-state widgets inside the sidebar, and let the Wunderbaum container expand vertically inside that sidebar.
+  - Desktop width should be enforced at the layout container so the explorer remains approximately 20% of the usable workspace, while mobile should still collapse to a single-column layout.
+
+  ### Deliverables
+  - [x] Added browser coverage that asserts the repository tree is rendered inside a dedicated left sidebar, appears to the left of the main workspace, and occupies approximately one fifth of the desktop layout width.
+  - [x] Restructured the embedded HTML into a `workspace-layout` split with `repo-sidebar` and `workspace-main` regions.
+  - [x] Updated CSS so the sidebar stays narrow on desktop, the repository tree fills the panel vertically, and mobile collapses back to one column.

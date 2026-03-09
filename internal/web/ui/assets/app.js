@@ -1182,6 +1182,8 @@ async function renderRepositoryTree(query) {
     return;
   }
 
+  elements.repoTree.classList.remove("wb-skeleton", "wb-initializing");
+
   const treeModel = buildRepositoryTreeModel(state.repositories);
   if (treeModel.length === 0) {
     elements.repoTree.innerHTML = "";
