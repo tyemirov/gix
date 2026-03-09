@@ -1,97 +1,48 @@
-# config.yaml
 common:
   log_level: error
-  log_format: console
-
 operations:
-  - command: ["audit"]
-    with: &audit_defaults
+  - command: ["workflow"]
+    with: &workflow_defaults
       roots:
-        - ~/Development
-      debug: false
-
-  - command: ["packages", "delete"]
-    with: &packages_purge_defaults
+        - .
       assume_yes: true
-      # package: my-image  # Optional override; defaults to the repository name
+  - command: ["remote", "update-protocol"]
+    with: &conversion_defaults
       roots:
-        - ~/Development
-
-  - command: ["prs", "delete"]
-    with: &branch_cleanup_defaults
-      remote: origin
-      limit: 100
-      roots:
-        - ~/Development
-
+        - .
+      assume_yes: true
+      from: https
+      to: ssh
   - command: ["remote", "update-to-canonical"]
-    with: &repo_remotes_defaults
+    with: &remote_defaults
+      roots:
+        - .
       assume_yes: true
       owner: canonical
+  - command: ["default"]
+    with: &migration_defaults
       roots:
-        - ~/Development
-
-  - command: ["remote", "update-protocol"]
-    with: &repo_protocol_defaults
-      assume_yes: true
-      roots:
-        - ~/Development
-      from: https
-      to: git
-
-  - command: ["folder", "rename"]
-    with: &repo_rename_defaults
-      assume_yes: true
-      require_clean: true
-      include_owner: false
-      roots:
-        - ~/Development
-
-  - command: ["workflow"]
-    with: &workflow_command_defaults
-      roots:
-        - ~/Development
-      assume_yes: true
-      repository_workers: 4
-
-  - command: ["branch-default"]
-    with: &branch_default_defaults
+        - .
       debug: false
-      roots:
-        - ~/Development
-
+      targets:
+        - remote_name: origin
+          target_branch: master
+          push_to_remote: false
+          delete_source_branch: false
 workflow:
   - step:
-      order: 1
       command: ["remote", "update-protocol"]
       with:
-        <<: *repo_protocol_defaults
-
+        <<: *conversion_defaults
   - step:
-      order: 2
       command: ["remote", "update-to-canonical"]
       with:
-        <<: *repo_remotes_defaults
-
+        <<: *remote_defaults
   - step:
-      order: 3
-      command: ["folder", "rename"]
+      command: ["default"]
       with:
-        <<: *repo_rename_defaults
-
+        <<: *migration_defaults
   - step:
-      order: 4
-      command: ["branch-default"]
-      with:
-        <<: *branch_default_defaults
-        targets:
-          - remote_name: origin
-            target_branch: master
-            push_to_remote: true
-            delete_source_branch: false
-
-  - step:
-      order: 5
       command: ["audit", "report"]
       with:
         output: ./reports/audit-latest.csv
