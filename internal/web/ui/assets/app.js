@@ -1,5 +1,7 @@
 // @ts-check
 
+import { Wunderbaum } from "https://cdn.jsdelivr.net/npm/wunderbaum@0/+esm";
+
 /**
  * @typedef {{
  *   launch_path?: string,
@@ -193,6 +195,18 @@
  * }} CommandGroupDefinition
  */
 
+/**
+ * @typedef {{
+ *   key: string,
+ *   title: string,
+ *   path: string,
+ *   kind: "folder" | "repository",
+ *   search_text: string,
+ *   repository?: RepositoryDescriptor,
+ *   children: RepoTreeNodeModel[],
+ * }} RepoTreeNodeModel
+ */
+
 const repositoriesEndpoint = "/api/repos";
 const commandsEndpoint = "/api/commands";
 const auditInspectEndpoint = "/api/audit/inspect";
@@ -314,6 +328,22 @@ const commandGroupDefinitions = [
   { id: commandGroupGeneralValue, title: "General", description: "Commands that are not tied to a repository target." },
 ];
 
+const repositoryTreeIconMap = Object.freeze({
+  expanderCollapsed: "repo-tree-expander-icon repo-tree-expander-collapsed",
+  expanderExpanded: "repo-tree-expander-icon repo-tree-expander-expanded",
+  checkUnchecked: "repo-tree-checkbox-icon repo-tree-checkbox-unchecked",
+  checkChecked: "repo-tree-checkbox-icon repo-tree-checkbox-checked",
+  checkUnknown: "repo-tree-checkbox-icon repo-tree-checkbox-partial",
+  folder: "repo-tree-node-icon repo-tree-folder-icon",
+  folderOpen: "repo-tree-node-icon repo-tree-folder-open-icon",
+  doc: "repo-tree-node-icon repo-tree-repository-icon",
+  loading: "repo-tree-node-icon repo-tree-loading-icon",
+  error: "repo-tree-node-icon repo-tree-error-icon",
+});
+
+/** @type {any | null} */
+let repositoryTreeControl = null;
+
 /** @type {{
  *   repositoryCatalog: RepositoryCatalog | null,
  *   repositories: RepositoryDescriptor[],
@@ -373,7 +403,7 @@ const elements = {
   repoCount: document.querySelector("#repo-count"),
   repoLaunchSummary: document.querySelector("#repo-launch-summary"),
   repoFilter: document.querySelector("#repo-filter"),
-  repoList: document.querySelector("#repo-list"),
+  repoTree: document.querySelector("#repo-tree"),
   repoTitle: document.querySelector("#repo-title"),
   repoPath: document.querySelector("#repo-path"),
   repoSummary: document.querySelector("#repo-summary"),
@@ -509,7 +539,7 @@ async function initialize() {
   elements.fileTaskMode.value = state.fileTaskMode;
 
   renderRepositoryLaunchSummary();
-  renderRepositoryList("");
+  await renderRepositoryTree("");
   renderTargetState();
   renderTaskState();
   renderActionGroups("");
@@ -531,7 +561,7 @@ async function initialize() {
 
 function bindEvents() {
   elements.repoFilter.addEventListener("input", () => {
-    renderRepositoryList(elements.repoFilter.value.trim().toLowerCase());
+    void renderRepositoryTree(elements.repoFilter.value.trim().toLowerCase());
   });
 
   elements.taskInspect.addEventListener("click", () => {
@@ -1144,68 +1174,311 @@ function buildPathDetail() {
 /**
  * @param {string} query
  */
-function renderRepositoryList(query) {
-  const filteredRepositories = state.repositories.filter((repository) => {
-    if (!query) {
-      return true;
-    }
-    const haystack = [repository.name, repository.path, repository.current_branch || "", repository.default_branch || ""]
-      .join(" ")
-      .toLowerCase();
-    return haystack.includes(query);
-  });
-
-  elements.repoList.innerHTML = "";
-  if (filteredRepositories.length === 0) {
-    appendEmptyState(elements.repoList, state.repositoryCatalog?.error || "No repositories match the current filter.");
+async function renderRepositoryTree(query) {
+  if (!(elements.repoTree instanceof HTMLElement)) {
     return;
   }
 
-  filteredRepositories.forEach((repository) => {
-    const container = document.createElement("div");
-    container.className = `repo-entry${repository.id === state.selectedRepositoryID ? " selected" : ""}`;
+  const treeModel = buildRepositoryTreeModel(state.repositories);
+  if (treeModel.length === 0) {
+    elements.repoTree.innerHTML = "";
+    repositoryTreeControl = null;
+    appendEmptyState(elements.repoTree, state.repositoryCatalog?.error || "No repositories match the current filter.");
+    return;
+  }
 
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.className = "repo-checkbox";
-    checkbox.checked = state.checkedRepositoryIDs.includes(repository.id);
-    checkbox.setAttribute("aria-label", `Include ${repository.name} in checked repositories`);
-    checkbox.addEventListener("click", (event) => {
-      event.stopPropagation();
-    });
-    checkbox.addEventListener("change", () => {
-      toggleCheckedRepository(repository.id, checkbox.checked);
-    });
+  if (!repositoryTreeControl) {
+    elements.repoTree.innerHTML = "";
+  }
 
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = `repo-button${repository.id === state.selectedRepositoryID ? " active" : ""}`;
-    const dirtyLabel = repository.dirty ? "dirty" : "clean";
-    const branchLabel = repository.current_branch || "No current branch";
-    const detailParts = [branchLabel];
-    if (repository.path) {
-      detailParts.push(repository.path);
-    }
-    button.innerHTML = `
-      <div class="repo-row">
-        <span class="repo-name">${escapeHTML(repository.name)}</span>
-        <span class="repo-inline-tokens">
-          ${repository.context_current ? '<span class="flag-token">context</span>' : ""}
-          <span class="flag-token ${repository.dirty ? "flag-token-danger" : "flag-token-success"}">${dirtyLabel}</span>
-        </span>
-      </div>
-      <div class="repo-detail-row" title="${escapeHTML(detailParts.join(" · "))}">
-        <span class="repo-branch-meta">${escapeHTML(branchLabel)}</span>
-        ${repository.path ? `<span class="repo-path-meta">${escapeHTML(repository.path)}</span>` : ""}
-      </div>
-    `;
-    button.addEventListener("click", () => {
-      void selectRepository(repository.id);
-    });
+  const expandedKeys = repositoryTreeExpandedKeys();
+  repositoryTreeControl = ensureRepositoryTreeControl();
+  await repositoryTreeControl.load(buildRepositoryTreeSource(treeModel, new Set(expandedKeys)));
+  applyRepositoryTreeFilter(query);
+  await focusSelectedRepositoryTreeNode();
+}
 
-    container.append(checkbox, button);
-    elements.repoList.append(container);
+function ensureRepositoryTreeControl() {
+  if (repositoryTreeControl) {
+    return repositoryTreeControl;
+  }
+
+  repositoryTreeControl = new Wunderbaum({
+    element: elements.repoTree,
+    source: [],
+    selectMode: "multi",
+    checkbox: (event) => String(event.node?.data?.kind || "") === "repository",
+    iconMap: repositoryTreeIconMap,
+    filter: {
+      autoApply: true,
+      autoExpand: true,
+      mode: "hide",
+      noData: "No repositories match the current filter.",
+    },
+    activate: (event) => {
+      const repositoryID = String(event.node.data?.repository_id || "");
+      if (!repositoryID || repositoryID === state.selectedRepositoryID) {
+        return;
+      }
+      void selectRepository(repositoryID);
+    },
+    select: (event) => {
+      const repositoryID = String(event.node.data?.repository_id || "");
+      if (!repositoryID) {
+        return;
+      }
+      toggleCheckedRepository(repositoryID, Boolean(event.node.selected));
+    },
+    render: annotateRepositoryTreeNode,
   });
+
+  return repositoryTreeControl;
+}
+
+function repositoryTreeExpandedKeys() {
+  if (!repositoryTreeControl) {
+    return [];
+  }
+
+  const treeState = repositoryTreeControl.getState({ expandedKeys: true, selectedKeys: false });
+  if (!Array.isArray(treeState.expandedKeys)) {
+    return [];
+  }
+  return treeState.expandedKeys.slice();
+}
+
+/**
+ * @param {string} query
+ */
+function applyRepositoryTreeFilter(query) {
+  if (!repositoryTreeControl) {
+    return;
+  }
+
+  if (!query) {
+    repositoryTreeControl.clearFilter();
+    return;
+  }
+
+  repositoryTreeControl.filterNodes((node) => repositoryTreeNodeMatchesQuery(node, query), {
+    autoExpand: true,
+    mode: "hide",
+    noData: "No repositories match the current filter.",
+  });
+}
+
+async function focusSelectedRepositoryTreeNode() {
+  if (!repositoryTreeControl || !state.selectedRepositoryID) {
+    return;
+  }
+
+  const selectedNode = repositoryTreeControl.findKey(state.selectedRepositoryID);
+  if (!selectedNode) {
+    return;
+  }
+
+  await selectedNode.setActive(true, { noEvents: true });
+}
+
+/**
+ * @param {any} node
+ * @param {string} query
+ * @returns {boolean | "branch"}
+ */
+function repositoryTreeNodeMatchesQuery(node, query) {
+  const searchText = String(node.data?.search_text || "").toLowerCase();
+  if (!searchText.includes(query)) {
+    return false;
+  }
+  return String(node.data?.kind || "") === "folder" ? "branch" : true;
+}
+
+/**
+ * @param {RepoTreeNodeModel[]} treeModel
+ * @param {Set<string>} expandedKeys
+ * @returns {object[]}
+ */
+function buildRepositoryTreeSource(treeModel, expandedKeys) {
+  return treeModel.map((node) => {
+    if (node.kind === "folder") {
+      return {
+        key: node.key,
+        title: node.title,
+        expanded: expandedKeys.has(node.key),
+        unselectable: true,
+        checkbox: false,
+        kind: node.kind,
+        label: node.title,
+        path: node.path,
+        search_text: node.search_text,
+        children: buildRepositoryTreeSource(node.children, expandedKeys),
+      };
+    }
+
+    return {
+      key: node.key,
+      title: node.title,
+      selected: state.checkedRepositoryIDs.includes(node.repository?.id || ""),
+      checkbox: true,
+      kind: node.kind,
+      label: node.title,
+      path: node.path,
+      repository_id: node.repository?.id || "",
+      repository_name: node.repository?.name || node.title,
+      repository_path: node.repository?.path || node.path,
+      search_text: node.search_text,
+    };
+  });
+}
+
+/**
+ * @param {RepositoryDescriptor[]} repositories
+ * @returns {RepoTreeNodeModel[]}
+ */
+function buildRepositoryTreeModel(repositories) {
+  /** @type {Map<string, RepoTreeNodeModel>} */
+  const folderIndex = new Map();
+  /** @type {RepoTreeNodeModel[]} */
+  const treeModel = [];
+
+  repositories.forEach((repository) => {
+    const relativeSegments = repositoryTreeSegments(repository);
+    const folderSegments = relativeSegments.slice(0, -1);
+    const folderPathSegments = [];
+
+    /** @type {RepoTreeNodeModel[]} */
+    let currentChildren = treeModel;
+    folderSegments.forEach((segment) => {
+      folderPathSegments.push(segment);
+      const folderKey = `folder:${folderPathSegments.join("/")}`;
+      let folderNode = folderIndex.get(folderKey);
+      if (!folderNode) {
+        folderNode = {
+          key: folderKey,
+          title: segment,
+          path: folderPathSegments.join("/"),
+          kind: "folder",
+          search_text: folderPathSegments.join(" ").toLowerCase(),
+          children: [],
+        };
+        folderIndex.set(folderKey, folderNode);
+        currentChildren.push(folderNode);
+      }
+      currentChildren = folderNode.children;
+    });
+
+    currentChildren.push({
+      key: repository.id,
+      title: repository.name,
+      path: repository.path,
+      kind: "repository",
+      search_text: repositorySearchText(repository),
+      repository,
+      children: [],
+    });
+  });
+
+  sortRepositoryTreeNodes(treeModel);
+  return treeModel;
+}
+
+/**
+ * @param {RepoTreeNodeModel[]} nodes
+ */
+function sortRepositoryTreeNodes(nodes) {
+  nodes.sort((left, right) => {
+    if (left.kind !== right.kind) {
+      return left.kind === "folder" ? -1 : 1;
+    }
+    return left.title.localeCompare(right.title, undefined, { numeric: true, sensitivity: "base" });
+  });
+  nodes.forEach((node) => {
+    if (node.children.length > 0) {
+      sortRepositoryTreeNodes(node.children);
+    }
+  });
+}
+
+/**
+ * @param {RepositoryDescriptor} repository
+ * @returns {string}
+ */
+function repositorySearchText(repository) {
+  return [repository.name, repository.path, repository.current_branch || "", repository.default_branch || ""]
+    .join(" ")
+    .toLowerCase();
+}
+
+/**
+ * @param {RepositoryDescriptor} repository
+ * @returns {string[]}
+ */
+function repositoryTreeSegments(repository) {
+  const repositoryPath = normalizeRepositoryTreePath(repository.path);
+  const launchPath = normalizeRepositoryTreePath(state.repositoryCatalog?.launch_path || "");
+  if (!repositoryPath) {
+    return [repository.name];
+  }
+
+  if (launchPath && (repositoryPath === launchPath || repositoryPath.startsWith(`${launchPath}/`))) {
+    const relativePath = repositoryPath === launchPath
+      ? repository.name
+      : repositoryPath.slice(launchPath.length + 1);
+    return splitRepositoryTreePath(relativePath);
+  }
+
+  return splitRepositoryTreePath(repositoryPath).slice(-1);
+}
+
+/**
+ * @param {string} rawPath
+ * @returns {string[]}
+ */
+function splitRepositoryTreePath(rawPath) {
+  return normalizeRepositoryTreePath(rawPath)
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+}
+
+/**
+ * @param {string} rawPath
+ * @returns {string}
+ */
+function normalizeRepositoryTreePath(rawPath) {
+  return String(rawPath || "")
+    .replace(/\\/g, "/")
+    .replace(/\/+/g, "/")
+    .replace(/\/$/, "");
+}
+
+/**
+ * @param {{ node: any, nodeElem: HTMLElement }} event
+ */
+function annotateRepositoryTreeNode(event) {
+  const nodeElement = event.nodeElem;
+  const rowElement = nodeElement.closest(".wb-row");
+  const titleElement = nodeElement.querySelector(".wb-title");
+  const checkboxElement = nodeElement.querySelector(".wb-checkbox");
+  const expanderElement = nodeElement.querySelector(".wb-expander");
+  const label = String(event.node.data?.label || event.node.title || "");
+  const kind = String(event.node.data?.kind || "");
+
+  if (rowElement instanceof HTMLElement) {
+    rowElement.dataset.repoTreeKind = kind;
+    rowElement.dataset.repoTreeKey = String(event.node.key || "");
+  }
+  if (titleElement instanceof HTMLElement && label) {
+    titleElement.dataset.repoTreeNode = label;
+  }
+  if (checkboxElement instanceof HTMLElement && label && kind === "repository") {
+    checkboxElement.dataset.repoTreeCheckbox = label;
+    checkboxElement.setAttribute("aria-label", `Include ${label} in checked repositories`);
+  }
+  if (expanderElement instanceof HTMLElement && label && kind === "folder") {
+    expanderElement.dataset.repoTreeExpander = label;
+    expanderElement.setAttribute("aria-label", `Toggle ${label} folder`);
+  }
 }
 
 /**
@@ -1223,7 +1496,7 @@ async function selectRepository(repositoryID) {
   }
   state.branches = [];
 
-  renderRepositoryList(elements.repoFilter.value.trim().toLowerCase());
+  await renderRepositoryTree(elements.repoFilter.value.trim().toLowerCase());
   renderTargetState();
   renderSelectedRepository();
   renderActionGroups(elements.commandFilter.value.trim().toLowerCase());
@@ -1245,6 +1518,7 @@ async function selectRepository(repositoryID) {
   }
 
   state.branches = (branchCatalog.branches || []).slice().sort(compareBranches);
+  await renderRepositoryTree(elements.repoFilter.value.trim().toLowerCase());
   renderTargetState();
   syncQuickActions();
   repopulateSelectedCommand();
@@ -1267,7 +1541,7 @@ function toggleCheckedRepository(repositoryID, checked) {
     state.selectedScope = scopeSelectedValue;
   }
 
-  renderRepositoryList(elements.repoFilter.value.trim().toLowerCase());
+  void renderRepositoryTree(elements.repoFilter.value.trim().toLowerCase());
   renderTargetState();
   renderActionGroups(elements.commandFilter.value.trim().toLowerCase());
   syncQuickActions();

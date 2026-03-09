@@ -45,11 +45,14 @@ const (
 	auditQueueSyncSelectorConstant         = "[data-audit-action='sync_with_remote']"
 	auditQueueTargetProtocolSelector       = "[data-queue-target-protocol]"
 	auditQueueSyncStrategySelector         = "[data-queue-sync-strategy]"
+	repoFilterSelectorConstant             = "#repo-filter"
+	repoTreeSelectorConstant               = "#repo-tree"
 	branchTaskButtonSelectorConstant       = "#task-branch"
 	filesTaskButtonSelectorConstant        = "#task-files"
 	remotesTaskButtonSelectorConstant      = "#task-remotes"
 	workflowsTaskButtonSelectorConstant    = "#task-workflows"
 	advancedTaskButtonSelectorConstant     = "#task-advanced"
+	scopeCheckedButtonSelectorConstant     = "#scope-checked"
 	scopeAllButtonSelectorConstant         = "#scope-all"
 	targetRefModeSelectorConstant          = "#target-ref-mode"
 	targetRefSelectSelectorConstant        = "#target-ref-select"
@@ -902,6 +905,77 @@ func TestWebInterfaceBrowserPrefillsRemoteAndWorkflowTasksAcrossRepositoryScope(
 	})
 }
 
+func TestWebInterfaceBrowserRendersRepositoryTreeAndPreservesCheckedScopeAcrossFilter(t *testing.T) {
+	rootPath := t.TempDir()
+	firstRepositoryPath := createTestRepository(t, filepath.Join(rootPath, "alpha"))
+	secondRepositoryPath := createTestRepository(t, filepath.Join(rootPath, "nested", "beta"))
+	secondCanonicalRepositoryPath := canonicalPath(t, secondRepositoryPath)
+
+	httpServer, repositoryCatalog := newBrowserTestServer(t, rootPath)
+	defer httpServer.Close()
+
+	browserContext := newBrowserTestContext(t)
+	expectedRepository := selectedRepositoryDescriptor(t, repositoryCatalog)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		chromedp.Navigate(httpServer.URL),
+		chromedp.WaitVisible(repoTreeSelectorConstant, chromedp.ByQuery),
+	))
+	waitForControlSurfaceReady(t, browserContext, expectedRepository.Name)
+
+	require.Eventually(t, func() bool {
+		treeText, treeTextError := readTextContent(browserContext, repoTreeSelectorConstant)
+		if treeTextError != nil {
+			return false
+		}
+		return strings.Contains(treeText, "alpha") && strings.Contains(treeText, "nested")
+	}, browserReadyTimeoutConstant, browserReadyPollIntervalConstant)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		doubleClickRepositoryTreeTitle("nested"),
+		clickRepositoryTreeTitle("beta"),
+	))
+
+	require.Eventually(t, func() bool {
+		repositoryTitle, repositoryTitleError := readTextContent(browserContext, "#repo-title")
+		if repositoryTitleError != nil {
+			return false
+		}
+		return repositoryTitle == "beta"
+	}, browserReadyTimeoutConstant, browserReadyPollIntervalConstant)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		clickRepositoryTreeCheckbox("alpha"),
+		clickRepositoryTreeCheckbox("beta"),
+		setControlValue(repoFilterSelectorConstant, "alpha"),
+	))
+
+	filteredTreeText, filteredTreeTextError := readTextContent(browserContext, repoTreeSelectorConstant)
+	require.NoError(t, filteredTreeTextError)
+	require.Contains(t, filteredTreeText, "alpha")
+	require.NotContains(t, filteredTreeText, "beta")
+
+	require.NoError(t, chromedp.Run(browserContext,
+		setControlValue(repoFilterSelectorConstant, ""),
+		chromedp.Click(scopeCheckedButtonSelectorConstant, chromedp.ByQuery),
+		chromedp.Click(remotesTaskButtonSelectorConstant, chromedp.ByQuery),
+		chromedp.WaitVisible(remoteLoadButtonSelectorConstant, chromedp.ByQuery),
+		setControlValue(remoteOwnerInputSelectorConstant, remoteOwnerValueConstant),
+		chromedp.Click(remoteLoadButtonSelectorConstant, chromedp.ByQuery),
+	))
+
+	assertSelectedCommand(t, browserContext, remoteCanonicalCommandPathConstant)
+	assertRunnerArguments(t, browserContext, []string{
+		"remote",
+		"update-to-canonical",
+		"--owner",
+		remoteOwnerValueConstant,
+		"--roots",
+		secondCanonicalRepositoryPath,
+	})
+	require.NotEqual(t, canonicalPath(t, firstRepositoryPath), secondCanonicalRepositoryPath)
+}
+
 func TestBrowserStartupErrorSkippable(t *testing.T) {
 	startupError := errors.New(
 		"chrome failed to start:\n" +
@@ -1217,4 +1291,52 @@ func setCheckboxValue(selector string, checked bool) chromedp.Action {
 	})()`, selector, checked)
 
 	return chromedp.Evaluate(script, nil)
+}
+
+func clickRepositoryTreeTitle(title string) chromedp.Action {
+	return chromedp.Evaluate(fmt.Sprintf(`(() => {
+		const rows = Array.from(document.querySelectorAll(%q + " .wb-row"));
+		const match = rows.find((row) => {
+			const titleElement = row.querySelector(".wb-title");
+			return titleElement && (titleElement.textContent || "").trim() === %q;
+		});
+		if (!match) {
+			throw new Error("missing tree node title");
+		}
+		const titleElement = match.querySelector(".wb-title");
+		titleElement.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+	})()`, repoTreeSelectorConstant, title), nil)
+}
+
+func doubleClickRepositoryTreeTitle(title string) chromedp.Action {
+	return chromedp.Evaluate(fmt.Sprintf(`(() => {
+		const rows = Array.from(document.querySelectorAll(%q + " .wb-row"));
+		const match = rows.find((row) => {
+			const titleElement = row.querySelector(".wb-title");
+			return titleElement && (titleElement.textContent || "").trim() === %q;
+		});
+		if (!match) {
+			throw new Error("missing tree node title");
+		}
+		const titleElement = match.querySelector(".wb-title");
+		titleElement.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+	})()`, repoTreeSelectorConstant, title), nil)
+}
+
+func clickRepositoryTreeCheckbox(title string) chromedp.Action {
+	return chromedp.Evaluate(fmt.Sprintf(`(() => {
+		const rows = Array.from(document.querySelectorAll(%q + " .wb-row"));
+		const match = rows.find((row) => {
+			const titleElement = row.querySelector(".wb-title");
+			return titleElement && (titleElement.textContent || "").trim() === %q;
+		});
+		if (!match) {
+			throw new Error("missing tree node title");
+		}
+		const checkboxElement = match.querySelector(".wb-checkbox");
+		if (!checkboxElement) {
+			throw new Error("missing tree checkbox");
+		}
+		checkboxElement.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+	})()`, repoTreeSelectorConstant, title), nil)
 }

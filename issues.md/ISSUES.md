@@ -349,3 +349,36 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
 
 ## Planning
 *do not implement yet*
+
+- [x] [F009] Add a repository-tree explorer to the web interface so the left panel behaves like a filesystem explorer while only exposing Git repositories as selectable leaves.
+  Requested on 2026-03-08.
+  ### Summary
+  The current web interface exposes repositories as a flat filtered list in the left panel. That does not scale well once the launch root contains many nested repositories, because path context is compressed into one line and operators cannot navigate by folder hierarchy. The requested UX is a Windows Explorer style tree in the left panel, but constrained to repository discovery: intermediate folders only exist to organize repositories, and only Git repositories are selectable targets.
+
+  ### Current State
+  - `GET /api/repos` already returns absolute repository paths in `RepositoryCatalog.Repositories`, so the browser has enough information to derive a folder hierarchy without a new backend endpoint.
+  - The current frontend is a static HTML/CSS/ESM page (`internal/web/ui/index.html`, `internal/web/ui/assets/app.js`, `internal/web/ui/assets/styles.css`) with no package manifest, no bundler, and no frontend dependency pipeline.
+  - The existing repo panel owns three coupled behaviors that must survive the tree migration: selected repository identity, checked-repository scope, and text filtering.
+  - This issue explicitly chooses a runtime CDN dependency for the tree widget, so the implementation should treat jsDelivr-hosted Wunderbaum as the only supported tree-library path for this feature.
+
+  ### Library Investigation
+  - `Wunderbaum` is the chosen library for this issue. Its official quick-start supports direct jsDelivr loading for both CSS and JavaScript, and its tree model, keyboard support, filtering support, and plain-JS integration fit the current static frontend.
+  - The official docs expose both a UMD script path and an ESM CDN path. Because the current page already loads `app.js` as a module, the cleanest implementation path is to keep `app.js` local and import Wunderbaum from jsDelivr into that module while loading the Wunderbaum stylesheet from jsDelivr in `index.html`.
+  - Wunderbaum still documents itself as beta, so the browser-side tree adapter should isolate the rest of the control-surface code from direct widget-specific data shapes as much as practical.
+
+  ### Recommendation
+  - Use Wunderbaum from jsDelivr as the only tree library for this feature.
+  - Derive a typed tree model in the browser from `RepositoryCatalog.Repositories`, then adapt that model into Wunderbaum nodes so repository semantics remain owned by the app instead of by the widget.
+  - Load the Wunderbaum stylesheet from `https://cdn.jsdelivr.net/npm/wunderbaum@0/dist/wunderbaum.min.css`.
+  - Load Wunderbaum JavaScript from the CDN ESM entrypoint `https://cdn.jsdelivr.net/npm/wunderbaum@0/+esm` from the local `app.js` module.
+
+  ### Deliverables
+  - [x] Replace the flat repo list in the left panel with a folder tree derived from repository paths.
+  - [x] Preserve selected-repo behavior, checked-repo scope, and text filtering within the new tree UX.
+  - [x] Ensure only repository leaves are selectable command targets; intermediate folders act as navigation/grouping nodes.
+  - [x] Add browser coverage for expanding/collapsing folders, selecting a repository from the tree, and preserving checked scope state.
+  - [x] Wire Wunderbaum from jsDelivr into the static web page and initialize it from the local browser-side tree model.
+  ## Resolution
+  - Resolved on 2026-03-08 by replacing the flat repository list with a Wunderbaum-backed folder tree in the web client, loading the widget stylesheet from jsDelivr in `index.html` and importing the ESM module from jsDelivr in `app.js`.
+  - Added a browser-side folder/repository tree model derived from `RepositoryCatalog.Repositories`, kept repository selection and checked-scope state in the existing application model, and mapped those semantics onto Wunderbaum activation and checkbox events.
+  - Preserved repository filtering and checked-scope workflows across tree updates, added local icon styling so the tree does not depend on an extra icon-font CDN, and covered the explorer behavior with browser and HTML integration tests.

@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>gix Control Surface</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/wunderbaum@0/dist/wunderbaum.min.css">
     <link rel="stylesheet" href="/assets/styles.css">
   </head>
   <body>
@@ -46,7 +47,7 @@
           <p id="repo-launch-summary" class="panel-note"></p>
           <label class="field-label" for="repo-filter">Filter</label>
           <input id="repo-filter" class="text-input" type="search" placeholder="Find a repository">
-          <div id="repo-list" class="repo-list" aria-live="polite"></div>
+          <div id="repo-tree" class="repo-tree wb-skeleton wb-initializing wb-fade-expander" aria-live="polite"></div>
         </section>
 
         <section class="panel target-card">
