@@ -348,6 +348,16 @@ func TestWebServerExecutesVersionCommand(t *testing.T) {
 	require.Contains(t, indexDocument.String(), "Run remote normalization command")
 	require.Contains(t, indexDocument.String(), "Run workflow command")
 
+	applicationScriptResponse, applicationScriptError := http.Get(httpServer.URL + "/assets/app.js")
+	require.NoError(t, applicationScriptError)
+	defer applicationScriptResponse.Body.Close()
+	require.Equal(t, http.StatusOK, applicationScriptResponse.StatusCode)
+
+	var applicationScript bytes.Buffer
+	_, applicationScriptCopyError := applicationScript.ReadFrom(applicationScriptResponse.Body)
+	require.NoError(t, applicationScriptCopyError)
+	require.Contains(t, applicationScript.String(), "from \"https://cdn.jsdelivr.net/npm/wunderbaum@0/+esm\"")
+
 	commandsResponse, commandsError := http.Get(httpServer.URL + "/api/commands")
 	require.NoError(t, commandsError)
 	defer commandsResponse.Body.Close()

@@ -37,7 +37,7 @@ const (
 	repositoryNotFoundTemplateConstant  = "repository %q was not found"
 )
 
-//go:embed ui/index.html ui/assets/app.js ui/assets/styles.css
+//go:embed ui
 var embeddedUIFiles embed.FS
 
 type serverRuntimeOptions struct {
