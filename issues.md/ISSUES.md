@@ -459,3 +459,18 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - [x] Added browser coverage that clicks the current-repo leaf and verifies sibling repositories appear in the tree.
   - [x] Updated the current-repo repository catalog to preload repositories beneath the current repository parent and expose that parent as the explorer root.
   - [x] Added compact/explorer switching in the browser tree model and restyled the tree pane with a flatter file-explorer visual language.
+
+- Update on 2026-03-08 for [F008].
+  Fixed audit-table action buttons so their labels remain visible in the web UI instead of rendering as oversized blank pills.
+  ### Summary
+  The audit results table reused the generic `.secondary-button` styling inside the Actions column. Those buttons inherited a transparent border and full-width layout, which made the action pills look empty and pushed their labels into a visually awkward position inside the horizontally scrollable table.
+
+  ### Analysis
+  - The labels were present in the DOM; this was a presentation regression in the shared button CSS, not missing audit action data.
+  - The transparent border made the controls visually weak, and the inherited `width: 100%` caused each action button to stretch across the full cell width instead of sizing to its content.
+  - The correct fix is to make secondary buttons explicitly legible and override the audit-table action buttons to render as compact content-width pills with left-aligned text.
+
+  ### Deliverables
+  - [x] Added a browser regression that verifies the rename action button exposes non-transparent styling and does not consume the full width of its table cell.
+  - [x] Made `.secondary-button` text and border styling explicit.
+  - [x] Updated audit action pills to size to content and wrap their labels within the button.

@@ -225,6 +225,78 @@ func TestWebInterfaceBrowserInspectsAuditRootsAndDisplaysTable(t *testing.T) {
 	require.Contains(t, auditResultsText, auditCustomRootValueConstant)
 }
 
+func TestWebInterfaceBrowserKeepsAuditActionButtonsLegible(t *testing.T) {
+	repositoryPath := createTestRepository(t, filepath.Join(t.TempDir(), "workspace", "example"))
+
+	httpServer, repositoryCatalog := newBrowserTestServerWithInspector(t, repositoryPath, func(_ context.Context, request web.AuditInspectionRequest) web.AuditInspectionResponse {
+		return web.AuditInspectionResponse{
+			Roots: request.Roots,
+			Rows: []web.AuditInspectionRow{
+				{
+					Path:                   filepath.Join(auditCustomRootValueConstant, "example"),
+					FolderName:             "example",
+					IsGitRepository:        true,
+					FinalGitHubRepository:  "canonical/example",
+					OriginRemoteStatus:     "configured",
+					NameMatches:            "no",
+					RemoteDefaultBranch:    "main",
+					LocalBranch:            "main",
+					InSync:                 "yes",
+					RemoteProtocol:         "ssh",
+					OriginMatchesCanonical: "yes",
+					WorktreeDirty:          "no",
+					DirtyFiles:             "",
+				},
+			},
+		}
+	})
+	defer httpServer.Close()
+
+	browserContext := newBrowserTestContext(t)
+	expectedRepository := selectedRepositoryDescriptor(t, repositoryCatalog)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		chromedp.Navigate(httpServer.URL),
+		chromedp.WaitVisible(auditRunButtonSelectorConstant, chromedp.ByQuery),
+	))
+	waitForControlSurfaceReady(t, browserContext, expectedRepository.Name)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		setControlValue(auditRootsInputSelectorConstant, auditCustomRootValueConstant),
+		chromedp.Click(auditRunButtonSelectorConstant, chromedp.ByQuery),
+		chromedp.WaitVisible(auditQueueRenameSelectorConstant, chromedp.ByQuery),
+	))
+
+	var presentation struct {
+		Label       string  `json:"label"`
+		Color       string  `json:"color"`
+		BorderColor string  `json:"borderColor"`
+		ButtonWidth float64 `json:"buttonWidth"`
+		CellWidth   float64 `json:"cellWidth"`
+	}
+	require.NoError(t, chromedp.Run(browserContext, chromedp.Evaluate(fmt.Sprintf(`(() => {
+		const button = document.querySelector(%q);
+		if (!button) {
+			throw new Error("missing audit action button");
+		}
+		const style = window.getComputedStyle(button);
+		const cell = button.closest("td");
+		return {
+			label: (button.textContent || "").trim(),
+			color: style.color,
+			borderColor: style.borderTopColor,
+			buttonWidth: button.getBoundingClientRect().width,
+			cellWidth: cell ? cell.getBoundingClientRect().width : 0
+		};
+	})()`, auditQueueRenameSelectorConstant), &presentation)))
+
+	require.Equal(t, "Queue rename", presentation.Label)
+	require.NotEqual(t, "rgba(0, 0, 0, 0)", presentation.BorderColor)
+	require.NotEqual(t, "rgba(0, 0, 0, 0)", presentation.Color)
+	require.Greater(t, presentation.CellWidth, 0.0)
+	require.Less(t, presentation.ButtonWidth, presentation.CellWidth)
+}
+
 func TestWebInterfaceBrowserFiltersAuditRowsByColumnValue(t *testing.T) {
 	repositoryPath := createTestRepository(t, filepath.Join(t.TempDir(), "workspace", "example"))
 
