@@ -1037,6 +1037,38 @@ func TestWebInterfaceBrowserDisplaysRepositoryTreeInLeftSidebar(t *testing.T) {
 	require.Less(t, layoutMetrics.SidebarLeft, layoutMetrics.MainLeft)
 }
 
+func TestWebInterfaceBrowserCurrentRepoModeShowsParentFolderInTree(t *testing.T) {
+	repositoryPath := createTestRepository(t, filepath.Join(t.TempDir(), "workspace", "example"))
+
+	httpServer, repositoryCatalog := newBrowserTestServer(t, repositoryPath)
+	defer httpServer.Close()
+
+	browserContext := newBrowserTestContext(t)
+	expectedRepository := selectedRepositoryDescriptor(t, repositoryCatalog)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		chromedp.Navigate(httpServer.URL),
+		chromedp.WaitVisible(repoTreeSelectorConstant, chromedp.ByQuery),
+	))
+	waitForControlSurfaceReady(t, browserContext, expectedRepository.Name)
+
+	parentFolderName := filepath.Base(filepath.Dir(repositoryPath))
+	repositoryName := filepath.Base(repositoryPath)
+
+	treeText, treeTextError := readTextContent(browserContext, repoTreeSelectorConstant)
+	require.NoError(t, treeTextError)
+	require.Contains(t, treeText, parentFolderName)
+	require.Contains(t, treeText, repositoryName)
+
+	require.NoError(t, chromedp.Run(browserContext,
+		clickRepositoryTreeTitle(repositoryName),
+	))
+
+	repositoryTitle, repositoryTitleError := readTextContent(browserContext, "#repo-title")
+	require.NoError(t, repositoryTitleError)
+	require.Equal(t, repositoryName, repositoryTitle)
+}
+
 func TestWebInterfaceBrowserRepositoryTreeShowsOnlyTopLevelRepositories(t *testing.T) {
 	rootPath := t.TempDir()
 	topLevelRepositoryPath := createTestRepository(t, filepath.Join(rootPath, "alpha"))

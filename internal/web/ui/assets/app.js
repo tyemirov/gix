@@ -1309,7 +1309,7 @@ function buildRepositoryTreeSource(treeModel, expandedKeys) {
       return {
         key: node.key,
         title: node.title,
-        expanded: expandedKeys.has(node.key),
+        expanded: repositoryTreeShouldAutoExpandFolders() || expandedKeys.has(node.key),
         unselectable: true,
         checkbox: false,
         kind: node.kind,
@@ -1420,6 +1420,13 @@ function repositorySearchText(repository) {
  */
 function repositoryTreeSegments(repository) {
   const repositoryPath = normalizeRepositoryTreePath(repository.path);
+  if (state.repositoryCatalog?.launch_mode === currentRepoLaunchMode) {
+    const parentPath = parentRepositoryTreePath(repositoryPath);
+    if (parentPath) {
+      return [repositoryTreeBasename(parentPath), repository.name];
+    }
+  }
+
   const launchPath = normalizeRepositoryTreePath(state.repositoryCatalog?.launch_path || "");
   if (!repositoryPath) {
     return [repository.name];
@@ -1433,6 +1440,13 @@ function repositoryTreeSegments(repository) {
   }
 
   return splitRepositoryTreePath(repositoryPath).slice(-1);
+}
+
+/**
+ * @returns {boolean}
+ */
+function repositoryTreeShouldAutoExpandFolders() {
+  return state.repositoryCatalog?.launch_mode === currentRepoLaunchMode;
 }
 
 /**
@@ -1455,6 +1469,33 @@ function normalizeRepositoryTreePath(rawPath) {
     .replace(/\\/g, "/")
     .replace(/\/+/g, "/")
     .replace(/\/$/, "");
+}
+
+/**
+ * @param {string} repositoryPath
+ * @returns {string}
+ */
+function parentRepositoryTreePath(repositoryPath) {
+  const normalizedPath = normalizeRepositoryTreePath(repositoryPath);
+  if (!normalizedPath) {
+    return "";
+  }
+
+  const lastSeparatorIndex = normalizedPath.lastIndexOf("/");
+  if (lastSeparatorIndex <= 0) {
+    return "";
+  }
+
+  return normalizedPath.slice(0, lastSeparatorIndex);
+}
+
+/**
+ * @param {string} rawPath
+ * @returns {string}
+ */
+function repositoryTreeBasename(rawPath) {
+  const segments = splitRepositoryTreePath(rawPath);
+  return segments.length === 0 ? "" : segments[segments.length - 1];
 }
 
 /**

@@ -1,5 +1,6 @@
 common:
   log_level: error
+  assume_yes: true
 operations:
   - command: ["workflow"]
     with: &workflow_defaults

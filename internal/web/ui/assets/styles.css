@@ -427,6 +427,12 @@ h4 {
   border-radius: 12px;
 }
 
+.repo-tree .wb-row[data-repo-tree-kind="repository"],
+.repo-tree .wb-row[data-repo-tree-kind="folder"] .wb-title,
+.repo-tree .wb-row[data-repo-tree-kind="folder"] .wb-expander {
+  cursor: pointer;
+}
+
 .repo-tree .wb-row:hover {
   background: rgba(173, 76, 40, 0.07);
 }

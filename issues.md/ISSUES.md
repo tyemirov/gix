@@ -413,3 +413,19 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - [x] Added browser coverage that asserts the repository tree is rendered inside a dedicated left sidebar, appears to the left of the main workspace, and occupies approximately one fifth of the desktop layout width.
   - [x] Restructured the embedded HTML into a `workspace-layout` split with `repo-sidebar` and `workspace-main` regions.
   - [x] Updated CSS so the sidebar stays narrow on desktop, the repository tree fills the panel vertically, and mobile collapses back to one column.
+
+- Update on 2026-03-08 for [F009].
+  Fixed current-repository launch mode so the explorer no longer collapses into a visually flat single-leaf row with no visible parent folder context.
+  ### Summary
+  When `gix --web` was launched from inside a repository, the explorer received a one-repository catalog and rendered it as a lone leaf named after the repo. In practice that looked like a blank panel with one thin row, which did not communicate a tree structure and made the repo entry feel non-interactive.
+
+  ### Analysis
+  - The sidebar layout itself was correct after the previous fix; the remaining problem was the browser-side tree model for `current_repo` launch mode.
+  - The existing segment builder collapsed a repository whose path matched the launch path down to `[repo-name]`, so Wunderbaum had no parent folder node to render.
+  - In current-repo mode the right UX is to synthesize a visible parent-folder context from the repository path itself, then expand that folder by default so the repo leaf is immediately visible.
+  - Small cursor affordance changes help the tree read as interactive instead of as static text.
+
+  ### Deliverables
+  - [x] Added a browser regression covering current-repo launch mode and asserting the tree shows both the parent folder name and the repository leaf.
+  - [x] Updated the tree-model builder so current-repo mode renders `parent-folder -> repository` instead of a single leaf.
+  - [x] Auto-expanded current-repo folders and added pointer cursors for folder and repository tree rows.
