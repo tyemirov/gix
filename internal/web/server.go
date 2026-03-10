@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -24,6 +25,8 @@ const (
 	apiFoldersRoutePathConstant          = "/api/folders"
 	apiAuditInspectRoutePathConstant     = "/api/audit/inspect"
 	apiAuditApplyRoutePathConstant       = "/api/audit/apply"
+	apiWorkflowPrimitivesRouteConstant   = "/api/workflow/primitives"
+	apiWorkflowApplyRouteConstant        = "/api/workflow/apply"
 	apiRunsRoutePathConstant             = "/api/runs"
 	apiRunRoutePathTemplateConstant      = "/api/runs/:id"
 	indexDocumentFilePathConstant        = "ui/index.html"
@@ -35,6 +38,8 @@ const (
 	missingDirectoryBrowserErrorConstant = "missing directory browser"
 	missingAuditInspectorErrorConstant   = "missing audit inspector"
 	missingAuditChangeExecutorConstant   = "missing audit change executor"
+	missingWorkflowCatalogErrorConstant  = "missing workflow primitive catalog loader"
+	missingWorkflowExecutorErrorConstant = "missing workflow primitive executor"
 	missingRepositoryIDErrorConstant     = "missing repository identifier"
 	missingFolderPathErrorConstant       = "missing folder path"
 	repositoryNotFoundTemplateConstant   = "repository %q was not found"
@@ -44,14 +49,16 @@ const (
 var embeddedUIFiles embed.FS
 
 type serverRuntimeOptions struct {
-	address      string
-	repositories RepositoryCatalog
-	catalog      CommandCatalog
-	loadBranches BranchCatalogLoader
-	browseDirs   DirectoryBrowser
-	execute      CommandExecutor
-	inspectAudit AuditInspector
-	applyAudit   AuditChangeExecutor
+	address       string
+	repositories  RepositoryCatalog
+	catalog       CommandCatalog
+	loadBranches  BranchCatalogLoader
+	browseDirs    DirectoryBrowser
+	execute       CommandExecutor
+	inspectAudit  AuditInspector
+	applyAudit    AuditChangeExecutor
+	loadWorkflow  WorkflowPrimitiveCatalogLoader
+	applyWorkflow WorkflowPrimitiveExecutor
 }
 
 // Server hosts the embedded gix browser interface and JSON API.
@@ -177,16 +184,24 @@ func newServerRuntimeOptions(options ServerOptions) (serverRuntimeOptions, error
 	if options.ApplyAuditChanges == nil {
 		return serverRuntimeOptions{}, errors.New(missingAuditChangeExecutorConstant)
 	}
+	if options.LoadWorkflowPrimitives == nil {
+		return serverRuntimeOptions{}, errors.New(missingWorkflowCatalogErrorConstant)
+	}
+	if options.ApplyWorkflowActions == nil {
+		return serverRuntimeOptions{}, errors.New(missingWorkflowExecutorErrorConstant)
+	}
 
 	return serverRuntimeOptions{
-		address:      trimmedAddress,
-		repositories: options.Repositories,
-		catalog:      options.Catalog,
-		loadBranches: options.LoadBranches,
-		browseDirs:   options.BrowseDirectories,
-		execute:      options.Execute,
-		inspectAudit: options.InspectAudit,
-		applyAudit:   options.ApplyAuditChanges,
+		address:       trimmedAddress,
+		repositories:  options.Repositories,
+		catalog:       options.Catalog,
+		loadBranches:  options.LoadBranches,
+		browseDirs:    options.BrowseDirectories,
+		execute:       options.Execute,
+		inspectAudit:  options.InspectAudit,
+		applyAudit:    options.ApplyAuditChanges,
+		loadWorkflow:  options.LoadWorkflowPrimitives,
+		applyWorkflow: options.ApplyWorkflowActions,
 	}, nil
 }
 
@@ -214,6 +229,8 @@ func (server *Server) registerRoutes(assetsFileSystem http.FileSystem) {
 	server.engine.GET(apiFoldersRoutePathConstant, server.handleBrowseDirectories)
 	server.engine.POST(apiAuditInspectRoutePathConstant, server.handleInspectAudit)
 	server.engine.POST(apiAuditApplyRoutePathConstant, server.handleApplyAuditChanges)
+	server.engine.GET(apiWorkflowPrimitivesRouteConstant, server.handleWorkflowPrimitives)
+	server.engine.POST(apiWorkflowApplyRouteConstant, server.handleApplyWorkflowActions)
 	server.engine.POST(apiRunsRoutePathConstant, server.handleCreateRun)
 	server.engine.GET(apiRunRoutePathTemplateConstant, server.handleGetRun)
 }
@@ -239,8 +256,17 @@ func (server *Server) handleRepositoryBranches(requestContext *gin.Context) {
 
 	repository, exists := server.repositoryIndex[repositoryID]
 	if !exists {
-		requestContext.JSON(http.StatusNotFound, errorResponse{Error: fmt.Sprintf(repositoryNotFoundTemplateConstant, repositoryID)})
-		return
+		repositoryPath := strings.TrimSpace(requestContext.Query("path"))
+		if len(repositoryPath) == 0 {
+			requestContext.JSON(http.StatusNotFound, errorResponse{Error: fmt.Sprintf(repositoryNotFoundTemplateConstant, repositoryID)})
+			return
+		}
+
+		repository = RepositoryDescriptor{
+			ID:   repositoryID,
+			Name: filepath.Base(repositoryPath),
+			Path: repositoryPath,
+		}
 	}
 
 	requestContext.JSON(http.StatusOK, server.options.loadBranches(requestContext.Request.Context(), repository))
@@ -287,6 +313,20 @@ func (server *Server) handleApplyAuditChanges(requestContext *gin.Context) {
 	}
 
 	requestContext.JSON(http.StatusOK, server.options.applyAudit(requestContext.Request.Context(), request))
+}
+
+func (server *Server) handleWorkflowPrimitives(requestContext *gin.Context) {
+	requestContext.JSON(http.StatusOK, server.options.loadWorkflow(requestContext.Request.Context()))
+}
+
+func (server *Server) handleApplyWorkflowActions(requestContext *gin.Context) {
+	var request WorkflowPrimitiveApplyRequest
+	if bindError := requestContext.ShouldBindJSON(&request); bindError != nil {
+		requestContext.JSON(http.StatusBadRequest, errorResponse{Error: bindError.Error()})
+		return
+	}
+
+	requestContext.JSON(http.StatusOK, server.options.applyWorkflow(requestContext.Request.Context(), request))
 }
 
 func (server *Server) selectedRepository() *RepositoryDescriptor {

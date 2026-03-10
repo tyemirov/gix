@@ -83,6 +83,13 @@ textarea {
   gap: 1.25rem;
 }
 
+.workspace-layout > *,
+.layout-row > *,
+.details-grid > *,
+.output-grid > * {
+  min-width: 0;
+}
+
 .context-row {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: start;
@@ -261,6 +268,20 @@ h4 {
   color: var(--muted);
 }
 
+.repo-focus-summary,
+.repo-focus-path,
+.target-detail,
+.error-message,
+#audit-selection-summary,
+#workflow-action-repo,
+#workflow-primitive-summary,
+#workflow-action-summary,
+#workflow-queue-summary,
+#run-error {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .lede,
 .repo-focus-summary {
   margin-top: 0.85rem;
@@ -278,6 +299,13 @@ h4 {
   align-items: center;
   justify-content: space-between;
   gap: 0.8rem;
+}
+
+.panel-heading > *,
+.button-row > *,
+.repo-focus-header > *,
+.audit-stage-header > * {
+  min-width: 0;
 }
 
 .field-label {
@@ -661,12 +689,24 @@ h4 {
 .repo-focus-path {
   margin-top: 0.55rem;
   font-size: 0.88rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .repo-focus-summary {
   margin-top: 0.35rem;
   font-size: 0.9rem;
   line-height: 1.35;
+}
+
+.repo-panel .repo-focus-summary,
+.repo-panel .target-detail,
+#repo-launch-summary {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .repo-scope {
@@ -1162,6 +1202,12 @@ h4 {
   border-color: rgba(139, 47, 43, 0.28);
   color: var(--danger);
   background: rgba(255, 241, 238, 0.94);
+}
+
+.audit-action-button-configure {
+  border-color: rgba(154, 104, 34, 0.22);
+  color: var(--warning);
+  background: rgba(255, 247, 232, 0.96);
 }
 
 @media (max-width: 1400px) {

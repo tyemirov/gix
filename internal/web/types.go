@@ -20,16 +20,24 @@ type AuditInspector func(context.Context, AuditInspectionRequest) AuditInspectio
 // AuditChangeExecutor applies queued audit changes.
 type AuditChangeExecutor func(context.Context, AuditChangeApplyRequest) AuditChangeApplyResponse
 
+// WorkflowPrimitiveCatalogLoader resolves the workflow primitives visible to the web interface.
+type WorkflowPrimitiveCatalogLoader func(context.Context) WorkflowPrimitiveCatalog
+
+// WorkflowPrimitiveExecutor applies queued workflow primitive actions.
+type WorkflowPrimitiveExecutor func(context.Context, WorkflowPrimitiveApplyRequest) WorkflowPrimitiveApplyResponse
+
 // ServerOptions configures the local web server.
 type ServerOptions struct {
-	Address           string
-	Repositories      RepositoryCatalog
-	Catalog           CommandCatalog
-	LoadBranches      BranchCatalogLoader
-	BrowseDirectories DirectoryBrowser
-	Execute           CommandExecutor
-	InspectAudit      AuditInspector
-	ApplyAuditChanges AuditChangeExecutor
+	Address                string
+	Repositories           RepositoryCatalog
+	Catalog                CommandCatalog
+	LoadBranches           BranchCatalogLoader
+	BrowseDirectories      DirectoryBrowser
+	Execute                CommandExecutor
+	InspectAudit           AuditInspector
+	ApplyAuditChanges      AuditChangeExecutor
+	LoadWorkflowPrimitives WorkflowPrimitiveCatalogLoader
+	ApplyWorkflowActions   WorkflowPrimitiveExecutor
 }
 
 // RepositoryCatalog describes the repositories visible to the web interface at launch time.
@@ -79,8 +87,9 @@ type DirectoryListing struct {
 
 // FolderDescriptor captures one immediate child folder entry.
 type FolderDescriptor struct {
-	Name string `json:"name"`
-	Path string `json:"path"`
+	Name       string                `json:"name"`
+	Path       string                `json:"path"`
+	Repository *RepositoryDescriptor `json:"repository,omitempty"`
 }
 
 // CommandCatalog describes the CLI commands exposed through the web interface.
@@ -213,4 +222,79 @@ type AuditChangeApplyResult struct {
 type AuditChangeApplyResponse struct {
 	Results []AuditChangeApplyResult `json:"results,omitempty"`
 	Error   string                   `json:"error,omitempty"`
+}
+
+// WorkflowPrimitiveCatalog describes the workflow primitives exposed through the web interface.
+type WorkflowPrimitiveCatalog struct {
+	Primitives []WorkflowPrimitiveDescriptor `json:"primitives,omitempty"`
+	Error      string                        `json:"error,omitempty"`
+}
+
+// WorkflowPrimitiveParameterControl describes the form control used for one workflow primitive parameter.
+type WorkflowPrimitiveParameterControl string
+
+const (
+	WorkflowPrimitiveParameterControlText     WorkflowPrimitiveParameterControl = "text"
+	WorkflowPrimitiveParameterControlTextarea WorkflowPrimitiveParameterControl = "textarea"
+	WorkflowPrimitiveParameterControlCheckbox WorkflowPrimitiveParameterControl = "checkbox"
+	WorkflowPrimitiveParameterControlSelect   WorkflowPrimitiveParameterControl = "select"
+)
+
+// WorkflowPrimitiveDescriptor captures one workflow primitive available through the web interface.
+type WorkflowPrimitiveDescriptor struct {
+	ID          string                                 `json:"id"`
+	Label       string                                 `json:"label"`
+	Description string                                 `json:"description,omitempty"`
+	Parameters  []WorkflowPrimitiveParameterDescriptor `json:"parameters,omitempty"`
+}
+
+// WorkflowPrimitiveParameterDescriptor captures the major parameters exposed for one workflow primitive.
+type WorkflowPrimitiveParameterDescriptor struct {
+	Key          string                             `json:"key"`
+	Label        string                             `json:"label"`
+	Description  string                             `json:"description,omitempty"`
+	Control      WorkflowPrimitiveParameterControl  `json:"control"`
+	Required     bool                               `json:"required"`
+	Placeholder  string                             `json:"placeholder,omitempty"`
+	DefaultValue string                             `json:"default_value,omitempty"`
+	DefaultBool  *bool                              `json:"default_bool,omitempty"`
+	Options      []WorkflowPrimitiveParameterOption `json:"options,omitempty"`
+}
+
+// WorkflowPrimitiveParameterOption captures one selectable parameter option.
+type WorkflowPrimitiveParameterOption struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+}
+
+// WorkflowPrimitiveQueuedAction captures one queued workflow primitive action from the browser.
+type WorkflowPrimitiveQueuedAction struct {
+	ID             string         `json:"id"`
+	RepositoryID   string         `json:"repository_id,omitempty"`
+	RepositoryPath string         `json:"repository_path"`
+	PrimitiveID    string         `json:"primitive_id"`
+	Parameters     map[string]any `json:"parameters,omitempty"`
+}
+
+// WorkflowPrimitiveApplyRequest captures one queued workflow action apply request.
+type WorkflowPrimitiveApplyRequest struct {
+	Actions []WorkflowPrimitiveQueuedAction `json:"actions"`
+}
+
+// WorkflowPrimitiveApplyResult reports the result of one queued workflow primitive action.
+type WorkflowPrimitiveApplyResult struct {
+	ID             string `json:"id"`
+	RepositoryPath string `json:"repository_path"`
+	PrimitiveID    string `json:"primitive_id"`
+	Status         string `json:"status"`
+	Message        string `json:"message,omitempty"`
+	Stdout         string `json:"stdout,omitempty"`
+	Stderr         string `json:"stderr,omitempty"`
+	Error          string `json:"error,omitempty"`
+}
+
+// WorkflowPrimitiveApplyResponse returns per-action workflow execution results.
+type WorkflowPrimitiveApplyResponse struct {
+	Results []WorkflowPrimitiveApplyResult `json:"results,omitempty"`
+	Error   string                         `json:"error,omitempty"`
 }

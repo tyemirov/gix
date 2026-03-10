@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"net"
 	"net/url"
@@ -37,6 +38,7 @@ const (
 	webLaunchModeDiscoveredRepositoriesConstant = "discovered_repositories"
 	webNoRepositoriesErrorTemplateConstant      = "no Git repositories found beneath %s"
 	webRepositoryIDTemplateConstant             = "repo-%03d"
+	webDynamicRepositoryIDTemplateConstant      = "repo-path-%016x"
 	webRepositoryPathRequiredErrorConstant      = "repository path is required"
 	webHelpCommandPathConstant                  = applicationNameConstant + " help"
 	webCompletionCommandPathConstant            = applicationNameConstant + " completion"
@@ -204,14 +206,16 @@ func (application *Application) handleWebLaunch(command *cobra.Command, argument
 	repositoryCatalog := application.repositoryCatalog(executionContext, launchRoots)
 
 	return true, application.webRunner(executionContext, web.ServerOptions{
-		Address:           launchConfiguration.listenAddress(),
-		Repositories:      repositoryCatalog,
-		Catalog:           application.commandCatalog(),
-		LoadBranches:      application.loadRepositoryBranches,
-		BrowseDirectories: application.newWebDirectoryBrowser(),
-		Execute:           application.newWebCommandExecutor(),
-		InspectAudit:      application.newWebAuditInspector(),
-		ApplyAuditChanges: application.newWebAuditChangeExecutor(),
+		Address:                launchConfiguration.listenAddress(),
+		Repositories:           repositoryCatalog,
+		Catalog:                application.commandCatalog(),
+		LoadBranches:           application.loadRepositoryBranches,
+		BrowseDirectories:      application.newWebDirectoryBrowser(),
+		Execute:                application.newWebCommandExecutor(),
+		InspectAudit:           application.newWebAuditInspector(),
+		ApplyAuditChanges:      application.newWebAuditChangeExecutor(),
+		LoadWorkflowPrimitives: application.newWebWorkflowPrimitiveCatalogLoader(),
+		ApplyWorkflowActions:   application.newWebWorkflowPrimitiveExecutor(),
 	})
 }
 
@@ -300,27 +304,68 @@ func (application *Application) newWebCommandExecutor() web.CommandExecutor {
 }
 
 func (application *Application) newWebDirectoryBrowser() web.DirectoryBrowser {
-	return func(_ context.Context, path string) web.DirectoryListing {
+	repositoryDiscoverer := reposdeps.ResolveRepositoryDiscoverer(nil)
+	gitExecutor, repositoryManager, dependencyError := application.webGitDependencies()
+
+	return func(executionContext context.Context, path string) web.DirectoryListing {
 		normalizedPath := canonicalWebPath(path)
 		if len(normalizedPath) == 0 {
 			return web.DirectoryListing{Error: webRepositoryPathRequiredErrorConstant}
 		}
 
-		entries, readError := os.ReadDir(normalizedPath)
-		if readError != nil {
-			return web.DirectoryListing{Path: normalizedPath, Error: readError.Error()}
+		discoveredRepositories, discoverError := repositoryDiscoverer.DiscoverRepositories([]string{normalizedPath})
+		if discoverError != nil {
+			return web.DirectoryListing{Path: normalizedPath, Error: discoverError.Error()}
 		}
 
-		folders := make([]web.FolderDescriptor, 0, len(entries))
-		for _, entry := range entries {
-			if !entry.IsDir() || entry.Name() == webGitMetadataDirectoryNameConstant {
+		folderIndex := make(map[string]int, len(discoveredRepositories))
+		folders := make([]web.FolderDescriptor, 0, len(discoveredRepositories))
+		for _, repositoryPath := range discoveredRepositories {
+			normalizedRepositoryPath := canonicalWebPath(repositoryPath)
+			if normalizedRepositoryPath == normalizedPath {
 				continue
 			}
 
-			folders = append(folders, web.FolderDescriptor{
-				Name: entry.Name(),
-				Path: canonicalWebPath(filepath.Join(normalizedPath, entry.Name())),
-			})
+			relativeRepositoryPath := strings.TrimPrefix(normalizedRepositoryPath, normalizedPath)
+			relativeRepositoryPath = strings.TrimPrefix(relativeRepositoryPath, string(os.PathSeparator))
+			if len(relativeRepositoryPath) == 0 {
+				continue
+			}
+
+			relativeSegments := strings.Split(filepath.ToSlash(relativeRepositoryPath), "/")
+			immediateChildName := strings.TrimSpace(relativeSegments[0])
+			if len(immediateChildName) == 0 || immediateChildName == "." {
+				continue
+			}
+
+			immediateChildPath := canonicalWebPath(filepath.Join(normalizedPath, immediateChildName))
+			folderPosition, folderExists := folderIndex[immediateChildPath]
+			if !folderExists {
+				folderIndex[immediateChildPath] = len(folders)
+				folders = append(folders, web.FolderDescriptor{
+					Name: immediateChildName,
+					Path: immediateChildPath,
+				})
+				folderPosition = len(folders) - 1
+			}
+
+			if len(relativeSegments) != 1 || normalizedRepositoryPath != immediateChildPath {
+				continue
+			}
+
+			repositoryDescriptor := newDynamicWebRepositoryDescriptor(immediateChildPath)
+			if dependencyError != nil {
+				repositoryDescriptor.Error = dependencyError.Error()
+			} else {
+				repositoryDescriptor = application.inspectDynamicRepository(
+					executionContext,
+					immediateChildPath,
+					gitExecutor,
+					repositoryManager,
+				)
+			}
+
+			folders[folderPosition].Repository = &repositoryDescriptor
 		}
 
 		sort.SliceStable(folders, func(first int, second int) bool {
@@ -1004,13 +1049,17 @@ func webAuditChangePriority(kind web.AuditChangeKind) int {
 }
 
 func normalizeWebAuditChangePath(rawPath string) (string, error) {
+	return normalizeWebAbsolutePath(rawPath, webAuditChangePathRequiredConstant, webAuditChangePathAbsoluteRequiredConstant)
+}
+
+func normalizeWebAbsolutePath(rawPath string, missingPathError string, relativePathError string) (string, error) {
 	trimmedPath := strings.TrimSpace(rawPath)
 	if len(trimmedPath) == 0 {
-		return "", errors.New(webAuditChangePathRequiredConstant)
+		return "", errors.New(missingPathError)
 	}
 	cleanPath := filepath.Clean(trimmedPath)
 	if !filepath.IsAbs(cleanPath) {
-		return "", errors.New(webAuditChangePathAbsoluteRequiredConstant)
+		return "", errors.New(relativePathError)
 	}
 	return cleanPath, nil
 }
@@ -1172,12 +1221,41 @@ func (application *Application) inspectRepository(
 	gitExecutor execshellGitExecutor,
 	repositoryManager webGitRepositoryManager,
 ) web.RepositoryDescriptor {
-	descriptor := web.RepositoryDescriptor{
-		ID:             fmt.Sprintf(webRepositoryIDTemplateConstant, repositoryIndex),
-		Name:           filepath.Base(strings.TrimSpace(repositoryPath)),
-		Path:           strings.TrimSpace(repositoryPath),
-		ContextCurrent: contextCurrent,
-	}
+	return application.inspectRepositoryDescriptor(
+		executionContext,
+		repositoryPath,
+		fmt.Sprintf(webRepositoryIDTemplateConstant, repositoryIndex),
+		contextCurrent,
+		gitExecutor,
+		repositoryManager,
+	)
+}
+
+func (application *Application) inspectDynamicRepository(
+	executionContext context.Context,
+	repositoryPath string,
+	gitExecutor execshellGitExecutor,
+	repositoryManager webGitRepositoryManager,
+) web.RepositoryDescriptor {
+	return application.inspectRepositoryDescriptor(
+		executionContext,
+		repositoryPath,
+		dynamicWebRepositoryID(repositoryPath),
+		false,
+		gitExecutor,
+		repositoryManager,
+	)
+}
+
+func (application *Application) inspectRepositoryDescriptor(
+	executionContext context.Context,
+	repositoryPath string,
+	repositoryID string,
+	contextCurrent bool,
+	gitExecutor execshellGitExecutor,
+	repositoryManager webGitRepositoryManager,
+) web.RepositoryDescriptor {
+	descriptor := newWebRepositoryDescriptor(repositoryID, repositoryPath, contextCurrent)
 
 	currentBranch, currentBranchError := repositoryManager.GetCurrentBranch(executionContext, descriptor.Path)
 	if currentBranchError == nil {
@@ -1201,6 +1279,27 @@ func (application *Application) inspectRepository(
 	}
 
 	return descriptor
+}
+
+func newDynamicWebRepositoryDescriptor(repositoryPath string) web.RepositoryDescriptor {
+	return newWebRepositoryDescriptor(dynamicWebRepositoryID(repositoryPath), repositoryPath, false)
+}
+
+func newWebRepositoryDescriptor(repositoryID string, repositoryPath string, contextCurrent bool) web.RepositoryDescriptor {
+	trimmedRepositoryPath := strings.TrimSpace(repositoryPath)
+	return web.RepositoryDescriptor{
+		ID:             strings.TrimSpace(repositoryID),
+		Name:           filepath.Base(trimmedRepositoryPath),
+		Path:           trimmedRepositoryPath,
+		ContextCurrent: contextCurrent,
+	}
+}
+
+func dynamicWebRepositoryID(repositoryPath string) string {
+	normalizedRepositoryPath := canonicalWebPath(repositoryPath)
+	hasher := fnv.New64a()
+	_, _ = hasher.Write([]byte(normalizedRepositoryPath))
+	return fmt.Sprintf(webDynamicRepositoryIDTemplateConstant, hasher.Sum64())
 }
 
 func resolveRepositoryDefaultBranch(executionContext context.Context, gitExecutor execshellGitExecutor, repositoryPath string) (string, error) {

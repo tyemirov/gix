@@ -165,6 +165,78 @@ func TestExecutorEmitsDiscoveryStepSummary(testInstance *testing.T) {
 	require.Contains(testInstance, outputText, "reason: discovered")
 }
 
+func TestExecutorWritesSuccessfulReporterEventsToOutputOnly(testInstance *testing.T) {
+	tempDirectory := testInstance.TempDir()
+	repositoryPath := filepath.Join(tempDirectory, "sample")
+	require.NoError(testInstance, os.Mkdir(repositoryPath, 0o755))
+
+	gitExecutor := newStubWorkflowGitExecutor()
+	repositoryManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(testInstance, managerError)
+
+	outputBuffer := &bytes.Buffer{}
+	errorBuffer := &bytes.Buffer{}
+
+	dependencies := Dependencies{
+		RepositoryDiscoverer: executorStubRepositoryDiscoverer{repositories: []string{repositoryPath}},
+		GitExecutor:          gitExecutor,
+		RepositoryManager:    repositoryManager,
+		Output:               outputBuffer,
+		Errors:               errorBuffer,
+		HumanReadableLogging: true,
+	}
+
+	executor := NewExecutor([]Operation{repoSwitchOperation{}}, dependencies)
+
+	outcome, executionError := executor.Execute(
+		context.Background(),
+		[]string{repositoryPath},
+		RuntimeOptions{SkipRepositoryMetadata: true},
+	)
+	require.NoError(testInstance, executionError)
+	require.Equal(testInstance, 1, outcome.RepositoryCount)
+	require.Contains(testInstance, outputBuffer.String(), "REPO_SWITCHED")
+	require.Empty(testInstance, errorBuffer.String())
+}
+
+func TestExecutorWritesErrorReporterEventsToErrorOnly(testInstance *testing.T) {
+	tempDirectory := testInstance.TempDir()
+	repositoryPath := filepath.Join(tempDirectory, "sample")
+	require.NoError(testInstance, os.Mkdir(repositoryPath, 0o755))
+
+	gitExecutor := newStubWorkflowGitExecutor()
+	repositoryManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(testInstance, managerError)
+
+	githubClient, clientError := githubcli.NewClient(gitExecutor)
+	require.NoError(testInstance, clientError)
+
+	outputBuffer := &bytes.Buffer{}
+	errorBuffer := &bytes.Buffer{}
+
+	dependencies := Dependencies{
+		RepositoryDiscoverer: executorStubRepositoryDiscoverer{repositories: []string{repositoryPath}},
+		GitExecutor:          gitExecutor,
+		RepositoryManager:    repositoryManager,
+		GitHubClient:         githubClient,
+		Output:               outputBuffer,
+		Errors:               errorBuffer,
+		HumanReadableLogging: true,
+	}
+
+	executor := NewExecutor([]Operation{failingOperation{}}, dependencies)
+
+	outcome, executionError := executor.Execute(
+		context.Background(),
+		[]string{repositoryPath},
+		RuntimeOptions{SkipRepositoryMetadata: true},
+	)
+	require.Error(testInstance, executionError)
+	require.Equal(testInstance, 1, outcome.RepositoryCount)
+	require.Empty(testInstance, outputBuffer.String())
+	require.Contains(testInstance, errorBuffer.String(), "ORIGIN_OWNER_MISSING")
+}
+
 func TestExecutorSeedsVariablesFromRuntimeOptions(testInstance *testing.T) {
 	tempDirectory := testInstance.TempDir()
 	repositoryPath := filepath.Join(tempDirectory, "sample")

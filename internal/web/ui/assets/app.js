@@ -146,6 +146,7 @@ function reportBootstrapFailure(message) {
  * @typedef {{
  *   name: string,
  *   path: string,
+ *   repository?: RepositoryDescriptor,
  * }} FolderDescriptor
  */
 
@@ -226,14 +227,94 @@ function reportBootstrapFailure(message) {
 
 /**
  * @typedef {{
+ *   actionType: "audit" | "workflow",
  *   kind: string,
  *   label: string,
- *   queued?: boolean,
- *   queuedChangeID?: string,
+  *   queued?: boolean,
+  *   queuedChangeID?: string,
+ *   queuedWorkflowActionID?: string,
+ *   ready?: boolean,
+  *   title: string,
+  *   description: string,
+ *   primitiveID?: string,
+ *   parameters?: Record<string, any>,
+ *   buildChange?: (row: AuditInspectionRow) => Partial<AuditQueuedChange>,
+ * }} AuditRowActionDefinition
+ */
+
+/**
+ * @typedef {{
+ *   primitives?: WorkflowPrimitiveDescriptor[],
+ *   error?: string,
+ * }} WorkflowPrimitiveCatalog
+ */
+
+/**
+ * @typedef {{
+ *   id: string,
+ *   label: string,
+ *   description?: string,
+ *   parameters?: WorkflowPrimitiveParameterDescriptor[],
+ * }} WorkflowPrimitiveDescriptor
+ */
+
+/**
+ * @typedef {{
+ *   key: string,
+ *   label: string,
+ *   description?: string,
+ *   control: string,
+ *   required: boolean,
+ *   placeholder?: string,
+ *   default_value?: string,
+ *   default_bool?: boolean,
+ *   options?: WorkflowPrimitiveParameterOption[],
+ * }} WorkflowPrimitiveParameterDescriptor
+ */
+
+/**
+ * @typedef {{
+ *   value: string,
+ *   label: string,
+ * }} WorkflowPrimitiveParameterOption
+ */
+
+/**
+ * @typedef {{
+ *   id: string,
+ *   repository_id?: string,
+ *   repository_path: string,
+ *   primitive_id: string,
+ *   parameters?: Record<string, any>,
+ * }} WorkflowPrimitiveQueuedAction
+ */
+
+/**
+ * @typedef {WorkflowPrimitiveQueuedAction & {
  *   title: string,
  *   description: string,
- *   buildChange: (row: AuditInspectionRow) => Partial<AuditQueuedChange>,
- * }} AuditRowActionDefinition
+ *   repository_name: string,
+ * }} WorkflowPrimitiveQueueEntry
+ */
+
+/**
+ * @typedef {{
+ *   results?: WorkflowPrimitiveApplyResult[],
+ *   error?: string,
+ * }} WorkflowPrimitiveApplyResponse
+ */
+
+/**
+ * @typedef {{
+ *   id: string,
+ *   repository_path: string,
+ *   primitive_id: string,
+ *   status: string,
+ *   message?: string,
+ *   stdout?: string,
+ *   stderr?: string,
+ *   error?: string,
+ * }} WorkflowPrimitiveApplyResult
  */
 
 /**
@@ -264,6 +345,8 @@ const commandsEndpoint = "/api/commands";
 const foldersEndpoint = "/api/folders";
 const auditInspectEndpoint = "/api/audit/inspect";
 const auditApplyEndpoint = "/api/audit/apply";
+const workflowPrimitivesEndpoint = "/api/workflow/primitives";
+const workflowApplyEndpoint = "/api/workflow/apply";
 const runsEndpoint = "/api/runs";
 const pollIntervalMilliseconds = 800;
 const currentRepoLaunchMode = "current_repo";
@@ -315,6 +398,13 @@ const auditSyncStrategyStashChangesValue = "stash_changes";
 const auditSyncStrategyCommitChangesValue = "commit_changes";
 const auditChangeStatusSucceededValue = "succeeded";
 const auditChangeStatusSkippedValue = "skipped";
+const workflowPrimitiveControlTextValue = "text";
+const workflowPrimitiveControlTextareaValue = "textarea";
+const workflowPrimitiveControlCheckboxValue = "checkbox";
+const workflowPrimitiveControlSelectValue = "select";
+const webWorkflowPrimitiveCanonicalRemoteValue = "repo.remote.update";
+const webWorkflowPrimitiveProtocolConversionValue = "repo.remote.convert-protocol";
+const webWorkflowPrimitiveRenameFolderValue = "repo.folder.rename";
 const auditHeaderMarkerValue = "folder_name,final_github_repo";
 const auditHeaderColumns = [
   "folder_name",
@@ -417,6 +507,12 @@ const pendingDirectoryLoads = new Map();
  *   allCommands: CommandDescriptor[],
  *   actionableCommands: CommandDescriptor[],
  *   advancedCommands: CommandDescriptor[],
+ *   workflowPrimitives: WorkflowPrimitiveDescriptor[],
+ *   selectedWorkflowPrimitiveID: string,
+ *   workflowPrimitiveDrafts: Record<string, Record<string, any>>,
+ *   workflowActionQueue: WorkflowPrimitiveQueueEntry[],
+ *   workflowActionQueueApplying: boolean,
+ *   nextWorkflowActionSequence: number,
  *   selectedPath: string,
  *   auditInspectionRoots: string[],
  *   auditInspectionRows: AuditInspectionRow[],
@@ -427,6 +523,7 @@ const pendingDirectoryLoads = new Map();
  *   auditQueueApplying: boolean,
  *   nextAuditChangeSequence: number,
  *   collapsedFolderPaths: string[],
+ *   repositoryTreeRootPathsOverride: string[],
  *   pollTimer: number | null,
  * }} */
 const state = {
@@ -438,7 +535,7 @@ const state = {
   activeRepositoryTreeKey: "",
   selectedFolderPath: "",
   selectedScope: scopeSelectedValue,
-  activeTask: taskInspectValue,
+  activeTask: taskWorkflowsValue,
   targetRefMode: refModeCurrentValue,
   targetRefValue: "",
   targetPathMode: pathModeNoneValue,
@@ -448,6 +545,12 @@ const state = {
   allCommands: [],
   actionableCommands: [],
   advancedCommands: [],
+  workflowPrimitives: [],
+  selectedWorkflowPrimitiveID: "",
+  workflowPrimitiveDrafts: {},
+  workflowActionQueue: [],
+  workflowActionQueueApplying: false,
+  nextWorkflowActionSequence: 1,
   selectedPath: "",
   auditInspectionRoots: [],
   auditInspectionRows: [],
@@ -458,6 +561,7 @@ const state = {
   auditQueueApplying: false,
   nextAuditChangeSequence: 1,
   collapsedFolderPaths: [],
+  repositoryTreeRootPathsOverride: [],
   pollTimer: null,
 };
 
@@ -475,19 +579,6 @@ const elements = {
   scopeSelected: document.querySelector("#scope-selected"),
   scopeChecked: document.querySelector("#scope-checked"),
   scopeAll: document.querySelector("#scope-all"),
-  targetRefSummary: document.querySelector("#target-ref-summary"),
-  targetRefMode: document.querySelector("#target-ref-mode"),
-  targetRefValueBlock: document.querySelector("#target-ref-value-block"),
-  targetRefValueLabel: document.querySelector("#target-ref-value-label"),
-  targetRefSelect: document.querySelector("#target-ref-select"),
-  targetRefValue: document.querySelector("#target-ref-value"),
-  targetRefDetail: document.querySelector("#target-ref-detail"),
-  targetPathSummary: document.querySelector("#target-path-summary"),
-  targetPathMode: document.querySelector("#target-path-mode"),
-  targetPathValueBlock: document.querySelector("#target-path-value-block"),
-  targetPathValueLabel: document.querySelector("#target-path-value-label"),
-  targetPathValue: document.querySelector("#target-path-value"),
-  targetPathDetail: document.querySelector("#target-path-detail"),
   actionContext: document.querySelector("#action-context"),
   taskCount: document.querySelector("#task-count"),
   taskInspect: document.querySelector("#task-inspect"),
@@ -527,6 +618,17 @@ const elements = {
   workflowWorkersInput: document.querySelector("#workflow-workers-input"),
   workflowRequireClean: document.querySelector("#workflow-require-clean"),
   taskWorkflowLoad: document.querySelector("#task-workflow-load"),
+  workflowActionRepo: document.querySelector("#workflow-action-repo"),
+  workflowPrimitiveSelect: document.querySelector("#workflow-primitive-select"),
+  workflowPrimitiveSummary: document.querySelector("#workflow-primitive-summary"),
+  workflowPrimitiveFields: document.querySelector("#workflow-primitive-fields"),
+  workflowActionQueueButton: document.querySelector("#workflow-action-queue"),
+  workflowActionSummary: document.querySelector("#workflow-action-summary"),
+  workflowQueuePanel: document.querySelector("#workflow-queue-panel"),
+  workflowQueueSummary: document.querySelector("#workflow-queue-summary"),
+  workflowQueueList: document.querySelector("#workflow-queue-list"),
+  workflowQueueClear: document.querySelector("#workflow-queue-clear"),
+  workflowQueueApply: document.querySelector("#workflow-queue-apply"),
   commandCount: document.querySelector("#command-count"),
   commandFilter: document.querySelector("#command-filter"),
   commandGroups: document.querySelector("#command-groups"),
@@ -567,9 +669,10 @@ async function initialize() {
   bindEvents();
   setStatus("loading");
 
-  const [repositoriesResponse, commandsResponse] = await Promise.all([
+  const [repositoriesResponse, commandsResponse, workflowPrimitivesResponse] = await Promise.all([
     fetch(repositoriesEndpoint),
     fetch(commandsEndpoint),
+    fetch(workflowPrimitivesEndpoint),
   ]);
   if (!repositoriesResponse.ok) {
     throw new Error(`Failed to load repositories: ${repositoriesResponse.status}`);
@@ -577,19 +680,34 @@ async function initialize() {
   if (!commandsResponse.ok) {
     throw new Error(`Failed to load actions: ${commandsResponse.status}`);
   }
+  if (!workflowPrimitivesResponse.ok) {
+    throw new Error(`Failed to load workflow primitives: ${workflowPrimitivesResponse.status}`);
+  }
 
   /** @type {RepositoryCatalog} */
   const repositoryCatalog = await repositoriesResponse.json();
   /** @type {CommandCatalog} */
   const commandCatalog = await commandsResponse.json();
+  /** @type {WorkflowPrimitiveCatalog} */
+  const workflowPrimitiveCatalog = await workflowPrimitivesResponse.json();
+  if (workflowPrimitiveCatalog.error) {
+    throw new Error(workflowPrimitiveCatalog.error);
+  }
   const visibleRepositories = (repositoryCatalog.repositories || []).slice().sort(compareRepositories);
 
   state.repositoryCatalog = repositoryCatalog;
   state.repositories = visibleRepositories;
   state.collapsedFolderPaths = [];
+  state.repositoryTreeRootPathsOverride = [];
   state.allCommands = (commandCatalog.commands || []).slice().sort((left, right) => left.path.localeCompare(right.path));
   state.actionableCommands = state.allCommands.filter((command) => command.actionable);
   state.advancedCommands = state.actionableCommands.filter((command) => inferTaskForCommand(command) === taskAdvancedValue);
+  state.workflowPrimitives = (workflowPrimitiveCatalog.primitives || []).slice();
+  state.selectedWorkflowPrimitiveID = state.workflowPrimitives[0]?.id || "";
+  state.workflowPrimitiveDrafts = {};
+  state.workflowActionQueue = [];
+  state.workflowActionQueueApplying = false;
+  state.nextWorkflowActionSequence = 1;
 
   const initialRepositoryID = state.repositories.some((repository) => repository.id === repositoryCatalog.selected_repository_id)
     ? repositoryCatalog.selected_repository_id || ""
@@ -601,10 +719,8 @@ async function initialize() {
   state.checkedRepositoryIDs = initialRepository ? [initialRepository.id] : [];
 
   elements.repoCount.textContent = String(state.repositories.length);
-  elements.taskCount.textContent = "6";
+  elements.taskCount.textContent = "1";
   elements.commandCount.textContent = String(state.advancedCommands.length);
-  elements.targetRefMode.value = state.targetRefMode;
-  elements.targetPathMode.value = state.targetPathMode;
   elements.fileTaskMode.value = state.fileTaskMode;
 
   renderRepositoryLaunchSummary();
@@ -624,6 +740,7 @@ async function initialize() {
   if (initialCommand) {
     selectCommand(initialCommand.path);
   }
+  setActiveTask(taskWorkflowsValue);
 
   setStatus("idle");
 }
@@ -632,6 +749,7 @@ function bindEvents() {
   elements.repoFilter.addEventListener("input", () => {
     void renderRepositoryTree(elements.repoFilter.value.trim().toLowerCase());
   });
+  elements.repoTree.addEventListener("click", handleRepositoryTreeCheckboxClick, true);
   elements.repoTree.addEventListener("click", handleRepositoryTreeAuditRootSelection);
 
   elements.taskInspect.addEventListener("click", () => {
@@ -695,45 +813,6 @@ function bindEvents() {
     setScope(scopeAllValue);
   });
 
-  elements.targetRefMode.addEventListener("change", () => {
-    state.targetRefMode = elements.targetRefMode.value;
-    if (state.targetRefMode !== refModeNamedValue && state.targetRefMode !== refModePatternValue) {
-      state.targetRefValue = "";
-    }
-    renderTargetState();
-    syncQuickActions();
-    repopulateSelectedCommand();
-  });
-
-  elements.targetRefSelect.addEventListener("change", () => {
-    state.targetRefValue = elements.targetRefSelect.value;
-    renderTargetState();
-    syncQuickActions();
-    repopulateSelectedCommand();
-  });
-
-  elements.targetRefValue.addEventListener("input", () => {
-    state.targetRefValue = elements.targetRefValue.value;
-    renderTargetState();
-    syncQuickActions();
-    repopulateSelectedCommand();
-  });
-
-  elements.targetPathMode.addEventListener("change", () => {
-    state.targetPathMode = elements.targetPathMode.value;
-    if (state.targetPathMode === pathModeNoneValue) {
-      state.targetPathValue = "";
-    }
-    renderTargetState();
-    repopulateSelectedCommand();
-  });
-
-  elements.targetPathValue.addEventListener("input", () => {
-    state.targetPathValue = elements.targetPathValue.value;
-    renderTargetState();
-    repopulateSelectedCommand();
-  });
-
   elements.fileTaskMode.addEventListener("change", () => {
     state.fileTaskMode = elements.fileTaskMode.value;
     renderTaskState();
@@ -792,6 +871,23 @@ function bindEvents() {
 
   elements.taskWorkflowLoad.addEventListener("click", () => {
     loadWorkflowTaskCommand();
+  });
+
+  elements.workflowPrimitiveSelect.addEventListener("change", () => {
+    state.selectedWorkflowPrimitiveID = elements.workflowPrimitiveSelect.value;
+    renderWorkflowPrimitiveState();
+  });
+
+  const handleWorkflowPrimitiveDraftChange = (event) => {
+    updateWorkflowPrimitiveDraft(event.target);
+  };
+  elements.workflowPrimitiveFields.addEventListener("input", handleWorkflowPrimitiveDraftChange);
+  elements.workflowPrimitiveFields.addEventListener("change", handleWorkflowPrimitiveDraftChange);
+  elements.workflowActionQueueButton.addEventListener("click", queueWorkflowPrimitiveAction);
+  elements.workflowQueueList.addEventListener("click", handleWorkflowQueueListClick);
+  elements.workflowQueueClear.addEventListener("click", clearWorkflowQueue);
+  elements.workflowQueueApply.addEventListener("click", () => {
+    void applyWorkflowQueue();
   });
 
   elements.commandFilter.addEventListener("input", () => {
@@ -872,16 +968,16 @@ function renderTaskState() {
     [elements.taskAdvanced, taskAdvancedValue],
   ];
   taskButtons.forEach(([element, taskID]) => {
-    element.classList.toggle("active", state.activeTask === taskID);
+    element.classList.toggle("active", taskID === taskWorkflowsValue);
   });
 
   elements.taskPanelInspect.hidden = false;
-  elements.taskPanelBranch.hidden = state.activeTask !== taskBranchValue;
-  elements.taskPanelFiles.hidden = state.activeTask !== taskFilesValue;
-  elements.taskPanelRemotes.hidden = state.activeTask !== taskRemotesValue;
-  elements.taskPanelCleanup.hidden = state.activeTask !== taskCleanupValue;
-  elements.taskPanelWorkflows.hidden = state.activeTask !== taskWorkflowsValue;
-  elements.taskPanelAdvanced.hidden = state.activeTask !== taskAdvancedValue;
+  elements.taskPanelBranch.hidden = true;
+  elements.taskPanelFiles.hidden = true;
+  elements.taskPanelRemotes.hidden = true;
+  elements.taskPanelCleanup.hidden = true;
+  elements.taskPanelWorkflows.hidden = false;
+  elements.taskPanelAdvanced.hidden = true;
 
   renderAuditTaskState();
   elements.fileTaskLoad.disabled = !repositoryTargetsAvailable;
@@ -891,6 +987,7 @@ function renderTaskState() {
   elements.taskWorkflowLoad.disabled = !repositoryTargetsAvailable;
 
   renderFileTaskState();
+  renderWorkflowPrimitiveState();
   updateActionContext();
 }
 
@@ -931,10 +1028,17 @@ function renderAuditTaskState() {
 }
 
 function renderAuditSelectionSummary() {
+  const auditRoots = workingFolderRoots();
   const selectedFolderPath = activeRepositoryTreeFolderPath();
   const launchRoots = configuredLaunchRoots();
-  const scopeRepositories = repositoryScopeRepositories();
+  const checkedRoots = checkedRepositories().map((repository) => repository.path);
   const includeAllEnabled = Boolean(elements.auditIncludeAll?.checked);
+
+  if (auditRoots.length > 1) {
+    elements.auditSelectionBadge.textContent = `${auditRoots.length} checked repos`;
+    elements.auditSelectionSummary.textContent = `Audit ${auditRoots.length} repositories: ${summarizeAuditSelectionValues(auditRoots)}.${includeAllEnabled ? " Non-Git folders under those roots will be included." : " Uncheck repositories in the tree when you want to narrow the run."}`;
+    return;
+  }
 
   if (selectedFolderPath) {
     elements.auditSelectionBadge.textContent = "Selected folder";
@@ -950,22 +1054,17 @@ function renderAuditSelectionSummary() {
     return;
   }
 
-  if (scopeRepositories.length === 0) {
+  if (checkedRoots.length === 1) {
+    elements.auditSelectionBadge.textContent = "Checked repo";
+    elements.auditSelectionSummary.textContent = `Audit ${checkedRoots[0]}.${includeAllEnabled ? " Non-Git folders under this root will be included." : " Click a folder in the left tree to narrow the run or check more repositories to inspect many roots."}`;
+    return;
+  }
+
+  if (auditRoots.length === 0) {
     elements.auditSelectionBadge.textContent = "No target";
     elements.auditSelectionSummary.textContent = "Select a repository on the left or click a folder in the tree to prepare the next audit run.";
     return;
   }
-
-  if (state.selectedScope === scopeSelectedValue && scopeRepositories.length === 1) {
-    const repository = scopeRepositories[0];
-    elements.auditSelectionBadge.textContent = "Selected repo";
-    elements.auditSelectionSummary.textContent = `Audit ${repository.name} at ${repository.path}.${includeAllEnabled ? " Non-Git folders under this root will be included." : " Click a folder in the left tree to narrow the run."}`;
-    return;
-  }
-
-  const scopeLabel = state.selectedScope === scopeCheckedValue ? "Checked scope" : "All repos";
-  elements.auditSelectionBadge.textContent = scopeLabel;
-  elements.auditSelectionSummary.textContent = `Audit ${scopeRepositories.length} repositories from the ${scopeLabel.toLowerCase()}: ${summarizeAuditSelectionValues(scopeRepositories.map((repository) => repository.name))}.${includeAllEnabled ? " Non-Git folders under those roots will be included." : " Click a folder in the left tree when you want to narrow the run."}`;
 }
 
 function loadFileTaskCommand() {
@@ -986,6 +1085,589 @@ function loadRemoteTaskCommand() {
 
 function loadWorkflowTaskCommand() {
   selectCommand(commandPathWorkflowValue);
+}
+
+function renderWorkflowPrimitiveState() {
+  let primitive = selectedWorkflowPrimitive();
+  const repository = selectedRepository();
+
+  elements.workflowActionRepo.textContent = repository
+    ? `${repository.name} at ${repository.path}`
+    : "Select a repository node in the tree to queue workflow actions.";
+
+  elements.workflowPrimitiveSelect.innerHTML = "";
+  if (state.workflowPrimitives.length === 0) {
+    elements.workflowPrimitiveSummary.textContent = "No workflow primitives are available in this build.";
+    elements.workflowPrimitiveFields.innerHTML = "";
+    appendEmptyState(elements.workflowPrimitiveFields, "No repo-scoped workflow primitives are available.");
+    elements.workflowActionQueueButton.disabled = true;
+    elements.workflowActionSummary.textContent = "No workflow actions available.";
+    renderWorkflowQueue();
+    return;
+  }
+
+  state.workflowPrimitives.forEach((candidate) => {
+    const option = document.createElement("option");
+    option.value = candidate.id;
+    option.textContent = candidate.label;
+    elements.workflowPrimitiveSelect.append(option);
+  });
+
+  primitive = selectedWorkflowPrimitive();
+  elements.workflowPrimitiveSelect.value = primitive?.id || "";
+  elements.workflowPrimitiveSummary.textContent = primitive?.description || "";
+  elements.workflowPrimitiveFields.innerHTML = "";
+
+  if (!primitive) {
+    appendEmptyState(elements.workflowPrimitiveFields, "Select a workflow primitive.");
+    elements.workflowActionQueueButton.disabled = true;
+    elements.workflowActionSummary.textContent = "Select a workflow action to continue.";
+    renderWorkflowQueue();
+    return;
+  }
+
+  const draft = workflowPrimitiveDraft(primitive);
+  const parameters = primitive.parameters || [];
+  if (parameters.length === 0) {
+    appendEmptyState(elements.workflowPrimitiveFields, "This workflow primitive does not expose major parameters.");
+  } else {
+    parameters.forEach((parameter) => {
+      elements.workflowPrimitiveFields.append(renderWorkflowPrimitiveParameterField(parameter, draft));
+    });
+  }
+
+  renderWorkflowPrimitiveComposerState();
+  renderWorkflowQueue();
+}
+
+function renderWorkflowPrimitiveComposerState() {
+  const primitive = selectedWorkflowPrimitive();
+  const repository = selectedRepository();
+  const draft = primitive ? workflowPrimitiveDraft(primitive) : {};
+  const readyToQueue = Boolean(repository && primitive && workflowPrimitiveDraftCanQueue(primitive, draft) && !state.workflowActionQueueApplying);
+
+  elements.workflowActionQueueButton.disabled = !readyToQueue;
+  elements.workflowActionSummary.textContent = buildWorkflowPrimitiveSummary(repository, primitive, draft);
+}
+
+/**
+ * @param {RepositoryDescriptor | null} repository
+ * @param {WorkflowPrimitiveDescriptor | null} primitive
+ * @param {Record<string, any>} draft
+ * @returns {string}
+ */
+function buildWorkflowPrimitiveSummary(repository, primitive, draft) {
+  if (!primitive) {
+    return "Select a workflow action to continue.";
+  }
+  if (!repository) {
+    return "Select a repository node in the tree to queue a workflow action.";
+  }
+  if (!workflowPrimitiveDraftCanQueue(primitive, draft)) {
+    return `Complete the required parameters for ${primitive.label}.`;
+  }
+
+  const parameterSummary = summarizeWorkflowPrimitiveParameters(primitive, draft);
+  if (!parameterSummary) {
+    return `Queue ${primitive.label} for ${repository.name} with the default parameters.`;
+  }
+  return `Queue ${primitive.label} for ${repository.name}. ${parameterSummary}`;
+}
+
+/**
+ * @param {WorkflowPrimitiveDescriptor} primitive
+ * @returns {Record<string, any>}
+ */
+function workflowPrimitiveDraft(primitive) {
+  if (!state.workflowPrimitiveDrafts[primitive.id]) {
+    state.workflowPrimitiveDrafts[primitive.id] = defaultWorkflowPrimitiveDraft(primitive);
+  }
+  return state.workflowPrimitiveDrafts[primitive.id];
+}
+
+/**
+ * @param {WorkflowPrimitiveDescriptor} primitive
+ * @returns {Record<string, any>}
+ */
+function defaultWorkflowPrimitiveDraft(primitive) {
+  const draft = {};
+  (primitive.parameters || []).forEach((parameter) => {
+    if (parameter.control === workflowPrimitiveControlCheckboxValue) {
+      draft[parameter.key] = typeof parameter.default_bool === "boolean" ? parameter.default_bool : false;
+      return;
+    }
+    draft[parameter.key] = parameter.default_value || "";
+  });
+  return draft;
+}
+
+/**
+ * @returns {WorkflowPrimitiveDescriptor | null}
+ */
+function selectedWorkflowPrimitive() {
+  if (state.workflowPrimitives.length === 0) {
+    return null;
+  }
+
+  const matchedPrimitive = state.workflowPrimitives.find((primitive) => primitive.id === state.selectedWorkflowPrimitiveID) || state.workflowPrimitives[0];
+  state.selectedWorkflowPrimitiveID = matchedPrimitive?.id || "";
+  return matchedPrimitive || null;
+}
+
+/**
+ * @param {WorkflowPrimitiveParameterDescriptor} parameter
+ * @param {Record<string, any>} draft
+ * @returns {DocumentFragment}
+ */
+function renderWorkflowPrimitiveParameterField(parameter, draft) {
+  const fragment = document.createDocumentFragment();
+
+  if (parameter.control === workflowPrimitiveControlCheckboxValue) {
+    const label = document.createElement("label");
+    label.className = "checkbox-row";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = Boolean(draft[parameter.key]);
+    checkbox.dataset.workflowParamKey = parameter.key;
+    checkbox.dataset.workflowParamControl = parameter.control;
+
+    const copy = document.createElement("span");
+    copy.textContent = parameter.label;
+
+    label.append(checkbox, copy);
+    fragment.append(label);
+  } else {
+    const fieldLabel = document.createElement("label");
+    fieldLabel.className = "field-label";
+    fieldLabel.textContent = parameter.required ? `${parameter.label} *` : parameter.label;
+    fragment.append(fieldLabel);
+
+    if (parameter.control === workflowPrimitiveControlTextareaValue) {
+      const textarea = document.createElement("textarea");
+      textarea.className = "code-input task-code-input";
+      textarea.spellcheck = false;
+      textarea.placeholder = parameter.placeholder || "";
+      textarea.value = String(draft[parameter.key] || "");
+      textarea.dataset.workflowParamKey = parameter.key;
+      textarea.dataset.workflowParamControl = parameter.control;
+      fragment.append(textarea);
+    } else if (parameter.control === workflowPrimitiveControlSelectValue) {
+      const select = document.createElement("select");
+      select.className = "text-input";
+      select.dataset.workflowParamKey = parameter.key;
+      select.dataset.workflowParamControl = parameter.control;
+
+      if (!parameter.required) {
+        const automaticOption = document.createElement("option");
+        automaticOption.value = "";
+        automaticOption.textContent = "Use current value";
+        select.append(automaticOption);
+      }
+
+      (parameter.options || []).forEach((optionValue) => {
+        const option = document.createElement("option");
+        option.value = optionValue.value;
+        option.textContent = optionValue.label;
+        select.append(option);
+      });
+
+      select.value = String(draft[parameter.key] || "");
+      fragment.append(select);
+    } else {
+      const input = document.createElement("input");
+      input.className = "text-input";
+      input.type = "text";
+      input.placeholder = parameter.placeholder || "";
+      input.value = String(draft[parameter.key] || "");
+      input.dataset.workflowParamKey = parameter.key;
+      input.dataset.workflowParamControl = parameter.control || workflowPrimitiveControlTextValue;
+      fragment.append(input);
+    }
+  }
+
+  if (parameter.description) {
+    const note = document.createElement("p");
+    note.className = "panel-note";
+    note.textContent = parameter.description;
+    fragment.append(note);
+  }
+
+  return fragment;
+}
+
+/**
+ * @param {EventTarget | null} target
+ * @returns {void}
+ */
+function updateWorkflowPrimitiveDraft(target) {
+  if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement)) {
+    return;
+  }
+
+  const parameterKey = target.dataset.workflowParamKey || "";
+  if (!parameterKey) {
+    return;
+  }
+
+  const primitive = selectedWorkflowPrimitive();
+  if (!primitive) {
+    return;
+  }
+
+  const draft = workflowPrimitiveDraft(primitive);
+  draft[parameterKey] = target instanceof HTMLInputElement && target.type === "checkbox"
+    ? target.checked
+    : target.value;
+  renderWorkflowPrimitiveComposerState();
+}
+
+function queueWorkflowPrimitiveAction() {
+  const repository = selectedRepository();
+  const primitive = selectedWorkflowPrimitive();
+  if (!repository || !primitive) {
+    renderRunError("Select a repository node and workflow action before queueing.");
+    return;
+  }
+
+  const draft = workflowPrimitiveDraft(primitive);
+  if (!workflowPrimitiveDraftCanQueue(primitive, draft)) {
+    renderRunError(`Complete the required parameters for ${primitive.label} before queueing it.`);
+    return;
+  }
+
+  const parameters = workflowPrimitiveParameterSnapshot(primitive, draft);
+  enqueueWorkflowPrimitiveAction(repository, primitive, parameters);
+}
+
+/**
+ * @param {{ id?: string, name: string, path: string }} repository
+ * @param {WorkflowPrimitiveDescriptor} primitive
+ * @param {Record<string, any>} parameters
+ * @returns {void}
+ */
+function enqueueWorkflowPrimitiveAction(repository, primitive, parameters) {
+  const parameterSummary = summarizeWorkflowPrimitiveParameters(primitive, parameters);
+  state.workflowActionQueue = state.workflowActionQueue.concat({
+    id: `workflow-${state.nextWorkflowActionSequence}`,
+    repository_id: repository.id || "",
+    repository_path: repository.path,
+    primitive_id: primitive.id,
+    parameters: { ...parameters },
+    title: `${primitive.label} · ${repository.name}`,
+    description: parameterSummary || "Use default parameters.",
+    repository_name: repository.name,
+  });
+  state.nextWorkflowActionSequence += 1;
+  renderRunError("");
+  renderWorkflowQueue();
+  renderWorkflowPrimitiveComposerState();
+}
+
+/**
+ * @param {WorkflowPrimitiveDescriptor} primitive
+ * @param {Record<string, any>} draft
+ * @returns {Record<string, any>}
+ */
+function workflowPrimitiveParameterSnapshot(primitive, draft) {
+  const snapshot = {};
+  (primitive.parameters || []).forEach((parameter) => {
+    snapshot[parameter.key] = draft[parameter.key];
+  });
+  return snapshot;
+}
+
+/**
+ * @param {WorkflowPrimitiveDescriptor} primitive
+ * @param {Record<string, any>} draft
+ * @returns {boolean}
+ */
+function workflowPrimitiveDraftCanQueue(primitive, draft) {
+  return (primitive.parameters || []).every((parameter) => {
+    if (!parameter.required || parameter.control === workflowPrimitiveControlCheckboxValue) {
+      return true;
+    }
+
+    const rawValue = draft[parameter.key];
+    if (typeof rawValue === "string") {
+      return rawValue.trim().length > 0;
+    }
+    return String(rawValue || "").trim().length > 0;
+  });
+}
+
+/**
+ * @param {WorkflowPrimitiveDescriptor} primitive
+ * @param {Record<string, any>} parameters
+ * @returns {string}
+ */
+function summarizeWorkflowPrimitiveParameters(primitive, parameters) {
+  const summaryParts = [];
+  (primitive.parameters || []).forEach((parameter) => {
+    const rawValue = parameters[parameter.key];
+    if (parameter.control === workflowPrimitiveControlCheckboxValue) {
+      const currentValue = Boolean(rawValue);
+      const defaultValue = typeof parameter.default_bool === "boolean" ? parameter.default_bool : false;
+      if (currentValue !== defaultValue) {
+        summaryParts.push(`${parameter.label}: ${currentValue ? "yes" : "no"}`);
+      }
+      return;
+    }
+
+    const normalizedValue = summarizeWorkflowPrimitiveTextValue(String(rawValue || ""));
+    if (!normalizedValue) {
+      return;
+    }
+    if (normalizedValue === summarizeWorkflowPrimitiveTextValue(String(parameter.default_value || ""))) {
+      return;
+    }
+    summaryParts.push(`${parameter.label}: ${normalizedValue}`);
+  });
+  return summaryParts.join(" • ");
+}
+
+/**
+ * @param {string} value
+ * @returns {string}
+ */
+function summarizeWorkflowPrimitiveTextValue(value) {
+  const normalizedValue = String(value || "")
+    .trim()
+    .replace(/\s*\n\s*/g, " | ")
+    .replace(/\s+/g, " ");
+  if (!normalizedValue) {
+    return "";
+  }
+  if (normalizedValue.length <= 72) {
+    return normalizedValue;
+  }
+  return `${normalizedValue.slice(0, 69)}...`;
+}
+
+function renderWorkflowQueue() {
+  const shouldShowQueue = state.workflowActionQueue.length > 0 || state.workflowActionQueueApplying;
+  if (!shouldShowQueue) {
+    elements.workflowQueuePanel.hidden = true;
+    elements.workflowQueueSummary.textContent = "";
+    elements.workflowQueueList.innerHTML = "";
+    return;
+  }
+
+  elements.workflowQueuePanel.hidden = false;
+  elements.workflowQueueSummary.textContent = workflowQueueSummary(state.workflowActionQueue.length);
+  elements.workflowQueueList.innerHTML = "";
+
+  if (state.workflowActionQueue.length === 0) {
+    appendEmptyState(elements.workflowQueueList, "No workflow actions are queued.");
+  } else {
+    state.workflowActionQueue.forEach((action) => {
+      const container = document.createElement("article");
+      container.className = "audit-queue-item";
+
+      const heading = document.createElement("div");
+      heading.className = "audit-queue-item-heading";
+
+      const title = document.createElement("strong");
+      title.textContent = action.title;
+      heading.append(title);
+
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.className = "secondary-button audit-queue-remove";
+      removeButton.dataset.workflowQueueRemoveId = action.id;
+      removeButton.textContent = "Remove";
+      heading.append(removeButton);
+
+      const description = document.createElement("p");
+      description.className = "audit-queue-description";
+      description.textContent = action.description;
+
+      const meta = document.createElement("div");
+      meta.className = "audit-queue-meta";
+      appendToken(meta, workflowPrimitiveLabel(action.primitive_id), "token-default");
+      appendToken(meta, action.repository_path, "token-context");
+
+      container.append(heading, description, meta);
+      elements.workflowQueueList.append(container);
+    });
+  }
+
+  elements.workflowQueueClear.disabled = state.workflowActionQueue.length === 0 || state.workflowActionQueueApplying;
+  elements.workflowQueueApply.disabled = state.workflowActionQueue.length === 0 || state.workflowActionQueueApplying;
+}
+
+/**
+ * @param {Event} event
+ * @returns {void}
+ */
+function handleWorkflowQueueListClick(event) {
+  const actionButton = event.target instanceof HTMLElement
+    ? event.target.closest("[data-workflow-queue-remove-id]")
+    : null;
+  const queueID = actionButton?.dataset.workflowQueueRemoveId || "";
+  if (!queueID) {
+    return;
+  }
+
+  removeQueuedWorkflowAction(queueID);
+}
+
+function clearWorkflowQueue() {
+  state.workflowActionQueue = [];
+  renderRunError("");
+  renderWorkflowQueue();
+}
+
+/**
+ * @param {string} queueID
+ * @returns {void}
+ */
+function removeQueuedWorkflowAction(queueID) {
+  if (!queueID) {
+    return;
+  }
+
+  state.workflowActionQueue = state.workflowActionQueue.filter((action) => action.id !== queueID);
+  renderRunError("");
+  renderWorkflowQueue();
+}
+
+async function applyWorkflowQueue() {
+  if (state.workflowActionQueue.length === 0 || state.workflowActionQueueApplying) {
+    return;
+  }
+
+  state.workflowActionQueueApplying = true;
+  renderWorkflowQueue();
+  renderWorkflowPrimitiveComposerState();
+  clearRunnerOutput();
+  clearPolling();
+  renderRunError("");
+  setStatus("loading");
+  elements.runID.textContent = "workflow apply";
+
+  try {
+    const response = await fetch(workflowApplyEndpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        actions: state.workflowActionQueue.map((action) => ({
+          id: action.id,
+          repository_id: action.repository_id || "",
+          repository_path: action.repository_path,
+          primitive_id: action.primitive_id,
+          parameters: { ...(action.parameters || {}) },
+        })),
+      }),
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+      throw new Error(payload.error || `Failed to apply queued workflow actions: ${response.status}`);
+    }
+
+    /** @type {WorkflowPrimitiveApplyResponse} */
+    const applyResponse = await response.json();
+    if (applyResponse.error) {
+      throw new Error(applyResponse.error);
+    }
+
+    const results = applyResponse.results || [];
+    renderWorkflowApplyResults(results);
+
+    const succeededIDs = new Set(
+      results
+        .filter((result) => result.status === auditChangeStatusSucceededValue)
+        .map((result) => result.id),
+    );
+    state.workflowActionQueue = state.workflowActionQueue.filter((action) => !succeededIDs.has(action.id));
+
+    const failedResults = results.filter((result) => result.status !== auditChangeStatusSucceededValue);
+    if (failedResults.length > 0) {
+      renderRunError(`${failedResults.map(formatWorkflowApplyIssue).join("\n")}\nRefresh the audit table when you want a new snapshot.`);
+      setStatus("failed");
+    } else {
+      renderRunError("Apply finished. Refresh the audit table when you want a new snapshot.");
+      setStatus("succeeded");
+    }
+  } catch (error) {
+    renderRunError(String(error));
+    setStatus("failed");
+  } finally {
+    state.workflowActionQueueApplying = false;
+    renderWorkflowQueue();
+    renderWorkflowPrimitiveComposerState();
+  }
+}
+
+/**
+ * @param {WorkflowPrimitiveApplyResult[]} results
+ */
+function renderWorkflowApplyResults(results) {
+  const stdoutSections = [];
+  const stderrSections = [];
+
+  results.forEach((result) => {
+    const headingParts = [workflowPrimitiveLabel(result.primitive_id)];
+    if (result.repository_path) {
+      headingParts.push(result.repository_path);
+    }
+    const heading = headingParts.join(" · ");
+
+    const stdoutLines = [];
+    if (result.message) {
+      stdoutLines.push(result.message);
+    }
+    if (result.stdout) {
+      stdoutLines.push(result.stdout.trim());
+    }
+    if (stdoutLines.length > 0) {
+      stdoutSections.push(`${heading}\n${stdoutLines.filter(Boolean).join("\n")}`.trim());
+    }
+
+    const stderrLines = [];
+    if (result.error) {
+      stderrLines.push(result.error);
+    }
+    if (result.stderr) {
+      stderrLines.push(result.stderr.trim());
+    }
+    if (stderrLines.length > 0) {
+      stderrSections.push(`${heading}\n${stderrLines.filter(Boolean).join("\n")}`.trim());
+    }
+  });
+
+  elements.stdoutOutput.textContent = stdoutSections.join("\n\n");
+  elements.stderrOutput.textContent = stderrSections.join("\n\n");
+}
+
+/**
+ * @param {WorkflowPrimitiveApplyResult} result
+ * @returns {string}
+ */
+function formatWorkflowApplyIssue(result) {
+  if (result.error) {
+    return result.error;
+  }
+  if (result.status === auditChangeStatusSkippedValue) {
+    return `${workflowPrimitiveLabel(result.primitive_id)} skipped for ${result.repository_path}`;
+  }
+  return `${workflowPrimitiveLabel(result.primitive_id)} failed for ${result.repository_path}`;
+}
+
+/**
+ * @param {number} count
+ * @returns {string}
+ */
+function workflowQueueSummary(count) {
+  return `${count} queued ${count === 1 ? "action" : "actions"}`;
+}
+
+/**
+ * @param {string} primitiveID
+ * @returns {string}
+ */
+function workflowPrimitiveLabel(primitiveID) {
+  return state.workflowPrimitives.find((primitive) => primitive.id === primitiveID)?.label || primitiveID;
 }
 
 async function runAuditTask() {
@@ -1107,173 +1789,9 @@ function renderTargetState() {
   elements.targetRepoSummary.textContent = `${scopeRepositories.length} ${scopeRepositories.length === 1 ? "repo" : "repos"}`;
   elements.targetRepoDetail.textContent = buildRepositoryScopeDetail(scopeLabel, scopeRepositories);
 
-  elements.targetRefMode.value = state.targetRefMode;
-  renderRefValueField();
-  elements.targetRefSummary.textContent = buildRefSummary();
-  elements.targetRefDetail.textContent = buildRefDetail();
-
-  elements.targetPathMode.value = state.targetPathMode;
-  renderPathValueField();
-  elements.targetPathSummary.textContent = buildPathSummary();
-  elements.targetPathDetail.textContent = buildPathDetail();
-
   renderAuditTaskState();
   renderFileTaskState();
   updateActionContext();
-}
-
-function renderRefValueField() {
-  const namedMode = state.targetRefMode === refModeNamedValue;
-  const patternMode = state.targetRefMode === refModePatternValue;
-  const explicitValueMode = namedMode || patternMode;
-  const namedOptions = namedRefOptions();
-
-  elements.targetRefValueBlock.hidden = !explicitValueMode;
-  elements.targetRefValueLabel.hidden = !explicitValueMode;
-  elements.targetRefSelect.hidden = !namedMode;
-  elements.targetRefSelect.disabled = !namedMode || namedOptions.length === 0;
-  elements.targetRefValue.hidden = namedMode;
-  elements.targetRefValue.disabled = !patternMode;
-  elements.targetRefValue.placeholder = patternMode ? "branch-*" : "Resolved automatically";
-
-  if (namedMode) {
-    if (namedOptions.length > 0 && !namedOptions.some((option) => option.value === state.targetRefValue)) {
-      state.targetRefValue = namedOptions[0].value;
-    }
-    if (namedOptions.length === 0) {
-      state.targetRefValue = "";
-    }
-
-    elements.targetRefSelect.innerHTML = "";
-    if (namedOptions.length === 0) {
-      const emptyOption = document.createElement("option");
-      emptyOption.value = "";
-      emptyOption.textContent = "No named refs available";
-      elements.targetRefSelect.append(emptyOption);
-      elements.targetRefSelect.value = "";
-      return;
-    }
-
-    namedOptions.forEach((option) => {
-      const optionElement = document.createElement("option");
-      optionElement.value = option.value;
-      optionElement.textContent = option.label;
-      elements.targetRefSelect.append(optionElement);
-    });
-    elements.targetRefSelect.value = state.targetRefValue;
-    return;
-  }
-
-  elements.targetRefSelect.innerHTML = "";
-  elements.targetRefValue.value = patternMode ? state.targetRefValue : "";
-}
-
-function renderPathValueField() {
-  const pathInputVisible = state.targetPathMode !== pathModeNoneValue;
-  const multilinePathMode = state.targetPathMode === pathModeMultipleValue;
-
-  elements.targetPathValueBlock.hidden = !pathInputVisible;
-  elements.targetPathValueLabel.hidden = !pathInputVisible;
-  elements.targetPathValue.disabled = !pathInputVisible;
-  elements.targetPathValue.placeholder = pathInputPlaceholder();
-  elements.targetPathValue.value = state.targetPathValue;
-  elements.targetPathValue.classList.toggle("target-path-input-expanded", multilinePathMode);
-}
-
-/**
- * @returns {{ value: string, label: string }[]}
- */
-function namedRefOptions() {
-  const repository = selectedRepository();
-  const options = [];
-  const seenValues = new Set();
-
-  /**
-   * @param {string} value
-   * @param {string} label
-   */
-  const appendOption = (value, label) => {
-    const trimmedValue = value.trim();
-    if (!trimmedValue || seenValues.has(trimmedValue)) {
-      return;
-    }
-    seenValues.add(trimmedValue);
-    options.push({ value: trimmedValue, label });
-  };
-
-  if (repository?.current_branch) {
-    appendOption(repository.current_branch, `${repository.current_branch} · current`);
-  }
-  if (repository?.default_branch) {
-    appendOption(repository.default_branch, `${repository.default_branch} · default`);
-  }
-  state.branches.forEach((branch) => {
-    const branchSuffix = branch.current
-      ? "current"
-      : repository?.default_branch === branch.name
-        ? "default"
-        : branch.upstream || "local";
-    appendOption(branch.name, `${branch.name} · ${branchSuffix}`);
-  });
-
-  return options;
-}
-
-/**
- * @returns {string}
- */
-function buildRefDetail() {
-  const repository = selectedRepository();
-
-  if (!repository) {
-    return "Select a repository to resolve ref targets.";
-  }
-
-  if (state.targetRefMode === refModeNamedValue) {
-    if (namedRefOptions().length === 0) {
-      return "No local named refs are available for the selected repository.";
-    }
-    return state.selectedScope === scopeSelectedValue
-      ? "Named refs come from the selected repository branch list."
-      : "Named refs come from the selected repository branch list and apply across the active repository scope.";
-  }
-
-  if (state.targetRefMode === refModePatternValue) {
-    return "Enter a branch pattern when the command accepts pattern-based ref targeting.";
-  }
-
-  if (state.targetRefMode === refModeCurrentValue) {
-    return state.selectedScope === scopeSelectedValue
-      ? `Current resolves to ${repository.current_branch || "the checked out branch"}.`
-      : "Current resolves independently inside each active repository.";
-  }
-
-  if (state.targetRefMode === refModeDefaultValue) {
-    return state.selectedScope === scopeSelectedValue
-      ? `Default resolves to ${repository.default_branch || "the inferred default branch"}.`
-      : "Default resolves independently inside each active repository.";
-  }
-
-  return "Any leaves ref selection to the command or repository state.";
-}
-
-/**
- * @returns {string}
- */
-function buildPathDetail() {
-  if (state.targetPathMode === pathModeNoneValue) {
-    return "No path filter will be applied.";
-  }
-
-  if (state.targetPathMode === pathModeRelativeValue) {
-    return "Target one relative path.";
-  }
-
-  if (state.targetPathMode === pathModeGlobValue) {
-    return "Target one glob pattern.";
-  }
-
-  return "Target multiple paths or patterns, one per line.";
 }
 
 /**
@@ -1285,6 +1803,7 @@ async function renderRepositoryTree(query) {
   }
 
   elements.repoTree.classList.remove("wb-skeleton", "wb-initializing");
+  await ensureRepositoryTreeDirectoryDataLoaded();
 
   const treeModel = buildRepositoryTreeModel(state.repositories);
   if (treeModel.length === 0) {
@@ -1348,6 +1867,7 @@ function ensureRepositoryTreeControl() {
       if (typeof event.node?.setExpanded === "function") {
         void event.node.setExpanded(nextExpanded);
       }
+      void handleRepositoryTreeFolderClick(state.selectedFolderPath);
 
       if (typeof event.node?.setExpanded === "function") {
         return false;
@@ -1365,13 +1885,6 @@ function ensureRepositoryTreeControl() {
         syncAuditSelectionFromTree();
       }
     },
-    select: (event) => {
-      const repositoryID = String(event.node.data?.repository_id || "");
-      if (!repositoryID) {
-        return;
-      }
-      toggleCheckedRepository(repositoryID, Boolean(event.node.selected));
-    },
     render: annotateRepositoryTreeNode,
   });
 
@@ -1388,6 +1901,17 @@ function repositoryTreeExpandedKeys() {
     return [];
   }
   return treeState.expandedKeys.slice();
+}
+
+/**
+ * @returns {string[]}
+ */
+function repositoryTreeExpandedFolderPaths() {
+  return repositoryTreeExpandedKeys()
+    .map((key) => String(key || ""))
+    .filter((key) => key.startsWith("folder:"))
+    .map((key) => normalizeRepositoryTreePath(key.slice("folder:".length)))
+    .filter(Boolean);
 }
 
 /**
@@ -1490,7 +2014,26 @@ function buildRepositoryTreeSource(treeModel, expandedKeys) {
  * @returns {RepoTreeNodeModel[]}
  */
 function buildRepositoryTreeModel(repositories) {
-  return buildFolderExplorerTreeModel(repositories, explorerRootPaths());
+  return buildFolderExplorerTreeModel(repositories, repositoryTreeRootPaths());
+}
+
+/**
+ * @returns {string[]}
+ */
+function defaultRepositoryTreeRootPaths() {
+  const launchRoots = configuredLaunchRoots();
+  if (launchRoots.length > 1) {
+    const commonRootPath = normalizeRepositoryTreePath(state.repositoryCatalog?.explorer_root || state.repositoryCatalog?.launch_path || "");
+    return commonRootPath ? [commonRootPath] : launchRoots;
+  }
+
+  if (launchRoots.length === 1) {
+    const parentRootPath = parentDirectoryPath(launchRoots[0]);
+    return parentRootPath ? [parentRootPath] : launchRoots;
+  }
+
+  const explorerRoot = normalizeRepositoryTreePath(state.repositoryCatalog?.explorer_root || state.repositoryCatalog?.launch_path || "");
+  return explorerRoot ? [explorerRoot] : [];
 }
 
 /**
@@ -1518,6 +2061,22 @@ function explorerRootPaths() {
 }
 
 /**
+ * @returns {string[]}
+ */
+function repositoryTreeRootPaths() {
+  const overridePaths = (Array.isArray(state.repositoryTreeRootPathsOverride)
+    ? state.repositoryTreeRootPathsOverride
+    : [])
+    .map((rootPath) => normalizeRepositoryTreePath(rootPath))
+    .filter(Boolean);
+  if (overridePaths.length > 0) {
+    return overridePaths;
+  }
+
+  return defaultRepositoryTreeRootPaths();
+}
+
+/**
  * @param {RepositoryDescriptor[]} repositories
  * @param {string[]} rootPaths
  * @returns {RepoTreeNodeModel[]}
@@ -1536,7 +2095,8 @@ function buildFolderExplorerTreeModel(repositories, rootPaths) {
   const treeModel = [];
 
   normalizedRootPaths.forEach((rootPath) => {
-    ensureFolderExplorerRootNode(treeModel, nodeIndex, rootPath);
+    const rootNode = ensureFolderExplorerRootNode(treeModel, nodeIndex, rootPath);
+    populateLoadedFolderExplorerChildren(rootNode, nodeIndex);
   });
 
   repositories.forEach((repository) => {
@@ -1555,6 +2115,18 @@ function buildFolderExplorerTreeModel(repositories, rootPaths) {
 
   sortRepositoryTreeNodes(treeModel);
   return treeModel;
+}
+
+/**
+ * @param {RepoTreeNodeModel} parentNode
+ * @param {Map<string, RepoTreeNodeModel>} nodeIndex
+ * @returns {void}
+ */
+function populateLoadedFolderExplorerChildren(parentNode, nodeIndex) {
+  directoryFoldersForPath(parentNode.absolute_path || parentNode.path).forEach((folder) => {
+    const childNode = ensureFolderExplorerChildNode(parentNode, nodeIndex, folder.path);
+    populateLoadedFolderExplorerChildren(childNode, nodeIndex);
+  });
 }
 
 /**
@@ -1770,7 +2342,7 @@ function repositoryTreeShouldExpandFolder(node, expandedKeys) {
     return false;
   }
 
-  if (explorerRootPaths().includes(folderPath)) {
+  if (repositoryTreeRootPaths().includes(folderPath) || configuredLaunchRoots().includes(folderPath)) {
     return true;
   }
 
@@ -2043,6 +2615,7 @@ function annotateRepositoryTreeNode(event) {
   if (rowElement instanceof HTMLElement) {
     rowElement.dataset.repoTreeKind = kind;
     rowElement.dataset.repoTreeKey = String(event.node.key || "");
+    rowElement.dataset.repoTreeRepositoryId = String(event.node.data?.repository_id || "");
     if (absolutePath) {
       rowElement.dataset.repoTreeAbsolutePath = absolutePath;
     } else {
@@ -2098,6 +2671,35 @@ function handleRepositoryTreeAuditRootSelection(event) {
 }
 
 /**
+ * @param {MouseEvent} event
+ */
+function handleRepositoryTreeCheckboxClick(event) {
+  const eventTarget = event.target;
+  if (!(eventTarget instanceof HTMLElement)) {
+    return;
+  }
+
+  const checkboxElement = eventTarget.closest(".wb-checkbox");
+  if (!(checkboxElement instanceof HTMLElement)) {
+    return;
+  }
+
+  const rowElement = checkboxElement.closest(".wb-row");
+  if (!(rowElement instanceof HTMLElement)) {
+    return;
+  }
+
+  const repositoryID = String(rowElement.dataset.repoTreeRepositoryId || "").trim();
+  if (!repositoryID) {
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+  toggleCheckedRepository(repositoryID, !state.checkedRepositoryIDs.includes(repositoryID));
+}
+
+/**
  * @returns {void}
  */
 function syncAuditSelectionFromTree() {
@@ -2128,7 +2730,9 @@ async function selectRepository(repositoryID) {
   renderActionGroups(elements.commandFilter.value.trim().toLowerCase());
   syncQuickActions();
 
-  const response = await fetch(`${repositoriesEndpoint}/${encodeURIComponent(repositoryID)}/branches`);
+  const response = await fetch(
+    `${repositoriesEndpoint}/${encodeURIComponent(repositoryID)}/branches?path=${encodeURIComponent(repository.path)}`,
+  );
   if (!response.ok) {
     state.branches = [];
     syncQuickActions(`Failed to load branches: ${response.status}`);
@@ -2147,6 +2751,28 @@ async function selectRepository(repositoryID) {
   renderTargetState();
   syncQuickActions();
   repopulateSelectedCommand();
+}
+
+/**
+ * @param {string} folderPath
+ * @returns {Promise<void>}
+ */
+async function handleRepositoryTreeFolderClick(folderPath) {
+  const normalizedFolderPath = normalizeRepositoryTreePath(folderPath);
+  if (!normalizedFolderPath) {
+    return;
+  }
+
+  const currentRootPaths = repositoryTreeRootPaths();
+  if (currentRootPaths.length === 1 && currentRootPaths[0] === normalizedFolderPath) {
+    const parentPath = parentDirectoryPath(normalizedFolderPath);
+    if (parentPath) {
+      state.repositoryTreeRootPathsOverride = [parentPath];
+    }
+  }
+
+  await ensureDirectoryFoldersLoaded(normalizedFolderPath);
+  await renderRepositoryTree(elements.repoFilter.value.trim().toLowerCase());
 }
 
 /**
@@ -2203,6 +2829,11 @@ function preferredInitialRepositoryTreeKey(initialRepositoryID) {
  * @returns {string}
  */
 function preferredInitialRepositoryTreeFolderPath() {
+  const launchRoots = configuredLaunchRoots();
+  if (launchRoots.length > 0) {
+    return launchRoots[0];
+  }
+
   return explorerRootPaths()[0] || "";
 }
 
@@ -2235,7 +2866,7 @@ function renderSelectedRepository() {
   if (!repository) {
     elements.repoTitle.textContent = state.repositoryCatalog?.error ? "Repository context unavailable" : "No repository selected";
     elements.repoPath.textContent = activeRepositoryTreeFolderPath() || state.repositoryCatalog?.launch_path || "";
-    elements.repoSummary.textContent = state.repositoryCatalog?.error || "Select a repository folder to scope branch and repository actions.";
+    elements.repoSummary.textContent = state.repositoryCatalog?.error || "Select a repository folder to queue repo-scoped workflow actions.";
     elements.repoStateTokens.innerHTML = "";
     return;
   }
@@ -2259,92 +2890,25 @@ function renderSelectedRepository() {
 }
 
 function updateActionContext() {
-  const scopeRepositories = repositoryScopeRepositories();
-  const selectedCommand = findSelectedCommand();
-  const commandDraft = selectedCommand ? resolveCommandDraft(selectedCommand) : null;
-  const repositorySummary = `${scopeRepositories.length} ${scopeRepositories.length === 1 ? "repo" : "repos"}`;
-  const refSummary = buildRefSummary();
-  const pathSummary = buildPathSummary();
+  const auditRoots = workingFolderRoots();
+  const repository = selectedRepository();
 
-  switch (state.activeTask) {
-    case taskInspectValue:
-      if (resolveAuditRoots().length === 0) {
-        elements.actionContext.textContent = "Audit is the primary flow above. Select a folder in the tree to inspect.";
-        return;
-      }
-      elements.actionContext.textContent = `Audit is configured above for ${workingFolderRoots().length} ${workingFolderRoots().length === 1 ? "folder" : "folders"}. Run it there, then return here for follow-up commands.`;
-      return;
-    case taskBranchValue:
-      if (selectedCommand && selectedCommand.target.group === commandGroupBranchValue && commandDraft?.reason) {
-        elements.actionContext.textContent = commandDraft.reason;
-        return;
-      }
-      if (scopeRepositories.length === 0) {
-        elements.actionContext.textContent = "Choose a repository target set before running branch commands.";
-        return;
-      }
-      elements.actionContext.textContent = `Branch task targets ${repositorySummary}. Ref mode ${refSummary}.`;
-      return;
-    case taskFilesValue:
-      if (selectedCommand && selectedCommand.target.group === commandGroupFilesValue && commandDraft?.reason) {
-        elements.actionContext.textContent = commandDraft.reason;
-        return;
-      }
-      if (scopeRepositories.length === 0) {
-        elements.actionContext.textContent = "Choose a repository target set before running file commands.";
-        return;
-      }
-      elements.actionContext.textContent = `Files task targets ${repositorySummary}. Ref mode ${refSummary}. Path mode ${pathSummary}.`;
-      return;
-    case taskRemotesValue:
-      if (scopeRepositories.length === 0) {
-        elements.actionContext.textContent = "Choose a repository target set before running remote normalization.";
-        return;
-      }
-      if (selectedCommand && selectedCommand.target.group === commandGroupRemoteValue && commandDraft?.reason) {
-        elements.actionContext.textContent = commandDraft.reason;
-        return;
-      }
-      elements.actionContext.textContent = `Remote normalization targets ${repositorySummary}.`;
-      return;
-    case taskCleanupValue:
-      if (scopeRepositories.length === 0) {
-        elements.actionContext.textContent = "Choose a repository target set before running cleanup commands.";
-        return;
-      }
-      elements.actionContext.textContent = `Cleanup task targets ${repositorySummary}.`;
-      return;
-    case taskWorkflowsValue: {
-      const workflowTarget = elements.workflowTargetInput?.value.trim() || "WORKFLOW_OR_PRESET";
-      if (scopeRepositories.length === 0) {
-        elements.actionContext.textContent = "Choose a repository target set before running workflow commands.";
-        return;
-      }
-      elements.actionContext.textContent = `Workflow task targets ${repositorySummary}. Workflow ${workflowTarget}.`;
-      return;
-    }
-    case taskAdvancedValue:
-      if (selectedCommand && commandDraft?.reason) {
-        elements.actionContext.textContent = commandDraft.reason;
-        return;
-      }
-      if (selectedCommand && selectedCommand.target.repository === targetRequirementNoneValue) {
-        elements.actionContext.textContent = "This command is global and ignores repository, ref, and path targets.";
-        return;
-      }
-      if (scopeRepositories.length === 0) {
-        elements.actionContext.textContent = "Advanced mode exposes raw commands. Select repository targets when the command is repo-scoped.";
-        return;
-      }
-      if (selectedCommand && selectedCommand.target.path !== targetRequirementNoneValue) {
-        elements.actionContext.textContent = `Advanced mode targeting ${repositorySummary}. Ref mode ${refSummary}. Path mode ${pathSummary}.`;
-        return;
-      }
-      elements.actionContext.textContent = `Advanced mode targeting ${repositorySummary}. Ref mode ${refSummary}.`;
-      return;
-    default:
-      elements.actionContext.textContent = "";
+  if (!repository && auditRoots.length === 0) {
+    elements.actionContext.textContent = "Select folders in the tree, inspect them above, and then select a repository node to queue repo-scoped workflow actions.";
+    return;
   }
+
+  if (!repository) {
+    elements.actionContext.textContent = `Inspect ${auditRoots.length} ${auditRoots.length === 1 ? "folder" : "folders"} above, then select a repository node in the tree to queue repo-scoped workflow actions.`;
+    return;
+  }
+
+  if (auditRoots.length === 0) {
+    elements.actionContext.textContent = `Select folders in the tree, inspect them above, and then queue workflow actions for ${repository.name}.`;
+    return;
+  }
+
+  elements.actionContext.textContent = `Inspect ${auditRoots.length} ${auditRoots.length === 1 ? "folder" : "folders"} above. Queue workflow actions for ${repository.name}. Apply actions, review the results, then inspect again when you want a refreshed audit table.`;
 }
 
 function syncQuickActions(errorText = "") {
@@ -2499,7 +3063,6 @@ function selectCommand(commandPath, options = {}) {
     return;
   }
 
-  state.activeTask = inferTaskForCommand(command);
   state.selectedPath = command.path;
   renderTaskState();
   renderActionGroups(elements.commandFilter.value.trim().toLowerCase());
@@ -2554,7 +3117,7 @@ function resolveCommandDraft(command) {
   if (command.target.repository !== targetRequirementNoneValue && rootArguments.length === 0) {
     return {
       arguments: [],
-      reason: "Select at least one repository in the target bar to run this command.",
+      reason: "Select at least one repository in the tree to run this command.",
     };
   }
 
@@ -2618,7 +3181,7 @@ function buildRemoteTaskArguments(rootArguments) {
   if (rootArguments.length === 0) {
     return {
       arguments: [],
-      reason: "Select at least one repository in the target bar to run remote normalization.",
+      reason: "Select at least one repository in the tree to run remote normalization.",
     };
   }
 
@@ -2639,7 +3202,7 @@ function buildWorkflowTaskArguments() {
   if (repositoryRoots.length === 0) {
     return {
       arguments: [],
-      reason: "Select at least one repository in the target bar to run a workflow command.",
+      reason: "Select at least one repository in the tree to run a workflow command.",
     };
   }
 
@@ -3441,10 +4004,17 @@ function renderTypedAuditTable(rows) {
           if (action.queued) {
             button.classList.add("audit-action-button-queued");
           }
+          if (action.actionType === "workflow" && action.ready === false && !action.queuedWorkflowActionID) {
+            button.classList.add("audit-action-button-configure");
+          }
+          button.dataset.auditActionType = action.actionType;
           button.dataset.auditAction = action.kind;
           button.dataset.auditPath = row.path;
           if (action.queuedChangeID) {
             button.dataset.auditQueuedChangeId = action.queuedChangeID;
+          }
+          if (action.queuedWorkflowActionID) {
+            button.dataset.workflowQueuedActionId = action.queuedWorkflowActionID;
           }
           button.textContent = action.label;
           actionsList.append(button);
@@ -3647,9 +4217,16 @@ function handleAuditResultsClick(event) {
     return;
   }
 
+  const actionType = actionButton.dataset.auditActionType || "audit";
   const actionKind = actionButton.dataset.auditAction || "";
   const actionPath = actionButton.dataset.auditPath || "";
   if (!actionKind || !actionPath) {
+    return;
+  }
+
+  const queuedWorkflowActionID = actionButton.dataset.workflowQueuedActionId || "";
+  if (actionType === "workflow" && queuedWorkflowActionID) {
+    removeQueuedWorkflowAction(queuedWorkflowActionID);
     return;
   }
 
@@ -3665,9 +4242,14 @@ function handleAuditResultsClick(event) {
     return;
   }
 
-  const action = buildAuditRowActions(row).find((candidate) => candidate.kind === actionKind);
+  const action = buildAuditRowActions(row).find((candidate) => candidate.actionType === actionType && candidate.kind === actionKind);
   if (!action) {
-    renderRunError(`Audit action ${actionKind} is not available for ${actionPath}.`);
+    renderRunError(`${actionType === "workflow" ? "Workflow" : "Audit"} action ${actionKind} is not available for ${actionPath}.`);
+    return;
+  }
+
+  if (actionType === "workflow") {
+    queueWorkflowActionFromAuditRow(row, action);
     return;
   }
 
@@ -3787,10 +4369,11 @@ function updateAuditQueueText(changeID, fieldName, fieldValue) {
  */
 function buildAuditRowActions(row) {
   /** @type {AuditRowActionDefinition[]} */
-  const actions = [];
+  const auditActions = [];
   if (row.is_git_repository) {
     if (row.name_matches === "no") {
-      actions.push({
+      auditActions.push({
+        actionType: "audit",
         kind: auditChangeKindRenameFolderValue,
         label: "Queue rename",
         title: "Rename folder",
@@ -3806,7 +4389,8 @@ function buildAuditRowActions(row) {
     }
 
     if (protocolFixAvailable(row)) {
-      actions.push({
+      auditActions.push({
+        actionType: "audit",
         kind: auditChangeKindConvertProtocolValue,
         label: "Queue protocol fix",
         title: "Fix protocol",
@@ -3821,7 +4405,8 @@ function buildAuditRowActions(row) {
     }
 
     if (row.origin_remote_status === "configured" && row.origin_matches_canonical === "no") {
-      actions.push({
+      auditActions.push({
+        actionType: "audit",
         kind: auditChangeKindUpdateCanonicalValue,
         label: "Queue remote fix",
         title: "Fix canonical remote",
@@ -3836,7 +4421,8 @@ function buildAuditRowActions(row) {
     }
 
     if (row.origin_remote_status === "configured" && row.in_sync === "no" && row.remote_default_branch && row.remote_default_branch !== "n/a") {
-      actions.push({
+      auditActions.push({
+        actionType: "audit",
         kind: auditChangeKindSyncWithRemoteValue,
         label: "Queue sync",
         title: "Sync with remote",
@@ -3851,7 +4437,8 @@ function buildAuditRowActions(row) {
   }
 
   if (row.path) {
-    actions.push({
+    auditActions.push({
+      actionType: "audit",
       kind: auditChangeKindDeleteFolderValue,
       label: "Queue delete",
       title: "Delete folder",
@@ -3864,7 +4451,7 @@ function buildAuditRowActions(row) {
     });
   }
 
-  return actions.map((action) => {
+  const queuedAuditActions = auditActions.map((action) => {
     const queuedChange = queuedAuditChangeForAction(row.path, action.kind);
     if (!queuedChange) {
       return action;
@@ -3877,6 +4464,94 @@ function buildAuditRowActions(row) {
       queuedChangeID: queuedChange.id,
     };
   });
+
+  return queuedAuditActions.concat(buildWorkflowRowActions(row));
+}
+
+/**
+ * @param {AuditInspectionRow} row
+ * @returns {AuditRowActionDefinition[]}
+ */
+function buildWorkflowRowActions(row) {
+  if (!row.is_git_repository || !row.path) {
+    return [];
+  }
+
+  const repository = repositoryForFolderPath(row.path) || {
+    id: "",
+    name: row.folder_name || row.path,
+    path: row.path,
+  };
+
+  return state.workflowPrimitives
+    .filter((primitive) => workflowPrimitiveVisibleInAuditTable(primitive.id))
+    .map((primitive) => {
+      const draft = workflowPrimitiveDraft(primitive);
+      const parameters = workflowPrimitiveParameterSnapshot(primitive, draft);
+      const ready = workflowPrimitiveDraftCanQueue(primitive, draft);
+      const queuedAction = queuedWorkflowActionForAuditRow(repository.path, primitive.id, parameters);
+      const label = queuedAction
+        ? `Dequeue ${primitive.label}`
+        : ready
+          ? `Queue ${primitive.label}`
+          : `Configure ${primitive.label}`;
+      const parameterSummary = summarizeWorkflowPrimitiveParameters(primitive, parameters);
+
+      return {
+        actionType: "workflow",
+        kind: primitive.id,
+        label,
+        queued: Boolean(queuedAction),
+        queuedWorkflowActionID: queuedAction?.id || "",
+        ready,
+        title: primitive.label,
+        description: ready
+          ? `Queue ${primitive.label} for ${repository.name}. ${parameterSummary || "Use default parameters."}`
+          : `Complete the required parameters for ${primitive.label} in Workflow Actions before queueing it for ${repository.name}.`,
+        primitiveID: primitive.id,
+        parameters,
+      };
+    });
+}
+
+/**
+ * @param {string} primitiveID
+ * @returns {boolean}
+ */
+function workflowPrimitiveVisibleInAuditTable(primitiveID) {
+  return ![
+    webWorkflowPrimitiveCanonicalRemoteValue,
+    webWorkflowPrimitiveProtocolConversionValue,
+    webWorkflowPrimitiveRenameFolderValue,
+  ].includes(primitiveID);
+}
+
+/**
+ * @param {string} repositoryPath
+ * @param {string} primitiveID
+ * @param {Record<string, any>} parameters
+ * @returns {WorkflowPrimitiveQueueEntry | undefined}
+ */
+function queuedWorkflowActionForAuditRow(repositoryPath, primitiveID, parameters) {
+  const normalizedRepositoryPath = normalizeRepositoryTreePath(repositoryPath);
+  const parameterSignature = workflowPrimitiveParameterSignature(parameters);
+  return state.workflowActionQueue.find((action) => {
+    return normalizeRepositoryTreePath(action.repository_path) === normalizedRepositoryPath &&
+      action.primitive_id === primitiveID &&
+      workflowPrimitiveParameterSignature(action.parameters || {}) === parameterSignature;
+  });
+}
+
+/**
+ * @param {Record<string, any>} parameters
+ * @returns {string}
+ */
+function workflowPrimitiveParameterSignature(parameters) {
+  const normalizedParameters = {};
+  Object.keys(parameters || {}).sort().forEach((key) => {
+    normalizedParameters[key] = parameters[key];
+  });
+  return JSON.stringify(normalizedParameters);
 }
 
 /**
@@ -3923,6 +4598,34 @@ function queueAuditChange(row, action) {
   state.auditQueueVisible = true;
   renderRunError("");
   renderAuditQueueState();
+}
+
+/**
+ * @param {AuditInspectionRow} row
+ * @param {AuditRowActionDefinition} action
+ * @returns {void}
+ */
+function queueWorkflowActionFromAuditRow(row, action) {
+  const primitive = state.workflowPrimitives.find((candidate) => candidate.id === action.primitiveID);
+  if (!primitive) {
+    renderRunError(`Workflow action ${action.kind} is not available in this build.`);
+    return;
+  }
+
+  const repository = repositoryForFolderPath(row.path) || {
+    id: "",
+    name: row.folder_name || row.path,
+    path: row.path,
+  };
+
+  if (!action.ready) {
+    state.selectedWorkflowPrimitiveID = primitive.id;
+    renderWorkflowPrimitiveState();
+    renderRunError(`Complete the required parameters for ${primitive.label} in Workflow Actions before queueing it from the audit table.`);
+    return;
+  }
+
+  enqueueWorkflowPrimitiveAction(repository, primitive, action.parameters || {});
 }
 
 function clearAuditQueue() {
@@ -4063,21 +4766,12 @@ async function applyAuditQueue() {
     );
     state.auditQueue = state.auditQueue.filter((change) => !succeededIDs.has(change.id));
 
-    if (state.auditInspectionRoots.length > 0) {
-      await inspectAuditRequest(
-        {
-          roots: state.auditInspectionRoots.slice(),
-          include_all: state.auditInspectionIncludeAll,
-        },
-        false,
-      );
-    }
-
     const failedResults = results.filter((result) => result.status !== auditChangeStatusSucceededValue);
     if (failedResults.length > 0) {
-      renderRunError(failedResults.map(formatAuditApplyIssue).join("\n"));
+      renderRunError(`${failedResults.map(formatAuditApplyIssue).join("\n")}\nRefresh the audit table when you want a new snapshot.`);
       setStatus("failed");
     } else {
+      renderRunError("Apply finished. Refresh the audit table when you want a new snapshot.");
       setStatus("succeeded");
     }
   } catch (error) {
@@ -4687,6 +5381,77 @@ function repositoryForFolderPath(folderPath) {
 }
 
 /**
+ * @param {any} repository
+ * @returns {RepositoryDescriptor | null}
+ */
+function normalizeDiscoveredRepository(repository) {
+  if (!repository || typeof repository !== "object") {
+    return null;
+  }
+
+  const repositoryPath = normalizeRepositoryTreePath(String(repository.path || ""));
+  if (!repositoryPath) {
+    return null;
+  }
+
+  const pathSegments = splitRepositoryTreePath(repositoryPath);
+  const fallbackName = pathSegments[pathSegments.length - 1] || repositoryPath;
+  return {
+    id: String(repository.id || repositoryPath).trim(),
+    name: String(repository.name || "").trim() || fallbackName,
+    path: repositoryPath,
+    current_branch: String(repository.current_branch || "").trim(),
+    default_branch: String(repository.default_branch || "").trim(),
+    dirty: Boolean(repository.dirty),
+    context_current: Boolean(repository.context_current),
+    error: String(repository.error || "").trim(),
+  };
+}
+
+/**
+ * @param {RepositoryDescriptor[]} repositories
+ * @returns {void}
+ */
+function mergeKnownRepositories(repositories) {
+  if (!Array.isArray(repositories) || repositories.length === 0) {
+    return;
+  }
+
+  const repositoriesByPath = new Map(
+    state.repositories.map((repository, repositoryIndex) => [normalizeRepositoryTreePath(repository.path), repositoryIndex]),
+  );
+
+  repositories.forEach((repository) => {
+    const normalizedRepositoryPath = normalizeRepositoryTreePath(repository.path);
+    if (!normalizedRepositoryPath) {
+      return;
+    }
+
+    const existingRepositoryIndex = repositoriesByPath.get(normalizedRepositoryPath);
+    if (typeof existingRepositoryIndex === "number") {
+      const existingRepository = state.repositories[existingRepositoryIndex];
+      state.repositories[existingRepositoryIndex] = {
+        ...existingRepository,
+        ...repository,
+        id: existingRepository.id || repository.id,
+        path: normalizedRepositoryPath,
+        context_current: Boolean(existingRepository.context_current || repository.context_current),
+      };
+      return;
+    }
+
+    repositoriesByPath.set(normalizedRepositoryPath, state.repositories.length);
+    state.repositories.push({
+      ...repository,
+      path: normalizedRepositoryPath,
+    });
+  });
+
+  state.repositories = state.repositories.slice().sort(compareRepositories);
+  elements.repoCount.textContent = String(state.repositories.length);
+}
+
+/**
  * @returns {RepositoryDescriptor[]}
  */
 function checkedRepositories() {
@@ -4707,6 +5472,48 @@ function repositoryScopeRepositories() {
 
   const repository = selectedRepository();
   return repository ? [repository] : [];
+}
+
+async function ensureRepositoryTreeDirectoryDataLoaded() {
+  const rootPaths = repositoryTreeRootPaths();
+  if (rootPaths.length === 0) {
+    return;
+  }
+
+  const pathsToLoad = new Set();
+  rootPaths.forEach((rootPath) => {
+    pathsToLoad.add(rootPath);
+  });
+
+  const selectedFolderPath = normalizeRepositoryTreePath(state.selectedFolderPath || "");
+  if (selectedFolderPath) {
+    rootPaths.forEach((rootPath) => {
+      collectDirectoryPathChain(rootPath, selectedFolderPath).forEach((path) => {
+        pathsToLoad.add(path);
+      });
+    });
+  }
+
+  const selectedRepositoryParentPath = parentDirectoryPath(selectedRepository()?.path || "");
+  if (selectedRepositoryParentPath) {
+    rootPaths.forEach((rootPath) => {
+      collectDirectoryPathChain(rootPath, selectedRepositoryParentPath).forEach((path) => {
+        pathsToLoad.add(path);
+      });
+    });
+  }
+
+  repositoryTreeExpandedFolderPaths().forEach((folderPath) => {
+    rootPaths.forEach((rootPath) => {
+      collectDirectoryPathChain(rootPath, folderPath).forEach((path) => {
+        pathsToLoad.add(path);
+      });
+    });
+  });
+
+  for (const path of pathsToLoad) {
+    await ensureDirectoryFoldersLoaded(path);
+  }
 }
 
 async function ensureSingleConfiguredRootTreeDataLoaded() {
@@ -4767,12 +5574,22 @@ async function ensureDirectoryFoldersLoaded(folderPath) {
       throw new Error(listing.error);
     }
 
+    const discoveredRepositories = (listing.folders || [])
+      .map((folder) => normalizeDiscoveredRepository(folder.repository))
+      .filter(Boolean);
+    mergeKnownRepositories(discoveredRepositories);
+
     state.directoryFolders[normalizedFolderPath] = (listing.folders || [])
       .map((folder) => ({
         name: String(folder.name || "").trim(),
         path: normalizeRepositoryTreePath(folder.path),
+        repository: normalizeDiscoveredRepository(folder.repository),
       }))
-      .filter((folder) => folder.name && folder.path);
+      .filter((folder) => folder.name && folder.path)
+      .map((folder) => ({
+        ...folder,
+        repository: folder.repository ? (repositoryForFolderPath(folder.repository.path) || folder.repository) : undefined,
+      }));
   })().catch(() => {
     state.directoryFolders[normalizedFolderPath] = [];
   });
@@ -4890,9 +5707,18 @@ function activeRepositoryTreeFolderPath() {
  * @returns {string[]}
  */
 function workingFolderRoots() {
+  const checkedRoots = checkedRepositories().map((repository) => repository.path);
+  if (checkedRoots.length > 1) {
+    return checkedRoots;
+  }
+
   const selectedFolderPath = activeRepositoryTreeFolderPath();
   if (selectedFolderPath) {
     return [selectedFolderPath];
+  }
+
+  if (checkedRoots.length === 1) {
+    return checkedRoots;
   }
 
   return explorerRootPaths();
@@ -5004,33 +5830,6 @@ function buildRepositoryScopeDetail(scopeLabel, repositories) {
 /**
  * @returns {string}
  */
-function buildRefSummary() {
-  if (state.targetRefMode === refModeNamedValue || state.targetRefMode === refModePatternValue) {
-    const value = state.targetRefValue.trim();
-    return value ? `${state.targetRefMode}:${value}` : state.targetRefMode;
-  }
-
-  if (state.targetRefMode === refModeCurrentValue) {
-    const currentBranch = currentRepositoryBranchName();
-    if (state.selectedScope === scopeSelectedValue && currentBranch) {
-      return `current:${currentBranch}`;
-    }
-    return state.selectedScope === scopeSelectedValue ? refModeCurrentValue : "current per repo";
-  }
-
-  if (state.targetRefMode === refModeDefaultValue) {
-    if (state.selectedScope === scopeSelectedValue && selectedRepository()?.default_branch) {
-      return `default:${selectedRepository()?.default_branch || ""}`;
-    }
-    return state.selectedScope === scopeSelectedValue ? refModeDefaultValue : "default per repo";
-  }
-
-  return state.targetRefMode;
-}
-
-/**
- * @returns {string}
- */
 function buildPathSummary() {
   const values = resolvePathValues();
   if (state.targetPathMode === pathModeNoneValue) {
@@ -5040,19 +5839,6 @@ function buildPathSummary() {
     return state.targetPathMode;
   }
   return `${state.targetPathMode}:${values.length}`;
-}
-
-/**
- * @returns {string}
- */
-function pathInputPlaceholder() {
-  if (state.targetPathMode === pathModeGlobValue) {
-    return pathPlaceholderGlobValue;
-  }
-  if (state.targetPathMode === pathModeMultipleValue) {
-    return pathPlaceholderMultipleValue;
-  }
-  return pathPlaceholderRelativeValue;
 }
 
 /**
