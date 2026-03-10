@@ -11,6 +11,9 @@ type CommandExecutor func(context.Context, []string, io.Reader, io.Writer, io.Wr
 // BranchCatalogLoader resolves branch metadata for one repository descriptor.
 type BranchCatalogLoader func(context.Context, RepositoryDescriptor) BranchCatalog
 
+// DirectoryBrowser resolves immediate child folders for one absolute path.
+type DirectoryBrowser func(context.Context, string) DirectoryListing
+
 // AuditInspector resolves typed audit rows for explicit roots.
 type AuditInspector func(context.Context, AuditInspectionRequest) AuditInspectionResponse
 
@@ -23,6 +26,7 @@ type ServerOptions struct {
 	Repositories      RepositoryCatalog
 	Catalog           CommandCatalog
 	LoadBranches      BranchCatalogLoader
+	BrowseDirectories DirectoryBrowser
 	Execute           CommandExecutor
 	InspectAudit      AuditInspector
 	ApplyAuditChanges AuditChangeExecutor
@@ -31,6 +35,7 @@ type ServerOptions struct {
 // RepositoryCatalog describes the repositories visible to the web interface at launch time.
 type RepositoryCatalog struct {
 	LaunchPath           string                 `json:"launch_path,omitempty"`
+	LaunchRoots          []string               `json:"launch_roots,omitempty"`
 	ExplorerRoot         string                 `json:"explorer_root,omitempty"`
 	LaunchMode           string                 `json:"launch_mode,omitempty"`
 	SelectedRepositoryID string                 `json:"selected_repository_id,omitempty"`
@@ -63,6 +68,19 @@ type BranchDescriptor struct {
 	Name     string `json:"name"`
 	Current  bool   `json:"current"`
 	Upstream string `json:"upstream,omitempty"`
+}
+
+// DirectoryListing describes the immediate child folders for one browsable path.
+type DirectoryListing struct {
+	Path    string             `json:"path,omitempty"`
+	Folders []FolderDescriptor `json:"folders,omitempty"`
+	Error   string             `json:"error,omitempty"`
+}
+
+// FolderDescriptor captures one immediate child folder entry.
+type FolderDescriptor struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
 }
 
 // CommandCatalog describes the CLI commands exposed through the web interface.

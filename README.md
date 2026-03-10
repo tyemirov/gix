@@ -471,7 +471,9 @@ Additional shared flags:
 - `--remote <name>` — override the remote name used by commands that push or fetch (default `origin`).
 - `--version` — print the gix version (works at the root or with any command).
 - `--init [local|user] [--force]` — write an embedded default config (to `./config.yaml` or `$XDG_CONFIG_HOME/gix/config.yaml`), overwriting when `--force` is provided.
-- `--web [port]` — launch the local browser UI on `127.0.0.1` (defaults to port `8080`).
+- `--web` — launch the local browser UI on `127.0.0.1:8080` by default.
+- `--bind <host>`, `--port <port>` — override the web bind address or port when used with `--web`.
+- `--roots <dir>...` — when used with `--web`, scope the initial repository tree to the provided roots.
 
 ## Command Reference
 
@@ -481,9 +483,11 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
 
  - Prints the current release. Also available as `gix --version`.
 
-- `gix --web [port]`
+- `gix --web [--bind <host>] [--port <port>] [--roots <dir>...]`
 
- - Starts a local HTTP server on `127.0.0.1:<port>` and serves the embedded browser UI plus JSON API for running gix commands in-process.
+ - Starts a local HTTP server on `127.0.0.1:8080` by default and serves the embedded browser UI plus JSON API for running gix commands in-process.
+ - Use `--bind` and `--port` to expose the UI on a different interface or port, for example `gix --web --bind 0.0.0.0 --port 8081`.
+ - Use `--roots` to pre-scope the initial left-pane repository catalog, for example `gix --web --roots ~/Development/fleet`.
  - The UI exposes the command catalog, accepts one argument per line, and captures stdout/stderr for each run.
 
 - `gix audit [--roots <dir>...] [--all] [-y]` (alias `a`)

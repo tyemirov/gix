@@ -209,24 +209,34 @@ func TestNormalizeWebArguments(t *testing.T) {
 			expectedArgs: nil,
 		},
 		{
-			name:         "ImplicitDefaultPort",
+			name:         "PlainWebFlagUnchanged",
 			input:        []string{"--web"},
-			expectedArgs: []string{"--web=8080"},
+			expectedArgs: []string{"--web"},
 		},
 		{
-			name:         "ExplicitPortSeparateArgument",
-			input:        []string{"--web", "18080"},
-			expectedArgs: []string{"--web=18080"},
+			name:         "ExplicitPortFlagUnchanged",
+			input:        []string{"--web", "--port", "18080"},
+			expectedArgs: []string{"--web", "--port", "18080"},
 		},
 		{
-			name:         "ExplicitPortAssignment",
-			input:        []string{"--web=19090"},
-			expectedArgs: []string{"--web=19090"},
+			name:         "LegacyPositionalPortPreservedForValidation",
+			input:        []string{"--web", "19090"},
+			expectedArgs: []string{"--web", "--", "19090"},
 		},
 		{
-			name:         "EmptyAssignmentDefaultsToStandardPort",
-			input:        []string{"--web="},
-			expectedArgs: []string{"--web=8080"},
+			name:         "BindFlagUnchanged",
+			input:        []string{"--web", "--bind", "0.0.0.0"},
+			expectedArgs: []string{"--web", "--bind", "0.0.0.0"},
+		},
+		{
+			name:         "RootsFlagUnchanged",
+			input:        []string{"--web", "--roots", "/tmp/fleet"},
+			expectedArgs: []string{"--web", "--roots", "/tmp/fleet"},
+		},
+		{
+			name:         "BindAndPortFlagsUnchanged",
+			input:        []string{"--web", "--port", "8081"},
+			expectedArgs: []string{"--web", "--port", "8081"},
 		},
 	}
 

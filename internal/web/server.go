@@ -15,26 +15,29 @@ import (
 )
 
 const (
-	indexRoutePathConstant              = "/"
-	assetsRoutePathConstant             = "/assets"
-	apiRepositoriesRoutePathConstant    = "/api/repos"
-	apiRepositoryBranchesRouteConstant  = "/api/repos/:id/branches"
-	apiBranchesRoutePathConstant        = "/api/branches"
-	apiCommandsRoutePathConstant        = "/api/commands"
-	apiAuditInspectRoutePathConstant    = "/api/audit/inspect"
-	apiAuditApplyRoutePathConstant      = "/api/audit/apply"
-	apiRunsRoutePathConstant            = "/api/runs"
-	apiRunRoutePathTemplateConstant     = "/api/runs/:id"
-	indexDocumentFilePathConstant       = "ui/index.html"
-	htmlContentTypeConstant             = "text/html; charset=utf-8"
-	serverShutdownTimeoutConstant       = 5 * time.Second
-	missingServerAddressErrorConstant   = "missing server address"
-	missingCommandExecutorErrorConstant = "missing command executor"
-	missingBranchLoaderErrorConstant    = "missing branch loader"
-	missingAuditInspectorErrorConstant  = "missing audit inspector"
-	missingAuditChangeExecutorConstant  = "missing audit change executor"
-	missingRepositoryIDErrorConstant    = "missing repository identifier"
-	repositoryNotFoundTemplateConstant  = "repository %q was not found"
+	indexRoutePathConstant               = "/"
+	assetsRoutePathConstant              = "/assets"
+	apiRepositoriesRoutePathConstant     = "/api/repos"
+	apiRepositoryBranchesRouteConstant   = "/api/repos/:id/branches"
+	apiBranchesRoutePathConstant         = "/api/branches"
+	apiCommandsRoutePathConstant         = "/api/commands"
+	apiFoldersRoutePathConstant          = "/api/folders"
+	apiAuditInspectRoutePathConstant     = "/api/audit/inspect"
+	apiAuditApplyRoutePathConstant       = "/api/audit/apply"
+	apiRunsRoutePathConstant             = "/api/runs"
+	apiRunRoutePathTemplateConstant      = "/api/runs/:id"
+	indexDocumentFilePathConstant        = "ui/index.html"
+	htmlContentTypeConstant              = "text/html; charset=utf-8"
+	serverShutdownTimeoutConstant        = 5 * time.Second
+	missingServerAddressErrorConstant    = "missing server address"
+	missingCommandExecutorErrorConstant  = "missing command executor"
+	missingBranchLoaderErrorConstant     = "missing branch loader"
+	missingDirectoryBrowserErrorConstant = "missing directory browser"
+	missingAuditInspectorErrorConstant   = "missing audit inspector"
+	missingAuditChangeExecutorConstant   = "missing audit change executor"
+	missingRepositoryIDErrorConstant     = "missing repository identifier"
+	missingFolderPathErrorConstant       = "missing folder path"
+	repositoryNotFoundTemplateConstant   = "repository %q was not found"
 )
 
 //go:embed ui
@@ -45,6 +48,7 @@ type serverRuntimeOptions struct {
 	repositories RepositoryCatalog
 	catalog      CommandCatalog
 	loadBranches BranchCatalogLoader
+	browseDirs   DirectoryBrowser
 	execute      CommandExecutor
 	inspectAudit AuditInspector
 	applyAudit   AuditChangeExecutor
@@ -164,6 +168,9 @@ func newServerRuntimeOptions(options ServerOptions) (serverRuntimeOptions, error
 	if options.LoadBranches == nil {
 		return serverRuntimeOptions{}, errors.New(missingBranchLoaderErrorConstant)
 	}
+	if options.BrowseDirectories == nil {
+		return serverRuntimeOptions{}, errors.New(missingDirectoryBrowserErrorConstant)
+	}
 	if options.InspectAudit == nil {
 		return serverRuntimeOptions{}, errors.New(missingAuditInspectorErrorConstant)
 	}
@@ -176,6 +183,7 @@ func newServerRuntimeOptions(options ServerOptions) (serverRuntimeOptions, error
 		repositories: options.Repositories,
 		catalog:      options.Catalog,
 		loadBranches: options.LoadBranches,
+		browseDirs:   options.BrowseDirectories,
 		execute:      options.Execute,
 		inspectAudit: options.InspectAudit,
 		applyAudit:   options.ApplyAuditChanges,
@@ -203,6 +211,7 @@ func (server *Server) registerRoutes(assetsFileSystem http.FileSystem) {
 	server.engine.GET(apiRepositoryBranchesRouteConstant, server.handleRepositoryBranches)
 	server.engine.GET(apiBranchesRoutePathConstant, server.handleBranches)
 	server.engine.GET(apiCommandsRoutePathConstant, server.handleCommands)
+	server.engine.GET(apiFoldersRoutePathConstant, server.handleBrowseDirectories)
 	server.engine.POST(apiAuditInspectRoutePathConstant, server.handleInspectAudit)
 	server.engine.POST(apiAuditApplyRoutePathConstant, server.handleApplyAuditChanges)
 	server.engine.POST(apiRunsRoutePathConstant, server.handleCreateRun)
@@ -248,6 +257,16 @@ func (server *Server) handleBranches(requestContext *gin.Context) {
 
 func (server *Server) handleCommands(requestContext *gin.Context) {
 	requestContext.JSON(http.StatusOK, server.options.catalog)
+}
+
+func (server *Server) handleBrowseDirectories(requestContext *gin.Context) {
+	folderPath := strings.TrimSpace(requestContext.Query("path"))
+	if len(folderPath) == 0 {
+		requestContext.JSON(http.StatusBadRequest, errorResponse{Error: missingFolderPathErrorConstant})
+		return
+	}
+
+	requestContext.JSON(http.StatusOK, server.options.browseDirs(requestContext.Request.Context(), folderPath))
 }
 
 func (server *Server) handleInspectAudit(requestContext *gin.Context) {

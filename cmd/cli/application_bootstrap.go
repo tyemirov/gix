@@ -78,7 +78,9 @@ type Application struct {
 	configurationInitializationScope  string
 	configurationInitializationForced bool
 	versionFlag                       bool
-	webFlagValue                      string
+	webFlagValue                      bool
+	webBindFlagValue                  string
+	webPortFlagValue                  string
 	versionResolver                   func(context.Context) string
 	versionExitEnabled                bool
 	exitFunction                      func(int)
@@ -148,11 +150,9 @@ func NewApplication() *Application {
 	cobraCommand.PersistentFlags().StringVar(&application.configurationFilePath, configFileFlagNameConstant, "", configFileFlagUsageConstant)
 	cobraCommand.PersistentFlags().StringVar(&application.logLevelFlagValue, logLevelFlagNameConstant, "", logLevelFlagUsageConstant)
 	cobraCommand.PersistentFlags().StringVar(&application.logFormatFlagValue, logFormatFlagNameConstant, "", logFormatFlagUsageConstant)
-	cobraCommand.PersistentFlags().StringVar(&application.webFlagValue, webFlagNameConstant, "", webFlagUsageConstant)
-	webFlag := cobraCommand.PersistentFlags().Lookup(webFlagNameConstant)
-	if webFlag != nil {
-		webFlag.NoOptDefVal = webDefaultPortConstant
-	}
+	cobraCommand.PersistentFlags().BoolVar(&application.webFlagValue, webFlagNameConstant, false, webFlagUsageConstant)
+	cobraCommand.PersistentFlags().StringVar(&application.webBindFlagValue, webBindFlagNameConstant, "", webBindFlagUsageConstant)
+	cobraCommand.PersistentFlags().StringVar(&application.webPortFlagValue, webPortFlagNameConstant, "", webPortFlagUsageConstant)
 	cobraCommand.PersistentFlags().StringVar(
 		&application.configurationInitializationScope,
 		configurationInitializationFlagNameConstant,
@@ -287,43 +287,22 @@ func normalizeWebArguments(arguments []string) []string {
 
 	normalizedArguments := make([]string, 0, len(arguments))
 	flagPrefix := "--" + webFlagNameConstant
-
 	for index := 0; index < len(arguments); index++ {
 		currentArgument := arguments[index]
-
-		if strings.HasPrefix(currentArgument, flagPrefix+"=") {
-			value := strings.TrimSpace(strings.TrimPrefix(currentArgument, flagPrefix+"="))
-			if len(value) == 0 {
-				normalizedArguments = append(
-					normalizedArguments,
-					fmt.Sprintf("%s=%s", flagPrefix, webDefaultPortConstant),
-				)
-				continue
-			}
-			normalizedArguments = append(normalizedArguments, currentArgument)
-			continue
-		}
-
-		if currentArgument == flagPrefix {
-			nextIndex := index + 1
-			if nextIndex >= len(arguments) || strings.HasPrefix(arguments[nextIndex], "-") {
-				normalizedArguments = append(
-					normalizedArguments,
-					fmt.Sprintf("%s=%s", flagPrefix, webDefaultPortConstant),
-				)
-				continue
-			}
-			normalizedArguments = append(
-				normalizedArguments,
-				fmt.Sprintf("%s=%s", flagPrefix, strings.TrimSpace(arguments[nextIndex])),
-			)
-			index++
-			continue
-		}
-
 		normalizedArguments = append(normalizedArguments, currentArgument)
-	}
+		if currentArgument != flagPrefix {
+			continue
+		}
 
+		nextIndex := index + 1
+		if nextIndex >= len(arguments) || strings.HasPrefix(arguments[nextIndex], "-") {
+			continue
+		}
+
+		normalizedArguments = append(normalizedArguments, "--")
+		normalizedArguments = append(normalizedArguments, arguments[nextIndex:]...)
+		return normalizedArguments
+	}
 	return normalizedArguments
 }
 
@@ -972,7 +951,7 @@ func (application *Application) runRootCommand(command *cobra.Command, arguments
 		return nil
 	}
 
-	webLaunchHandled, webLaunchError := application.handleWebLaunch(command)
+	webLaunchHandled, webLaunchError := application.handleWebLaunch(command, arguments)
 	if webLaunchError != nil {
 		return webLaunchError
 	}

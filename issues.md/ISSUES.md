@@ -571,3 +571,123 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - [x] Added failing expectations that `git@github.com:` audits as `ssh` and SSH conversions materialize as `git@github.com:owner/repo.git`.
   - [x] Normalized the shared/web/workflow protocol handling so the legacy `git` label aliases to SSH behavior instead of remaining a separate user-visible transport.
   - [x] Reduced the web protocol picker to the two meaningful user-facing choices: `ssh` and `https`.
+
+- Update on 2026-03-09 for [F003].
+  Added explicit `--bind` and `--port` flags for `gix --web` so operators can expose the web UI on non-loopback interfaces and non-default ports without losing the legacy `gix --web [port]` form.
+  ### Summary
+  Operators need to launch the web UI on addresses such as `0.0.0.0:8081`, not only the default `127.0.0.1:8080`.
+
+  ### Analysis
+  - The existing `--web` flag doubled as both the launch switch and the optional port value, which left no room to configure the bind host.
+  - Backward compatibility still matters because the current CLI, tests, and existing invocation examples already rely on `gix --web [port]`.
+  - The cleanest contract is to keep `--web` as the explicit launch switch, add `--bind` and `--port` as web-only modifiers, and reject those network flags when `--web` is not present.
+
+  ### Deliverables
+  - [x] Added root `--bind` and `--port` flags for web launch while preserving `gix --web [port]`.
+  - [x] Added CLI and compiled-binary coverage for custom bind/port launch behavior.
+  - [x] Documented the new invocation forms in the README.
+
+- Update on 2026-03-09 for [F003].
+  Removed the legacy overloaded `gix --web <port>` form so web launch uses one explicit switch plus explicit network flags.
+  ### Summary
+  After adding `--bind` and `--port`, the positional port form became ambiguous and easy to misread. The web launch contract is now `gix --web [--bind <host>] [--port <port>]`.
+
+  ### Analysis
+  - `--web` should behave like a mode switch, not a flag that sometimes consumes a positional value and sometimes does not.
+  - Keeping `gix --web 18080` alive would leave two competing port syntaxes in the CLI and make mixed forms harder to reason about.
+  - The CLI should therefore reject positional arguments in web mode and direct the operator to `--port`.
+
+  ### Deliverables
+  - [x] Removed the implicit positional-port normalization for `--web`.
+  - [x] Added a targeted error when web mode is launched with positional arguments.
+  - [x] Updated CLI, integration, and README coverage to use `--port`.
+
+- Update on 2026-03-09 for [F003].
+  Wired `--roots` into `gix --web` so the initial repository catalog and left-pane tree can start from explicit launch roots instead of always discovering from the current working directory.
+  ### Summary
+  The `--roots` flag was globally parsed, but web launch ignored it and always seeded the browser from `cwd` or current-repository context. Operators could narrow audit roots after the page loaded, but they could not pre-scope the initial repository explorer.
+
+  ### Analysis
+  - Web launch already had the correct CLI surface because `--roots` is a persistent root flag on the root command.
+  - The missing piece was startup wiring: `handleWebLaunch` built its repository catalog from `cwd` only and never consulted the resolved root flag values.
+  - The cleanest fix is to reuse the shared root-flag sanitizer and feed those explicit roots into the initial repository discovery path, while preserving the existing current-repo and discovery behavior when `--roots` is absent.
+
+  ### Deliverables
+  - [x] Scoped `gix --web --roots ...` to explicit launch roots.
+  - [x] Added CLI, browser, and compiled-binary coverage for the root-scoped launch behavior.
+  - [x] Documented the launch-root modifier in the README.
+
+- Update on 2026-03-09 for [F009].
+  Made queued web-audit actions toggle back to dequeue controls in the audit table so operators do not appear able to enqueue the same fix repeatedly from the row actions.
+  ### Summary
+  The queue already deduplicated identical path+action pairs internally, but the row button kept reading `Queue …` after the change was added. That made the UI look misleading because the visible control implied the same action could be added again.
+
+  ### Analysis
+  - The bug was presentation/state-sync, not queue storage: the queue logic replaced existing entries instead of duplicating them.
+  - The audit table needed to render against current queue state and refresh whenever queue membership changed from row clicks, queue-panel removal, clear, or successful apply.
+  - The clearest fix is to flip the row control label to `Dequeue …` when that exact action is queued and wire that click path directly to queue removal.
+
+  ### Deliverables
+  - [x] Toggled queued audit-row actions from `Queue …` to `Dequeue …`.
+  - [x] Refreshed the audit table whenever queue membership changes so row actions stay in sync with the queue panel.
+  - [x] Added browser coverage for queue-then-dequeue behavior from the same row action button.
+
+- Update on 2026-03-09 for [F003].
+  Restored explicit launch-root folders in the web repository tree so `gix --web --roots ../` shows the configured parent folder as a real tree node instead of flattening everything directly under it.
+  ### Summary
+  The configured-roots launch flow passed the correct repository scope to the browser, but the tree renderer stripped `launch_path` from repository paths and never rendered the explicit root folder itself when the configured root and the common launch path were the same directory.
+
+  ### Analysis
+  - The startup catalog already knew which roots were used to launch the web UI, but it only exposed the common `launch_path`.
+  - That was enough to discover repositories, but not enough for the browser to distinguish “common ancestor” from “explicit root that should appear as a node.”
+  - Exposing explicit `launch_roots` in the repository catalog lets the browser render configured-root wrapper folders precisely, keep them auto-expanded, and preserve multi-root behavior without inventing extra synthetic ancestors.
+
+  ### Deliverables
+  - [x] Added explicit `launch_roots` to the web repository catalog for configured-root launches.
+  - [x] Rendered configured launch roots as visible folder nodes in the browser tree.
+  - [x] Added browser and compiled-binary coverage for the single-root `--roots ../` style launch case.
+
+- Update on 2026-03-09 for [F003].
+  Adjusted the single-root configured launch tree so the explicit root folder is the active node on load and its immediate parent is rendered as the visible ancestor leaf above it.
+  ### Summary
+  The previous explicit-root fix made the configured folder appear, but the browser still re-activated the selected repository row on every render. That left `gix --web --roots ../` visually focused on the repository instead of the configured parent folder, and the tree still lacked the one ancestor node above that configured root.
+
+  ### Analysis
+  - Repository selection drives command defaults and repo details, but tree activation is a separate concern and needs its own state.
+  - For a single configured launch root, the clearest tree shape is one visible ancestor wrapper above the explicit root, with the explicit root itself staying auto-expanded and active.
+  - Preserving repository selection while independently restoring the active folder node keeps the UI accurate without changing action scope semantics.
+
+  ### Deliverables
+  - [x] Split active tree-node focus from selected repository state in the browser UI.
+  - [x] Added a visible ancestor wrapper above single explicit launch roots.
+  - [x] Added browser coverage for initial active-node focus and the ancestor leaf.
+
+- Update on 2026-03-09 for [F003].
+  Extended single explicit-root browsing so folder selection can traverse upward or downward through the tree, and added table-driven browser coverage for the traversal paths.
+  ### Summary
+  The single explicit-root tree previously stopped at one fixed ancestor wrapper. That rendered correctly, but it did not behave like a real browser path because selecting the visible ancestor could not reveal higher parents one level at a time.
+
+  ### Analysis
+  - Current-repo mode already treats the top visible ancestor as the upward-traversal control, so explicit-root mode needed the same selection-driven progression.
+  - The tree model for a single configured root now derives its visible ancestor chain from depth state instead of a fixed one-parent wrapper.
+  - Table-driven browser scenarios now cover both upward traversal through ancestors and downward traversal into nested folders, which locks in the expected contract across current-repo and explicit-root launches.
+
+  ### Deliverables
+  - [x] Added upward traversal for single explicit-root launches by revealing one additional ancestor per top-folder selection.
+  - [x] Kept downward traversal working through nested folder selection under the configured root.
+  - [x] Added table-driven browser tests for folder-tree traversal scenarios.
+
+- Update on 2026-03-09 for [F003].
+  Removed configured-roots fallback behavior so explicit `--roots` values are the only folder context for the web tree and audit flow, with relative roots resolved from cwd but cwd repository context otherwise ignored.
+  ### Summary
+  `gix --web --roots ../` still carried hidden current-repository influence: configured-root launches could inherit the current repo as the selected repository context, the browser could derive launch roots from `launch_path`, and audit tests still modeled manual root entry instead of tree-driven folder scope.
+
+  ### Analysis
+  - Configured-root launches need a strict contract: resolve `--roots` once, then use those resolved folders as the browser tree source and the default audit scope until the user selects another folder in the tree.
+  - Current repository context is valid in discovery/current-repo launch modes, but it becomes an incorrect fallback when explicit roots were passed.
+  - The browser needs separate state for selected repository actions and selected folder scope so repo clicks do not overwrite the folder that defines audit scope.
+
+  ### Deliverables
+  - [x] Removed current-repo selection/context fallback from configured-root repository catalogs and sorted explicit-root catalogs deterministically.
+  - [x] Stopped the browser from inventing configured roots from `launch_path` and kept audit scope driven by tree folder selection plus explicit launch roots only.
+  - [x] Reworked browser tests away from manual audit-root edits and added command-level and compiled-binary coverage for relative `--roots ../..` launches.

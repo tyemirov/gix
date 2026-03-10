@@ -2,9 +2,40 @@
 
 import { Wunderbaum } from "https://cdn.jsdelivr.net/npm/wunderbaum@0/+esm";
 
+window.addEventListener("error", (event) => {
+  reportBootstrapFailure(event.error?.stack || event.message || String(event.error || ""));
+});
+
+window.addEventListener("unhandledrejection", (event) => {
+  reportBootstrapFailure(event.reason?.stack || event.reason?.message || String(event.reason || ""));
+});
+
+/**
+ * @param {string} message
+ * @returns {void}
+ */
+function reportBootstrapFailure(message) {
+  const failureMessage = String(message || "").trim();
+  if (!failureMessage) {
+    return;
+  }
+
+  const runErrorElement = document.querySelector("#run-error");
+  if (runErrorElement instanceof HTMLElement) {
+    runErrorElement.textContent = failureMessage;
+  }
+
+  const statusElement = document.querySelector("#run-status");
+  if (statusElement instanceof HTMLElement) {
+    statusElement.textContent = "failed";
+    statusElement.className = "status-pill status-failed";
+  }
+}
+
 /**
  * @typedef {{
  *   launch_path?: string,
+ *   launch_roots?: string[],
  *   explorer_root?: string,
  *   launch_mode?: string,
  *   selected_repository_id?: string,
@@ -113,6 +144,21 @@ import { Wunderbaum } from "https://cdn.jsdelivr.net/npm/wunderbaum@0/+esm";
 
 /**
  * @typedef {{
+ *   name: string,
+ *   path: string,
+ * }} FolderDescriptor
+ */
+
+/**
+ * @typedef {{
+ *   path?: string,
+ *   folders?: FolderDescriptor[],
+ *   error?: string,
+ * }} DirectoryListing
+ */
+
+/**
+ * @typedef {{
  *   roots?: string[],
  *   rows?: AuditInspectionRow[],
  *   error?: string,
@@ -182,6 +228,8 @@ import { Wunderbaum } from "https://cdn.jsdelivr.net/npm/wunderbaum@0/+esm";
  * @typedef {{
  *   kind: string,
  *   label: string,
+ *   queued?: boolean,
+ *   queuedChangeID?: string,
  *   title: string,
  *   description: string,
  *   buildChange: (row: AuditInspectionRow) => Partial<AuditQueuedChange>,
@@ -202,6 +250,8 @@ import { Wunderbaum } from "https://cdn.jsdelivr.net/npm/wunderbaum@0/+esm";
  *   title: string,
  *   path: string,
  *   absolute_path?: string,
+ *   configured_root?: boolean,
+ *   configured_root_ancestor?: boolean,
  *   kind: "folder" | "repository",
  *   search_text: string,
  *   repository?: RepositoryDescriptor,
@@ -211,11 +261,13 @@ import { Wunderbaum } from "https://cdn.jsdelivr.net/npm/wunderbaum@0/+esm";
 
 const repositoriesEndpoint = "/api/repos";
 const commandsEndpoint = "/api/commands";
+const foldersEndpoint = "/api/folders";
 const auditInspectEndpoint = "/api/audit/inspect";
 const auditApplyEndpoint = "/api/audit/apply";
 const runsEndpoint = "/api/runs";
 const pollIntervalMilliseconds = 800;
 const currentRepoLaunchMode = "current_repo";
+const configuredRootsLaunchMode = "configured_roots";
 const scopeSelectedValue = "selected";
 const scopeCheckedValue = "checked";
 const scopeAllValue = "all";
@@ -279,7 +331,6 @@ const auditHeaderColumns = [
 ];
 const typedAuditHeaderColumns = [
   "path",
-  "folder_name",
   "final_github_repo",
   "origin_remote_status",
   "name_matches",
@@ -292,17 +343,17 @@ const typedAuditHeaderColumns = [
   "dirty_files",
 ];
 const auditColumnLabels = Object.freeze({
-  path: "Path",
+  path: "Repo Path",
   folder_name: "Folder",
-  final_github_repo: "GitHub Repo",
-  origin_remote_status: "Origin Remote",
-  name_matches: "Name Matches",
-  remote_default_branch: "Remote Default",
+  final_github_repo: "GitHub",
+  origin_remote_status: "Origin",
+  name_matches: "Name",
+  remote_default_branch: "Remote",
   local_branch: "Local Branch",
-  in_sync: "In Sync",
+  in_sync: "Sync",
   remote_protocol: "Protocol",
-  origin_matches_canonical: "Origin Matches Canonical",
-  worktree_dirty: "Worktree Dirty",
+  origin_matches_canonical: "Canonical",
+  worktree_dirty: "Dirty",
   dirty_files: "Dirty Files",
 });
 const taskInspectValue = "inspect";
@@ -345,12 +396,16 @@ const repositoryTreeIconMap = Object.freeze({
 
 /** @type {any | null} */
 let repositoryTreeControl = null;
+const pendingDirectoryLoads = new Map();
 
 /** @type {{
  *   repositoryCatalog: RepositoryCatalog | null,
  *   repositories: RepositoryDescriptor[],
+ *   directoryFolders: Record<string, FolderDescriptor[]>,
  *   checkedRepositoryIDs: string[],
  *   selectedRepositoryID: string,
+ *   activeRepositoryTreeKey: string,
+ *   selectedFolderPath: string,
  *   selectedScope: string,
  *   activeTask: string,
  *   targetRefMode: string,
@@ -371,15 +426,17 @@ let repositoryTreeControl = null;
  *   auditQueueVisible: boolean,
  *   auditQueueApplying: boolean,
  *   nextAuditChangeSequence: number,
- *   currentRepoAncestorDepth: number,
- *   currentRepoTreeExpanded: boolean,
+ *   collapsedFolderPaths: string[],
  *   pollTimer: number | null,
  * }} */
 const state = {
   repositoryCatalog: null,
   repositories: [],
+  directoryFolders: {},
   checkedRepositoryIDs: [],
   selectedRepositoryID: "",
+  activeRepositoryTreeKey: "",
+  selectedFolderPath: "",
   selectedScope: scopeSelectedValue,
   activeTask: taskInspectValue,
   targetRefMode: refModeCurrentValue,
@@ -400,8 +457,7 @@ const state = {
   auditQueueVisible: false,
   auditQueueApplying: false,
   nextAuditChangeSequence: 1,
-  currentRepoAncestorDepth: 1,
-  currentRepoTreeExpanded: false,
+  collapsedFolderPaths: [],
   pollTimer: null,
 };
 
@@ -448,6 +504,8 @@ const elements = {
   taskPanelCleanup: document.querySelector("#task-panel-cleanup"),
   taskPanelWorkflows: document.querySelector("#task-panel-workflows"),
   taskPanelAdvanced: document.querySelector("#task-panel-advanced"),
+  auditSelectionBadge: document.querySelector("#audit-selection-badge"),
+  auditSelectionSummary: document.querySelector("#audit-selection-summary"),
   auditRootsInput: document.querySelector("#audit-roots-input"),
   auditIncludeAll: document.querySelector("#audit-include-all"),
   taskInspectLoad: document.querySelector("#task-inspect-load"),
@@ -524,26 +582,26 @@ async function initialize() {
   const repositoryCatalog = await repositoriesResponse.json();
   /** @type {CommandCatalog} */
   const commandCatalog = await commandsResponse.json();
-  const visibleRepositories = topLevelRepositories((repositoryCatalog.repositories || []).slice().sort(compareRepositories));
+  const visibleRepositories = (repositoryCatalog.repositories || []).slice().sort(compareRepositories);
 
   state.repositoryCatalog = repositoryCatalog;
   state.repositories = visibleRepositories;
-  state.currentRepoAncestorDepth = repositoryCatalog.launch_mode === currentRepoLaunchMode ? 1 : 0;
-  state.currentRepoTreeExpanded = false;
+  state.collapsedFolderPaths = [];
   state.allCommands = (commandCatalog.commands || []).slice().sort((left, right) => left.path.localeCompare(right.path));
   state.actionableCommands = state.allCommands.filter((command) => command.actionable);
   state.advancedCommands = state.actionableCommands.filter((command) => inferTaskForCommand(command) === taskAdvancedValue);
 
   const initialRepositoryID = state.repositories.some((repository) => repository.id === repositoryCatalog.selected_repository_id)
     ? repositoryCatalog.selected_repository_id || ""
-    : state.repositories[0]?.id || "";
-  if (initialRepositoryID) {
-    state.selectedRepositoryID = initialRepositoryID;
-    state.checkedRepositoryIDs = [initialRepositoryID];
-  }
+    : "";
+  state.activeRepositoryTreeKey = preferredInitialRepositoryTreeKey(initialRepositoryID);
+  state.selectedFolderPath = preferredInitialRepositoryTreeFolderPath();
+  const initialRepository = repositoryForFolderPath(state.selectedFolderPath);
+  state.selectedRepositoryID = initialRepository?.id || "";
+  state.checkedRepositoryIDs = initialRepository ? [initialRepository.id] : [];
 
   elements.repoCount.textContent = String(state.repositories.length);
-  elements.taskCount.textContent = "7";
+  elements.taskCount.textContent = "6";
   elements.commandCount.textContent = String(state.advancedCommands.length);
   elements.targetRefMode.value = state.targetRefMode;
   elements.targetPathMode.value = state.targetPathMode;
@@ -555,8 +613,8 @@ async function initialize() {
   renderTaskState();
   renderActionGroups("");
 
-  if (initialRepositoryID) {
-    await selectRepository(initialRepositoryID);
+  if (state.selectedRepositoryID) {
+    await selectRepository(state.selectedRepositoryID);
   } else {
     renderSelectedRepository();
     syncQuickActions();
@@ -615,7 +673,6 @@ function bindEvents() {
     }
   };
 
-  elements.auditRootsInput.addEventListener("input", handleAuditDraftChange);
   elements.auditIncludeAll.addEventListener("change", handleAuditDraftChange);
   elements.auditResultsBody.addEventListener("click", handleAuditResultsClick);
   elements.auditResultsHead.addEventListener("change", handleAuditResultsHeadChange);
@@ -818,7 +875,7 @@ function renderTaskState() {
     element.classList.toggle("active", state.activeTask === taskID);
   });
 
-  elements.taskPanelInspect.hidden = state.activeTask !== taskInspectValue;
+  elements.taskPanelInspect.hidden = false;
   elements.taskPanelBranch.hidden = state.activeTask !== taskBranchValue;
   elements.taskPanelFiles.hidden = state.activeTask !== taskFilesValue;
   elements.taskPanelRemotes.hidden = state.activeTask !== taskRemotesValue;
@@ -864,12 +921,51 @@ function renderFileTaskState() {
 }
 
 function renderAuditTaskState() {
-  const fallbackRoots = repositoryScopeRoots();
-  const placeholder = fallbackRoots.length > 0
-    ? `${fallbackRoots.join(", ")}`
-    : "Separate roots with commas or new lines. Leave blank to use the current repository scope.";
-  elements.auditRootsInput.placeholder = placeholder;
+  const auditScopeRoots = workingFolderRoots();
+  elements.auditRootsInput.value = formatAuditRootsInput(auditScopeRoots);
+  elements.auditRootsInput.placeholder = auditScopeRoots.length > 0
+    ? `${auditScopeRoots.join(", ")}`
+    : "Select a folder in the tree to define the audit scope.";
   elements.taskInspectLoad.disabled = resolveAuditRoots().length === 0;
+  renderAuditSelectionSummary();
+}
+
+function renderAuditSelectionSummary() {
+  const selectedFolderPath = activeRepositoryTreeFolderPath();
+  const launchRoots = configuredLaunchRoots();
+  const scopeRepositories = repositoryScopeRepositories();
+  const includeAllEnabled = Boolean(elements.auditIncludeAll?.checked);
+
+  if (selectedFolderPath) {
+    elements.auditSelectionBadge.textContent = "Selected folder";
+    elements.auditSelectionSummary.textContent = `Audit ${selectedFolderPath}.${includeAllEnabled ? " Non-Git folders under this root will be included." : " Select another folder in the left tree when you want to move the audit target."}`;
+    return;
+  }
+
+  if (launchRoots.length > 0) {
+    elements.auditSelectionBadge.textContent = launchRoots.length === 1 ? "1 launch root" : `${launchRoots.length} launch roots`;
+    elements.auditSelectionSummary.textContent = launchRoots.length === 1
+      ? `Audit ${launchRoots[0]}.${includeAllEnabled ? " Non-Git folders under this root will be included." : " Select a folder in the left tree when you want to narrow the audit target."}`
+      : `Audit ${summarizeAuditSelectionValues(launchRoots)}.${includeAllEnabled ? " Non-Git folders under those roots will be included." : " Select a folder in the left tree when you want to narrow the audit target."}`;
+    return;
+  }
+
+  if (scopeRepositories.length === 0) {
+    elements.auditSelectionBadge.textContent = "No target";
+    elements.auditSelectionSummary.textContent = "Select a repository on the left or click a folder in the tree to prepare the next audit run.";
+    return;
+  }
+
+  if (state.selectedScope === scopeSelectedValue && scopeRepositories.length === 1) {
+    const repository = scopeRepositories[0];
+    elements.auditSelectionBadge.textContent = "Selected repo";
+    elements.auditSelectionSummary.textContent = `Audit ${repository.name} at ${repository.path}.${includeAllEnabled ? " Non-Git folders under this root will be included." : " Click a folder in the left tree to narrow the run."}`;
+    return;
+  }
+
+  const scopeLabel = state.selectedScope === scopeCheckedValue ? "Checked scope" : "All repos";
+  elements.auditSelectionBadge.textContent = scopeLabel;
+  elements.auditSelectionSummary.textContent = `Audit ${scopeRepositories.length} repositories from the ${scopeLabel.toLowerCase()}: ${summarizeAuditSelectionValues(scopeRepositories.map((repository) => repository.name))}.${includeAllEnabled ? " Non-Git folders under those roots will be included." : " Click a folder in the left tree when you want to narrow the run."}`;
 }
 
 function loadFileTaskCommand() {
@@ -905,7 +1001,7 @@ async function inspectAuditRoots(clearOutput) {
   if ((inspectionRequest.roots || []).length === 0) {
     hideAuditResults();
     clearPolling();
-    renderRunError("Enter at least one audit root or choose a repository scope to inspect.");
+    renderRunError("Select a folder in the tree to inspect.");
     setStatus("failed");
     return;
   }
@@ -917,14 +1013,6 @@ async function inspectAuditRoots(clearOutput) {
  * @returns {AuditInspectionRequest}
  */
 function resolveAuditInspectionRequest() {
-  const parsedDraftRequest = parseAuditInspectionRequest(readArguments());
-  if (parsedDraftRequest) {
-    return {
-      roots: parsedDraftRequest.roots.length > 0 ? parsedDraftRequest.roots : repositoryScopeRoots(),
-      include_all: parsedDraftRequest.include_all,
-    };
-  }
-
   return {
     roots: resolveAuditRoots(),
     include_all: Boolean(elements.auditIncludeAll.checked),
@@ -993,7 +1081,11 @@ function renderRepositoryLaunchSummary() {
     return;
   }
 
-  const launchMode = catalog.launch_mode === currentRepoLaunchMode ? "Current repo mode" : "Discovery mode";
+  const launchMode = catalog.launch_mode === currentRepoLaunchMode
+    ? "Current repo mode"
+    : catalog.launch_mode === configuredRootsLaunchMode
+      ? "Explicit roots mode"
+      : "Discovery mode";
   const launchPath = catalog.launch_path || "";
   elements.repoLaunchSummary.textContent = launchPath ? `${launchMode} from ${launchPath}` : launchMode;
 }
@@ -1025,6 +1117,7 @@ function renderTargetState() {
   elements.targetPathSummary.textContent = buildPathSummary();
   elements.targetPathDetail.textContent = buildPathDetail();
 
+  renderAuditTaskState();
   renderFileTaskState();
   updateActionContext();
 }
@@ -1205,11 +1298,11 @@ async function renderRepositoryTree(query) {
     elements.repoTree.innerHTML = "";
   }
 
-  const expandedKeys = repositoryTreeExpandedKeys();
+  const expandedKeys = new Set(repositoryTreeExpandedKeys());
   repositoryTreeControl = ensureRepositoryTreeControl();
-  await repositoryTreeControl.load(buildRepositoryTreeSource(treeModel, new Set(expandedKeys)));
+  await repositoryTreeControl.load(buildRepositoryTreeSource(treeModel, expandedKeys));
   applyRepositoryTreeFilter(query);
-  await focusSelectedRepositoryTreeNode();
+  await focusActiveRepositoryTreeNode();
 }
 
 function ensureRepositoryTreeControl() {
@@ -1221,7 +1314,7 @@ function ensureRepositoryTreeControl() {
     element: elements.repoTree,
     source: [],
     selectMode: "multi",
-    checkbox: (event) => String(event.node?.data?.kind || "") === "repository",
+    checkbox: (event) => Boolean(String(event.node?.data?.repository_id || "")),
     iconMap: repositoryTreeIconMap,
     filter: {
       autoApply: true,
@@ -1230,40 +1323,47 @@ function ensureRepositoryTreeControl() {
       noData: "No repositories match the current filter.",
     },
     click: (event) => {
-      const nodeKind = String(event.node?.data?.kind || "");
-      if (nodeKind === "repository") {
-        if (expandCurrentRepoExplorerFromLeaf()) {
-          return false;
+      const previousActiveRepositoryTreeKey = state.activeRepositoryTreeKey;
+      const nodeKey = String(event.node?.key || "");
+      const clickedActiveNode = Boolean(nodeKey) && nodeKey === previousActiveRepositoryTreeKey;
+      if (nodeKey) {
+        state.activeRepositoryTreeKey = nodeKey;
+        if (typeof event.node?.setActive === "function") {
+          void event.node.setActive(true, { noEvents: true });
         }
-        return;
       }
 
+      const nodeKind = String(event.node?.data?.kind || "");
       if (nodeKind !== "folder") {
         return;
       }
 
-      if (expandCurrentRepoExplorerFromFolder(String(event.node?.data?.path || ""))) {
-        return false;
-      }
-
-      if (revealCurrentRepoAncestor(String(event.node?.data?.path || ""))) {
-        return false;
-      }
-
+      state.selectedFolderPath = repositoryTreeNodeFolderPath(event.node?.data);
+      void syncSelectedRepositoryFromTreeNode(event.node?.data);
       const expanded = typeof event.node?.isExpanded === "function"
         ? Boolean(event.node.isExpanded())
         : Boolean(event.node?.expanded);
+      const nextExpanded = clickedActiveNode ? !expanded : true;
+      setRepositoryTreeFolderCollapsed(state.selectedFolderPath, !nextExpanded);
       if (typeof event.node?.setExpanded === "function") {
-        void event.node.setExpanded(!expanded);
+        void event.node.setExpanded(nextExpanded);
+      }
+
+      if (typeof event.node?.setExpanded === "function") {
         return false;
       }
     },
     activate: (event) => {
-      const repositoryID = String(event.node.data?.repository_id || "");
-      if (!repositoryID || repositoryID === state.selectedRepositoryID) {
-        return;
+      const nodeKey = String(event.node?.key || "");
+      if (nodeKey) {
+        state.activeRepositoryTreeKey = nodeKey;
       }
-      void selectRepository(repositoryID);
+
+      if (String(event.node?.data?.kind || "") === "folder") {
+        state.selectedFolderPath = repositoryTreeNodeFolderPath(event.node?.data);
+        void syncSelectedRepositoryFromTreeNode(event.node?.data);
+        syncAuditSelectionFromTree();
+      }
     },
     select: (event) => {
       const repositoryID = String(event.node.data?.repository_id || "");
@@ -1310,17 +1410,37 @@ function applyRepositoryTreeFilter(query) {
   });
 }
 
-async function focusSelectedRepositoryTreeNode() {
-  if (!repositoryTreeControl || !state.selectedRepositoryID) {
+async function focusActiveRepositoryTreeNode() {
+  if (!repositoryTreeControl) {
     return;
   }
 
-  const selectedNode = repositoryTreeControl.findKey(state.selectedRepositoryID);
-  if (!selectedNode) {
-    return;
+  const preferredKeys = [];
+  if (state.activeRepositoryTreeKey) {
+    preferredKeys.push(state.activeRepositoryTreeKey);
+  }
+  const selectedFolderPath = normalizeRepositoryTreePath(state.selectedFolderPath || "");
+  if (selectedFolderPath) {
+    preferredKeys.push(repositoryTreeFolderKey(selectedFolderPath));
+  }
+  const selectedRepositoryPath = normalizeRepositoryTreePath(selectedRepository()?.path || "");
+  if (selectedRepositoryPath) {
+    preferredKeys.push(repositoryTreeFolderKey(selectedRepositoryPath));
   }
 
-  await selectedNode.setActive(true, { noEvents: true });
+  for (const preferredKey of preferredKeys) {
+    const activeNode = repositoryTreeControl.findKey(preferredKey);
+    if (!activeNode) {
+      continue;
+    }
+
+    if (preferredKey !== state.activeRepositoryTreeKey) {
+      state.activeRepositoryTreeKey = preferredKey;
+    }
+
+    await activeNode.setActive(true, { noEvents: true });
+    return;
+  }
 }
 
 /**
@@ -1343,34 +1463,24 @@ function repositoryTreeNodeMatchesQuery(node, query) {
  */
 function buildRepositoryTreeSource(treeModel, expandedKeys) {
   return treeModel.map((node) => {
-    if (node.kind === "folder") {
-      return {
-        key: node.key,
-        title: node.title,
-        expanded: repositoryTreeShouldExpandFolder(node, expandedKeys),
-        unselectable: true,
-        checkbox: false,
-        kind: node.kind,
-        label: node.title,
-        path: node.path,
-        absolute_path: node.absolute_path || "",
-        search_text: node.search_text,
-        children: buildRepositoryTreeSource(node.children, expandedKeys),
-      };
-    }
-
     return {
       key: node.key,
       title: node.title,
+      expanded: repositoryTreeShouldExpandFolder(node, expandedKeys),
+      unselectable: true,
       selected: state.checkedRepositoryIDs.includes(node.repository?.id || ""),
-      checkbox: true,
-      kind: node.kind,
+      checkbox: Boolean(node.repository),
+      configured_root: Boolean(node.configured_root),
+      configured_root_ancestor: Boolean(node.configured_root_ancestor),
+      kind: "folder",
       label: node.title,
       path: node.path,
+      absolute_path: node.absolute_path || "",
       repository_id: node.repository?.id || "",
       repository_name: node.repository?.name || node.title,
       repository_path: node.repository?.path || node.path,
       search_text: node.search_text,
+      children: buildRepositoryTreeSource(node.children, expandedKeys),
     };
   });
 }
@@ -1380,51 +1490,67 @@ function buildRepositoryTreeSource(treeModel, expandedKeys) {
  * @returns {RepoTreeNodeModel[]}
  */
 function buildRepositoryTreeModel(repositories) {
+  return buildFolderExplorerTreeModel(repositories, explorerRootPaths());
+}
+
+/**
+ * @returns {string[]}
+ */
+function configuredLaunchRoots() {
+  return (Array.isArray(state.repositoryCatalog?.launch_roots)
+    ? state.repositoryCatalog.launch_roots
+    : [])
+    .map((rootPath) => normalizeRepositoryTreePath(rootPath))
+    .filter(Boolean);
+}
+
+/**
+ * @returns {string[]}
+ */
+function explorerRootPaths() {
+  const launchRoots = configuredLaunchRoots();
+  if (launchRoots.length > 0) {
+    return launchRoots;
+  }
+
+  const explorerRoot = normalizeRepositoryTreePath(state.repositoryCatalog?.explorer_root || state.repositoryCatalog?.launch_path || "");
+  return explorerRoot ? [explorerRoot] : [];
+}
+
+/**
+ * @param {RepositoryDescriptor[]} repositories
+ * @param {string[]} rootPaths
+ * @returns {RepoTreeNodeModel[]}
+ */
+function buildFolderExplorerTreeModel(repositories, rootPaths) {
+  const normalizedRootPaths = rootPaths
+    .map((rootPath) => normalizeRepositoryTreePath(rootPath))
+    .filter(Boolean);
+  if (normalizedRootPaths.length === 0) {
+    return [];
+  }
+
   /** @type {Map<string, RepoTreeNodeModel>} */
-  const folderIndex = new Map();
+  const nodeIndex = new Map();
   /** @type {RepoTreeNodeModel[]} */
   const treeModel = [];
+
+  normalizedRootPaths.forEach((rootPath) => {
+    ensureFolderExplorerRootNode(treeModel, nodeIndex, rootPath);
+  });
 
   repositories.forEach((repository) => {
     if (!repositoryVisibleInTree(repository)) {
       return;
     }
 
-    const relativeSegments = repositoryTreeSegments(repository);
-    const folderSegments = relativeSegments.slice(0, -1);
-    const folderPathSegments = [];
+    const repositoryPath = normalizeRepositoryTreePath(repository.path);
+    const rootPath = configuredLaunchRootForRepository(repositoryPath, normalizedRootPaths);
+    if (!rootPath) {
+      return;
+    }
 
-    /** @type {RepoTreeNodeModel[]} */
-    let currentChildren = treeModel;
-    folderSegments.forEach((segment) => {
-      folderPathSegments.push(segment);
-      const folderKey = `folder:${folderPathSegments.join("/")}`;
-      let folderNode = folderIndex.get(folderKey);
-      if (!folderNode) {
-        folderNode = {
-          key: folderKey,
-          title: segment,
-          path: folderPathSegments.join("/"),
-          absolute_path: repositoryTreeFolderAbsolutePath(repository.path, relativeSegments, folderPathSegments.length),
-          kind: "folder",
-          search_text: folderPathSegments.join(" ").toLowerCase(),
-          children: [],
-        };
-        folderIndex.set(folderKey, folderNode);
-        currentChildren.push(folderNode);
-      }
-      currentChildren = folderNode.children;
-    });
-
-    currentChildren.push({
-      key: repository.id,
-      title: repository.name,
-      path: repository.path,
-      kind: "repository",
-      search_text: repositorySearchText(repository),
-      repository,
-      children: [],
-    });
+    appendFolderExplorerRepository(treeModel, nodeIndex, rootPath, repository);
   });
 
   sortRepositoryTreeNodes(treeModel);
@@ -1432,15 +1558,165 @@ function buildRepositoryTreeModel(repositories) {
 }
 
 /**
+ * @param {RepoTreeNodeModel[]} treeModel
+ * @param {Map<string, RepoTreeNodeModel>} nodeIndex
+ * @param {string} rootPath
+ * @returns {RepoTreeNodeModel}
+ */
+function ensureFolderExplorerRootNode(treeModel, nodeIndex, rootPath) {
+  let rootNode = nodeIndex.get(rootPath);
+  if (rootNode) {
+    return rootNode;
+  }
+
+  rootNode = newFolderExplorerNode(rootPath);
+  rootNode.configured_root = configuredLaunchRoots().includes(rootPath);
+  nodeIndex.set(rootPath, rootNode);
+  treeModel.push(rootNode);
+  return rootNode;
+}
+
+/**
+ * @param {string} folderPath
+ * @returns {RepoTreeNodeModel}
+ */
+function newFolderExplorerNode(folderPath) {
+  const normalizedFolderPath = normalizeRepositoryTreePath(folderPath);
+  const folderLabel = configuredLaunchRootLabel(normalizedFolderPath);
+  return {
+    key: repositoryTreeFolderKey(normalizedFolderPath),
+    title: folderLabel,
+    path: normalizedFolderPath,
+    absolute_path: normalizedFolderPath,
+    kind: "folder",
+    search_text: `${folderLabel} ${normalizedFolderPath}`.toLowerCase(),
+    children: [],
+  };
+}
+
+/**
+ * @param {RepoTreeNodeModel[]} treeModel
+ * @param {Map<string, RepoTreeNodeModel>} nodeIndex
+ * @param {string} rootPath
+ * @param {RepositoryDescriptor} repository
+ * @returns {void}
+ */
+function appendFolderExplorerRepository(treeModel, nodeIndex, rootPath, repository) {
+  const normalizedRootPath = normalizeRepositoryTreePath(rootPath);
+  const repositoryPath = normalizeRepositoryTreePath(repository.path);
+  if (!normalizedRootPath || !repositoryPath) {
+    return;
+  }
+
+  let currentNode = ensureFolderExplorerRootNode(treeModel, nodeIndex, normalizedRootPath);
+  if (repositoryPath === normalizedRootPath) {
+    attachRepositoryTreeMetadata(currentNode, repository);
+    return;
+  }
+
+  const relativePath = repositoryPath.startsWith(`${normalizedRootPath}/`)
+    ? repositoryPath.slice(normalizedRootPath.length + 1)
+    : "";
+  const relativeSegments = splitRepositoryTreePath(relativePath);
+  let currentPath = normalizedRootPath;
+  relativeSegments.forEach((segment) => {
+    currentPath = `${currentPath}/${segment}`;
+    currentNode = ensureFolderExplorerChildNode(currentNode, nodeIndex, currentPath);
+  });
+
+  attachRepositoryTreeMetadata(currentNode, repository);
+}
+
+/**
+ * @param {RepoTreeNodeModel} parentNode
+ * @param {Map<string, RepoTreeNodeModel>} nodeIndex
+ * @param {string} folderPath
+ * @returns {RepoTreeNodeModel}
+ */
+function ensureFolderExplorerChildNode(parentNode, nodeIndex, folderPath) {
+  const normalizedFolderPath = normalizeRepositoryTreePath(folderPath);
+  let childNode = nodeIndex.get(normalizedFolderPath);
+  if (childNode) {
+    return childNode;
+  }
+
+  childNode = newFolderExplorerNode(normalizedFolderPath);
+  nodeIndex.set(normalizedFolderPath, childNode);
+  parentNode.children.push(childNode);
+  return childNode;
+}
+
+/**
+ * @param {RepoTreeNodeModel} node
+ * @param {RepositoryDescriptor} repository
+ * @returns {void}
+ */
+function attachRepositoryTreeMetadata(node, repository) {
+  node.repository = repository;
+  node.search_text = `${node.title} ${repositorySearchText(repository)}`;
+}
+
+/**
+ * @returns {Set<string>}
+ */
+function collapsedRepositoryTreeFolderPaths() {
+  return new Set((state.collapsedFolderPaths || [])
+    .map((folderPath) => normalizeRepositoryTreePath(folderPath))
+    .filter(Boolean));
+}
+
+/**
+ * @param {string} folderPath
+ * @param {boolean} collapsed
+ * @returns {void}
+ */
+function setRepositoryTreeFolderCollapsed(folderPath, collapsed) {
+  const normalizedFolderPath = normalizeRepositoryTreePath(folderPath);
+  if (!normalizedFolderPath) {
+    return;
+  }
+
+  if (collapsed) {
+    if (collapsedRepositoryTreeFolderPaths().has(normalizedFolderPath)) {
+      return;
+    }
+    state.collapsedFolderPaths = state.collapsedFolderPaths.concat([normalizedFolderPath]);
+    return;
+  }
+
+  state.collapsedFolderPaths = state.collapsedFolderPaths.filter((path) => normalizeRepositoryTreePath(path) !== normalizedFolderPath);
+}
+
+/**
+ * @param {string} repositoryPath
+ * @param {string[]} launchRoots
+ * @returns {string}
+ */
+function configuredLaunchRootForRepository(repositoryPath, launchRoots) {
+  const matchingRoots = launchRoots.filter((launchRoot) => repositoryPath === launchRoot || repositoryPath.startsWith(`${launchRoot}/`));
+  matchingRoots.sort((left, right) => right.length - left.length);
+  return matchingRoots[0] || "";
+}
+
+/**
+ * @param {string} launchRoot
+ * @returns {string}
+ */
+function configuredLaunchRootLabel(launchRoot) {
+  const rootSegments = splitRepositoryTreePath(launchRoot);
+  if (rootSegments.length > 0) {
+    return rootSegments[rootSegments.length - 1];
+  }
+
+  return launchRoot || ".";
+}
+
+/**
  * @param {RepositoryDescriptor} repository
  * @returns {boolean}
  */
 function repositoryVisibleInTree(repository) {
-  if (state.repositoryCatalog?.launch_mode !== currentRepoLaunchMode || state.currentRepoTreeExpanded) {
-    return true;
-  }
-
-  return Boolean(repository.context_current);
+  return Boolean(repository);
 }
 
 /**
@@ -1458,28 +1734,11 @@ function sortRepositoryTreeNodes(nodes) {
 }
 
 /**
- * @param {string} repositoryPath
- * @param {string[]} relativeSegments
- * @param {number} folderDepth
+ * @param {string} folderPath
  * @returns {string}
  */
-function repositoryTreeFolderAbsolutePath(repositoryPath, relativeSegments, folderDepth) {
-  const normalizedRepositoryPath = normalizeRepositoryTreePath(repositoryPath);
-  if (!normalizedRepositoryPath) {
-    return "";
-  }
-
-  const suffixSegments = relativeSegments.slice(folderDepth);
-  if (suffixSegments.length === 0) {
-    return normalizedRepositoryPath;
-  }
-
-  const suffixPath = `/${suffixSegments.join("/")}`;
-  if (!normalizedRepositoryPath.endsWith(suffixPath)) {
-    return "";
-  }
-
-  return normalizedRepositoryPath.slice(0, normalizedRepositoryPath.length - suffixPath.length);
+function repositoryTreeFolderKey(folderPath) {
+  return `folder:${normalizeRepositoryTreePath(folderPath)}`;
 }
 
 /**
@@ -1493,59 +1752,68 @@ function repositorySearchText(repository) {
 }
 
 /**
- * @param {RepositoryDescriptor} repository
- * @returns {string[]}
- */
-function repositoryTreeSegments(repository) {
-  const repositoryPath = normalizeRepositoryTreePath(repository.path);
-  if (state.repositoryCatalog?.launch_mode === currentRepoLaunchMode) {
-    const currentRepoSegments = currentRepositoryModeTreeSegments(repositoryPath);
-    if (currentRepoSegments.length > 0) {
-      return currentRepoSegments;
-    }
-  }
-
-  const launchPath = normalizeRepositoryTreePath(state.repositoryCatalog?.launch_path || "");
-  if (!repositoryPath) {
-    return [repository.name];
-  }
-
-  if (launchPath && (repositoryPath === launchPath || repositoryPath.startsWith(`${launchPath}/`))) {
-    const relativePath = repositoryPath === launchPath
-      ? repository.name
-      : repositoryPath.slice(launchPath.length + 1);
-    return splitRepositoryTreePath(relativePath);
-  }
-
-  return splitRepositoryTreePath(repositoryPath).slice(-1);
-}
-
-/**
- * @returns {boolean}
- */
-function repositoryTreeShouldAutoExpandFolders() {
-  return state.repositoryCatalog?.launch_mode === currentRepoLaunchMode && !state.currentRepoTreeExpanded;
-}
-
-/**
  * @param {RepoTreeNodeModel} node
  * @param {Set<string>} expandedKeys
  * @returns {boolean}
  */
 function repositoryTreeShouldExpandFolder(node, expandedKeys) {
-  if (repositoryTreeShouldAutoExpandFolders()) {
-    return true;
+  const folderPath = normalizeRepositoryTreePath(node.absolute_path || node.path);
+  if (folderPath && collapsedRepositoryTreeFolderPaths().has(folderPath)) {
+    return false;
   }
 
   if (expandedKeys.has(node.key)) {
     return true;
   }
 
-  if (state.repositoryCatalog?.launch_mode === currentRepoLaunchMode && state.currentRepoTreeExpanded) {
-    return currentRepositoryAutoExpandFolderPaths().has(node.path);
+  if (!folderPath) {
+    return false;
+  }
+
+  if (explorerRootPaths().includes(folderPath)) {
+    return true;
+  }
+
+  const selectedFolderPath = normalizeRepositoryTreePath(state.selectedFolderPath || "");
+  if (selectedFolderPath && repositoryTreePathWithin(folderPath, selectedFolderPath)) {
+    return true;
   }
 
   return false;
+}
+
+/**
+ * @param {string} folderPath
+ * @returns {boolean}
+ */
+function revealConfiguredRootAncestor(folderPath) {
+  if (state.repositoryCatalog?.launch_mode !== configuredRootsLaunchMode) {
+    return false;
+  }
+
+  const launchRoot = singleConfiguredLaunchRoot();
+  if (!launchRoot) {
+    return false;
+  }
+
+  const anchorPath = singleConfiguredRootAnchorPath(launchRoot);
+  const anchorSegments = splitRepositoryTreePath(anchorPath);
+  const visiblePaths = singleConfiguredRootVisiblePaths(anchorPath);
+  if (anchorSegments.length <= visiblePaths.length || visiblePaths.length < 1) {
+    return false;
+  }
+
+  const topVisibleAncestorPath = visiblePaths[0];
+  if (!topVisibleAncestorPath || normalizeRepositoryTreePath(folderPath) !== topVisibleAncestorPath) {
+    return false;
+  }
+
+  state.selectedFolderPath = topVisibleAncestorPath;
+  setRepositoryTreeFolderCollapsed(topVisibleAncestorPath, false);
+  recordSingleConfiguredRootFolderPath(topVisibleAncestorPath);
+  state.configuredRootAncestorDepth += 1;
+  void ensureSingleConfiguredRootTreeDataLoaded().then(() => renderRepositoryTree(elements.repoFilter.value.trim().toLowerCase()));
+  return true;
 }
 
 /**
@@ -1577,6 +1845,7 @@ function expandCurrentRepoExplorerFromFolder(folderPath) {
     return false;
   }
 
+  setRepositoryTreeFolderCollapsed(absoluteFolderPath, false);
   state.currentRepoTreeExpanded = true;
   state.currentRepoAncestorDepth = 1;
   void renderRepositoryTree(elements.repoFilter.value.trim().toLowerCase());
@@ -1603,6 +1872,7 @@ function revealCurrentRepoAncestor(folderPath) {
     return false;
   }
 
+  setRepositoryTreeFolderCollapsed(topVisibleFolderPath, false);
   state.currentRepoAncestorDepth += 1;
   void renderRepositoryTree(elements.repoFilter.value.trim().toLowerCase());
   return true;
@@ -1787,7 +2057,7 @@ function annotateRepositoryTreeNode(event) {
       delete titleElement.dataset.repoTreeAbsolutePath;
     }
   }
-  if (checkboxElement instanceof HTMLElement && label && kind === "repository") {
+  if (checkboxElement instanceof HTMLElement && label && String(event.node.data?.repository_id || "")) {
     checkboxElement.dataset.repoTreeCheckbox = label;
     checkboxElement.setAttribute("aria-label", `Include ${label} in checked repositories`);
   }
@@ -1796,7 +2066,10 @@ function annotateRepositoryTreeNode(event) {
     expanderElement.setAttribute("aria-label", `Toggle ${label} folder`);
   }
   if (kind === "folder") {
-    if (!(checkboxSpacer instanceof HTMLElement) && iconElement instanceof HTMLElement) {
+    if (checkboxElement instanceof HTMLElement && checkboxSpacer instanceof HTMLElement) {
+      checkboxSpacer.remove();
+      checkboxSpacer = null;
+    } else if (!(checkboxElement instanceof HTMLElement) && !(checkboxSpacer instanceof HTMLElement) && iconElement instanceof HTMLElement) {
       checkboxSpacer = document.createElement("span");
       checkboxSpacer.className = "repo-tree-checkbox-spacer";
       checkboxSpacer.setAttribute("aria-hidden", "true");
@@ -1821,31 +2094,17 @@ function handleRepositoryTreeAuditRootSelection(event) {
     return;
   }
 
-  const absolutePath = String(rowElement.dataset.repoTreeAbsolutePath || "");
-  if (!absolutePath) {
-    return;
-  }
-
-  applyAuditRootSelectionFromTree(absolutePath, Boolean(event.metaKey || event.ctrlKey));
+  syncAuditSelectionFromTree();
 }
 
 /**
- * @param {string} rootPath
- * @param {boolean} additive
+ * @returns {void}
  */
-function applyAuditRootSelectionFromTree(rootPath, additive) {
-  const normalizedRootPath = String(rootPath || "").trim();
-  if (!normalizedRootPath) {
-    return;
+function syncAuditSelectionFromTree() {
+  renderTaskState();
+  if (state.selectedPath === commandPathAuditValue) {
+    repopulateSelectedCommand();
   }
-
-  const existingRoots = additive ? resolveAuditRoots() : [];
-  const nextRoots = additive
-    ? existingRoots.concat(existingRoots.includes(normalizedRootPath) ? [] : [normalizedRootPath])
-    : [normalizedRootPath];
-
-  elements.auditRootsInput.value = formatAuditRootsInput(nextRoots);
-  elements.auditRootsInput.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 /**
@@ -1885,10 +2144,66 @@ async function selectRepository(repositoryID) {
   }
 
   state.branches = (branchCatalog.branches || []).slice().sort(compareBranches);
-  await renderRepositoryTree(elements.repoFilter.value.trim().toLowerCase());
   renderTargetState();
   syncQuickActions();
   repopulateSelectedCommand();
+}
+
+/**
+ * @param {any} nodeData
+ * @returns {Promise<void>}
+ */
+async function syncSelectedRepositoryFromTreeNode(nodeData) {
+  const repositoryID = String(nodeData?.repository_id || "").trim();
+  if (!repositoryID) {
+    clearSelectedRepositoryContext();
+    return;
+  }
+
+  if (repositoryID === state.selectedRepositoryID) {
+    renderTargetState();
+    renderSelectedRepository();
+    renderActionGroups(elements.commandFilter.value.trim().toLowerCase());
+    syncQuickActions();
+    repopulateSelectedCommand();
+    return;
+  }
+
+  await selectRepository(repositoryID);
+}
+
+/**
+ * @returns {void}
+ */
+function clearSelectedRepositoryContext() {
+  state.selectedRepositoryID = "";
+  state.branches = [];
+  renderTargetState();
+  renderSelectedRepository();
+  renderActionGroups(elements.commandFilter.value.trim().toLowerCase());
+  syncQuickActions();
+  repopulateSelectedCommand();
+}
+
+/**
+ * @param {string} initialRepositoryID
+ * @returns {string}
+ */
+function preferredInitialRepositoryTreeKey(initialRepositoryID) {
+  const initialFolderPath = preferredInitialRepositoryTreeFolderPath();
+  if (initialFolderPath) {
+    return repositoryTreeFolderKey(initialFolderPath);
+  }
+
+  const initialRepository = findRepository(initialRepositoryID);
+  return initialRepository ? repositoryTreeFolderKey(initialRepository.path) : "";
+}
+
+/**
+ * @returns {string}
+ */
+function preferredInitialRepositoryTreeFolderPath() {
+  return explorerRootPaths()[0] || "";
 }
 
 /**
@@ -1919,8 +2234,8 @@ function renderSelectedRepository() {
   const repository = selectedRepository();
   if (!repository) {
     elements.repoTitle.textContent = state.repositoryCatalog?.error ? "Repository context unavailable" : "No repository selected";
-    elements.repoPath.textContent = state.repositoryCatalog?.launch_path || "";
-    elements.repoSummary.textContent = state.repositoryCatalog?.error || "Select a repository to scope branch and repository actions.";
+    elements.repoPath.textContent = activeRepositoryTreeFolderPath() || state.repositoryCatalog?.launch_path || "";
+    elements.repoSummary.textContent = state.repositoryCatalog?.error || "Select a repository folder to scope branch and repository actions.";
     elements.repoStateTokens.innerHTML = "";
     return;
   }
@@ -1954,12 +2269,10 @@ function updateActionContext() {
   switch (state.activeTask) {
     case taskInspectValue:
       if (resolveAuditRoots().length === 0) {
-        elements.actionContext.textContent = "Enter one or more audit roots or choose a repository target set to inspect.";
+        elements.actionContext.textContent = "Audit is the primary flow above. Select a folder in the tree to inspect.";
         return;
       }
-      elements.actionContext.textContent = elements.auditRootsInput.value.trim().length > 0
-        ? `Inspect ${resolveAuditRoots().length} explicit audit ${resolveAuditRoots().length === 1 ? "root" : "roots"}.`
-        : `Inspect ${repositorySummary} from the current scope.`;
+      elements.actionContext.textContent = `Audit is configured above for ${workingFolderRoots().length} ${workingFolderRoots().length === 1 ? "folder" : "folders"}. Run it there, then return here for follow-up commands.`;
       return;
     case taskBranchValue:
       if (selectedCommand && selectedCommand.target.group === commandGroupBranchValue && commandDraft?.reason) {
@@ -2282,7 +2595,7 @@ function buildAuditTaskArguments() {
   if (auditRoots.length === 0) {
     return {
       arguments: [],
-      reason: "Enter at least one audit root or choose a repository target set to inspect.",
+      reason: "Select a folder in the tree to inspect.",
     };
   }
 
@@ -2664,20 +2977,23 @@ function splitNonEmptyLines(value) {
  * @returns {string[]}
  */
 function resolveAuditRoots() {
-  const explicitRoots = parseAuditRootsInput(elements.auditRootsInput?.value || "");
-  const rootValues = explicitRoots.length > 0 ? explicitRoots : repositoryScopeRoots();
-  return Array.from(new Set(rootValues));
+  return Array.from(new Set(workingFolderRoots()));
 }
 
 /**
- * @param {string} value
- * @returns {string[]}
+ * @param {string[]} values
+ * @returns {string}
  */
-function parseAuditRootsInput(value) {
-  return String(value || "")
-    .split(/[\n,]/)
-    .map((token) => token.trim())
+function summarizeAuditSelectionValues(values) {
+  const filteredValues = values
+    .map((value) => String(value || "").trim())
     .filter(Boolean);
+
+  if (filteredValues.length <= 3) {
+    return filteredValues.join(", ");
+  }
+
+  return `${filteredValues.slice(0, 3).join(", ")}, and ${filteredValues.length - 3} more`;
 }
 
 /**
@@ -2701,7 +3017,6 @@ function syncAuditDraftFromArguments() {
     return;
   }
 
-  elements.auditRootsInput.value = formatAuditRootsInput(parsedDraftRequest.roots);
   elements.auditIncludeAll.checked = parsedDraftRequest.include_all;
   renderTaskState();
   updateActionContext();
@@ -3058,6 +3373,7 @@ function renderTypedAuditTable(rows) {
     headerStack.className = "audit-header-stack";
 
     const headerLabel = document.createElement("span");
+    headerLabel.className = "audit-header-label";
     headerLabel.textContent = auditColumnLabels[headerName] || headerName;
     headerStack.append(headerLabel);
 
@@ -3072,6 +3388,7 @@ function renderTypedAuditTable(rows) {
 
   const actionsHeaderCell = document.createElement("th");
   actionsHeaderCell.scope = "col";
+  actionsHeaderCell.className = "audit-column-actions";
   actionsHeaderCell.textContent = "Actions";
   headerRow.append(actionsHeaderCell);
   elements.auditResultsHead.append(headerRow);
@@ -3121,8 +3438,14 @@ function renderTypedAuditTable(rows) {
           const button = document.createElement("button");
           button.type = "button";
           button.className = "secondary-button audit-action-button";
+          if (action.queued) {
+            button.classList.add("audit-action-button-queued");
+          }
           button.dataset.auditAction = action.kind;
           button.dataset.auditPath = row.path;
+          if (action.queuedChangeID) {
+            button.dataset.auditQueuedChangeId = action.queuedChangeID;
+          }
           button.textContent = action.label;
           actionsList.append(button);
         });
@@ -3161,6 +3484,23 @@ function typedAuditRecord(row) {
  * @returns {string}
  */
 function auditTableColumnClass(headerName) {
+  if (headerName === "path") {
+    return "audit-column-path";
+  }
+  if (headerName === "final_github_repo") {
+    return "audit-column-repository";
+  }
+  if (headerName === "remote_default_branch" || headerName === "local_branch") {
+    return "audit-column-branch";
+  }
+  if (headerName === "origin_remote_status"
+    || headerName === "name_matches"
+    || headerName === "in_sync"
+    || headerName === "remote_protocol"
+    || headerName === "origin_matches_canonical"
+    || headerName === "worktree_dirty") {
+    return "audit-column-status";
+  }
   if (headerName === "dirty_files") {
     return "audit-column-dirty-files";
   }
@@ -3313,6 +3653,12 @@ function handleAuditResultsClick(event) {
     return;
   }
 
+  const queuedChangeID = actionButton.dataset.auditQueuedChangeId || "";
+  if (queuedChangeID) {
+    removeQueuedAuditChange(queuedChangeID);
+    return;
+  }
+
   const row = state.auditInspectionRows.find((candidate) => candidate.path === actionPath);
   if (!row) {
     renderRunError(`Audit row ${actionPath} is no longer available.`);
@@ -3347,9 +3693,7 @@ function handleAuditQueueListClick(event) {
     return;
   }
 
-  state.auditQueue = state.auditQueue.filter((change) => change.id !== changeID);
-  renderRunError("");
-  renderAuditQueue();
+  removeQueuedAuditChange(changeID);
 }
 
 /**
@@ -3520,7 +3864,19 @@ function buildAuditRowActions(row) {
     });
   }
 
-  return actions;
+  return actions.map((action) => {
+    const queuedChange = queuedAuditChangeForAction(row.path, action.kind);
+    if (!queuedChange) {
+      return action;
+    }
+
+    return {
+      ...action,
+      label: dequeueAuditActionLabel(action.label),
+      queued: true,
+      queuedChangeID: queuedChange.id,
+    };
+  });
 }
 
 /**
@@ -3566,13 +3922,33 @@ function queueAuditChange(row, action) {
 
   state.auditQueueVisible = true;
   renderRunError("");
-  renderAuditQueue();
+  renderAuditQueueState();
 }
 
 function clearAuditQueue() {
   state.auditQueue = [];
   renderRunError("");
+  renderAuditQueueState();
+}
+
+function renderAuditQueueState() {
   renderAuditQueue();
+  if (!elements.auditResultsPanel.hidden) {
+    renderTypedAuditTable(state.auditInspectionRows);
+  }
+}
+
+/**
+ * @param {string} changeID
+ */
+function removeQueuedAuditChange(changeID) {
+  if (!changeID) {
+    return;
+  }
+
+  state.auditQueue = state.auditQueue.filter((change) => change.id !== changeID);
+  renderRunError("");
+  renderAuditQueueState();
 }
 
 function renderAuditQueue() {
@@ -3709,7 +4085,7 @@ async function applyAuditQueue() {
     setStatus("failed");
   } finally {
     state.auditQueueApplying = false;
-    renderAuditQueue();
+    renderAuditQueueState();
   }
 }
 
@@ -3774,6 +4150,27 @@ function formatAuditApplyIssue(result) {
  */
 function auditQueueSummary(count) {
   return `${count} pending ${count === 1 ? "change" : "changes"}`;
+}
+
+/**
+ * @param {string} rowPath
+ * @param {string} actionKind
+ * @returns {AuditQueueEntry | undefined}
+ */
+function queuedAuditChangeForAction(rowPath, actionKind) {
+  return state.auditQueue.find((change) => change.path === rowPath && change.kind === actionKind);
+}
+
+/**
+ * @param {string} label
+ * @returns {string}
+ */
+function dequeueAuditActionLabel(label) {
+  if (label.startsWith("Queue ")) {
+    return `Dequeue ${label.slice("Queue ".length)}`;
+  }
+
+  return `Dequeue ${label}`;
 }
 
 /**
@@ -4277,6 +4674,19 @@ function selectedRepository() {
 }
 
 /**
+ * @param {string} folderPath
+ * @returns {RepositoryDescriptor | null}
+ */
+function repositoryForFolderPath(folderPath) {
+  const normalizedFolderPath = normalizeRepositoryTreePath(folderPath);
+  if (!normalizedFolderPath) {
+    return null;
+  }
+
+  return state.repositories.find((repository) => normalizeRepositoryTreePath(repository.path) === normalizedFolderPath) || null;
+}
+
+/**
  * @returns {RepositoryDescriptor[]}
  */
 function checkedRepositories() {
@@ -4299,11 +4709,201 @@ function repositoryScopeRepositories() {
   return repository ? [repository] : [];
 }
 
+async function ensureSingleConfiguredRootTreeDataLoaded() {
+  const launchRoot = singleConfiguredLaunchRoot();
+  if (!launchRoot) {
+    return;
+  }
+
+  const anchorPath = singleConfiguredRootAnchorPath(launchRoot);
+  const selectedRepositoryPath = normalizeRepositoryTreePath(selectedRepository()?.path || "");
+  const pathsToLoad = new Set(singleConfiguredRootVisiblePaths(anchorPath));
+  collectDirectoryPathChain(anchorPath, anchorPath).forEach((path) => {
+    pathsToLoad.add(path);
+  });
+
+  const selectedRepositoryParentPath = parentDirectoryPath(selectedRepositoryPath);
+  if (selectedRepositoryParentPath && repositoryTreePathWithin(anchorPath, selectedRepositoryParentPath)) {
+    collectDirectoryPathChain(anchorPath, selectedRepositoryParentPath).forEach((path) => {
+      pathsToLoad.add(path);
+    });
+  }
+
+  for (const path of pathsToLoad) {
+    // Keep the loaded subtree deterministic so sibling folders appear as soon as the user moves up.
+    await ensureDirectoryFoldersLoaded(path);
+  }
+}
+
+/**
+ * @param {string} folderPath
+ * @returns {Promise<void>}
+ */
+async function ensureDirectoryFoldersLoaded(folderPath) {
+  const normalizedFolderPath = normalizeRepositoryTreePath(folderPath);
+  if (!normalizedFolderPath) {
+    return;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(state.directoryFolders, normalizedFolderPath)) {
+    return;
+  }
+
+  const pendingLoad = pendingDirectoryLoads.get(normalizedFolderPath);
+  if (pendingLoad) {
+    await pendingLoad;
+    return;
+  }
+
+  const loadPromise = (async () => {
+    const response = await fetch(`${foldersEndpoint}?path=${encodeURIComponent(normalizedFolderPath)}`);
+    if (!response.ok) {
+      throw new Error(`Failed to browse folder ${normalizedFolderPath}: ${response.status}`);
+    }
+
+    /** @type {DirectoryListing} */
+    const listing = await response.json();
+    if (listing.error) {
+      throw new Error(listing.error);
+    }
+
+    state.directoryFolders[normalizedFolderPath] = (listing.folders || [])
+      .map((folder) => ({
+        name: String(folder.name || "").trim(),
+        path: normalizeRepositoryTreePath(folder.path),
+      }))
+      .filter((folder) => folder.name && folder.path);
+  })().catch(() => {
+    state.directoryFolders[normalizedFolderPath] = [];
+  });
+
+  pendingDirectoryLoads.set(normalizedFolderPath, loadPromise);
+  try {
+    await loadPromise;
+  } finally {
+    pendingDirectoryLoads.delete(normalizedFolderPath);
+  }
+}
+
+/**
+ * @param {string} basePath
+ * @param {string} targetPath
+ * @returns {string[]}
+ */
+function collectDirectoryPathChain(basePath, targetPath) {
+  const normalizedBasePath = normalizeRepositoryTreePath(basePath);
+  const normalizedTargetPath = normalizeRepositoryTreePath(targetPath);
+  if (!normalizedBasePath || !normalizedTargetPath || !repositoryTreePathWithin(normalizedBasePath, normalizedTargetPath)) {
+    return [];
+  }
+
+  const chain = [normalizedBasePath];
+  if (normalizedBasePath === normalizedTargetPath) {
+    return chain;
+  }
+
+  const relativeSegments = splitRepositoryTreePath(normalizedTargetPath.slice(normalizedBasePath.length + 1));
+  let currentPath = normalizedBasePath;
+  relativeSegments.forEach((segment) => {
+    currentPath = `${currentPath}/${segment}`;
+    chain.push(currentPath);
+  });
+
+  return chain;
+}
+
+/**
+ * @param {string} folderPath
+ * @returns {FolderDescriptor[]}
+ */
+function directoryFoldersForPath(folderPath) {
+  const normalizedFolderPath = normalizeRepositoryTreePath(folderPath);
+  if (!normalizedFolderPath) {
+    return [];
+  }
+
+  return state.directoryFolders[normalizedFolderPath] || [];
+}
+
+/**
+ * @param {string} parentPath
+ * @param {string} candidatePath
+ * @returns {boolean}
+ */
+function repositoryTreePathWithin(parentPath, candidatePath) {
+  const normalizedParentPath = normalizeRepositoryTreePath(parentPath);
+  const normalizedCandidatePath = normalizeRepositoryTreePath(candidatePath);
+  if (!normalizedParentPath || !normalizedCandidatePath) {
+    return false;
+  }
+
+  return normalizedCandidatePath === normalizedParentPath || normalizedCandidatePath.startsWith(`${normalizedParentPath}/`);
+}
+
+/**
+ * @param {string} folderPath
+ * @returns {string}
+ */
+function parentDirectoryPath(folderPath) {
+  const normalizedFolderPath = normalizeRepositoryTreePath(folderPath);
+  if (!normalizedFolderPath) {
+    return "";
+  }
+
+  const lastSlashIndex = normalizedFolderPath.lastIndexOf("/");
+  if (lastSlashIndex <= 0) {
+    return "";
+  }
+
+  return normalizedFolderPath.slice(0, lastSlashIndex);
+}
+
 /**
  * @returns {string[]}
  */
 function repositoryScopeRoots() {
   return repositoryScopeRepositories().map((repository) => repository.path);
+}
+
+/**
+ * @returns {string}
+ */
+function activeRepositoryTreeFolderPath() {
+  const selectedFolderPath = normalizeRepositoryTreePath(state.selectedFolderPath || "");
+  if (selectedFolderPath) {
+    return selectedFolderPath;
+  }
+
+  if (!repositoryTreeControl || !state.activeRepositoryTreeKey) {
+    return "";
+  }
+
+  const activeNode = repositoryTreeControl.findKey(state.activeRepositoryTreeKey);
+  if (!activeNode || String(activeNode.data?.kind || "") !== "folder") {
+    return "";
+  }
+
+  return normalizeRepositoryTreePath(String(activeNode.data?.absolute_path || activeNode.data?.path || ""));
+}
+
+/**
+ * @returns {string[]}
+ */
+function workingFolderRoots() {
+  const selectedFolderPath = activeRepositoryTreeFolderPath();
+  if (selectedFolderPath) {
+    return [selectedFolderPath];
+  }
+
+  return explorerRootPaths();
+}
+
+/**
+ * @param {any} nodeData
+ * @returns {string}
+ */
+function repositoryTreeNodeFolderPath(nodeData) {
+  return normalizeRepositoryTreePath(String(nodeData?.absolute_path || nodeData?.path || ""));
 }
 
 /**

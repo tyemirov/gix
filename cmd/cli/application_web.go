@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -22,6 +24,7 @@ import (
 	reposdeps "github.com/tyemirov/gix/internal/repos/dependencies"
 	"github.com/tyemirov/gix/internal/repos/shared"
 	flagutils "github.com/tyemirov/gix/internal/utils/flags"
+	rootutils "github.com/tyemirov/gix/internal/utils/roots"
 	"github.com/tyemirov/gix/internal/web"
 	"github.com/tyemirov/gix/internal/workflow"
 	"github.com/tyemirov/gix/pkg/taskrunner"
@@ -30,6 +33,7 @@ import (
 const (
 	webInterfaceUnavailableMessageConstant      = "web mode is unavailable from the web interface"
 	webLaunchModeCurrentRepositoryConstant      = "current_repo"
+	webLaunchModeConfiguredRootsConstant        = "configured_roots"
 	webLaunchModeDiscoveredRepositoriesConstant = "discovered_repositories"
 	webNoRepositoriesErrorTemplateConstant      = "no Git repositories found beneath %s"
 	webRepositoryIDTemplateConstant             = "repo-%03d"
@@ -50,6 +54,7 @@ const (
 	gitShortArgumentConstant                    = "--short"
 	gitOriginHeadReferenceConstant              = "refs/remotes/origin/HEAD"
 	gitOriginPrefixConstant                     = "origin/"
+	webGitMetadataDirectoryNameConstant         = ".git"
 	webCommandGroupBranchConstant               = "branch"
 	webCommandGroupRepositoryConstant           = "repository"
 	webCommandGroupRemoteConstant               = "remote"
@@ -105,10 +110,28 @@ type webGitRepositoryManager = shared.GitRepositoryManager
 type webGitHubMetadataResolver = shared.GitHubMetadataResolver
 
 type webLaunchConfiguration struct {
+	bind string
 	port int
 }
 
-func newWebLaunchConfiguration(rawValue string) (webLaunchConfiguration, error) {
+func newWebLaunchConfiguration(rawPortValue string, rawBindValue string, bindProvided bool) (webLaunchConfiguration, error) {
+	portValue, portError := parseWebLaunchPort(rawPortValue)
+	if portError != nil {
+		return webLaunchConfiguration{}, portError
+	}
+
+	bindValue, bindError := parseWebLaunchBind(rawBindValue, bindProvided)
+	if bindError != nil {
+		return webLaunchConfiguration{}, bindError
+	}
+
+	return webLaunchConfiguration{
+		bind: bindValue,
+		port: portValue,
+	}, nil
+}
+
+func parseWebLaunchPort(rawValue string) (int, error) {
 	trimmedValue := strings.TrimSpace(rawValue)
 	if len(trimmedValue) == 0 {
 		trimmedValue = webDefaultPortConstant
@@ -116,25 +139,41 @@ func newWebLaunchConfiguration(rawValue string) (webLaunchConfiguration, error) 
 
 	portValue, parseError := strconv.Atoi(trimmedValue)
 	if parseError != nil {
-		return webLaunchConfiguration{}, fmt.Errorf(webPortInvalidTemplateConstant, rawValue)
+		return 0, fmt.Errorf(webPortInvalidTemplateConstant, rawValue)
 	}
 	if portValue < 1 || portValue > 65535 {
-		return webLaunchConfiguration{}, fmt.Errorf(webPortRangeTemplateConstant, portValue)
+		return 0, fmt.Errorf(webPortRangeTemplateConstant, portValue)
 	}
 
-	return webLaunchConfiguration{port: portValue}, nil
+	return portValue, nil
+}
+
+func parseWebLaunchBind(rawValue string, bindProvided bool) (string, error) {
+	if !bindProvided {
+		return webListenHostConstant, nil
+	}
+
+	trimmedValue := strings.TrimSpace(rawValue)
+	if len(trimmedValue) == 0 {
+		return "", errors.New(webBindRequiredConstant)
+	}
+
+	return trimmedValue, nil
 }
 
 func (configuration webLaunchConfiguration) listenAddress() string {
-	return fmt.Sprintf(webAddressTemplateConstant, webListenHostConstant, configuration.port)
+	return net.JoinHostPort(configuration.bind, strconv.Itoa(configuration.port))
 }
 
 func (configuration webLaunchConfiguration) launchURL() string {
-	return fmt.Sprintf(webLaunchURLTemplateConstant, webListenHostConstant, configuration.port)
+	return (&url.URL{
+		Scheme: "http",
+		Host:   net.JoinHostPort(configuration.bind, strconv.Itoa(configuration.port)),
+	}).String()
 }
 
-func (application *Application) handleWebLaunch(command *cobra.Command) (bool, error) {
-	launchConfiguration, requested, configurationError := application.resolveWebLaunchConfiguration(command)
+func (application *Application) handleWebLaunch(command *cobra.Command, arguments []string) (bool, error) {
+	launchConfiguration, requested, configurationError := application.resolveWebLaunchConfiguration(command, arguments)
 	if configurationError != nil {
 		return true, configurationError
 	}
@@ -157,25 +196,31 @@ func (application *Application) handleWebLaunch(command *cobra.Command) (bool, e
 		}
 	}
 
-	repositoryCatalog := application.repositoryCatalog(executionContext)
+	launchRoots, launchRootsError := resolveWebLaunchRoots(command)
+	if launchRootsError != nil {
+		return true, launchRootsError
+	}
+
+	repositoryCatalog := application.repositoryCatalog(executionContext, launchRoots)
 
 	return true, application.webRunner(executionContext, web.ServerOptions{
 		Address:           launchConfiguration.listenAddress(),
 		Repositories:      repositoryCatalog,
 		Catalog:           application.commandCatalog(),
 		LoadBranches:      application.loadRepositoryBranches,
+		BrowseDirectories: application.newWebDirectoryBrowser(),
 		Execute:           application.newWebCommandExecutor(),
 		InspectAudit:      application.newWebAuditInspector(),
 		ApplyAuditChanges: application.newWebAuditChangeExecutor(),
 	})
 }
 
-func (application *Application) resolveWebLaunchConfiguration(command *cobra.Command) (webLaunchConfiguration, bool, error) {
+func (application *Application) resolveWebLaunchConfiguration(command *cobra.Command, arguments []string) (webLaunchConfiguration, bool, error) {
 	if command == nil {
 		return webLaunchConfiguration{}, false, nil
 	}
 
-	rawValue, changed, flagError := flagutils.StringFlag(command, webFlagNameConstant)
+	webEnabled, _, flagError := flagutils.BoolFlag(command, webFlagNameConstant)
 	switch {
 	case flagError == nil:
 	case errors.Is(flagError, flagutils.ErrFlagNotDefined):
@@ -184,15 +229,51 @@ func (application *Application) resolveWebLaunchConfiguration(command *cobra.Com
 		return webLaunchConfiguration{}, false, flagError
 	}
 
-	if !changed && len(strings.TrimSpace(rawValue)) == 0 {
+	rawBindValue, bindChanged, bindFlagError := flagutils.StringFlag(command, webBindFlagNameConstant)
+	switch {
+	case bindFlagError == nil:
+	case errors.Is(bindFlagError, flagutils.ErrFlagNotDefined):
+		rawBindValue = ""
+		bindChanged = false
+	default:
+		return webLaunchConfiguration{}, false, bindFlagError
+	}
+
+	rawPortValue, portChanged, portFlagError := flagutils.StringFlag(command, webPortFlagNameConstant)
+	switch {
+	case portFlagError == nil:
+	case errors.Is(portFlagError, flagutils.ErrFlagNotDefined):
+		rawPortValue = ""
+		portChanged = false
+	default:
+		return webLaunchConfiguration{}, false, portFlagError
+	}
+
+	if !webEnabled && !bindChanged && !portChanged {
 		return webLaunchConfiguration{}, false, nil
 	}
 
-	launchConfiguration, configurationError := newWebLaunchConfiguration(rawValue)
+	if !webEnabled && (bindChanged || portChanged) {
+		return webLaunchConfiguration{}, true, errors.New(webNetworkFlagsRequireWebConstant)
+	}
+
+	if webEnabled && len(arguments) > 0 {
+		return webLaunchConfiguration{}, true, errors.New(webPositionalArgumentsRequirePortFlagConstant)
+	}
+
+	launchConfiguration, configurationError := newWebLaunchConfiguration(rawPortValue, rawBindValue, bindChanged)
 	if configurationError != nil {
 		return webLaunchConfiguration{}, true, configurationError
 	}
 	return launchConfiguration, true, nil
+}
+
+func resolveWebLaunchRoots(command *cobra.Command) ([]string, error) {
+	if command == nil {
+		return nil, nil
+	}
+
+	return rootutils.FlagValues(command)
 }
 
 func (application *Application) launchWebInterface(executionContext context.Context, options web.ServerOptions) error {
@@ -215,6 +296,41 @@ func (application *Application) newWebCommandExecutor() web.CommandExecutor {
 			StandardError:  standardError,
 			ExitOnVersion:  false,
 		})
+	}
+}
+
+func (application *Application) newWebDirectoryBrowser() web.DirectoryBrowser {
+	return func(_ context.Context, path string) web.DirectoryListing {
+		normalizedPath := canonicalWebPath(path)
+		if len(normalizedPath) == 0 {
+			return web.DirectoryListing{Error: webRepositoryPathRequiredErrorConstant}
+		}
+
+		entries, readError := os.ReadDir(normalizedPath)
+		if readError != nil {
+			return web.DirectoryListing{Path: normalizedPath, Error: readError.Error()}
+		}
+
+		folders := make([]web.FolderDescriptor, 0, len(entries))
+		for _, entry := range entries {
+			if !entry.IsDir() || entry.Name() == webGitMetadataDirectoryNameConstant {
+				continue
+			}
+
+			folders = append(folders, web.FolderDescriptor{
+				Name: entry.Name(),
+				Path: canonicalWebPath(filepath.Join(normalizedPath, entry.Name())),
+			})
+		}
+
+		sort.SliceStable(folders, func(first int, second int) bool {
+			return folders[first].Name < folders[second].Name
+		})
+
+		return web.DirectoryListing{
+			Path:    normalizedPath,
+			Folders: folders,
+		}
 	}
 }
 
@@ -380,7 +496,7 @@ func commandArgumentsContainFlag(arguments []string, flagName string) bool {
 	return false
 }
 
-func (application *Application) repositoryCatalog(executionContext context.Context) web.RepositoryCatalog {
+func (application *Application) repositoryCatalog(executionContext context.Context, launchRoots []string) web.RepositoryCatalog {
 	workingDirectory, workingDirectoryError := os.Getwd()
 	if workingDirectoryError != nil {
 		return web.RepositoryCatalog{Error: workingDirectoryError.Error()}
@@ -396,6 +512,17 @@ func (application *Application) repositoryCatalog(executionContext context.Conte
 
 	discoverer := reposdeps.ResolveRepositoryDiscoverer(nil)
 	currentRepositoryRoot, currentRepositoryAvailable := application.currentRepositoryRoot(executionContext, gitExecutor, workingDirectory)
+	if len(launchRoots) > 0 {
+		return application.repositoryCatalogForLaunchRoots(
+			executionContext,
+			launchRoots,
+			workingDirectory,
+			gitExecutor,
+			repositoryManager,
+			discoverer,
+		)
+	}
+
 	if currentRepositoryAvailable {
 		explorerRoot := currentRepositoryExplorerRoot(currentRepositoryRoot)
 		discoveredRepositories, discoverError := discoverer.DiscoverRepositories([]string{explorerRoot})
@@ -464,18 +591,161 @@ func (application *Application) repositoryCatalog(executionContext context.Conte
 		)
 	}
 
-	selectedRepositoryID := ""
-	if len(repositoryDescriptors) > 0 {
-		selectedRepositoryID = repositoryDescriptors[0].ID
+	return web.RepositoryCatalog{
+		LaunchPath:   workingDirectory,
+		ExplorerRoot: workingDirectory,
+		LaunchMode:   webLaunchModeDiscoveredRepositoriesConstant,
+		Repositories: repositoryDescriptors,
+	}
+}
+
+func (application *Application) repositoryCatalogForLaunchRoots(
+	executionContext context.Context,
+	launchRoots []string,
+	workingDirectory string,
+	gitExecutor execshellGitExecutor,
+	repositoryManager webGitRepositoryManager,
+	discoverer shared.RepositoryDiscoverer,
+) web.RepositoryCatalog {
+	normalizedRoots, launchPath := webLaunchRootsDetails(launchRoots)
+	if len(normalizedRoots) == 0 {
+		return web.RepositoryCatalog{
+			LaunchPath:  workingDirectory,
+			LaunchRoots: append([]string(nil), launchRoots...),
+			Error:       fmt.Sprintf(webNoRepositoriesErrorTemplateConstant, workingDirectory),
+		}
 	}
 
+	discoveredRepositories, discoverError := discoverer.DiscoverRepositories(normalizedRoots)
+	if discoverError != nil {
+		return web.RepositoryCatalog{
+			LaunchPath:   launchPath,
+			LaunchRoots:  append([]string(nil), normalizedRoots...),
+			ExplorerRoot: launchPath,
+			LaunchMode:   webLaunchModeConfiguredRootsConstant,
+			Error:        discoverError.Error(),
+		}
+	}
+
+	if len(discoveredRepositories) == 0 {
+		return web.RepositoryCatalog{
+			LaunchPath:   launchPath,
+			LaunchRoots:  append([]string(nil), normalizedRoots...),
+			ExplorerRoot: launchPath,
+			LaunchMode:   webLaunchModeConfiguredRootsConstant,
+		}
+	}
+
+	sort.Strings(discoveredRepositories)
+	repositoryDescriptors, selectedRepositoryID := application.webRepositoryDescriptors(
+		executionContext,
+		discoveredRepositories,
+		"",
+		gitExecutor,
+		repositoryManager,
+	)
+
 	return web.RepositoryCatalog{
-		LaunchPath:           workingDirectory,
-		ExplorerRoot:         workingDirectory,
-		LaunchMode:           webLaunchModeDiscoveredRepositoriesConstant,
+		LaunchPath:           launchPath,
+		LaunchRoots:          append([]string(nil), normalizedRoots...),
+		ExplorerRoot:         launchPath,
+		LaunchMode:           webLaunchModeConfiguredRootsConstant,
 		SelectedRepositoryID: selectedRepositoryID,
 		Repositories:         repositoryDescriptors,
 	}
+}
+
+func (application *Application) webRepositoryDescriptors(
+	executionContext context.Context,
+	discoveredRepositories []string,
+	currentRepositoryRoot string,
+	gitExecutor execshellGitExecutor,
+	repositoryManager webGitRepositoryManager,
+) ([]web.RepositoryDescriptor, string) {
+	repositoryDescriptors := make([]web.RepositoryDescriptor, 0, len(discoveredRepositories))
+	selectedRepositoryID := ""
+	currentRepositoryPath := canonicalWebPath(currentRepositoryRoot)
+
+	for repositoryIndex, repositoryPath := range discoveredRepositories {
+		contextCurrent := len(currentRepositoryPath) > 0 && canonicalWebPath(repositoryPath) == currentRepositoryPath
+		repositoryDescriptor := application.inspectRepository(
+			executionContext,
+			repositoryPath,
+			repositoryIndex+1,
+			contextCurrent,
+			gitExecutor,
+			repositoryManager,
+		)
+		if contextCurrent {
+			selectedRepositoryID = repositoryDescriptor.ID
+		}
+		repositoryDescriptors = append(repositoryDescriptors, repositoryDescriptor)
+	}
+	return repositoryDescriptors, selectedRepositoryID
+}
+
+func webLaunchRootsDetails(launchRoots []string) ([]string, string) {
+	normalizedRoots := make([]string, 0, len(launchRoots))
+	for _, launchRoot := range launchRoots {
+		canonicalRoot := canonicalWebPath(launchRoot)
+		if len(canonicalRoot) == 0 {
+			continue
+		}
+		normalizedRoots = append(normalizedRoots, canonicalRoot)
+	}
+
+	return normalizedRoots, commonWebLaunchPath(normalizedRoots)
+}
+
+func commonWebLaunchPath(launchRoots []string) string {
+	if len(launchRoots) == 0 {
+		return ""
+	}
+
+	commonPath := canonicalWebPath(launchRoots[0])
+	for _, launchRoot := range launchRoots[1:] {
+		commonPath = sharedWebLaunchAncestorPath(commonPath, launchRoot)
+		if len(commonPath) == 0 {
+			return ""
+		}
+	}
+
+	return commonPath
+}
+
+func sharedWebLaunchAncestorPath(basePath string, candidatePath string) string {
+	normalizedBasePath := canonicalWebPath(basePath)
+	normalizedCandidatePath := canonicalWebPath(candidatePath)
+	if len(normalizedBasePath) == 0 || len(normalizedCandidatePath) == 0 {
+		return ""
+	}
+
+	for {
+		relativePath, relativePathError := filepath.Rel(normalizedBasePath, normalizedCandidatePath)
+		if relativePathError == nil && relativeWebPathWithinBase(relativePath) {
+			return normalizedBasePath
+		}
+
+		parentPath := filepath.Dir(normalizedBasePath)
+		if parentPath == normalizedBasePath {
+			return ""
+		}
+		normalizedBasePath = parentPath
+	}
+}
+
+func relativeWebPathWithinBase(relativePath string) bool {
+	trimmedRelativePath := strings.TrimSpace(relativePath)
+	if len(trimmedRelativePath) == 0 || trimmedRelativePath == "." {
+		return true
+	}
+
+	normalizedRelativePath := filepath.Clean(trimmedRelativePath)
+	if normalizedRelativePath == ".." {
+		return false
+	}
+
+	return !strings.HasPrefix(normalizedRelativePath, ".."+string(os.PathSeparator))
 }
 
 func currentRepositoryExplorerRoot(currentRepositoryRoot string) string {
@@ -484,12 +754,7 @@ func currentRepositoryExplorerRoot(currentRepositoryRoot string) string {
 		return ""
 	}
 
-	parentPath := filepath.Dir(trimmedRepositoryRoot)
-	if len(strings.TrimSpace(parentPath)) == 0 || canonicalWebPath(parentPath) == canonicalWebPath(trimmedRepositoryRoot) {
-		return trimmedRepositoryRoot
-	}
-
-	return parentPath
+	return trimmedRepositoryRoot
 }
 
 func canonicalWebPath(path string) string {
