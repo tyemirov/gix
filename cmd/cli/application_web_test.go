@@ -85,13 +85,130 @@ func TestExecuteWithOptionsLaunchesWebRunnerWithExplicitPort(t *testing.T) {
 	}
 
 	executionError := application.ExecuteWithOptions(ExecutionOptions{
-		Arguments:     []string{"--web", "18080"},
+		Arguments:     []string{"--web", "--port", "18080"},
 		Context:       context.Background(),
 		ExitOnVersion: false,
 	})
 
 	require.NoError(t, executionError)
 	require.Equal(t, "127.0.0.1:18080", capturedAddress)
+}
+
+func TestExecuteWithOptionsRejectsLegacyWebPositionalPort(t *testing.T) {
+	application := NewApplication()
+
+	executionError := application.ExecuteWithOptions(ExecutionOptions{
+		Arguments:     []string{"--web", "18080"},
+		Context:       context.Background(),
+		ExitOnVersion: false,
+	})
+
+	require.EqualError(t, executionError, webPositionalArgumentsRequirePortFlagConstant)
+}
+
+func TestExecuteWithOptionsLaunchesWebRunnerWithBindAndPortFlags(t *testing.T) {
+	application := NewApplication()
+
+	capturedAddress := ""
+	application.webRunner = func(_ context.Context, options web.ServerOptions) error {
+		capturedAddress = options.Address
+		return nil
+	}
+
+	var standardOutput bytes.Buffer
+	executionError := application.ExecuteWithOptions(ExecutionOptions{
+		Arguments:      []string{"--web", "--bind", "0.0.0.0", "--port", "8081"},
+		Context:        context.Background(),
+		StandardOutput: &standardOutput,
+		ExitOnVersion:  false,
+	})
+
+	require.NoError(t, executionError)
+	require.Equal(t, "0.0.0.0:8081", capturedAddress)
+	require.Contains(t, standardOutput.String(), "http://0.0.0.0:8081")
+}
+
+func TestExecuteWithOptionsLaunchesWebRunnerWithExplicitRoots(t *testing.T) {
+	rootPath := t.TempDir()
+	targetRootPath := filepath.Join(rootPath, "fleet")
+	firstRepositoryPath := createTestRepository(t, filepath.Join(targetRootPath, "alpha"))
+	secondRepositoryPath := createTestRepository(t, filepath.Join(targetRootPath, "nested", "beta"))
+	createTestRepository(t, filepath.Join(rootPath, "outside", "ignored"))
+
+	capturedCatalog := web.RepositoryCatalog{}
+	withWorkingDirectory(t, rootPath, func() {
+		application := NewApplication()
+		application.webRunner = func(_ context.Context, options web.ServerOptions) error {
+			capturedCatalog = options.Repositories
+			return nil
+		}
+
+		executionError := application.ExecuteWithOptions(ExecutionOptions{
+			Arguments:     []string{"--web", "--roots", targetRootPath},
+			Context:       context.Background(),
+			ExitOnVersion: false,
+		})
+
+		require.NoError(t, executionError)
+	})
+
+	require.Equal(t, webLaunchModeConfiguredRootsConstant, capturedCatalog.LaunchMode)
+	require.Equal(t, canonicalPath(t, targetRootPath), canonicalPath(t, capturedCatalog.LaunchPath))
+	require.Len(t, capturedCatalog.LaunchRoots, 1)
+	require.Equal(t, []string{canonicalPath(t, targetRootPath)}, []string{canonicalPath(t, capturedCatalog.LaunchRoots[0])})
+	require.Equal(t, canonicalPath(t, targetRootPath), canonicalPath(t, capturedCatalog.ExplorerRoot))
+	require.Len(t, capturedCatalog.Repositories, 2)
+	require.Equal(t, canonicalPath(t, firstRepositoryPath), canonicalPath(t, capturedCatalog.Repositories[0].Path))
+	require.Equal(t, canonicalPath(t, secondRepositoryPath), canonicalPath(t, capturedCatalog.Repositories[1].Path))
+}
+
+func TestExecuteWithOptionsLaunchesWebRunnerWithRelativeExplicitRoots(t *testing.T) {
+	rootPath := t.TempDir()
+	targetRootPath := filepath.Join(rootPath, "fleet")
+	currentRepositoryPath := createTestRepository(t, filepath.Join(targetRootPath, "gix"))
+	siblingRepositoryPath := createTestRepository(t, filepath.Join(targetRootPath, "alpha"))
+	nestedWorkingDirectory := filepath.Join(currentRepositoryPath, "internal")
+	require.NoError(t, os.MkdirAll(nestedWorkingDirectory, 0o755))
+
+	capturedCatalog := web.RepositoryCatalog{}
+	withWorkingDirectory(t, nestedWorkingDirectory, func() {
+		application := NewApplication()
+		application.webRunner = func(_ context.Context, options web.ServerOptions) error {
+			capturedCatalog = options.Repositories
+			return nil
+		}
+
+		executionError := application.ExecuteWithOptions(ExecutionOptions{
+			Arguments:     []string{"--web", "--roots", "../.."},
+			Context:       context.Background(),
+			ExitOnVersion: false,
+		})
+
+		require.NoError(t, executionError)
+	})
+
+	require.Equal(t, webLaunchModeConfiguredRootsConstant, capturedCatalog.LaunchMode)
+	require.Equal(t, canonicalPath(t, targetRootPath), canonicalPath(t, capturedCatalog.LaunchPath))
+	require.Len(t, capturedCatalog.LaunchRoots, 1)
+	require.Equal(t, canonicalPath(t, targetRootPath), canonicalPath(t, capturedCatalog.LaunchRoots[0]))
+	require.Len(t, capturedCatalog.Repositories, 2)
+	require.Equal(t, canonicalPath(t, siblingRepositoryPath), canonicalPath(t, capturedCatalog.Repositories[0].Path))
+	require.Equal(t, canonicalPath(t, currentRepositoryPath), canonicalPath(t, capturedCatalog.Repositories[1].Path))
+	require.False(t, capturedCatalog.Repositories[0].ContextCurrent)
+	require.False(t, capturedCatalog.Repositories[1].ContextCurrent)
+	require.Empty(t, capturedCatalog.SelectedRepositoryID)
+}
+
+func TestExecuteWithOptionsRejectsWebNetworkFlagsWithoutWeb(t *testing.T) {
+	application := NewApplication()
+
+	executionError := application.ExecuteWithOptions(ExecutionOptions{
+		Arguments:     []string{"--bind", "0.0.0.0", "--port", "8081"},
+		Context:       context.Background(),
+		ExitOnVersion: false,
+	})
+
+	require.EqualError(t, executionError, webNetworkFlagsRequireWebConstant)
 }
 
 func TestCommandCatalogMarksInactionableCommands(t *testing.T) {
@@ -179,21 +296,21 @@ func TestCommandCatalogMarksInactionableCommands(t *testing.T) {
 func TestRepositoryCatalogUsesCurrentRepositoryContext(t *testing.T) {
 	rootPath := t.TempDir()
 	repositoryPath := createTestRepository(t, filepath.Join(rootPath, "workspace", "example"))
-	siblingRepositoryPath := createTestRepository(t, filepath.Join(rootPath, "workspace", "other"))
+	nestedRepositoryPath := createTestRepository(t, filepath.Join(repositoryPath, "plugins", "other"))
 	createTestBranch(t, repositoryPath, "feature/demo")
 
 	nestedWorkingDirectory := filepath.Join(repositoryPath, "internal")
 	require.NoError(t, os.MkdirAll(nestedWorkingDirectory, 0o755))
 	withWorkingDirectory(t, nestedWorkingDirectory, func() {
 		application := NewApplication()
-		catalog := application.repositoryCatalog(context.Background())
+		catalog := application.repositoryCatalog(context.Background(), nil)
 
 		require.Equal(t, "current_repo", catalog.LaunchMode)
 		require.Equal(t, canonicalPath(t, nestedWorkingDirectory), canonicalPath(t, catalog.LaunchPath))
-		require.Equal(t, canonicalPath(t, filepath.Dir(repositoryPath)), canonicalPath(t, catalog.ExplorerRoot))
+		require.Equal(t, canonicalPath(t, repositoryPath), canonicalPath(t, catalog.ExplorerRoot))
 		require.Len(t, catalog.Repositories, 2)
 		require.Equal(t, canonicalPath(t, repositoryPath), canonicalPath(t, catalog.Repositories[0].Path))
-		require.Equal(t, canonicalPath(t, siblingRepositoryPath), canonicalPath(t, catalog.Repositories[1].Path))
+		require.Equal(t, canonicalPath(t, nestedRepositoryPath), canonicalPath(t, catalog.Repositories[1].Path))
 		require.Equal(t, "feature/demo", catalog.Repositories[0].CurrentBranch)
 		require.True(t, catalog.Repositories[0].ContextCurrent)
 		require.False(t, catalog.Repositories[1].ContextCurrent)
@@ -209,7 +326,7 @@ func TestRepositoryCatalogDiscoversRepositoriesBeneathWorkingDirectory(t *testin
 
 	withWorkingDirectory(t, rootPath, func() {
 		application := NewApplication()
-		catalog := application.repositoryCatalog(context.Background())
+		catalog := application.repositoryCatalog(context.Background(), nil)
 
 		require.Equal(t, "discovered_repositories", catalog.LaunchMode)
 		require.Equal(t, canonicalPath(t, rootPath), canonicalPath(t, catalog.LaunchPath))
@@ -219,7 +336,38 @@ func TestRepositoryCatalogDiscoversRepositoriesBeneathWorkingDirectory(t *testin
 		require.Equal(t, canonicalPath(t, secondRepository), canonicalPath(t, catalog.Repositories[1].Path))
 		require.False(t, catalog.Repositories[0].ContextCurrent)
 		require.False(t, catalog.Repositories[1].ContextCurrent)
-		require.Equal(t, catalog.Repositories[0].ID, catalog.SelectedRepositoryID)
+		require.Empty(t, catalog.SelectedRepositoryID)
+	})
+}
+
+func TestRepositoryCatalogUsesExplicitLaunchRoots(t *testing.T) {
+	rootPath := t.TempDir()
+	firstRootPath := filepath.Join(rootPath, "fleet", "alpha")
+	secondRootPath := filepath.Join(rootPath, "fleet", "beta")
+	firstRepositoryPath := createTestRepository(t, filepath.Join(firstRootPath, "example"))
+	secondRepositoryPath := createTestRepository(t, filepath.Join(secondRootPath, "other"))
+	createTestRepository(t, filepath.Join(rootPath, "ignored", "skip"))
+	nestedWorkingDirectory := filepath.Join(secondRepositoryPath, "internal")
+	require.NoError(t, os.MkdirAll(nestedWorkingDirectory, 0o755))
+
+	withWorkingDirectory(t, nestedWorkingDirectory, func() {
+		application := NewApplication()
+		catalog := application.repositoryCatalog(context.Background(), []string{firstRootPath, secondRootPath})
+
+		require.Equal(t, webLaunchModeConfiguredRootsConstant, catalog.LaunchMode)
+		require.Equal(t, canonicalPath(t, filepath.Join(rootPath, "fleet")), canonicalPath(t, catalog.LaunchPath))
+		require.Len(t, catalog.LaunchRoots, 2)
+		require.Equal(t, []string{canonicalPath(t, firstRootPath), canonicalPath(t, secondRootPath)}, []string{
+			canonicalPath(t, catalog.LaunchRoots[0]),
+			canonicalPath(t, catalog.LaunchRoots[1]),
+		})
+		require.Equal(t, canonicalPath(t, filepath.Join(rootPath, "fleet")), canonicalPath(t, catalog.ExplorerRoot))
+		require.Len(t, catalog.Repositories, 2)
+		require.Equal(t, canonicalPath(t, firstRepositoryPath), canonicalPath(t, catalog.Repositories[0].Path))
+		require.Equal(t, canonicalPath(t, secondRepositoryPath), canonicalPath(t, catalog.Repositories[1].Path))
+		require.False(t, catalog.Repositories[0].ContextCurrent)
+		require.False(t, catalog.Repositories[1].ContextCurrent)
+		require.Empty(t, catalog.SelectedRepositoryID)
 	})
 }
 
@@ -278,7 +426,8 @@ func TestWebServerExecutesVersionCommand(t *testing.T) {
 				},
 			}
 		},
-		Execute: application.newWebCommandExecutor(),
+		BrowseDirectories: application.newWebDirectoryBrowser(),
+		Execute:           application.newWebCommandExecutor(),
 		InspectAudit: func(_ context.Context, request web.AuditInspectionRequest) web.AuditInspectionResponse {
 			return web.AuditInspectionResponse{
 				Roots: request.Roots,
@@ -329,7 +478,7 @@ func TestWebServerExecutesVersionCommand(t *testing.T) {
 	_, copyError := indexDocument.ReadFrom(indexResponse.Body)
 	require.NoError(t, copyError)
 	require.Contains(t, indexDocument.String(), "<title>gix Control Surface</title>")
-	require.Contains(t, indexDocument.String(), "Build a target set first")
+	require.Contains(t, indexDocument.String(), "Audit Workspace")
 	require.Contains(t, indexDocument.String(), "id=\"workspace-layout\"")
 	require.Contains(t, indexDocument.String(), "id=\"repo-sidebar\"")
 	require.Contains(t, indexDocument.String(), "id=\"workspace-main\"")
@@ -337,9 +486,10 @@ func TestWebServerExecutesVersionCommand(t *testing.T) {
 	require.Contains(t, indexDocument.String(), "cdn.jsdelivr.net/npm/wunderbaum@0/dist/wunderbaum.min.css")
 	require.Contains(t, indexDocument.String(), "<h3>Scope</h3>")
 	require.Contains(t, indexDocument.String(), "<h3>Paths</h3>")
-	require.Contains(t, indexDocument.String(), "<h3>Tasks</h3>")
+	require.Contains(t, indexDocument.String(), "<h3>Follow-up Tasks</h3>")
 	require.Contains(t, indexDocument.String(), "id=\"target-ref-select\"")
 	require.Contains(t, indexDocument.String(), "id=\"repo-tree\"")
+	require.Contains(t, indexDocument.String(), "id=\"audit-selection-summary\"")
 	require.Contains(t, indexDocument.String(), "id=\"audit-roots-input\"")
 	require.Contains(t, indexDocument.String(), "Inspect audit table")
 	require.Contains(t, indexDocument.String(), "id=\"audit-results-panel\"")
@@ -347,6 +497,16 @@ func TestWebServerExecutesVersionCommand(t *testing.T) {
 	require.Contains(t, indexDocument.String(), "Pending Changes")
 	require.Contains(t, indexDocument.String(), "Run remote normalization command")
 	require.Contains(t, indexDocument.String(), "Run workflow command")
+
+	applicationScriptResponse, applicationScriptError := http.Get(httpServer.URL + "/assets/app.js")
+	require.NoError(t, applicationScriptError)
+	defer applicationScriptResponse.Body.Close()
+	require.Equal(t, http.StatusOK, applicationScriptResponse.StatusCode)
+
+	var applicationScript bytes.Buffer
+	_, applicationScriptCopyError := applicationScript.ReadFrom(applicationScriptResponse.Body)
+	require.NoError(t, applicationScriptCopyError)
+	require.Contains(t, applicationScript.String(), "from \"https://cdn.jsdelivr.net/npm/wunderbaum@0/+esm\"")
 
 	commandsResponse, commandsError := http.Get(httpServer.URL + "/api/commands")
 	require.NoError(t, commandsError)

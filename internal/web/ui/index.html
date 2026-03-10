@@ -45,10 +45,66 @@
         </aside>
 
         <main id="workspace-main" class="workspace-main">
-          <section class="panel brand-panel">
-            <p class="eyebrow">Local Interface</p>
-            <h1>gix Control Surface</h1>
-            <p class="lede">Build a target set first. Then apply repository, branch, and file operations against one repo or many repos without dropping into raw argv too early.</p>
+          <section class="panel audit-stage-panel">
+            <div class="audit-stage-header">
+              <div class="audit-stage-copy">
+                <p class="eyebrow">Primary Flow</p>
+                <h1>Audit Workspace</h1>
+                <p class="lede">Pick a folder in the left pane, inspect it here, then queue the fixes you want before dropping into follow-up commands.</p>
+              </div>
+              <div class="audit-stage-meta">
+                <span id="audit-selection-badge" class="pill">No target</span>
+                <p id="audit-selection-summary" class="panel-note audit-selection-summary">Select a folder in the tree to prepare the next audit run.</p>
+              </div>
+            </div>
+
+            <section id="task-panel-inspect" class="task-panel audit-stage-controls">
+              <div class="task-copy">
+                <h3>Inspect Selected Scope</h3>
+                <p class="panel-note">The selected folder in the tree defines the audit scope. Launch roots initialize that selection when `--roots` is provided.</p>
+              </div>
+              <label class="field-label" for="audit-roots-input">Audit Scope</label>
+              <textarea id="audit-roots-input" class="code-input audit-roots-input" spellcheck="false" placeholder="Select a folder in the tree to define the audit scope." readonly></textarea>
+              <label class="checkbox-row" for="audit-include-all">
+                <input id="audit-include-all" type="checkbox">
+                <span>Include non-Git folders in the inspected roots</span>
+              </label>
+              <div class="button-row audit-stage-actions">
+                <button id="task-inspect-load" class="primary-button" type="button">Inspect audit table</button>
+                <span id="run-error" class="error-message"></span>
+              </div>
+            </section>
+          </section>
+
+          <section id="audit-results-panel" class="panel audit-results-panel" hidden>
+            <div class="panel-heading">
+              <h3>Audit Results</h3>
+              <span id="audit-results-summary" class="panel-note"></span>
+            </div>
+            <div class="audit-table-shell">
+              <table class="audit-table">
+                <thead id="audit-results-head"></thead>
+                <tbody id="audit-results-body"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section id="audit-queue-panel" class="panel audit-queue-panel" hidden>
+            <div class="panel-heading">
+              <h3>Pending Changes</h3>
+              <span id="audit-queue-summary" class="panel-note"></span>
+            </div>
+            <div id="audit-queue-list" class="audit-queue-list"></div>
+            <div class="button-row">
+              <button id="audit-queue-clear" class="secondary-button" type="button">Clear queue</button>
+              <button id="audit-queue-apply" class="primary-button" type="button">Apply queue</button>
+            </div>
+          </section>
+
+          <section class="panel brand-panel secondary-brand-panel">
+            <p class="eyebrow">Secondary Tools</p>
+            <h2>Follow-up Commands</h2>
+            <p class="lede">After the audit table is in place, use the controls below to target branches, files, remotes, workflows, or raw commands against the selected repository scope.</p>
           </section>
 
           <section class="layout-row context-row">
@@ -96,13 +152,13 @@
           <section class="layout-row tasks-row">
             <section class="panel actions-panel">
               <div class="panel-heading">
-                <h3>Tasks</h3>
-                <span id="task-count" class="pill">7</span>
+                <h3>Follow-up Tasks</h3>
+                <span id="task-count" class="pill">6</span>
               </div>
               <p id="action-context" class="panel-note"></p>
 
               <div class="task-switcher" role="tablist" aria-label="Task switcher">
-                <button id="task-inspect" class="task-button active" type="button">Audit</button>
+                <button id="task-inspect" class="task-button" type="button" hidden>Audit</button>
                 <button id="task-branch" class="task-button" type="button">Branch</button>
                 <button id="task-files" class="task-button" type="button">Files</button>
                 <button id="task-remotes" class="task-button" type="button">Remotes</button>
@@ -110,20 +166,6 @@
                 <button id="task-workflows" class="task-button" type="button">Workflows</button>
                 <button id="task-advanced" class="task-button" type="button">Advanced</button>
               </div>
-
-              <section id="task-panel-inspect" class="task-panel">
-                <div class="task-copy">
-                  <h4>Inspect Audit Roots</h4>
-                  <p class="panel-note">Leave roots blank to inspect the current repository scope from the target bar, or enter explicit filesystem roots when you want to audit a wider workspace.</p>
-                </div>
-                <label class="field-label" for="audit-roots-input">Audit Roots</label>
-                <textarea id="audit-roots-input" class="code-input audit-roots-input" spellcheck="false" placeholder="One root per line. Leave blank to use the current repository scope."></textarea>
-                <label class="checkbox-row" for="audit-include-all">
-                  <input id="audit-include-all" type="checkbox">
-                  <span>Include non-Git folders in the inspected roots</span>
-                </label>
-                <button id="task-inspect-load" class="secondary-button" type="button">Inspect audit table</button>
-              </section>
 
               <section id="task-panel-branch" class="task-panel" hidden>
                 <div class="task-copy">
@@ -279,31 +321,7 @@
               <section class="runner-output">
                 <div class="panel-heading">
                   <h4>Run Output</h4>
-                  <span id="run-error" class="error-message"></span>
                 </div>
-                <section id="audit-results-panel" class="audit-results-panel" hidden>
-                  <div class="panel-heading">
-                    <h4>Audit Results</h4>
-                    <span id="audit-results-summary" class="panel-note"></span>
-                  </div>
-                  <div class="audit-table-shell">
-                    <table class="audit-table">
-                      <thead id="audit-results-head"></thead>
-                      <tbody id="audit-results-body"></tbody>
-                    </table>
-                  </div>
-                </section>
-                <section id="audit-queue-panel" class="audit-queue-panel" hidden>
-                  <div class="panel-heading">
-                    <h4>Pending Changes</h4>
-                    <span id="audit-queue-summary" class="panel-note"></span>
-                  </div>
-                  <div id="audit-queue-list" class="audit-queue-list"></div>
-                  <div class="button-row">
-                    <button id="audit-queue-clear" class="secondary-button" type="button">Clear queue</button>
-                    <button id="audit-queue-apply" class="primary-button" type="button">Apply queue</button>
-                  </div>
-                </section>
                 <div class="output-grid">
                   <div>
                     <h4>stdout</h4>
