@@ -1,12 +1,6 @@
-.idea/
-*.csv
-bin/
-dist/
-tools/
-
-PLAN.md
-# Managed by gix gitignore workflow
-.env
-.env.*
-.DS_Store
-qodana.yaml
+# Managed by ISSUES Managing Director (planning worktree)
+*
+!.gitignore
+!AGENTS.md
+!.mprl/
+!.mprl/**
