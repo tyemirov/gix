@@ -15,7 +15,7 @@
             <h2>Repos</h2>
             <span id="repo-count" class="pill">0</span>
           </div>
-          <div class="repo-focus">
+          <div class="repo-focus" hidden>
             <div class="repo-focus-header">
               <div class="repo-focus-identity">
                 <p class="eyebrow">Selected Repo</p>
@@ -26,7 +26,7 @@
             <p id="repo-path" class="repo-focus-path"></p>
             <p id="repo-summary" class="repo-focus-summary"></p>
           </div>
-          <section class="repo-scope">
+          <section class="repo-scope" hidden>
             <div class="panel-heading">
               <h3>Scope</h3>
               <span id="target-repo-summary" class="pill">0</span>
@@ -38,7 +38,7 @@
             </div>
             <p id="target-repo-detail" class="panel-note target-detail"></p>
           </section>
-          <p id="repo-launch-summary" class="panel-note"></p>
+          <p id="repo-launch-summary" class="panel-note" hidden></p>
           <label class="field-label" for="repo-filter">Filter</label>
           <input id="repo-filter" class="text-input" type="search" placeholder="Find a repository">
           <div id="repo-tree" class="repo-tree" aria-live="polite"></div>
@@ -50,7 +50,7 @@
               <div class="audit-stage-copy">
                 <p class="eyebrow">Primary Flow</p>
                 <h1>Audit Workspace</h1>
-                <p class="lede">Pick a folder in the left pane, inspect it here, then queue the fixes you want before dropping into follow-up commands.</p>
+                <p class="lede">Pick one or many folders in the left pane, inspect them here, queue the actions you want, execute them, review the results, and then refresh the table when you need a new snapshot.</p>
               </div>
               <div class="audit-stage-meta">
                 <span id="audit-selection-badge" class="pill">No target</span>
@@ -70,7 +70,7 @@
                 <span>Include non-Git folders in the inspected roots</span>
               </label>
               <div class="button-row audit-stage-actions">
-                <button id="task-inspect-load" class="primary-button" type="button">Inspect audit table</button>
+                <button id="task-inspect-load" class="primary-button" type="button">Inspect or refresh audit table</button>
                 <span id="run-error" class="error-message"></span>
               </div>
             </section>
@@ -101,63 +101,21 @@
             </div>
           </section>
 
-          <section class="panel brand-panel secondary-brand-panel">
-            <p class="eyebrow">Secondary Tools</p>
-            <h2>Follow-up Commands</h2>
-            <p class="lede">After the audit table is in place, use the controls below to target branches, files, remotes, workflows, or raw commands against the selected repository scope.</p>
-          </section>
-
-          <section class="layout-row context-row">
-            <section class="panel target-card">
-              <div class="panel-heading">
-                <h3>Refs</h3>
-                <span id="target-ref-summary" class="pill">current</span>
-              </div>
-              <label class="field-label" for="target-ref-mode">Mode</label>
-              <select id="target-ref-mode" class="select-input">
-                <option value="current">Current</option>
-                <option value="default">Default</option>
-                <option value="named">Named</option>
-                <option value="pattern">Pattern</option>
-                <option value="any">Any</option>
-              </select>
-              <div id="target-ref-value-block" class="ref-value-field">
-                <label id="target-ref-value-label" class="field-label">Value</label>
-                <select id="target-ref-select" class="select-input" aria-label="Named ref selection" hidden disabled></select>
-                <input id="target-ref-value" class="text-input" type="text" aria-label="Ref value" placeholder="branch-name or pattern" disabled>
-              </div>
-              <p id="target-ref-detail" class="panel-note target-detail"></p>
-            </section>
-
-            <section class="panel target-card">
-              <div class="panel-heading">
-                <h3>Paths</h3>
-                <span id="target-path-summary" class="pill">none</span>
-              </div>
-              <label class="field-label" for="target-path-mode">Mode</label>
-              <select id="target-path-mode" class="select-input">
-                <option value="none">None</option>
-                <option value="relative">Relative Path</option>
-                <option value="glob">Glob</option>
-                <option value="multiple">Multiple Paths</option>
-              </select>
-              <div id="target-path-value-block" class="target-path-value-block">
-                <label id="target-path-value-label" class="field-label" for="target-path-value">Value</label>
-                <textarea id="target-path-value" class="code-input target-path-input" spellcheck="false" placeholder="One path or glob per line" disabled></textarea>
-              </div>
-              <p id="target-path-detail" class="panel-note target-detail"></p>
-            </section>
+          <section class="panel brand-panel secondary-brand-panel" hidden>
+            <p class="eyebrow">Step 2</p>
+            <h2>Queue Actions</h2>
+            <p class="lede">After the audit table is in place, queue the fixes surfaced by the audit table or add repo-scoped workflow actions for the selected repository.</p>
           </section>
 
           <section class="layout-row tasks-row">
             <section class="panel actions-panel">
               <div class="panel-heading">
-                <h3>Follow-up Tasks</h3>
-                <span id="task-count" class="pill">6</span>
+                <h3>Workflow Actions</h3>
+                <span id="task-count" class="pill">1</span>
               </div>
-              <p id="action-context" class="panel-note"></p>
+              <p id="action-context" class="panel-note">Queue repo-scoped workflow primitives for the selected repository. Files, refs, remotes, and raw commands are intentionally not exposed here.</p>
 
-              <div class="task-switcher" role="tablist" aria-label="Task switcher">
+              <div class="task-switcher" role="tablist" aria-label="Task switcher" hidden>
                 <button id="task-inspect" class="task-button" type="button" hidden>Audit</button>
                 <button id="task-branch" class="task-button" type="button">Branch</button>
                 <button id="task-files" class="task-button" type="button">Files</button>
@@ -170,7 +128,7 @@
               <section id="task-panel-branch" class="task-panel" hidden>
                 <div class="task-copy">
                   <h4>Branch Operations</h4>
-                  <p class="panel-note">The target bar defines which repositories and refs you are operating on. Use the Refs mode and value controls above to choose a concrete branch when the action needs one.</p>
+                  <p class="panel-note">Branch operations follow the selected repository in the tree.</p>
                 </div>
                 <div class="quick-actions" aria-label="Branch quick actions">
                   <button id="action-switch-default" class="secondary-button" type="button">Run switch to default branch command</button>
@@ -182,7 +140,7 @@
               <section id="task-panel-files" class="task-panel" hidden>
                 <div class="task-copy">
                   <h4>File Changes</h4>
-                  <p class="panel-note">Repos, refs, and paths come from the target bar. This task only captures the file-operation specific inputs.</p>
+                  <p class="panel-note">File changes apply to the selected repository in the tree.</p>
                 </div>
 
                 <label class="field-label" for="file-task-mode">Operation</label>
@@ -232,29 +190,59 @@
               </section>
 
               <section id="task-panel-workflows" class="task-panel" hidden>
-                <div class="task-copy">
-                  <h4>Workflow Runner</h4>
-                  <p class="panel-note">Run an embedded preset or a workflow configuration file against the current repository target set. Repositories still come from the target bar.</p>
+                <div hidden>
+                  <label class="field-label" for="workflow-target-input">Preset or Config</label>
+                  <input id="workflow-target-input" class="text-input" type="text" placeholder="license or ./workflow.yaml">
+
+                  <label class="field-label" for="workflow-vars-input">Variables</label>
+                  <textarea id="workflow-vars-input" class="code-input task-code-input" spellcheck="false" placeholder="key=value"></textarea>
+
+                  <label class="field-label" for="workflow-var-files-input">Variable Files</label>
+                  <textarea id="workflow-var-files-input" class="code-input task-code-input" spellcheck="false" placeholder="./vars.yaml"></textarea>
+
+                  <label class="field-label" for="workflow-workers-input">Workflow Workers</label>
+                  <input id="workflow-workers-input" class="text-input" type="number" min="1" step="1" value="1">
+
+                  <label class="checkbox-row" for="workflow-require-clean">
+                    <input id="workflow-require-clean" type="checkbox">
+                    <span>Require clean worktrees for rename operations</span>
+                  </label>
+
+                  <button id="task-workflow-load" class="secondary-button" type="button">Run workflow command</button>
                 </div>
 
-                <label class="field-label" for="workflow-target-input">Preset or Config</label>
-                <input id="workflow-target-input" class="text-input" type="text" placeholder="license or ./workflow.yaml">
+                <div class="task-copy">
+                  <h4>Action Queue</h4>
+                  <p class="panel-note">Queue repo-scoped workflow primitives with their major parameters. The queue applies only to the selected repository in the tree.</p>
+                </div>
 
-                <label class="field-label" for="workflow-vars-input">Variables</label>
-                <textarea id="workflow-vars-input" class="code-input task-code-input" spellcheck="false" placeholder="key=value"></textarea>
+                <div class="panel-heading">
+                  <h4>Selected Repo</h4>
+                  <span id="workflow-action-repo" class="panel-note"></span>
+                </div>
 
-                <label class="field-label" for="workflow-var-files-input">Variable Files</label>
-                <textarea id="workflow-var-files-input" class="code-input task-code-input" spellcheck="false" placeholder="./vars.yaml"></textarea>
+                <label class="field-label" for="workflow-primitive-select">Workflow Action</label>
+                <select id="workflow-primitive-select" class="text-input"></select>
+                <p id="workflow-primitive-summary" class="panel-note"></p>
 
-                <label class="field-label" for="workflow-workers-input">Workflow Workers</label>
-                <input id="workflow-workers-input" class="text-input" type="number" min="1" step="1" value="1">
+                <div id="workflow-primitive-fields" class="task-subpanel" aria-live="polite"></div>
 
-                <label class="checkbox-row" for="workflow-require-clean">
-                  <input id="workflow-require-clean" type="checkbox">
-                  <span>Require clean worktrees for rename operations</span>
-                </label>
+                <div class="button-row">
+                  <button id="workflow-action-queue" class="secondary-button" type="button">Queue workflow action</button>
+                  <span id="workflow-action-summary" class="panel-note"></span>
+                </div>
 
-                <button id="task-workflow-load" class="secondary-button" type="button">Run workflow command</button>
+                <section id="workflow-queue-panel" class="audit-queue-panel" hidden>
+                  <div class="panel-heading">
+                    <h4>Queued Workflow Actions</h4>
+                    <span id="workflow-queue-summary" class="panel-note"></span>
+                  </div>
+                  <div id="workflow-queue-list" class="audit-queue-list"></div>
+                  <div class="button-row">
+                    <button id="workflow-queue-clear" class="secondary-button" type="button">Clear queue</button>
+                    <button id="workflow-queue-apply" class="primary-button" type="button">Apply queued workflow actions</button>
+                  </div>
+                </section>
               </section>
 
               <section id="task-panel-advanced" class="task-panel" hidden>
@@ -294,33 +282,35 @@
           <section class="layout-row runner-row">
             <section class="panel runner-panel">
               <div class="panel-heading">
-                <h3>Runner</h3>
+                <h3>Execution Results</h3>
                 <span id="run-status" class="status-pill status-idle">idle</span>
               </div>
-              <p class="panel-note">The runner is prefilled from the active task and the target bar. Adjust arguments directly when you need the exact CLI shape.</p>
-              <div class="preview-shell">
-                <span class="preview-label">Preview</span>
-                <pre id="command-preview" class="command-preview"></pre>
-              </div>
+              <p class="panel-note">Apply queued actions, review the execution output here, and then inspect the selected folders again when you want a refreshed audit table.</p>
+              <div hidden>
+                <div class="preview-shell">
+                  <span class="preview-label">Preview</span>
+                  <pre id="command-preview" class="command-preview"></pre>
+                </div>
 
-              <div class="editor-block">
-                <label class="field-label" for="arguments-input">Arguments</label>
-                <textarea id="arguments-input" class="code-input" spellcheck="false"></textarea>
-              </div>
+                <div class="editor-block">
+                  <label class="field-label" for="arguments-input">Arguments</label>
+                  <textarea id="arguments-input" class="code-input" spellcheck="false"></textarea>
+                </div>
 
-              <div class="editor-block">
-                <label class="field-label" for="stdin-input">Standard Input</label>
-                <textarea id="stdin-input" class="code-input stdin-input" spellcheck="false" placeholder="Paste stdin payload when a command expects it"></textarea>
-              </div>
+                <div class="editor-block">
+                  <label class="field-label" for="stdin-input">Standard Input</label>
+                  <textarea id="stdin-input" class="code-input stdin-input" spellcheck="false" placeholder="Paste stdin payload when a command expects it"></textarea>
+                </div>
 
-              <div class="button-row">
-                <button id="run-command" class="primary-button" type="button">Run</button>
-                <span id="run-id" class="panel-note">No run started</span>
+                <div class="button-row">
+                  <button id="run-command" class="primary-button" type="button">Run</button>
+                  <span id="run-id" class="panel-note">No run started</span>
+                </div>
               </div>
 
               <section class="runner-output">
                 <div class="panel-heading">
-                  <h4>Run Output</h4>
+                  <h4>Latest Apply Output</h4>
                 </div>
                 <div class="output-grid">
                   <div>

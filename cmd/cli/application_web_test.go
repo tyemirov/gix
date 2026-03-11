@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -371,6 +372,81 @@ func TestRepositoryCatalogUsesExplicitLaunchRoots(t *testing.T) {
 	})
 }
 
+func TestWebDirectoryBrowserShowsOnlyRepositoryBranches(t *testing.T) {
+	rootPath := t.TempDir()
+	containerPath := filepath.Join(rootPath, "Folder C")
+	require.NoError(t, os.MkdirAll(filepath.Join(containerPath, "Folder A"), 0o755))
+	repositoryPath := createTestRepository(t, filepath.Join(containerPath, "Folder B"))
+	createTestBranch(t, repositoryPath, "feature/demo")
+
+	application := NewApplication()
+	directoryBrowser := application.newWebDirectoryBrowser()
+
+	type expectedFolder struct {
+		name           string
+		path           string
+		repositoryPath string
+		currentBranch  string
+	}
+
+	testCases := []struct {
+		name            string
+		browsePath      string
+		expectedFolders []expectedFolder
+	}{
+		{
+			name:       "ancestor folder remains visible when it contains a repository descendant",
+			browsePath: rootPath,
+			expectedFolders: []expectedFolder{
+				{
+					name: "Folder C",
+					path: containerPath,
+				},
+			},
+		},
+		{
+			name:       "non repository siblings stay hidden beneath visible ancestor folder",
+			browsePath: containerPath,
+			expectedFolders: []expectedFolder{
+				{
+					name:           "Folder B",
+					path:           repositoryPath,
+					repositoryPath: repositoryPath,
+					currentBranch:  "feature/demo",
+				},
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			listing := directoryBrowser(context.Background(), testCase.browsePath)
+
+			require.Empty(t, listing.Error)
+			require.Equal(t, canonicalPath(t, testCase.browsePath), canonicalPath(t, listing.Path))
+			require.Len(t, listing.Folders, len(testCase.expectedFolders))
+
+			for folderIndex, expectedFolder := range testCase.expectedFolders {
+				actualFolder := listing.Folders[folderIndex]
+				require.Equal(t, expectedFolder.name, actualFolder.Name)
+				require.Equal(t, canonicalPath(t, expectedFolder.path), canonicalPath(t, actualFolder.Path))
+
+				if len(expectedFolder.repositoryPath) == 0 {
+					require.Nil(t, actualFolder.Repository)
+					continue
+				}
+
+				require.NotNil(t, actualFolder.Repository)
+				require.Equal(t, dynamicWebRepositoryID(expectedFolder.repositoryPath), actualFolder.Repository.ID)
+				require.Equal(t, expectedFolder.name, actualFolder.Repository.Name)
+				require.Equal(t, canonicalPath(t, expectedFolder.repositoryPath), canonicalPath(t, actualFolder.Repository.Path))
+				require.Equal(t, expectedFolder.currentBranch, actualFolder.Repository.CurrentBranch)
+				require.False(t, actualFolder.Repository.ContextCurrent)
+			}
+		})
+	}
+}
+
 func TestLoadRepositoryBranchesReturnsLocalBranches(t *testing.T) {
 	repositoryPath := createTestRepository(t, filepath.Join(t.TempDir(), "workspace", "example"))
 	createTestBranch(t, repositoryPath, "feature/demo")
@@ -384,6 +460,61 @@ func TestLoadRepositoryBranchesReturnsLocalBranches(t *testing.T) {
 	require.Empty(t, branchCatalog.Error)
 	require.Equal(t, "repo-001", branchCatalog.RepositoryID)
 	require.Equal(t, repositoryPath, branchCatalog.RepositoryPath)
+	require.Len(t, branchCatalog.Branches, 2)
+	require.Equal(t, "feature/demo", branchCatalog.Branches[0].Name)
+	require.True(t, branchCatalog.Branches[0].Current)
+	require.Equal(t, "master", branchCatalog.Branches[1].Name)
+}
+
+func TestWebServerLoadsBranchesForDynamicallyDiscoveredRepository(t *testing.T) {
+	repositoryPath := createTestRepository(t, filepath.Join(t.TempDir(), "workspace", "example"))
+	createTestBranch(t, repositoryPath, "feature/demo")
+
+	application := NewApplication()
+	server, serverError := web.NewServer(web.ServerOptions{
+		Address:           "127.0.0.1:8080",
+		Repositories:      web.RepositoryCatalog{},
+		Catalog:           application.commandCatalog(),
+		LoadBranches:      application.loadRepositoryBranches,
+		BrowseDirectories: application.newWebDirectoryBrowser(),
+		Execute:           application.newWebCommandExecutor(),
+		InspectAudit: func(_ context.Context, _ web.AuditInspectionRequest) web.AuditInspectionResponse {
+			return web.AuditInspectionResponse{}
+		},
+		ApplyAuditChanges: func(_ context.Context, _ web.AuditChangeApplyRequest) web.AuditChangeApplyResponse {
+			return web.AuditChangeApplyResponse{}
+		},
+		LoadWorkflowPrimitives: application.newWebWorkflowPrimitiveCatalogLoader(),
+		ApplyWorkflowActions: func(_ context.Context, request web.WorkflowPrimitiveApplyRequest) web.WorkflowPrimitiveApplyResponse {
+			return web.WorkflowPrimitiveApplyResponse{
+				Results: []web.WorkflowPrimitiveApplyResult{
+					{
+						ID:             request.Actions[0].ID,
+						RepositoryPath: request.Actions[0].RepositoryPath,
+						PrimitiveID:    request.Actions[0].PrimitiveID,
+						Status:         webAuditChangeStatusSucceededConstant,
+						Message:        "Applied Replace in files",
+					},
+				},
+			}
+		},
+	})
+	require.NoError(t, serverError)
+
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	repositoryID := dynamicWebRepositoryID(repositoryPath)
+	branchesResponse, branchesError := http.Get(httpServer.URL + "/api/repos/" + url.PathEscape(repositoryID) + "/branches?path=" + url.QueryEscape(repositoryPath))
+	require.NoError(t, branchesError)
+	defer branchesResponse.Body.Close()
+	require.Equal(t, http.StatusOK, branchesResponse.StatusCode)
+
+	var branchCatalog web.BranchCatalog
+	require.NoError(t, json.NewDecoder(branchesResponse.Body).Decode(&branchCatalog))
+	require.Empty(t, branchCatalog.Error)
+	require.Equal(t, repositoryID, branchCatalog.RepositoryID)
+	require.Equal(t, canonicalPath(t, repositoryPath), canonicalPath(t, branchCatalog.RepositoryPath))
 	require.Len(t, branchCatalog.Branches, 2)
 	require.Equal(t, "feature/demo", branchCatalog.Branches[0].Name)
 	require.True(t, branchCatalog.Branches[0].Current)
@@ -463,6 +594,8 @@ func TestWebServerExecutesVersionCommand(t *testing.T) {
 				},
 			}
 		},
+		LoadWorkflowPrimitives: application.newWebWorkflowPrimitiveCatalogLoader(),
+		ApplyWorkflowActions:   application.newWebWorkflowPrimitiveExecutor(),
 	})
 	require.NoError(t, serverError)
 
@@ -485,18 +618,20 @@ func TestWebServerExecutesVersionCommand(t *testing.T) {
 	require.Contains(t, indexDocument.String(), "<h2>Repos</h2>")
 	require.Contains(t, indexDocument.String(), "cdn.jsdelivr.net/npm/wunderbaum@0/dist/wunderbaum.min.css")
 	require.Contains(t, indexDocument.String(), "<h3>Scope</h3>")
-	require.Contains(t, indexDocument.String(), "<h3>Paths</h3>")
-	require.Contains(t, indexDocument.String(), "<h3>Follow-up Tasks</h3>")
-	require.Contains(t, indexDocument.String(), "id=\"target-ref-select\"")
+	require.Contains(t, indexDocument.String(), "<h3>Workflow Actions</h3>")
+	require.NotContains(t, indexDocument.String(), "<h3>Refs</h3>")
+	require.NotContains(t, indexDocument.String(), "<h3>Paths</h3>")
+	require.NotContains(t, indexDocument.String(), "id=\"target-ref-select\"")
+	require.NotContains(t, indexDocument.String(), "id=\"target-path-value\"")
 	require.Contains(t, indexDocument.String(), "id=\"repo-tree\"")
 	require.Contains(t, indexDocument.String(), "id=\"audit-selection-summary\"")
 	require.Contains(t, indexDocument.String(), "id=\"audit-roots-input\"")
-	require.Contains(t, indexDocument.String(), "Inspect audit table")
+	require.Contains(t, indexDocument.String(), "Inspect or refresh audit table")
 	require.Contains(t, indexDocument.String(), "id=\"audit-results-panel\"")
 	require.Contains(t, indexDocument.String(), "id=\"audit-queue-panel\"")
 	require.Contains(t, indexDocument.String(), "Pending Changes")
-	require.Contains(t, indexDocument.String(), "Run remote normalization command")
-	require.Contains(t, indexDocument.String(), "Run workflow command")
+	require.Contains(t, indexDocument.String(), "Queue workflow action")
+	require.Contains(t, indexDocument.String(), "Apply queued workflow actions")
 
 	applicationScriptResponse, applicationScriptError := http.Get(httpServer.URL + "/assets/app.js")
 	require.NoError(t, applicationScriptError)
@@ -568,6 +703,28 @@ func TestWebServerExecutesVersionCommand(t *testing.T) {
 	require.Len(t, applyInspection.Results, 1)
 	require.Equal(t, "chg-001", applyInspection.Results[0].ID)
 	require.Equal(t, "succeeded", applyInspection.Results[0].Status)
+
+	workflowCatalogResponse, workflowCatalogError := http.Get(httpServer.URL + "/api/workflow/primitives")
+	require.NoError(t, workflowCatalogError)
+	defer workflowCatalogResponse.Body.Close()
+	require.Equal(t, http.StatusOK, workflowCatalogResponse.StatusCode)
+
+	var workflowCatalog web.WorkflowPrimitiveCatalog
+	require.NoError(t, json.NewDecoder(workflowCatalogResponse.Body).Decode(&workflowCatalog))
+	require.NotEmpty(t, workflowCatalog.Primitives)
+	require.Equal(t, webWorkflowPrimitiveCanonicalRemoteConstant, workflowCatalog.Primitives[0].ID)
+
+	workflowApplyBody := strings.NewReader(`{"actions":[{"id":"wf-001","repository_path":"/tmp/example","primitive_id":"repo.files.replace","parameters":{"patterns":"README.md","find":"initial","replace":"updated"}}]}`)
+	workflowApplyResponse, workflowApplyError := http.Post(httpServer.URL+"/api/workflow/apply", "application/json", workflowApplyBody)
+	require.NoError(t, workflowApplyError)
+	defer workflowApplyResponse.Body.Close()
+	require.Equal(t, http.StatusOK, workflowApplyResponse.StatusCode)
+
+	var workflowApplyInspection web.WorkflowPrimitiveApplyResponse
+	require.NoError(t, json.NewDecoder(workflowApplyResponse.Body).Decode(&workflowApplyInspection))
+	require.Len(t, workflowApplyInspection.Results, 1)
+	require.Equal(t, "wf-001", workflowApplyInspection.Results[0].ID)
+	require.Equal(t, webAuditChangeStatusSucceededConstant, workflowApplyInspection.Results[0].Status)
 
 	runBody := strings.NewReader(`{"arguments":["version"]}`)
 	runResponse, runError := http.Post(httpServer.URL+"/api/runs", "application/json", runBody)

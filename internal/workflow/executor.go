@@ -254,9 +254,6 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 	if errorWriter == nil {
 		errorWriter = reporterOutput
 	}
-	if executor.dependencies.Errors != nil {
-		reporterOutput = executor.dependencies.Errors
-	}
 	if !executor.dependencies.HumanReadableLogging || executor.dependencies.DisableWorkflowLogging {
 		reporterOutput = io.Discard
 	}
