@@ -32,7 +32,6 @@ import (
 )
 
 const (
-	webInterfaceUnavailableMessageConstant      = "web mode is unavailable from the web interface"
 	webLaunchModeCurrentRepositoryConstant      = "current_repo"
 	webLaunchModeConfiguredRootsConstant        = "configured_roots"
 	webLaunchModeDiscoveredRepositoriesConstant = "discovered_repositories"
@@ -206,16 +205,11 @@ func (application *Application) handleWebLaunch(command *cobra.Command, argument
 	repositoryCatalog := application.repositoryCatalog(executionContext, launchRoots)
 
 	return true, application.webRunner(executionContext, web.ServerOptions{
-		Address:                launchConfiguration.listenAddress(),
-		Repositories:           repositoryCatalog,
-		Catalog:                application.commandCatalog(),
-		LoadBranches:           application.loadRepositoryBranches,
-		BrowseDirectories:      application.newWebDirectoryBrowser(),
-		Execute:                application.newWebCommandExecutor(),
-		InspectAudit:           application.newWebAuditInspector(),
-		ApplyAuditChanges:      application.newWebAuditChangeExecutor(),
-		LoadWorkflowPrimitives: application.newWebWorkflowPrimitiveCatalogLoader(),
-		ApplyWorkflowActions:   application.newWebWorkflowPrimitiveExecutor(),
+		Address:           launchConfiguration.listenAddress(),
+		Repositories:      repositoryCatalog,
+		BrowseDirectories: application.newWebDirectoryBrowser(),
+		InspectAudit:      application.newWebAuditInspector(),
+		ApplyAuditChanges: application.newWebAuditChangeExecutor(),
 	})
 }
 
@@ -282,25 +276,6 @@ func resolveWebLaunchRoots(command *cobra.Command) ([]string, error) {
 
 func (application *Application) launchWebInterface(executionContext context.Context, options web.ServerOptions) error {
 	return web.Run(executionContext, options)
-}
-
-func (application *Application) newWebCommandExecutor() web.CommandExecutor {
-	return func(executionContext context.Context, arguments []string, standardInput io.Reader, standardOutput io.Writer, standardError io.Writer) error {
-		nestedApplication := NewApplication()
-		nestedApplication.versionResolver = application.versionResolver
-		nestedApplication.webRunner = func(context.Context, web.ServerOptions) error {
-			return errors.New(webInterfaceUnavailableMessageConstant)
-		}
-
-		return nestedApplication.ExecuteWithOptions(ExecutionOptions{
-			Arguments:      application.webInheritedArguments(arguments),
-			Context:        executionContext,
-			StandardInput:  standardInput,
-			StandardOutput: standardOutput,
-			StandardError:  standardError,
-			ExitOnVersion:  false,
-		})
-	}
 }
 
 func (application *Application) newWebDirectoryBrowser() web.DirectoryBrowser {
@@ -438,27 +413,6 @@ func (application *Application) newWebAuditChangeExecutor() web.AuditChangeExecu
 	}
 }
 
-func (application *Application) webInheritedArguments(arguments []string) []string {
-	inheritedArguments := make([]string, 0, len(arguments)+6)
-
-	configurationFilePath := strings.TrimSpace(application.configurationMetadata.ConfigFileUsed)
-	if len(configurationFilePath) > 0 && !commandArgumentsContainFlag(arguments, configFileFlagNameConstant) {
-		inheritedArguments = append(inheritedArguments, "--"+configFileFlagNameConstant, configurationFilePath)
-	}
-
-	logLevelValue := strings.TrimSpace(application.logLevelFlagValue)
-	if len(logLevelValue) > 0 && !commandArgumentsContainFlag(arguments, logLevelFlagNameConstant) {
-		inheritedArguments = append(inheritedArguments, "--"+logLevelFlagNameConstant, logLevelValue)
-	}
-
-	logFormatValue := strings.TrimSpace(application.logFormatFlagValue)
-	if len(logFormatValue) > 0 && !commandArgumentsContainFlag(arguments, logFormatFlagNameConstant) {
-		inheritedArguments = append(inheritedArguments, "--"+logFormatFlagNameConstant, logFormatValue)
-	}
-
-	return append(inheritedArguments, arguments...)
-}
-
 func (application *Application) applyWebAuditChange(executionContext context.Context, change web.AuditQueuedChange) web.AuditChangeApplyResult {
 	normalizedPath, pathError := normalizeWebAuditChangePath(change.Path)
 	result := web.AuditChangeApplyResult{
@@ -523,22 +477,6 @@ func (application *Application) applyWebAuditChange(executionContext context.Con
 	}
 
 	return result
-}
-
-func commandArgumentsContainFlag(arguments []string, flagName string) bool {
-	if len(flagName) == 0 {
-		return false
-	}
-
-	fullName := "--" + flagName
-	prefixedName := fullName + "="
-	for _, argument := range arguments {
-		if argument == fullName || strings.HasPrefix(argument, prefixedName) {
-			return true
-		}
-	}
-
-	return false
 }
 
 func (application *Application) repositoryCatalog(executionContext context.Context, launchRoots []string) web.RepositoryCatalog {

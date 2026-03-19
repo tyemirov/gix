@@ -87,7 +87,7 @@ func TestWebBinaryHonorsExplicitBindAndPortFlags(testInstance *testing.T) {
 	waitForWebServerReady(testInstance, baseURL+webIntegrationIndexAssetPathConstant)
 
 	indexDocument := readHTTPBody(testInstance, baseURL+webIntegrationIndexAssetPathConstant)
-	require.Contains(testInstance, indexDocument, "<title>gix Control Surface</title>")
+	require.Contains(testInstance, indexDocument, "<title>gix Audit Workspace</title>")
 	require.Contains(testInstance, standardOutput.String(), fmt.Sprintf("http://%s:%d", webIntegrationWildcardHostConstant, listenPort))
 	require.Empty(testInstance, strings.TrimSpace(standardError.String()))
 }

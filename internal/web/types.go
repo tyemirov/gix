@@ -28,16 +28,11 @@ type WorkflowPrimitiveExecutor func(context.Context, WorkflowPrimitiveApplyReque
 
 // ServerOptions configures the local web server.
 type ServerOptions struct {
-	Address                string
-	Repositories           RepositoryCatalog
-	Catalog                CommandCatalog
-	LoadBranches           BranchCatalogLoader
-	BrowseDirectories      DirectoryBrowser
-	Execute                CommandExecutor
-	InspectAudit           AuditInspector
-	ApplyAuditChanges      AuditChangeExecutor
-	LoadWorkflowPrimitives WorkflowPrimitiveCatalogLoader
-	ApplyWorkflowActions   WorkflowPrimitiveExecutor
+	Address           string
+	Repositories      RepositoryCatalog
+	BrowseDirectories DirectoryBrowser
+	InspectAudit      AuditInspector
+	ApplyAuditChanges AuditChangeExecutor
 }
 
 // RepositoryCatalog describes the repositories visible to the web interface at launch time.
