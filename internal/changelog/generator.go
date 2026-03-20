@@ -24,13 +24,14 @@ const (
 
 // Options configure changelog generation.
 type Options struct {
-	RepositoryPath string
-	Version        string
-	ReleaseDate    string
-	SinceReference string
-	SinceDate      *time.Time
-	MaxTokens      int
-	Temperature    *float64
+	RepositoryPath  string
+	Version         string
+	ReleaseDate     string
+	SinceReference  string
+	SinceDate       *time.Time
+	IncludeWorktree bool
+	MaxTokens       int
+	Temperature     *float64
 }
 
 // Result contains the generated changelog section and request context.
@@ -89,7 +90,7 @@ func (generator Generator) BuildRequest(ctx context.Context, options Options) (l
 	if contextError != nil {
 		return llm.ChatRequest{}, contextError
 	}
-	if gitContext.commitLog == "" && gitContext.diffSummary == "" && gitContext.diffExcerpt == "" {
+	if gitContext.commitLog == "" && gitContext.diffSummary == "" && gitContext.diffExcerpt == "" && gitContext.worktreeStatus == "" && gitContext.worktreeDiffSummary == "" && gitContext.worktreeDiffExcerpt == "" {
 		return llm.ChatRequest{}, ErrNoChanges
 	}
 
@@ -135,6 +136,19 @@ func (generator Generator) BuildRequest(ctx context.Context, options Options) (l
 	if gitContext.diffExcerpt != "" {
 		userSections = append(userSections, "", "Diff excerpt:", gitContext.diffExcerpt)
 	}
+	if gitContext.worktreeStatus != "" || gitContext.worktreeDiffSummary != "" || gitContext.worktreeDiffExcerpt != "" {
+		userSections = append(userSections,
+			"",
+			"Pending worktree status:",
+			fallbackText(gitContext.worktreeStatus, "No pending worktree changes."),
+			"",
+			"Pending worktree diff summary:",
+			fallbackText(gitContext.worktreeDiffSummary, "No pending diff summary available."),
+		)
+		if gitContext.worktreeDiffExcerpt != "" {
+			userSections = append(userSections, "", "Pending worktree diff excerpt:", gitContext.worktreeDiffExcerpt)
+		}
+	}
 	userSections = append(userSections, "", "Generate the section now.")
 
 	userMessage := llm.Message{
@@ -159,6 +173,7 @@ func (generator Generator) BuildRequest(ctx context.Context, options Options) (l
 type baselineInfo struct {
 	rangeExpression string
 	description     string
+	includeWorktree bool
 }
 
 func (generator Generator) resolveBaseline(ctx context.Context, repositoryPath string, options Options) (baselineInfo, error) {
@@ -167,6 +182,7 @@ func (generator Generator) resolveBaseline(ctx context.Context, repositoryPath s
 		return baselineInfo{
 			rangeExpression: sinceRef + "..HEAD",
 			description:     fmt.Sprintf("changes since %s", sinceRef),
+			includeWorktree: options.IncludeWorktree,
 		}, nil
 	}
 
@@ -179,6 +195,7 @@ func (generator Generator) resolveBaseline(ctx context.Context, repositoryPath s
 			return baselineInfo{
 				rangeExpression: trimmed + "..HEAD",
 				description:     fmt.Sprintf("changes since %s", options.SinceDate.Format(time.RFC3339)),
+				includeWorktree: options.IncludeWorktree,
 			}, nil
 		}
 	}
@@ -190,6 +207,7 @@ func (generator Generator) resolveBaseline(ctx context.Context, repositoryPath s
 		return baselineInfo{
 			rangeExpression: tagName + "..HEAD",
 			description:     fmt.Sprintf("changes since tag %s", tagName),
+			includeWorktree: options.IncludeWorktree,
 		}, nil
 	}
 
@@ -197,6 +215,7 @@ func (generator Generator) resolveBaseline(ctx context.Context, repositoryPath s
 	return baselineInfo{
 		rangeExpression: "",
 		description:     "full history (no prior tags)",
+		includeWorktree: options.IncludeWorktree,
 	}, nil
 }
 
@@ -205,6 +224,9 @@ type gitContextFragments struct {
 	commitLog           string
 	diffSummary         string
 	diffExcerpt         string
+	worktreeStatus      string
+	worktreeDiffSummary string
+	worktreeDiffExcerpt string
 }
 
 func (generator Generator) collectGitContext(ctx context.Context, repositoryPath string, baseline baselineInfo) (gitContextFragments, error) {
@@ -236,6 +258,30 @@ func (generator Generator) collectGitContext(ctx context.Context, repositoryPath
 		return gitContextFragments{}, diffError
 	}
 
+	worktreeStatus := ""
+	worktreeDiffSummary := ""
+	worktreeDiffExcerpt := ""
+	if baseline.includeWorktree {
+		worktreeStatusOutput, worktreeStatusError := generator.runGit(ctx, repositoryPath, []string{"status", "--short"})
+		if worktreeStatusError != nil {
+			return gitContextFragments{}, worktreeStatusError
+		}
+
+		worktreeSummaryOutput, worktreeSummaryError := generator.runGit(ctx, repositoryPath, []string{"diff", "HEAD", "--stat"})
+		if worktreeSummaryError != nil {
+			return gitContextFragments{}, worktreeSummaryError
+		}
+
+		worktreeDiffOutput, worktreeDiffError := generator.runGit(ctx, repositoryPath, []string{"diff", "HEAD", "--unified=3"})
+		if worktreeDiffError != nil {
+			return gitContextFragments{}, worktreeDiffError
+		}
+
+		worktreeStatus = truncateRunes(strings.TrimSpace(filterChangelogArtifacts(worktreeStatusOutput)), defaultDiffSummaryCharacterLimit)
+		worktreeDiffSummary = truncateRunes(strings.TrimSpace(filterChangelogArtifacts(worktreeSummaryOutput)), defaultDiffSummaryCharacterLimit)
+		worktreeDiffExcerpt = truncateRunes(strings.TrimSpace(filterChangelogArtifacts(worktreeDiffOutput)), defaultDiffCharacterLimit)
+	}
+
 	commitLog := truncateRunes(strings.TrimSpace(filterChangelogArtifacts(logOutput)), defaultCommitLogCharacterLimit)
 	diffSummary := truncateRunes(strings.TrimSpace(filterChangelogArtifacts(diffSummaryOutput)), defaultDiffSummaryCharacterLimit)
 	diffExcerpt := truncateRunes(strings.TrimSpace(filterChangelogArtifacts(diffOutput)), defaultDiffCharacterLimit)
@@ -245,6 +291,9 @@ func (generator Generator) collectGitContext(ctx context.Context, repositoryPath
 		commitLog:           commitLog,
 		diffSummary:         diffSummary,
 		diffExcerpt:         diffExcerpt,
+		worktreeStatus:      worktreeStatus,
+		worktreeDiffSummary: worktreeDiffSummary,
+		worktreeDiffExcerpt: worktreeDiffExcerpt,
 	}, nil
 }
 

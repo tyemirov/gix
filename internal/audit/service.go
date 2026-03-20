@@ -224,11 +224,13 @@ func (service *Service) inspectRepository(executionContext context.Context, repo
 	originURL, originError := service.gitManager.GetRemoteURL(executionContext, repositoryPath, shared.OriginRemoteNameConstant)
 	if originError != nil || len(strings.TrimSpace(originURL)) == 0 {
 		localBranch := ""
+		headTagged := false
 		if inspectionDepth == InspectionDepthFull {
 			branchName, localBranchError := service.gitManager.GetCurrentBranch(executionContext, repositoryPath)
 			if localBranchError == nil {
 				localBranch = sanitizeBranchName(branchName)
 			}
+			headTagged = service.currentHeadTagged(executionContext, repositoryPath)
 		}
 
 		return RepositoryInspection{
@@ -243,6 +245,7 @@ func (service *Service) inspectRepository(executionContext context.Context, repo
 			RemoteProtocol:         RemoteProtocolOther,
 			RemoteDefaultBranch:    "",
 			LocalBranch:            localBranch,
+			HeadTagged:             headTagged,
 			InSyncStatus:           TernaryValueNotApplicable,
 			OriginMatchesCanonical: TernaryValueNotApplicable,
 			IsGitRepository:        true,
@@ -276,6 +279,7 @@ func (service *Service) inspectRepository(executionContext context.Context, repo
 	}
 
 	localBranch := ""
+	headTagged := false
 	inSyncStatus := TernaryValueNotApplicable
 	if inspectionDepth == InspectionDepthFull {
 		branchName, localBranchError := service.gitManager.GetCurrentBranch(executionContext, repositoryPath)
@@ -284,6 +288,7 @@ func (service *Service) inspectRepository(executionContext context.Context, repo
 			localBranch = sanitizedBranch
 			inSyncStatus = service.computeInSync(executionContext, repositoryPath, remoteDefaultBranch, sanitizedBranch, remoteProtocol)
 		}
+		headTagged = service.currentHeadTagged(executionContext, repositoryPath)
 	}
 
 	finalOwnerRepo := originOwnerRepo
@@ -303,6 +308,7 @@ func (service *Service) inspectRepository(executionContext context.Context, repo
 		RemoteProtocol:         remoteProtocol,
 		RemoteDefaultBranch:    remoteDefaultBranch,
 		LocalBranch:            localBranch,
+		HeadTagged:             headTagged,
 		InSyncStatus:           inSyncStatus,
 		OriginMatchesCanonical: matchesCanonical(originOwnerRepo, canonicalOwnerRepo),
 		IsGitRepository:        true,
@@ -526,6 +532,19 @@ func (service *Service) resolveDefaultBranchFromGit(executionContext context.Con
 	}
 
 	return ""
+}
+
+func (service *Service) currentHeadTagged(executionContext context.Context, repositoryPath string) bool {
+	tagDetails := execshell.CommandDetails{
+		Arguments:        []string{gitTagSubcommandConstant, gitPointsAtFlagConstant, gitHeadReferenceConstant},
+		WorkingDirectory: repositoryPath,
+	}
+
+	executionResult, executionError := service.gitExecutor.ExecuteGit(executionContext, tagDetails)
+	if executionError != nil {
+		return false
+	}
+	return strings.TrimSpace(executionResult.StandardOutput) != ""
 }
 
 func (service *Service) computeInSync(executionContext context.Context, repositoryPath string, remoteDefaultBranch string, localBranch string, protocol RemoteProtocolType) TernaryValue {

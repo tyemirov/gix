@@ -13,12 +13,14 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/tyemirov/gix/internal/repos/shared"
 	"github.com/tyemirov/gix/internal/web"
 	"github.com/tyemirov/gix/internal/workflow"
+	"github.com/tyemirov/utils/llm"
 )
 
 func TestExecuteWithOptionsVersionFlagWritesToProvidedOutput(t *testing.T) {
@@ -125,6 +127,21 @@ func TestExecuteWithOptionsLaunchesWebRunnerWithBindAndPortFlags(t *testing.T) {
 	require.NoError(t, executionError)
 	require.Equal(t, "0.0.0.0:8081", capturedAddress)
 	require.Contains(t, standardOutput.String(), "http://0.0.0.0:8081")
+}
+
+func TestParseWebAuditDirtyFileEntries(t *testing.T) {
+	require.Equal(t, []web.AuditDirtyFileEntry{
+		{Status: "M", File: "README.md"},
+		{Status: "AM", File: "internal/web/ui/assets/app.js"},
+		{Status: "??", File: "notes.txt"},
+		{Status: "R", File: "old/name.txt -> new/name.txt"},
+	}, parseWebAuditDirtyFileEntries([]string{
+		"M README.md",
+		"AM internal/web/ui/assets/app.js",
+		"?? notes.txt",
+		"R  old/name.txt -> new/name.txt",
+		"",
+	}))
 }
 
 func TestExecuteWithOptionsLaunchesWebRunnerWithExplicitRoots(t *testing.T) {
@@ -565,15 +582,35 @@ func TestWebServerServesAuditWorkspaceAndRemovesLegacyEndpoints(t *testing.T) {
 	require.NotContains(t, indexDocument.String(), "id=\"workflow-primitive-select\"")
 	require.NotContains(t, indexDocument.String(), "id=\"run-command\"")
 
-	applicationScriptResponse, applicationScriptError := http.Get(httpServer.URL + "/assets/app.js")
-	require.NoError(t, applicationScriptError)
-	defer applicationScriptResponse.Body.Close()
-	require.Equal(t, http.StatusOK, applicationScriptResponse.StatusCode)
+	readEmbeddedAsset := func(assetPath string) string {
+		assetResponse, assetError := http.Get(httpServer.URL + assetPath)
+		require.NoError(t, assetError)
+		defer assetResponse.Body.Close()
+		require.Equal(t, http.StatusOK, assetResponse.StatusCode)
 
-	var applicationScript bytes.Buffer
-	_, applicationScriptCopyError := applicationScript.ReadFrom(applicationScriptResponse.Body)
-	require.NoError(t, applicationScriptCopyError)
-	require.Contains(t, applicationScript.String(), "from \"https://cdn.jsdelivr.net/npm/wunderbaum@0/+esm\"")
+		var assetContents bytes.Buffer
+		_, assetCopyError := assetContents.ReadFrom(assetResponse.Body)
+		require.NoError(t, assetCopyError)
+		return assetContents.String()
+	}
+
+	applicationScript := readEmbeddedAsset("/assets/app.js")
+	require.Contains(t, applicationScript, "from \"./main.js\"")
+
+	mainScript := readEmbeddedAsset("/assets/main.js")
+	require.Contains(t, mainScript, "from \"./repo_tree.js\"")
+	require.Contains(t, mainScript, "from \"./audit.js\"")
+
+	auditScript := readEmbeddedAsset("/assets/audit.js")
+	require.Contains(t, auditScript, "from \"./shared.js\"")
+	require.Contains(t, auditScript, "from \"./repo_tree.js\"")
+
+	repositoryTreeScript := readEmbeddedAsset("/assets/repo_tree.js")
+	require.Contains(t, repositoryTreeScript, "from \"https://cdn.jsdelivr.net/npm/wunderbaum@0/+esm\"")
+	require.Contains(t, repositoryTreeScript, "from \"./shared.js\"")
+
+	sharedScript := readEmbeddedAsset("/assets/shared.js")
+	require.Contains(t, sharedScript, "export const state = {")
 
 	repositoriesResponse, repositoriesError := http.Get(httpServer.URL + "/api/repos")
 	require.NoError(t, repositoriesError)
@@ -657,6 +694,166 @@ func TestWebAuditChangeExecutorRejectsRelativePaths(t *testing.T) {
 	require.Contains(t, response.Results[0].Error, "absolute")
 }
 
+func TestWebAuditChangeExecutorCommitChangesCommitsDirtyWorktree(t *testing.T) {
+	repositoryPath := createTestRepository(t, filepath.Join(t.TempDir(), "workspace", "example"))
+	runGitCommand(t, repositoryPath, "config", "user.name", "gix-test")
+	runGitCommand(t, repositoryPath, "config", "user.email", "test@example.com")
+	require.NoError(t, os.WriteFile(filepath.Join(repositoryPath, "README.md"), []byte("updated\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(repositoryPath, "notes.txt"), []byte("draft\n"), 0o644))
+
+	t.Setenv("OPENAI_API_KEY", "test-token")
+	stubClient := &stubWebChatClient{response: "feat: commit pending changes"}
+
+	application := NewApplication()
+	application.llmClientFactory = func(configuration llm.Config) (llm.ChatClient, error) {
+		require.Equal(t, "gpt-4.1-mini", configuration.Model)
+		require.Equal(t, "test-token", configuration.APIKey)
+		return stubClient, nil
+	}
+
+	response := application.newWebAuditChangeExecutor()(context.Background(), web.AuditChangeApplyRequest{
+		Changes: []web.AuditQueuedChange{
+			{
+				ID:   "chg-001",
+				Kind: web.AuditChangeKindCommitChanges,
+				Path: repositoryPath,
+			},
+		},
+	})
+
+	require.Empty(t, response.Error)
+	require.Len(t, response.Results, 1)
+	require.Equal(t, "succeeded", response.Results[0].Status)
+	require.Equal(t, "Changes committed", response.Results[0].Message)
+	require.Contains(t, response.Results[0].Stdout, "Generated commit message:")
+	require.Contains(t, stubClient.lastRequest.Messages[1].Content, "Diff source: ALL")
+
+	commitMessage := strings.TrimSpace(runGitCommandOutput(t, repositoryPath, "log", "-1", "--pretty=%B"))
+	require.Equal(t, "feat: commit pending changes", commitMessage)
+	require.Empty(t, strings.TrimSpace(runGitCommandOutput(t, repositoryPath, "status", "--short")))
+}
+
+func TestWebAuditChangeExecutorUpdateChangelogInsertsNextVersionSection(t *testing.T) {
+	repositoryPath := createTestRepository(t, filepath.Join(t.TempDir(), "workspace", "example"))
+	runGitCommand(t, repositoryPath, "tag", "v1.2.3")
+	require.NoError(t, os.WriteFile(filepath.Join(repositoryPath, "committed.txt"), []byte("released change\n"), 0o644))
+	runGitCommand(t, repositoryPath, "add", "committed.txt")
+	runGitCommand(t, repositoryPath, "commit", "-m", "feat: add released change")
+	require.NoError(t, os.WriteFile(filepath.Join(repositoryPath, "feature.txt"), []byte("pending feature\n"), 0o644))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(repositoryPath, "CHANGELOG.md"),
+		[]byte("# Changelog\n\n## [v1.2.3]\n\n### Features ✨\n- _No changes._\n"),
+		0o644,
+	))
+
+	t.Setenv("OPENAI_API_KEY", "test-token")
+	releaseDate := time.Now().Format("2006-01-02")
+	stubClient := &stubWebChatClient{
+		response: "## [v1.2.4] - " + releaseDate + "\n\n### Features ✨\n- Add pending feature.\n\n### Improvements ⚙️\n- _No changes._\n\n### Bug Fixes 🐛\n- _No changes._\n\n### Testing 🧪\n- _No changes._\n\n### Docs 📚\n- _No changes._",
+	}
+
+	application := NewApplication()
+	application.llmClientFactory = func(configuration llm.Config) (llm.ChatClient, error) {
+		require.Equal(t, "gpt-4.1-mini", configuration.Model)
+		require.Equal(t, "test-token", configuration.APIKey)
+		return stubClient, nil
+	}
+
+	response := application.newWebAuditChangeExecutor()(context.Background(), web.AuditChangeApplyRequest{
+		Changes: []web.AuditQueuedChange{
+			{
+				ID:   "chg-002",
+				Kind: web.AuditChangeKindUpdateChangelog,
+				Path: repositoryPath,
+			},
+		},
+	})
+
+	require.Empty(t, response.Error)
+	require.Len(t, response.Results, 1)
+	require.Equal(t, "succeeded", response.Results[0].Status)
+	require.Equal(t, "Changelog updated", response.Results[0].Message)
+	require.Contains(t, stubClient.lastRequest.Messages[1].Content, "Pending worktree status:")
+	require.Contains(t, stubClient.lastRequest.Messages[1].Content, "feature.txt")
+
+	changelogContents, readError := os.ReadFile(filepath.Join(repositoryPath, "CHANGELOG.md"))
+	require.NoError(t, readError)
+	require.Contains(t, string(changelogContents), "## [v1.2.4] - "+releaseDate)
+	require.Contains(t, string(changelogContents), "## [v1.2.3]")
+}
+
+func TestWebAuditChangeExecutorUpdateChangelogRejectsTaggedHead(t *testing.T) {
+	repositoryPath := createTestRepository(t, filepath.Join(t.TempDir(), "workspace", "example"))
+	runGitCommand(t, repositoryPath, "tag", "v1.2.3")
+	require.NoError(t, os.WriteFile(filepath.Join(repositoryPath, "feature.txt"), []byte("pending feature\n"), 0o644))
+
+	t.Setenv("OPENAI_API_KEY", "test-token")
+	application := NewApplication()
+	application.llmClientFactory = func(configuration llm.Config) (llm.ChatClient, error) {
+		return &stubWebChatClient{response: "## [v1.2.4]\n"}, nil
+	}
+
+	response := application.newWebAuditChangeExecutor()(context.Background(), web.AuditChangeApplyRequest{
+		Changes: []web.AuditQueuedChange{
+			{
+				ID:   "chg-003",
+				Kind: web.AuditChangeKindUpdateChangelog,
+				Path: repositoryPath,
+			},
+		},
+	})
+
+	require.Len(t, response.Results, 1)
+	require.Equal(t, "failed", response.Results[0].Status)
+	require.Contains(t, response.Results[0].Error, webAuditChangeChangelogTaggedRejected)
+}
+
+func TestWebAuditChangeExecutorUpdateChangelogRejectsNonDefaultBranch(t *testing.T) {
+	repositoryPath := createTestRepository(t, filepath.Join(t.TempDir(), "workspace", "example"))
+	remotePath := filepath.Join(t.TempDir(), "origin.git")
+	runGitCommand(t, "", "init", "--bare", remotePath)
+	runGitCommand(t, repositoryPath, "remote", "add", "origin", remotePath)
+	runGitCommand(t, repositoryPath, "push", "-u", "origin", "master")
+	runGitCommand(t, repositoryPath, "remote", "set-head", "origin", "master")
+	runGitCommand(t, repositoryPath, "tag", "v1.2.3")
+	require.NoError(t, os.WriteFile(filepath.Join(repositoryPath, "committed.txt"), []byte("released change\n"), 0o644))
+	runGitCommand(t, repositoryPath, "add", "committed.txt")
+	runGitCommand(t, repositoryPath, "commit", "-m", "feat: add released change")
+	runGitCommand(t, repositoryPath, "checkout", "-b", "feature/demo")
+	require.NoError(t, os.WriteFile(filepath.Join(repositoryPath, "feature.txt"), []byte("pending feature\n"), 0o644))
+
+	t.Setenv("OPENAI_API_KEY", "test-token")
+	application := NewApplication()
+	application.llmClientFactory = func(configuration llm.Config) (llm.ChatClient, error) {
+		return &stubWebChatClient{response: "## [v1.2.4]\n"}, nil
+	}
+
+	response := application.newWebAuditChangeExecutor()(context.Background(), web.AuditChangeApplyRequest{
+		Changes: []web.AuditQueuedChange{
+			{
+				ID:   "chg-004",
+				Kind: web.AuditChangeKindUpdateChangelog,
+				Path: repositoryPath,
+			},
+		},
+	})
+
+	require.Len(t, response.Results, 1)
+	require.Equal(t, "failed", response.Results[0].Status)
+	require.Contains(t, response.Results[0].Error, webAuditChangeChangelogBranchRejected)
+}
+
+func TestUpsertWebChangelogSectionReplacesExistingHeading(t *testing.T) {
+	updatedContents, updateError := upsertWebChangelogSection(
+		"# Changelog\n\n## [v1.2.4]\n\n### Features ✨\n- Old feature.\n\n## [v1.2.3]\n\n### Features ✨\n- Prior release.\n",
+		"## [v1.2.4]\n\n### Features ✨\n- New feature.\n",
+	)
+	require.NoError(t, updateError)
+	require.Equal(t, 1, strings.Count(updatedContents, "## [v1.2.4]"))
+	require.Contains(t, updatedContents, "- New feature.")
+	require.Contains(t, updatedContents, "## [v1.2.3]")
+}
+
 func TestWebAuditChangeResultStatusMarksSkippedOutcomes(t *testing.T) {
 	outcome := workflow.ExecutionOutcome{
 		ReporterSummaryData: shared.SummaryData{
@@ -727,6 +924,38 @@ func runGitCommand(testingInstance *testing.T, workingDirectory string, argument
 
 	output, commandError := command.CombinedOutput()
 	require.NoError(testingInstance, commandError, string(output))
+}
+
+func runGitCommandOutput(testingInstance *testing.T, workingDirectory string, arguments ...string) string {
+	testingInstance.Helper()
+
+	command := exec.Command("git", arguments...)
+	command.Dir = workingDirectory
+	command.Env = append(
+		os.Environ(),
+		"GIT_AUTHOR_NAME=gix-test",
+		"GIT_AUTHOR_EMAIL=test@example.com",
+		"GIT_COMMITTER_NAME=gix-test",
+		"GIT_COMMITTER_EMAIL=test@example.com",
+	)
+
+	output, commandError := command.CombinedOutput()
+	require.NoError(testingInstance, commandError, string(output))
+	return string(output)
+}
+
+type stubWebChatClient struct {
+	lastRequest llm.ChatRequest
+	response    string
+	err         error
+}
+
+func (client *stubWebChatClient) Chat(ctx context.Context, request llm.ChatRequest) (string, error) {
+	client.lastRequest = request
+	if client.err != nil {
+		return "", client.err
+	}
+	return client.response, nil
 }
 
 func canonicalPath(testingInstance *testing.T, path string) string {

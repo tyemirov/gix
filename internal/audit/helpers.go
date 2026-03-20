@@ -23,6 +23,8 @@ const (
 	gitSymbolicFullNameFlagConstant    = "--symbolic-full-name"
 	gitSymbolicRefSubcommandConstant   = "symbolic-ref"
 	gitShortFlagConstant               = "--short"
+	gitTagSubcommandConstant           = "tag"
+	gitPointsAtFlagConstant            = "--points-at"
 	gitHeadReferenceConstant           = "HEAD"
 	gitLSRemoteSubcommandConstant      = "ls-remote"
 	gitSymrefFlagConstant              = "--symref"

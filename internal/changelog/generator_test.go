@@ -129,6 +129,46 @@ func TestBuildRequestUsesProvidedReference(t *testing.T) {
 	require.NotContains(t, strings.Join(flattenCommandCalls(executor.calls), " "), "describe")
 }
 
+func TestBuildRequestIncludesPendingWorktreeChanges(t *testing.T) {
+	executor := &stubGitExecutor{
+		responses: map[string]stubResponse{
+			"describe --tags --abbrev=0": {
+				output: "v0.2.0\n",
+			},
+			"log --no-merges --date=short --pretty=format:%h %ad %an %s --max-count=200 v0.2.0..HEAD": {
+				output: "\n",
+			},
+			"diff --stat v0.2.0..HEAD": {
+				output: "\n",
+			},
+			"diff --unified=3 v0.2.0..HEAD": {
+				output: "\n",
+			},
+			"status --short": {
+				output: " M internal/app.go\n?? notes.txt\n",
+			},
+			"diff HEAD --stat": {
+				output: " internal/app.go | 2 +-\n",
+			},
+			"diff HEAD --unified=3": {
+				output: "diff --git a/internal/app.go b/internal/app.go\n@@\n-old\n+new\n",
+			},
+		},
+	}
+	generator := Generator{GitExecutor: executor, Client: &stubChatClient{}}
+
+	request, err := generator.BuildRequest(context.Background(), Options{
+		RepositoryPath:  "/tmp/repo",
+		Version:         "v0.3.0",
+		IncludeWorktree: true,
+	})
+	require.NoError(t, err)
+	require.Contains(t, request.Messages[1].Content, "Pending worktree status:")
+	require.Contains(t, request.Messages[1].Content, "notes.txt")
+	require.Contains(t, request.Messages[1].Content, "Pending worktree diff summary:")
+	require.Contains(t, request.Messages[1].Content, "internal/app.go | 2 +-")
+}
+
 func TestGenerateReturnsSection(t *testing.T) {
 	executor := &stubGitExecutor{
 		responses: map[string]stubResponse{

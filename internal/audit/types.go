@@ -63,6 +63,7 @@ type RepositoryInspection struct {
 	RemoteProtocol         RemoteProtocolType
 	RemoteDefaultBranch    string
 	LocalBranch            string
+	HeadTagged             bool
 	InSyncStatus           TernaryValue
 	OriginMatchesCanonical TernaryValue
 	IsGitRepository        bool

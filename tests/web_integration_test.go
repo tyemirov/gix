@@ -26,6 +26,10 @@ const (
 	webIntegrationExternalCDNHostConstant      = "cdn.jsdelivr.net"
 	webIntegrationIndexAssetPathConstant       = "/"
 	webIntegrationApplicationAssetPathConstant = "/assets/app.js"
+	webIntegrationMainAssetPathConstant        = "/assets/main.js"
+	webIntegrationAuditAssetPathConstant       = "/assets/audit.js"
+	webIntegrationRepoTreeAssetPathConstant    = "/assets/repo_tree.js"
+	webIntegrationSharedAssetPathConstant      = "/assets/shared.js"
 	webIntegrationStylesAssetPathConstant      = "/assets/styles.css"
 	webIntegrationRepositoriesAPIPathConstant  = "/api/repos"
 	webIntegrationBindArgumentTemplateConstant = "--bind=%s"
@@ -56,7 +60,20 @@ func TestWebBinaryEmbedsFirstPartyAssetsAndUsesCDNDependencies(testInstance *tes
 	require.Contains(testInstance, indexDocument, webIntegrationExternalCDNHostConstant)
 
 	applicationScript := readHTTPBody(testInstance, baseURL+webIntegrationApplicationAssetPathConstant)
-	require.Contains(testInstance, applicationScript, "from \"https://cdn.jsdelivr.net/npm/wunderbaum@0/+esm\"")
+	require.Contains(testInstance, applicationScript, "from \"./main.js\"")
+
+	mainScript := readHTTPBody(testInstance, baseURL+webIntegrationMainAssetPathConstant)
+	require.Contains(testInstance, mainScript, "from \"./repo_tree.js\"")
+	require.Contains(testInstance, mainScript, "from \"./audit.js\"")
+
+	auditScript := readHTTPBody(testInstance, baseURL+webIntegrationAuditAssetPathConstant)
+	require.Contains(testInstance, auditScript, "from \"./shared.js\"")
+
+	repoTreeScript := readHTTPBody(testInstance, baseURL+webIntegrationRepoTreeAssetPathConstant)
+	require.Contains(testInstance, repoTreeScript, "from \"https://cdn.jsdelivr.net/npm/wunderbaum@0/+esm\"")
+
+	sharedScript := readHTTPBody(testInstance, baseURL+webIntegrationSharedAssetPathConstant)
+	require.Contains(testInstance, sharedScript, "export const state = {")
 
 	stylesSheet := readHTTPBody(testInstance, baseURL+webIntegrationStylesAssetPathConstant)
 	require.Contains(testInstance, stylesSheet, ".repo-tree")

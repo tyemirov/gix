@@ -65,6 +65,35 @@ func TestBuildRequestWorktreeDiff(t *testing.T) {
 	require.Equal(t, expectedCommands, executor.calls)
 }
 
+func TestBuildRequestAllPendingDiff(t *testing.T) {
+	executor := &stubGitExecutor{
+		responses: map[string]string{
+			"status --short":                   "M  staged.txt\n M worktree.txt\n?? notes.txt\n",
+			"diff --unified=3 --cached --stat": " staged.txt | 1 +\n",
+			"diff --unified=3 --cached":        "diff --git a/staged.txt b/staged.txt\n@@\n-old\n+new\n",
+			"diff --unified=3 --stat":          " worktree.txt | 2 +-\n",
+			"diff --unified=3":                 "diff --git a/worktree.txt b/worktree.txt\n@@\n-before\n+after\n",
+		},
+	}
+	generator := Generator{GitExecutor: executor, Client: &stubChatClient{}}
+
+	request, err := generator.BuildRequest(context.Background(), Options{RepositoryPath: "/tmp/repo", Source: DiffSourceAll})
+	require.NoError(t, err)
+	require.Contains(t, request.Messages[1].Content, "Diff source: ALL")
+	require.Contains(t, request.Messages[1].Content, "STAGED")
+	require.Contains(t, request.Messages[1].Content, "WORKTREE")
+	require.Contains(t, request.Messages[1].Content, "notes.txt")
+
+	expectedCommands := [][]string{
+		{"status", "--short"},
+		{"diff", "--unified=3", "--cached", "--stat"},
+		{"diff", "--unified=3", "--cached"},
+		{"diff", "--unified=3", "--stat"},
+		{"diff", "--unified=3"},
+	}
+	require.Equal(t, expectedCommands, executor.calls)
+}
+
 func TestBuildRequestNoChangesReturnsError(t *testing.T) {
 	executor := &stubGitExecutor{
 		responses: map[string]string{

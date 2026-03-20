@@ -28,6 +28,7 @@ import (
 	"github.com/tyemirov/gix/internal/utils"
 	flagutils "github.com/tyemirov/gix/internal/utils/flags"
 	"github.com/tyemirov/gix/internal/version"
+	"github.com/tyemirov/utils/llm"
 )
 
 var commandOperationRequirements = map[string][]string{
@@ -85,6 +86,7 @@ type Application struct {
 	versionExitEnabled                bool
 	exitFunction                      func(int)
 	webRunner                         webRunner
+	llmClientFactory                  func(llm.Config) (llm.ChatClient, error)
 }
 
 // NewApplication assembles a fully wired CLI application instance.
@@ -99,6 +101,9 @@ func NewApplication() *Application {
 	application.versionExitEnabled = true
 	application.exitFunction = os.Exit
 	application.webRunner = application.launchWebInterface
+	application.llmClientFactory = func(configuration llm.Config) (llm.ChatClient, error) {
+		return llm.NewFactory(configuration)
+	}
 
 	application.configurationLoader = utils.NewConfigurationLoader(
 		configurationNameConstant,
