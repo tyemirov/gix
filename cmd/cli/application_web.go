@@ -11,16 +11,22 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"go.uber.org/zap"
 
+	changelogcmd "github.com/tyemirov/gix/cmd/cli/changelog"
+	commitcmd "github.com/tyemirov/gix/cmd/cli/commit"
 	"github.com/tyemirov/gix/internal/audit"
+	internalchangelog "github.com/tyemirov/gix/internal/changelog"
+	"github.com/tyemirov/gix/internal/commitmsg"
 	"github.com/tyemirov/gix/internal/execshell"
 	reposdeps "github.com/tyemirov/gix/internal/repos/dependencies"
 	"github.com/tyemirov/gix/internal/repos/shared"
@@ -29,10 +35,10 @@ import (
 	"github.com/tyemirov/gix/internal/web"
 	"github.com/tyemirov/gix/internal/workflow"
 	"github.com/tyemirov/gix/pkg/taskrunner"
+	"github.com/tyemirov/utils/llm"
 )
 
 const (
-	webInterfaceUnavailableMessageConstant      = "web mode is unavailable from the web interface"
 	webLaunchModeCurrentRepositoryConstant      = "current_repo"
 	webLaunchModeConfiguredRootsConstant        = "configured_roots"
 	webLaunchModeDiscoveredRepositoriesConstant = "discovered_repositories"
@@ -54,6 +60,7 @@ const (
 	gitSymbolicRefSubcommandConstant            = "symbolic-ref"
 	gitSymbolicRefQuietArgumentConstant         = "--quiet"
 	gitShortArgumentConstant                    = "--short"
+	gitHeadReferenceConstant                    = "HEAD"
 	gitOriginHeadReferenceConstant              = "refs/remotes/origin/HEAD"
 	gitOriginPrefixConstant                     = "origin/"
 	webGitMetadataDirectoryNameConstant         = ".git"
@@ -75,10 +82,27 @@ const (
 	webAuditChangeProtocolMissingConstant       = "convert_protocol requires source_protocol and target_protocol"
 	webAuditChangeSyncStrategyTemplateConstant  = "unsupported sync strategy %q"
 	webAuditChangeKindTemplateConstant          = "unsupported audit change kind %q"
+	webAuditChangeChangelogBranchRejected       = "update_changelog requires the current branch to match the default branch"
+	webAuditChangeChangelogTaggedRejected       = "update_changelog requires HEAD to be untagged"
+	webAuditChangeCommitMessageTemplateConstant = "Generated commit message:\n%s\n"
+	webAuditChangeUpdatedFileTemplateConstant   = "UPDATED: %s\n"
+	webAuditChangelogFileNameConstant           = "CHANGELOG.md"
+	webAuditDefaultReleaseVersionConstant       = "v0.1.0"
+	webAuditGitAddSubcommandConstant            = "add"
+	webAuditGitCommitSubcommandConstant         = "commit"
+	webAuditGitAllPathsArgumentConstant         = "-A"
+	webAuditGitCommitMessageArgumentConstant    = "-m"
+	webAuditGitDescribeSubcommandConstant       = "describe"
+	webAuditGitDescribeTagsArgumentConstant     = "--tags"
+	webAuditGitDescribeAbbrevArgumentConstant   = "--abbrev=0"
+	webAuditGitTagSubcommandConstant            = "tag"
+	webAuditGitPointsAtArgumentConstant         = "--points-at"
 	webAuditChangeStatusSucceededConstant       = "succeeded"
 	webAuditChangeStatusSkippedConstant         = "skipped"
 	webAuditChangeStatusFailedConstant          = "failed"
 )
+
+var webReleaseVersionPattern = regexp.MustCompile(`^(v?)(\d+)\.(\d+)\.(\d+)(?:-rc(\d+))?$`)
 
 var nonActionableCommandPaths = map[string]struct{}{
 	applicationNameConstant: {},
@@ -206,16 +230,11 @@ func (application *Application) handleWebLaunch(command *cobra.Command, argument
 	repositoryCatalog := application.repositoryCatalog(executionContext, launchRoots)
 
 	return true, application.webRunner(executionContext, web.ServerOptions{
-		Address:                launchConfiguration.listenAddress(),
-		Repositories:           repositoryCatalog,
-		Catalog:                application.commandCatalog(),
-		LoadBranches:           application.loadRepositoryBranches,
-		BrowseDirectories:      application.newWebDirectoryBrowser(),
-		Execute:                application.newWebCommandExecutor(),
-		InspectAudit:           application.newWebAuditInspector(),
-		ApplyAuditChanges:      application.newWebAuditChangeExecutor(),
-		LoadWorkflowPrimitives: application.newWebWorkflowPrimitiveCatalogLoader(),
-		ApplyWorkflowActions:   application.newWebWorkflowPrimitiveExecutor(),
+		Address:           launchConfiguration.listenAddress(),
+		Repositories:      repositoryCatalog,
+		BrowseDirectories: application.newWebDirectoryBrowser(),
+		InspectAudit:      application.newWebAuditInspector(),
+		ApplyAuditChanges: application.newWebAuditChangeExecutor(),
 	})
 }
 
@@ -282,25 +301,6 @@ func resolveWebLaunchRoots(command *cobra.Command) ([]string, error) {
 
 func (application *Application) launchWebInterface(executionContext context.Context, options web.ServerOptions) error {
 	return web.Run(executionContext, options)
-}
-
-func (application *Application) newWebCommandExecutor() web.CommandExecutor {
-	return func(executionContext context.Context, arguments []string, standardInput io.Reader, standardOutput io.Writer, standardError io.Writer) error {
-		nestedApplication := NewApplication()
-		nestedApplication.versionResolver = application.versionResolver
-		nestedApplication.webRunner = func(context.Context, web.ServerOptions) error {
-			return errors.New(webInterfaceUnavailableMessageConstant)
-		}
-
-		return nestedApplication.ExecuteWithOptions(ExecutionOptions{
-			Arguments:      application.webInheritedArguments(arguments),
-			Context:        executionContext,
-			StandardInput:  standardInput,
-			StandardOutput: standardOutput,
-			StandardError:  standardError,
-			ExitOnVersion:  false,
-		})
-	}
 }
 
 func (application *Application) newWebDirectoryBrowser() web.DirectoryBrowser {
@@ -438,27 +438,6 @@ func (application *Application) newWebAuditChangeExecutor() web.AuditChangeExecu
 	}
 }
 
-func (application *Application) webInheritedArguments(arguments []string) []string {
-	inheritedArguments := make([]string, 0, len(arguments)+6)
-
-	configurationFilePath := strings.TrimSpace(application.configurationMetadata.ConfigFileUsed)
-	if len(configurationFilePath) > 0 && !commandArgumentsContainFlag(arguments, configFileFlagNameConstant) {
-		inheritedArguments = append(inheritedArguments, "--"+configFileFlagNameConstant, configurationFilePath)
-	}
-
-	logLevelValue := strings.TrimSpace(application.logLevelFlagValue)
-	if len(logLevelValue) > 0 && !commandArgumentsContainFlag(arguments, logLevelFlagNameConstant) {
-		inheritedArguments = append(inheritedArguments, "--"+logLevelFlagNameConstant, logLevelValue)
-	}
-
-	logFormatValue := strings.TrimSpace(application.logFormatFlagValue)
-	if len(logFormatValue) > 0 && !commandArgumentsContainFlag(arguments, logFormatFlagNameConstant) {
-		inheritedArguments = append(inheritedArguments, "--"+logFormatFlagNameConstant, logFormatValue)
-	}
-
-	return append(inheritedArguments, arguments...)
-}
-
 func (application *Application) applyWebAuditChange(executionContext context.Context, change web.AuditQueuedChange) web.AuditChangeApplyResult {
 	normalizedPath, pathError := normalizeWebAuditChangePath(change.Path)
 	result := web.AuditChangeApplyResult{
@@ -494,6 +473,30 @@ func (application *Application) applyWebAuditChange(executionContext context.Con
 			break
 		}
 		_, _ = fmt.Fprintf(outputBuffer, "DELETED: %s\n", normalizedPath)
+	case web.AuditChangeKindUpdateChangelog, web.AuditChangeKindCommitChanges:
+		dependencies, dependencyError := application.webTaskRunnerDependencies(outputBuffer, errorBuffer)
+		if dependencyError != nil {
+			applyError = dependencyError
+			break
+		}
+
+		switch change.Kind {
+		case web.AuditChangeKindUpdateChangelog:
+			applyError = application.applyWebAuditUpdateChangelog(
+				executionContext,
+				dependencies.GitExecutor,
+				dependencies.FileSystem,
+				normalizedPath,
+				outputBuffer,
+			)
+		case web.AuditChangeKindCommitChanges:
+			applyError = application.applyWebAuditCommitChanges(
+				executionContext,
+				dependencies.GitExecutor,
+				normalizedPath,
+				outputBuffer,
+			)
+		}
 	default:
 		dependencies, dependencyError := application.webTaskRunnerDependencies(outputBuffer, errorBuffer)
 		if dependencyError != nil {
@@ -523,22 +526,6 @@ func (application *Application) applyWebAuditChange(executionContext context.Con
 	}
 
 	return result
-}
-
-func commandArgumentsContainFlag(arguments []string, flagName string) bool {
-	if len(flagName) == 0 {
-		return false
-	}
-
-	fullName := "--" + flagName
-	prefixedName := fullName + "="
-	for _, argument := range arguments {
-		if argument == fullName || strings.HasPrefix(argument, prefixedName) {
-			return true
-		}
-	}
-
-	return false
 }
 
 func (application *Application) repositoryCatalog(executionContext context.Context, launchRoots []string) web.RepositoryCatalog {
@@ -840,12 +827,481 @@ func mapAuditInspectionRow(inspection audit.RepositoryInspection) web.AuditInspe
 		NameMatches:            string(row.NameMatches),
 		RemoteDefaultBranch:    row.RemoteDefaultBranch,
 		LocalBranch:            row.LocalBranch,
+		HeadTagged:             inspection.HeadTagged,
 		InSync:                 string(row.InSync),
 		RemoteProtocol:         string(row.RemoteProtocol),
 		OriginMatchesCanonical: string(row.OriginMatchesCanonical),
 		WorktreeDirty:          string(row.WorktreeDirty),
 		DirtyFiles:             row.DirtyFiles,
+		DirtyFileEntries:       parseWebAuditDirtyFileEntries(inspection.WorktreeDirtyFiles),
 	}
+}
+
+func parseWebAuditDirtyFileEntries(worktreeDirtyFiles []string) []web.AuditDirtyFileEntry {
+	entries := make([]web.AuditDirtyFileEntry, 0, len(worktreeDirtyFiles))
+	for _, worktreeDirtyFile := range worktreeDirtyFiles {
+		dirtyFileEntry, ok := parseWebAuditDirtyFileEntry(worktreeDirtyFile)
+		if !ok {
+			continue
+		}
+		entries = append(entries, dirtyFileEntry)
+	}
+	return entries
+}
+
+func parseWebAuditDirtyFileEntry(rawEntry string) (web.AuditDirtyFileEntry, bool) {
+	trimmedEntry := strings.TrimSpace(rawEntry)
+	if len(trimmedEntry) == 0 {
+		return web.AuditDirtyFileEntry{}, false
+	}
+
+	if len(trimmedEntry) >= 2 {
+		statusValue := strings.TrimSpace(trimmedEntry[:2])
+		fileValue := strings.TrimSpace(trimmedEntry[2:])
+		if len(statusValue) > 0 && len(fileValue) > 0 {
+			return web.AuditDirtyFileEntry{
+				Status: statusValue,
+				File:   fileValue,
+			}, true
+		}
+	}
+
+	statusValue := strings.TrimSpace(trimmedEntry[:1])
+	fileValue := strings.TrimSpace(trimmedEntry[1:])
+	if len(statusValue) == 0 || len(fileValue) == 0 {
+		return web.AuditDirtyFileEntry{}, false
+	}
+
+	return web.AuditDirtyFileEntry{
+		Status: statusValue,
+		File:   fileValue,
+	}, true
+}
+
+func (application *Application) applyWebAuditCommitChanges(
+	executionContext context.Context,
+	gitExecutor shared.GitExecutor,
+	repositoryPath string,
+	outputWriter io.Writer,
+) error {
+	client, configuration, clientError := application.webCommitMessageClient()
+	if clientError != nil {
+		return fmt.Errorf("audit.commit.client %s: %w", repositoryPath, clientError)
+	}
+
+	generator := commitmsg.Generator{
+		GitExecutor: gitExecutor,
+		Client:      client,
+		Logger:      application.logger,
+	}
+	result, generateError := generator.Generate(executionContext, commitmsg.Options{
+		RepositoryPath: repositoryPath,
+		Source:         commitmsg.DiffSourceAll,
+		MaxTokens:      configuration.MaxTokens,
+		Temperature:    webOptionalTemperature(configuration.Temperature),
+	})
+	if generateError != nil {
+		return fmt.Errorf("audit.commit.generate %s: %w", repositoryPath, generateError)
+	}
+
+	if outputWriter != nil {
+		_, _ = fmt.Fprintf(outputWriter, webAuditChangeCommitMessageTemplateConstant, result.Message)
+	}
+
+	addResult, addError := gitExecutor.ExecuteGit(executionContext, execshell.CommandDetails{
+		Arguments:        []string{webAuditGitAddSubcommandConstant, webAuditGitAllPathsArgumentConstant},
+		WorkingDirectory: repositoryPath,
+	})
+	if addError != nil {
+		return fmt.Errorf("audit.commit.stage %s: %w", repositoryPath, addError)
+	}
+	writeWebExecutionOutput(outputWriter, addResult)
+
+	commitResult, commitError := gitExecutor.ExecuteGit(executionContext, execshell.CommandDetails{
+		Arguments: []string{
+			webAuditGitCommitSubcommandConstant,
+			webAuditGitCommitMessageArgumentConstant,
+			result.Message,
+		},
+		WorkingDirectory: repositoryPath,
+	})
+	if commitError != nil {
+		return fmt.Errorf("audit.commit.apply %s: %w", repositoryPath, commitError)
+	}
+	writeWebExecutionOutput(outputWriter, commitResult)
+	return nil
+}
+
+func (application *Application) applyWebAuditUpdateChangelog(
+	executionContext context.Context,
+	gitExecutor shared.GitExecutor,
+	fileSystem shared.FileSystem,
+	repositoryPath string,
+	outputWriter io.Writer,
+) error {
+	changelogEligibilityError := validateWebAuditChangelogEligibility(executionContext, gitExecutor, repositoryPath)
+	if changelogEligibilityError != nil {
+		return fmt.Errorf("audit.changelog.guard %s: %w", repositoryPath, changelogEligibilityError)
+	}
+
+	client, configuration, clientError := application.webChangelogMessageClient()
+	if clientError != nil {
+		return fmt.Errorf("audit.changelog.client %s: %w", repositoryPath, clientError)
+	}
+
+	versionValue, versionError := detectWebReleaseVersion(executionContext, gitExecutor, fileSystem, repositoryPath)
+	if versionError != nil {
+		return fmt.Errorf("audit.changelog.version %s: %w", repositoryPath, versionError)
+	}
+
+	releaseDateValue := time.Now().Format("2006-01-02")
+	generator := internalchangelog.Generator{
+		GitExecutor: gitExecutor,
+		Client:      client,
+		Logger:      application.logger,
+	}
+	result, generateError := generator.Generate(executionContext, internalchangelog.Options{
+		RepositoryPath:  repositoryPath,
+		Version:         versionValue,
+		ReleaseDate:     releaseDateValue,
+		IncludeWorktree: true,
+		MaxTokens:       configuration.MaxTokens,
+		Temperature:     webOptionalTemperature(configuration.Temperature),
+	})
+	if generateError != nil {
+		return fmt.Errorf("audit.changelog.generate %s: %w", repositoryPath, generateError)
+	}
+
+	changelogPath := filepath.Join(repositoryPath, webAuditChangelogFileNameConstant)
+	currentContents, readError := fileSystem.ReadFile(changelogPath)
+	if readError != nil && !errors.Is(readError, os.ErrNotExist) {
+		return fmt.Errorf("audit.changelog.read %s: %w", changelogPath, readError)
+	}
+
+	nextContents, contentsError := upsertWebChangelogSection(string(currentContents), result.Section)
+	if contentsError != nil {
+		return fmt.Errorf("audit.changelog.section %s: %w", changelogPath, contentsError)
+	}
+
+	if writeError := fileSystem.WriteFile(changelogPath, []byte(nextContents), 0o644); writeError != nil {
+		return fmt.Errorf("audit.changelog.write %s: %w", changelogPath, writeError)
+	}
+
+	if outputWriter != nil {
+		_, _ = fmt.Fprintf(outputWriter, webAuditChangeUpdatedFileTemplateConstant, changelogPath)
+		_, _ = fmt.Fprintln(outputWriter, strings.TrimSpace(result.Section))
+	}
+	return nil
+}
+
+func (application *Application) webCommitMessageClient() (llm.ChatClient, commitcmd.MessageConfiguration, error) {
+	configuration := application.commitMessageConfiguration()
+	client, clientError := application.newWebLLMClient(
+		configuration.BaseURL,
+		configuration.APIKeyEnv,
+		configuration.Model,
+		configuration.MaxTokens,
+		configuration.Temperature,
+		configuration.TimeoutSeconds,
+	)
+	return client, configuration, clientError
+}
+
+func (application *Application) webChangelogMessageClient() (llm.ChatClient, changelogcmd.MessageConfiguration, error) {
+	configuration := application.changelogMessageConfiguration()
+	client, clientError := application.newWebLLMClient(
+		configuration.BaseURL,
+		configuration.APIKeyEnv,
+		configuration.Model,
+		configuration.MaxTokens,
+		configuration.Temperature,
+		configuration.TimeoutSeconds,
+	)
+	return client, configuration, clientError
+}
+
+func (application *Application) newWebLLMClient(
+	baseURL string,
+	apiKeyEnv string,
+	modelIdentifier string,
+	maxTokens int,
+	temperature float64,
+	timeoutSeconds int,
+) (llm.ChatClient, error) {
+	trimmedAPIKeyEnv := strings.TrimSpace(apiKeyEnv)
+	if trimmedAPIKeyEnv == "" {
+		return nil, errors.New("llm api key environment is required")
+	}
+
+	apiKeyValue := strings.TrimSpace(os.Getenv(trimmedAPIKeyEnv))
+	if apiKeyValue == "" {
+		return nil, fmt.Errorf("environment variable %s must be set with an API key", trimmedAPIKeyEnv)
+	}
+
+	clientFactory := application.llmClientFactory
+	if clientFactory == nil {
+		clientFactory = func(configuration llm.Config) (llm.ChatClient, error) {
+			return llm.NewFactory(configuration)
+		}
+	}
+
+	clientConfiguration := llm.Config{
+		BaseURL:             strings.TrimSpace(baseURL),
+		APIKey:              apiKeyValue,
+		Model:               strings.TrimSpace(modelIdentifier),
+		MaxCompletionTokens: maxTokens,
+		RequestTimeout:      time.Duration(timeoutSeconds) * time.Second,
+	}
+	if temperature > 0 {
+		clientConfiguration.Temperature = temperature
+	}
+
+	return clientFactory(clientConfiguration)
+}
+
+func webOptionalTemperature(temperature float64) *float64 {
+	if temperature == 0 {
+		return nil
+	}
+	return &temperature
+}
+
+func writeWebExecutionOutput(outputWriter io.Writer, result execshell.ExecutionResult) {
+	if outputWriter == nil {
+		return
+	}
+	if strings.TrimSpace(result.StandardOutput) != "" {
+		_, _ = fmt.Fprintln(outputWriter, strings.TrimSpace(result.StandardOutput))
+	}
+}
+
+func validateWebAuditChangelogEligibility(
+	executionContext context.Context,
+	gitExecutor shared.GitExecutor,
+	repositoryPath string,
+) error {
+	defaultBranch, defaultBranchError := webAuditDefaultBranch(executionContext, gitExecutor, repositoryPath)
+	if defaultBranchError != nil {
+		return defaultBranchError
+	}
+
+	currentBranch, currentBranchError := webAuditCurrentBranch(executionContext, gitExecutor, repositoryPath)
+	if currentBranchError != nil {
+		return currentBranchError
+	}
+
+	if currentBranch == "" || defaultBranch == "" || currentBranch != defaultBranch {
+		return errors.New(webAuditChangeChangelogBranchRejected)
+	}
+
+	headTagged, headTaggedError := webAuditHeadTagged(executionContext, gitExecutor, repositoryPath)
+	if headTaggedError != nil {
+		return headTaggedError
+	}
+	if headTagged {
+		return errors.New(webAuditChangeChangelogTaggedRejected)
+	}
+
+	return nil
+}
+
+func webAuditDefaultBranch(
+	executionContext context.Context,
+	gitExecutor shared.GitExecutor,
+	repositoryPath string,
+) (string, error) {
+	remoteHeadResult, remoteHeadError := gitExecutor.ExecuteGit(executionContext, execshell.CommandDetails{
+		Arguments:        []string{gitSymbolicRefSubcommandConstant, gitSymbolicRefQuietArgumentConstant, gitShortArgumentConstant, gitOriginHeadReferenceConstant},
+		WorkingDirectory: repositoryPath,
+	})
+	if remoteHeadError == nil {
+		remoteReference := strings.TrimSpace(remoteHeadResult.StandardOutput)
+		remoteReference = strings.TrimPrefix(remoteReference, gitOriginPrefixConstant)
+		if remoteReference != "" {
+			return remoteReference, nil
+		}
+	}
+
+	localHeadResult, localHeadError := gitExecutor.ExecuteGit(executionContext, execshell.CommandDetails{
+		Arguments:        []string{gitSymbolicRefSubcommandConstant, gitSymbolicRefQuietArgumentConstant, gitShortArgumentConstant, gitHeadReferenceConstant},
+		WorkingDirectory: repositoryPath,
+	})
+	if localHeadError != nil {
+		return "", localHeadError
+	}
+
+	return strings.TrimSpace(localHeadResult.StandardOutput), nil
+}
+
+func webAuditCurrentBranch(
+	executionContext context.Context,
+	gitExecutor shared.GitExecutor,
+	repositoryPath string,
+) (string, error) {
+	branchResult, branchError := gitExecutor.ExecuteGit(executionContext, execshell.CommandDetails{
+		Arguments:        []string{gitSymbolicRefSubcommandConstant, gitSymbolicRefQuietArgumentConstant, gitShortArgumentConstant, gitHeadReferenceConstant},
+		WorkingDirectory: repositoryPath,
+	})
+	if branchError != nil {
+		return "", branchError
+	}
+	return strings.TrimSpace(branchResult.StandardOutput), nil
+}
+
+func webAuditHeadTagged(
+	executionContext context.Context,
+	gitExecutor shared.GitExecutor,
+	repositoryPath string,
+) (bool, error) {
+	tagResult, tagError := gitExecutor.ExecuteGit(executionContext, execshell.CommandDetails{
+		Arguments:        []string{webAuditGitTagSubcommandConstant, webAuditGitPointsAtArgumentConstant, gitHeadReferenceConstant},
+		WorkingDirectory: repositoryPath,
+	})
+	if tagError != nil {
+		return false, tagError
+	}
+	return strings.TrimSpace(tagResult.StandardOutput) != "", nil
+}
+
+func detectWebReleaseVersion(
+	executionContext context.Context,
+	gitExecutor shared.GitExecutor,
+	fileSystem shared.FileSystem,
+	repositoryPath string,
+) (string, error) {
+	changelogCandidate := ""
+	changelogPath := filepath.Join(repositoryPath, webAuditChangelogFileNameConstant)
+	if changelogContents, readError := fileSystem.ReadFile(changelogPath); readError == nil {
+		changelogCandidate = findWebChangelogVersionCandidate(string(changelogContents))
+	} else if !errors.Is(readError, os.ErrNotExist) {
+		return "", readError
+	}
+
+	describeResult, describeError := gitExecutor.ExecuteGit(executionContext, execshell.CommandDetails{
+		Arguments: []string{
+			webAuditGitDescribeSubcommandConstant,
+			webAuditGitDescribeTagsArgumentConstant,
+			webAuditGitDescribeAbbrevArgumentConstant,
+		},
+		WorkingDirectory: repositoryPath,
+	})
+	if describeError == nil {
+		tagCandidate := strings.TrimSpace(describeResult.StandardOutput)
+		if nextVersion, ok := nextWebReleaseVersion(tagCandidate); ok {
+			if strings.TrimSpace(changelogCandidate) == nextVersion {
+				return changelogCandidate, nil
+			}
+			return nextVersion, nil
+		}
+	}
+
+	if nextVersion, ok := nextWebReleaseVersion(changelogCandidate); ok {
+		return nextVersion, nil
+	}
+
+	return webAuditDefaultReleaseVersionConstant, nil
+}
+
+func findWebChangelogVersionCandidate(contents string) string {
+	for _, line := range strings.Split(strings.ReplaceAll(contents, "\r\n", "\n"), "\n") {
+		trimmedLine := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmedLine, "## [") || !strings.HasSuffix(trimmedLine, "]") {
+			continue
+		}
+		return strings.TrimSuffix(strings.TrimPrefix(trimmedLine, "## ["), "]")
+	}
+	return ""
+}
+
+func nextWebReleaseVersion(candidate string) (string, bool) {
+	matches := webReleaseVersionPattern.FindStringSubmatch(strings.TrimSpace(candidate))
+	if len(matches) == 0 {
+		return "", false
+	}
+
+	majorValue, majorError := strconv.Atoi(matches[2])
+	if majorError != nil {
+		return "", false
+	}
+	minorValue, minorError := strconv.Atoi(matches[3])
+	if minorError != nil {
+		return "", false
+	}
+	patchValue, patchError := strconv.Atoi(matches[4])
+	if patchError != nil {
+		return "", false
+	}
+
+	prefixValue := matches[1]
+	if prefixValue == "" {
+		prefixValue = "v"
+	}
+
+	if matches[5] != "" {
+		rcValue, rcError := strconv.Atoi(matches[5])
+		if rcError != nil {
+			return "", false
+		}
+		return fmt.Sprintf("%s%d.%d.%d-rc%d", prefixValue, majorValue, minorValue, patchValue, rcValue+1), true
+	}
+
+	return fmt.Sprintf("%s%d.%d.%d", prefixValue, majorValue, minorValue, patchValue+1), true
+}
+
+func upsertWebChangelogSection(existingContents string, section string) (string, error) {
+	normalizedSection := strings.TrimSpace(strings.ReplaceAll(section, "\r\n", "\n"))
+	if normalizedSection == "" {
+		return "", errors.New("changelog section is required")
+	}
+
+	sectionLines := strings.Split(normalizedSection, "\n")
+	headingLine := strings.TrimSpace(sectionLines[0])
+	if !strings.HasPrefix(headingLine, "## ") {
+		return "", errors.New("changelog section must start with a level-two heading")
+	}
+
+	normalizedExisting := strings.ReplaceAll(existingContents, "\r\n", "\n")
+	if strings.TrimSpace(normalizedExisting) == "" {
+		return "# Changelog\n\n" + normalizedSection + "\n", nil
+	}
+
+	sectionBlock := normalizedSection + "\n"
+	headingExpression := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(headingLine) + `$`)
+	if existingHeadingIndex := headingExpression.FindStringIndex(normalizedExisting); existingHeadingIndex != nil {
+		nextHeadingExpression := regexp.MustCompile(`(?m)^## `)
+		nextHeadingIndex := nextHeadingExpression.FindStringIndex(normalizedExisting[existingHeadingIndex[1]:])
+		sectionEndIndex := len(normalizedExisting)
+		if nextHeadingIndex != nil {
+			sectionEndIndex = existingHeadingIndex[1] + nextHeadingIndex[0]
+		}
+
+		prefixValue := strings.TrimRight(normalizedExisting[:existingHeadingIndex[0]], "\n")
+		suffixValue := strings.TrimLeft(normalizedExisting[sectionEndIndex:], "\n")
+		rebuilt := prefixValue + "\n\n" + sectionBlock
+		if suffixValue != "" {
+			rebuilt += "\n" + suffixValue
+		}
+		return strings.TrimRight(rebuilt, "\n") + "\n", nil
+	}
+
+	if strings.HasPrefix(normalizedExisting, "# ") {
+		lines := strings.Split(normalizedExisting, "\n")
+		insertIndex := 1
+		for insertIndex < len(lines) && strings.TrimSpace(lines[insertIndex]) == "" {
+			insertIndex++
+		}
+		prefixLines := append([]string(nil), lines[:insertIndex]...)
+		suffixLines := lines[insertIndex:]
+		rebuiltLines := append(prefixLines, "")
+		rebuiltLines = append(rebuiltLines, strings.Split(normalizedSection, "\n")...)
+		if len(suffixLines) > 0 {
+			rebuiltLines = append(rebuiltLines, "")
+			rebuiltLines = append(rebuiltLines, suffixLines...)
+		}
+		return strings.TrimRight(strings.Join(rebuiltLines, "\n"), "\n") + "\n", nil
+	}
+
+	return normalizedSection + "\n\n" + strings.TrimLeft(normalizedExisting, "\n"), nil
 }
 
 func executeWebAuditWorkflowChange(
@@ -979,6 +1435,10 @@ func webAuditChangeMessage(kind web.AuditChangeKind) string {
 		return "Remote protocol updated"
 	case web.AuditChangeKindSyncWithRemote:
 		return "Repository synchronized with remote"
+	case web.AuditChangeKindUpdateChangelog:
+		return "Changelog updated"
+	case web.AuditChangeKindCommitChanges:
+		return "Changes committed"
 	case web.AuditChangeKindDeleteFolder:
 		return "Folder deleted"
 	default:
@@ -996,6 +1456,10 @@ func webAuditChangeSkippedMessage(kind web.AuditChangeKind) string {
 		return "Remote protocol update skipped"
 	case web.AuditChangeKindSyncWithRemote:
 		return "Repository synchronization skipped"
+	case web.AuditChangeKindUpdateChangelog:
+		return "Changelog update skipped"
+	case web.AuditChangeKindCommitChanges:
+		return "Commit skipped"
 	case web.AuditChangeKindDeleteFolder:
 		return "Folder deletion skipped"
 	default:
@@ -1039,10 +1503,14 @@ func webAuditChangePriority(kind web.AuditChangeKind) int {
 		return 20
 	case web.AuditChangeKindSyncWithRemote:
 		return 30
-	case web.AuditChangeKindRenameFolder:
-		return 40
+	case web.AuditChangeKindUpdateChangelog:
+		return 35
+	case web.AuditChangeKindCommitChanges:
+		return 36
 	case web.AuditChangeKindDeleteFolder:
 		return 50
+	case web.AuditChangeKindRenameFolder:
+		return 60
 	default:
 		return 100
 	}

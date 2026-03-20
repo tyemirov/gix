@@ -4,3 +4,11 @@
 !AGENTS.md
 !.mprl/
 !.mprl/**
+!internal/
+!internal/web/
+!internal/web/ui/
+!internal/web/ui/assets/
+!internal/web/ui/assets/shared.js
+!internal/web/ui/assets/repo_tree.js
+!internal/web/ui/assets/audit.js
+!internal/web/ui/assets/main.js

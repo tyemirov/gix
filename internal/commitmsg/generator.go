@@ -27,6 +27,8 @@ const (
 	DiffSourceStaged DiffSource = "staged"
 	// DiffSourceWorktree captures unstaged working tree changes.
 	DiffSourceWorktree DiffSource = "worktree"
+	// DiffSourceAll captures all pending staged and worktree changes.
+	DiffSourceAll DiffSource = "all"
 )
 
 // Options configure commit message generation.
@@ -147,6 +149,42 @@ func (generator Generator) collectGitContext(ctx context.Context, repositoryPath
 	}
 
 	diffArguments := []string{"diff", "--unified=3"}
+	if source == DiffSourceAll {
+		stagedSummaryOutput, stagedSummaryError := generator.runGit(ctx, repositoryPath, []string{"diff", "--unified=3", "--cached", "--stat"})
+		if stagedSummaryError != nil {
+			return gitContextFragments{}, stagedSummaryError
+		}
+		stagedPatchOutput, stagedPatchError := generator.runGit(ctx, repositoryPath, []string{"diff", "--unified=3", "--cached"})
+		if stagedPatchError != nil {
+			return gitContextFragments{}, stagedPatchError
+		}
+
+		worktreeSummaryOutput, worktreeSummaryError := generator.runGit(ctx, repositoryPath, []string{"diff", "--unified=3", "--stat"})
+		if worktreeSummaryError != nil {
+			return gitContextFragments{}, worktreeSummaryError
+		}
+		worktreePatchOutput, worktreePatchError := generator.runGit(ctx, repositoryPath, []string{"diff", "--unified=3"})
+		if worktreePatchError != nil {
+			return gitContextFragments{}, worktreePatchError
+		}
+
+		return gitContextFragments{
+			status: strings.TrimSpace(summaryTruncate(statusOutput, defaultPatchCharacterCap)),
+			summary: strings.TrimSpace(summaryTruncate(joinPendingDiffSections(
+				"STAGED",
+				stagedSummaryOutput,
+				"WORKTREE",
+				worktreeSummaryOutput,
+			), defaultPatchCharacterCap)),
+			patch: strings.TrimSpace(summaryTruncate(joinPendingDiffSections(
+				"STAGED",
+				stagedPatchOutput,
+				"WORKTREE",
+				worktreePatchOutput,
+			), defaultPatchCharacterCap)),
+		}, nil
+	}
+
 	switch source {
 	case DiffSourceStaged:
 		diffArguments = append(diffArguments, "--cached")
@@ -203,4 +241,19 @@ func fallbackText(value string, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func joinPendingDiffSections(firstLabel string, firstValue string, secondLabel string, secondValue string) string {
+	sections := []string{}
+	appendSection := func(label string, value string) {
+		trimmedValue := strings.TrimSpace(value)
+		if trimmedValue == "" {
+			return
+		}
+		sections = append(sections, label+"\n"+trimmedValue)
+	}
+
+	appendSection(strings.TrimSpace(firstLabel), firstValue)
+	appendSection(strings.TrimSpace(secondLabel), secondValue)
+	return strings.Join(sections, "\n\n")
 }

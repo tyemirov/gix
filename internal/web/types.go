@@ -28,16 +28,11 @@ type WorkflowPrimitiveExecutor func(context.Context, WorkflowPrimitiveApplyReque
 
 // ServerOptions configures the local web server.
 type ServerOptions struct {
-	Address                string
-	Repositories           RepositoryCatalog
-	Catalog                CommandCatalog
-	LoadBranches           BranchCatalogLoader
-	BrowseDirectories      DirectoryBrowser
-	Execute                CommandExecutor
-	InspectAudit           AuditInspector
-	ApplyAuditChanges      AuditChangeExecutor
-	LoadWorkflowPrimitives WorkflowPrimitiveCatalogLoader
-	ApplyWorkflowActions   WorkflowPrimitiveExecutor
+	Address           string
+	Repositories      RepositoryCatalog
+	BrowseDirectories DirectoryBrowser
+	InspectAudit      AuditInspector
+	ApplyAuditChanges AuditChangeExecutor
 }
 
 // RepositoryCatalog describes the repositories visible to the web interface at launch time.
@@ -157,21 +152,29 @@ type AuditInspectionResponse struct {
 	Error string               `json:"error,omitempty"`
 }
 
+// AuditDirtyFileEntry captures one dirty worktree file status line.
+type AuditDirtyFileEntry struct {
+	Status string `json:"status"`
+	File   string `json:"file"`
+}
+
 // AuditInspectionRow captures one typed audit result row.
 type AuditInspectionRow struct {
-	Path                   string `json:"path"`
-	FolderName             string `json:"folder_name"`
-	IsGitRepository        bool   `json:"is_git_repository"`
-	FinalGitHubRepository  string `json:"final_github_repo"`
-	OriginRemoteStatus     string `json:"origin_remote_status"`
-	NameMatches            string `json:"name_matches"`
-	RemoteDefaultBranch    string `json:"remote_default_branch"`
-	LocalBranch            string `json:"local_branch"`
-	InSync                 string `json:"in_sync"`
-	RemoteProtocol         string `json:"remote_protocol"`
-	OriginMatchesCanonical string `json:"origin_matches_canonical"`
-	WorktreeDirty          string `json:"worktree_dirty"`
-	DirtyFiles             string `json:"dirty_files"`
+	Path                   string                `json:"path"`
+	FolderName             string                `json:"folder_name"`
+	IsGitRepository        bool                  `json:"is_git_repository"`
+	FinalGitHubRepository  string                `json:"final_github_repo"`
+	OriginRemoteStatus     string                `json:"origin_remote_status"`
+	NameMatches            string                `json:"name_matches"`
+	RemoteDefaultBranch    string                `json:"remote_default_branch"`
+	LocalBranch            string                `json:"local_branch"`
+	HeadTagged             bool                  `json:"head_tagged"`
+	InSync                 string                `json:"in_sync"`
+	RemoteProtocol         string                `json:"remote_protocol"`
+	OriginMatchesCanonical string                `json:"origin_matches_canonical"`
+	WorktreeDirty          string                `json:"worktree_dirty"`
+	DirtyFiles             string                `json:"dirty_files"`
+	DirtyFileEntries       []AuditDirtyFileEntry `json:"dirty_file_entries,omitempty"`
 }
 
 // AuditChangeKind identifies one queued audit remediation.
@@ -182,6 +185,8 @@ const (
 	AuditChangeKindUpdateCanonical       AuditChangeKind = "update_remote_canonical"
 	AuditChangeKindConvertProtocol       AuditChangeKind = "convert_protocol"
 	AuditChangeKindSyncWithRemote        AuditChangeKind = "sync_with_remote"
+	AuditChangeKindUpdateChangelog       AuditChangeKind = "update_changelog"
+	AuditChangeKindCommitChanges         AuditChangeKind = "commit_changes"
 	AuditChangeKindDeleteFolder          AuditChangeKind = "delete_folder"
 	AuditChangeSyncStrategyRequireClean  string          = "require_clean"
 	AuditChangeSyncStrategyStashChanges  string          = "stash_changes"

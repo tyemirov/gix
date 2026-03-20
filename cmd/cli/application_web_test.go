@@ -20,6 +20,7 @@ import (
 	"github.com/tyemirov/gix/internal/repos/shared"
 	"github.com/tyemirov/gix/internal/web"
 	"github.com/tyemirov/gix/internal/workflow"
+	"github.com/tyemirov/utils/llm"
 )
 
 func TestExecuteWithOptionsVersionFlagWritesToProvidedOutput(t *testing.T) {
@@ -53,11 +54,11 @@ func TestExecuteWithOptionsLaunchesWebRunnerWithDefaultPort(t *testing.T) {
 	application := NewApplication()
 
 	capturedAddress := ""
-	capturedCatalog := web.CommandCatalog{}
 	application.webRunner = func(executionContext context.Context, options web.ServerOptions) error {
 		capturedAddress = options.Address
-		capturedCatalog = options.Catalog
-		require.NotNil(t, options.Execute)
+		require.NotNil(t, options.BrowseDirectories)
+		require.NotNil(t, options.InspectAudit)
+		require.NotNil(t, options.ApplyAuditChanges)
 		require.NotNil(t, executionContext)
 		return nil
 	}
@@ -73,7 +74,6 @@ func TestExecuteWithOptionsLaunchesWebRunnerWithDefaultPort(t *testing.T) {
 	require.NoError(t, executionError)
 	require.Equal(t, "127.0.0.1:8080", capturedAddress)
 	require.Contains(t, standardOutput.String(), "http://127.0.0.1:8080")
-	require.NotEmpty(t, capturedCatalog.Commands)
 }
 
 func TestExecuteWithOptionsLaunchesWebRunnerWithExplicitPort(t *testing.T) {
@@ -127,6 +127,21 @@ func TestExecuteWithOptionsLaunchesWebRunnerWithBindAndPortFlags(t *testing.T) {
 	require.NoError(t, executionError)
 	require.Equal(t, "0.0.0.0:8081", capturedAddress)
 	require.Contains(t, standardOutput.String(), "http://0.0.0.0:8081")
+}
+
+func TestParseWebAuditDirtyFileEntries(t *testing.T) {
+	require.Equal(t, []web.AuditDirtyFileEntry{
+		{Status: "M", File: "README.md"},
+		{Status: "AM", File: "internal/web/ui/assets/app.js"},
+		{Status: "??", File: "notes.txt"},
+		{Status: "R", File: "old/name.txt -> new/name.txt"},
+	}, parseWebAuditDirtyFileEntries([]string{
+		"M README.md",
+		"AM internal/web/ui/assets/app.js",
+		"?? notes.txt",
+		"R  old/name.txt -> new/name.txt",
+		"",
+	}))
 }
 
 func TestExecuteWithOptionsLaunchesWebRunnerWithExplicitRoots(t *testing.T) {
@@ -466,67 +481,7 @@ func TestLoadRepositoryBranchesReturnsLocalBranches(t *testing.T) {
 	require.Equal(t, "master", branchCatalog.Branches[1].Name)
 }
 
-func TestWebServerLoadsBranchesForDynamicallyDiscoveredRepository(t *testing.T) {
-	repositoryPath := createTestRepository(t, filepath.Join(t.TempDir(), "workspace", "example"))
-	createTestBranch(t, repositoryPath, "feature/demo")
-
-	application := NewApplication()
-	server, serverError := web.NewServer(web.ServerOptions{
-		Address:           "127.0.0.1:8080",
-		Repositories:      web.RepositoryCatalog{},
-		Catalog:           application.commandCatalog(),
-		LoadBranches:      application.loadRepositoryBranches,
-		BrowseDirectories: application.newWebDirectoryBrowser(),
-		Execute:           application.newWebCommandExecutor(),
-		InspectAudit: func(_ context.Context, _ web.AuditInspectionRequest) web.AuditInspectionResponse {
-			return web.AuditInspectionResponse{}
-		},
-		ApplyAuditChanges: func(_ context.Context, _ web.AuditChangeApplyRequest) web.AuditChangeApplyResponse {
-			return web.AuditChangeApplyResponse{}
-		},
-		LoadWorkflowPrimitives: application.newWebWorkflowPrimitiveCatalogLoader(),
-		ApplyWorkflowActions: func(_ context.Context, request web.WorkflowPrimitiveApplyRequest) web.WorkflowPrimitiveApplyResponse {
-			return web.WorkflowPrimitiveApplyResponse{
-				Results: []web.WorkflowPrimitiveApplyResult{
-					{
-						ID:             request.Actions[0].ID,
-						RepositoryPath: request.Actions[0].RepositoryPath,
-						PrimitiveID:    request.Actions[0].PrimitiveID,
-						Status:         webAuditChangeStatusSucceededConstant,
-						Message:        "Applied Replace in files",
-					},
-				},
-			}
-		},
-	})
-	require.NoError(t, serverError)
-
-	httpServer := httptest.NewServer(server.Handler())
-	defer httpServer.Close()
-
-	repositoryID := dynamicWebRepositoryID(repositoryPath)
-	branchesResponse, branchesError := http.Get(httpServer.URL + "/api/repos/" + url.PathEscape(repositoryID) + "/branches?path=" + url.QueryEscape(repositoryPath))
-	require.NoError(t, branchesError)
-	defer branchesResponse.Body.Close()
-	require.Equal(t, http.StatusOK, branchesResponse.StatusCode)
-
-	var branchCatalog web.BranchCatalog
-	require.NoError(t, json.NewDecoder(branchesResponse.Body).Decode(&branchCatalog))
-	require.Empty(t, branchCatalog.Error)
-	require.Equal(t, repositoryID, branchCatalog.RepositoryID)
-	require.Equal(t, canonicalPath(t, repositoryPath), canonicalPath(t, branchCatalog.RepositoryPath))
-	require.Len(t, branchCatalog.Branches, 2)
-	require.Equal(t, "feature/demo", branchCatalog.Branches[0].Name)
-	require.True(t, branchCatalog.Branches[0].Current)
-	require.Equal(t, "master", branchCatalog.Branches[1].Name)
-}
-
-func TestWebServerExecutesVersionCommand(t *testing.T) {
-	application := NewApplication()
-	application.versionResolver = func(context.Context) string {
-		return "v4.5.6"
-	}
-
+func TestWebServerServesAuditWorkspaceAndRemovesLegacyEndpoints(t *testing.T) {
 	server, serverError := web.NewServer(web.ServerOptions{
 		Address: "127.0.0.1:8080",
 		Repositories: web.RepositoryCatalog{
@@ -546,19 +501,26 @@ func TestWebServerExecutesVersionCommand(t *testing.T) {
 				},
 			},
 		},
-		Catalog: application.commandCatalog(),
-		LoadBranches: func(_ context.Context, repository web.RepositoryDescriptor) web.BranchCatalog {
-			return web.BranchCatalog{
-				RepositoryID:   repository.ID,
-				RepositoryPath: repository.Path,
-				Branches: []web.BranchDescriptor{
-					{Name: "feature/demo", Current: true, Upstream: "origin/feature/demo"},
-					{Name: "master", Current: false, Upstream: "origin/master"},
+		BrowseDirectories: func(_ context.Context, folderPath string) web.DirectoryListing {
+			return web.DirectoryListing{
+				Path: folderPath,
+				Folders: []web.FolderDescriptor{
+					{
+						Name: "example",
+						Path: "/tmp/example",
+						Repository: &web.RepositoryDescriptor{
+							ID:             "repo-001",
+							Name:           "example",
+							Path:           "/tmp/example",
+							CurrentBranch:  "feature/demo",
+							DefaultBranch:  "master",
+							Dirty:          false,
+							ContextCurrent: true,
+						},
+					},
 				},
 			}
 		},
-		BrowseDirectories: application.newWebDirectoryBrowser(),
-		Execute:           application.newWebCommandExecutor(),
 		InspectAudit: func(_ context.Context, request web.AuditInspectionRequest) web.AuditInspectionResponse {
 			return web.AuditInspectionResponse{
 				Roots: request.Roots,
@@ -594,8 +556,6 @@ func TestWebServerExecutesVersionCommand(t *testing.T) {
 				},
 			}
 		},
-		LoadWorkflowPrimitives: application.newWebWorkflowPrimitiveCatalogLoader(),
-		ApplyWorkflowActions:   application.newWebWorkflowPrimitiveExecutor(),
 	})
 	require.NoError(t, serverError)
 
@@ -610,48 +570,47 @@ func TestWebServerExecutesVersionCommand(t *testing.T) {
 	var indexDocument bytes.Buffer
 	_, copyError := indexDocument.ReadFrom(indexResponse.Body)
 	require.NoError(t, copyError)
-	require.Contains(t, indexDocument.String(), "<title>gix Control Surface</title>")
+	require.Contains(t, indexDocument.String(), "<title>gix Audit Workspace</title>")
 	require.Contains(t, indexDocument.String(), "Audit Workspace")
-	require.Contains(t, indexDocument.String(), "id=\"workspace-layout\"")
-	require.Contains(t, indexDocument.String(), "id=\"repo-sidebar\"")
-	require.Contains(t, indexDocument.String(), "id=\"workspace-main\"")
-	require.Contains(t, indexDocument.String(), "<h2>Repos</h2>")
-	require.Contains(t, indexDocument.String(), "cdn.jsdelivr.net/npm/wunderbaum@0/dist/wunderbaum.min.css")
-	require.Contains(t, indexDocument.String(), "<h3>Scope</h3>")
-	require.Contains(t, indexDocument.String(), "<h3>Workflow Actions</h3>")
-	require.NotContains(t, indexDocument.String(), "<h3>Refs</h3>")
-	require.NotContains(t, indexDocument.String(), "<h3>Paths</h3>")
-	require.NotContains(t, indexDocument.String(), "id=\"target-ref-select\"")
-	require.NotContains(t, indexDocument.String(), "id=\"target-path-value\"")
-	require.Contains(t, indexDocument.String(), "id=\"repo-tree\"")
-	require.Contains(t, indexDocument.String(), "id=\"audit-selection-summary\"")
-	require.Contains(t, indexDocument.String(), "id=\"audit-roots-input\"")
-	require.Contains(t, indexDocument.String(), "Inspect or refresh audit table")
-	require.Contains(t, indexDocument.String(), "id=\"audit-results-panel\"")
-	require.Contains(t, indexDocument.String(), "id=\"audit-queue-panel\"")
-	require.Contains(t, indexDocument.String(), "Pending Changes")
-	require.Contains(t, indexDocument.String(), "Queue workflow action")
-	require.Contains(t, indexDocument.String(), "Apply queued workflow actions")
+	require.Contains(t, indexDocument.String(), "<h2>Scope</h2>")
+	require.Contains(t, indexDocument.String(), "Run audit")
+	require.Contains(t, indexDocument.String(), "Queued Actions")
+	require.Contains(t, indexDocument.String(), "Apply Results")
+	require.NotContains(t, indexDocument.String(), "Workflow Actions")
+	require.NotContains(t, indexDocument.String(), "Queue workflow action")
+	require.NotContains(t, indexDocument.String(), "id=\"command-groups\"")
+	require.NotContains(t, indexDocument.String(), "id=\"workflow-primitive-select\"")
+	require.NotContains(t, indexDocument.String(), "id=\"run-command\"")
 
-	applicationScriptResponse, applicationScriptError := http.Get(httpServer.URL + "/assets/app.js")
-	require.NoError(t, applicationScriptError)
-	defer applicationScriptResponse.Body.Close()
-	require.Equal(t, http.StatusOK, applicationScriptResponse.StatusCode)
+	readEmbeddedAsset := func(assetPath string) string {
+		assetResponse, assetError := http.Get(httpServer.URL + assetPath)
+		require.NoError(t, assetError)
+		defer assetResponse.Body.Close()
+		require.Equal(t, http.StatusOK, assetResponse.StatusCode)
 
-	var applicationScript bytes.Buffer
-	_, applicationScriptCopyError := applicationScript.ReadFrom(applicationScriptResponse.Body)
-	require.NoError(t, applicationScriptCopyError)
-	require.Contains(t, applicationScript.String(), "from \"https://cdn.jsdelivr.net/npm/wunderbaum@0/+esm\"")
+		var assetContents bytes.Buffer
+		_, assetCopyError := assetContents.ReadFrom(assetResponse.Body)
+		require.NoError(t, assetCopyError)
+		return assetContents.String()
+	}
 
-	commandsResponse, commandsError := http.Get(httpServer.URL + "/api/commands")
-	require.NoError(t, commandsError)
-	defer commandsResponse.Body.Close()
-	require.Equal(t, http.StatusOK, commandsResponse.StatusCode)
+	applicationScript := readEmbeddedAsset("/assets/app.js")
+	require.Contains(t, applicationScript, "from \"./main.js\"")
 
-	var catalog web.CommandCatalog
-	require.NoError(t, json.NewDecoder(commandsResponse.Body).Decode(&catalog))
-	require.NotEmpty(t, catalog.Commands)
-	require.True(t, catalogContainsCommand(catalog, "gix version"))
+	mainScript := readEmbeddedAsset("/assets/main.js")
+	require.Contains(t, mainScript, "from \"./repo_tree.js\"")
+	require.Contains(t, mainScript, "from \"./audit.js\"")
+
+	auditScript := readEmbeddedAsset("/assets/audit.js")
+	require.Contains(t, auditScript, "from \"./shared.js\"")
+	require.Contains(t, auditScript, "from \"./repo_tree.js\"")
+
+	repositoryTreeScript := readEmbeddedAsset("/assets/repo_tree.js")
+	require.Contains(t, repositoryTreeScript, "from \"https://cdn.jsdelivr.net/npm/wunderbaum@0/+esm\"")
+	require.Contains(t, repositoryTreeScript, "from \"./shared.js\"")
+
+	sharedScript := readEmbeddedAsset("/assets/shared.js")
+	require.Contains(t, sharedScript, "export const state = {")
 
 	repositoriesResponse, repositoriesError := http.Get(httpServer.URL + "/api/repos")
 	require.NoError(t, repositoriesError)
@@ -666,18 +625,16 @@ func TestWebServerExecutesVersionCommand(t *testing.T) {
 	require.Equal(t, "repo-001", repositories.Repositories[0].ID)
 	require.Equal(t, "feature/demo", repositories.Repositories[0].CurrentBranch)
 
-	branchesResponse, branchesError := http.Get(httpServer.URL + "/api/repos/repo-001/branches")
-	require.NoError(t, branchesError)
-	defer branchesResponse.Body.Close()
-	require.Equal(t, http.StatusOK, branchesResponse.StatusCode)
+	foldersResponse, foldersError := http.Get(httpServer.URL + "/api/folders?path=" + url.QueryEscape("/tmp"))
+	require.NoError(t, foldersError)
+	defer foldersResponse.Body.Close()
+	require.Equal(t, http.StatusOK, foldersResponse.StatusCode)
 
-	var branches web.BranchCatalog
-	require.NoError(t, json.NewDecoder(branchesResponse.Body).Decode(&branches))
-	require.Equal(t, "repo-001", branches.RepositoryID)
-	require.Equal(t, "/tmp/example", branches.RepositoryPath)
-	require.Len(t, branches.Branches, 2)
-	require.Equal(t, "feature/demo", branches.Branches[0].Name)
-	require.True(t, branches.Branches[0].Current)
+	var folders web.DirectoryListing
+	require.NoError(t, json.NewDecoder(foldersResponse.Body).Decode(&folders))
+	require.Equal(t, "/tmp", folders.Path)
+	require.Len(t, folders.Folders, 1)
+	require.Equal(t, "/tmp/example", folders.Folders[0].Path)
 
 	auditBody := strings.NewReader(`{"roots":["/tmp/custom"],"include_all":true}`)
 	auditResponse, auditError := http.Post(httpServer.URL+"/api/audit/inspect", "application/json", auditBody)
@@ -690,7 +647,6 @@ func TestWebServerExecutesVersionCommand(t *testing.T) {
 	require.Equal(t, []string{"/tmp/custom"}, auditInspection.Roots)
 	require.Len(t, auditInspection.Rows, 1)
 	require.Equal(t, "/tmp/custom/example", auditInspection.Rows[0].Path)
-	require.Equal(t, "configured", auditInspection.Rows[0].OriginRemoteStatus)
 
 	applyBody := strings.NewReader(`{"changes":[{"id":"chg-001","kind":"rename_folder","path":"/tmp/custom/example","require_clean":true}]}`)
 	applyResponse, applyError := http.Post(httpServer.URL+"/api/audit/apply", "application/json", applyBody)
@@ -704,59 +660,19 @@ func TestWebServerExecutesVersionCommand(t *testing.T) {
 	require.Equal(t, "chg-001", applyInspection.Results[0].ID)
 	require.Equal(t, "succeeded", applyInspection.Results[0].Status)
 
-	workflowCatalogResponse, workflowCatalogError := http.Get(httpServer.URL + "/api/workflow/primitives")
-	require.NoError(t, workflowCatalogError)
-	defer workflowCatalogResponse.Body.Close()
-	require.Equal(t, http.StatusOK, workflowCatalogResponse.StatusCode)
-
-	var workflowCatalog web.WorkflowPrimitiveCatalog
-	require.NoError(t, json.NewDecoder(workflowCatalogResponse.Body).Decode(&workflowCatalog))
-	require.NotEmpty(t, workflowCatalog.Primitives)
-	require.Equal(t, webWorkflowPrimitiveCanonicalRemoteConstant, workflowCatalog.Primitives[0].ID)
-
-	workflowApplyBody := strings.NewReader(`{"actions":[{"id":"wf-001","repository_path":"/tmp/example","primitive_id":"repo.files.replace","parameters":{"patterns":"README.md","find":"initial","replace":"updated"}}]}`)
-	workflowApplyResponse, workflowApplyError := http.Post(httpServer.URL+"/api/workflow/apply", "application/json", workflowApplyBody)
-	require.NoError(t, workflowApplyError)
-	defer workflowApplyResponse.Body.Close()
-	require.Equal(t, http.StatusOK, workflowApplyResponse.StatusCode)
-
-	var workflowApplyInspection web.WorkflowPrimitiveApplyResponse
-	require.NoError(t, json.NewDecoder(workflowApplyResponse.Body).Decode(&workflowApplyInspection))
-	require.Len(t, workflowApplyInspection.Results, 1)
-	require.Equal(t, "wf-001", workflowApplyInspection.Results[0].ID)
-	require.Equal(t, webAuditChangeStatusSucceededConstant, workflowApplyInspection.Results[0].Status)
-
-	runBody := strings.NewReader(`{"arguments":["version"]}`)
-	runResponse, runError := http.Post(httpServer.URL+"/api/runs", "application/json", runBody)
-	require.NoError(t, runError)
-	defer runResponse.Body.Close()
-	require.Equal(t, http.StatusAccepted, runResponse.StatusCode)
-
-	var createdRun web.RunSnapshot
-	require.NoError(t, json.NewDecoder(runResponse.Body).Decode(&createdRun))
-	require.NotEmpty(t, createdRun.ID)
-
-	var finalRun web.RunSnapshot
-	require.Eventually(t, func() bool {
-		pollResponse, pollError := http.Get(httpServer.URL + "/api/runs/" + createdRun.ID)
-		if pollError != nil {
-			return false
-		}
-		defer pollResponse.Body.Close()
-		if pollResponse.StatusCode != http.StatusOK {
-			return false
-		}
-		if decodeError := json.NewDecoder(pollResponse.Body).Decode(&finalRun); decodeError != nil {
-			return false
-		}
-		return finalRun.Status != "running"
-	}, 5*time.Second, 100*time.Millisecond)
-
-	require.Equal(t, "succeeded", finalRun.Status)
-	require.Equal(t, 0, finalRun.ExitCode)
-	require.Contains(t, finalRun.StandardOutput, "gix version: v4.5.6")
-	require.Empty(t, finalRun.StandardError)
-	require.Empty(t, finalRun.Error)
+	legacyEndpoints := []string{
+		"/api/commands",
+		"/api/branches",
+		"/api/repos/repo-001/branches",
+		"/api/workflow/primitives",
+		"/api/runs",
+	}
+	for _, endpoint := range legacyEndpoints {
+		response, requestError := http.Get(httpServer.URL + endpoint)
+		require.NoError(t, requestError)
+		response.Body.Close()
+		require.Equal(t, http.StatusNotFound, response.StatusCode, endpoint)
+	}
 }
 
 func TestWebAuditChangeExecutorRejectsRelativePaths(t *testing.T) {
@@ -778,6 +694,166 @@ func TestWebAuditChangeExecutorRejectsRelativePaths(t *testing.T) {
 	require.Contains(t, response.Results[0].Error, "absolute")
 }
 
+func TestWebAuditChangeExecutorCommitChangesCommitsDirtyWorktree(t *testing.T) {
+	repositoryPath := createTestRepository(t, filepath.Join(t.TempDir(), "workspace", "example"))
+	runGitCommand(t, repositoryPath, "config", "user.name", "gix-test")
+	runGitCommand(t, repositoryPath, "config", "user.email", "test@example.com")
+	require.NoError(t, os.WriteFile(filepath.Join(repositoryPath, "README.md"), []byte("updated\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(repositoryPath, "notes.txt"), []byte("draft\n"), 0o644))
+
+	t.Setenv("OPENAI_API_KEY", "test-token")
+	stubClient := &stubWebChatClient{response: "feat: commit pending changes"}
+
+	application := NewApplication()
+	application.llmClientFactory = func(configuration llm.Config) (llm.ChatClient, error) {
+		require.Equal(t, "gpt-4.1-mini", configuration.Model)
+		require.Equal(t, "test-token", configuration.APIKey)
+		return stubClient, nil
+	}
+
+	response := application.newWebAuditChangeExecutor()(context.Background(), web.AuditChangeApplyRequest{
+		Changes: []web.AuditQueuedChange{
+			{
+				ID:   "chg-001",
+				Kind: web.AuditChangeKindCommitChanges,
+				Path: repositoryPath,
+			},
+		},
+	})
+
+	require.Empty(t, response.Error)
+	require.Len(t, response.Results, 1)
+	require.Equal(t, "succeeded", response.Results[0].Status)
+	require.Equal(t, "Changes committed", response.Results[0].Message)
+	require.Contains(t, response.Results[0].Stdout, "Generated commit message:")
+	require.Contains(t, stubClient.lastRequest.Messages[1].Content, "Diff source: ALL")
+
+	commitMessage := strings.TrimSpace(runGitCommandOutput(t, repositoryPath, "log", "-1", "--pretty=%B"))
+	require.Equal(t, "feat: commit pending changes", commitMessage)
+	require.Empty(t, strings.TrimSpace(runGitCommandOutput(t, repositoryPath, "status", "--short")))
+}
+
+func TestWebAuditChangeExecutorUpdateChangelogInsertsNextVersionSection(t *testing.T) {
+	repositoryPath := createTestRepository(t, filepath.Join(t.TempDir(), "workspace", "example"))
+	runGitCommand(t, repositoryPath, "tag", "v1.2.3")
+	require.NoError(t, os.WriteFile(filepath.Join(repositoryPath, "committed.txt"), []byte("released change\n"), 0o644))
+	runGitCommand(t, repositoryPath, "add", "committed.txt")
+	runGitCommand(t, repositoryPath, "commit", "-m", "feat: add released change")
+	require.NoError(t, os.WriteFile(filepath.Join(repositoryPath, "feature.txt"), []byte("pending feature\n"), 0o644))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(repositoryPath, "CHANGELOG.md"),
+		[]byte("# Changelog\n\n## [v1.2.3]\n\n### Features ✨\n- _No changes._\n"),
+		0o644,
+	))
+
+	t.Setenv("OPENAI_API_KEY", "test-token")
+	releaseDate := time.Now().Format("2006-01-02")
+	stubClient := &stubWebChatClient{
+		response: "## [v1.2.4] - " + releaseDate + "\n\n### Features ✨\n- Add pending feature.\n\n### Improvements ⚙️\n- _No changes._\n\n### Bug Fixes 🐛\n- _No changes._\n\n### Testing 🧪\n- _No changes._\n\n### Docs 📚\n- _No changes._",
+	}
+
+	application := NewApplication()
+	application.llmClientFactory = func(configuration llm.Config) (llm.ChatClient, error) {
+		require.Equal(t, "gpt-4.1-mini", configuration.Model)
+		require.Equal(t, "test-token", configuration.APIKey)
+		return stubClient, nil
+	}
+
+	response := application.newWebAuditChangeExecutor()(context.Background(), web.AuditChangeApplyRequest{
+		Changes: []web.AuditQueuedChange{
+			{
+				ID:   "chg-002",
+				Kind: web.AuditChangeKindUpdateChangelog,
+				Path: repositoryPath,
+			},
+		},
+	})
+
+	require.Empty(t, response.Error)
+	require.Len(t, response.Results, 1)
+	require.Equal(t, "succeeded", response.Results[0].Status)
+	require.Equal(t, "Changelog updated", response.Results[0].Message)
+	require.Contains(t, stubClient.lastRequest.Messages[1].Content, "Pending worktree status:")
+	require.Contains(t, stubClient.lastRequest.Messages[1].Content, "feature.txt")
+
+	changelogContents, readError := os.ReadFile(filepath.Join(repositoryPath, "CHANGELOG.md"))
+	require.NoError(t, readError)
+	require.Contains(t, string(changelogContents), "## [v1.2.4] - "+releaseDate)
+	require.Contains(t, string(changelogContents), "## [v1.2.3]")
+}
+
+func TestWebAuditChangeExecutorUpdateChangelogRejectsTaggedHead(t *testing.T) {
+	repositoryPath := createTestRepository(t, filepath.Join(t.TempDir(), "workspace", "example"))
+	runGitCommand(t, repositoryPath, "tag", "v1.2.3")
+	require.NoError(t, os.WriteFile(filepath.Join(repositoryPath, "feature.txt"), []byte("pending feature\n"), 0o644))
+
+	t.Setenv("OPENAI_API_KEY", "test-token")
+	application := NewApplication()
+	application.llmClientFactory = func(configuration llm.Config) (llm.ChatClient, error) {
+		return &stubWebChatClient{response: "## [v1.2.4]\n"}, nil
+	}
+
+	response := application.newWebAuditChangeExecutor()(context.Background(), web.AuditChangeApplyRequest{
+		Changes: []web.AuditQueuedChange{
+			{
+				ID:   "chg-003",
+				Kind: web.AuditChangeKindUpdateChangelog,
+				Path: repositoryPath,
+			},
+		},
+	})
+
+	require.Len(t, response.Results, 1)
+	require.Equal(t, "failed", response.Results[0].Status)
+	require.Contains(t, response.Results[0].Error, webAuditChangeChangelogTaggedRejected)
+}
+
+func TestWebAuditChangeExecutorUpdateChangelogRejectsNonDefaultBranch(t *testing.T) {
+	repositoryPath := createTestRepository(t, filepath.Join(t.TempDir(), "workspace", "example"))
+	remotePath := filepath.Join(t.TempDir(), "origin.git")
+	runGitCommand(t, "", "init", "--bare", remotePath)
+	runGitCommand(t, repositoryPath, "remote", "add", "origin", remotePath)
+	runGitCommand(t, repositoryPath, "push", "-u", "origin", "master")
+	runGitCommand(t, repositoryPath, "remote", "set-head", "origin", "master")
+	runGitCommand(t, repositoryPath, "tag", "v1.2.3")
+	require.NoError(t, os.WriteFile(filepath.Join(repositoryPath, "committed.txt"), []byte("released change\n"), 0o644))
+	runGitCommand(t, repositoryPath, "add", "committed.txt")
+	runGitCommand(t, repositoryPath, "commit", "-m", "feat: add released change")
+	runGitCommand(t, repositoryPath, "checkout", "-b", "feature/demo")
+	require.NoError(t, os.WriteFile(filepath.Join(repositoryPath, "feature.txt"), []byte("pending feature\n"), 0o644))
+
+	t.Setenv("OPENAI_API_KEY", "test-token")
+	application := NewApplication()
+	application.llmClientFactory = func(configuration llm.Config) (llm.ChatClient, error) {
+		return &stubWebChatClient{response: "## [v1.2.4]\n"}, nil
+	}
+
+	response := application.newWebAuditChangeExecutor()(context.Background(), web.AuditChangeApplyRequest{
+		Changes: []web.AuditQueuedChange{
+			{
+				ID:   "chg-004",
+				Kind: web.AuditChangeKindUpdateChangelog,
+				Path: repositoryPath,
+			},
+		},
+	})
+
+	require.Len(t, response.Results, 1)
+	require.Equal(t, "failed", response.Results[0].Status)
+	require.Contains(t, response.Results[0].Error, webAuditChangeChangelogBranchRejected)
+}
+
+func TestUpsertWebChangelogSectionReplacesExistingHeading(t *testing.T) {
+	updatedContents, updateError := upsertWebChangelogSection(
+		"# Changelog\n\n## [v1.2.4]\n\n### Features ✨\n- Old feature.\n\n## [v1.2.3]\n\n### Features ✨\n- Prior release.\n",
+		"## [v1.2.4]\n\n### Features ✨\n- New feature.\n",
+	)
+	require.NoError(t, updateError)
+	require.Equal(t, 1, strings.Count(updatedContents, "## [v1.2.4]"))
+	require.Contains(t, updatedContents, "- New feature.")
+	require.Contains(t, updatedContents, "## [v1.2.3]")
+}
+
 func TestWebAuditChangeResultStatusMarksSkippedOutcomes(t *testing.T) {
 	outcome := workflow.ExecutionOutcome{
 		ReporterSummaryData: shared.SummaryData{
@@ -792,10 +868,6 @@ func TestWebAuditChangeResultStatusMarksSkippedOutcomes(t *testing.T) {
 	require.Equal(t, webAuditChangeStatusSkippedConstant, webAuditChangeResultStatus(outcome, nil))
 	require.Equal(t, webAuditChangeStatusSucceededConstant, webAuditChangeResultStatus(workflow.ExecutionOutcome{}, nil))
 	require.Equal(t, webAuditChangeStatusFailedConstant, webAuditChangeResultStatus(workflow.ExecutionOutcome{}, errors.New("boom")))
-}
-
-func catalogContainsCommand(catalog web.CommandCatalog, commandPath string) bool {
-	return findCatalogCommand(catalog, commandPath) != nil
 }
 
 func findCatalogCommand(catalog web.CommandCatalog, commandPath string) *web.CommandDescriptor {
@@ -852,6 +924,38 @@ func runGitCommand(testingInstance *testing.T, workingDirectory string, argument
 
 	output, commandError := command.CombinedOutput()
 	require.NoError(testingInstance, commandError, string(output))
+}
+
+func runGitCommandOutput(testingInstance *testing.T, workingDirectory string, arguments ...string) string {
+	testingInstance.Helper()
+
+	command := exec.Command("git", arguments...)
+	command.Dir = workingDirectory
+	command.Env = append(
+		os.Environ(),
+		"GIT_AUTHOR_NAME=gix-test",
+		"GIT_AUTHOR_EMAIL=test@example.com",
+		"GIT_COMMITTER_NAME=gix-test",
+		"GIT_COMMITTER_EMAIL=test@example.com",
+	)
+
+	output, commandError := command.CombinedOutput()
+	require.NoError(testingInstance, commandError, string(output))
+	return string(output)
+}
+
+type stubWebChatClient struct {
+	lastRequest llm.ChatRequest
+	response    string
+	err         error
+}
+
+func (client *stubWebChatClient) Chat(ctx context.Context, request llm.ChatRequest) (string, error) {
+	client.lastRequest = request
+	if client.err != nil {
+		return "", client.err
+	}
+	return client.response, nil
 }
 
 func canonicalPath(testingInstance *testing.T, path string) string {
