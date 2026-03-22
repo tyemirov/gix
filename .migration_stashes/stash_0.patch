@@ -1,0 +1,154 @@
+diff --git a/internal/workflow/executor.go b/internal/workflow/executor.go
+index 40b08d1..b02588e 100644
+--- a/internal/workflow/executor.go
++++ b/internal/workflow/executor.go
+@@ -77,6 +77,37 @@ type recordedOperationFailure struct {
+ 	message string
+ }
+ 
++func collectOperationErrors(err error) []error {
++	if err == nil {
++		return nil
++	}
++
++	type multiUnwrapper interface{ Unwrap() []error }
++	type singleUnwrapper interface{ Unwrap() error }
++
++	if _, ok := err.(repoerrors.OperationError); ok {
++		return []error{err}
++	}
++
++	if multi, ok := err.(multiUnwrapper); ok {
++		children := multi.Unwrap()
++		results := make([]error, 0, len(children))
++		for _, child := range children {
++			results = append(results, collectOperationErrors(child)...)
++		}
++		return results
++	}
++
++	if single, ok := err.(singleUnwrapper); ok {
++		child := single.Unwrap()
++		if child != nil {
++			return collectOperationErrors(child)
++		}
++	}
++
++	return []error{err}
++}
++
+ // NewExecutor constructs an Executor instance from the provided operations, preserving sequential execution semantics.
+ func NewExecutor(operations []Operation, dependencies Dependencies) *Executor {
+ 	nodes := make([]*OperationNode, 0, len(operations))
+@@ -263,14 +294,20 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
+ 			go func(operation Operation) {
+ 				defer waitGroup.Done()
+ 				if executeError := operation.Execute(executionContext, environment, state); executeError != nil {
+-					formatted := formatOperationFailure(environment, executeError, operation.Name())
++					subErrors := collectOperationErrors(executeError)
++					if len(subErrors) == 0 {
++						subErrors = []error{executeError}
++					}
+ 					failureMu.Lock()
+-					if !logRepositoryOperationError(environment, executeError) {
+-						if environment != nil && environment.Errors != nil {
+-							fmt.Fprintln(environment.Errors, formatted)
++					for _, failureErr := range subErrors {
++						formatted := formatOperationFailure(environment, failureErr, operation.Name())
++						if !logRepositoryOperationError(environment, failureErr) {
++							if environment != nil && environment.Errors != nil {
++								fmt.Fprintln(environment.Errors, formatted)
++							}
+ 						}
++						failures = append(failures, recordedOperationFailure{name: operation.Name(), err: failureErr, message: formatted})
+ 					}
+-					failures = append(failures, recordedOperationFailure{name: operation.Name(), err: executeError, message: formatted})
+ 					failureMu.Unlock()
+ 				}
+ 			}(node.Operation)
+diff --git a/internal/workflow/executor_test.go b/internal/workflow/executor_test.go
+index df28041..18a13e8 100644
+--- a/internal/workflow/executor_test.go
++++ b/internal/workflow/executor_test.go
+@@ -3,6 +3,7 @@ package workflow
+ import (
+ 	"bytes"
+ 	"context"
++	"errors"
+ 	"fmt"
+ 	"os"
+ 	"path/filepath"
+@@ -194,6 +195,39 @@ func TestExecutorContinuesExecutingOperationsAfterFailure(testInstance *testing.
+ 	require.Contains(testInstance, buffer.String(), "Summary: total.repos=1")
+ }
+ 
++func TestExecutorLogsAllErrorsFromJoinedOperationFailures(testInstance *testing.T) {
++	tempDirectory := testInstance.TempDir()
++	repositoryPath := filepath.Join(tempDirectory, "sample")
++	require.NoError(testInstance, os.Mkdir(repositoryPath, 0o755))
++
++	gitExecutor := newStubWorkflowGitExecutor()
++	repositoryManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
++	require.NoError(testInstance, managerError)
++
++	outputBuffer := &bytes.Buffer{}
++	dependencies := Dependencies{
++		RepositoryDiscoverer: executorStubRepositoryDiscoverer{repositories: []string{repositoryPath}},
++		GitExecutor:          gitExecutor,
++		RepositoryManager:    repositoryManager,
++		Output:               outputBuffer,
++		Errors:               outputBuffer,
++		Logger:               nil,
++	}
++
++	executor := NewExecutor([]Operation{joinFailOperation{}}, dependencies)
++
++	executionError := executor.Execute(
++		context.Background(),
++		[]string{repositoryPath},
++		RuntimeOptions{SkipRepositoryMetadata: true},
++	)
++	require.Error(testInstance, executionError)
++	output := outputBuffer.String()
++	require.Contains(testInstance, output, "NAMESPACE_REWRITE_FAILED")
++	require.Contains(testInstance, output, "ORIGIN_OWNER_MISSING")
++	require.Contains(testInstance, output, "Summary: total.repos=1")
++}
++
+ type executorStubRepositoryDiscoverer struct {
+ 	repositories []string
+ }
+@@ -225,6 +259,33 @@ func (operation *recordingOperation) Execute(ctx context.Context, environment *E
+ 	return nil
+ }
+ 
++type joinFailOperation struct{}
++
++func (operation joinFailOperation) Name() string {
++	return "join-failure"
++}
++
++func (operation joinFailOperation) Execute(ctx context.Context, environment *Environment, state *State) error {
++	if state == nil || len(state.Repositories) == 0 {
++		return fmt.Errorf("missing repositories")
++	}
++
++	repositoryPath := state.Repositories[0].Path
++	errOne := repoerrors.WrapMessage(
++		repoerrors.OperationCanonicalRemote,
++		repositoryPath,
++		repoerrors.ErrOriginOwnerMissing,
++		"cannot resolve origin owner metadata",
++	)
++	errTwo := repoerrors.WrapMessage(
++		repoerrors.OperationNamespaceRewrite,
++		repositoryPath,
++		repoerrors.ErrNamespaceRewriteFailed,
++		"rewrite skipped",
++	)
++	return errors.Join(errOne, errTwo)
++}
++
+ type stubWorkflowGitExecutor struct {
+ 	responses map[string]execshell.ExecutionResult
+ }
