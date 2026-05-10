@@ -1,5 +1,43 @@
 # Changelog
 
+## [v0.3.4] - 2026-05-10
+
+### Features ✨
+- Add automated changelog update and commit message generation in the web interface.
+- Implement F009 repository tree explorer and add audit column filters.
+- Add queue audit sync with folder deletions and remediations before apply.
+- Render audit results in the web client.
+- Merge repository scope into the repos panel and redraw web UI around repository context.
+- Add F003 local web interface for gix.
+
+### Improvements ⚙️
+- Refine the web audit workflow, folder explorer, and repository tree interactions.
+- Improve web startup asset verification.
+- Polish ref browser rendering and redesign web targets around repo context.
+- Style web interface with compact layouts, wrap dirty audit files in narrow columns, and keep audit action labels visible.
+- Hide nested repositories from the web tree.
+- Align web task copy with commands and filter task-owned advanced commands.
+- Add web workflow and remote tasks, refactoring web actions into task workspace.
+- Tighten selected repo summary layout and reflow web interface into row-based panels.
+- Update repo-local workflow defaults and configure audit apply scope preservation.
+
+### Bug Fixes 🐛
+- Fix B005 cd dirty worktree fast-forward refresh.
+- Normalize SSH protocol audit flow.
+- Keep audit action labels visible and sync audit draft roots with inspection.
+- Route audit runs through inspection and preserve audit apply scope/skipped outcomes.
+- Fix current repo tree behavior to behave like explorer and reveal higher folders.
+- Show current repo in explorer tree and move repository tree into left sidebar.
+
+### Testing 🧪
+- Harden browser startup in CI for improved reliability.
+- Add browser coverage for web control surface.
+
+### Docs 📚
+- Add comprehensive AGENTS guidelines for Docker, Frontend, Git, and Go development workflows.
+- Seed planning templates and update issue management documentation.
+- Add detailed documentation for repository workflows and policy files.
+
 ## [v0.3.3]
 
 ### Features ✨
