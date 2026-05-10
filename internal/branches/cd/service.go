@@ -46,6 +46,7 @@ const (
 	gitSetUpstreamToFlagConstant              = "--set-upstream-to"
 	gitPullSubcommandConstant                 = "pull"
 	gitPullRebaseFlagConstant                 = "--rebase"
+	gitPullFastForwardFlagConstant            = "--ff-only"
 	gitRevParseSubcommandConstant             = "rev-parse"
 	gitVerifyFlagConstant                     = "--verify"
 	gitTerminalPromptEnvironmentNameConstant  = "GIT_TERMINAL_PROMPT"
@@ -73,7 +74,7 @@ type Options struct {
 	BranchName      string
 	RemoteName      string
 	CreateIfMissing bool
-	SkipPull        bool
+	pullMode        pullMode
 }
 
 // Result captures the outcome of a branch change.
@@ -90,6 +91,16 @@ type Service struct {
 	executor shared.GitExecutor
 	logger   *zap.Logger
 }
+
+type pullMode struct {
+	name string
+}
+
+var (
+	pullModeRebase          = pullMode{name: "rebase"}
+	pullModeFastForwardOnly = pullMode{name: "fast-forward-only"}
+	pullModeSkip            = pullMode{name: "skip"}
+)
 
 // NewService constructs a Service from the provided dependencies.
 func NewService(dependencies ServiceDependencies) (*Service, error) {
@@ -140,7 +151,8 @@ func (service *Service) Change(executionContext context.Context, options Options
 	}
 
 	shouldFetch := remoteEnumeration.hasRemotes && (remoteEnumeration.requestedExists || useAllRemotes)
-	shouldPull := shouldFetch && !options.SkipPull
+	selectedPullMode := options.pullMode.withDefault()
+	shouldPull := shouldFetch && !selectedPullMode.skip()
 	shouldTrackRemote := remoteEnumeration.requestedExists && shouldFetch
 	warnings := make([]string, 0)
 
@@ -240,7 +252,7 @@ func (service *Service) Change(executionContext context.Context, options Options
 
 	if shouldPull {
 		if _, err := service.executor.ExecuteGit(executionContext, execshell.CommandDetails{
-			Arguments:            []string{gitPullSubcommandConstant, gitPullRebaseFlagConstant},
+			Arguments:            selectedPullMode.arguments(),
 			WorkingDirectory:     trimmedRepositoryPath,
 			EnvironmentVariables: environment,
 		}); err != nil {
@@ -266,6 +278,26 @@ func (service *Service) Change(executionContext context.Context, options Options
 		Warnings:           warnings,
 		TrackingRemoteName: trackingRemoteName,
 	}, nil
+}
+
+func (mode pullMode) withDefault() pullMode {
+	if strings.TrimSpace(mode.name) == "" {
+		return pullModeRebase
+	}
+	return mode
+}
+
+func (mode pullMode) skip() bool {
+	return mode.name == pullModeSkip.name
+}
+
+func (mode pullMode) arguments() []string {
+	switch mode.name {
+	case pullModeFastForwardOnly.name:
+		return []string{gitPullSubcommandConstant, gitPullFastForwardFlagConstant}
+	default:
+		return []string{gitPullSubcommandConstant, gitPullRebaseFlagConstant}
+	}
 }
 
 func (service *Service) trySwitch(executionContext context.Context, repositoryPath string, branchName string, environment map[string]string) error {

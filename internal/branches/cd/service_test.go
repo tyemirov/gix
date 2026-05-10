@@ -269,6 +269,24 @@ func TestChangeWarnsWhenPullFails(t *testing.T) {
 	require.Equal(t, []string{"pull", "--rebase"}, executor.recorded[3].Arguments)
 }
 
+func TestChangeUsesFastForwardPullMode(t *testing.T) {
+	executor := &stubGitExecutor{responses: []stubGitResponse{
+		{result: execshell.ExecutionResult{StandardOutput: "origin\n"}},
+	}}
+	service, err := NewService(ServiceDependencies{GitExecutor: executor})
+	require.NoError(t, err)
+
+	result, changeError := service.Change(context.Background(), Options{
+		RepositoryPath: "/tmp/repo",
+		BranchName:     "main",
+		pullMode:       pullModeFastForwardOnly,
+	})
+	require.NoError(t, changeError)
+	require.Empty(t, result.Warnings)
+	require.Len(t, executor.recorded, 4)
+	require.Equal(t, []string{"pull", "--ff-only"}, executor.recorded[3].Arguments)
+}
+
 func TestChangeUsesSingleRemoteWhenDefaultMissing(t *testing.T) {
 	executor := &stubGitExecutor{responses: []stubGitResponse{
 		{result: execshell.ExecutionResult{StandardOutput: "upstream\n"}},

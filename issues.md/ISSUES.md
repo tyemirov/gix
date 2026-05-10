@@ -11,6 +11,20 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
 
 ## BugFixes
 
+- [x] [B005] (P1) `gix cd` skips remote fast-forward updates when the worktree has tracked local changes.
+  Requested on 2026-05-10 after `gix cd` reported `refresh skipped (dirty worktree)` in `/Users/tyemirov/Documents/Projects/Fiction`, while a manual `git pull` immediately fast-forwarded `master`.
+  ## Observation
+  - Dirty tracked changes disable the clean-worktree refresh path and are passed through to the branch-change service as a full pull skip.
+  - That prevents safe fast-forward updates that Git can apply when the remote changes do not overlap with local edits.
+  ## Deliverable
+  - Keep the clean-worktree refresh skip for tracked local changes, but still attempt a fast-forward-only pull after switching to the target branch.
+  - Preserve warnings for real pull failures instead of turning conflicts into hard crashes.
+  - Add black-box `gix cd` coverage proving unrelated remote changes land while local tracked edits remain.
+  ## Resolution
+  - Dirty refresh skips now use a fast-forward-only pull mode, leaving the strict clean-worktree refresh disabled while still accepting safe remote updates.
+  - Added black-box coverage that keeps a tracked local edit, advances the remote on an unrelated file, and verifies `gix cd master` runs `git pull --ff-only`, lands the remote file, and preserves the local edit.
+  - `make ci` passed locally.
+
 - [x] [B001] First output appears late when running gix against 20–30 repositories because repository discovery/inspection emits no user-facing progress until the first repository finishes its first workflow step.
   LegacyExternalID: GX-345
   (Unresolved: stream discovery/inspection progress or emit an initial discovery step summary.)
