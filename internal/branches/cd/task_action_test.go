@@ -347,11 +347,12 @@ func TestHandleBranchChangeActionSkipsRefreshWhenDirty(t *testing.T) {
 
 	err := handleBranchChangeAction(context.Background(), environment, repository, parameters)
 	require.NoError(t, err)
-	require.Len(t, executor.recorded, 4)
+	require.Len(t, executor.recorded, 5)
 	require.Equal(t, []string{"status", "--porcelain"}, executor.recorded[0].Arguments)
 	require.Equal(t, []string{"remote"}, executor.recorded[1].Arguments)
 	require.Equal(t, []string{"fetch", "--prune", "origin"}, executor.recorded[2].Arguments)
 	require.Equal(t, []string{"switch", "feature/foo"}, executor.recorded[3].Arguments)
+	require.Equal(t, []string{"pull", "--ff-only"}, executor.recorded[4].Arguments)
 	require.Len(t, reporter.events, 2)
 	require.Equal(t, shared.EventCodeTaskSkip, reporter.events[0].Code)
 	require.Contains(t, reporter.events[0].Message, "refresh skipped (dirty worktree)")

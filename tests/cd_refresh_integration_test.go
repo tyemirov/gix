@@ -20,7 +20,7 @@ const (
 	cdRefreshIntegrationGitInvocationLog = "git-invocations.log"
 )
 
-func TestCdSkipsPullWhenWorktreeIsDirty(testInstance *testing.T) {
+func TestCdFastForwardPullsWhenWorktreeHasUnrelatedTrackedChanges(testInstance *testing.T) {
 	testInstance.Helper()
 
 	repositoryRoot := integrationRepositoryRoot(testInstance)
@@ -31,7 +31,7 @@ func TestCdSkipsPullWhenWorktreeIsDirty(testInstance *testing.T) {
 	gitStubScript := []byte(strings.Join([]string{
 		"#!/bin/sh",
 		"echo \"$@\" >> " + gitInvocationLog,
-		"if [ \"$1\" = \"pull\" ]; then exit 42; fi",
+		"if [ \"$1\" = \"pull\" ] && [ \"$2\" = \"--rebase\" ]; then exit 42; fi",
 		"exec " + realGitPath + " \"$@\"",
 	}, "\n") + "\n")
 	pathVariable := buildStubbedExecutablePath(testInstance, "git", string(gitStubScript))
@@ -73,7 +73,35 @@ func TestCdSkipsPullWhenWorktreeIsDirty(testInstance *testing.T) {
 	pushCommand.Env = buildGitCommandEnvironment(nil)
 	require.NoError(testInstance, pushCommand.Run())
 
-	require.NoError(testInstance, os.WriteFile(readmePath, []byte("modified\n"), 0o644))
+	upstreamPath := filepath.Join(testInstance.TempDir(), "upstream")
+	cloneCommand := exec.Command("git", "clone", remotePath, upstreamPath)
+	cloneCommand.Env = buildGitCommandEnvironment(nil)
+	require.NoError(testInstance, cloneCommand.Run())
+
+	upstreamNameCommand := exec.Command("git", "-C", upstreamPath, "config", "user.name", "Cd Refresh")
+	upstreamNameCommand.Env = buildGitCommandEnvironment(nil)
+	require.NoError(testInstance, upstreamNameCommand.Run())
+
+	upstreamEmailCommand := exec.Command("git", "-C", upstreamPath, "config", "user.email", "cd-refresh@example.com")
+	upstreamEmailCommand.Env = buildGitCommandEnvironment(nil)
+	require.NoError(testInstance, upstreamEmailCommand.Run())
+
+	upstreamFilePath := filepath.Join(upstreamPath, "UPSTREAM.md")
+	require.NoError(testInstance, os.WriteFile(upstreamFilePath, []byte("remote update\n"), 0o644))
+
+	upstreamAddCommand := exec.Command("git", "-C", upstreamPath, "add", "UPSTREAM.md")
+	upstreamAddCommand.Env = buildGitCommandEnvironment(nil)
+	require.NoError(testInstance, upstreamAddCommand.Run())
+
+	upstreamCommitCommand := exec.Command("git", "-C", upstreamPath, "commit", "-m", "remote update")
+	upstreamCommitCommand.Env = buildGitCommandEnvironment(nil)
+	require.NoError(testInstance, upstreamCommitCommand.Run())
+
+	upstreamPushCommand := exec.Command("git", "-C", upstreamPath, "push", "origin", "master")
+	upstreamPushCommand.Env = buildGitCommandEnvironment(nil)
+	require.NoError(testInstance, upstreamPushCommand.Run())
+
+	require.NoError(testInstance, os.WriteFile(readmePath, []byte("modified locally\n"), 0o644))
 
 	commandArguments := []string{
 		cdRefreshIntegrationRunCommand,
@@ -97,5 +125,14 @@ func TestCdSkipsPullWhenWorktreeIsDirty(testInstance *testing.T) {
 
 	invocationLogContents, readError := os.ReadFile(gitInvocationLog)
 	require.NoError(testInstance, readError)
-	require.NotContains(testInstance, string(invocationLogContents), "pull")
+	require.Contains(testInstance, string(invocationLogContents), "pull --ff-only")
+	require.NotContains(testInstance, string(invocationLogContents), "pull --rebase")
+
+	remoteFileContents, remoteReadError := os.ReadFile(filepath.Join(repositoryPath, "UPSTREAM.md"))
+	require.NoError(testInstance, remoteReadError)
+	require.Equal(testInstance, "remote update\n", string(remoteFileContents))
+
+	localFileContents, localReadError := os.ReadFile(readmePath)
+	require.NoError(testInstance, localReadError)
+	require.Equal(testInstance, "modified locally\n", string(localFileContents))
 }

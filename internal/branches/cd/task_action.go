@@ -224,7 +224,7 @@ func handleBranchChangeAction(ctx context.Context, environment *workflow.Environ
 		BranchName:      resolvedBranchName,
 		RemoteName:      remoteName,
 		CreateIfMissing: createIfMissing,
-		SkipPull:        refreshSkipped,
+		pullMode:        pullModeForRefreshState(refreshSkipped),
 	})
 	if changeError != nil {
 		return changeError
@@ -342,6 +342,13 @@ func handleBranchChangeAction(ctx context.Context, environment *workflow.Environ
 	}
 
 	return nil
+}
+
+func pullModeForRefreshState(refreshSkipped bool) pullMode {
+	if refreshSkipped {
+		return pullModeFastForwardOnly
+	}
+	return pullModeRebase
 }
 
 func branchHasTrackingRemote(ctx context.Context, executor shared.GitExecutor, repositoryPath string, branchName string) (bool, error) {
