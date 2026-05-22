@@ -309,6 +309,10 @@ func TestApplicationCommandHierarchyAndAliases(t *testing.T) {
 	require.NotNil(t, branchChangeCommand.Parent())
 	require.Equal(t, applicationNameConstant, branchChangeCommand.Parent().Name())
 
+	_, _, legacyCdError := rootCommand.Find([]string{"cd"})
+	require.Error(t, legacyCdError)
+	require.Contains(t, legacyCdError.Error(), "unknown command")
+
 	commitMessageCommand, _, commitMessageError := rootCommand.Find([]string{"message", "commit"})
 	require.NoError(t, commitMessageError)
 	require.Equal(t, "commit", commitMessageCommand.Name())

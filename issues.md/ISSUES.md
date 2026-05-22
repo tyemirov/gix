@@ -734,3 +734,13 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - [x] Removed current-repo selection/context fallback from configured-root repository catalogs and sorted explicit-root catalogs deterministically.
   - [x] Stopped the browser from inventing configured roots from `launch_path` and kept audit scope driven by tree folder selection plus explicit launch roots only.
   - [x] Reworked browser tests away from manual audit-root edits and added command-level and compiled-binary coverage for relative `--roots ../..` launches.
+
+- [x] [I005] Rename the branch-change command from `cd` to `sync`.
+  Requested on 2026-05-22.
+  ### Summary
+  The public branch-change command should be `gix sync`; `gix cd` must no longer be recognized.
+  ### Resolution
+  - Changed the Cobra command name and reusable operation configuration key from `cd` to `sync`.
+  - Preserved the existing branch-change behavior and `switch` alias.
+  - Updated embedded defaults, README, architecture notes, docs site examples, and warning matrix references.
+  - Added command hierarchy and black-box CLI coverage proving `cd` is rejected while branch-change tests use `sync`.

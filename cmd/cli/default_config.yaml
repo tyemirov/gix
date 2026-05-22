@@ -54,7 +54,7 @@ operations:
     with:
       roots:
         - .
-  - command: ["cd"]
+  - command: ["sync"]
     with:
       roots:
         - .

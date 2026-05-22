@@ -108,7 +108,7 @@ func TestCdFastForwardPullsWhenWorktreeHasUnrelatedTrackedChanges(testInstance *
 		cdRefreshIntegrationModulePath,
 		cdRefreshIntegrationLogLevelFlag,
 		cdRefreshIntegrationErrorLogLevel,
-		"cd",
+		"sync",
 		"master",
 		"--roots",
 		repositoryPath,
@@ -121,7 +121,7 @@ func TestCdFastForwardPullsWhenWorktreeHasUnrelatedTrackedChanges(testInstance *
 		cdRefreshIntegrationTimeout,
 		commandArguments,
 	)
-	testInstance.Logf("cd output:\n%s", output)
+	testInstance.Logf("sync output:\n%s", output)
 
 	invocationLogContents, readError := os.ReadFile(gitInvocationLog)
 	require.NoError(testInstance, readError)

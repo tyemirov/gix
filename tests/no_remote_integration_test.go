@@ -31,7 +31,7 @@ func TestBranchCommandsHandleRepositoriesWithoutRemotes(testInstance *testing.T)
 		noRemoteIntegrationModulePath,
 		noRemoteIntegrationLogLevelArg,
 		noRemoteIntegrationErrorLevel,
-		"cd",
+		"sync",
 		"master",
 		"--roots",
 		repositoryPath,
@@ -44,7 +44,7 @@ func TestBranchCommandsHandleRepositoriesWithoutRemotes(testInstance *testing.T)
 		noRemoteIntegrationTimeout,
 		commandArguments,
 	)
-	testInstance.Logf("cd output:\n%s", output)
+	testInstance.Logf("sync output:\n%s", output)
 
 	filtered := filterStructuredOutput(output)
 	require.Contains(testInstance, filtered, "REPO_SWITCHED")

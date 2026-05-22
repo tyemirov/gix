@@ -52,7 +52,7 @@ const (
 	testWorkflowCommandNameConstant                          = "workflow"
 	testWorkflowCommandKeyConstant                           = "workflow"
 	testRepoReleaseCommandKeyConstant                        = "release"
-	testBranchChangeCommandKeyConstant                       = "cd"
+	testBranchChangeCommandKeyConstant                       = "sync"
 	testCommitMessageCommandKeyConstant                      = "message commit"
 	testChangelogMessageCommandKeyConstant                   = "message changelog"
 	embeddedDefaultsBranchCleanupTestNameConstant            = "BranchCleanupDefaults"
