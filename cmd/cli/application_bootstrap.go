@@ -541,6 +541,15 @@ func (application *Application) branchCleanupConfiguration() branches.CommandCon
 
 func (application *Application) branchChangeConfiguration() branchcdcmd.CommandConfiguration {
 	configuration := branchcdcmd.DefaultCommandConfiguration()
+	messageConfiguration := application.commitMessageConfiguration()
+	configuration.CommitMessage = branchcdcmd.CommitMessageConfiguration{
+		APIKeyEnv:      messageConfiguration.APIKeyEnv,
+		BaseURL:        messageConfiguration.BaseURL,
+		Model:          messageConfiguration.Model,
+		MaxTokens:      messageConfiguration.MaxTokens,
+		Temperature:    messageConfiguration.Temperature,
+		TimeoutSeconds: messageConfiguration.TimeoutSeconds,
+	}
 	application.decodeOperationConfiguration(branchChangeOperationNameConstant, &configuration)
 
 	options, optionsExist := application.lookupOperationOptions(branchChangeOperationNameConstant)
@@ -673,13 +682,15 @@ func (application *Application) workflowCommandConfiguration() workflowcmd.Comma
 
 func (application *Application) changelogMessageConfiguration() changelogcmd.MessageConfiguration {
 	configuration := changelogcmd.DefaultMessageConfiguration()
-	application.decodeOperationConfiguration(changelogMessageOperationNameConstant, &configuration)
+	application.decodeOperationConfigurationIfPresent(changelogMessageConfigurationKeyConstant, &configuration)
+	application.decodeOperationConfigurationIfPresent(changelogMessageOperationNameConstant, &configuration)
 	return configuration.Sanitize()
 }
 
 func (application *Application) commitMessageConfiguration() commitcmd.MessageConfiguration {
 	configuration := commitcmd.DefaultMessageConfiguration()
-	application.decodeOperationConfiguration(commitMessageOperationNameConstant, &configuration)
+	application.decodeOperationConfigurationIfPresent(commitMessageConfigurationKeyConstant, &configuration)
+	application.decodeOperationConfigurationIfPresent(commitMessageOperationNameConstant, &configuration)
 	return configuration.Sanitize()
 }
 
@@ -703,6 +714,13 @@ func (application *Application) decodeOperationConfiguration(operationName strin
 			zap.Error(decodeError),
 		)
 	}
+}
+
+func (application *Application) decodeOperationConfigurationIfPresent(operationName string, target any) {
+	if _, exists := application.lookupOperationOptions(operationName); !exists {
+		return
+	}
+	application.decodeOperationConfiguration(operationName, target)
 }
 
 func (application *Application) lookupOperationOptions(operationName string) (map[string]any, bool) {

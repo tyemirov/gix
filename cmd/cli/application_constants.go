@@ -127,7 +127,7 @@ const (
 	branchChangeCommandUseNameConstant                               = "cd"
 	branchChangeCommandUsageTemplateConstant                         = branchChangeCommandUseNameConstant + " [branch]"
 	branchChangeCommandAliasConstant                                 = "switch"
-	branchChangeLongDescriptionConstant                              = "cd fetches updates, switches to the requested branch (or repository default when omitted), creates it when missing, and rebases onto the remote for each repository root. Provide the branch name as the first argument before any optional repository roots or flags, or configure a default branch in the application settings."
+	branchChangeLongDescriptionConstant                              = "cd fetches updates, switches to the requested branch (or repository default when omitted), creates it when missing, and rebases onto the remote for each repository root. When the branch is checked out in a sibling worktree, cd preserves dirty sibling changes with a generated commit, pushes required sibling commits, removes the sibling worktree, prunes metadata, and retries the switch. Provide the branch name as the first argument before any optional repository roots or flags, or configure a default branch in the application settings."
 	messageNamespaceUseNameConstant                                  = "message"
 	messageNamespaceAliasConstant                                    = "msg"
 	messageNamespaceShortDescriptionConstant                         = "Message assistance commands"
@@ -148,6 +148,8 @@ const (
 	releaseRetagCommandPathKeyConstant                               = repoReleaseCommandUseNameConstant + "/" + releaseRetagCommandUseNameConstant
 	commitMessageCommandPathKeyConstant                              = messageNamespaceUseNameConstant + "/" + commitMessageUseNameConstant
 	changelogMessageCommandPathKeyConstant                           = messageNamespaceUseNameConstant + "/" + changelogMessageUseNameConstant
+	commitMessageConfigurationKeyConstant                            = messageNamespaceUseNameConstant + " " + commitMessageUseNameConstant
+	changelogMessageConfigurationKeyConstant                         = messageNamespaceUseNameConstant + " " + changelogMessageUseNameConstant
 	renameNestedLongDescriptionConstant                              = "folder rename normalizes repository directory names to match canonical GitHub repositories."
 	updateRemoteCanonicalLongDescriptionConstant                     = "remote update-to-canonical adjusts origin remotes to match canonical GitHub repositories."
 	updateProtocolLongDescriptionConstant                            = "remote update-protocol converts origin URLs to a desired protocol."

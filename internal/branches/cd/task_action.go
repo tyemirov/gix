@@ -23,6 +23,7 @@ const (
 	taskOptionRequireClean            = "require_clean"
 	taskOptionStashChanges            = "stash"
 	taskOptionCommitChanges           = "commit"
+	taskOptionWorktreeCommitMessage   = "worktree_commit_message"
 
 	branchResolutionSourceExplicit      = "explicit"
 	branchResolutionSourceRemoteDefault = "remote_default"
@@ -160,7 +161,6 @@ func handleBranchChangeAction(ctx context.Context, environment *workflow.Environ
 		}
 		trackedStatus, untrackedStatus = worktree.SplitStatusEntries(statusEntries, nil)
 	}
-
 	refreshSkippedDetails := map[string]string{}
 	refreshSkipped := false
 	if refreshRequested && requireClean && !stashChanges && !commitChanges {
@@ -219,13 +219,29 @@ func handleBranchChangeAction(ctx context.Context, environment *workflow.Environ
 		return serviceError
 	}
 
-	result, changeError := service.Change(ctx, Options{
+	changeOptions := Options{
 		RepositoryPath:  repository.Path,
 		BranchName:      resolvedBranchName,
 		RemoteName:      remoteName,
 		CreateIfMissing: createIfMissing,
 		pullMode:        pullModeForRefreshState(refreshSkipped),
-	})
+	}
+	result, changeError := service.Change(ctx, changeOptions)
+	if changeError != nil && isBranchAlreadyUsedByWorktreeError(changeError) {
+		commitMessageOptions, commitMessageErr := worktreeAdoptionCommitMessageOptionsFromParameters(parameters)
+		if commitMessageErr != nil {
+			return commitMessageErr
+		}
+		adoptionOptions := worktreeAdoptionOptions{
+			BranchName:     resolvedBranchName,
+			RemoteName:     remoteName,
+			CommitMessages: commitMessageOptions,
+		}
+		if adoptionErr := adoptExistingBranchWorktree(ctx, environment, repository, adoptionOptions); adoptionErr != nil {
+			return adoptionErr
+		}
+		result, changeError = service.Change(ctx, changeOptions)
+	}
 	if changeError != nil {
 		return changeError
 	}
