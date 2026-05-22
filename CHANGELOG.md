@@ -11,6 +11,25 @@
 ### Docs 📚
 - Update README, architecture notes, the docs site, and the command warning matrix to use `gix sync`.
 
+## [v0.4.0] - 2026-05-22
+
+### Features ✨
+- Rename the branch-change command from `gix cd` to `gix sync` while preserving existing behavior and the `switch` alias.
+
+### Improvements ⚙️
+- Update all references in README, architecture documentation, embedded defaults, and command warning matrix to use `gix sync`.
+- Change Cobra command name and operation configuration key from `cd` to `sync`.
+
+### Bug Fixes 🐛
+- _No changes._
+
+### Testing 🧪
+- Add CLI tests to reject the removed `cd` command and verify `sync` command functionality.
+- Update branch-change integration tests to use `sync` instead of `cd`.
+
+### Docs 📚
+- Update documentation and examples in README, architecture notes, docs site, and command warning matrix to reflect the `sync` command.
+
 ## [v0.3.5] - 2026-05-21
 
 ### Features ✨
