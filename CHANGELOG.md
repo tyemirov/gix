@@ -1,5 +1,31 @@
 # Changelog
 
+## [v0.3.5] - 2026-05-21
+
+### Features ✨
+- Add support to adopt sibling worktrees during branch switching: commits dirty changes with generated message, pushes commits, removes worktree, prunes metadata, then retries switch.
+- Introduce configurable LLM-based commit message generation for worktree adoption commits using OpenAI GPT models.
+
+### Improvements ⚙️
+- Update `cd` command description and usage to explain sibling worktree adoption behavior.
+- Enhance `.gitignore` with common local environment and tool files.
+- Refine command configurations to include commit message LLM settings.
+- Improve error handling to retry branch switch after adopting sibling worktree.
+- Add integration tests for sibling worktree adoption flow.
+- Extend application bootstrap to support LLM commit message configuration decoding.
+
+### Bug Fixes 🐛
+- Fix `push` handling in worktree adoption to properly push clean adopted branches without tracking upstream.
+- Correct `cd` to commit changes in sibling worktrees when switching branches.
+
+### Testing 🧪
+- Add comprehensive integration tests for worktree adoption and commit message generation.
+
+### Docs 📚
+- Update `README.md` to describe sibling worktree adoption behavior in `cd` command.
+- Document `cd` command's fatal step on sibling worktree adoption in the warning matrix.
+- Update command descriptions and usage examples for clarity on new adoption features.
+
 ## [v0.3.4] - 2026-05-10
 
 ### Features ✨
