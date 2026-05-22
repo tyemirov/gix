@@ -27,9 +27,11 @@ const (
 	gitAddSubcommand                          = "add"
 	gitCommitSubcommand                       = "commit"
 	gitPushSubcommand                         = "push"
+	gitRevListSubcommand                      = "rev-list"
 	gitAddAllFlag                             = "--all"
 	gitCommitMessageFlag                      = "-m"
 	gitPushSetUpstreamFlag                    = "--set-upstream"
+	gitRevListCountFlag                       = "--count"
 	gitBranchReferencePrefix                  = "refs/heads/"
 	gitStatusBranchHeaderPrefix               = "## "
 	gitStatusAheadMarker                      = "ahead "
@@ -40,6 +42,8 @@ const (
 	worktreeStageFailureTemplate              = "failed to stage sibling worktree changes at %s: %w"
 	worktreeCommitFailureTemplate             = "failed to commit sibling worktree changes at %s: %w"
 	worktreePushFailureTemplate               = "failed to push adopted worktree branch %q from %s: %w"
+	worktreePushInspectionFailureTemplate     = "failed to inspect push requirement for branch %q against %q from %s: %w"
+	worktreeRemoteInspectionFailureTemplate   = "failed to inspect remote branch %q from %s: %w"
 	worktreeRemoveFailureTemplate             = "failed to remove sibling worktree %s: %w"
 	worktreePruneFailureTemplate              = "failed to prune worktrees after removing %s: %w"
 	worktreeMessageClientConfigurationFailure = "commit message generation requires model and api key configuration"
@@ -237,11 +241,17 @@ func adoptSiblingWorktree(ctx context.Context, environment *workflow.Environment
 		pushed = true
 	}
 
-	if !status.Dirty && status.Ahead {
-		if pushErr := pushSiblingBranch(ctx, environment.GitExecutor, worktree.Path, remoteName, branchName); pushErr != nil {
-			return pushErr
+	if !status.Dirty {
+		needsPush, needsPushErr := cleanSiblingBranchNeedsPush(ctx, environment.GitExecutor, worktree.Path, remoteName, branchName, status)
+		if needsPushErr != nil {
+			return needsPushErr
 		}
-		pushed = true
+		if needsPush {
+			if pushErr := pushSiblingBranch(ctx, environment.GitExecutor, worktree.Path, remoteName, branchName); pushErr != nil {
+				return pushErr
+			}
+			pushed = true
+		}
 	}
 
 	if pushed {
@@ -302,6 +312,46 @@ func inspectSiblingWorktreeStatus(ctx context.Context, executor shared.GitExecut
 		status.Dirty = true
 	}
 	return status, nil
+}
+
+func cleanSiblingBranchNeedsPush(ctx context.Context, executor shared.GitExecutor, worktreePath string, remoteName string, branchName string, status worktreeStatus) (bool, error) {
+	if status.Ahead {
+		return true, nil
+	}
+
+	remoteReference := fmt.Sprintf("%s/%s", remoteName, branchName)
+	remoteExists, remoteErr := remoteBranchReferenceExists(ctx, executor, worktreePath, remoteReference)
+	if remoteErr != nil {
+		return false, remoteErr
+	}
+	if !remoteExists {
+		return true, nil
+	}
+
+	comparisonRange := fmt.Sprintf("%s..%s", remoteReference, branchName)
+	result, countErr := executor.ExecuteGit(ctx, execshell.CommandDetails{
+		Arguments:        []string{gitRevListSubcommand, gitRevListCountFlag, comparisonRange},
+		WorkingDirectory: worktreePath,
+	})
+	if countErr != nil {
+		return false, fmt.Errorf(worktreePushInspectionFailureTemplate, branchName, remoteReference, worktreePath, countErr)
+	}
+
+	return strings.TrimSpace(result.StandardOutput) != "0", nil
+}
+
+func remoteBranchReferenceExists(ctx context.Context, executor shared.GitExecutor, worktreePath string, remoteReference string) (bool, error) {
+	_, remoteErr := executor.ExecuteGit(ctx, execshell.CommandDetails{
+		Arguments:        []string{gitRevParseSubcommandConstant, gitVerifyFlagConstant, remoteReference},
+		WorkingDirectory: worktreePath,
+	})
+	if remoteErr == nil {
+		return true, nil
+	}
+	if isBranchMissingError(remoteErr) {
+		return false, nil
+	}
+	return false, fmt.Errorf(worktreeRemoteInspectionFailureTemplate, remoteReference, worktreePath, remoteErr)
 }
 
 func generateSiblingCommitMessage(ctx context.Context, executor shared.GitExecutor, worktreePath string, options worktreeAdoptionCommitMessageOptions) (string, error) {

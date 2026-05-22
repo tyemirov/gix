@@ -36,7 +36,7 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - Abort before removal when commit generation, commit, push, or worktree removal fails.
   ## Resolution
   - `gix cd` now recognizes the Git worktree collision error, adopts the sibling worktree for the requested branch, commits dirty sibling changes with the configured generated commit-message path, pushes preserved commits, removes the sibling with `git worktree remove`, prunes metadata, and retries the normal switch/pull flow.
-  - Clean sibling worktrees skip the commit step; clean sibling worktrees that are ahead of upstream are pushed before removal.
+  - Clean sibling worktrees skip the commit step; clean sibling worktrees that contain commits missing from the configured remote are pushed before removal, even when the branch has no upstream metadata.
   - Added black-box integration coverage for dirty sibling adoption and clean-ahead sibling adoption.
   - `make ci` passed locally.
 

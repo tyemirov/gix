@@ -71,6 +71,8 @@ func TestCdAdoptsCleanAheadSiblingWorktree(testInstance *testing.T) {
 	require.NoError(testInstance, os.WriteFile(aheadPath, []byte("already committed locally\n"), 0o644))
 	runGit(testInstance, fixture.SiblingPath, "add", "ahead.txt")
 	runGit(testInstance, fixture.SiblingPath, "commit", "-m", "chore: local sibling commit")
+	runGit(testInstance, fixture.SiblingPath, "branch", "--unset-upstream")
+	require.NotContains(testInstance, runGit(testInstance, fixture.SiblingPath, "status", "--porcelain", "--branch"), "ahead")
 
 	configurationPath := writeCdWorktreeAdoptionConfiguration(testInstance, "")
 	output := runIntegrationCommand(
