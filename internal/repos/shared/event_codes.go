@@ -4,6 +4,7 @@ package shared
 const (
 	EventCodeRepoSwitched             = "REPO_SWITCHED"
 	EventCodeRepoDirty                = "REPO_DIRTY"
+	EventCodeWorktreeAdopt            = "WORKTREE_ADOPT"
 	EventCodeNamespacePlan            = "NAMESPACE_PLAN"
 	EventCodeNamespaceApply           = "NAMESPACE_APPLY"
 	EventCodeNamespaceSkip            = "NAMESPACE_SKIP"

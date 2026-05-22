@@ -20,7 +20,7 @@ const (
 	commandUsageTemplateConstant            = commandUseNameConstant + " [branch]"
 	commandExampleTemplateConstant          = "gix cd feature/new-branch --roots ~/Development"
 	commandShortDescriptionConstant         = "Switch repositories to the selected branch"
-	commandLongDescriptionConstant          = "cd fetches updates, switches to the requested branch, creates it if missing, and rebases onto the remote for each repository root. Provide the branch name as the first argument before any optional repository roots or flags, or configure a default branch in the application settings."
+	commandLongDescriptionConstant          = "cd fetches updates, switches to the requested branch, creates it if missing, and rebases onto the remote for each repository root. When the branch is checked out in a sibling worktree, cd preserves dirty sibling changes with a generated commit, pushes required sibling commits, removes the sibling worktree, prunes metadata, and retries the switch. Provide the branch name as the first argument before any optional repository roots or flags, or configure a default branch in the application settings."
 	missingBranchMessageConstant            = "unable to determine branch; provide a branch argument or configure a default branch"
 	changeSuccessMessageTemplateConstant    = "SWITCHED: %s -> %s"
 	changeCreatedSuffixConstant             = " (created)"
@@ -158,6 +158,7 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 	if commitRequested {
 		actionOptions[taskOptionCommitChanges] = true
 	}
+	actionOptions[taskOptionWorktreeCommitMessage] = worktreeAdoptionCommitMessageOptionsFromConfiguration(configuration.CommitMessage)
 
 	taskBranchLabel := strings.TrimSpace(explicitBranch)
 	if len(taskBranchLabel) == 0 {

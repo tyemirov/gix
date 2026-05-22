@@ -11,6 +11,35 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
 
 ## BugFixes
 
+- [x] [B007] (P1) `.gitignore` hides new source and test files by default.
+  Requested on 2026-05-21 after new `gix cd` implementation files were present on disk but only visible under ignored status because `.gitignore` used a catch-all `*` with a narrow allowlist.
+  ## Observation
+  - The catch-all ignore shape made normal implementation files invisible to `git status`.
+  - That increased the chance of shipping partial changes unless new files were manually force-added.
+  ## Deliverable
+  - Replace the blanket ignore with explicit rules for OS/editor noise, local environment files, Go build/test artifacts, generated output, browser automation traces, and local planning scratch.
+  - Ensure normal source, test, docs, config, and workflow files are trackable without force-add.
+  ## Resolution
+  - Rewrote `.gitignore` as an explicit project ignore list.
+  - New Go source and integration test files now appear in regular `git status`.
+
+- [x] [B006] (P1) `gix cd` fails when the target branch is already checked out in a sibling worktree.
+  Requested on 2026-05-21 after `gix cd tyemirov/bugfix/B005-sample-title-center` failed in `/Users/tyemirov/Development/Hecate` because the branch was already used by `/Users/tyemirov/Development/Hecate-pr108`.
+  ## Observation
+  - Git refuses to switch a branch that is already checked out by another worktree.
+  - The operator intent for `gix cd` is to make the requested branch active in the current checkout, automatically preserving and removing the disposable sibling worktree when safe.
+  ## Deliverable
+  - Detect sibling worktrees that own the requested branch before switching.
+  - If the sibling worktree has uncommitted changes, stage all changes, generate a commit message, commit them, and push the branch to the configured remote.
+  - If the sibling worktree is clean, skip the commit step; if it is clean but ahead of upstream, push before removal.
+  - Remove the sibling worktree with `git worktree remove`, prune worktree metadata, then switch and pull the requested branch through the existing `gix cd` path.
+  - Abort before removal when commit generation, commit, push, or worktree removal fails.
+  ## Resolution
+  - `gix cd` now recognizes the Git worktree collision error, adopts the sibling worktree for the requested branch, commits dirty sibling changes with the configured generated commit-message path, pushes preserved commits, removes the sibling with `git worktree remove`, prunes metadata, and retries the normal switch/pull flow.
+  - Clean sibling worktrees skip the commit step; clean sibling worktrees that contain commits missing from the configured remote are pushed before removal, even when the branch has no upstream metadata.
+  - Added black-box integration coverage for dirty sibling adoption and clean-ahead sibling adoption.
+  - `make ci` passed locally.
+
 - [x] [B005] (P1) `gix cd` skips remote fast-forward updates when the worktree has tracked local changes.
   Requested on 2026-05-10 after `gix cd` reported `refresh skipped (dirty worktree)` in `/Users/tyemirov/Documents/Projects/Fiction`, while a manual `git pull` immediately fast-forwarded `master`.
   ## Observation
