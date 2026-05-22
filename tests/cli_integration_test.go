@@ -198,6 +198,35 @@ func TestCLIIntegrationDisplaysHelpWhenNoArgumentsProvided(testInstance *testing
 	}
 }
 
+func TestCLIIntegrationRejectsLegacyCdCommand(testInstance *testing.T) {
+	currentWorkingDirectory, workingDirectoryError := os.Getwd()
+	require.NoError(testInstance, workingDirectoryError)
+	repositoryRootDirectory := filepath.Dir(currentWorkingDirectory)
+
+	temporaryDirectory := testInstance.TempDir()
+	configurationPath := writeIntegrationConfiguration(testInstance, temporaryDirectory, integrationErrorLevelConstant)
+
+	executionContext, cancelFunction := context.WithTimeout(context.Background(), integrationCommandTimeout)
+	defer cancelFunction()
+
+	commandArguments := []string{
+		integrationGoRunSubcommandConstant,
+		integrationCurrentDirectoryArgumentConstant,
+		fmt.Sprintf(integrationConfigFlagTemplateConstant, configurationPath),
+		"cd",
+	}
+	command := exec.CommandContext(executionContext, integrationGoBinaryNameConstant, commandArguments...)
+	command.Dir = repositoryRootDirectory
+	command.Env = os.Environ()
+
+	outputBytes, runError := command.CombinedOutput()
+	outputText := string(outputBytes)
+
+	require.Error(testInstance, runError, outputText)
+	require.Contains(testInstance, outputText, "unknown command")
+	require.Contains(testInstance, outputText, "cd")
+}
+
 func TestCLIIntegrationRespectsLogFormatFlag(testInstance *testing.T) {
 	testCases := []struct {
 		name                string

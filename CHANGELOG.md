@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased]
+
+### Improvements ⚙️
+- Rename the public branch-change command from `gix cd` to `gix sync` while preserving the existing behavior and `switch` alias.
+
+### Testing 🧪
+- Add CLI coverage that rejects the removed `cd` command and update branch-change integration tests to invoke `sync`.
+
+### Docs 📚
+- Update README, architecture notes, the docs site, and the command warning matrix to use `gix sync`.
+
 ## [v0.3.5] - 2026-05-21
 
 ### Features ✨

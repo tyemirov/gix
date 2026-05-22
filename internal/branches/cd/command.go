@@ -16,16 +16,16 @@ import (
 )
 
 const (
-	commandUseNameConstant                  = "cd"
+	commandUseNameConstant                  = "sync"
 	commandUsageTemplateConstant            = commandUseNameConstant + " [branch]"
-	commandExampleTemplateConstant          = "gix cd feature/new-branch --roots ~/Development"
-	commandShortDescriptionConstant         = "Switch repositories to the selected branch"
-	commandLongDescriptionConstant          = "cd fetches updates, switches to the requested branch, creates it if missing, and rebases onto the remote for each repository root. When the branch is checked out in a sibling worktree, cd preserves dirty sibling changes with a generated commit, pushes required sibling commits, removes the sibling worktree, prunes metadata, and retries the switch. Provide the branch name as the first argument before any optional repository roots or flags, or configure a default branch in the application settings."
+	commandExampleTemplateConstant          = "gix sync feature/new-branch --roots ~/Development"
+	commandShortDescriptionConstant         = "Synchronize repositories to the selected branch"
+	commandLongDescriptionConstant          = "sync fetches updates, switches to the requested branch, creates it if missing, and rebases onto the remote for each repository root. When the branch is checked out in a sibling worktree, sync preserves dirty sibling changes with a generated commit, pushes required sibling commits, removes the sibling worktree, prunes metadata, and retries the switch. Provide the branch name as the first argument before any optional repository roots or flags, or configure a default branch in the application settings."
 	missingBranchMessageConstant            = "unable to determine branch; provide a branch argument or configure a default branch"
 	changeSuccessMessageTemplateConstant    = "SWITCHED: %s -> %s"
 	changeCreatedSuffixConstant             = " (created)"
 	legacyAliasNameConstant                 = "branch-cd"
-	legacyAliasDeprecationMessage           = "DEPRECATED: use `gix cd` instead of `gix branch-cd`."
+	legacyAliasDeprecationMessage           = "DEPRECATED: use `gix sync` instead of `gix branch-cd`."
 	stashFlagNameConstant                   = "stash"
 	stashFlagDescriptionConstant            = "Stash local changes before refreshing"
 	commitFlagNameConstant                  = "commit"
@@ -38,7 +38,7 @@ const (
 // LoggerProvider yields a zap logger instance.
 type LoggerProvider func() *zap.Logger
 
-// CommandBuilder assembles the cd command.
+// CommandBuilder assembles the sync command.
 type CommandBuilder struct {
 	LoggerProvider               LoggerProvider
 	GitExecutor                  shared.GitExecutor
@@ -51,7 +51,7 @@ type CommandBuilder struct {
 	TaskRunnerFactory            func(workflow.Dependencies) TaskRunnerExecutor
 }
 
-// Build constructs the cd command.
+// Build constructs the sync command.
 func (builder *CommandBuilder) Build() (*cobra.Command, error) {
 	command := &cobra.Command{
 		Use:     commandUsageTemplateConstant,

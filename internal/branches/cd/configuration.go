@@ -24,7 +24,7 @@ type CommitMessageConfiguration struct {
 	TimeoutSeconds int     `mapstructure:"timeout_seconds"`
 }
 
-// CommandConfiguration captures configuration values for the cd command.
+// CommandConfiguration captures configuration values for the sync command.
 type CommandConfiguration struct {
 	RepositoryRoots []string                   `mapstructure:"roots"`
 	DefaultBranch   string                     `mapstructure:"branch"`
@@ -36,7 +36,7 @@ type CommandConfiguration struct {
 	CommitMessage   CommitMessageConfiguration `mapstructure:"commit_message"`
 }
 
-// DefaultCommandConfiguration returns the baseline configuration for cd.
+// DefaultCommandConfiguration returns the baseline configuration for sync.
 func DefaultCommandConfiguration() CommandConfiguration {
 	return CommandConfiguration{
 		CreateIfMissing: true,

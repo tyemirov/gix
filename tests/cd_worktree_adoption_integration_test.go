@@ -51,7 +51,7 @@ func TestCdAdoptsDirtySiblingWorktree(testInstance *testing.T) {
 		repositoryRoot,
 		integrationCommandOptions{EnvironmentOverrides: map[string]string{cdWorktreeAdoptionAPIKeyVariable: "test-api-key"}},
 		cdWorktreeAdoptionTimeout,
-		[]string{"run", ".", "--config", configurationPath, "cd", fixture.BranchName, "--roots", fixture.RepositoryPath},
+		[]string{"run", ".", "--config", configurationPath, "sync", fixture.BranchName, "--roots", fixture.RepositoryPath},
 	)
 
 	require.Contains(testInstance, output, "WORKTREE_ADOPT")
@@ -80,7 +80,7 @@ func TestCdAdoptsCleanAheadSiblingWorktree(testInstance *testing.T) {
 		repositoryRoot,
 		integrationCommandOptions{},
 		cdWorktreeAdoptionTimeout,
-		[]string{"run", ".", "--config", configurationPath, "cd", fixture.BranchName, "--roots", fixture.RepositoryPath},
+		[]string{"run", ".", "--config", configurationPath, "sync", fixture.BranchName, "--roots", fixture.RepositoryPath},
 	)
 
 	require.Contains(testInstance, output, "WORKTREE_ADOPT")
@@ -149,7 +149,7 @@ func writeCdWorktreeAdoptionConfiguration(testInstance *testing.T, baseURL strin
   log_level: error
   log_format: console
 operations:
-  - command: ["cd"]
+  - command: ["sync"]
     with:
       remote: origin
       require_clean: true
