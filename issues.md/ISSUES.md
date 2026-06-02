@@ -745,7 +745,7 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - Updated embedded defaults, README, architecture notes, docs site examples, and warning matrix references.
   - Added command hierarchy and black-box CLI coverage proving `cd` is rejected while branch-change tests use `sync`.
 
-- [ ] [I006] Implement the new `gix sync` semantics and remove the old `cd` implementation.
+- [x] [I006] Implement the new `gix sync` semantics and remove the old `cd` implementation.
   Requested on 2026-06-01.
   ### Summary
   `gix sync` should become the canonical simplified workflow command instead of the renamed branch-change command.
@@ -755,3 +755,11 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - Keep `--stash`, `--commit`, and `--require-clean` functioning as explicit dirty-work policies.
   - Use merge-based work-branch updates and conflict stop-before-push behavior; do not rebase.
   - Update README/help/config/tests around the simplified flow.
+  ### Resolution
+  - Removed the public `cd` command path and kept `sync` as the canonical command.
+  - Implemented strict sync targets for remote attach, remote-owned `master`, PR-backed branches, and the current branch without rebase or force-push.
+  - Made dirty `gix sync` the default: changed paths are clustered, staged, described through the configured `github.com/tyemirov/utils/llm` client, committed, then synced and pushed.
+  - Dirty `master` sync now creates a generated `sync/<repo>/<path>` work branch before committing and continuing through the PR flow.
+  - Preserved `--stash`, kept `--commit` accepted, and made `--require-clean` the opt-in dirty-work guard.
+  - Updated README/help/config defaults and added black-box coverage for dirty PR branches, dirty `master`, generated branches, and the clean-worktree guard.
+  - `make test`, `make lint`, and `make ci` passed locally.

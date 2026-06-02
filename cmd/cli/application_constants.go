@@ -127,7 +127,7 @@ const (
 	branchSyncCommandUseNameConstant                                 = "sync"
 	branchSyncCommandUsageTemplateConstant                           = branchSyncCommandUseNameConstant + " [remote-url|branch]"
 	branchSyncCommandAliasConstant                                   = "switch"
-	branchSyncLongDescriptionConstant                                = "sync keeps a workspace aligned with the remote-owned master branch and PR-backed work branches. With no branch argument, sync updates the current branch. With master, sync restores local master from origin/master. With any other branch, sync requires or creates a remote branch with an open pull request into master, merges origin/master into it, and pushes the result without rebasing or force-pushing."
+	branchSyncLongDescriptionConstant                                = "sync keeps a workspace aligned with the remote-owned master branch and PR-backed work branches. With no branch argument, sync updates the current branch. Dirty work is clustered, described with the configured LLM client, committed, then pushed through the PR workflow. With master, clean sync restores local master from origin/master; dirty sync creates a PR work branch. Sync never rebases or force-pushes."
 	messageNamespaceUseNameConstant                                  = "message"
 	messageNamespaceAliasConstant                                    = "msg"
 	messageNamespaceShortDescriptionConstant                         = "Message assistance commands"

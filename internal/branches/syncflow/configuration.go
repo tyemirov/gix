@@ -40,7 +40,6 @@ type CommandConfiguration struct {
 func DefaultCommandConfiguration() CommandConfiguration {
 	return CommandConfiguration{
 		CreateIfMissing: true,
-		RequireClean:    true,
 		CommitMessage:   DefaultCommitMessageConfiguration(),
 	}
 }
