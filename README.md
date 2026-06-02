@@ -30,7 +30,7 @@ gix makes one pull-request-centered Git workflow mechanical: `master` belongs to
 | `gix sync <branch>` | Require or create a remote branch with an open PR into `master`, commit dirty work when present, merge `origin/master`, then push. |
 | `gix sync` | Apply the same rule to the current branch. |
 
-By default, a dirty `gix sync` clusters changed paths by top-level area, stages and commits each cluster with a Conventional Commit message from the configured `github.com/tyemirov/utils/llm` client, then continues the no-rebase sync and push. `--stash` temporarily shelves dirty work instead of committing it, `--commit` remains accepted for scripts that already pass it, and `--require-clean` opts back into failing when the worktree is dirty.
+By default, a dirty `gix sync` clusters changed paths by top-level area, stages and commits each cluster with a Conventional Commit message from the configured `github.com/tyemirov/utils/llm` client, then continues the no-rebase sync and push. `--stash` temporarily shelves dirty work instead of committing it, `--commit` explicitly selects the auto-commit policy for scripts that already pass it, and `--require-clean` by itself opts back into failing when the worktree is dirty.
 
 Merge conflicts stop before push and leave the repository in Git's normal conflict state. The PR branch is "ours"; `origin/master` is "theirs".
 
@@ -547,7 +547,7 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
 - `gix default <target-branch> [--roots <dir>...] [-y]`
  - Promotes the default branch across repositories.
 - `gix sync [remote-url|branch] [--remote <name>] [--stash | --commit] [--require-clean] [--roots <dir>...]` (alias `switch`)
- - Synchronizes the current workspace through the Gix flow: remote attach/clone, remote-owned `master`, or PR-backed work branches. Dirty work is clustered, LLM-described, committed, and pushed by default; dirty `master` sync creates a generated PR work branch. Sync never rebases or force-pushes. `--stash` temporarily shelves dirty work, `--commit` remains accepted, and `--require-clean` requires a clean worktree instead of auto-committing.
+ - Synchronizes the current workspace through the Gix flow: remote attach/clone, remote-owned `master`, or PR-backed work branches. Dirty work is clustered, LLM-described, committed, and pushed by default; dirty `master` sync creates a generated PR work branch. Sync never rebases or force-pushes. `--stash` temporarily shelves dirty work, `--commit` explicitly selects the auto-commit policy, and `--require-clean` requires a clean worktree only when no dirty-work policy is selected.
 ## Configuration essentials
 
 - `gix --init LOCAL` writes an embeddable starter `config.yaml` to the current directory; `gix --init user` places it under `$XDG_CONFIG_HOME/gix` or `$HOME/.gix`.
