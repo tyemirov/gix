@@ -43,6 +43,7 @@ const (
 	gitStashPopSubcommandConstant                = "pop"
 	gitMergeSubcommandConstant                   = "merge"
 	gitMergeNoEditFlagConstant                   = "--no-edit"
+	gitMergeFastForwardOnlyFlagConstant          = "--ff-only"
 	gitResetSubcommandConstant                   = "reset"
 	gitResetHardFlagConstant                     = "--hard"
 	gitPushSubcommandConstant                    = "push"
@@ -65,6 +66,7 @@ const (
 	strictSyncLocalOnlyCommitTemplate            = "local branch %q has commits not on %s/%s"
 	strictSyncMissingPullRequestTemplate         = "branch %q does not have an open pull request into %s"
 	strictSyncConflictTemplate                   = "merge from %s/%s into %s stopped with conflicts; resolve them before pushing"
+	strictSyncFastForwardTemplate                = "fast-forward from %s/%s into %s stopped; commit, stash, or clean local changes before syncing"
 	strictSyncCheckpointCommitTemplate           = "chore: checkpoint before syncing %s"
 	strictSyncCreatedPRBody                      = "Created by gix sync."
 )
@@ -521,6 +523,7 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 		RemoteName:       remoteName,
 		BaseBranch:       baseBranch,
 		AllowAheadCommit: checkpointCommitted,
+		DirtyWorktree:    dirty,
 	})
 	if syncErr != nil {
 		return syncErr
@@ -534,6 +537,7 @@ type strictPullRequestBranchOptions struct {
 	RemoteName       string
 	BaseBranch       string
 	AllowAheadCommit bool
+	DirtyWorktree    bool
 }
 
 func syncBaseBranch(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, remoteName string, baseBranch string) error {
@@ -601,6 +605,10 @@ func syncPullRequestBranch(ctx context.Context, environment *workflow.Environmen
 			if mergeErr := mergeRemoteBranchIntoLocal(ctx, environment.GitExecutor, repository.Path, options.RemoteName, options.BranchName); mergeErr != nil {
 				return false, mergeErr
 			}
+		} else if options.DirtyWorktree {
+			if fastForwardErr := fastForwardRemoteBranchIntoLocal(ctx, environment.GitExecutor, repository.Path, options.RemoteName, options.BranchName); fastForwardErr != nil {
+				return false, fastForwardErr
+			}
 		} else if resetErr := executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitResetSubcommandConstant, gitResetHardFlagConstant, remoteReference}); resetErr != nil {
 			return false, resetErr
 		}
@@ -660,6 +668,14 @@ func mergeRemoteBranchIntoLocal(ctx context.Context, executor shared.GitExecutor
 	remoteReference := fmt.Sprintf("%s/%s", remoteName, branchName)
 	if mergeErr := executeGit(ctx, executor, repositoryPath, []string{gitMergeSubcommandConstant, gitMergeNoEditFlagConstant, remoteReference}); mergeErr != nil {
 		return fmt.Errorf("%s: %w", fmt.Sprintf(strictSyncConflictTemplate, remoteName, branchName, branchName), mergeErr)
+	}
+	return nil
+}
+
+func fastForwardRemoteBranchIntoLocal(ctx context.Context, executor shared.GitExecutor, repositoryPath string, remoteName string, branchName string) error {
+	remoteReference := fmt.Sprintf("%s/%s", remoteName, branchName)
+	if mergeErr := executeGit(ctx, executor, repositoryPath, []string{gitMergeSubcommandConstant, gitMergeFastForwardOnlyFlagConstant, remoteReference}); mergeErr != nil {
+		return fmt.Errorf("%s: %w", fmt.Sprintf(strictSyncFastForwardTemplate, remoteName, branchName, branchName), mergeErr)
 	}
 	return nil
 }

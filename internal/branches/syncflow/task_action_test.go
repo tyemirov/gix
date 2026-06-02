@@ -341,6 +341,44 @@ func TestHandleBranchSyncActionStrictPRBranchMergesBaseAndPushes(t *testing.T) {
 	require.Contains(t, githubExecutor.commands[0].Arguments, "list")
 }
 
+func TestHandleBranchSyncActionStrictPRBranchPreservesDirtySameBranchWhenRequireCleanDisabled(t *testing.T) {
+	gitExecutor := &strictSyncGitExecutor{statusOutput: " M README.md\n"}
+	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(t, managerError)
+	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":7,"title":"Feature","headRefName":"feature/foo"}]`}
+	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
+	require.NoError(t, githubClientError)
+	environment := &workflow.Environment{
+		GitExecutor:       gitExecutor,
+		RepositoryManager: gitManager,
+		GitHubClient:      githubClient,
+		Logger:            zap.NewNop(),
+		Output:            io.Discard,
+		Errors:            io.Discard,
+		Reporter:          &recordingReporter{},
+	}
+	repository := &workflow.RepositoryState{
+		Path: "/tmp/project",
+		Inspection: audit.RepositoryInspection{
+			LocalBranch:    "feature/foo",
+			FinalOwnerRepo: "owner/project",
+		},
+	}
+	parameters := map[string]any{
+		taskOptionBranchName:         "feature/foo",
+		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
+		taskOptionRequirePullRequest: true,
+		taskOptionBaseBranch:         "master",
+		taskOptionRequireClean:       false,
+	}
+
+	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "merge --ff-only origin/feature/foo")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "merge --no-edit origin/master")
+	require.NotContains(t, recordedGitCommands(gitExecutor.commands), "reset --hard origin/feature/foo")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "push origin feature/foo")
+}
+
 func TestHandleBranchSyncActionStrictPRBranchRejectsMissingPullRequest(t *testing.T) {
 	gitExecutor := &strictSyncGitExecutor{}
 	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
