@@ -1,4 +1,4 @@
-package cd
+package syncflow
 
 import (
 	"context"
@@ -45,7 +45,6 @@ const (
 	gitBranchSubcommandConstant               = "branch"
 	gitSetUpstreamToFlagConstant              = "--set-upstream-to"
 	gitPullSubcommandConstant                 = "pull"
-	gitPullRebaseFlagConstant                 = "--rebase"
 	gitPullFastForwardFlagConstant            = "--ff-only"
 	gitRevParseSubcommandConstant             = "rev-parse"
 	gitVerifyFlagConstant                     = "--verify"
@@ -68,7 +67,7 @@ type ServiceDependencies struct {
 	Logger      *zap.Logger
 }
 
-// Options configure a branch change operation.
+// Options configure a branch sync operation.
 type Options struct {
 	RepositoryPath  string
 	BranchName      string
@@ -77,7 +76,7 @@ type Options struct {
 	pullMode        pullMode
 }
 
-// Result captures the outcome of a branch change.
+// Result captures the outcome of a branch sync.
 type Result struct {
 	RepositoryPath     string
 	BranchName         string
@@ -97,7 +96,6 @@ type pullMode struct {
 }
 
 var (
-	pullModeRebase          = pullMode{name: "rebase"}
 	pullModeFastForwardOnly = pullMode{name: "fast-forward-only"}
 	pullModeSkip            = pullMode{name: "skip"}
 )
@@ -282,7 +280,7 @@ func (service *Service) Change(executionContext context.Context, options Options
 
 func (mode pullMode) withDefault() pullMode {
 	if strings.TrimSpace(mode.name) == "" {
-		return pullModeRebase
+		return pullModeFastForwardOnly
 	}
 	return mode
 }
@@ -292,12 +290,7 @@ func (mode pullMode) skip() bool {
 }
 
 func (mode pullMode) arguments() []string {
-	switch mode.name {
-	case pullModeFastForwardOnly.name:
-		return []string{gitPullSubcommandConstant, gitPullFastForwardFlagConstant}
-	default:
-		return []string{gitPullSubcommandConstant, gitPullRebaseFlagConstant}
-	}
+	return []string{gitPullSubcommandConstant, gitPullFastForwardFlagConstant}
 }
 
 func (service *Service) trySwitch(executionContext context.Context, repositoryPath string, branchName string, environment map[string]string) error {

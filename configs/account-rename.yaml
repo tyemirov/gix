@@ -39,7 +39,7 @@ workflow:
                 require_clean:
                   enabled: true
             actions:
-              - type: branch.change
+              - type: branch.sync
                 options:
                   branch: master
                   remote: origin
@@ -56,7 +56,7 @@ workflow:
         tasks:
           - name: "Create namespace branch"
             actions:
-              - type: branch.change
+              - type: branch.sync
                 options:
                   branch: "automation/ns-rewrite/{{ .Repository.Name }}-{{ index .Environment \"workflow_run_id\" }}"
                   remote: origin
@@ -177,7 +177,7 @@ workflow:
         tasks:
           - name: "Restore initial branch"
             actions:
-              - type: branch.change
+              - type: branch.sync
                 options:
                   restore:
                     from: initial_branch

@@ -16,14 +16,14 @@ const (
 	restoreOptionKey = "restore"
 )
 
-// BranchCaptureSpec describes a capture directive attached to branch.change.
+// BranchCaptureSpec describes a capture directive attached to branch.sync.
 type BranchCaptureSpec struct {
 	Name      VariableName
 	Kind      CaptureKind
 	Overwrite bool
 }
 
-// BranchRestoreSpec describes a restore directive attached to branch.change.
+// BranchRestoreSpec describes a restore directive attached to branch.sync.
 type BranchRestoreSpec struct {
 	Name         VariableName
 	Kind         CaptureKind
@@ -44,7 +44,7 @@ func ParseBranchCaptureSpec(options map[string]any) (*BranchCaptureSpec, error) 
 		return nil, variableErr
 	}
 	if !variableExists || len(strings.TrimSpace(variableValue)) == 0 {
-		return nil, fmt.Errorf("branch.change capture requires %q", "name")
+		return nil, fmt.Errorf("branch.sync capture requires %q", "name")
 	}
 	name, nameErr := NewVariableName(variableValue)
 	if nameErr != nil {
@@ -56,7 +56,7 @@ func ParseBranchCaptureSpec(options map[string]any) (*BranchCaptureSpec, error) 
 		return nil, kindErr
 	}
 	if !kindExists {
-		return nil, fmt.Errorf("branch.change capture requires %q", "value")
+		return nil, fmt.Errorf("branch.sync capture requires %q", "value")
 	}
 	kind, kindErr := parseCaptureKind(kindValue)
 	if kindErr != nil {
@@ -85,7 +85,7 @@ func ParseBranchRestoreSpec(options map[string]any) (*BranchRestoreSpec, error) 
 		return nil, variableErr
 	}
 	if !variableExists || len(strings.TrimSpace(variableValue)) == 0 {
-		return nil, fmt.Errorf("branch.change restore requires %q", "from")
+		return nil, fmt.Errorf("branch.sync restore requires %q", "from")
 	}
 	name, nameErr := NewVariableName(variableValue)
 	if nameErr != nil {

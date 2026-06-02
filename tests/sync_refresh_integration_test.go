@@ -12,22 +12,22 @@ import (
 )
 
 const (
-	cdRefreshIntegrationTimeout          = 10 * time.Second
-	cdRefreshIntegrationRunCommand       = "run"
-	cdRefreshIntegrationModulePath       = "."
-	cdRefreshIntegrationLogLevelFlag     = "--log-level"
-	cdRefreshIntegrationErrorLogLevel    = "error"
-	cdRefreshIntegrationGitInvocationLog = "git-invocations.log"
+	syncRefreshIntegrationTimeout          = 10 * time.Second
+	syncRefreshIntegrationRunCommand       = "run"
+	syncRefreshIntegrationModulePath       = "."
+	syncRefreshIntegrationLogLevelFlag     = "--log-level"
+	syncRefreshIntegrationErrorLogLevel    = "error"
+	syncRefreshIntegrationGitInvocationLog = "git-invocations.log"
 )
 
-func TestCdFastForwardPullsWhenWorktreeHasUnrelatedTrackedChanges(testInstance *testing.T) {
+func TestSyncRejectsDirtyMasterWorktree(testInstance *testing.T) {
 	testInstance.Helper()
 
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	realGitPath, lookupError := exec.LookPath("git")
 	require.NoError(testInstance, lookupError)
 
-	gitInvocationLog := filepath.Join(testInstance.TempDir(), cdRefreshIntegrationGitInvocationLog)
+	gitInvocationLog := filepath.Join(testInstance.TempDir(), syncRefreshIntegrationGitInvocationLog)
 	gitStubScript := []byte(strings.Join([]string{
 		"#!/bin/sh",
 		"echo \"$@\" >> " + gitInvocationLog,
@@ -46,11 +46,11 @@ func TestCdFastForwardPullsWhenWorktreeHasUnrelatedTrackedChanges(testInstance *
 	initCommand.Env = buildGitCommandEnvironment(nil)
 	require.NoError(testInstance, initCommand.Run())
 
-	configNameCommand := exec.Command("git", "-C", repositoryPath, "config", "user.name", "Cd Refresh")
+	configNameCommand := exec.Command("git", "-C", repositoryPath, "config", "user.name", "Sync Refresh")
 	configNameCommand.Env = buildGitCommandEnvironment(nil)
 	require.NoError(testInstance, configNameCommand.Run())
 
-	configEmailCommand := exec.Command("git", "-C", repositoryPath, "config", "user.email", "cd-refresh@example.com")
+	configEmailCommand := exec.Command("git", "-C", repositoryPath, "config", "user.email", "sync-refresh@example.com")
 	configEmailCommand.Env = buildGitCommandEnvironment(nil)
 	require.NoError(testInstance, configEmailCommand.Run())
 
@@ -78,11 +78,11 @@ func TestCdFastForwardPullsWhenWorktreeHasUnrelatedTrackedChanges(testInstance *
 	cloneCommand.Env = buildGitCommandEnvironment(nil)
 	require.NoError(testInstance, cloneCommand.Run())
 
-	upstreamNameCommand := exec.Command("git", "-C", upstreamPath, "config", "user.name", "Cd Refresh")
+	upstreamNameCommand := exec.Command("git", "-C", upstreamPath, "config", "user.name", "Sync Refresh")
 	upstreamNameCommand.Env = buildGitCommandEnvironment(nil)
 	require.NoError(testInstance, upstreamNameCommand.Run())
 
-	upstreamEmailCommand := exec.Command("git", "-C", upstreamPath, "config", "user.email", "cd-refresh@example.com")
+	upstreamEmailCommand := exec.Command("git", "-C", upstreamPath, "config", "user.email", "sync-refresh@example.com")
 	upstreamEmailCommand.Env = buildGitCommandEnvironment(nil)
 	require.NoError(testInstance, upstreamEmailCommand.Run())
 
@@ -104,33 +104,31 @@ func TestCdFastForwardPullsWhenWorktreeHasUnrelatedTrackedChanges(testInstance *
 	require.NoError(testInstance, os.WriteFile(readmePath, []byte("modified locally\n"), 0o644))
 
 	commandArguments := []string{
-		cdRefreshIntegrationRunCommand,
-		cdRefreshIntegrationModulePath,
-		cdRefreshIntegrationLogLevelFlag,
-		cdRefreshIntegrationErrorLogLevel,
+		syncRefreshIntegrationRunCommand,
+		syncRefreshIntegrationModulePath,
+		syncRefreshIntegrationLogLevelFlag,
+		syncRefreshIntegrationErrorLogLevel,
 		"sync",
 		"master",
 		"--roots",
 		repositoryPath,
 	}
 
-	output := runIntegrationCommand(
+	output, runError := runFailingIntegrationCommand(
 		testInstance,
 		repositoryRoot,
 		integrationCommandOptions{PathVariable: pathVariable},
-		cdRefreshIntegrationTimeout,
+		syncRefreshIntegrationTimeout,
 		commandArguments,
 	)
+	require.Error(testInstance, runError)
 	testInstance.Logf("sync output:\n%s", output)
+	require.Contains(testInstance, output, "worktree is dirty")
 
 	invocationLogContents, readError := os.ReadFile(gitInvocationLog)
 	require.NoError(testInstance, readError)
-	require.Contains(testInstance, string(invocationLogContents), "pull --ff-only")
+	require.NotContains(testInstance, string(invocationLogContents), "pull --ff-only")
 	require.NotContains(testInstance, string(invocationLogContents), "pull --rebase")
-
-	remoteFileContents, remoteReadError := os.ReadFile(filepath.Join(repositoryPath, "UPSTREAM.md"))
-	require.NoError(testInstance, remoteReadError)
-	require.Equal(testInstance, "remote update\n", string(remoteFileContents))
 
 	localFileContents, localReadError := os.ReadFile(readmePath)
 	require.NoError(testInstance, localReadError)

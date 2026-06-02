@@ -1,4 +1,4 @@
-package cd
+package syncflow
 
 import (
 	"context"
@@ -13,6 +13,7 @@ import (
 
 	"github.com/tyemirov/gix/internal/audit"
 	"github.com/tyemirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/githubcli"
 	"github.com/tyemirov/gix/internal/gitrepo"
 	"github.com/tyemirov/gix/internal/repos/shared"
 	"github.com/tyemirov/gix/internal/workflow"
@@ -105,7 +106,62 @@ func (executor *statefulBranchCaptureExecutor) ExecuteGitHubCLI(context.Context,
 	return execshell.ExecutionResult{}, nil
 }
 
-func TestHandleBranchChangeActionUsesRepositoryDefault(t *testing.T) {
+type strictSyncGitExecutor struct {
+	commands          []execshell.CommandDetails
+	statusOutput      string
+	revListOutput     string
+	missingReferences map[string]bool
+	mergeError        error
+}
+
+func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
+	executor.commands = append(executor.commands, details)
+	if len(details.Arguments) == 0 {
+		return execshell.ExecutionResult{}, nil
+	}
+	switch details.Arguments[0] {
+	case "status":
+		return execshell.ExecutionResult{StandardOutput: executor.statusOutput}, nil
+	case "rev-parse":
+		if len(details.Arguments) > 2 && details.Arguments[1] == "--verify" && executor.missingReferences[details.Arguments[2]] {
+			return execshell.ExecutionResult{}, commandFailedError("fatal: Needed a single revision")
+		}
+		if strings.Join(details.Arguments, " ") == "rev-parse --verify origin/feature/foo" {
+			return execshell.ExecutionResult{}, nil
+		}
+	case "rev-list":
+		output := executor.revListOutput
+		if output == "" {
+			output = "0\n"
+		}
+		return execshell.ExecutionResult{StandardOutput: output}, nil
+	case "merge":
+		if executor.mergeError != nil {
+			return execshell.ExecutionResult{}, executor.mergeError
+		}
+	}
+	return execshell.ExecutionResult{}, nil
+}
+
+func (executor *strictSyncGitExecutor) ExecuteGitHubCLI(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
+	return execshell.ExecutionResult{}, nil
+}
+
+type strictSyncGitHubExecutor struct {
+	output   string
+	commands []execshell.CommandDetails
+}
+
+func (executor *strictSyncGitHubExecutor) ExecuteGit(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
+	return execshell.ExecutionResult{}, nil
+}
+
+func (executor *strictSyncGitHubExecutor) ExecuteGitHubCLI(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
+	executor.commands = append(executor.commands, details)
+	return execshell.ExecutionResult{StandardOutput: executor.output}, nil
+}
+
+func TestHandleBranchSyncActionUsesRepositoryDefault(t *testing.T) {
 	executor := &stubGitExecutor{
 		responses: []stubGitResponse{
 			{result: execShellOutput("origin\n")},
@@ -130,14 +186,14 @@ func TestHandleBranchChangeActionUsesRepositoryDefault(t *testing.T) {
 		taskOptionBranchRemote: shared.OriginRemoteNameConstant,
 	}
 
-	require.NoError(t, handleBranchChangeAction(context.Background(), environment, repository, parameters))
+	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	require.GreaterOrEqual(t, len(executor.recorded), 3)
 	require.Equal(t, []string{"switch", "main"}, executor.recorded[2].Arguments)
 	require.Len(t, reporter.events, 1)
 	require.Equal(t, branchResolutionSourceRemoteDefault, reporter.events[0].Details["source"])
 }
 
-func TestHandleBranchChangeActionUsesConfiguredFallback(t *testing.T) {
+func TestHandleBranchSyncActionUsesConfiguredFallback(t *testing.T) {
 	executor := &stubGitExecutor{
 		responses: []stubGitResponse{
 			{result: execShellOutput("origin\n")},
@@ -163,14 +219,14 @@ func TestHandleBranchChangeActionUsesConfiguredFallback(t *testing.T) {
 		taskOptionConfiguredDefaultBranch: "develop",
 	}
 
-	require.NoError(t, handleBranchChangeAction(context.Background(), environment, repository, parameters))
+	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	require.GreaterOrEqual(t, len(executor.recorded), 3)
 	require.Equal(t, []string{"switch", "develop"}, executor.recorded[2].Arguments)
 	require.Len(t, reporter.events, 1)
 	require.Equal(t, branchResolutionSourceConfigured, reporter.events[0].Details["source"])
 }
 
-func TestHandleBranchChangeActionErrorsWhenBranchCannotBeResolved(t *testing.T) {
+func TestHandleBranchSyncActionErrorsWhenBranchCannotBeResolved(t *testing.T) {
 	executor := &stubGitExecutor{
 		responses: []stubGitResponse{
 			{result: execShellOutput("origin\n")},
@@ -191,14 +247,14 @@ func TestHandleBranchChangeActionErrorsWhenBranchCannotBeResolved(t *testing.T) 
 		taskOptionBranchRemote: shared.OriginRemoteNameConstant,
 	}
 
-	require.Error(t, handleBranchChangeAction(context.Background(), environment, repository, parameters))
+	require.Error(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 }
 
 func execShellOutput(output string) execshell.ExecutionResult {
 	return execshell.ExecutionResult{StandardOutput: output}
 }
 
-func TestHandleBranchChangeActionRefreshesBranch(t *testing.T) {
+func TestHandleBranchSyncActionRefreshesBranch(t *testing.T) {
 	executor := newScriptedGitExecutor("origin\n", "")
 	gitManager, managerError := gitrepo.NewRepositoryManager(executor)
 	require.NoError(t, managerError)
@@ -223,13 +279,13 @@ func TestHandleBranchChangeActionRefreshesBranch(t *testing.T) {
 		taskOptionRequireClean:   true,
 	}
 
-	require.NoError(t, handleBranchChangeAction(context.Background(), environment, repository, parameters))
+	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	require.Len(t, executor.recorded, 10)
 	require.Equal(t, []string{"status", "--porcelain"}, executor.recorded[0].Arguments)
 	require.Equal(t, []string{"remote"}, executor.recorded[1].Arguments)
 	require.Equal(t, []string{"fetch", "--prune", "origin"}, executor.recorded[2].Arguments)
 	require.Equal(t, []string{"switch", "feature/foo"}, executor.recorded[3].Arguments)
-	require.Equal(t, []string{"pull", "--rebase"}, executor.recorded[4].Arguments)
+	require.Equal(t, []string{"pull", "--ff-only"}, executor.recorded[4].Arguments)
 	require.Equal(t, []string{"config", "--get", "branch.feature/foo.remote"}, executor.recorded[5].Arguments)
 	require.Equal(t, []string{"status", "--porcelain"}, executor.recorded[6].Arguments)
 	require.Equal(t, []string{"fetch", "--prune"}, executor.recorded[7].Arguments)
@@ -241,7 +297,223 @@ func TestHandleBranchChangeActionRefreshesBranch(t *testing.T) {
 	require.Equal(t, "true", reporter.events[0].Details["require_clean"])
 }
 
-func TestHandleBranchChangeActionConfiguresTrackingRemoteWhenMissing(t *testing.T) {
+func TestHandleBranchSyncActionStrictPRBranchMergesBaseAndPushes(t *testing.T) {
+	gitExecutor := &strictSyncGitExecutor{}
+	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(t, managerError)
+	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":7,"title":"Feature","headRefName":"feature/foo"}]`}
+	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
+	require.NoError(t, githubClientError)
+	buffer := &strings.Builder{}
+	environment := &workflow.Environment{
+		GitExecutor:       gitExecutor,
+		RepositoryManager: gitManager,
+		GitHubClient:      githubClient,
+		Logger:            zap.NewNop(),
+		Output:            buffer,
+		Errors:            io.Discard,
+		Reporter:          &recordingReporter{},
+	}
+	repository := &workflow.RepositoryState{
+		Path: "/tmp/project",
+		Inspection: audit.RepositoryInspection{
+			LocalBranch:    "master",
+			FinalOwnerRepo: "owner/project",
+		},
+	}
+	parameters := map[string]any{
+		taskOptionBranchName:         "feature/foo",
+		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
+		taskOptionRequirePullRequest: true,
+		taskOptionBaseBranch:         "master",
+		taskOptionRequireClean:       true,
+	}
+
+	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "fetch --prune origin")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "switch feature/foo")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "reset --hard origin/feature/foo")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "merge --no-edit origin/master")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "push origin feature/foo")
+	require.NotContains(t, recordedGitCommands(gitExecutor.commands), "pull --rebase")
+	require.Contains(t, buffer.String(), "SYNCED: /tmp/project (feature/foo)")
+	require.Len(t, githubExecutor.commands, 1)
+	require.Contains(t, githubExecutor.commands[0].Arguments, "list")
+}
+
+func TestHandleBranchSyncActionStrictPRBranchRejectsMissingPullRequest(t *testing.T) {
+	gitExecutor := &strictSyncGitExecutor{}
+	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(t, managerError)
+	githubExecutor := &strictSyncGitHubExecutor{output: `[]`}
+	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
+	require.NoError(t, githubClientError)
+	environment := &workflow.Environment{
+		GitExecutor:       gitExecutor,
+		RepositoryManager: gitManager,
+		GitHubClient:      githubClient,
+		Logger:            zap.NewNop(),
+		Output:            io.Discard,
+		Errors:            io.Discard,
+		Reporter:          &recordingReporter{},
+	}
+	repository := &workflow.RepositoryState{
+		Path: "/tmp/project",
+		Inspection: audit.RepositoryInspection{
+			LocalBranch:    "master",
+			FinalOwnerRepo: "owner/project",
+		},
+	}
+	parameters := map[string]any{
+		taskOptionBranchName:         "feature/foo",
+		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
+		taskOptionRequirePullRequest: true,
+		taskOptionBaseBranch:         "master",
+		taskOptionRequireClean:       true,
+	}
+
+	syncError := handleBranchSyncAction(context.Background(), environment, repository, parameters)
+	require.Error(t, syncError)
+	require.Contains(t, syncError.Error(), "does not have an open pull request")
+	require.NotContains(t, recordedGitCommands(gitExecutor.commands), "merge --no-edit origin/master")
+	require.NotContains(t, recordedGitCommands(gitExecutor.commands), "push origin feature/foo")
+}
+
+func TestHandleBranchSyncActionStrictPRBranchMergesRemoteAfterCheckpointCommit(t *testing.T) {
+	gitExecutor := &strictSyncGitExecutor{
+		statusOutput:  " M README.md\n",
+		revListOutput: "1\n",
+	}
+	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(t, managerError)
+	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":7,"title":"Feature","headRefName":"feature/foo"}]`}
+	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
+	require.NoError(t, githubClientError)
+	environment := &workflow.Environment{
+		GitExecutor:       gitExecutor,
+		RepositoryManager: gitManager,
+		GitHubClient:      githubClient,
+		Logger:            zap.NewNop(),
+		Output:            io.Discard,
+		Errors:            io.Discard,
+		Reporter:          &recordingReporter{},
+	}
+	repository := &workflow.RepositoryState{
+		Path: "/tmp/project",
+		Inspection: audit.RepositoryInspection{
+			LocalBranch:    "feature/foo",
+			FinalOwnerRepo: "owner/project",
+		},
+	}
+	parameters := map[string]any{
+		taskOptionBranchName:         "feature/foo",
+		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
+		taskOptionRequirePullRequest: true,
+		taskOptionBaseBranch:         "master",
+		taskOptionRequireClean:       true,
+		taskOptionCommitChanges:      true,
+	}
+
+	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "add --all")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "commit -m chore: checkpoint before syncing feature/foo")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "merge --no-edit origin/feature/foo")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "merge --no-edit origin/master")
+	require.NotContains(t, recordedGitCommands(gitExecutor.commands), "reset --hard origin/feature/foo")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "push origin feature/foo")
+}
+
+func TestHandleBranchSyncActionStrictPRBranchCreatesMissingRemoteBranchAndPullRequest(t *testing.T) {
+	gitExecutor := &strictSyncGitExecutor{
+		missingReferences: map[string]bool{
+			"origin/feature/foo":     true,
+			"refs/heads/feature/foo": true,
+		},
+	}
+	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(t, managerError)
+	githubExecutor := &strictSyncGitHubExecutor{}
+	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
+	require.NoError(t, githubClientError)
+	environment := &workflow.Environment{
+		GitExecutor:       gitExecutor,
+		RepositoryManager: gitManager,
+		GitHubClient:      githubClient,
+		Logger:            zap.NewNop(),
+		Output:            io.Discard,
+		Errors:            io.Discard,
+		Reporter:          &recordingReporter{},
+	}
+	repository := &workflow.RepositoryState{
+		Path: "/tmp/project",
+		Inspection: audit.RepositoryInspection{
+			LocalBranch:    "master",
+			FinalOwnerRepo: "owner/project",
+		},
+	}
+	parameters := map[string]any{
+		taskOptionBranchName:         "feature/foo",
+		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
+		taskOptionRequirePullRequest: true,
+		taskOptionBaseBranch:         "master",
+		taskOptionRequireClean:       true,
+	}
+
+	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "switch -c feature/foo origin/master")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "push -u origin feature/foo")
+	require.Len(t, githubExecutor.commands, 1)
+	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", "feature/foo", "--title", "feature/foo", "--body", strictSyncCreatedPRBody}, githubExecutor.commands[0].Arguments)
+}
+
+func TestHandleBranchSyncActionStrictPRBranchStopsBeforePushOnMergeConflict(t *testing.T) {
+	gitExecutor := &strictSyncGitExecutor{mergeError: commandFailedError("CONFLICT (content): Merge conflict in README.md")}
+	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(t, managerError)
+	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":7,"title":"Feature","headRefName":"feature/foo"}]`}
+	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
+	require.NoError(t, githubClientError)
+	environment := &workflow.Environment{
+		GitExecutor:       gitExecutor,
+		RepositoryManager: gitManager,
+		GitHubClient:      githubClient,
+		Logger:            zap.NewNop(),
+		Output:            io.Discard,
+		Errors:            io.Discard,
+		Reporter:          &recordingReporter{},
+	}
+	repository := &workflow.RepositoryState{
+		Path: "/tmp/project",
+		Inspection: audit.RepositoryInspection{
+			LocalBranch:    "master",
+			FinalOwnerRepo: "owner/project",
+		},
+	}
+	parameters := map[string]any{
+		taskOptionBranchName:         "feature/foo",
+		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
+		taskOptionRequirePullRequest: true,
+		taskOptionBaseBranch:         "master",
+		taskOptionRequireClean:       true,
+	}
+
+	syncError := handleBranchSyncAction(context.Background(), environment, repository, parameters)
+	require.Error(t, syncError)
+	require.Contains(t, syncError.Error(), "stopped with conflicts")
+	require.Contains(t, syncError.Error(), "CONFLICT")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "merge --no-edit origin/master")
+	require.NotContains(t, recordedGitCommands(gitExecutor.commands), "push origin feature/foo")
+}
+
+func recordedGitCommands(commands []execshell.CommandDetails) string {
+	lines := make([]string, 0, len(commands))
+	for _, command := range commands {
+		lines = append(lines, strings.Join(command.Arguments, " "))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func TestHandleBranchSyncActionConfiguresTrackingRemoteWhenMissing(t *testing.T) {
 	executor := newScriptedGitExecutor("origin\n", "")
 	executor.configError = commandFailedErrorWithExitCode("error: key does not contain a section", 1)
 	gitManager, managerError := gitrepo.NewRepositoryManager(executor)
@@ -265,7 +537,7 @@ func TestHandleBranchChangeActionConfiguresTrackingRemoteWhenMissing(t *testing.
 		taskOptionRequireClean:   true,
 	}
 
-	require.NoError(t, handleBranchChangeAction(context.Background(), environment, repository, parameters))
+	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	require.Contains(t, buffer.String(), "REFRESHED: /tmp/project (feature/foo)")
 	setUpstreamCommand := []string{"branch", "--set-upstream-to=origin/feature/foo", "feature/foo"}
 	found := false
@@ -290,7 +562,7 @@ func TestHandleBranchChangeActionConfiguresTrackingRemoteWhenMissing(t *testing.
 	require.Equal(t, shared.EventCodeRepoSwitched, reporter.events[0].Code)
 }
 
-func TestHandleBranchChangeActionWarnsWhenRemoteBranchMissing(t *testing.T) {
+func TestHandleBranchSyncActionWarnsWhenRemoteBranchMissing(t *testing.T) {
 	executor := newScriptedGitExecutor("origin\n", "")
 	executor.configError = commandFailedErrorWithExitCode("error: key does not contain a section", 1)
 	executor.revParseError = commandFailedError("fatal: ambiguous argument 'origin/feature/foo': unknown revision or path not in the working tree")
@@ -314,14 +586,14 @@ func TestHandleBranchChangeActionWarnsWhenRemoteBranchMissing(t *testing.T) {
 		taskOptionRequireClean:   true,
 	}
 
-	require.NoError(t, handleBranchChangeAction(context.Background(), environment, repository, parameters))
+	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	require.Len(t, reporter.events, 2)
 	require.Equal(t, shared.EventCodeTaskSkip, reporter.events[0].Code)
 	require.Equal(t, "origin/feature/foo", reporter.events[0].Details["remote_candidate"])
 	require.Equal(t, shared.EventCodeRepoSwitched, reporter.events[1].Code)
 }
 
-func TestHandleBranchChangeActionSkipsRefreshWhenDirty(t *testing.T) {
+func TestHandleBranchSyncActionSkipsRefreshWhenDirty(t *testing.T) {
 	executor := newScriptedGitExecutor("origin\n", " M dirty.txt\n")
 	repoManager, managerErr := gitrepo.NewRepositoryManager(executor)
 	require.NoError(t, managerErr)
@@ -345,7 +617,7 @@ func TestHandleBranchChangeActionSkipsRefreshWhenDirty(t *testing.T) {
 		taskOptionRequireClean:   true,
 	}
 
-	err := handleBranchChangeAction(context.Background(), environment, repository, parameters)
+	err := handleBranchSyncAction(context.Background(), environment, repository, parameters)
 	require.NoError(t, err)
 	require.Len(t, executor.recorded, 5)
 	require.Equal(t, []string{"status", "--porcelain"}, executor.recorded[0].Arguments)
@@ -360,7 +632,7 @@ func TestHandleBranchChangeActionSkipsRefreshWhenDirty(t *testing.T) {
 	require.Equal(t, shared.EventCodeRepoSwitched, reporter.events[1].Code)
 }
 
-func TestHandleBranchChangeActionRefreshesWithUntrackedChanges(t *testing.T) {
+func TestHandleBranchSyncActionRefreshesWithUntrackedChanges(t *testing.T) {
 	executor := newScriptedGitExecutor("origin\n", "?? notes.tmp\n")
 	gitManager, managerErr := gitrepo.NewRepositoryManager(executor)
 	require.NoError(t, managerErr)
@@ -382,7 +654,7 @@ func TestHandleBranchChangeActionRefreshesWithUntrackedChanges(t *testing.T) {
 		taskOptionRequireClean:   true,
 	}
 
-	require.NoError(t, handleBranchChangeAction(context.Background(), environment, repository, parameters))
+	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	require.Contains(t, buffer.String(), "REFRESHED: /tmp/project (feature/foo)")
 	require.Len(t, reporter.events, 2)
 	require.Equal(t, shared.EventCodeRepoDirty, reporter.events[0].Code)
@@ -391,7 +663,7 @@ func TestHandleBranchChangeActionRefreshesWithUntrackedChanges(t *testing.T) {
 	require.Equal(t, shared.EventCodeRepoSwitched, reporter.events[1].Code)
 }
 
-func TestHandleBranchChangeActionStashesDoesNotPopWhenOnlyUntrackedChangesPresent(t *testing.T) {
+func TestHandleBranchSyncActionStashesDoesNotPopWhenOnlyUntrackedChangesPresent(t *testing.T) {
 	executor := newScriptedGitExecutor("origin\n", "?? notes.tmp\n")
 	gitManager, managerErr := gitrepo.NewRepositoryManager(executor)
 	require.NoError(t, managerErr)
@@ -414,13 +686,13 @@ func TestHandleBranchChangeActionStashesDoesNotPopWhenOnlyUntrackedChangesPresen
 		taskOptionStashChanges:   true,
 	}
 
-	require.NoError(t, handleBranchChangeAction(context.Background(), environment, repository, parameters))
+	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	for _, recorded := range executor.recorded {
 		require.NotEqual(t, []string{"stash", "pop"}, recorded.Arguments)
 	}
 }
 
-func TestHandleBranchChangeActionStashesTrackedChangesOnceWhenUntrackedPresent(t *testing.T) {
+func TestHandleBranchSyncActionStashesTrackedChangesOnceWhenUntrackedPresent(t *testing.T) {
 	executor := newScriptedGitExecutor("origin\n", " M tracked.txt\n?? notes.tmp\n")
 	gitManager, managerErr := gitrepo.NewRepositoryManager(executor)
 	require.NoError(t, managerErr)
@@ -443,7 +715,7 @@ func TestHandleBranchChangeActionStashesTrackedChangesOnceWhenUntrackedPresent(t
 		taskOptionStashChanges:   true,
 	}
 
-	require.NoError(t, handleBranchChangeAction(context.Background(), environment, repository, parameters))
+	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	stashPushCount := 0
 	stashPopCount := 0
 	for _, recorded := range executor.recorded {
@@ -461,7 +733,7 @@ func TestHandleBranchChangeActionStashesTrackedChangesOnceWhenUntrackedPresent(t
 	require.Equal(t, 1, stashPopCount)
 }
 
-func TestHandleBranchChangeActionStashesTrackedChangesAroundSwitch(t *testing.T) {
+func TestHandleBranchSyncActionStashesTrackedChangesAroundSwitch(t *testing.T) {
 	executor := newScriptedGitExecutor("origin\n", " M tracked.txt\n")
 	gitManager, managerError := gitrepo.NewRepositoryManager(executor)
 	require.NoError(t, managerError)
@@ -486,7 +758,7 @@ func TestHandleBranchChangeActionStashesTrackedChangesAroundSwitch(t *testing.T)
 		taskOptionStashChanges:   true,
 	}
 
-	require.NoError(t, handleBranchChangeAction(context.Background(), environment, repository, parameters))
+	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 
 	findCommandIndex := func(target ...string) int {
 		for idx, recorded := range executor.recorded {
@@ -518,7 +790,7 @@ func TestHandleBranchChangeActionStashesTrackedChangesAroundSwitch(t *testing.T)
 	require.Less(t, switchIndex, stashPopIndex)
 }
 
-func TestHandleBranchChangeActionCapturesBranch(t *testing.T) {
+func TestHandleBranchSyncActionCapturesBranch(t *testing.T) {
 	executor := &branchCaptureExecutor{}
 	reporter := &recordingReporter{}
 	variableName, nameErr := workflow.NewVariableName("initial_branch")
@@ -546,7 +818,7 @@ func TestHandleBranchChangeActionCapturesBranch(t *testing.T) {
 		},
 	}
 
-	require.NoError(t, handleBranchChangeAction(context.Background(), environment, repository, parameters))
+	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	value, exists := environment.Variables.Get(variableName)
 	require.True(t, exists)
 	require.Equal(t, "main", value)
@@ -560,7 +832,7 @@ func TestHandleBranchChangeActionCapturesBranch(t *testing.T) {
 	require.Equal(t, workflow.CaptureKindBranch, kind)
 }
 
-func TestHandleBranchChangeActionCapturesOriginalBranchBeforeSwitch(t *testing.T) {
+func TestHandleBranchSyncActionCapturesOriginalBranchBeforeSwitch(t *testing.T) {
 	executor := &statefulBranchCaptureExecutor{currentBranch: "feature/local-work"}
 	reporter := &recordingReporter{}
 	variableName, nameErr := workflow.NewVariableName("initial_branch")
@@ -592,14 +864,14 @@ func TestHandleBranchChangeActionCapturesOriginalBranchBeforeSwitch(t *testing.T
 		},
 	}
 
-	require.NoError(t, handleBranchChangeAction(context.Background(), environment, repository, parameters))
+	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	value, exists := environment.Variables.Get(variableName)
 	require.True(t, exists)
 	require.Equal(t, "feature/local-work", value)
 	require.Equal(t, "master", executor.currentBranch)
 }
 
-func TestHandleBranchChangeActionCapturesCommit(t *testing.T) {
+func TestHandleBranchSyncActionCapturesCommit(t *testing.T) {
 	executor := &branchCaptureExecutor{}
 	gitManager, managerErr := gitrepo.NewRepositoryManager(executor)
 	require.NoError(t, managerErr)
@@ -621,7 +893,7 @@ func TestHandleBranchChangeActionCapturesCommit(t *testing.T) {
 		},
 	}
 
-	require.NoError(t, handleBranchChangeAction(context.Background(), environment, repository, parameters))
+	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	name, _ := workflow.NewVariableName("initial_commit")
 	value, exists := environment.Variables.Get(name)
 	require.True(t, exists)
@@ -636,7 +908,7 @@ func TestHandleBranchChangeActionCapturesCommit(t *testing.T) {
 	require.Equal(t, workflow.CaptureKindCommit, kind)
 }
 
-func TestHandleBranchChangeActionCaptureRespectsOverwrite(t *testing.T) {
+func TestHandleBranchSyncActionCaptureRespectsOverwrite(t *testing.T) {
 	executor := &branchCaptureExecutor{}
 	reporter := &recordingReporter{}
 	variableName, nameErr := workflow.NewVariableName("initial_branch")
@@ -668,7 +940,7 @@ func TestHandleBranchChangeActionCaptureRespectsOverwrite(t *testing.T) {
 		},
 	}
 
-	require.NoError(t, handleBranchChangeAction(context.Background(), environment, repository, parameters))
+	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	value, exists := environment.Variables.Get(variableName)
 	require.True(t, exists)
 	require.Equal(t, "preserved", value)
@@ -677,7 +949,7 @@ func TestHandleBranchChangeActionCaptureRespectsOverwrite(t *testing.T) {
 	require.Equal(t, "preserved", sharedValue)
 }
 
-func TestHandleBranchChangeActionRestoresBranch(t *testing.T) {
+func TestHandleBranchSyncActionRestoresBranch(t *testing.T) {
 	executor := &branchCaptureExecutor{}
 	variableName, _ := workflow.NewVariableName("initial_branch")
 	gitManager, managerErr := gitrepo.NewRepositoryManager(executor)
@@ -699,7 +971,7 @@ func TestHandleBranchChangeActionRestoresBranch(t *testing.T) {
 		},
 	}
 
-	require.NoError(t, handleBranchChangeAction(context.Background(), environment, repository, parameters))
+	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	require.True(t, len(executor.commands) >= 3)
 	foundSwitch := false
 	for _, command := range executor.commands {
@@ -711,7 +983,7 @@ func TestHandleBranchChangeActionRestoresBranch(t *testing.T) {
 	require.True(t, foundSwitch)
 }
 
-func TestHandleBranchChangeActionRestoresCommit(t *testing.T) {
+func TestHandleBranchSyncActionRestoresCommit(t *testing.T) {
 	executor := &branchCaptureExecutor{}
 	variableName, _ := workflow.NewVariableName("initial_commit")
 	gitManager, managerErr := gitrepo.NewRepositoryManager(executor)
@@ -734,7 +1006,7 @@ func TestHandleBranchChangeActionRestoresCommit(t *testing.T) {
 		},
 	}
 
-	require.NoError(t, handleBranchChangeAction(context.Background(), environment, repository, parameters))
+	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	foundCheckout := false
 	for _, command := range executor.commands {
 		if len(command.Arguments) >= 2 && command.Arguments[0] == "checkout" && command.Arguments[1] == "deadbeef" {

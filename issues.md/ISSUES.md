@@ -160,13 +160,13 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   ### Analysis
   The duplication is caused by a lack of coordination between the domain service, the workflow executor, and the CLI entry point:
   
-  1.  **Improper Error Types**: `internal/branches/cd/service.go` returns standard errors via `fmt.Errorf` instead of the structured `repoerrors.OperationError` type. This prevents the workflow layer from identifying the error as a handled repository event.
+  1.  **Improper Error Types**: `internal/branches/syncflow/service.go` returns standard errors via `fmt.Errorf` instead of the structured `repoerrors.OperationError` type. This prevents the workflow layer from identifying the error as a handled repository event.
   2.  **Fallback Printing**: In `internal/workflow/executor_runner.go`, the function `executeRepositoryStageForRepository` attempts to log the error. Because it is not an `OperationError`, it fails the check in `logRepositoryOperationError` (found in `internal/workflow/error_handling.go`) and falls back to a manual `fmt.Fprintln` to `stderr`.
   3.  **CLI Exit Redundancy**: The error is then bubbled up to `main.go`. Since the command's `RunE` returns the error, the main function prints it a second time before exiting.
   4.  **Context Loss**: The `collectOperationErrors` helper in `internal/workflow/executor.go` unwraps the error chain too aggressively, resulting in the same underlying Git error being printed in both instances, stripped of its high-level context (e.g., "Switch branch to master").
   
   ### Deliverables
-  - [ ] **Structured Error Implementation**: Refactor `internal/branches/cd/service.go` to utilize `repoerrors.Wrap` for all Git-related failures.
+  - [ ] **Structured Error Implementation**: Refactor `internal/branches/syncflow/service.go` to utilize `repoerrors.Wrap` for all Git-related failures.
   - [ ] **Reporting Logic Alignment**: Update `internal/workflow/error_handling.go` to ensure that all repository-scoped errors are processed via the `StructuredReporter`, eliminating the need for manual fallback printing.
   - [ ] **CLI Exit Refinement**: Adjust the CLI execution flow to ensure that errors already emitted by the reporter do not trigger a second print at the application exit point.
   - [ ] **Verification**: Add an integration test case that triggers a predictable Git failure and asserts that the resulting error message appears exactly once in the combined output stream.
@@ -744,3 +744,14 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - Preserved the existing branch-change behavior and `switch` alias.
   - Updated embedded defaults, README, architecture notes, docs site examples, and warning matrix references.
   - Added command hierarchy and black-box CLI coverage proving `cd` is rejected while branch-change tests use `sync`.
+
+- [ ] [I006] Implement the new `gix sync` semantics and remove the old `cd` implementation.
+  Requested on 2026-06-01.
+  ### Summary
+  `gix sync` should become the canonical simplified workflow command instead of the renamed branch-change command.
+  ### Plan
+  - Remove `cd` implementation naming and legacy `branch-cd` behavior.
+  - Implement sync targets for remote attach, `master`, PR-backed work branches, and the current branch.
+  - Keep `--stash`, `--commit`, and `--require-clean` functioning as explicit dirty-work policies.
+  - Use merge-based work-branch updates and conflict stop-before-push behavior; do not rebase.
+  - Update README/help/config/tests around the simplified flow.

@@ -78,7 +78,7 @@ func detectPhaseFromWorkflowSteps(steps []workflowAction) LogPhase {
 func phaseForActionType(actionType string) LogPhase {
 	normalized := strings.ToLower(strings.TrimSpace(actionType))
 	switch normalized {
-	case "branch.change", "branch.default":
+	case "branch.sync", "branch.default":
 		return LogPhaseBranch
 	case taskActionCanonicalRemote, taskActionProtocolConversion, taskActionRenameDirectories:
 		return LogPhaseRemoteFolder

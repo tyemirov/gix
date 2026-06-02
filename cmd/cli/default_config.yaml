@@ -59,7 +59,6 @@ operations:
       roots:
         - .
       remote: origin
-      branch: master
       require_clean: true
   - command: ["message", "commit"]
     with:

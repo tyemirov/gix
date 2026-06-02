@@ -29,7 +29,6 @@ const (
 	gitCheckoutSubcommandConstant               = "checkout"
 	gitPullSubcommandConstant                   = "pull"
 	gitPullFastForwardFlagConstant              = "--ff-only"
-	gitPullRebaseFlagConstant                   = "--rebase"
 	gitAddSubcommandConstant                    = "add"
 	gitAddAllFlagConstant                       = "--all"
 	gitCommitSubcommandConstant                 = "commit"
@@ -107,7 +106,6 @@ func (service *Service) Refresh(executionContext context.Context, options Option
 	}
 
 	requireClean := options.RequireClean
-	checkpointCommitCreated := false
 	if requireClean {
 		clean, cleanError := service.repositoryManager.CheckCleanWorktree(executionContext, trimmedRepositoryPath)
 		if cleanError != nil {
@@ -122,7 +120,6 @@ func (service *Service) Refresh(executionContext context.Context, options Option
 				if commitError := service.commitLocalChanges(executionContext, trimmedRepositoryPath, trimmedBranchName); commitError != nil {
 					return Result{}, commitError
 				}
-				checkpointCommitCreated = true
 			} else {
 				return Result{}, ErrWorktreeNotClean
 			}
@@ -151,12 +148,8 @@ func (service *Service) Refresh(executionContext context.Context, options Option
 		return Result{}, fmt.Errorf(gitCheckoutFailureTemplateConstant, trimmedBranchName, checkoutError)
 	}
 
-	pullArguments := []string{gitPullSubcommandConstant, gitPullFastForwardFlagConstant}
-	if checkpointCommitCreated {
-		pullArguments = []string{gitPullSubcommandConstant, gitPullRebaseFlagConstant}
-	}
 	if pullError := service.executeGit(executionContext, execshell.CommandDetails{
-		Arguments:        pullArguments,
+		Arguments:        []string{gitPullSubcommandConstant, gitPullFastForwardFlagConstant},
 		WorkingDirectory: trimmedRepositoryPath,
 	}); pullError != nil {
 		return Result{}, fmt.Errorf(gitPullFailureTemplateConstant, pullError)

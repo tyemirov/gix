@@ -2,8 +2,6 @@ package tests
 
 import (
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,57 +13,45 @@ import (
 )
 
 const (
-	cdWorktreeAdoptionTimeout        = 20 * time.Second
-	cdWorktreeAdoptionBranchName     = "feature/adopt-worktree"
-	cdWorktreeAdoptionCommitSubject  = "chore: save sibling changes"
-	cdWorktreeAdoptionAPIKeyVariable = "TEST_GIX_LLM_KEY"
+	syncWorktreeAdoptionTimeout        = 20 * time.Second
+	syncWorktreeAdoptionBranchName     = "feature/adopt-worktree"
+	syncWorktreeAdoptionAPIKeyVariable = "TEST_GIX_LLM_KEY"
+	syncWorktreeAdoptionMissingGitHub  = "strict sync requires a GitHub repository remote"
 )
 
-type cdWorktreeAdoptionFixture struct {
+type syncWorktreeAdoptionFixture struct {
 	RemotePath     string
 	RepositoryPath string
 	SiblingPath    string
 	BranchName     string
 }
 
-func TestCdAdoptsDirtySiblingWorktree(testInstance *testing.T) {
+func TestSyncRejectsDirtySiblingWorktreeWithoutGitHubPullRequest(testInstance *testing.T) {
 	repositoryRoot := integrationRepositoryRoot(testInstance)
-	fixture := createCdWorktreeAdoptionFixture(testInstance)
-	serverRequestCount := 0
-	mockLLMServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
-		serverRequestCount++
-		require.Equal(testInstance, "/chat/completions", request.URL.Path)
-		require.Equal(testInstance, "Bearer test-api-key", request.Header.Get("Authorization"))
-		responseWriter.Header().Set("Content-Type", "application/json")
-		_, writeError := responseWriter.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"` + cdWorktreeAdoptionCommitSubject + `"},"finish_reason":"stop"}]}`))
-		require.NoError(testInstance, writeError)
-	}))
-	defer mockLLMServer.Close()
+	fixture := createSyncWorktreeAdoptionFixture(testInstance)
 
 	dirtyPath := filepath.Join(fixture.SiblingPath, "feature.txt")
 	require.NoError(testInstance, os.WriteFile(dirtyPath, []byte("dirty sibling change\n"), 0o644))
 
-	configurationPath := writeCdWorktreeAdoptionConfiguration(testInstance, mockLLMServer.URL)
-	output := runIntegrationCommand(
+	configurationPath := writeSyncWorktreeAdoptionConfiguration(testInstance, "")
+	output, runError := runFailingIntegrationCommand(
 		testInstance,
 		repositoryRoot,
-		integrationCommandOptions{EnvironmentOverrides: map[string]string{cdWorktreeAdoptionAPIKeyVariable: "test-api-key"}},
-		cdWorktreeAdoptionTimeout,
+		integrationCommandOptions{},
+		syncWorktreeAdoptionTimeout,
 		[]string{"run", ".", "--config", configurationPath, "sync", fixture.BranchName, "--roots", fixture.RepositoryPath},
 	)
+	require.Error(testInstance, runError)
 
-	require.Contains(testInstance, output, "WORKTREE_ADOPT")
-	require.Equal(testInstance, 1, serverRequestCount)
-	require.NoDirExists(testInstance, fixture.SiblingPath)
-	require.Equal(testInstance, fixture.BranchName, strings.TrimSpace(runGit(testInstance, fixture.RepositoryPath, "branch", "--show-current")))
-	require.Equal(testInstance, "dirty sibling change\n", readFile(testInstance, filepath.Join(fixture.RepositoryPath, "feature.txt")))
-	require.Equal(testInstance, cdWorktreeAdoptionCommitSubject, strings.TrimSpace(runGitWithDir(testInstance, "", "--git-dir", fixture.RemotePath, "log", "-1", "--pretty=%s", "refs/heads/"+fixture.BranchName)))
-	require.Equal(testInstance, "0", strings.TrimSpace(runGit(testInstance, fixture.RepositoryPath, "rev-list", "--count", "origin/"+fixture.BranchName+".."+fixture.BranchName)))
+	require.Contains(testInstance, output, syncWorktreeAdoptionMissingGitHub)
+	require.DirExists(testInstance, fixture.SiblingPath)
+	require.Equal(testInstance, "master", strings.TrimSpace(runGit(testInstance, fixture.RepositoryPath, "branch", "--show-current")))
+	require.NoFileExists(testInstance, filepath.Join(fixture.RepositoryPath, "feature.txt"))
 }
 
-func TestCdAdoptsCleanAheadSiblingWorktree(testInstance *testing.T) {
+func TestSyncRejectsCleanAheadSiblingWorktreeWithoutGitHubPullRequest(testInstance *testing.T) {
 	repositoryRoot := integrationRepositoryRoot(testInstance)
-	fixture := createCdWorktreeAdoptionFixture(testInstance)
+	fixture := createSyncWorktreeAdoptionFixture(testInstance)
 
 	aheadPath := filepath.Join(fixture.SiblingPath, "ahead.txt")
 	require.NoError(testInstance, os.WriteFile(aheadPath, []byte("already committed locally\n"), 0o644))
@@ -74,23 +60,23 @@ func TestCdAdoptsCleanAheadSiblingWorktree(testInstance *testing.T) {
 	runGit(testInstance, fixture.SiblingPath, "branch", "--unset-upstream")
 	require.NotContains(testInstance, runGit(testInstance, fixture.SiblingPath, "status", "--porcelain", "--branch"), "ahead")
 
-	configurationPath := writeCdWorktreeAdoptionConfiguration(testInstance, "")
-	output := runIntegrationCommand(
+	configurationPath := writeSyncWorktreeAdoptionConfiguration(testInstance, "")
+	output, runError := runFailingIntegrationCommand(
 		testInstance,
 		repositoryRoot,
 		integrationCommandOptions{},
-		cdWorktreeAdoptionTimeout,
+		syncWorktreeAdoptionTimeout,
 		[]string{"run", ".", "--config", configurationPath, "sync", fixture.BranchName, "--roots", fixture.RepositoryPath},
 	)
+	require.Error(testInstance, runError)
 
-	require.Contains(testInstance, output, "WORKTREE_ADOPT")
-	require.NoDirExists(testInstance, fixture.SiblingPath)
-	require.Equal(testInstance, fixture.BranchName, strings.TrimSpace(runGit(testInstance, fixture.RepositoryPath, "branch", "--show-current")))
-	require.Equal(testInstance, "chore: local sibling commit", strings.TrimSpace(runGitWithDir(testInstance, "", "--git-dir", fixture.RemotePath, "log", "-1", "--pretty=%s", "refs/heads/"+fixture.BranchName)))
-	require.Equal(testInstance, "0", strings.TrimSpace(runGit(testInstance, fixture.RepositoryPath, "rev-list", "--count", "origin/"+fixture.BranchName+".."+fixture.BranchName)))
+	require.Contains(testInstance, output, syncWorktreeAdoptionMissingGitHub)
+	require.DirExists(testInstance, fixture.SiblingPath)
+	require.Equal(testInstance, "master", strings.TrimSpace(runGit(testInstance, fixture.RepositoryPath, "branch", "--show-current")))
+	require.NoFileExists(testInstance, filepath.Join(fixture.RepositoryPath, "ahead.txt"))
 }
 
-func createCdWorktreeAdoptionFixture(testInstance *testing.T) cdWorktreeAdoptionFixture {
+func createSyncWorktreeAdoptionFixture(testInstance *testing.T) syncWorktreeAdoptionFixture {
 	testInstance.Helper()
 
 	workspacePath := testInstance.TempDir()
@@ -108,26 +94,26 @@ func createCdWorktreeAdoptionFixture(testInstance *testing.T) cdWorktreeAdoption
 	runGit(testInstance, repositoryPath, "commit", "-m", "initial commit")
 	runGit(testInstance, repositoryPath, "push", "-u", "origin", "master")
 
-	runGit(testInstance, repositoryPath, "switch", "-c", cdWorktreeAdoptionBranchName)
+	runGit(testInstance, repositoryPath, "switch", "-c", syncWorktreeAdoptionBranchName)
 	featurePath := filepath.Join(repositoryPath, "feature.txt")
 	require.NoError(testInstance, os.WriteFile(featurePath, []byte("feature base\n"), 0o644))
 	runGit(testInstance, repositoryPath, "add", "feature.txt")
 	runGit(testInstance, repositoryPath, "commit", "-m", "feature base")
-	runGit(testInstance, repositoryPath, "push", "-u", "origin", cdWorktreeAdoptionBranchName)
+	runGit(testInstance, repositoryPath, "push", "-u", "origin", syncWorktreeAdoptionBranchName)
 	runGit(testInstance, repositoryPath, "switch", "master")
 
 	siblingPath := filepath.Join(workspacePath, "repository-feature")
-	runGit(testInstance, repositoryPath, "worktree", "add", siblingPath, cdWorktreeAdoptionBranchName)
+	runGit(testInstance, repositoryPath, "worktree", "add", siblingPath, syncWorktreeAdoptionBranchName)
 
-	return cdWorktreeAdoptionFixture{
+	return syncWorktreeAdoptionFixture{
 		RemotePath:     remotePath,
 		RepositoryPath: repositoryPath,
 		SiblingPath:    siblingPath,
-		BranchName:     cdWorktreeAdoptionBranchName,
+		BranchName:     syncWorktreeAdoptionBranchName,
 	}
 }
 
-func writeCdWorktreeAdoptionConfiguration(testInstance *testing.T, baseURL string) string {
+func writeSyncWorktreeAdoptionConfiguration(testInstance *testing.T, baseURL string) string {
 	testInstance.Helper()
 
 	configurationPath := filepath.Join(testInstance.TempDir(), "config.yaml")
@@ -143,7 +129,7 @@ func writeCdWorktreeAdoptionConfiguration(testInstance *testing.T, baseURL strin
       max_completion_tokens: 64
       temperature: 0
       timeout_seconds: 5
-`, cdWorktreeAdoptionAPIKeyVariable, baseURL)
+`, syncWorktreeAdoptionAPIKeyVariable, baseURL)
 	}
 	configurationContent := fmt.Sprintf(`common:
   log_level: error
@@ -160,8 +146,8 @@ operations:
 
 func configureGitIdentity(testInstance *testing.T, repositoryPath string) {
 	testInstance.Helper()
-	runGit(testInstance, repositoryPath, "config", "user.name", "Cd Worktree")
-	runGit(testInstance, repositoryPath, "config", "user.email", "cd-worktree@example.com")
+	runGit(testInstance, repositoryPath, "config", "user.name", "Sync Worktree")
+	runGit(testInstance, repositoryPath, "config", "user.email", "sync-worktree@example.com")
 }
 
 func runGit(testInstance *testing.T, repositoryPath string, arguments ...string) string {
@@ -179,11 +165,4 @@ func runGitWithDir(testInstance *testing.T, workingDirectory string, arguments .
 	outputBytes, commandError := command.CombinedOutput()
 	require.NoError(testInstance, commandError, string(outputBytes))
 	return string(outputBytes)
-}
-
-func readFile(testInstance *testing.T, path string) string {
-	testInstance.Helper()
-	content, readError := os.ReadFile(path)
-	require.NoError(testInstance, readError)
-	return string(content)
 }
