@@ -2,11 +2,21 @@
 
 ## [Unreleased]
 
-### Improvements ⚙️
-- Rename the public branch-change command from `gix cd` to `gix sync` while preserving the existing behavior and `switch` alias.
+## [v0.5.0] - 2026-06-02
+
+### Features ✨
+- Rename the public branch-change command from `gix cd` to `gix sync` while preserving existing behavior and the `switch` alias.
 - Make dirty `gix sync` the default workflow: cluster changed paths, generate commit messages with the configured LLM client, commit the clusters, then sync and push through the PR flow.
 - Route dirty `master` syncs to generated `sync/<repo>/<path>` work branches while keeping clean `master` sync remote-owned.
+
+### Improvements ⚙️
 - Change `sync.require_clean` to an opt-in guard while preserving `--stash` and accepting `--commit`.
+- Update CLI coverage to reject the removed `cd` command and update branch-change integration tests to invoke `sync`.
+- Add strict-sync coverage for dirty PR branches, dirty `master` generated branches, missing remote branch PR creation, and `--require-clean` rejection.
+
+### Bug Fixes 🐛
+- Fix I006 strict sync commit modifier.
+- Clarify I006 sync dirty-work modifiers.
 
 ### Testing 🧪
 - Add CLI coverage that rejects the removed `cd` command and update branch-change integration tests to invoke `sync`.
