@@ -22,15 +22,15 @@ const (
 	commandUsageTemplateConstant            = commandUseNameConstant + " [remote-url|branch]"
 	commandExampleTemplateConstant          = "gix sync\ngix sync master\ngix sync feature/new-branch"
 	commandShortDescriptionConstant         = "Synchronize the current workspace through the Gix PR workflow"
-	commandLongDescriptionConstant          = "sync keeps a workspace aligned with the remote-owned master branch and PR-backed work branches. With no branch argument, sync updates the current branch. With master, sync restores local master from origin/master. With any other branch, sync requires or creates a remote branch with an open pull request into master, merges origin/master into it, and pushes the result without rebasing or force-pushing."
+	commandLongDescriptionConstant          = "sync keeps a workspace aligned with the remote-owned master branch and PR-backed work branches. With no branch argument, sync updates the current branch. Dirty work is clustered, described with the configured LLM client, committed, then pushed through the PR workflow. With master, clean sync restores local master from origin/master; dirty sync creates a PR work branch. Sync never rebases or force-pushes."
 	missingBranchMessageConstant            = "unable to determine branch; provide a branch argument or configure a default branch"
 	syncCreatedSuffixConstant               = " (created)"
 	stashFlagNameConstant                   = "stash"
 	stashFlagDescriptionConstant            = "Stash local changes before syncing"
 	commitFlagNameConstant                  = "commit"
-	commitFlagDescriptionConstant           = "Commit local changes before syncing a PR branch"
+	commitFlagDescriptionConstant           = "Commit local changes before syncing (default dirty-sync behavior)"
 	requireCleanFlagNameConstant            = "require-clean"
-	requireCleanFlagDescriptionConstant     = "Require a clean worktree when syncing"
+	requireCleanFlagDescriptionConstant     = "Require a clean worktree instead of auto-committing dirty work"
 	conflictingRecoveryFlagsMessageConstant = "use at most one of --stash or --commit"
 	remoteTargetExtraArgsMessage            = "remote sync target does not accept repository root arguments"
 	remoteTargetDirtyDirectoryMessage       = "remote sync target requires an empty directory when cloning"
@@ -68,7 +68,7 @@ func (builder *CommandBuilder) Build() (*cobra.Command, error) {
 
 	flagutils.AddToggleFlag(command.Flags(), nil, stashFlagNameConstant, "", false, stashFlagDescriptionConstant)
 	flagutils.AddToggleFlag(command.Flags(), nil, commitFlagNameConstant, "", false, commitFlagDescriptionConstant)
-	flagutils.AddToggleFlag(command.Flags(), nil, requireCleanFlagNameConstant, "", true, requireCleanFlagDescriptionConstant)
+	flagutils.AddToggleFlag(command.Flags(), nil, requireCleanFlagNameConstant, "", false, requireCleanFlagDescriptionConstant)
 
 	return command, nil
 }

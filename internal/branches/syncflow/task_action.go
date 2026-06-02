@@ -60,14 +60,11 @@ const (
 	stashExecutorMissingMessageConstant          = "git executor required to manage stash operations"
 	strictSyncMissingGitHubClientMessage         = "strict sync requires GitHub CLI access to verify pull requests"
 	strictSyncMissingRepositoryMessage           = "strict sync requires a GitHub repository remote"
-	strictSyncDirtyWorktreeTemplate              = "worktree is dirty; use --stash, --commit on a PR branch, or --require-clean=false for non-destructive same-branch sync"
-	strictSyncMasterCommitMessage                = "--commit cannot be used when syncing master"
-	strictSyncCommitBranchMismatchTemplate       = "--commit requires the current branch %q to match target branch %q"
+	strictSyncDirtyWorktreeTemplate              = "worktree is dirty; remove --require-clean or use --stash before syncing"
 	strictSyncLocalOnlyCommitTemplate            = "local branch %q has commits not on %s/%s"
 	strictSyncMissingPullRequestTemplate         = "branch %q does not have an open pull request into %s"
 	strictSyncConflictTemplate                   = "merge from %s/%s into %s stopped with conflicts; resolve them before pushing"
 	strictSyncFastForwardTemplate                = "fast-forward from %s/%s into %s stopped; commit, stash, or clean local changes before syncing"
-	strictSyncCheckpointCommitTemplate           = "chore: checkpoint before syncing %s"
 	strictSyncCreatedPRBody                      = "Created by gix sync."
 )
 
@@ -137,7 +134,7 @@ func handleBranchSyncAction(ctx context.Context, environment *workflow.Environme
 	if commitErr != nil {
 		return commitErr
 	}
-	requireClean, requireCleanErr := boolOptionDefault(parameters, taskOptionRequireClean, true)
+	requireClean, requireCleanErr := boolOptionDefault(parameters, taskOptionRequireClean, false)
 	if requireCleanErr != nil {
 		return requireCleanErr
 	}
@@ -204,6 +201,10 @@ func handleBranchSyncAction(ctx context.Context, environment *workflow.Environme
 	}
 
 	if requirePullRequest {
+		commitMessageOptions, commitMessageErr := worktreeAdoptionCommitMessageOptionsFromParameters(parameters)
+		if commitMessageErr != nil {
+			return commitMessageErr
+		}
 		return handleStrictSyncAction(ctx, environment, repository, strictSyncOptions{
 			BranchName:       resolvedBranchName,
 			RemoteName:       remoteName,
@@ -211,6 +212,7 @@ func handleBranchSyncAction(ctx context.Context, environment *workflow.Environme
 			RequireClean:     requireClean,
 			StashChanges:     stashChanges,
 			CommitChanges:    commitChanges,
+			CommitMessages:   commitMessageOptions,
 			ResolutionSource: resolutionSource,
 		})
 	}
@@ -430,6 +432,7 @@ type strictSyncOptions struct {
 	RequireClean     bool
 	StashChanges     bool
 	CommitChanges    bool
+	CommitMessages   worktreeAdoptionCommitMessageOptions
 	ResolutionSource string
 }
 
@@ -475,39 +478,33 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 		dirty = false
 	}
 
-	currentBranch := strings.TrimSpace(repository.Inspection.LocalBranch)
-	if currentBranch == "" {
-		currentBranch, _ = environment.RepositoryManager.GetCurrentBranch(ctx, repository.Path)
-		currentBranch = strings.TrimSpace(currentBranch)
-	}
-
 	checkpointCommitted := false
-	if dirty && options.CommitChanges {
-		if branchName == baseBranch {
-			return errors.New(strictSyncMasterCommitMessage)
-		}
-		if currentBranch != branchName {
-			return fmt.Errorf(strictSyncCommitBranchMismatchTemplate, currentBranch, branchName)
-		}
-		if commitErr := commitWorkspaceChanges(ctx, environment.GitExecutor, repository.Path, branchName); commitErr != nil {
-			return commitErr
-		}
-		checkpointCommitted = true
-		dirty = false
-	}
-
-	if dirty && options.RequireClean {
-		return errors.New(strictSyncDirtyWorktreeTemplate)
-	}
-	if dirty && currentBranch != branchName {
-		return fmt.Errorf(strictSyncCommitBranchMismatchTemplate, currentBranch, branchName)
-	}
-	if dirty && branchName == baseBranch {
+	if dirty && options.RequireClean && !options.CommitChanges {
 		return errors.New(strictSyncDirtyWorktreeTemplate)
 	}
 
 	if fetchErr := executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitFetchSubcommandConstant, gitFetchPruneFlagConstant, remoteName}); fetchErr != nil {
 		return fmt.Errorf(gitFetchFailureTemplateConstant, fetchErr)
+	}
+
+	if dirty {
+		if syncStatusEntriesHaveConflicts(statusEntries) {
+			return errors.New(strictSyncConflictWorktreeMessage)
+		}
+		commitBranchName := branchName
+		if commitBranchName == baseBranch {
+			commitBranchName = generatedSyncBranchName(repository, statusEntries)
+		}
+		if prepareErr := prepareStrictSyncBranchForDirtyWork(ctx, environment, repository, remoteName, baseBranch, commitBranchName); prepareErr != nil {
+			return prepareErr
+		}
+		committedClusters, commitErr := saveDirtyWorkClusters(ctx, environment.GitExecutor, repository.Path, statusEntries, options.CommitMessages)
+		if commitErr != nil {
+			return fmt.Errorf(strictSyncDirtyCommitFailureTemplate, commitErr)
+		}
+		checkpointCommitted = committedClusters > 0
+		branchName = commitBranchName
+		dirty = false
 	}
 
 	if branchName == baseBranch {
@@ -623,7 +620,22 @@ func syncPullRequestBranch(ctx context.Context, environment *workflow.Environmen
 		return false, localExistsErr
 	}
 	if localExists {
-		return false, fmt.Errorf(strictSyncLocalOnlyCommitTemplate, options.BranchName, options.RemoteName, options.BranchName)
+		if !options.AllowAheadCommit {
+			return false, fmt.Errorf(strictSyncLocalOnlyCommitTemplate, options.BranchName, options.RemoteName, options.BranchName)
+		}
+		if switchErr := executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitSwitchSubcommandConstant, options.BranchName}); switchErr != nil {
+			return false, switchErr
+		}
+		if mergeErr := mergeBaseIntoBranch(ctx, environment.GitExecutor, repository.Path, options.RemoteName, options.BaseBranch, options.BranchName); mergeErr != nil {
+			return false, mergeErr
+		}
+		if pushErr := executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitPushSubcommandConstant, gitPushSetUpstreamFlagConstant, options.RemoteName, options.BranchName}); pushErr != nil {
+			return false, pushErr
+		}
+		if pullRequestErr := createPullRequest(ctx, environment, repositoryIdentifier, options.BaseBranch, options.BranchName); pullRequestErr != nil {
+			return false, pullRequestErr
+		}
+		return true, nil
 	}
 
 	baseReference := fmt.Sprintf("%s/%s", options.RemoteName, options.BaseBranch)
@@ -783,14 +795,6 @@ func stashAllChanges(ctx context.Context, executor shared.GitExecutor, repositor
 		return fmt.Errorf(stashTrackedChangesFailureTemplateConstant, err)
 	}
 	return nil
-}
-
-func commitWorkspaceChanges(ctx context.Context, executor shared.GitExecutor, repositoryPath string, branchName string) error {
-	if stageErr := executeGit(ctx, executor, repositoryPath, []string{gitAddSubcommandConstant, gitAddAllFlagConstant}); stageErr != nil {
-		return stageErr
-	}
-	message := fmt.Sprintf(strictSyncCheckpointCommitTemplate, branchName)
-	return executeGit(ctx, executor, repositoryPath, []string{gitCommitSubcommandConstant, gitCommitMessageFlagConstant, message})
 }
 
 func reportStrictSync(repository *workflow.RepositoryState, environment *workflow.Environment, branchName string, source string, created bool, stashed bool) {

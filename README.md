@@ -8,7 +8,7 @@ gix makes one pull-request-centered Git workflow mechanical: `master` belongs to
 
 - Return to remote-owned `master`, resume a PR branch, or create a new PR branch with one command.
 - Merge `origin/master` into work branches and push the result without rewriting shared history.
-- Keep dirty-work handling explicit with `--stash`, `--commit`, and `--require-clean`.
+- Save dirty work automatically by clustering changed paths, drafting commit messages through the configured LLM client, and pushing through the PR flow.
 - Reuse discovery, prompting, and logging whether you call a single command or an entire workflow file.
 
 ## Quick Start
@@ -26,11 +26,11 @@ gix makes one pull-request-centered Git workflow mechanical: `master` belongs to
 | Command | Meaning |
 | --- | --- |
 | `gix sync <remote-url>` | Clone into an empty directory or verify the current workspace already points at that remote. |
-| `gix sync master` | Fetch `origin`, reject unsafe local state, and restore local `master` from `origin/master`. |
-| `gix sync <branch>` | Require or create a remote branch with an open PR into `master`, merge `origin/master`, then push. |
+| `gix sync master` | Clean tree: restore local `master` from `origin/master`. Dirty tree: create a generated PR work branch, commit the dirty work, then push. |
+| `gix sync <branch>` | Require or create a remote branch with an open PR into `master`, commit dirty work when present, merge `origin/master`, then push. |
 | `gix sync` | Apply the same rule to the current branch. |
 
-By default, sync stops when the worktree is dirty or the branch has local-only commits. Use `--stash` to temporarily stash local edits, `--commit` to checkpoint dirty work on a PR-backed branch before syncing, or `--require-clean=false` only for non-destructive same-branch syncs.
+By default, a dirty `gix sync` clusters changed paths by top-level area, stages and commits each cluster with a Conventional Commit message from the configured `github.com/tyemirov/utils/llm` client, then continues the no-rebase sync and push. `--stash` temporarily shelves dirty work instead of committing it, `--commit` explicitly selects the auto-commit policy for scripts that already pass it, and `--require-clean` by itself opts back into failing when the worktree is dirty.
 
 Merge conflicts stop before push and leave the repository in Git's normal conflict state. The PR branch is "ours"; `origin/master` is "theirs".
 
@@ -91,7 +91,7 @@ gix message commit --roots .
 gix message changelog --since-tag v1.2.0 --version v1.3.0
 ```
 
-Use the reusable LLM client (`github.com/tyemirov/utils/llm`) to summarise staged changes or recent history.
+Use the reusable LLM client (`github.com/tyemirov/utils/llm`) to summarise staged changes or recent history. `gix sync` uses the same configured client for automatic dirty-work commit messages, including `model`, `base_url`, `api_key_env`, `max_completion_tokens`, `temperature`, and `timeout_seconds`.
 
 ## Automate sequences with workflows
 
@@ -547,7 +547,7 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
 - `gix default <target-branch> [--roots <dir>...] [-y]`
  - Promotes the default branch across repositories.
 - `gix sync [remote-url|branch] [--remote <name>] [--stash | --commit] [--require-clean] [--roots <dir>...]` (alias `switch`)
- - Synchronizes the current workspace through the Gix flow: remote attach/clone, remote-owned `master`, or PR-backed work branches. Work branches merge `origin/master` and push normally; sync never rebases or force-pushes. `--stash` temporarily shelves dirty work, `--commit` checkpoints dirty work on a PR branch, and `--require-clean` keeps the default dirty-work guard enabled.
+ - Synchronizes the current workspace through the Gix flow: remote attach/clone, remote-owned `master`, or PR-backed work branches. Dirty work is clustered, LLM-described, committed, and pushed by default; dirty `master` sync creates a generated PR work branch. Sync never rebases or force-pushes. `--stash` temporarily shelves dirty work, `--commit` explicitly selects the auto-commit policy, and `--require-clean` requires a clean worktree only when no dirty-work policy is selected.
 ## Configuration essentials
 
 - `gix --init LOCAL` writes an embeddable starter `config.yaml` to the current directory; `gix --init user` places it under `$XDG_CONFIG_HOME/gix` or `$HOME/.gix`.
