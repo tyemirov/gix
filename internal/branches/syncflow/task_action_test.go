@@ -503,7 +503,7 @@ func TestHandleBranchSyncActionStrictPRBranchRejectsMissingPullRequest(t *testin
 	require.NotContains(t, recordedGitCommands(gitExecutor.commands), "push origin feature/foo")
 }
 
-func TestHandleBranchSyncActionStrictPRBranchCommitFlagUsesDirtySyncCommit(t *testing.T) {
+func TestHandleBranchSyncActionStrictPRBranchCommitFlagUsesDirtySyncCommitWithRequireClean(t *testing.T) {
 	gitExecutor := &strictSyncGitExecutor{
 		statusOutput:  " M README.md\n",
 		revListOutput: "1\n",
@@ -535,7 +535,7 @@ func TestHandleBranchSyncActionStrictPRBranchCommitFlagUsesDirtySyncCommit(t *te
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
 		taskOptionBaseBranch:         "master",
-		taskOptionRequireClean:       false,
+		taskOptionRequireClean:       true,
 		taskOptionCommitChanges:      true,
 		taskOptionWorktreeCommitMessage: worktreeAdoptionCommitMessageOptions{
 			Client: chatClient,

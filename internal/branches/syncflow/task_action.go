@@ -211,6 +211,7 @@ func handleBranchSyncAction(ctx context.Context, environment *workflow.Environme
 			BaseBranch:       baseBranch,
 			RequireClean:     requireClean,
 			StashChanges:     stashChanges,
+			CommitChanges:    commitChanges,
 			CommitMessages:   commitMessageOptions,
 			ResolutionSource: resolutionSource,
 		})
@@ -430,6 +431,7 @@ type strictSyncOptions struct {
 	BaseBranch       string
 	RequireClean     bool
 	StashChanges     bool
+	CommitChanges    bool
 	CommitMessages   worktreeAdoptionCommitMessageOptions
 	ResolutionSource string
 }
@@ -477,7 +479,7 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 	}
 
 	checkpointCommitted := false
-	if dirty && options.RequireClean {
+	if dirty && options.RequireClean && !options.CommitChanges {
 		return errors.New(strictSyncDirtyWorktreeTemplate)
 	}
 
