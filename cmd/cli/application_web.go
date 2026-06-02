@@ -1418,7 +1418,7 @@ func webAuditSyncTaskDefinition(syncStrategy string) (workflow.TaskDefinition, e
 		Steps: []workflow.TaskExecutionStep{workflow.TaskExecutionStepCustomActions},
 		Actions: []workflow.TaskActionDefinition{
 			{
-				Type:    "branch.change",
+				Type:    "branch.sync",
 				Options: options,
 			},
 		},
@@ -1904,7 +1904,7 @@ func buildCommandTargetDescriptor(command *cobra.Command) web.CommandTargetDescr
 	}
 
 	switch commandPath {
-	case applicationNameConstant + " " + branchChangeTopLevelUseNameConstant,
+	case applicationNameConstant + " " + branchSyncTopLevelUseNameConstant,
 		applicationNameConstant + " " + defaultCommandUseNameConstant:
 		descriptor.Group = webCommandGroupBranchConstant
 		descriptor.Repository = web.CommandTargetRequirementRequired

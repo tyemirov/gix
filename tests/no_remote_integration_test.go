@@ -19,7 +19,7 @@ const (
 	noRemoteIntegrationErrorLevel  = "error"
 )
 
-func TestBranchCommandsHandleRepositoriesWithoutRemotes(testInstance *testing.T) {
+func TestSyncRejectsRepositoriesWithoutRemotes(testInstance *testing.T) {
 	testInstance.Helper()
 
 	repositoryPath := filepath.Join(testInstance.TempDir(), "no-remote-branch")
@@ -37,20 +37,17 @@ func TestBranchCommandsHandleRepositoriesWithoutRemotes(testInstance *testing.T)
 		repositoryPath,
 	}
 
-	output := runIntegrationCommand(
+	output, runError := runFailingIntegrationCommand(
 		testInstance,
 		repositoryRoot,
 		integrationCommandOptions{},
 		noRemoteIntegrationTimeout,
 		commandArguments,
 	)
+	require.Error(testInstance, runError)
 	testInstance.Logf("sync output:\n%s", output)
 
-	filtered := filterStructuredOutput(output)
-	require.Contains(testInstance, filtered, "REPO_SWITCHED")
-	require.Contains(testInstance, filtered, "→ master")
-	require.Contains(testInstance, filtered, "master")
-	require.NotContains(testInstance, strings.ToLower(output), "failed")
+	require.Contains(testInstance, output, "does not appear to be a git repository")
 }
 
 func TestWorkflowDefaultBranchHandlesRepositoriesWithoutRemotes(testInstance *testing.T) {

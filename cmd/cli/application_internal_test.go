@@ -303,11 +303,11 @@ func TestApplicationCommandHierarchyAndAliases(t *testing.T) {
 	require.NotNil(t, branchDefaultCommand.Parent())
 	require.Equal(t, applicationNameConstant, branchDefaultCommand.Parent().Name())
 
-	branchChangeCommand, _, branchChangeError := rootCommand.Find([]string{branchChangeTopLevelUseNameConstant})
-	require.NoError(t, branchChangeError)
-	require.Equal(t, branchChangeTopLevelUseNameConstant, branchChangeCommand.Name())
-	require.NotNil(t, branchChangeCommand.Parent())
-	require.Equal(t, applicationNameConstant, branchChangeCommand.Parent().Name())
+	branchSyncCommand, _, branchSyncError := rootCommand.Find([]string{branchSyncTopLevelUseNameConstant})
+	require.NoError(t, branchSyncError)
+	require.Equal(t, branchSyncTopLevelUseNameConstant, branchSyncCommand.Name())
+	require.NotNil(t, branchSyncCommand.Parent())
+	require.Equal(t, applicationNameConstant, branchSyncCommand.Parent().Name())
 
 	_, _, legacyCdError := rootCommand.Find([]string{"cd"})
 	require.Error(t, legacyCdError)
@@ -400,17 +400,17 @@ func TestReleaseCommandUsageIncludesTagPlaceholder(t *testing.T) {
 	require.Contains(t, releaseCommand.Example, "gix release")
 }
 
-func TestBranchChangeCommandUsageIncludesBranchPlaceholder(t *testing.T) {
+func TestBranchSyncCommandUsageIncludesBranchPlaceholder(t *testing.T) {
 	application := NewApplication()
 	rootCommand := application.rootCommand
 
-	branchChangeCommand, _, branchChangeError := rootCommand.Find([]string{branchChangeTopLevelUseNameConstant})
-	require.NoError(t, branchChangeError)
+	branchSyncCommand, _, branchSyncError := rootCommand.Find([]string{branchSyncTopLevelUseNameConstant})
+	require.NoError(t, branchSyncError)
 
-	require.True(t, strings.HasPrefix(strings.TrimSpace(branchChangeCommand.Use), branchChangeTopLevelUseNameConstant))
-	require.Contains(t, branchChangeCommand.Use, "[branch]")
-	require.Contains(t, branchChangeCommand.Long, "Provide the branch name as the first argument")
-	require.Contains(t, branchChangeCommand.Example, "gix "+branchChangeTopLevelUseNameConstant)
+	require.True(t, strings.HasPrefix(strings.TrimSpace(branchSyncCommand.Use), branchSyncTopLevelUseNameConstant))
+	require.Contains(t, branchSyncCommand.Use, "[remote-url|branch]")
+	require.Contains(t, branchSyncCommand.Long, "PR-backed work branches")
+	require.Contains(t, branchSyncCommand.Example, "gix "+branchSyncTopLevelUseNameConstant)
 }
 
 func TestWorkflowCommandUsageIncludesConfigurationPlaceholder(t *testing.T) {

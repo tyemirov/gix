@@ -15,7 +15,7 @@ workflow:
           - name: "Switch to default branch"
             ensure_clean: true
             actions:
-              - type: branch.change
+              - type: branch.sync
                 options:
                   remote: origin
                   create_if_missing: false
@@ -32,7 +32,7 @@ workflow:
           - name: "Create license branch"
             ensure_clean: true
             actions:
-              - type: branch.change
+              - type: branch.sync
                 options:
                   branch: 'automation/license-proprietary/{{ .Repository.Name }}-{{ index .Environment "workflow_run_id" }}'
                   remote: origin
@@ -112,7 +112,7 @@ workflow:
           - name: "Restore initial branch"
             ensure_clean: true
             actions:
-              - type: branch.change
+              - type: branch.sync
                 options:
                   restore:
                     from: initial_branch

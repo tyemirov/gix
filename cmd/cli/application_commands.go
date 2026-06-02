@@ -14,7 +14,7 @@ import (
 	workflowcmd "github.com/tyemirov/gix/cmd/cli/workflow"
 	auditcli "github.com/tyemirov/gix/internal/audit/cli"
 	"github.com/tyemirov/gix/internal/branches"
-	branchcdcmd "github.com/tyemirov/gix/internal/branches/cd"
+	syncflowcmd "github.com/tyemirov/gix/internal/branches/syncflow"
 	migratecli "github.com/tyemirov/gix/internal/migrate/cli"
 	"github.com/tyemirov/gix/internal/packages"
 	"github.com/tyemirov/gix/internal/repos/prompt"
@@ -49,12 +49,12 @@ func (application *Application) registerCommands(cobraCommand *cobra.Command) {
 		},
 	}
 
-	branchChangeBuilder := branchcdcmd.CommandBuilder{
+	branchSyncBuilder := syncflowcmd.CommandBuilder{
 		LoggerProvider: func() *zap.Logger {
 			return application.logger
 		},
 		HumanReadableLoggingProvider: application.humanReadableLoggingEnabled,
-		ConfigurationProvider:        application.branchChangeConfiguration,
+		ConfigurationProvider:        application.branchSyncConfiguration,
 	}
 
 	defaultCommandBuilder := migratecli.CommandBuilder{
@@ -261,15 +261,15 @@ func (application *Application) registerCommands(cobraCommand *cobra.Command) {
 		configureCommandMetadata(defaultCommand, defaultCommandUsageTemplateConstant, defaultCommand.Short, defaultCommandLongDescriptionConstant)
 		cobraCommand.AddCommand(defaultCommand)
 	}
-	if branchChangeCommand, branchChangeError := branchChangeBuilder.Build(); branchChangeError == nil {
+	if branchSyncCommand, branchSyncError := branchSyncBuilder.Build(); branchSyncError == nil {
 		configureCommandMetadata(
-			branchChangeCommand,
-			branchChangeTopLevelUsageTemplateConstant,
-			branchChangeCommand.Short,
-			branchChangeLongDescriptionConstant,
-			branchChangeCommandAliasConstant,
+			branchSyncCommand,
+			branchSyncTopLevelUsageTemplateConstant,
+			branchSyncCommand.Short,
+			branchSyncLongDescriptionConstant,
+			branchSyncCommandAliasConstant,
 		)
-		cobraCommand.AddCommand(branchChangeCommand)
+		cobraCommand.AddCommand(branchSyncCommand)
 	}
 
 }

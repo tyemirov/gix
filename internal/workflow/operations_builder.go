@@ -96,7 +96,7 @@ func validateBranchCaptureBindings(nodes []*OperationNode) error {
 		definitions := taskOperation.Definitions()
 		for _, task := range definitions {
 			for _, action := range task.Actions {
-				if !strings.EqualFold(strings.TrimSpace(action.Type), "branch.change") {
+				if !strings.EqualFold(strings.TrimSpace(action.Type), "branch.sync") {
 					continue
 				}
 
@@ -107,7 +107,7 @@ func validateBranchCaptureBindings(nodes []*OperationNode) error {
 				if captureSpec != nil {
 					name := string(captureSpec.Name)
 					if existingKind, exists := captured[name]; exists && existingKind != captureSpec.Kind {
-						return fmt.Errorf("branch.change capture %q declared with multiple kinds", name)
+						return fmt.Errorf("branch.sync capture %q declared with multiple kinds", name)
 					}
 					captured[name] = captureSpec.Kind
 				}
@@ -120,10 +120,10 @@ func validateBranchCaptureBindings(nodes []*OperationNode) error {
 					name := string(restoreSpec.Name)
 					kind, exists := captured[name]
 					if !exists {
-						return fmt.Errorf("branch.change restore references unknown capture %q", name)
+						return fmt.Errorf("branch.sync restore references unknown capture %q", name)
 					}
 					if restoreSpec.KindExplicit && restoreSpec.Kind != kind {
-						return fmt.Errorf("branch.change restore %q expects %s but capture is %s", name, restoreSpec.Kind, kind)
+						return fmt.Errorf("branch.sync restore %q expects %s but capture is %s", name, restoreSpec.Kind, kind)
 					}
 				}
 			}

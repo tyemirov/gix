@@ -2,22 +2,39 @@
 
 [![GitHub release](https://img.shields.io/github/release/tyemirov/gix.svg)](https://github.com/tyemirov/gix/releases)
 
-gix keeps large fleets of Git repositories in a healthy state. It bundles the day-to-day tasks every maintainer repeats: normalising folder names, aligning remotes, pruning stale branches, scrubbing GHCR images, and shipping consistent release notes.
+gix makes one pull-request-centered Git workflow mechanical: `master` belongs to the remote, work branches are remote-backed and PR-backed, and local state is synchronized without rebasing or force-pushing.
 
 ## Highlights
 
-- Run trusted maintenance commands across many repositories from one terminal session.
+- Return to remote-owned `master`, resume a PR branch, or create a new PR branch with one command.
+- Merge `origin/master` into work branches and push the result without rewriting shared history.
+- Keep dirty-work handling explicit with `--stash`, `--commit`, and `--require-clean`.
 - Reuse discovery, prompting, and logging whether you call a single command or an entire workflow file.
-- Lean on AI-assisted helpers for commit messages and changelog summaries when you want them.
 
 ## Quick Start
 
 1. Install the CLI: `go install github.com/tyemirov/gix@latest` (Go 1.25+).
-2. Explore the available commands: `gix --help`.
-3. Bootstrap defaults in your workspace: `gix --init LOCAL` (or `gix --init user` for a per-user config).
-4. Run an audit to confirm your environment: `gix audit --roots ~/Development`.
+2. Attach or verify a workspace: `gix sync https://github.com/OWNER/REPO.git`.
+3. Restore the remote-owned base branch: `gix sync master`.
+4. Start or resume PR work: `gix sync feature/my-change`.
+5. Sync the current branch later with plain `gix sync`.
 
-## Everyday workflows
+## The sync flow
+
+`gix sync` has four forms:
+
+| Command | Meaning |
+| --- | --- |
+| `gix sync <remote-url>` | Clone into an empty directory or verify the current workspace already points at that remote. |
+| `gix sync master` | Fetch `origin`, reject unsafe local state, and restore local `master` from `origin/master`. |
+| `gix sync <branch>` | Require or create a remote branch with an open PR into `master`, merge `origin/master`, then push. |
+| `gix sync` | Apply the same rule to the current branch. |
+
+By default, sync stops when the worktree is dirty or the branch has local-only commits. Use `--stash` to temporarily stash local edits, `--commit` to checkpoint dirty work on a PR-backed branch before syncing, or `--require-clean=false` only for non-destructive same-branch syncs.
+
+Merge conflicts stop before push and leave the repository in Git's normal conflict state. The PR branch is "ours"; `origin/master` is "theirs".
+
+## Other maintenance workflows
 
 ### Keep local folders canonical
 
@@ -301,7 +318,7 @@ workflow:
     tasks:
      - name: "Switch to master if clean"
       actions:
-       - type: branch.change
+       - type: branch.sync
         options:
          branch: master
          remote: origin
@@ -318,7 +335,7 @@ workflow:
     tasks:
      - name: "Create namespace branch"
       actions:
-       - type: branch.change
+       - type: branch.sync
         options:
          branch: "automation/ns-rewrite/{{ .Repository.Name }}-{{ index .Environment \"workflow_run_id\" }}"
          remote: origin
@@ -529,8 +546,8 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
  - Drafts Conventional Commit subjects and optional bullets using the configured LLM.
 - `gix default <target-branch> [--roots <dir>...] [-y]`
  - Promotes the default branch across repositories.
-- `gix sync [branch] [--remote <name>] [--stash | --commit] [--require-clean] [--roots <dir>...]` (alias `switch`)
- - Switches repositories to the selected branch when provided, or the repository default when omitted. Creates the branch if missing, rebases onto the remote, and, when `--stash` or `--commit` are enabled, performs an additional refresh cycle that fetches/pulls with stash/commit-based recovery. If the target branch is checked out in a sibling worktree, `sync` commits dirty sibling changes with a generated message, pushes sibling commits that must be preserved, removes the sibling worktree, prunes metadata, then retries the normal switch and pull.
+- `gix sync [remote-url|branch] [--remote <name>] [--stash | --commit] [--require-clean] [--roots <dir>...]` (alias `switch`)
+ - Synchronizes the current workspace through the Gix flow: remote attach/clone, remote-owned `master`, or PR-backed work branches. Work branches merge `origin/master` and push normally; sync never rebases or force-pushes. `--stash` temporarily shelves dirty work, `--commit` checkpoints dirty work on a PR branch, and `--require-clean` keeps the default dirty-work guard enabled.
 ## Configuration essentials
 
 - `gix --init LOCAL` writes an embeddable starter `config.yaml` to the current directory; `gix --init user` places it under `$XDG_CONFIG_HOME/gix` or `$HOME/.gix`.

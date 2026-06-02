@@ -218,5 +218,5 @@ func TestRefreshCommitsDirtyWorktreeWhenRequested(t *testing.T) {
 	require.Len(t, executor.recordedCommands, 5)
 	require.Equal(t, []string{gitAddSubcommandConstant, gitAddAllFlagConstant}, executor.recordedCommands[0].Arguments)
 	require.Equal(t, []string{gitCommitSubcommandConstant, gitCommitMessageFlagConstant, fmt.Sprintf(commitMessageTemplateConstant, branchName)}, executor.recordedCommands[1].Arguments)
-	require.Equal(t, []string{gitPullSubcommandConstant, gitPullRebaseFlagConstant}, executor.recordedCommands[4].Arguments)
+	require.Equal(t, []string{gitPullSubcommandConstant, gitPullFastForwardFlagConstant}, executor.recordedCommands[4].Arguments)
 }

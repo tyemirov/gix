@@ -4,10 +4,9 @@ The table below categorises the major maintenance commands into **fatal** and **
 
 | Command | Step | Classification | Behaviour |
 | --- | --- | --- | --- |
-| sync | Enumerate remotes, switch branch, create branch (when missing) | Fatal | Missing dependencies or branch creation errors abort execution. |
-|  | Sibling worktree adoption (commit message generation, commit, push, remove, prune) | Fatal | Any preservation or cleanup failure aborts before retrying the switch. |
-|  | Fetch remote (`git fetch`) | Non-fatal | Logged as `FETCH-SKIP` and the command proceeds without pulling. |
-|  | Pull branch (`git pull --rebase`) | Non-fatal | Logged as `PULL-SKIP`; branch switch still succeeds. |
+| sync | Remote attach/clone, base branch restore, PR verification/creation | Fatal | Missing dependencies, remote mismatches, dirty worktrees, local-only commits, or missing PRs abort before mutation. |
+|  | Merge `origin/master` into a PR branch | Fatal | Merge conflicts stop before push and leave the repository in Git's normal conflict state. |
+|  | Push a synchronized PR branch | Fatal | Push failures abort so the branch is not reported as synchronized. |
 |  | Preview skip | Non-fatal | Explicit message and continue. |
 |  | Remote/local deletion (branch cleanup) | Non-fatal | Errors appear as warnings; remaining branches processed. |
 | default | Workflow rewrite, default branch update | Fatal | Required to guarantee correctness. |

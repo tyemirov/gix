@@ -6,7 +6,7 @@ workflow:
         tasks:
           - name: "Switch to master"
             actions:
-              - type: branch.change
+              - type: branch.sync
                 options:
                   branch: master
                   remote: origin
@@ -23,7 +23,7 @@ workflow:
         tasks:
           - name: "Create automation branch"
             actions:
-              - type: branch.change
+              - type: branch.sync
                 options:
                   branch: "automation/gitignore/{{ .Repository.Name }}-{{ index .Environment \"workflow_run_id\" }}"
                   remote: origin
@@ -107,7 +107,7 @@ workflow:
         tasks:
           - name: "Restore initial branch"
             actions:
-              - type: branch.change
+              - type: branch.sync
                 options:
                   restore:
                     from: initial_branch

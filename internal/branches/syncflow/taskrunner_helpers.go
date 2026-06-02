@@ -1,4 +1,4 @@
-package cd
+package syncflow
 
 import (
 	"github.com/tyemirov/gix/internal/workflow"

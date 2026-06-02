@@ -21,7 +21,7 @@ import (
 	workflowcmd "github.com/tyemirov/gix/cmd/cli/workflow"
 	"github.com/tyemirov/gix/internal/audit"
 	"github.com/tyemirov/gix/internal/branches"
-	branchcdcmd "github.com/tyemirov/gix/internal/branches/cd"
+	syncflowcmd "github.com/tyemirov/gix/internal/branches/syncflow"
 	"github.com/tyemirov/gix/internal/migrate"
 	"github.com/tyemirov/gix/internal/packages"
 	reposdeps "github.com/tyemirov/gix/internal/repos/dependencies"
@@ -47,7 +47,7 @@ var commandOperationRequirements = map[string][]string{
 	filesAddCommandPathKeyConstant:        {repoFilesAddOperationNameConstant},
 	workflowCommandOperationNameConstant:  {workflowCommandOperationNameConstant},
 	defaultCommandUseNameConstant:         {defaultOperationNameConstant},
-	branchChangeTopLevelUseNameConstant:   {branchChangeOperationNameConstant},
+	branchSyncTopLevelUseNameConstant:     {branchSyncOperationNameConstant},
 	commitMessageCommandPathKeyConstant:   {commitMessageOperationNameConstant},
 	changelogMessageCommandPathKeyConstant: {
 		changelogMessageOperationNameConstant,
@@ -539,10 +539,10 @@ func (application *Application) branchCleanupConfiguration() branches.CommandCon
 	return configuration
 }
 
-func (application *Application) branchChangeConfiguration() branchcdcmd.CommandConfiguration {
-	configuration := branchcdcmd.DefaultCommandConfiguration()
+func (application *Application) branchSyncConfiguration() syncflowcmd.CommandConfiguration {
+	configuration := syncflowcmd.DefaultCommandConfiguration()
 	messageConfiguration := application.commitMessageConfiguration()
-	configuration.CommitMessage = branchcdcmd.CommitMessageConfiguration{
+	configuration.CommitMessage = syncflowcmd.CommitMessageConfiguration{
 		APIKeyEnv:      messageConfiguration.APIKeyEnv,
 		BaseURL:        messageConfiguration.BaseURL,
 		Model:          messageConfiguration.Model,
@@ -550,9 +550,9 @@ func (application *Application) branchChangeConfiguration() branchcdcmd.CommandC
 		Temperature:    messageConfiguration.Temperature,
 		TimeoutSeconds: messageConfiguration.TimeoutSeconds,
 	}
-	application.decodeOperationConfiguration(branchChangeOperationNameConstant, &configuration)
+	application.decodeOperationConfiguration(branchSyncOperationNameConstant, &configuration)
 
-	options, optionsExist := application.lookupOperationOptions(branchChangeOperationNameConstant)
+	options, optionsExist := application.lookupOperationOptions(branchSyncOperationNameConstant)
 	if !optionsExist || !optionExists(options, requireCleanOptionKeyConstant) {
 		configuration.RequireClean = application.configuration.Common.RequireClean
 	}

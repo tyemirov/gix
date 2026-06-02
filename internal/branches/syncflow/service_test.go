@@ -1,4 +1,4 @@
-package cd
+package syncflow
 
 import (
 	"context"
@@ -122,7 +122,7 @@ func TestChangeExecutesExpectedCommands(t *testing.T) {
 	require.Equal(t, []string{"remote"}, executor.recorded[0].Arguments)
 	require.Equal(t, []string{"fetch", "--prune", "origin"}, executor.recorded[1].Arguments)
 	require.Equal(t, []string{"switch", "feature"}, executor.recorded[2].Arguments)
-	require.Equal(t, []string{"pull", "--rebase"}, executor.recorded[3].Arguments)
+	require.Equal(t, []string{"pull", "--ff-only"}, executor.recorded[3].Arguments)
 }
 
 func TestChangeCreatesBranchWhenMissing(t *testing.T) {
@@ -266,7 +266,7 @@ func TestChangeWarnsWhenPullFails(t *testing.T) {
 	require.Len(t, result.Warnings, 1)
 	require.Equal(t, "PULL-SKIP: fatal: Could not read from remote repository", result.Warnings[0])
 	require.Len(t, executor.recorded, 4)
-	require.Equal(t, []string{"pull", "--rebase"}, executor.recorded[3].Arguments)
+	require.Equal(t, []string{"pull", "--ff-only"}, executor.recorded[3].Arguments)
 }
 
 func TestChangeUsesFastForwardPullMode(t *testing.T) {
@@ -325,7 +325,7 @@ func TestChangeFetchesAllWhenExplicitRemoteMissing(t *testing.T) {
 	require.Equal(t, []string{"remote"}, executor.recorded[0].Arguments)
 	require.Equal(t, []string{"fetch", "--all", "--prune"}, executor.recorded[1].Arguments)
 	require.Equal(t, []string{"switch", "feature"}, executor.recorded[2].Arguments)
-	require.Equal(t, []string{"pull", "--rebase"}, executor.recorded[3].Arguments)
+	require.Equal(t, []string{"pull", "--ff-only"}, executor.recorded[3].Arguments)
 }
 
 func TestChangeWarnsWhenExplicitRemoteMissingWithoutAlternatives(t *testing.T) {
