@@ -792,3 +792,23 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - Exposed explicit metadata controls through `gix sync --title/--body` and `sync.pull_request.title/body`.
   - Kept branch-diff body generation as the default and made explicit body text bypass generation.
   - `make test`, `make lint`, and `make ci` passed locally after the control follow-up.
+
+- [x] [I008] Unify duplicated workflow implementation paths behind shared typed builders and services.
+  Requested on 2026-06-03.
+  ### Summary
+  The implementation has parallel CLI, web, workflow, and sync branches that construct equivalent workflow actions and Git operations with duplicated `map[string]any` mutation and helper logic. The code should converge on centralized typed builders and reusable services so each command surface delegates to one canonical implementation path.
+  ### Plan
+  - Introduce typed workflow option/spec builders for common operations and task actions.
+  - Replace CLI preset wrappers and workflow variable override code that currently mutates nested action maps by hand.
+  - Reuse the same builders from web workflow primitive construction where the web API creates equivalent operation options.
+  - Extract shared branch/PR/dirty-work helpers once the builder path is stable.
+  - Add focused tests that prove the shared builders serialize the existing command contracts without changing observable behavior.
+  ### Resolution
+  - Added workflow-owned typed option builders for common task actions, file replacement safeguards, release retag mappings, and history purge variable overrides.
+  - Exported built-in task action identifiers so CLI and web surfaces stop repeating action type strings in implementation code.
+  - Migrated web workflow primitives, CLI preset wrappers, and workflow history variable overrides to the shared builder path.
+  - Reused the centralized option key constants inside workflow action handlers and taught option map-slice reading to accept typed mapping slices.
+  - Added focused builder and override tests in `internal/workflow`.
+  - `make format`, `make test`, `make lint`, and `make ci` passed locally.
+  ### Follow-up
+  Branch/PR/dirty-work helper extraction remains a later unification slice now that the typed option builder path is stable.

@@ -97,11 +97,13 @@ func (builder *RenameCommandBuilder) run(command *cobra.Command, arguments []str
 				if workflow.CommandPathKey(ctx.Configuration.Steps[index].Command) != folderRenameCommandKey {
 					continue
 				}
-				if ctx.Configuration.Steps[index].Options == nil {
-					ctx.Configuration.Steps[index].Options = make(map[string]any)
-				}
-				ctx.Configuration.Steps[index].Options["require_clean"] = requireClean
-				ctx.Configuration.Steps[index].Options["include_owner"] = includeOwner
+				ctx.Configuration.Steps[index].Options = workflow.MergeOptions(
+					ctx.Configuration.Steps[index].Options,
+					workflow.RenameDirectoriesActionOptions{
+						RequireClean: requireClean,
+						IncludeOwner: includeOwner,
+					}.Options(),
+				)
 			}
 
 			runtimeOptions := ctx.RuntimeOptions()

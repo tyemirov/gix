@@ -15,16 +15,16 @@ import (
 )
 
 const (
-	webWorkflowPrimitiveCanonicalRemoteConstant    = "repo.remote.update"
-	webWorkflowPrimitiveProtocolConversionConstant = "repo.remote.convert-protocol"
-	webWorkflowPrimitiveRenameFolderConstant       = "repo.folder.rename"
-	webWorkflowPrimitiveDefaultBranchConstant      = "branch.default"
-	webWorkflowPrimitiveReleaseTagConstant         = "repo.release.tag"
-	webWorkflowPrimitiveReleaseRetagConstant       = "repo.release.retag"
-	webWorkflowPrimitiveAuditReportConstant        = "audit.report"
-	webWorkflowPrimitiveHistoryPurgeConstant       = "repo.history.purge"
-	webWorkflowPrimitiveFileReplaceConstant        = "repo.files.replace"
-	webWorkflowPrimitiveNamespaceRewriteConstant   = "repo.namespace.rewrite"
+	webWorkflowPrimitiveCanonicalRemoteConstant    = workflow.TaskActionCanonicalRemoteType
+	webWorkflowPrimitiveProtocolConversionConstant = workflow.TaskActionProtocolConversionType
+	webWorkflowPrimitiveRenameFolderConstant       = workflow.TaskActionRenameDirectoriesType
+	webWorkflowPrimitiveDefaultBranchConstant      = workflow.TaskActionBranchDefaultType
+	webWorkflowPrimitiveReleaseTagConstant         = workflow.TaskActionReleaseTagType
+	webWorkflowPrimitiveReleaseRetagConstant       = workflow.TaskActionReleaseRetagType
+	webWorkflowPrimitiveAuditReportConstant        = workflow.TaskActionAuditReportType
+	webWorkflowPrimitiveHistoryPurgeConstant       = workflow.TaskActionHistoryPurgeType
+	webWorkflowPrimitiveFileReplaceConstant        = workflow.TaskActionFileReplaceType
+	webWorkflowPrimitiveNamespaceRewriteConstant   = workflow.TaskActionNamespaceRewriteType
 
 	webWorkflowPrimitiveQueuedActionsRequiredConstant       = "at least one queued workflow action is required"
 	webWorkflowPrimitiveRepositoryPathRequiredConstant      = "workflow action repository path is required"
@@ -246,9 +246,7 @@ func (application *Application) webWorkflowPrimitiveDefinitions() []webWorkflowP
 				if ownerError != nil {
 					return nil, ownerError
 				}
-				return workflowPrimitiveOptions(map[string]string{
-					webWorkflowPrimitiveParameterOwnerConstant: owner,
-				}), nil
+				return workflow.CanonicalRemoteActionOptions{Owner: owner}.Options(), nil
 			},
 		},
 		{
@@ -298,10 +296,10 @@ func (application *Application) webWorkflowPrimitiveDefinitions() []webWorkflowP
 				if toError != nil {
 					return nil, toError
 				}
-				return workflowPrimitiveOptions(map[string]string{
-					webWorkflowPrimitiveParameterFromConstant: fromProtocol,
-					webWorkflowPrimitiveParameterToConstant:   toProtocol,
-				}), nil
+				return workflow.ProtocolConversionActionOptions{
+					From: shared.RemoteProtocol(fromProtocol),
+					To:   shared.RemoteProtocol(toProtocol),
+				}.Options(), nil
 			},
 		},
 		{
@@ -333,10 +331,10 @@ func (application *Application) webWorkflowPrimitiveDefinitions() []webWorkflowP
 				if requireCleanError != nil {
 					return nil, requireCleanError
 				}
-				return map[string]any{
-					webWorkflowPrimitiveParameterIncludeOwnerConstant: includeOwner,
-					webWorkflowPrimitiveParameterRequireCleanConstant: requireClean,
-				}, nil
+				return workflow.RenameDirectoriesActionOptions{
+					RequireClean: requireClean,
+					IncludeOwner: includeOwner,
+				}.Options(), nil
 			},
 		},
 		{
@@ -404,13 +402,13 @@ func (application *Application) webWorkflowPrimitiveDefinitions() []webWorkflowP
 				if deleteError != nil {
 					return nil, deleteError
 				}
-				return map[string]any{
-					webWorkflowPrimitiveParameterSourceConstant:             sourceBranch,
-					webWorkflowPrimitiveParameterTargetConstant:             targetBranch,
-					webWorkflowPrimitiveParameterRemoteConstant:             remoteName,
-					webWorkflowPrimitiveParameterPushConstant:               pushToRemote,
-					webWorkflowPrimitiveParameterDeleteSourceBranchConstant: deleteSourceBranch,
-				}, nil
+				return workflow.BranchDefaultActionOptions{
+					RemoteName:         remoteName,
+					SourceBranch:       sourceBranch,
+					TargetBranch:       targetBranch,
+					PushToRemote:       pushToRemote,
+					DeleteSourceBranch: deleteSourceBranch,
+				}.Options(), nil
 			},
 		},
 		{
@@ -458,11 +456,11 @@ func (application *Application) webWorkflowPrimitiveDefinitions() []webWorkflowP
 				if remoteError != nil {
 					return nil, remoteError
 				}
-				return workflowPrimitiveOptions(map[string]string{
-					webWorkflowPrimitiveParameterTagConstant:     tagName,
-					webWorkflowPrimitiveParameterMessageConstant: message,
-					webWorkflowPrimitiveParameterRemoteConstant:  remoteName,
-				}), nil
+				return workflow.ReleaseTagActionOptions{
+					TagName:    tagName,
+					Message:    message,
+					RemoteName: remoteName,
+				}.Options(), nil
 			},
 		},
 		{
@@ -498,13 +496,10 @@ func (application *Application) webWorkflowPrimitiveDefinitions() []webWorkflowP
 				if mappingsError != nil {
 					return nil, mappingsError
 				}
-				options := map[string]any{
-					webWorkflowPrimitiveParameterMappingsConstant: mappings,
-				}
-				if len(remoteName) > 0 {
-					options[webWorkflowPrimitiveParameterRemoteConstant] = remoteName
-				}
-				return options, nil
+				return workflow.ReleaseRetagActionOptions{
+					RemoteName: remoteName,
+					Mappings:   mappings,
+				}.Options(), nil
 			},
 		},
 		{
@@ -573,13 +568,12 @@ func (application *Application) webWorkflowPrimitiveDefinitions() []webWorkflowP
 				if outputError != nil {
 					return nil, outputError
 				}
-				return workflowPrimitiveOptions(map[string]string{
-					webWorkflowPrimitiveParameterDepthConstant:  inspectionDepth,
-					webWorkflowPrimitiveParameterOutputConstant: outputPath,
-				}, map[string]bool{
-					webWorkflowPrimitiveParameterIncludeAllConstant: includeAll,
-					webWorkflowPrimitiveParameterDebugConstant:      debugOutput,
-				}), nil
+				return workflow.AuditReportActionOptions{
+					IncludeAll: includeAll,
+					Debug:      debugOutput,
+					Depth:      audit.InspectionDepth(inspectionDepth),
+					OutputPath: outputPath,
+				}.Options(), nil
 			},
 		},
 		{
@@ -645,16 +639,13 @@ func (application *Application) webWorkflowPrimitiveDefinitions() []webWorkflowP
 				if pushMissingError != nil {
 					return nil, pushMissingError
 				}
-				options := map[string]any{
-					webWorkflowPrimitiveParameterPathsConstant:       paths,
-					webWorkflowPrimitiveParameterPushConstant:        pushEnabled,
-					webWorkflowPrimitiveParameterRestoreConstant:     restoreEnabled,
-					webWorkflowPrimitiveParameterPushMissingConstant: pushMissing,
-				}
-				if len(remoteName) > 0 {
-					options[webWorkflowPrimitiveParameterRemoteConstant] = remoteName
-				}
-				return options, nil
+				return workflow.HistoryPurgeActionOptions{
+					Paths:       paths,
+					RemoteName:  remoteName,
+					Push:        pushEnabled,
+					Restore:     restoreEnabled,
+					PushMissing: pushMissing,
+				}.Options(), nil
 			},
 		},
 		{
@@ -714,15 +705,12 @@ func (application *Application) webWorkflowPrimitiveDefinitions() []webWorkflowP
 				if commandError != nil {
 					return nil, commandError
 				}
-				options := map[string]any{
-					webWorkflowPrimitiveParameterPatternsConstant: patterns,
-					webWorkflowPrimitiveParameterFindConstant:     findValue,
-					webWorkflowPrimitiveParameterReplaceConstant:  replaceValue,
-				}
-				if len(commandValue) > 0 {
-					options[webWorkflowPrimitiveParameterCommandConstant] = commandValue
-				}
-				return options, nil
+				return workflow.FileReplaceActionOptions{
+					Patterns: patterns,
+					Find:     findValue,
+					Replace:  replaceValue,
+					Command:  strings.Fields(commandValue),
+				}.Options(), nil
 			},
 		},
 		{
@@ -986,7 +974,7 @@ func readWebWorkflowStringListParameter(parameters map[string]any, primitiveID s
 	return collected, nil
 }
 
-func readWebWorkflowRetagMappingsParameter(parameters map[string]any) ([]map[string]any, error) {
+func readWebWorkflowRetagMappingsParameter(parameters map[string]any) ([]workflow.ReleaseRetagMappingOptions, error) {
 	rawMappings, mappingsError := readWebWorkflowStringParameter(parameters, webWorkflowPrimitiveReleaseRetagConstant, webWorkflowPrimitiveParameterMappingsConstant, true, "")
 	if mappingsError != nil {
 		return nil, mappingsError
@@ -999,7 +987,7 @@ func readWebWorkflowRetagMappingsParameter(parameters map[string]any) ([]map[str
 		return nil, fmt.Errorf("%s: %w", webWorkflowPrimitiveRetagMappingsFormatConstant, readError)
 	}
 
-	mappings := make([]map[string]any, 0, len(records))
+	mappings := make([]workflow.ReleaseRetagMappingOptions, 0, len(records))
 	for _, record := range records {
 		trimmedRecord := make([]string, 0, len(record))
 		for _, column := range record {
@@ -1020,12 +1008,12 @@ func readWebWorkflowRetagMappingsParameter(parameters map[string]any) ([]map[str
 			return nil, errors.New(webWorkflowPrimitiveRetagMappingsFormatConstant)
 		}
 
-		mapping := map[string]any{
-			webWorkflowPrimitiveParameterTagConstant:    trimmedRecord[0],
-			webWorkflowPrimitiveParameterTargetConstant: trimmedRecord[1],
+		mapping := workflow.ReleaseRetagMappingOptions{
+			TagName:         trimmedRecord[0],
+			TargetReference: trimmedRecord[1],
 		}
 		if len(trimmedRecord) == 3 && len(trimmedRecord[2]) > 0 {
-			mapping[webWorkflowPrimitiveParameterMessageConstant] = trimmedRecord[2]
+			mapping.Message = trimmedRecord[2]
 		}
 		mappings = append(mappings, mapping)
 	}

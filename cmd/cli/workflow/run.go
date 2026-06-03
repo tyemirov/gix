@@ -327,37 +327,20 @@ func applyVariableOverrides(configuration *workflow.Configuration, variables map
 				continue
 			}
 
-			historyOptions, ok := historyActionOptions(configuration.Steps[stepIndex].Options)
-			if !ok {
-				continue
-			}
-
-			pushValue := historyPush
-			if !historyPushProvided {
-				pushValue = readHistoryBooleanOption(historyOptions, "push", true)
-			}
-			restoreValue := historyRestore
-			if !historyRestoreProvided {
-				restoreValue = readHistoryBooleanOption(historyOptions, "restore", true)
-			}
-			pushMissingValue := historyPushMissing
-			if !historyPushMissingProvided {
-				pushMissingValue = readHistoryBooleanOption(historyOptions, "push_missing", false)
-			}
-
-			selectedPaths := historyPaths
-			if len(selectedPaths) == 0 {
-				selectedPaths = readHistoryPathsOption(historyOptions)
-			}
-
-			configuration.Steps[stepIndex].Options = applyHistoryVariableOverrides(
+			updatedOptions, _, historyOverrideError := workflow.ApplyHistoryPurgeActionOverrides(
 				configuration.Steps[stepIndex].Options,
-				selectedPaths,
-				historyRemote,
-				pushValue,
-				restoreValue,
-				pushMissingValue,
+				workflow.HistoryPurgeActionOverrides{
+					Paths:       historyPaths,
+					RemoteName:  historyRemote,
+					Push:        workflowBooleanOverride(historyPush, historyPushProvided),
+					Restore:     workflowBooleanOverride(historyRestore, historyRestoreProvided),
+					PushMissing: workflowBooleanOverride(historyPushMissing, historyPushMissingProvided),
+				},
 			)
+			if historyOverrideError != nil {
+				return historyOverrideError
+			}
+			configuration.Steps[stepIndex].Options = updatedOptions
 		}
 	}
 
@@ -398,116 +381,11 @@ func parseWorkflowBooleanVariable(rawValue string) (bool, bool) {
 	return parsed, true
 }
 
-func historyActionOptions(options map[string]any) (map[string]any, bool) {
-	if options == nil {
-		return nil, false
-	}
-	tasksValue, ok := options["tasks"].([]any)
-	if !ok || len(tasksValue) == 0 {
-		return nil, false
-	}
-	taskEntry, ok := tasksValue[0].(map[string]any)
-	if !ok {
-		return nil, false
-	}
-	actionsValue, ok := taskEntry["actions"].([]any)
-	if !ok || len(actionsValue) == 0 {
-		return nil, false
-	}
-	actionEntry, ok := actionsValue[0].(map[string]any)
-	if !ok {
-		return nil, false
-	}
-	actionType, ok := actionEntry["type"].(string)
-	if !ok || !strings.EqualFold(strings.TrimSpace(actionType), "repo.history.purge") {
-		return nil, false
-	}
-	actionOptions, ok := actionEntry["options"].(map[string]any)
-	if !ok {
-		actionOptions = make(map[string]any)
-	}
-	return actionOptions, true
-}
-
-func readHistoryBooleanOption(options map[string]any, key string, fallback bool) bool {
-	if options == nil {
-		return fallback
-	}
-	if rawValue, ok := options[key]; ok {
-		if parsed, ok := rawValue.(bool); ok {
-			return parsed
-		}
-	}
-	return fallback
-}
-
-func readHistoryPathsOption(options map[string]any) []string {
-	if options == nil {
+func workflowBooleanOverride(value bool, provided bool) *bool {
+	if !provided {
 		return nil
 	}
-	if rawValue, ok := options["paths"].([]any); ok {
-		paths := make([]string, 0, len(rawValue))
-		for _, entry := range rawValue {
-			if text, ok := entry.(string); ok && len(strings.TrimSpace(text)) > 0 {
-				paths = append(paths, strings.TrimSpace(text))
-			}
-		}
-		return paths
-	}
-	if rawValue, ok := options["paths"].([]string); ok {
-		paths := make([]string, 0, len(rawValue))
-		for _, entry := range rawValue {
-			trimmed := strings.TrimSpace(entry)
-			if len(trimmed) == 0 {
-				continue
-			}
-			paths = append(paths, trimmed)
-		}
-		return paths
-	}
-	return nil
-}
-
-func applyHistoryVariableOverrides(options map[string]any, paths []string, remote string, push bool, restore bool, pushMissing bool) map[string]any {
-	if options == nil {
-		options = make(map[string]any)
-	}
-	tasksValue, ok := options["tasks"].([]any)
-	if !ok || len(tasksValue) == 0 {
-		return options
-	}
-	taskEntry, ok := tasksValue[0].(map[string]any)
-	if !ok {
-		return options
-	}
-	actionsValue, ok := taskEntry["actions"].([]any)
-	if !ok || len(actionsValue) == 0 {
-		return options
-	}
-	actionEntry, ok := actionsValue[0].(map[string]any)
-	if !ok {
-		return options
-	}
-	actionOptions, _ := actionEntry["options"].(map[string]any)
-	if actionOptions == nil {
-		actionOptions = make(map[string]any)
-	}
-	if len(paths) > 0 {
-		actionOptions["paths"] = append([]string{}, paths...)
-	}
-	if len(strings.TrimSpace(remote)) > 0 {
-		actionOptions["remote"] = strings.TrimSpace(remote)
-	}
-	actionOptions["push"] = push
-	actionOptions["restore"] = restore
-	actionOptions["push_missing"] = pushMissing
-
-	actionEntry["options"] = actionOptions
-	actionsValue[0] = actionEntry
-	taskEntry["actions"] = actionsValue
-	tasksValue[0] = taskEntry
-	options["tasks"] = tasksValue
-	return options
+	return &value
 }
 
 func (builder *CommandBuilder) resolvePresetCatalog() PresetCatalog {

@@ -88,7 +88,7 @@ func RegisterTaskAction(actionType string, handler taskActionHandlerFunc) {
 
 func handleCanonicalRemoteAction(ctx context.Context, environment *Environment, repository *RepositoryState, parameters map[string]any) error {
 	reader := newOptionReader(parameters)
-	ownerConstraint, _, ownerError := reader.stringValue("owner")
+	ownerConstraint, _, ownerError := reader.stringValue(optionOwnerKeyConstant)
 	if ownerError != nil {
 		return ownerError
 	}
@@ -101,7 +101,7 @@ func handleCanonicalRemoteAction(ctx context.Context, environment *Environment, 
 func handleProtocolConversionAction(ctx context.Context, environment *Environment, repository *RepositoryState, parameters map[string]any) error {
 	reader := newOptionReader(parameters)
 
-	targetValue, targetExists, targetError := reader.stringValue("to")
+	targetValue, targetExists, targetError := reader.stringValue(optionToKeyConstant)
 	if targetError != nil {
 		return targetError
 	}
@@ -115,7 +115,7 @@ func handleProtocolConversionAction(ctx context.Context, environment *Environmen
 	}
 
 	fromProtocol := shared.RemoteProtocol(strings.TrimSpace(string(repository.Inspection.RemoteProtocol)))
-	sourceValue, sourceExists, sourceError := reader.stringValue("from")
+	sourceValue, sourceExists, sourceError := reader.stringValue(optionFromKeyConstant)
 	if sourceError != nil {
 		return sourceError
 	}
@@ -137,7 +137,7 @@ func handleRenameDirectoriesAction(ctx context.Context, environment *Environment
 
 	requireClean := true
 	requireCleanExplicit := false
-	if value, exists, err := reader.boolValue("require_clean"); err != nil {
+	if value, exists, err := reader.boolValue(optionRequireCleanKeyConstant); err != nil {
 		return err
 	} else if exists {
 		requireClean = value
@@ -145,7 +145,7 @@ func handleRenameDirectoriesAction(ctx context.Context, environment *Environment
 	}
 
 	includeOwner := false
-	if value, exists, err := reader.boolValue("include_owner"); err != nil {
+	if value, exists, err := reader.boolValue(optionIncludeOwnerKeyConstant); err != nil {
 		return err
 	} else if exists {
 		includeOwner = value
@@ -163,17 +163,17 @@ func handleRenameDirectoriesAction(ctx context.Context, environment *Environment
 func handleBranchDefaultAction(ctx context.Context, environment *Environment, repository *RepositoryState, parameters map[string]any) error {
 	reader := newOptionReader(parameters)
 
-	targetBranchValue, _, targetBranchError := reader.stringValue("target")
+	targetBranchValue, _, targetBranchError := reader.stringValue(actionOptionTargetKeyConstant)
 	if targetBranchError != nil {
 		return targetBranchError
 	}
 
-	sourceBranchValue, _, sourceBranchError := reader.stringValue("source")
+	sourceBranchValue, _, sourceBranchError := reader.stringValue(actionOptionSourceKeyConstant)
 	if sourceBranchError != nil {
 		return sourceBranchError
 	}
 
-	remoteNameValue, remoteNameExists, remoteNameError := reader.stringValue("remote")
+	remoteNameValue, remoteNameExists, remoteNameError := reader.stringValue(actionOptionRemoteKeyConstant)
 	if remoteNameError != nil {
 		return remoteNameError
 	}
@@ -183,14 +183,14 @@ func handleBranchDefaultAction(ctx context.Context, environment *Environment, re
 	}
 
 	pushToRemote := true
-	if value, exists, err := reader.boolValue("push"); err != nil {
+	if value, exists, err := reader.boolValue(actionOptionPushKeyConstant); err != nil {
 		return err
 	} else if exists {
 		pushToRemote = value
 	}
 
 	deleteSource := false
-	if value, exists, err := reader.boolValue("delete_source_branch"); err != nil {
+	if value, exists, err := reader.boolValue(actionOptionDeleteSourceBranchKeyConstant); err != nil {
 		return err
 	} else if exists {
 		deleteSource = value
@@ -216,7 +216,7 @@ func handleReleaseTagAction(ctx context.Context, environment *Environment, repos
 
 	reader := newOptionReader(parameters)
 
-	tagValue, tagExists, tagError := reader.stringValue("tag")
+	tagValue, tagExists, tagError := reader.stringValue(actionOptionTagKeyConstant)
 	if tagError != nil {
 		return tagError
 	}
@@ -224,12 +224,12 @@ func handleReleaseTagAction(ctx context.Context, environment *Environment, repos
 		return errors.New("release action requires 'tag'")
 	}
 
-	messageValue, _, messageError := reader.stringValue("message")
+	messageValue, _, messageError := reader.stringValue(actionOptionMessageKeyConstant)
 	if messageError != nil {
 		return messageError
 	}
 
-	remoteValue, _, remoteError := reader.stringValue("remote")
+	remoteValue, _, remoteError := reader.stringValue(actionOptionRemoteKeyConstant)
 	if remoteError != nil {
 		return remoteError
 	}
@@ -263,12 +263,12 @@ func handleReleaseRetagAction(ctx context.Context, environment *Environment, rep
 
 	reader := newOptionReader(parameters)
 
-	remoteValue, _, remoteError := reader.stringValue("remote")
+	remoteValue, _, remoteError := reader.stringValue(actionOptionRemoteKeyConstant)
 	if remoteError != nil {
 		return remoteError
 	}
 
-	mappingEntries, mappingsExist, mappingsError := reader.mapSlice("mappings")
+	mappingEntries, mappingsExist, mappingsError := reader.mapSlice(actionOptionMappingsKeyConstant)
 	if mappingsError != nil {
 		return mappingsError
 	}
@@ -280,7 +280,7 @@ func handleReleaseRetagAction(ctx context.Context, environment *Environment, rep
 	for _, entry := range mappingEntries {
 		entryReader := newOptionReader(entry)
 
-		tagValue, tagExists, tagError := entryReader.stringValue("tag")
+		tagValue, tagExists, tagError := entryReader.stringValue(actionOptionTagKeyConstant)
 		if tagError != nil {
 			return tagError
 		}
@@ -288,7 +288,7 @@ func handleReleaseRetagAction(ctx context.Context, environment *Environment, rep
 			return errors.New("retag mapping requires 'tag'")
 		}
 
-		targetValue, targetExists, targetError := entryReader.stringValue("target")
+		targetValue, targetExists, targetError := entryReader.stringValue(actionOptionTargetKeyConstant)
 		if targetError != nil {
 			return targetError
 		}
@@ -296,7 +296,7 @@ func handleReleaseRetagAction(ctx context.Context, environment *Environment, rep
 			return errors.New("retag mapping requires 'target'")
 		}
 
-		messageValue, _, messageError := entryReader.stringValue("message")
+		messageValue, _, messageError := entryReader.stringValue(actionOptionMessageKeyConstant)
 		if messageError != nil {
 			return messageError
 		}
@@ -337,16 +337,16 @@ func handleAuditReportAction(ctx context.Context, environment *Environment, repo
 	}
 
 	reader := newOptionReader(parameters)
-	includeAll, _, includeAllError := reader.boolValue("include_all")
+	includeAll, _, includeAllError := reader.boolValue(actionOptionIncludeAllKeyConstant)
 	if includeAllError != nil {
 		return includeAllError
 	}
-	debugOutput, _, debugError := reader.boolValue("debug")
+	debugOutput, _, debugError := reader.boolValue(actionOptionDebugKeyConstant)
 	if debugError != nil {
 		return debugError
 	}
 
-	depthValue, _, depthError := reader.stringValue("depth")
+	depthValue, _, depthError := reader.stringValue(actionOptionDepthKeyConstant)
 	if depthError != nil {
 		return depthError
 	}
@@ -361,7 +361,7 @@ func handleAuditReportAction(ctx context.Context, environment *Environment, repo
 		return nil
 	}
 
-	outputValue, outputExists, outputError := reader.stringValue("output")
+	outputValue, outputExists, outputError := reader.stringValue(optionOutputPathKeyConstant)
 	if outputError != nil {
 		return outputError
 	}
@@ -467,7 +467,7 @@ func handleHistoryPurgeAction(ctx context.Context, environment *Environment, rep
 		return nil
 	}
 
-	rawPaths, exists := parameters["paths"]
+	rawPaths, exists := parameters[optionPathsKeyConstant]
 	if !exists {
 		return errors.New("history purge action requires 'paths'")
 	}
@@ -483,27 +483,27 @@ func handleHistoryPurgeAction(ctx context.Context, environment *Environment, rep
 
 	reader := newOptionReader(parameters)
 
-	remoteName, _, remoteError := reader.stringValue("remote")
+	remoteName, _, remoteError := reader.stringValue(actionOptionRemoteKeyConstant)
 	if remoteError != nil {
 		return remoteError
 	}
 
 	pushEnabled := true
-	if value, exists, err := reader.boolValue("push"); err != nil {
+	if value, exists, err := reader.boolValue(actionOptionPushKeyConstant); err != nil {
 		return err
 	} else if exists {
 		pushEnabled = value
 	}
 
 	restoreEnabled := true
-	if value, exists, err := reader.boolValue("restore"); err != nil {
+	if value, exists, err := reader.boolValue(actionOptionRestoreKeyConstant); err != nil {
 		return err
 	} else if exists {
 		restoreEnabled = value
 	}
 
 	pushMissing := false
-	if value, exists, err := reader.boolValue("push_missing"); err != nil {
+	if value, exists, err := reader.boolValue(actionOptionPushMissingKeyConstant); err != nil {
 		return err
 	} else if exists {
 		pushMissing = value
