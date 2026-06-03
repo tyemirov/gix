@@ -84,10 +84,10 @@ func (builder *RemotesCommandBuilder) run(command *cobra.Command, arguments []st
 				if workflow.CommandPathKey(ctx.Configuration.Steps[index].Command) != remoteCanonicalCommandKey {
 					continue
 				}
-				if ctx.Configuration.Steps[index].Options == nil {
-					ctx.Configuration.Steps[index].Options = make(map[string]any)
-				}
-				ctx.Configuration.Steps[index].Options["owner"] = trimmedOwner
+				ctx.Configuration.Steps[index].Options = workflow.MergeOptions(
+					ctx.Configuration.Steps[index].Options,
+					workflow.CanonicalRemoteActionOptions{Owner: trimmedOwner}.Options(),
+				)
 			}
 
 			return workflowcmd.PresetCommandResult{

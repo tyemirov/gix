@@ -150,26 +150,25 @@ func (builder *ReplaceCommandBuilder) run(command *cobra.Command, _ []string) er
 		PresetLoadErrorTemplate: replacePresetLoadError,
 		BuildErrorTemplate:      replaceBuildWorkflowError,
 		Configure: func(ctx workflowcmd.PresetCommandContext) (workflowcmd.PresetCommandResult, error) {
-			params := filesReplacePresetOptions{
-				Patterns:     patterns,
-				Find:         findValue,
-				Replace:      replaceValue,
-				Command:      commandArguments,
-				RequireClean: requireClean,
-				Branch:       branchValue,
-				RequirePaths: requiredPaths,
-			}
-
 			taskDefinition := workflow.TaskDefinition{
 				Name:        "Replace repository file content",
 				EnsureClean: requireClean,
 				Actions: []workflow.TaskActionDefinition{
 					{
-						Type:    "repo.files.replace",
-						Options: buildFilesReplaceActionOptions(params),
+						Type: workflow.TaskActionFileReplaceType,
+						Options: workflow.FileReplaceActionOptions{
+							Patterns: patterns,
+							Find:     findValue,
+							Replace:  replaceValue,
+							Command:  commandArguments,
+						}.Options(),
 					},
 				},
-				Safeguards: buildFilesReplaceSafeguards(params),
+				Safeguards: workflow.FileReplaceSafeguardOptions{
+					RequireClean: requireClean,
+					Branch:       branchValue,
+					Paths:        requiredPaths,
+				}.Options(),
 			}
 
 			for index := range ctx.Configuration.Steps {
@@ -224,61 +223,4 @@ func sanitizeCommandArguments(arguments []string) []string {
 		return nil
 	}
 	return sanitized
-}
-
-type filesReplacePresetOptions struct {
-	Patterns     []string
-	Find         string
-	Replace      string
-	Command      []string
-	RequireClean bool
-	Branch       string
-	RequirePaths []string
-}
-
-func buildFilesReplaceActionOptions(params filesReplacePresetOptions) map[string]any {
-	options := map[string]any{
-		"find":    params.Find,
-		"replace": params.Replace,
-	}
-
-	if len(params.Patterns) == 1 {
-		options["pattern"] = params.Patterns[0]
-	} else if len(params.Patterns) > 1 {
-		options["patterns"] = append([]string{}, params.Patterns...)
-	}
-
-	if len(params.Command) > 0 {
-		options["command"] = append([]string{}, params.Command...)
-	}
-
-	return options
-}
-
-func buildFilesReplaceSafeguards(params filesReplacePresetOptions) map[string]any {
-	hardSafeguards := map[string]any{}
-	if params.RequireClean {
-		hardSafeguards["require_clean"] = true
-	}
-
-	softSafeguards := map[string]any{}
-	if len(strings.TrimSpace(params.Branch)) > 0 {
-		softSafeguards["branch"] = params.Branch
-	}
-	if len(params.RequirePaths) > 0 {
-		softSafeguards["paths"] = append([]string{}, params.RequirePaths...)
-	}
-
-	if len(hardSafeguards) == 0 && len(softSafeguards) == 0 {
-		return nil
-	}
-
-	safeguardOptions := make(map[string]any)
-	if len(hardSafeguards) > 0 {
-		safeguardOptions["hard_stop"] = hardSafeguards
-	}
-	if len(softSafeguards) > 0 {
-		safeguardOptions["soft_skip"] = softSafeguards
-	}
-	return safeguardOptions
 }

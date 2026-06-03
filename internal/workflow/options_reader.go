@@ -76,6 +76,12 @@ func (reader optionReader) mapSlice(key string) ([]map[string]any, bool, error) 
 	if !exists {
 		return nil, false, nil
 	}
+	typedMaps, mapsOk := value.([]map[string]any)
+	if mapsOk {
+		maps := make([]map[string]any, 0, len(typedMaps))
+		maps = append(maps, typedMaps...)
+		return maps, true, nil
+	}
 	listValue, ok := value.([]any)
 	if !ok {
 		return nil, true, fmt.Errorf("option %s must be a list", key)

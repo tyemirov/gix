@@ -109,11 +109,10 @@ func (builder *ProtocolCommandBuilder) run(command *cobra.Command, arguments []s
 				if workflow.CommandPathKey(ctx.Configuration.Steps[index].Command) != protocolCommandKey {
 					continue
 				}
-				if ctx.Configuration.Steps[index].Options == nil {
-					ctx.Configuration.Steps[index].Options = make(map[string]any)
-				}
-				ctx.Configuration.Steps[index].Options["from"] = string(fromProtocol)
-				ctx.Configuration.Steps[index].Options["to"] = string(toProtocol)
+				ctx.Configuration.Steps[index].Options = workflow.MergeOptions(
+					ctx.Configuration.Steps[index].Options,
+					workflow.ProtocolConversionActionOptions{From: fromProtocol, To: toProtocol}.Options(),
+				)
 			}
 
 			return workflowcmd.PresetCommandResult{

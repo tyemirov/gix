@@ -111,23 +111,18 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 			if trimmedTag != "" {
 				displayName = fmt.Sprintf("Create release tag %s", trimmedTag)
 			}
-			actionOptions := map[string]any{
-				"tag": trimmedTag,
-			}
-			if trimmedMessage := strings.TrimSpace(messageValue); trimmedMessage != "" {
-				actionOptions["message"] = trimmedMessage
-			}
-			if trimmedRemote := strings.TrimSpace(resolvedRemote); trimmedRemote != "" {
-				actionOptions["remote"] = trimmedRemote
-			}
 
 			taskDefinition := workflow.TaskDefinition{
 				Name:        displayName,
 				EnsureClean: false,
 				Actions: []workflow.TaskActionDefinition{
 					{
-						Type:    "repo.release.tag",
-						Options: actionOptions,
+						Type: workflow.TaskActionReleaseTagType,
+						Options: workflow.ReleaseTagActionOptions{
+							TagName:    trimmedTag,
+							Message:    messageValue,
+							RemoteName: resolvedRemote,
+						}.Options(),
 					},
 				},
 			}

@@ -144,14 +144,14 @@ func (builder *RemoveCommandBuilder) run(command *cobra.Command, arguments []str
 				EnsureClean: true,
 				Actions: []workflow.TaskActionDefinition{
 					{
-						Type: "repo.history.purge",
-						Options: map[string]any{
-							"paths":        append([]string{}, normalizedPaths...),
-							"remote":       strings.TrimSpace(remoteName),
-							"push":         pushEnabled,
-							"restore":      restoreEnabled,
-							"push_missing": pushMissing,
-						},
+						Type: workflow.TaskActionHistoryPurgeType,
+						Options: workflow.HistoryPurgeActionOptions{
+							Paths:       normalizedPaths,
+							RemoteName:  remoteName,
+							Push:        pushEnabled,
+							Restore:     restoreEnabled,
+							PushMissing: pushMissing,
+						}.Options(),
 					},
 				},
 			}
