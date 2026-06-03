@@ -1,7 +1,7 @@
-- I008 is implemented and locally validated.
-- Added typed workflow option/spec builders for duplicated action maps and file replacement safeguards.
-- Migrated CLI preset wrappers, web workflow primitive builders, and history variable overrides away from hand-written nested `map[string]any` mutation.
-- Reused centralized workflow option key constants in action handlers.
-- Added focused tests proving equivalent serialized workflow options and history override behavior.
-- Validated through `make format`, `make test`, `make lint`, and `make ci`.
-- Remaining follow-up: extract branch/PR/dirty-work helpers in a later slice if the duplicated sync internals continue to grow.
+- B008 restores sibling-worktree adoption in strict `gix sync`.
+- Reuse the existing adoption helper instead of duplicating commit/push/remove/prune logic.
+- Trigger adoption only when Git reports that the requested branch is already used by another worktree.
+- Preserve the conditional dirty behavior: commit the sibling worktree only when it has uncommitted files; otherwise skip the commit path.
+- Refetch after adoption so strict sync compares against the pushed remote state before ahead/merge checks.
+- Add focused regression coverage for a dirty sibling worktree blocking a PR-backed sync branch.
+- `make ci` passed locally.

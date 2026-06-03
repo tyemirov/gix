@@ -11,6 +11,19 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
 
 ## BugFixes
 
+- [x] [B008] (P1) `gix sync` strict PR flow no longer adopts dirty sibling worktrees for the requested branch.
+  Requested on 2026-06-03 after the `v0.6.1` release check showed the old sibling-worktree adoption helper still existed, but the public strict `gix sync` path did not call it when Git refused to switch to a branch already checked out in another folder.
+  ## Observation
+  - `gix sync` now routes public branch syncs through strict PR sync.
+  - Strict PR sync called `git switch` directly and returned Git's branch-in-worktree error instead of adopting the sibling worktree.
+  - The intended behavior is conditional: when the target branch is checked out in another worktree and that sibling has uncommitted files, commit and push those sibling changes before removing/pruning the sibling and retrying the switch.
+  ## Resolution
+  - Routed strict sync branch switching through an adoption-aware helper that only triggers on Git's sibling-worktree collision error.
+  - Reused the existing sibling adoption service so dirty siblings are staged, commit-message generated, committed, pushed, removed, pruned, and then retried through the normal strict sync path.
+  - Refetched the configured remote after adoption so strict sync ahead checks use the pushed sibling state.
+  - Added focused strict-sync regression coverage for a dirty sibling worktree on the requested PR branch.
+  - `make ci` passed locally.
+
 - [x] [B007] (P1) `.gitignore` hides new source and test files by default.
   Requested on 2026-05-21 after new `gix cd` implementation files were present on disk but only visible under ignored status because `.gitignore` used a catch-all `*` with a narrow allowlist.
   ## Observation

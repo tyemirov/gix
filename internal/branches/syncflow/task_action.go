@@ -502,7 +502,7 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 		if commitBranchName == baseBranch {
 			commitBranchName = generatedSyncBranchName(repository, statusEntries)
 		}
-		if prepareErr := prepareStrictSyncBranchForDirtyWork(ctx, environment, repository, remoteName, baseBranch, commitBranchName); prepareErr != nil {
+		if prepareErr := prepareStrictSyncBranchForDirtyWork(ctx, environment, repository, remoteName, baseBranch, commitBranchName, options.CommitMessages); prepareErr != nil {
 			return prepareErr
 		}
 		committedClusters, commitErr := saveDirtyWorkClusters(ctx, environment.GitExecutor, repository.Path, statusEntries, options.CommitMessages)
@@ -515,7 +515,7 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 	}
 
 	if branchName == baseBranch {
-		if syncErr := syncBaseBranch(ctx, environment, repository, remoteName, baseBranch); syncErr != nil {
+		if syncErr := syncBaseBranch(ctx, environment, repository, remoteName, baseBranch, options.CommitMessages); syncErr != nil {
 			return syncErr
 		}
 		reportStrictSync(repository, environment, branchName, options.ResolutionSource, false, stashPushed)
@@ -556,7 +556,7 @@ type strictPullRequestCreateOptions struct {
 	Body                 string
 }
 
-func syncBaseBranch(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, remoteName string, baseBranch string) error {
+func syncBaseBranch(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, remoteName string, baseBranch string, commitMessages worktreeAdoptionCommitMessageOptions) error {
 	remoteReference := fmt.Sprintf("%s/%s", remoteName, baseBranch)
 	remoteExists, remoteExistsErr := remoteReferenceExists(ctx, environment.GitExecutor, repository.Path, remoteReference)
 	if remoteExistsErr != nil {
@@ -574,7 +574,7 @@ func syncBaseBranch(ctx context.Context, environment *workflow.Environment, repo
 		return executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitSwitchSubcommandConstant, gitCreateBranchFlagConstant, baseBranch, gitSwitchTrackFlagConstant, remoteReference})
 	}
 
-	if switchErr := executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitSwitchSubcommandConstant, baseBranch}); switchErr != nil {
+	if switchErr := switchToLocalOrRemoteBranchWithAdoption(ctx, environment, repository, remoteName, baseBranch, commitMessages); switchErr != nil {
 		return switchErr
 	}
 	aheadCount, aheadErr := commitCount(ctx, environment.GitExecutor, repository.Path, fmt.Sprintf("%s..%s", remoteReference, baseBranch))
@@ -607,7 +607,7 @@ func syncPullRequestBranch(ctx context.Context, environment *workflow.Environmen
 		if !openPullRequest {
 			return false, fmt.Errorf(strictSyncMissingPullRequestTemplate, options.BranchName, options.BaseBranch)
 		}
-		if switchErr := switchToLocalOrRemoteBranch(ctx, environment.GitExecutor, repository.Path, options.RemoteName, options.BranchName); switchErr != nil {
+		if switchErr := switchToLocalOrRemoteBranchWithAdoption(ctx, environment, repository, options.RemoteName, options.BranchName, options.CommitMessages); switchErr != nil {
 			return false, switchErr
 		}
 		aheadCount, aheadErr := commitCount(ctx, environment.GitExecutor, repository.Path, fmt.Sprintf("%s..%s", remoteReference, options.BranchName))
@@ -642,7 +642,7 @@ func syncPullRequestBranch(ctx context.Context, environment *workflow.Environmen
 		if !options.AllowAheadCommit {
 			return false, fmt.Errorf(strictSyncLocalOnlyCommitTemplate, options.BranchName, options.RemoteName, options.BranchName)
 		}
-		if switchErr := executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitSwitchSubcommandConstant, options.BranchName}); switchErr != nil {
+		if switchErr := switchToLocalOrRemoteBranchWithAdoption(ctx, environment, repository, options.RemoteName, options.BranchName, options.CommitMessages); switchErr != nil {
 			return false, switchErr
 		}
 		if mergeErr := mergeBaseIntoBranch(ctx, environment.GitExecutor, repository.Path, options.RemoteName, options.BaseBranch, options.BranchName); mergeErr != nil {
@@ -703,6 +703,28 @@ func switchToLocalOrRemoteBranch(ctx context.Context, executor shared.GitExecuto
 	}
 	remoteReference := fmt.Sprintf("%s/%s", remoteName, branchName)
 	return executeGit(ctx, executor, repositoryPath, []string{gitSwitchSubcommandConstant, gitCreateBranchFlagConstant, branchName, gitSwitchTrackFlagConstant, remoteReference})
+}
+
+func switchToLocalOrRemoteBranchWithAdoption(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, remoteName string, branchName string, commitMessages worktreeAdoptionCommitMessageOptions) error {
+	switchErr := switchToLocalOrRemoteBranch(ctx, environment.GitExecutor, repository.Path, remoteName, branchName)
+	if switchErr == nil {
+		return nil
+	}
+	if !isBranchAlreadyUsedByWorktreeError(switchErr) {
+		return switchErr
+	}
+
+	if adoptionErr := adoptExistingBranchWorktree(ctx, environment, repository, worktreeAdoptionOptions{
+		BranchName:     branchName,
+		RemoteName:     remoteName,
+		CommitMessages: commitMessages,
+	}); adoptionErr != nil {
+		return adoptionErr
+	}
+	if fetchErr := executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitFetchSubcommandConstant, gitFetchPruneFlagConstant, remoteName}); fetchErr != nil {
+		return fmt.Errorf(gitFetchFailureTemplateConstant, fetchErr)
+	}
+	return switchToLocalOrRemoteBranch(ctx, environment.GitExecutor, repository.Path, remoteName, branchName)
 }
 
 func mergeBaseIntoBranch(ctx context.Context, executor shared.GitExecutor, repositoryPath string, remoteName string, baseBranch string, branchName string) error {
