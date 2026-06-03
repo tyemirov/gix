@@ -297,22 +297,21 @@ func handleBranchSyncAction(ctx context.Context, environment *workflow.Environme
 		CreateIfMissing: createIfMissing,
 		pullMode:        pullModeForRefreshState(refreshSkipped),
 	}
-	result, changeError := service.Change(ctx, changeOptions)
-	if changeError != nil && isBranchAlreadyUsedByWorktreeError(changeError) {
-		commitMessageOptions, commitMessageErr := worktreeAdoptionCommitMessageOptionsFromParameters(parameters)
-		if commitMessageErr != nil {
-			return commitMessageErr
-		}
-		adoptionOptions := worktreeAdoptionOptions{
-			BranchName:     resolvedBranchName,
-			RemoteName:     remoteName,
-			CommitMessages: commitMessageOptions,
-		}
-		if adoptionErr := adoptExistingBranchWorktree(ctx, environment, repository, adoptionOptions); adoptionErr != nil {
-			return adoptionErr
-		}
-		result, changeError = service.Change(ctx, changeOptions)
+	commitMessageOptions, commitMessageErr := worktreeAdoptionCommitMessageOptionsFromParameters(parameters)
+	if commitMessageErr != nil {
+		return commitMessageErr
 	}
+	var result Result
+	changeError := newWorktreeAdoptionService(environment, repository).Change(ctx, worktreeAdoptionChangeOptions{
+		BranchName:     resolvedBranchName,
+		RemoteName:     remoteName,
+		CommitMessages: commitMessageOptions,
+		Change: func() error {
+			var serviceChangeErr error
+			result, serviceChangeErr = service.Change(ctx, changeOptions)
+			return serviceChangeErr
+		},
+	})
 	if changeError != nil {
 		return changeError
 	}
@@ -706,25 +705,15 @@ func switchToLocalOrRemoteBranch(ctx context.Context, executor shared.GitExecuto
 }
 
 func switchToLocalOrRemoteBranchWithAdoption(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, remoteName string, branchName string, commitMessages worktreeAdoptionCommitMessageOptions) error {
-	switchErr := switchToLocalOrRemoteBranch(ctx, environment.GitExecutor, repository.Path, remoteName, branchName)
-	if switchErr == nil {
-		return nil
-	}
-	if !isBranchAlreadyUsedByWorktreeError(switchErr) {
-		return switchErr
-	}
-
-	if adoptionErr := adoptExistingBranchWorktree(ctx, environment, repository, worktreeAdoptionOptions{
-		BranchName:     branchName,
-		RemoteName:     remoteName,
-		CommitMessages: commitMessages,
-	}); adoptionErr != nil {
-		return adoptionErr
-	}
-	if fetchErr := executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitFetchSubcommandConstant, gitFetchPruneFlagConstant, remoteName}); fetchErr != nil {
-		return fmt.Errorf(gitFetchFailureTemplateConstant, fetchErr)
-	}
-	return switchToLocalOrRemoteBranch(ctx, environment.GitExecutor, repository.Path, remoteName, branchName)
+	return newWorktreeAdoptionService(environment, repository).Change(ctx, worktreeAdoptionChangeOptions{
+		BranchName:                 branchName,
+		RemoteName:                 remoteName,
+		CommitMessages:             commitMessages,
+		RefetchRemoteAfterAdoption: true,
+		Change: func() error {
+			return switchToLocalOrRemoteBranch(ctx, environment.GitExecutor, repository.Path, remoteName, branchName)
+		},
+	})
 }
 
 func mergeBaseIntoBranch(ctx context.Context, executor shared.GitExecutor, repositoryPath string, remoteName string, baseBranch string, branchName string) error {

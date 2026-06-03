@@ -2,6 +2,7 @@
 - Reuse the existing adoption helper instead of duplicating commit/push/remove/prune logic.
 - Trigger adoption only when Git reports that the requested branch is already used by another worktree.
 - Preserve the conditional dirty behavior: commit the sibling worktree only when it has uncommitted files; otherwise skip the commit path.
+- Route strict and non-strict branch changes through the same adoption service instead of keeping separate retry blocks.
 - Refetch after adoption so strict sync compares against the pushed remote state before ahead/merge checks.
 - Add focused regression coverage for a dirty sibling worktree blocking a PR-backed sync branch.
 - `make ci` passed locally.

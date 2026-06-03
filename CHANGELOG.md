@@ -6,6 +6,7 @@
 - Make `gix sync` pull request descriptions come from the branch diff through the configured LLM path instead of predefined body text.
 - Generate the sync PR body before pushing new PR branches so body-generation failures do not leave remote branches without pull requests.
 - Expose sync-created pull request `title` and `body` controls through `gix sync --title/--body` and `sync.pull_request`, with explicit bodies bypassing generated descriptions.
+- Centralize strict and non-strict sync sibling-worktree retry handling behind the worktree adoption service.
 
 ### Bug Fixes 🐛
 - Restore strict `gix sync` adoption of dirty sibling worktrees when the requested branch is already checked out in another folder.

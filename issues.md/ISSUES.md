@@ -20,6 +20,7 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   ## Resolution
   - Routed strict sync branch switching through an adoption-aware helper that only triggers on Git's sibling-worktree collision error.
   - Reused the existing sibling adoption service so dirty siblings are staged, commit-message generated, committed, pushed, removed, pruned, and then retried through the normal strict sync path.
+  - Centralized the strict and non-strict retry paths behind `worktreeAdoptionService.Change` so branch switching no longer carries separate sibling-worktree adoption blocks.
   - Refetched the configured remote after adoption so strict sync ahead checks use the pushed sibling state.
   - Added focused strict-sync regression coverage for a dirty sibling worktree on the requested PR branch.
   - `make ci` passed locally.
