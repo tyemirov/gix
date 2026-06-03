@@ -65,7 +65,6 @@ const (
 	strictSyncMissingPullRequestTemplate         = "branch %q does not have an open pull request into %s"
 	strictSyncConflictTemplate                   = "merge from %s/%s into %s stopped with conflicts; resolve them before pushing"
 	strictSyncFastForwardTemplate                = "fast-forward from %s/%s into %s stopped; commit, stash, or clean local changes before syncing"
-	strictSyncPullRequestBodyTemplate            = "This PR is the review path for `%s` before those changes land in `%s`.\n\nKeep `%s` remote-owned; review and merge this branch when the changes are ready."
 )
 
 func init() {
@@ -521,6 +520,7 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 		BaseBranch:       baseBranch,
 		AllowAheadCommit: checkpointCommitted,
 		DirtyWorktree:    dirty,
+		CommitMessages:   options.CommitMessages,
 	})
 	if syncErr != nil {
 		return syncErr
@@ -535,6 +535,15 @@ type strictPullRequestBranchOptions struct {
 	BaseBranch       string
 	AllowAheadCommit bool
 	DirtyWorktree    bool
+	CommitMessages   worktreeAdoptionCommitMessageOptions
+}
+
+type strictPullRequestCreateOptions struct {
+	RepositoryIdentifier string
+	RemoteName           string
+	BaseBranch           string
+	BranchName           string
+	CommitMessages       worktreeAdoptionCommitMessageOptions
 }
 
 func syncBaseBranch(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, remoteName string, baseBranch string) error {
@@ -632,7 +641,13 @@ func syncPullRequestBranch(ctx context.Context, environment *workflow.Environmen
 		if pushErr := executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitPushSubcommandConstant, gitPushSetUpstreamFlagConstant, options.RemoteName, options.BranchName}); pushErr != nil {
 			return false, pushErr
 		}
-		if pullRequestErr := createPullRequest(ctx, environment, repositoryIdentifier, options.BaseBranch, options.BranchName); pullRequestErr != nil {
+		if pullRequestErr := createPullRequest(ctx, environment, repository, strictPullRequestCreateOptions{
+			RepositoryIdentifier: repositoryIdentifier,
+			RemoteName:           options.RemoteName,
+			BaseBranch:           options.BaseBranch,
+			BranchName:           options.BranchName,
+			CommitMessages:       options.CommitMessages,
+		}); pullRequestErr != nil {
 			return false, pullRequestErr
 		}
 		return true, nil
@@ -652,7 +667,13 @@ func syncPullRequestBranch(ctx context.Context, environment *workflow.Environmen
 	if pushErr := executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitPushSubcommandConstant, gitPushSetUpstreamFlagConstant, options.RemoteName, options.BranchName}); pushErr != nil {
 		return false, pushErr
 	}
-	if pullRequestErr := createPullRequest(ctx, environment, repositoryIdentifier, options.BaseBranch, options.BranchName); pullRequestErr != nil {
+	if pullRequestErr := createPullRequest(ctx, environment, repository, strictPullRequestCreateOptions{
+		RepositoryIdentifier: repositoryIdentifier,
+		RemoteName:           options.RemoteName,
+		BaseBranch:           options.BaseBranch,
+		BranchName:           options.BranchName,
+		CommitMessages:       options.CommitMessages,
+	}); pullRequestErr != nil {
 		return false, pullRequestErr
 	}
 	return true, nil
@@ -712,21 +733,27 @@ func branchHasOpenPullRequest(ctx context.Context, environment *workflow.Environ
 	return false, nil
 }
 
-func createPullRequest(ctx context.Context, environment *workflow.Environment, repositoryIdentifier string, baseBranch string, branchName string) error {
+func createPullRequest(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, options strictPullRequestCreateOptions) error {
 	if environment.GitHubClient == nil {
 		return errors.New(strictSyncMissingGitHubClientMessage)
 	}
-	return environment.GitHubClient.CreatePullRequest(ctx, githubcli.PullRequestCreateOptions{
-		Repository: repositoryIdentifier,
-		Title:      branchName,
-		Body:       strictSyncPullRequestBody(baseBranch, branchName),
-		Base:       baseBranch,
-		Head:       branchName,
+	body, bodyErr := generateStrictSyncPullRequestBody(ctx, environment.GitExecutor, strictSyncPullRequestDescriptionOptions{
+		RepositoryPath: repository.Path,
+		RemoteName:     options.RemoteName,
+		BaseBranch:     options.BaseBranch,
+		BranchName:     options.BranchName,
+		CommitMessages: options.CommitMessages,
 	})
-}
-
-func strictSyncPullRequestBody(baseBranch string, branchName string) string {
-	return fmt.Sprintf(strictSyncPullRequestBodyTemplate, branchName, baseBranch, baseBranch)
+	if bodyErr != nil {
+		return bodyErr
+	}
+	return environment.GitHubClient.CreatePullRequest(ctx, githubcli.PullRequestCreateOptions{
+		Repository: options.RepositoryIdentifier,
+		Title:      options.BranchName,
+		Body:       body,
+		Base:       options.BaseBranch,
+		Head:       options.BranchName,
+	})
 }
 
 func strictSyncRepositoryIdentifier(repository *workflow.RepositoryState) string {

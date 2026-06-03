@@ -1,5 +1,5 @@
-- Add I007 as the active implementation scope for purposeful `gix sync` pull request descriptions.
-- Locate the sync PR creation path that currently emits `Created by gix sync.` as the body.
-- Add failing observable coverage proving newly opened sync PRs include useful why-oriented body text.
-- Replace the placeholder body with a description tied to the sync target and dirty-work branch purpose.
+- Keep I007 as the active implementation scope for purposeful `gix sync` pull request descriptions.
+- Replace the static sync PR body formatter with a branch-diff description generator.
+- Add failing observable coverage proving newly opened sync PRs receive body text returned from real branch diff context.
+- Reuse the existing configured LLM client path so the generated body explains the code difference instead of the tool path.
 - Validate through Makefile targets: format, test, lint, and ci.

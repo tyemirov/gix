@@ -3,10 +3,10 @@
 ## [Unreleased]
 
 ### Improvements ⚙️
-- Make `gix sync` pull request descriptions explain the branch review path and remote-owned base branch instead of how the PR was created.
+- Make `gix sync` pull request descriptions come from the branch diff through the configured LLM path instead of predefined body text.
 
 ### Testing 🧪
-- Update strict-sync pull request creation coverage for requested branches and generated dirty-`master` branches.
+- Update strict-sync pull request creation coverage for requested branches and generated dirty-`master` branches, including the branch diff context sent to the PR body generator.
 
 ## [v0.5.0] - 2026-06-02
 

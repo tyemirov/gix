@@ -777,3 +777,10 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - Replaced the static `Created by gix sync.` body with PR text that explains the review path from the head branch into the remote-owned base branch.
   - Updated strict-sync PR creation coverage for both explicit work branches and generated dirty-`master` branches.
   - `make test`, `make lint`, and `make ci` passed locally.
+  ### Follow-up
+  The first resolution still used predefined body text. The PR description must be generated from the branch code difference itself, using the configured LLM path and git diff context.
+  ### Follow-up Resolution
+  - Added a branch-diff PR body generator that collects commit subjects, `git diff --stat`, and patch context for `<remote>/<base>...<branch>`.
+  - Threaded the existing sync LLM configuration into PR creation so `gh pr create --body` receives generated text from the code difference.
+  - Updated strict-sync coverage to assert both the diff commands and the generated body passed to GitHub.
+  - `make test`, `make lint`, and `make ci` passed locally after the follow-up.
