@@ -93,6 +93,72 @@ func TestCommandExecutesAcrossRoots(t *testing.T) {
 	require.Equal(t, "master", action.Options[taskOptionBaseBranch])
 }
 
+func TestCommandPropagatesPullRequestTitleAndBodyOptions(t *testing.T) {
+	temporaryRoot := t.TempDir()
+	runner := &recordingTaskRunner{}
+	builder := CommandBuilder{
+		LoggerProvider: func() *zap.Logger { return zap.NewNop() },
+		ConfigurationProvider: func() CommandConfiguration {
+			return CommandConfiguration{RepositoryRoots: []string{temporaryRoot}, RemoteName: "origin"}
+		},
+		GitExecutor: &stubGitExecutor{},
+		TaskRunnerFactory: func(deps workflow.Dependencies) TaskRunnerExecutor {
+			runner.dependencies = deps
+			return runner
+		},
+	}
+	command, err := builder.Build()
+	require.NoError(t, err)
+	flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Enabled: true})
+
+	require.NoError(t, command.Flags().Set(taskOptionPullRequestTitle, "docs: explain sync"))
+	require.NoError(t, command.Flags().Set(taskOptionPullRequestBody, "Explain the reviewer-facing reason."))
+
+	contextAccessor := utils.NewCommandContextAccessor()
+	command.SetContext(contextAccessor.WithExecutionFlags(context.Background(), utils.ExecutionFlags{}))
+
+	require.NoError(t, command.RunE(command, []string{"feature/foo"}))
+	require.Len(t, runner.definitions, 1)
+	action := runner.definitions[0].Actions[0]
+	require.Equal(t, "docs: explain sync", action.Options[taskOptionPullRequestTitle])
+	require.Equal(t, "Explain the reviewer-facing reason.", action.Options[taskOptionPullRequestBody])
+}
+
+func TestCommandPropagatesConfiguredPullRequestTitleAndBodyOptions(t *testing.T) {
+	temporaryRoot := t.TempDir()
+	runner := &recordingTaskRunner{}
+	builder := CommandBuilder{
+		LoggerProvider: func() *zap.Logger { return zap.NewNop() },
+		ConfigurationProvider: func() CommandConfiguration {
+			return CommandConfiguration{
+				RepositoryRoots: []string{temporaryRoot},
+				RemoteName:      "origin",
+				PullRequest: PullRequestConfiguration{
+					Title: "docs: explain configured sync",
+					Body:  "Explain the configured reviewer-facing reason.",
+				},
+			}
+		},
+		GitExecutor: &stubGitExecutor{},
+		TaskRunnerFactory: func(deps workflow.Dependencies) TaskRunnerExecutor {
+			runner.dependencies = deps
+			return runner
+		},
+	}
+	command, err := builder.Build()
+	require.NoError(t, err)
+	flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Enabled: true})
+
+	contextAccessor := utils.NewCommandContextAccessor()
+	command.SetContext(contextAccessor.WithExecutionFlags(context.Background(), utils.ExecutionFlags{}))
+
+	require.NoError(t, command.RunE(command, []string{"feature/foo"}))
+	require.Len(t, runner.definitions, 1)
+	action := runner.definitions[0].Actions[0]
+	require.Equal(t, "docs: explain configured sync", action.Options[taskOptionPullRequestTitle])
+	require.Equal(t, "Explain the configured reviewer-facing reason.", action.Options[taskOptionPullRequestBody])
+}
+
 func TestCommandStashFlagEnablesRefreshAndPropagatesOptions(t *testing.T) {
 	temporaryRoot := t.TempDir()
 	executor := &stubGitExecutor{}

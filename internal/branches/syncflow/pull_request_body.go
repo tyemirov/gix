@@ -37,6 +37,20 @@ type strictSyncPullRequestDescriptionOptions struct {
 	CommitMessages worktreeAdoptionCommitMessageOptions
 }
 
+type strictSyncPullRequestMetadata struct {
+	Title string
+	Body  string
+}
+
+type strictSyncPullRequestMetadataOptions struct {
+	RepositoryPath string
+	RemoteName     string
+	BaseBranch     string
+	BranchName     string
+	PullRequest    strictSyncPullRequestMetadata
+	CommitMessages worktreeAdoptionCommitMessageOptions
+}
+
 type strictSyncPullRequestDescriptionContext struct {
 	RepositoryLabel string
 	BaseReference   string
@@ -47,6 +61,50 @@ type strictSyncPullRequestDescriptionContext struct {
 	CommitSubjects  string
 	DiffStat        string
 	Patch           string
+}
+
+func strictSyncPullRequestMetadataFromParameters(parameters map[string]any) (strictSyncPullRequestMetadata, error) {
+	title, titleErr := optionalStringOption(parameters, taskOptionPullRequestTitle)
+	if titleErr != nil {
+		return strictSyncPullRequestMetadata{}, titleErr
+	}
+	body, bodyErr := optionalStringOption(parameters, taskOptionPullRequestBody)
+	if bodyErr != nil {
+		return strictSyncPullRequestMetadata{}, bodyErr
+	}
+	return strictSyncPullRequestMetadata{
+		Title: title,
+		Body:  body,
+	}, nil
+}
+
+func resolveStrictSyncPullRequestMetadata(ctx context.Context, executor shared.GitExecutor, options strictSyncPullRequestMetadataOptions) (strictSyncPullRequestMetadata, error) {
+	title := strings.TrimSpace(options.PullRequest.Title)
+	if title == "" {
+		title = strings.TrimSpace(options.BranchName)
+	}
+	body := strings.TrimSpace(options.PullRequest.Body)
+	if body != "" {
+		return strictSyncPullRequestMetadata{
+			Title: title,
+			Body:  body,
+		}, nil
+	}
+
+	generatedBody, bodyErr := generateStrictSyncPullRequestBody(ctx, executor, strictSyncPullRequestDescriptionOptions{
+		RepositoryPath: options.RepositoryPath,
+		RemoteName:     options.RemoteName,
+		BaseBranch:     options.BaseBranch,
+		BranchName:     options.BranchName,
+		CommitMessages: options.CommitMessages,
+	})
+	if bodyErr != nil {
+		return strictSyncPullRequestMetadata{}, bodyErr
+	}
+	return strictSyncPullRequestMetadata{
+		Title: title,
+		Body:  generatedBody,
+	}, nil
 }
 
 func generateStrictSyncPullRequestBody(ctx context.Context, executor shared.GitExecutor, options strictSyncPullRequestDescriptionOptions) (string, error) {

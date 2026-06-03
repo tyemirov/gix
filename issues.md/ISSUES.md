@@ -787,3 +787,8 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   ### Review Fix
   - Moved PR body generation before `git push -u` on new PR branches so body-generation failures do not leave remote branches without pull requests.
   - Added strict-sync coverage for command ordering and the failure path where empty generated PR text stops before push.
+  ### Control Follow-up
+  - Unified sync-created PR metadata resolution around `title` and `body` option keys.
+  - Exposed explicit metadata controls through `gix sync --title/--body` and `sync.pull_request.title/body`.
+  - Kept branch-diff body generation as the default and made explicit body text bypass generation.
+  - `make test`, `make lint`, and `make ci` passed locally after the control follow-up.

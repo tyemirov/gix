@@ -24,6 +24,12 @@ type CommitMessageConfiguration struct {
 	TimeoutSeconds int     `mapstructure:"timeout_seconds"`
 }
 
+// PullRequestConfiguration captures optional PR metadata overrides for sync-created pull requests.
+type PullRequestConfiguration struct {
+	Title string `mapstructure:"title"`
+	Body  string `mapstructure:"body"`
+}
+
 // CommandConfiguration captures configuration values for the sync command.
 type CommandConfiguration struct {
 	RepositoryRoots []string                   `mapstructure:"roots"`
@@ -34,6 +40,7 @@ type CommandConfiguration struct {
 	StashChanges    bool                       `mapstructure:"stash"`
 	CommitChanges   bool                       `mapstructure:"commit"`
 	CommitMessage   CommitMessageConfiguration `mapstructure:"commit_message"`
+	PullRequest     PullRequestConfiguration   `mapstructure:"pull_request"`
 }
 
 // DefaultCommandConfiguration returns the baseline configuration for sync.
@@ -60,6 +67,15 @@ func (configuration CommandConfiguration) Sanitize() CommandConfiguration {
 	sanitized.DefaultBranch = strings.TrimSpace(configuration.DefaultBranch)
 	sanitized.RemoteName = strings.TrimSpace(configuration.RemoteName)
 	sanitized.CommitMessage = configuration.CommitMessage.Sanitize()
+	sanitized.PullRequest = configuration.PullRequest.Sanitize()
+	return sanitized
+}
+
+// Sanitize normalizes pull request configuration values.
+func (configuration PullRequestConfiguration) Sanitize() PullRequestConfiguration {
+	sanitized := configuration
+	sanitized.Title = strings.TrimSpace(configuration.Title)
+	sanitized.Body = strings.TrimSpace(configuration.Body)
 	return sanitized
 }
 

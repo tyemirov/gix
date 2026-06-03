@@ -27,6 +27,8 @@ const (
 	taskOptionWorktreeCommitMessage   = "worktree_commit_message"
 	taskOptionRequirePullRequest      = "require_pull_request"
 	taskOptionBaseBranch              = "base_branch"
+	taskOptionPullRequestTitle        = "title"
+	taskOptionPullRequestBody         = "body"
 
 	branchResolutionSourceExplicit      = "explicit"
 	branchResolutionSourceRemoteDefault = "remote_default"
@@ -204,6 +206,10 @@ func handleBranchSyncAction(ctx context.Context, environment *workflow.Environme
 		if commitMessageErr != nil {
 			return commitMessageErr
 		}
+		pullRequestMetadata, pullRequestMetadataErr := strictSyncPullRequestMetadataFromParameters(parameters)
+		if pullRequestMetadataErr != nil {
+			return pullRequestMetadataErr
+		}
 		return handleStrictSyncAction(ctx, environment, repository, strictSyncOptions{
 			BranchName:       resolvedBranchName,
 			RemoteName:       remoteName,
@@ -212,6 +218,7 @@ func handleBranchSyncAction(ctx context.Context, environment *workflow.Environme
 			StashChanges:     stashChanges,
 			CommitChanges:    commitChanges,
 			CommitMessages:   commitMessageOptions,
+			PullRequest:      pullRequestMetadata,
 			ResolutionSource: resolutionSource,
 		})
 	}
@@ -432,6 +439,7 @@ type strictSyncOptions struct {
 	StashChanges     bool
 	CommitChanges    bool
 	CommitMessages   worktreeAdoptionCommitMessageOptions
+	PullRequest      strictSyncPullRequestMetadata
 	ResolutionSource string
 }
 
@@ -521,6 +529,7 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 		AllowAheadCommit: checkpointCommitted,
 		DirtyWorktree:    dirty,
 		CommitMessages:   options.CommitMessages,
+		PullRequest:      options.PullRequest,
 	})
 	if syncErr != nil {
 		return syncErr
@@ -536,12 +545,14 @@ type strictPullRequestBranchOptions struct {
 	AllowAheadCommit bool
 	DirtyWorktree    bool
 	CommitMessages   worktreeAdoptionCommitMessageOptions
+	PullRequest      strictSyncPullRequestMetadata
 }
 
 type strictPullRequestCreateOptions struct {
 	RepositoryIdentifier string
 	BaseBranch           string
 	BranchName           string
+	Title                string
 	Body                 string
 }
 
@@ -637,25 +648,7 @@ func syncPullRequestBranch(ctx context.Context, environment *workflow.Environmen
 		if mergeErr := mergeBaseIntoBranch(ctx, environment.GitExecutor, repository.Path, options.RemoteName, options.BaseBranch, options.BranchName); mergeErr != nil {
 			return false, mergeErr
 		}
-		body, bodyErr := generateStrictSyncPullRequestBody(ctx, environment.GitExecutor, strictSyncPullRequestDescriptionOptions{
-			RepositoryPath: repository.Path,
-			RemoteName:     options.RemoteName,
-			BaseBranch:     options.BaseBranch,
-			BranchName:     options.BranchName,
-			CommitMessages: options.CommitMessages,
-		})
-		if bodyErr != nil {
-			return false, bodyErr
-		}
-		if pushErr := executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitPushSubcommandConstant, gitPushSetUpstreamFlagConstant, options.RemoteName, options.BranchName}); pushErr != nil {
-			return false, pushErr
-		}
-		if pullRequestErr := createPullRequest(ctx, environment, strictPullRequestCreateOptions{
-			RepositoryIdentifier: repositoryIdentifier,
-			BaseBranch:           options.BaseBranch,
-			BranchName:           options.BranchName,
-			Body:                 body,
-		}); pullRequestErr != nil {
+		if pullRequestErr := pushAndCreatePullRequest(ctx, environment, repository, repositoryIdentifier, options); pullRequestErr != nil {
 			return false, pullRequestErr
 		}
 		return true, nil
@@ -672,28 +665,34 @@ func syncPullRequestBranch(ctx context.Context, environment *workflow.Environmen
 	if createErr := executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitSwitchSubcommandConstant, gitCreateBranchFlagConstant, options.BranchName, baseReference}); createErr != nil {
 		return false, createErr
 	}
-	body, bodyErr := generateStrictSyncPullRequestBody(ctx, environment.GitExecutor, strictSyncPullRequestDescriptionOptions{
+	if pullRequestErr := pushAndCreatePullRequest(ctx, environment, repository, repositoryIdentifier, options); pullRequestErr != nil {
+		return false, pullRequestErr
+	}
+	return true, nil
+}
+
+func pushAndCreatePullRequest(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, repositoryIdentifier string, options strictPullRequestBranchOptions) error {
+	pullRequestMetadata, pullRequestMetadataErr := resolveStrictSyncPullRequestMetadata(ctx, environment.GitExecutor, strictSyncPullRequestMetadataOptions{
 		RepositoryPath: repository.Path,
 		RemoteName:     options.RemoteName,
 		BaseBranch:     options.BaseBranch,
 		BranchName:     options.BranchName,
+		PullRequest:    options.PullRequest,
 		CommitMessages: options.CommitMessages,
 	})
-	if bodyErr != nil {
-		return false, bodyErr
+	if pullRequestMetadataErr != nil {
+		return pullRequestMetadataErr
 	}
 	if pushErr := executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitPushSubcommandConstant, gitPushSetUpstreamFlagConstant, options.RemoteName, options.BranchName}); pushErr != nil {
-		return false, pushErr
+		return pushErr
 	}
-	if pullRequestErr := createPullRequest(ctx, environment, strictPullRequestCreateOptions{
+	return createPullRequest(ctx, environment, strictPullRequestCreateOptions{
 		RepositoryIdentifier: repositoryIdentifier,
 		BaseBranch:           options.BaseBranch,
 		BranchName:           options.BranchName,
-		Body:                 body,
-	}); pullRequestErr != nil {
-		return false, pullRequestErr
-	}
-	return true, nil
+		Title:                pullRequestMetadata.Title,
+		Body:                 pullRequestMetadata.Body,
+	})
 }
 
 func switchToLocalOrRemoteBranch(ctx context.Context, executor shared.GitExecutor, repositoryPath string, remoteName string, branchName string) error {
@@ -756,7 +755,7 @@ func createPullRequest(ctx context.Context, environment *workflow.Environment, o
 	}
 	return environment.GitHubClient.CreatePullRequest(ctx, githubcli.PullRequestCreateOptions{
 		Repository: options.RepositoryIdentifier,
-		Title:      options.BranchName,
+		Title:      options.Title,
 		Body:       options.Body,
 		Base:       options.BaseBranch,
 		Head:       options.BranchName,

@@ -3,4 +3,6 @@
 - Add failing observable coverage proving newly opened sync PRs receive body text returned from real branch diff context.
 - Ensure generated body failures stop before pushing newly created PR branches.
 - Reuse the existing configured LLM client path so the generated body explains the code difference instead of the tool path.
+- Unify sync-created PR metadata resolution around the same `title` and `body` option names used by workflow pull request tasks.
+- Expose explicit `title` and `body` controls through sync CLI flags and `sync.pull_request` configuration while keeping branch-diff body generation as the default.
 - Validate through Makefile targets: format, test, lint, and ci.
