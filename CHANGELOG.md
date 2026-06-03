@@ -11,6 +11,27 @@
 - Update strict-sync pull request creation coverage for requested branches and generated dirty-`master` branches, including the branch diff context sent to the PR body generator and failure-before-push ordering.
 - Add sync command and strict action coverage for explicit PR title/body controls.
 
+## [v0.6.0] - 2026-06-03
+
+### Features ✨
+- Expose pull request title and body controls for `gix sync` via `--title`, `--body`, and configuration.
+- Generate sync pull request descriptions dynamically from branch diffs using the configured LLM path.
+
+### Improvements ⚙️
+- Generate sync PR body before pushing branches to avoid orphaned remote branches without PRs.
+- Improve ordering and content of sync PR body generation.
+- Update CLI help and documentation to reflect new PR metadata controls.
+
+### Bug Fixes 🐛
+- Fix ordering issue in sync PR body generation to ensure correct content.
+
+### Testing 🧪
+- Add coverage for explicit PR title and body controls in sync command and strict sync actions.
+- Enhance tests for sync PR creation including branch diff context and failure-before-push scenarios.
+
+### Docs 📚
+- Update README and CLI command descriptions to document new PR title/body options and behavior.
+
 ## [v0.5.0] - 2026-06-02
 
 ### Features ✨
