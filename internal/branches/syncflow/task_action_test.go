@@ -2,6 +2,7 @@ package syncflow
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -115,6 +116,9 @@ type strictSyncGitExecutor struct {
 	revListOutput     string
 	missingReferences map[string]bool
 	mergeError        error
+	blockedBranch     string
+	blockedWorktree   string
+	worktreeRemoved   bool
 }
 
 func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
@@ -124,6 +128,12 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 	}
 	switch details.Arguments[0] {
 	case "status":
+		if details.WorkingDirectory == executor.blockedWorktree && commandHasArgument(details.Arguments, gitPorcelainBranchFlagConstant) {
+			return execshell.ExecutionResult{StandardOutput: fmt.Sprintf("## %s...origin/%s\n M README.md\n", executor.blockedBranch, executor.blockedBranch)}, nil
+		}
+		if details.WorkingDirectory == executor.blockedWorktree {
+			return execshell.ExecutionResult{StandardOutput: "M  README.md\n"}, nil
+		}
 		return execshell.ExecutionResult{StandardOutput: executor.statusOutput}, nil
 	case "diff":
 		if commandHasArgument(details.Arguments, "--stat") {
@@ -156,8 +166,18 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 			return execshell.ExecutionResult{}, executor.mergeError
 		}
 	case "switch":
+		if len(details.Arguments) > 1 && details.Arguments[1] == executor.blockedBranch && !executor.worktreeRemoved {
+			return execshell.ExecutionResult{}, commandFailedError(fmt.Sprintf("fatal: %q is already used by worktree at %q", executor.blockedBranch, executor.blockedWorktree))
+		}
 		if len(details.Arguments) > 2 && details.Arguments[1] == gitCreateBranchFlagConstant && executor.missingReferences != nil {
 			delete(executor.missingReferences, "refs/heads/"+details.Arguments[2])
+		}
+	case "worktree":
+		if len(details.Arguments) > 2 && details.Arguments[1] == gitWorktreeListSubcommandConstant {
+			return execshell.ExecutionResult{StandardOutput: fmt.Sprintf("worktree /tmp/project\nbranch refs/heads/master\n\nworktree %s\nbranch refs/heads/%s\n", executor.blockedWorktree, executor.blockedBranch)}, nil
+		}
+		if len(details.Arguments) > 2 && details.Arguments[1] == gitWorktreeRemoveSubcommandConstant {
+			executor.worktreeRemoved = true
 		}
 	}
 	return execshell.ExecutionResult{}, nil
@@ -426,6 +446,63 @@ func TestHandleBranchSyncActionStrictPRBranchAutoCommitsDirtySameBranch(t *testi
 	require.NotContains(t, recordedGitCommands(gitExecutor.commands), "reset --hard origin/feature/foo")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "push origin feature/foo")
 	require.Len(t, chatClient.requests, 1)
+}
+
+func TestHandleBranchSyncActionStrictPRBranchAdoptsDirtySiblingWorktree(t *testing.T) {
+	gitExecutor := &strictSyncGitExecutor{
+		blockedBranch:   "feature/foo",
+		blockedWorktree: "/tmp/project-feature",
+	}
+	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(t, managerError)
+	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":7,"title":"Feature","headRefName":"feature/foo"}]`}
+	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
+	require.NoError(t, githubClientError)
+	chatClient := &strictSyncChatClient{response: "fix: adopt sibling worktree"}
+	environment := &workflow.Environment{
+		GitExecutor:       gitExecutor,
+		RepositoryManager: gitManager,
+		GitHubClient:      githubClient,
+		Logger:            zap.NewNop(),
+		Output:            io.Discard,
+		Errors:            io.Discard,
+		Reporter:          &recordingReporter{},
+	}
+	repository := &workflow.RepositoryState{
+		Path: "/tmp/project",
+		Inspection: audit.RepositoryInspection{
+			LocalBranch:    "master",
+			FinalOwnerRepo: "owner/project",
+		},
+	}
+	parameters := map[string]any{
+		taskOptionBranchName:         "feature/foo",
+		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
+		taskOptionRequirePullRequest: true,
+		taskOptionBaseBranch:         "master",
+		taskOptionRequireClean:       true,
+		taskOptionWorktreeCommitMessage: worktreeAdoptionCommitMessageOptions{
+			Client: chatClient,
+		},
+	}
+
+	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
+	recordedCommands := recordedGitCommands(gitExecutor.commands)
+	require.Contains(t, recordedCommands, "worktree list --porcelain")
+	require.Contains(t, recordedCommands, "status --porcelain --branch")
+	require.Contains(t, recordedCommands, "add --all")
+	require.Contains(t, recordedCommands, "commit -m fix: adopt sibling worktree")
+	require.Contains(t, recordedCommands, "push --set-upstream origin feature/foo")
+	require.Contains(t, recordedCommands, "worktree remove /tmp/project-feature")
+	require.Contains(t, recordedCommands, "worktree prune")
+	require.Contains(t, recordedCommands, "merge --no-edit origin/master")
+	require.Contains(t, recordedCommands, "push origin feature/foo")
+	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, "worktree remove /tmp/project-feature"), recordedGitCommandLastIndex(gitExecutor.commands, "switch feature/foo"))
+	require.GreaterOrEqual(t, recordedGitCommandCount(gitExecutor.commands, "fetch --prune origin"), 2)
+	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, "worktree prune"), recordedGitCommandLastIndex(gitExecutor.commands, "fetch --prune origin"))
+	require.Less(t, recordedGitCommandLastIndex(gitExecutor.commands, "fetch --prune origin"), recordedGitCommandLastIndex(gitExecutor.commands, "switch feature/foo"))
+	require.Len(t, chatClient.requests, 1)
+	require.True(t, gitExecutor.worktreeRemoved)
 }
 
 func TestHandleBranchSyncActionStrictPRBranchRequireCleanRejectsDirtyWorktree(t *testing.T) {
@@ -827,6 +904,25 @@ func recordedGitCommandIndex(commands []execshell.CommandDetails, target string)
 		}
 	}
 	return -1
+}
+
+func recordedGitCommandLastIndex(commands []execshell.CommandDetails, target string) int {
+	for commandIndex := len(commands) - 1; commandIndex >= 0; commandIndex-- {
+		if strings.Join(commands[commandIndex].Arguments, " ") == target {
+			return commandIndex
+		}
+	}
+	return -1
+}
+
+func recordedGitCommandCount(commands []execshell.CommandDetails, target string) int {
+	count := 0
+	for commandIndex := range commands {
+		if strings.Join(commands[commandIndex].Arguments, " ") == target {
+			count++
+		}
+	}
+	return count
 }
 
 func commandHasArgument(arguments []string, target string) bool {

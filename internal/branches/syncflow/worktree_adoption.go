@@ -50,6 +50,7 @@ const (
 	worktreeMessageAPIKeyFailureTemplate      = "environment variable %s must be set to generate a commit message"
 	worktreeMessageClientFailureTemplate      = "failed to initialize commit message client: %w"
 	worktreeMessageGenerationFailureTemplate  = "failed to generate commit message for sibling worktree %s: %w"
+	worktreeAdoptionChangeMissing             = "worktree adoption change function not configured"
 	worktreeAdoptDetectedMessage              = "adopting sibling worktree"
 	worktreeAdoptCommitMessage                = "committed sibling worktree changes"
 	worktreeAdoptPushMessage                  = "pushed sibling worktree branch"
@@ -61,6 +62,65 @@ type worktreeAdoptionOptions struct {
 	BranchName     string
 	RemoteName     string
 	CommitMessages worktreeAdoptionCommitMessageOptions
+}
+
+type worktreeAdoptionChangeOptions struct {
+	BranchName                 string
+	RemoteName                 string
+	CommitMessages             worktreeAdoptionCommitMessageOptions
+	RefetchRemoteAfterAdoption bool
+	Change                     func() error
+}
+
+type worktreeAdoptionService struct {
+	environment *workflow.Environment
+	repository  *workflow.RepositoryState
+}
+
+func newWorktreeAdoptionService(environment *workflow.Environment, repository *workflow.RepositoryState) worktreeAdoptionService {
+	return worktreeAdoptionService{
+		environment: environment,
+		repository:  repository,
+	}
+}
+
+func (service worktreeAdoptionService) Change(ctx context.Context, options worktreeAdoptionChangeOptions) error {
+	if options.Change == nil {
+		return errors.New(worktreeAdoptionChangeMissing)
+	}
+
+	changeErr := options.Change()
+	if changeErr == nil {
+		return nil
+	}
+	if !isBranchAlreadyUsedByWorktreeError(changeErr) {
+		return changeErr
+	}
+	if service.environment == nil || service.repository == nil {
+		return changeErr
+	}
+
+	remoteName := strings.TrimSpace(options.RemoteName)
+	if remoteName == "" {
+		remoteName = defaultRemoteNameConstant
+	}
+
+	adoptionErr := service.adoptExistingBranchWorktree(ctx, worktreeAdoptionOptions{
+		BranchName:     options.BranchName,
+		RemoteName:     remoteName,
+		CommitMessages: options.CommitMessages,
+	})
+	if adoptionErr != nil {
+		return adoptionErr
+	}
+
+	if options.RefetchRemoteAfterAdoption {
+		if fetchErr := executeGit(ctx, service.environment.GitExecutor, service.repository.Path, []string{gitFetchSubcommandConstant, gitFetchPruneFlagConstant, remoteName}); fetchErr != nil {
+			return fmt.Errorf(gitFetchFailureTemplateConstant, fetchErr)
+		}
+	}
+
+	return options.Change()
 }
 
 func isBranchAlreadyUsedByWorktreeError(err error) bool {
@@ -115,11 +175,11 @@ func worktreeAdoptionCommitMessageOptionsFromParameters(parameters map[string]an
 	return typedOptions, nil
 }
 
-func adoptExistingBranchWorktree(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, options worktreeAdoptionOptions) error {
-	if environment == nil || repository == nil {
+func (service worktreeAdoptionService) adoptExistingBranchWorktree(ctx context.Context, options worktreeAdoptionOptions) error {
+	if service.environment == nil || service.repository == nil {
 		return nil
 	}
-	if environment.GitExecutor == nil {
+	if service.environment.GitExecutor == nil {
 		return ErrGitExecutorNotConfigured
 	}
 
@@ -128,7 +188,7 @@ func adoptExistingBranchWorktree(ctx context.Context, environment *workflow.Envi
 		return nil
 	}
 
-	worktrees, listErr := listRepositoryWorktrees(ctx, environment.GitExecutor, repository.Path, branchName)
+	worktrees, listErr := listRepositoryWorktrees(ctx, service.environment.GitExecutor, service.repository.Path, branchName)
 	if listErr != nil {
 		return listErr
 	}
@@ -138,13 +198,13 @@ func adoptExistingBranchWorktree(ctx context.Context, environment *workflow.Envi
 		if candidate.BranchName != branchName {
 			continue
 		}
-		if sameFilesystemPath(candidate.Path, repository.Path) {
+		if sameFilesystemPath(candidate.Path, service.repository.Path) {
 			continue
 		}
 		if candidate.Locked {
 			return fmt.Errorf(worktreeLockedFailureTemplate, branchName, candidate.Path)
 		}
-		return adoptSiblingWorktree(ctx, environment, repository, candidate, options)
+		return service.adoptSiblingWorktree(ctx, candidate, options)
 	}
 
 	return nil
@@ -199,55 +259,55 @@ func parseListedWorktrees(output string) []listedWorktree {
 	return worktrees
 }
 
-func adoptSiblingWorktree(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, worktree listedWorktree, options worktreeAdoptionOptions) error {
+func (service worktreeAdoptionService) adoptSiblingWorktree(ctx context.Context, worktree listedWorktree, options worktreeAdoptionOptions) error {
 	branchName := strings.TrimSpace(options.BranchName)
 	remoteName := strings.TrimSpace(options.RemoteName)
 	if remoteName == "" {
 		remoteName = defaultRemoteNameConstant
 	}
 
-	environment.ReportRepositoryEvent(
-		repository,
+	service.environment.ReportRepositoryEvent(
+		service.repository,
 		shared.EventLevelInfo,
 		shared.EventCodeWorktreeAdopt,
 		worktreeAdoptDetectedMessage,
 		map[string]string{"branch": branchName, "worktree": worktree.Path},
 	)
 
-	status, statusErr := inspectSiblingWorktreeStatus(ctx, environment.GitExecutor, worktree.Path)
+	status, statusErr := inspectSiblingWorktreeStatus(ctx, service.environment.GitExecutor, worktree.Path)
 	if statusErr != nil {
 		return statusErr
 	}
 
 	pushed := false
 	if status.Dirty {
-		commitMessage, commitMessageErr := generateSiblingCommitMessage(ctx, environment.GitExecutor, worktree.Path, options.CommitMessages)
+		commitMessage, commitMessageErr := generateSiblingCommitMessage(ctx, service.environment.GitExecutor, worktree.Path, options.CommitMessages)
 		if commitMessageErr != nil {
 			return commitMessageErr
 		}
-		if commitErr := executeGit(ctx, environment.GitExecutor, worktree.Path, []string{gitCommitSubcommand, gitCommitMessageFlag, commitMessage}); commitErr != nil {
+		if commitErr := executeGit(ctx, service.environment.GitExecutor, worktree.Path, []string{gitCommitSubcommand, gitCommitMessageFlag, commitMessage}); commitErr != nil {
 			return fmt.Errorf(worktreeCommitFailureTemplate, worktree.Path, commitErr)
 		}
-		environment.ReportRepositoryEvent(
-			repository,
+		service.environment.ReportRepositoryEvent(
+			service.repository,
 			shared.EventLevelInfo,
 			shared.EventCodeWorktreeAdopt,
 			worktreeAdoptCommitMessage,
 			map[string]string{"branch": branchName, "worktree": worktree.Path},
 		)
-		if pushErr := pushSiblingBranch(ctx, environment.GitExecutor, worktree.Path, remoteName, branchName); pushErr != nil {
+		if pushErr := pushSiblingBranch(ctx, service.environment.GitExecutor, worktree.Path, remoteName, branchName); pushErr != nil {
 			return pushErr
 		}
 		pushed = true
 	}
 
 	if !status.Dirty {
-		needsPush, needsPushErr := cleanSiblingBranchNeedsPush(ctx, environment.GitExecutor, worktree.Path, remoteName, branchName, status)
+		needsPush, needsPushErr := cleanSiblingBranchNeedsPush(ctx, service.environment.GitExecutor, worktree.Path, remoteName, branchName, status)
 		if needsPushErr != nil {
 			return needsPushErr
 		}
 		if needsPush {
-			if pushErr := pushSiblingBranch(ctx, environment.GitExecutor, worktree.Path, remoteName, branchName); pushErr != nil {
+			if pushErr := pushSiblingBranch(ctx, service.environment.GitExecutor, worktree.Path, remoteName, branchName); pushErr != nil {
 				return pushErr
 			}
 			pushed = true
@@ -255,8 +315,8 @@ func adoptSiblingWorktree(ctx context.Context, environment *workflow.Environment
 	}
 
 	if pushed {
-		environment.ReportRepositoryEvent(
-			repository,
+		service.environment.ReportRepositoryEvent(
+			service.repository,
 			shared.EventLevelInfo,
 			shared.EventCodeWorktreeAdopt,
 			worktreeAdoptPushMessage,
@@ -264,22 +324,22 @@ func adoptSiblingWorktree(ctx context.Context, environment *workflow.Environment
 		)
 	}
 
-	if removeErr := executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitWorktreeSubcommandConstant, gitWorktreeRemoveSubcommandConstant, worktree.Path}); removeErr != nil {
+	if removeErr := executeGit(ctx, service.environment.GitExecutor, service.repository.Path, []string{gitWorktreeSubcommandConstant, gitWorktreeRemoveSubcommandConstant, worktree.Path}); removeErr != nil {
 		return fmt.Errorf(worktreeRemoveFailureTemplate, worktree.Path, removeErr)
 	}
-	environment.ReportRepositoryEvent(
-		repository,
+	service.environment.ReportRepositoryEvent(
+		service.repository,
 		shared.EventLevelInfo,
 		shared.EventCodeWorktreeAdopt,
 		worktreeAdoptRemoveMessage,
 		map[string]string{"branch": branchName, "worktree": worktree.Path},
 	)
 
-	if pruneErr := executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitWorktreeSubcommandConstant, gitWorktreePruneSubcommandConstant}); pruneErr != nil {
+	if pruneErr := executeGit(ctx, service.environment.GitExecutor, service.repository.Path, []string{gitWorktreeSubcommandConstant, gitWorktreePruneSubcommandConstant}); pruneErr != nil {
 		return fmt.Errorf(worktreePruneFailureTemplate, worktree.Path, pruneErr)
 	}
-	environment.ReportRepositoryEvent(
-		repository,
+	service.environment.ReportRepositoryEvent(
+		service.repository,
 		shared.EventLevelInfo,
 		shared.EventCodeWorktreeAdopt,
 		worktreeAdoptPruneMessage,

@@ -81,7 +81,7 @@ func saveDirtyWorkClusters(ctx context.Context, executor shared.GitExecutor, rep
 	return committedClusters, nil
 }
 
-func prepareStrictSyncBranchForDirtyWork(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, remoteName string, baseBranch string, branchName string) error {
+func prepareStrictSyncBranchForDirtyWork(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, remoteName string, baseBranch string, branchName string, commitMessages worktreeAdoptionCommitMessageOptions) error {
 	remoteReference := fmt.Sprintf("%s/%s", remoteName, branchName)
 	remoteExists, remoteExistsErr := remoteReferenceExists(ctx, environment.GitExecutor, repository.Path, remoteReference)
 	if remoteExistsErr != nil {
@@ -100,7 +100,7 @@ func prepareStrictSyncBranchForDirtyWork(ctx context.Context, environment *workf
 		if !openPullRequest {
 			return fmt.Errorf(strictSyncMissingPullRequestTemplate, branchName, baseBranch)
 		}
-		return switchToLocalOrRemoteBranch(ctx, environment.GitExecutor, repository.Path, remoteName, branchName)
+		return switchToLocalOrRemoteBranchWithAdoption(ctx, environment, repository, remoteName, branchName, commitMessages)
 	}
 
 	localExists, localExistsErr := localBranchExists(ctx, environment.GitExecutor, repository.Path, branchName)
@@ -108,7 +108,7 @@ func prepareStrictSyncBranchForDirtyWork(ctx context.Context, environment *workf
 		return localExistsErr
 	}
 	if localExists {
-		return executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitSwitchSubcommandConstant, branchName})
+		return switchToLocalOrRemoteBranchWithAdoption(ctx, environment, repository, remoteName, branchName, commitMessages)
 	}
 
 	baseReference := fmt.Sprintf("%s/%s", remoteName, baseBranch)
