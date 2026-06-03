@@ -763,3 +763,32 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - Preserved `--stash`, kept `--commit` accepted, and made `--require-clean` the opt-in dirty-work guard.
   - Updated README/help/config defaults and added black-box coverage for dirty PR branches, dirty `master`, generated branches, and the clean-worktree guard.
   - `make test`, `make lint`, and `make ci` passed locally.
+
+- [x] [I007] Make `gix sync` pull request descriptions explain why the PR exists.
+  Requested on 2026-06-03.
+  ### Summary
+  `gix sync` currently opens pull requests with the body `Created by gix sync.`, which describes the tool path rather than the reason a reviewer should care about the PR.
+  ### Plan
+  - Locate the sync PR creation path and any workflow-level PR body defaults that can leak this placeholder into user-visible GitHub descriptions.
+  - Add failing observable coverage for the sync-generated PR body.
+  - Replace the placeholder with purpose-oriented body text tied to the sync target and branch context.
+  - Run the required Makefile validation targets.
+  ### Resolution
+  - Replaced the static `Created by gix sync.` body with PR text that explains the review path from the head branch into the remote-owned base branch.
+  - Updated strict-sync PR creation coverage for both explicit work branches and generated dirty-`master` branches.
+  - `make test`, `make lint`, and `make ci` passed locally.
+  ### Follow-up
+  The first resolution still used predefined body text. The PR description must be generated from the branch code difference itself, using the configured LLM path and git diff context.
+  ### Follow-up Resolution
+  - Added a branch-diff PR body generator that collects commit subjects, `git diff --stat`, and patch context for `<remote>/<base>...<branch>`.
+  - Threaded the existing sync LLM configuration into PR creation so `gh pr create --body` receives generated text from the code difference.
+  - Updated strict-sync coverage to assert both the diff commands and the generated body passed to GitHub.
+  - `make test`, `make lint`, and `make ci` passed locally after the follow-up.
+  ### Review Fix
+  - Moved PR body generation before `git push -u` on new PR branches so body-generation failures do not leave remote branches without pull requests.
+  - Added strict-sync coverage for command ordering and the failure path where empty generated PR text stops before push.
+  ### Control Follow-up
+  - Unified sync-created PR metadata resolution around `title` and `body` option keys.
+  - Exposed explicit metadata controls through `gix sync --title/--body` and `sync.pull_request.title/body`.
+  - Kept branch-diff body generation as the default and made explicit body text bypass generation.
+  - `make test`, `make lint`, and `make ci` passed locally after the control follow-up.

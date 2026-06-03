@@ -1,15 +1,8 @@
-- Add I006 as the active implementation scope for the new `gix sync` semantics.
-- Remove the old `cd` implementation naming and any legacy `branch-cd` surface.
-- Implement `gix sync` as the canonical synchronization command:
-  - `gix sync <remote-url|owner/repo>` attaches or clones a workspace.
-  - `gix sync master` restores local `master` from `origin/master`.
-  - `gix sync <branch>` switches to or creates a PR-backed work branch.
-  - `gix sync` syncs the current branch.
-- Preserve dirty-work modifiers as explicit sync policies:
-  - default clean-worktree requirement;
-  - `--stash` around safe sync operations;
-  - `--commit` for PR-backed work branch checkpoint commits;
-  - `--require-clean=false` only where non-destructive sync can safely proceed.
-- Use merge, not rebase, to bring `origin/master` into work branches; stop before push on conflicts.
-- Update README/help/config/tests so the public flow emphasizes the simplified sync contract.
+- Keep I007 as the active implementation scope for purposeful `gix sync` pull request descriptions.
+- Replace the static sync PR body formatter with a branch-diff description generator.
+- Add failing observable coverage proving newly opened sync PRs receive body text returned from real branch diff context.
+- Ensure generated body failures stop before pushing newly created PR branches.
+- Reuse the existing configured LLM client path so the generated body explains the code difference instead of the tool path.
+- Unify sync-created PR metadata resolution around the same `title` and `body` option names used by workflow pull request tasks.
+- Expose explicit `title` and `body` controls through sync CLI flags and `sync.pull_request` configuration while keeping branch-diff body generation as the default.
 - Validate through Makefile targets: format, test, lint, and ci.

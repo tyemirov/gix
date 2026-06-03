@@ -22,7 +22,7 @@ const (
 	commandUsageTemplateConstant            = commandUseNameConstant + " [remote-url|branch]"
 	commandExampleTemplateConstant          = "gix sync\ngix sync master\ngix sync feature/new-branch"
 	commandShortDescriptionConstant         = "Synchronize the current workspace through the Gix PR workflow"
-	commandLongDescriptionConstant          = "sync keeps a workspace aligned with the remote-owned master branch and PR-backed work branches. With no branch argument, sync updates the current branch. Dirty work is clustered, described with the configured LLM client, committed, then pushed through the PR workflow. With master, clean sync restores local master from origin/master; dirty sync creates a PR work branch. Sync never rebases or force-pushes."
+	commandLongDescriptionConstant          = "sync keeps a workspace aligned with the remote-owned master branch and PR-backed work branches. With no branch argument, sync updates the current branch. Dirty work is clustered, described with the configured LLM client, committed, then pushed through the PR workflow. With master, clean sync restores local master from origin/master; dirty sync creates a PR work branch. Sync never rebases or force-pushes. When sync creates a pull request, the body is generated from the branch diff unless --body or sync.pull_request.body supplies explicit text; title defaults to the branch unless --title or sync.pull_request.title supplies it."
 	missingBranchMessageConstant            = "unable to determine branch; provide a branch argument or configure a default branch"
 	syncCreatedSuffixConstant               = " (created)"
 	stashFlagNameConstant                   = "stash"
@@ -31,6 +31,10 @@ const (
 	commitFlagDescriptionConstant           = "Commit local changes before syncing (default dirty-sync behavior)"
 	requireCleanFlagNameConstant            = "require-clean"
 	requireCleanFlagDescriptionConstant     = "Require a clean worktree instead of auto-committing dirty work"
+	pullRequestTitleFlagNameConstant        = taskOptionPullRequestTitle
+	pullRequestTitleFlagDescriptionConstant = "Set the title for a sync-created pull request"
+	pullRequestBodyFlagNameConstant         = taskOptionPullRequestBody
+	pullRequestBodyFlagDescriptionConstant  = "Set the body for a sync-created pull request"
 	conflictingRecoveryFlagsMessageConstant = "use at most one of --stash or --commit"
 	remoteTargetExtraArgsMessage            = "remote sync target does not accept repository root arguments"
 	remoteTargetDirtyDirectoryMessage       = "remote sync target requires an empty directory when cloning"
@@ -69,6 +73,8 @@ func (builder *CommandBuilder) Build() (*cobra.Command, error) {
 	flagutils.AddToggleFlag(command.Flags(), nil, stashFlagNameConstant, "", false, stashFlagDescriptionConstant)
 	flagutils.AddToggleFlag(command.Flags(), nil, commitFlagNameConstant, "", false, commitFlagDescriptionConstant)
 	flagutils.AddToggleFlag(command.Flags(), nil, requireCleanFlagNameConstant, "", false, requireCleanFlagDescriptionConstant)
+	command.Flags().String(pullRequestTitleFlagNameConstant, "", pullRequestTitleFlagDescriptionConstant)
+	command.Flags().String(pullRequestBodyFlagNameConstant, "", pullRequestBodyFlagDescriptionConstant)
 
 	return command, nil
 }
@@ -84,6 +90,8 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 	stashRequested := configuration.StashChanges
 	commitRequested := configuration.CommitChanges
 	requireClean := configuration.RequireClean
+	pullRequestTitle := strings.TrimSpace(configuration.PullRequest.Title)
+	pullRequestBody := strings.TrimSpace(configuration.PullRequest.Body)
 
 	if command != nil {
 		if flagValue, err := command.Flags().GetBool(stashFlagNameConstant); err == nil && command.Flags().Changed(stashFlagNameConstant) {
@@ -94,6 +102,12 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 		}
 		if flagValue, err := command.Flags().GetBool(requireCleanFlagNameConstant); err == nil && command.Flags().Changed(requireCleanFlagNameConstant) {
 			requireClean = flagValue
+		}
+		if flagValue, err := command.Flags().GetString(pullRequestTitleFlagNameConstant); err == nil && command.Flags().Changed(pullRequestTitleFlagNameConstant) {
+			pullRequestTitle = strings.TrimSpace(flagValue)
+		}
+		if flagValue, err := command.Flags().GetString(pullRequestBodyFlagNameConstant); err == nil && command.Flags().Changed(pullRequestBodyFlagNameConstant) {
+			pullRequestBody = strings.TrimSpace(flagValue)
 		}
 	}
 
@@ -166,6 +180,12 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 	}
 	if commitRequested {
 		actionOptions[taskOptionCommitChanges] = true
+	}
+	if len(pullRequestTitle) > 0 {
+		actionOptions[taskOptionPullRequestTitle] = pullRequestTitle
+	}
+	if len(pullRequestBody) > 0 {
+		actionOptions[taskOptionPullRequestBody] = pullRequestBody
 	}
 	actionOptions[taskOptionWorktreeCommitMessage] = worktreeAdoptionCommitMessageOptionsFromConfiguration(configuration.CommitMessage)
 

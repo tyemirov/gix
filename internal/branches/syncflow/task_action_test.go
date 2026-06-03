@@ -182,12 +182,17 @@ func (executor *strictSyncGitHubExecutor) ExecuteGitHubCLI(_ context.Context, de
 }
 
 type strictSyncChatClient struct {
-	response string
-	requests []llm.ChatRequest
+	response  string
+	responses []string
+	requests  []llm.ChatRequest
 }
 
 func (client *strictSyncChatClient) Chat(_ context.Context, request llm.ChatRequest) (string, error) {
 	client.requests = append(client.requests, request)
+	responseIndex := len(client.requests) - 1
+	if responseIndex < len(client.responses) {
+		return client.responses[responseIndex], nil
+	}
 	if client.response == "" {
 		return "feat: sync dirty work", nil
 	}
@@ -553,6 +558,7 @@ func TestHandleBranchSyncActionStrictPRBranchCommitFlagUsesDirtySyncCommitWithRe
 }
 
 func TestHandleBranchSyncActionStrictPRBranchCreatesMissingRemoteBranchAndPullRequest(t *testing.T) {
+	pullRequestBody := "## Summary\n- Updates README rendering from the branch diff."
 	gitExecutor := &strictSyncGitExecutor{
 		missingReferences: map[string]bool{
 			"origin/feature/foo":     true,
@@ -564,6 +570,7 @@ func TestHandleBranchSyncActionStrictPRBranchCreatesMissingRemoteBranchAndPullRe
 	githubExecutor := &strictSyncGitHubExecutor{}
 	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
 	require.NoError(t, githubClientError)
+	chatClient := &strictSyncChatClient{responses: []string{pullRequestBody}}
 	environment := &workflow.Environment{
 		GitExecutor:       gitExecutor,
 		RepositoryManager: gitManager,
@@ -586,16 +593,79 @@ func TestHandleBranchSyncActionStrictPRBranchCreatesMissingRemoteBranchAndPullRe
 		taskOptionRequirePullRequest: true,
 		taskOptionBaseBranch:         "master",
 		taskOptionRequireClean:       true,
+		taskOptionWorktreeCommitMessage: worktreeAdoptionCommitMessageOptions{
+			Client: chatClient,
+		},
 	}
 
 	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "switch -c feature/foo origin/master")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "push -u origin feature/foo")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "diff --stat origin/master...feature/foo")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "diff --unified=3 origin/master...feature/foo")
+	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, "diff --stat origin/master...feature/foo"), recordedGitCommandIndex(gitExecutor.commands, "push -u origin feature/foo"))
 	require.Len(t, githubExecutor.commands, 1)
-	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", "feature/foo", "--title", "feature/foo", "--body", strictSyncCreatedPRBody}, githubExecutor.commands[0].Arguments)
+	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", "feature/foo", "--title", "feature/foo", "--body", pullRequestBody}, githubExecutor.commands[0].Arguments)
+	require.Len(t, chatClient.requests, 1)
+	require.Contains(t, chatClient.requests[0].Messages[1].Content, "Comparison range: origin/master...feature/foo")
+	require.Contains(t, chatClient.requests[0].Messages[1].Content, "README.md | 1 +")
+	require.Contains(t, chatClient.requests[0].Messages[1].Content, "diff --git a/README.md b/README.md")
+}
+
+func TestHandleBranchSyncActionStrictPRBranchUsesExplicitPullRequestMetadata(t *testing.T) {
+	gitExecutor := &strictSyncGitExecutor{
+		missingReferences: map[string]bool{
+			"origin/feature/foo":     true,
+			"refs/heads/feature/foo": true,
+		},
+	}
+	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(t, managerError)
+	githubExecutor := &strictSyncGitHubExecutor{}
+	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
+	require.NoError(t, githubClientError)
+	chatClient := &strictSyncChatClient{response: "generated body should not be used"}
+	environment := &workflow.Environment{
+		GitExecutor:       gitExecutor,
+		RepositoryManager: gitManager,
+		GitHubClient:      githubClient,
+		Logger:            zap.NewNop(),
+		Output:            io.Discard,
+		Errors:            io.Discard,
+		Reporter:          &recordingReporter{},
+	}
+	repository := &workflow.RepositoryState{
+		Path: "/tmp/project",
+		Inspection: audit.RepositoryInspection{
+			LocalBranch:    "master",
+			FinalOwnerRepo: "owner/project",
+		},
+	}
+	parameters := map[string]any{
+		taskOptionBranchName:         "feature/foo",
+		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
+		taskOptionRequirePullRequest: true,
+		taskOptionBaseBranch:         "master",
+		taskOptionRequireClean:       true,
+		taskOptionPullRequestTitle:   "docs: explain sync",
+		taskOptionPullRequestBody:    "Explain the reviewer-facing reason.",
+		taskOptionWorktreeCommitMessage: worktreeAdoptionCommitMessageOptions{
+			Client: chatClient,
+		},
+	}
+
+	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "switch -c feature/foo origin/master")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "push -u origin feature/foo")
+	require.NotContains(t, recordedGitCommands(gitExecutor.commands), "diff --stat origin/master...feature/foo")
+	require.NotContains(t, recordedGitCommands(gitExecutor.commands), "diff --unified=3 origin/master...feature/foo")
+	require.Len(t, githubExecutor.commands, 1)
+	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", "feature/foo", "--title", "docs: explain sync", "--body", "Explain the reviewer-facing reason."}, githubExecutor.commands[0].Arguments)
+	require.Len(t, chatClient.requests, 0)
 }
 
 func TestHandleBranchSyncActionStrictPRBranchCreatesGeneratedBranchFromDirtyMaster(t *testing.T) {
+	pullRequestBody := "## Summary\n- Updates README content from the dirty master branch."
 	gitExecutor := &strictSyncGitExecutor{
 		statusOutput: " M README.md\n",
 		missingReferences: map[string]bool{
@@ -608,7 +678,7 @@ func TestHandleBranchSyncActionStrictPRBranchCreatesGeneratedBranchFromDirtyMast
 	githubExecutor := &strictSyncGitHubExecutor{}
 	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
 	require.NoError(t, githubClientError)
-	chatClient := &strictSyncChatClient{response: "docs: update readme"}
+	chatClient := &strictSyncChatClient{responses: []string{"docs: update readme", pullRequestBody}}
 	environment := &workflow.Environment{
 		GitExecutor:       gitExecutor,
 		RepositoryManager: gitManager,
@@ -642,8 +712,64 @@ func TestHandleBranchSyncActionStrictPRBranchCreatesGeneratedBranchFromDirtyMast
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "commit -m docs: update readme")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "merge --no-edit origin/master")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "push -u origin sync/project/readme")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "diff --stat origin/master...sync/project/readme")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "diff --unified=3 origin/master...sync/project/readme")
+	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, "diff --stat origin/master...sync/project/readme"), recordedGitCommandIndex(gitExecutor.commands, "push -u origin sync/project/readme"))
 	require.Len(t, githubExecutor.commands, 1)
-	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", "sync/project/readme", "--title", "sync/project/readme", "--body", strictSyncCreatedPRBody}, githubExecutor.commands[0].Arguments)
+	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", "sync/project/readme", "--title", "sync/project/readme", "--body", pullRequestBody}, githubExecutor.commands[0].Arguments)
+	require.Len(t, chatClient.requests, 2)
+	require.Contains(t, chatClient.requests[1].Messages[1].Content, "Comparison range: origin/master...sync/project/readme")
+	require.Contains(t, chatClient.requests[1].Messages[1].Content, "README.md | 1 +")
+	require.Contains(t, chatClient.requests[1].Messages[1].Content, "diff --git a/README.md b/README.md")
+}
+
+func TestHandleBranchSyncActionStrictPRBranchDoesNotPushWhenPullRequestBodyGenerationFails(t *testing.T) {
+	gitExecutor := &strictSyncGitExecutor{
+		missingReferences: map[string]bool{
+			"origin/feature/foo":     true,
+			"refs/heads/feature/foo": true,
+		},
+	}
+	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(t, managerError)
+	githubExecutor := &strictSyncGitHubExecutor{}
+	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
+	require.NoError(t, githubClientError)
+	chatClient := &strictSyncChatClient{responses: []string{""}}
+	environment := &workflow.Environment{
+		GitExecutor:       gitExecutor,
+		RepositoryManager: gitManager,
+		GitHubClient:      githubClient,
+		Logger:            zap.NewNop(),
+		Output:            io.Discard,
+		Errors:            io.Discard,
+		Reporter:          &recordingReporter{},
+	}
+	repository := &workflow.RepositoryState{
+		Path: "/tmp/project",
+		Inspection: audit.RepositoryInspection{
+			LocalBranch:    "master",
+			FinalOwnerRepo: "owner/project",
+		},
+	}
+	parameters := map[string]any{
+		taskOptionBranchName:         "feature/foo",
+		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
+		taskOptionRequirePullRequest: true,
+		taskOptionBaseBranch:         "master",
+		taskOptionRequireClean:       true,
+		taskOptionWorktreeCommitMessage: worktreeAdoptionCommitMessageOptions{
+			Client: chatClient,
+		},
+	}
+
+	syncError := handleBranchSyncAction(context.Background(), environment, repository, parameters)
+	require.Error(t, syncError)
+	require.Contains(t, syncError.Error(), "empty_response")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "switch -c feature/foo origin/master")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "diff --stat origin/master...feature/foo")
+	require.NotContains(t, recordedGitCommands(gitExecutor.commands), "push -u origin feature/foo")
+	require.Len(t, githubExecutor.commands, 0)
 	require.Len(t, chatClient.requests, 1)
 }
 
@@ -692,6 +818,15 @@ func recordedGitCommands(commands []execshell.CommandDetails) string {
 		lines = append(lines, strings.Join(command.Arguments, " "))
 	}
 	return strings.Join(lines, "\n")
+}
+
+func recordedGitCommandIndex(commands []execshell.CommandDetails, target string) int {
+	for commandIndex := range commands {
+		if strings.Join(commands[commandIndex].Arguments, " ") == target {
+			return commandIndex
+		}
+	}
+	return -1
 }
 
 func commandHasArgument(arguments []string, target string) bool {
