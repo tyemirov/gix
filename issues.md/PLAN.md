@@ -1,5 +1,6 @@
 - Keep I007 as the active implementation scope for purposeful `gix sync` pull request descriptions.
 - Replace the static sync PR body formatter with a branch-diff description generator.
 - Add failing observable coverage proving newly opened sync PRs receive body text returned from real branch diff context.
+- Ensure generated body failures stop before pushing newly created PR branches.
 - Reuse the existing configured LLM client path so the generated body explains the code difference instead of the tool path.
 - Validate through Makefile targets: format, test, lint, and ci.

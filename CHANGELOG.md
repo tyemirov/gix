@@ -4,9 +4,10 @@
 
 ### Improvements ⚙️
 - Make `gix sync` pull request descriptions come from the branch diff through the configured LLM path instead of predefined body text.
+- Generate the sync PR body before pushing new PR branches so body-generation failures do not leave remote branches without pull requests.
 
 ### Testing 🧪
-- Update strict-sync pull request creation coverage for requested branches and generated dirty-`master` branches, including the branch diff context sent to the PR body generator.
+- Update strict-sync pull request creation coverage for requested branches and generated dirty-`master` branches, including the branch diff context sent to the PR body generator and failure-before-push ordering.
 
 ## [v0.5.0] - 2026-06-02
 

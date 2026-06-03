@@ -540,10 +540,9 @@ type strictPullRequestBranchOptions struct {
 
 type strictPullRequestCreateOptions struct {
 	RepositoryIdentifier string
-	RemoteName           string
 	BaseBranch           string
 	BranchName           string
-	CommitMessages       worktreeAdoptionCommitMessageOptions
+	Body                 string
 }
 
 func syncBaseBranch(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, remoteName string, baseBranch string) error {
@@ -638,15 +637,24 @@ func syncPullRequestBranch(ctx context.Context, environment *workflow.Environmen
 		if mergeErr := mergeBaseIntoBranch(ctx, environment.GitExecutor, repository.Path, options.RemoteName, options.BaseBranch, options.BranchName); mergeErr != nil {
 			return false, mergeErr
 		}
+		body, bodyErr := generateStrictSyncPullRequestBody(ctx, environment.GitExecutor, strictSyncPullRequestDescriptionOptions{
+			RepositoryPath: repository.Path,
+			RemoteName:     options.RemoteName,
+			BaseBranch:     options.BaseBranch,
+			BranchName:     options.BranchName,
+			CommitMessages: options.CommitMessages,
+		})
+		if bodyErr != nil {
+			return false, bodyErr
+		}
 		if pushErr := executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitPushSubcommandConstant, gitPushSetUpstreamFlagConstant, options.RemoteName, options.BranchName}); pushErr != nil {
 			return false, pushErr
 		}
-		if pullRequestErr := createPullRequest(ctx, environment, repository, strictPullRequestCreateOptions{
+		if pullRequestErr := createPullRequest(ctx, environment, strictPullRequestCreateOptions{
 			RepositoryIdentifier: repositoryIdentifier,
-			RemoteName:           options.RemoteName,
 			BaseBranch:           options.BaseBranch,
 			BranchName:           options.BranchName,
-			CommitMessages:       options.CommitMessages,
+			Body:                 body,
 		}); pullRequestErr != nil {
 			return false, pullRequestErr
 		}
@@ -664,15 +672,24 @@ func syncPullRequestBranch(ctx context.Context, environment *workflow.Environmen
 	if createErr := executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitSwitchSubcommandConstant, gitCreateBranchFlagConstant, options.BranchName, baseReference}); createErr != nil {
 		return false, createErr
 	}
+	body, bodyErr := generateStrictSyncPullRequestBody(ctx, environment.GitExecutor, strictSyncPullRequestDescriptionOptions{
+		RepositoryPath: repository.Path,
+		RemoteName:     options.RemoteName,
+		BaseBranch:     options.BaseBranch,
+		BranchName:     options.BranchName,
+		CommitMessages: options.CommitMessages,
+	})
+	if bodyErr != nil {
+		return false, bodyErr
+	}
 	if pushErr := executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitPushSubcommandConstant, gitPushSetUpstreamFlagConstant, options.RemoteName, options.BranchName}); pushErr != nil {
 		return false, pushErr
 	}
-	if pullRequestErr := createPullRequest(ctx, environment, repository, strictPullRequestCreateOptions{
+	if pullRequestErr := createPullRequest(ctx, environment, strictPullRequestCreateOptions{
 		RepositoryIdentifier: repositoryIdentifier,
-		RemoteName:           options.RemoteName,
 		BaseBranch:           options.BaseBranch,
 		BranchName:           options.BranchName,
-		CommitMessages:       options.CommitMessages,
+		Body:                 body,
 	}); pullRequestErr != nil {
 		return false, pullRequestErr
 	}
@@ -733,24 +750,14 @@ func branchHasOpenPullRequest(ctx context.Context, environment *workflow.Environ
 	return false, nil
 }
 
-func createPullRequest(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, options strictPullRequestCreateOptions) error {
+func createPullRequest(ctx context.Context, environment *workflow.Environment, options strictPullRequestCreateOptions) error {
 	if environment.GitHubClient == nil {
 		return errors.New(strictSyncMissingGitHubClientMessage)
-	}
-	body, bodyErr := generateStrictSyncPullRequestBody(ctx, environment.GitExecutor, strictSyncPullRequestDescriptionOptions{
-		RepositoryPath: repository.Path,
-		RemoteName:     options.RemoteName,
-		BaseBranch:     options.BaseBranch,
-		BranchName:     options.BranchName,
-		CommitMessages: options.CommitMessages,
-	})
-	if bodyErr != nil {
-		return bodyErr
 	}
 	return environment.GitHubClient.CreatePullRequest(ctx, githubcli.PullRequestCreateOptions{
 		Repository: options.RepositoryIdentifier,
 		Title:      options.BranchName,
-		Body:       body,
+		Body:       options.Body,
 		Base:       options.BaseBranch,
 		Head:       options.BranchName,
 	})

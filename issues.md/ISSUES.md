@@ -784,3 +784,6 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - Threaded the existing sync LLM configuration into PR creation so `gh pr create --body` receives generated text from the code difference.
   - Updated strict-sync coverage to assert both the diff commands and the generated body passed to GitHub.
   - `make test`, `make lint`, and `make ci` passed locally after the follow-up.
+  ### Review Fix
+  - Moved PR body generation before `git push -u` on new PR branches so body-generation failures do not leave remote branches without pull requests.
+  - Added strict-sync coverage for command ordering and the failure path where empty generated PR text stops before push.
