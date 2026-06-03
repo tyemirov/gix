@@ -11,6 +11,28 @@
 - Update strict-sync pull request creation coverage for requested branches and generated dirty-`master` branches, including the branch diff context sent to the PR body generator and failure-before-push ordering.
 - Add sync command and strict action coverage for explicit PR title/body controls.
 
+## [v0.6.1] - 2026-06-03
+
+### Features ✨
+- Unified workflow action option builders for consistent option handling across commands.
+- Introduced structured action option types for workflow tasks improving type safety and clarity.
+
+### Improvements ⚙️
+- Refactored web workflow primitive definitions to use typed action options instead of raw maps.
+- Enhanced merging of workflow step options with typed action option structs.
+- Simplified command option building by replacing manual map construction with structured option types.
+- Improved safeguards handling for file replace workflows with explicit option structs.
+- Streamlined retag mappings parsing to use typed structs instead of generic maps.
+
+### Bug Fixes 🐛
+- _No changes._
+
+### Testing 🧪
+- Added tests for new workflow action options builders.
+
+### Docs 📚
+- Updated issue and plan documentation with minor clarifications.
+
 ## [v0.6.0] - 2026-06-03
 
 ### Features ✨
