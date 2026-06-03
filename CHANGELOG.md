@@ -16,6 +16,27 @@
 - Add sync command and strict action coverage for explicit PR title/body controls.
 - Add strict-sync regression coverage for committing, pushing, removing, pruning, refetching, and retrying a dirty sibling worktree before switching to the requested branch.
 
+## [v0.6.2] - 2026-06-03
+
+### Features ✨
+- Centralize strict and non-strict sync sibling-worktree retry handling behind the worktree adoption service.
+
+### Improvements ⚙️
+- Refactor sync branch handling to use a unified worktree adoption service for retrying adoption of dirty sibling worktrees.
+- Enhance strict sync branch preparation and base branch syncing to integrate with the worktree adoption service.
+- Expose explicit commit message options for worktree adoption during branch sync operations.
+
+### Bug Fixes 🐛
+- Restore strict `gix sync` adoption of dirty sibling worktrees when the requested branch is already checked out in another folder.
+
+### Testing 🧪
+- Add strict-sync regression coverage for committing, pushing, removing, pruning, refetching, and retrying a dirty sibling worktree before switching to the requested branch.
+- Update strict-sync pull request creation coverage to include branch diff context and failure-before-push ordering.
+- Add sync command and strict action coverage for explicit pull request title/body controls.
+
+### Docs 📚
+- _No changes._
+
 ## [v0.6.1] - 2026-06-03
 
 ### Features ✨
