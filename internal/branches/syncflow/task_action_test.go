@@ -592,7 +592,7 @@ func TestHandleBranchSyncActionStrictPRBranchCreatesMissingRemoteBranchAndPullRe
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "switch -c feature/foo origin/master")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "push -u origin feature/foo")
 	require.Len(t, githubExecutor.commands, 1)
-	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", "feature/foo", "--title", "feature/foo", "--body", strictSyncCreatedPRBody}, githubExecutor.commands[0].Arguments)
+	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", "feature/foo", "--title", "feature/foo", "--body", "This PR is the review path for `feature/foo` before those changes land in `master`.\n\nKeep `master` remote-owned; review and merge this branch when the changes are ready."}, githubExecutor.commands[0].Arguments)
 }
 
 func TestHandleBranchSyncActionStrictPRBranchCreatesGeneratedBranchFromDirtyMaster(t *testing.T) {
@@ -643,7 +643,7 @@ func TestHandleBranchSyncActionStrictPRBranchCreatesGeneratedBranchFromDirtyMast
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "merge --no-edit origin/master")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "push -u origin sync/project/readme")
 	require.Len(t, githubExecutor.commands, 1)
-	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", "sync/project/readme", "--title", "sync/project/readme", "--body", strictSyncCreatedPRBody}, githubExecutor.commands[0].Arguments)
+	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", "sync/project/readme", "--title", "sync/project/readme", "--body", "This PR is the review path for `sync/project/readme` before those changes land in `master`.\n\nKeep `master` remote-owned; review and merge this branch when the changes are ready."}, githubExecutor.commands[0].Arguments)
 	require.Len(t, chatClient.requests, 1)
 }
 

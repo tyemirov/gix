@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Improvements ⚙️
+- Make `gix sync` pull request descriptions explain the branch review path and remote-owned base branch instead of how the PR was created.
+
+### Testing 🧪
+- Update strict-sync pull request creation coverage for requested branches and generated dirty-`master` branches.
+
 ## [v0.5.0] - 2026-06-02
 
 ### Features ✨

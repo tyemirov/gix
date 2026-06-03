@@ -763,3 +763,17 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - Preserved `--stash`, kept `--commit` accepted, and made `--require-clean` the opt-in dirty-work guard.
   - Updated README/help/config defaults and added black-box coverage for dirty PR branches, dirty `master`, generated branches, and the clean-worktree guard.
   - `make test`, `make lint`, and `make ci` passed locally.
+
+- [x] [I007] Make `gix sync` pull request descriptions explain why the PR exists.
+  Requested on 2026-06-03.
+  ### Summary
+  `gix sync` currently opens pull requests with the body `Created by gix sync.`, which describes the tool path rather than the reason a reviewer should care about the PR.
+  ### Plan
+  - Locate the sync PR creation path and any workflow-level PR body defaults that can leak this placeholder into user-visible GitHub descriptions.
+  - Add failing observable coverage for the sync-generated PR body.
+  - Replace the placeholder with purpose-oriented body text tied to the sync target and branch context.
+  - Run the required Makefile validation targets.
+  ### Resolution
+  - Replaced the static `Created by gix sync.` body with PR text that explains the review path from the head branch into the remote-owned base branch.
+  - Updated strict-sync PR creation coverage for both explicit work branches and generated dirty-`master` branches.
+  - `make test`, `make lint`, and `make ci` passed locally.

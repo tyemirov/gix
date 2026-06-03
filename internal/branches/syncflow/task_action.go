@@ -65,7 +65,7 @@ const (
 	strictSyncMissingPullRequestTemplate         = "branch %q does not have an open pull request into %s"
 	strictSyncConflictTemplate                   = "merge from %s/%s into %s stopped with conflicts; resolve them before pushing"
 	strictSyncFastForwardTemplate                = "fast-forward from %s/%s into %s stopped; commit, stash, or clean local changes before syncing"
-	strictSyncCreatedPRBody                      = "Created by gix sync."
+	strictSyncPullRequestBodyTemplate            = "This PR is the review path for `%s` before those changes land in `%s`.\n\nKeep `%s` remote-owned; review and merge this branch when the changes are ready."
 )
 
 func init() {
@@ -719,10 +719,14 @@ func createPullRequest(ctx context.Context, environment *workflow.Environment, r
 	return environment.GitHubClient.CreatePullRequest(ctx, githubcli.PullRequestCreateOptions{
 		Repository: repositoryIdentifier,
 		Title:      branchName,
-		Body:       strictSyncCreatedPRBody,
+		Body:       strictSyncPullRequestBody(baseBranch, branchName),
 		Base:       baseBranch,
 		Head:       branchName,
 	})
+}
+
+func strictSyncPullRequestBody(baseBranch string, branchName string) string {
+	return fmt.Sprintf(strictSyncPullRequestBodyTemplate, branchName, baseBranch, baseBranch)
 }
 
 func strictSyncRepositoryIdentifier(repository *workflow.RepositoryState) string {

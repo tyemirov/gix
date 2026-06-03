@@ -1,15 +1,5 @@
-- Add I006 as the active implementation scope for the new `gix sync` semantics.
-- Remove the old `cd` implementation naming and any legacy `branch-cd` surface.
-- Implement `gix sync` as the canonical synchronization command:
-  - `gix sync <remote-url|owner/repo>` attaches or clones a workspace.
-  - `gix sync master` restores local `master` from `origin/master`.
-  - `gix sync <branch>` switches to or creates a PR-backed work branch.
-  - `gix sync` syncs the current branch.
-- Preserve dirty-work modifiers as explicit sync policies:
-  - default clean-worktree requirement;
-  - `--stash` around safe sync operations;
-  - `--commit` for PR-backed work branch checkpoint commits;
-  - `--require-clean=false` only where non-destructive sync can safely proceed.
-- Use merge, not rebase, to bring `origin/master` into work branches; stop before push on conflicts.
-- Update README/help/config/tests so the public flow emphasizes the simplified sync contract.
+- Add I007 as the active implementation scope for purposeful `gix sync` pull request descriptions.
+- Locate the sync PR creation path that currently emits `Created by gix sync.` as the body.
+- Add failing observable coverage proving newly opened sync PRs include useful why-oriented body text.
+- Replace the placeholder body with a description tied to the sync target and dirty-work branch purpose.
 - Validate through Makefile targets: format, test, lint, and ci.
