@@ -16,6 +16,27 @@
 - Add sync command and strict action coverage for explicit PR title/body controls.
 - Add strict-sync regression coverage for committing, pushing, removing, pruning, refetching, and retrying a dirty sibling worktree before switching to the requested branch.
 
+## [v0.6.3] - 2026-06-03
+
+### Features ✨
+- Generate semantic sync branch names based on commit messages to avoid stale branch collisions.
+- Automatically select unique sync branch names, retrying up to 100 times if collisions occur.
+
+### Improvements ⚙️
+- Refactor sync branch naming to use a "gix" prefix and semantic commit subjects.
+- Limit sync branch name length with intelligent truncation to maintain readability.
+- Enhance strict sync action to use generated semantic branch names instead of static names.
+
+### Bug Fixes 🐛
+- Avoid stale branch collisions by using semantic branch names in sync refresh.
+
+### Testing 🧪
+- Add tests for semantic sync branch name generation and collision avoidance.
+- Update sync action tests to verify new branch naming and pull request creation behavior.
+
+### Docs 📚
+- _No changes._
+
 ## [v0.6.2] - 2026-06-03
 
 ### Features ✨
