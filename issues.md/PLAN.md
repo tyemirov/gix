@@ -1,8 +1,6 @@
-- B008 restores sibling-worktree adoption in strict `gix sync`.
-- Reuse the existing adoption helper instead of duplicating commit/push/remove/prune logic.
-- Trigger adoption only when Git reports that the requested branch is already used by another worktree.
-- Preserve the conditional dirty behavior: commit the sibling worktree only when it has uncommitted files; otherwise skip the commit path.
-- Route strict and non-strict branch changes through the same adoption service instead of keeping separate retry blocks.
-- Refetch after adoption so strict sync compares against the pushed remote state before ahead/merge checks.
-- Add focused regression coverage for a dirty sibling worktree blocking a PR-backed sync branch.
-- `make ci` passed locally.
+- Derive dirty `master` generated branch names as `gix/<semantic-change>` instead of repository or file paths.
+- Limit the semantic branch component to 56 characters, including any collision suffix.
+- Keep dirty `master` sync reusing a semantic generated branch only when that remote branch still has an open PR.
+- Select the next generated branch suffix only when the semantic branch name already exists remotely without an open PR.
+- Preserve existing partial-run recovery for local-only generated branches.
+- `make test`, `make lint`, and `make ci` passed locally.
