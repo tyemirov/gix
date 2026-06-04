@@ -826,3 +826,20 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - `make format`, `make test`, `make lint`, and `make ci` passed locally.
   ### Follow-up
   Branch/PR/dirty-work helper extraction remains a later unification slice now that the typed option builder path is stable.
+
+- [x] [I009] Avoid stale generated branch collisions during dirty `gix sync master`.
+  Requested on 2026-06-03 after dirty `master` sync in `/Users/tyemirov/Development/llm-proxy` failed with `branch "sync/llm-proxy/readme" does not have an open pull request into master`.
+  ### Summary
+  Dirty `master` sync generated deterministic work branch names from the repository and first dirty path cluster, such as `sync/llm-proxy/readme`. The branch name should identify the semantic change represented by the diff instead of incidental repository, file, time, or sequence metadata.
+  ### Plan
+  - Add focused strict-sync coverage proving dirty `master` branch names are derived from the generated semantic diff summary.
+  - Limit the semantic branch component to 56 characters, including any collision suffix.
+  - Keep reusing the semantic generated branch when it still has an open PR.
+  - Select the next generated branch suffix only when a semantic generated branch already exists remotely without an open PR.
+  - Preserve existing local-only generated branch recovery.
+  ### Resolution
+  - Added strict-sync regression coverage for dirty `master` branch naming from the generated semantic diff summary.
+  - Replaced `sync/<repo>/<path>` with `gix/<semantic-change>`, stripping Conventional Commit type prefixes before slugging the subject.
+  - Capped the semantic branch component at 56 characters and trims at word boundaries when possible.
+  - Kept collision handling as a last resort: an already-occupied semantic branch advances to the next numeric suffix before the normal commit, push, and pull-request flow continues.
+  - `make test`, `make lint`, and `make ci` passed locally.

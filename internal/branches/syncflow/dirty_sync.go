@@ -20,10 +20,27 @@ const (
 	strictSyncDirtyStageFailureTemplate   = "failed to stage dirty sync cluster %q: %w"
 	strictSyncDirtyMessageFailureTemplate = "failed to generate dirty sync commit message for %q: %w"
 	strictSyncDirtyClusterFailureTemplate = "failed to commit dirty sync cluster %q: %w"
-	strictSyncGeneratedBranchPrefix       = "sync"
-	strictSyncGeneratedRepositoryFallback = "repository"
-	strictSyncGeneratedPathFallback       = "work"
+	strictSyncGeneratedBranchPrefix       = "gix"
+	strictSyncGeneratedSemanticFallback   = "work"
+	strictSyncGeneratedSemanticSlugLimit  = 56
+	strictSyncGeneratedBranchFailure      = "failed to generate dirty sync branch name: %w"
+	strictSyncGeneratedBranchLimit        = 100
+	strictSyncGeneratedBranchLimitMessage = "unable to select generated sync branch after 100 attempts for %q"
 )
+
+var syncConventionalCommitTypes = map[string]struct{}{
+	"build":    {},
+	"chore":    {},
+	"ci":       {},
+	"docs":     {},
+	"feat":     {},
+	"fix":      {},
+	"perf":     {},
+	"refactor": {},
+	"revert":   {},
+	"style":    {},
+	"test":     {},
+}
 
 type syncCommitCluster struct {
 	Root  string
@@ -165,25 +182,141 @@ func buildSyncCommitClusters(statusEntries []string) []syncCommitCluster {
 	return clusters
 }
 
-func generatedSyncBranchName(repository *workflow.RepositoryState, statusEntries []string) string {
-	repositoryName := strictSyncGeneratedRepositoryFallback
-	if repository != nil {
-		candidate := filepath.Base(filepath.Clean(strings.TrimSpace(repository.Path)))
-		if slug := syncBranchSlug(candidate); slug != "" {
-			repositoryName = slug
+func generatedSyncBranchName(ctx context.Context, executor shared.GitExecutor, repositoryPath string, options worktreeAdoptionCommitMessageOptions) (string, error) {
+	message, messageErr := generateSyncBranchMessage(ctx, executor, repositoryPath, options)
+	if messageErr != nil {
+		return "", fmt.Errorf(strictSyncGeneratedBranchFailure, messageErr)
+	}
+	slug := syncBranchSlug(syncBranchSemanticSubject(message))
+	if slug == "" {
+		slug = strictSyncGeneratedSemanticFallback
+	}
+	slug = truncateSyncBranchSlug(slug, "")
+	return strings.Join([]string{strictSyncGeneratedBranchPrefix, slug}, "/"), nil
+}
+
+func generateSyncBranchMessage(ctx context.Context, executor shared.GitExecutor, repositoryPath string, options worktreeAdoptionCommitMessageOptions) (string, error) {
+	client, clientErr := resolveCommitMessageClient(options)
+	if clientErr != nil {
+		return "", clientErr
+	}
+	var temperature *float64
+	if options.Temperature != 0 {
+		temperatureValue := options.Temperature
+		temperature = &temperatureValue
+	}
+	generator := commitmsg.Generator{
+		GitExecutor: executor,
+		Client:      client,
+	}
+	result, generateErr := generator.Generate(ctx, commitmsg.Options{
+		RepositoryPath: repositoryPath,
+		Source:         commitmsg.DiffSourceAll,
+		MaxTokens:      options.MaxTokens,
+		Temperature:    temperature,
+	})
+	if generateErr != nil {
+		return "", generateErr
+	}
+	return result.Message, nil
+}
+
+func selectGeneratedSyncBranchName(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, remoteName string, baseBranch string, options worktreeAdoptionCommitMessageOptions) (string, error) {
+	initialBranchName, initialBranchErr := generatedSyncBranchName(ctx, environment.GitExecutor, repository.Path, options)
+	if initialBranchErr != nil {
+		return "", initialBranchErr
+	}
+	repositoryIdentifier := strictSyncRepositoryIdentifier(repository)
+	for candidateIndex := 0; candidateIndex < strictSyncGeneratedBranchLimit; candidateIndex++ {
+		candidateBranchName := generatedSyncBranchCandidateName(initialBranchName, candidateIndex)
+		remoteReference := fmt.Sprintf("%s/%s", remoteName, candidateBranchName)
+		remoteExists, remoteExistsErr := remoteReferenceExists(ctx, environment.GitExecutor, repository.Path, remoteReference)
+		if remoteExistsErr != nil {
+			return "", remoteExistsErr
+		}
+		if !remoteExists {
+			return candidateBranchName, nil
+		}
+		if repositoryIdentifier == "" {
+			return "", errors.New(strictSyncMissingRepositoryMessage)
+		}
+		openPullRequest, pullRequestErr := branchHasOpenPullRequest(ctx, environment, repositoryIdentifier, baseBranch, candidateBranchName)
+		if pullRequestErr != nil {
+			return "", pullRequestErr
+		}
+		if openPullRequest {
+			return candidateBranchName, nil
 		}
 	}
+	return "", fmt.Errorf(strictSyncGeneratedBranchLimitMessage, initialBranchName)
+}
 
-	pathName := strictSyncGeneratedPathFallback
-	clusters := buildSyncCommitClusters(statusEntries)
-	if len(clusters) > 0 {
-		rootLabel := syncGeneratedBranchPathLabel(clusters[0].Root)
-		if slug := syncBranchSlug(rootLabel); slug != "" {
-			pathName = slug
+func generatedSyncBranchCandidateName(initialBranchName string, candidateIndex int) string {
+	if candidateIndex == 0 {
+		return initialBranchName
+	}
+	suffix := fmt.Sprintf("-%d", candidateIndex+1)
+	prefix, slug, found := strings.Cut(initialBranchName, "/")
+	if !found {
+		return truncateSyncBranchSlug(initialBranchName, suffix) + suffix
+	}
+	return prefix + "/" + truncateSyncBranchSlug(slug, suffix) + suffix
+}
+
+func truncateSyncBranchSlug(slug string, suffix string) string {
+	availableLength := strictSyncGeneratedSemanticSlugLimit - len(suffix)
+	if availableLength <= 0 {
+		return strictSyncGeneratedSemanticFallback
+	}
+	trimmedSlug := strings.Trim(slug, "-")
+	if len(trimmedSlug) <= availableLength {
+		if trimmedSlug == "" {
+			return strictSyncGeneratedSemanticFallback
+		}
+		return trimmedSlug
+	}
+	rawTruncated := trimmedSlug[:availableLength]
+	truncated := strings.Trim(rawTruncated, "-")
+	if trimmedSlug[availableLength] != '-' && !strings.HasSuffix(rawTruncated, "-") {
+		if separatorIndex := strings.LastIndex(truncated, "-"); separatorIndex > 0 {
+			truncated = strings.Trim(truncated[:separatorIndex], "-")
 		}
 	}
+	if truncated == "" {
+		return strictSyncGeneratedSemanticFallback
+	}
+	return truncated
+}
 
-	return strings.Join([]string{strictSyncGeneratedBranchPrefix, repositoryName, pathName}, "/")
+func syncBranchSemanticSubject(message string) string {
+	lines := strings.Split(message, "\n")
+	for lineIndex := range lines {
+		trimmed := strings.TrimSpace(lines[lineIndex])
+		if trimmed == "" {
+			continue
+		}
+		return strings.TrimSpace(stripConventionalCommitPrefix(trimmed))
+	}
+	return ""
+}
+
+func stripConventionalCommitPrefix(subject string) string {
+	colonIndex := strings.Index(subject, ":")
+	if colonIndex <= 0 {
+		return subject
+	}
+	prefix := strings.TrimSpace(subject[:colonIndex])
+	normalizedType := strings.TrimSuffix(prefix, "!")
+	if scopeIndex := strings.Index(normalizedType, "("); scopeIndex >= 0 {
+		if !strings.HasSuffix(normalizedType, ")") {
+			return subject
+		}
+		normalizedType = strings.TrimSpace(normalizedType[:scopeIndex])
+	}
+	if _, exists := syncConventionalCommitTypes[normalizedType]; !exists {
+		return subject
+	}
+	return subject[colonIndex+1:]
 }
 
 func syncStatusEntriesHaveConflicts(statusEntries []string) bool {
@@ -244,25 +377,6 @@ func normalizeSyncStatusPath(path string) string {
 		return ""
 	}
 	return strings.TrimPrefix(normalized, "./")
-}
-
-func syncGeneratedBranchPathLabel(root string) string {
-	trimmedRoot := strings.TrimSpace(root)
-	if trimmedRoot == "" {
-		return ""
-	}
-	if strings.HasPrefix(trimmedRoot, ".") {
-		return strings.TrimLeft(trimmedRoot, ".")
-	}
-	extension := filepath.Ext(trimmedRoot)
-	if extension == "" {
-		return trimmedRoot
-	}
-	withoutExtension := strings.TrimSuffix(trimmedRoot, extension)
-	if withoutExtension == "" {
-		return trimmedRoot
-	}
-	return withoutExtension
 }
 
 func syncBranchSlug(value string) string {
