@@ -27,6 +27,7 @@ const (
 func TestSyncCommitsDirtyMasterWorktreeOnGeneratedBranch(testInstance *testing.T) {
 	testInstance.Helper()
 
+	expectedGeneratedBranchName := "gix/sync-dirty-work"
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	realGitPath, lookupError := exec.LookPath("git")
 	require.NoError(testInstance, lookupError)
@@ -171,7 +172,7 @@ operations:
 	invocationLogContents, readError := os.ReadFile(gitInvocationLog)
 	require.NoError(testInstance, readError)
 	invocationLog := string(invocationLogContents)
-	require.Contains(testInstance, invocationLog, "switch -c sync/worktree/readme origin/master")
+	require.Contains(testInstance, invocationLog, "switch -c "+expectedGeneratedBranchName+" origin/master")
 	require.Contains(testInstance, invocationLog, "add --all -- README.md")
 	require.Contains(testInstance, invocationLog, "commit -m docs: sync dirty work")
 	require.NotContains(testInstance, string(invocationLogContents), "pull --ff-only")
@@ -180,7 +181,7 @@ operations:
 	localFileContents, localReadError := os.ReadFile(readmePath)
 	require.NoError(testInstance, localReadError)
 	require.Equal(testInstance, "modified locally\n", string(localFileContents))
-	require.Equal(testInstance, "sync/worktree/readme", strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
+	require.Equal(testInstance, expectedGeneratedBranchName, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
 	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
 	require.Equal(testInstance, "docs: sync dirty work", strings.TrimSpace(runGit(testInstance, repositoryPath, "log", "-1", "--pretty=%s")))
 }
