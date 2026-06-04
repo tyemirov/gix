@@ -742,12 +742,13 @@ func TestHandleBranchSyncActionStrictPRBranchUsesExplicitPullRequestMetadata(t *
 }
 
 func TestHandleBranchSyncActionStrictPRBranchCreatesGeneratedBranchFromDirtyMaster(t *testing.T) {
+	generatedBranchName := "gix/cancel-upstream-request-on-downstream-timeout"
 	pullRequestBody := "## Summary\n- Updates README content from the dirty master branch."
 	gitExecutor := &strictSyncGitExecutor{
 		statusOutput: " M README.md\n",
 		missingReferences: map[string]bool{
-			"origin/sync/project/readme":     true,
-			"refs/heads/sync/project/readme": true,
+			"origin/" + generatedBranchName:     true,
+			"refs/heads/" + generatedBranchName: true,
 		},
 	}
 	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
@@ -755,7 +756,7 @@ func TestHandleBranchSyncActionStrictPRBranchCreatesGeneratedBranchFromDirtyMast
 	githubExecutor := &strictSyncGitHubExecutor{}
 	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
 	require.NoError(t, githubClientError)
-	chatClient := &strictSyncChatClient{responses: []string{"docs: update readme", pullRequestBody}}
+	chatClient := &strictSyncChatClient{responses: []string{"fix: cancel upstream request on downstream timeout", "docs: update readme", pullRequestBody}}
 	environment := &workflow.Environment{
 		GitExecutor:       gitExecutor,
 		RepositoryManager: gitManager,
@@ -784,20 +785,95 @@ func TestHandleBranchSyncActionStrictPRBranchCreatesGeneratedBranchFromDirtyMast
 	}
 
 	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
-	require.Contains(t, recordedGitCommands(gitExecutor.commands), "switch -c sync/project/readme origin/master")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "switch -c "+generatedBranchName+" origin/master")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "add --all -- README.md")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "commit -m docs: update readme")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "merge --no-edit origin/master")
-	require.Contains(t, recordedGitCommands(gitExecutor.commands), "push -u origin sync/project/readme")
-	require.Contains(t, recordedGitCommands(gitExecutor.commands), "diff --stat origin/master...sync/project/readme")
-	require.Contains(t, recordedGitCommands(gitExecutor.commands), "diff --unified=3 origin/master...sync/project/readme")
-	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, "diff --stat origin/master...sync/project/readme"), recordedGitCommandIndex(gitExecutor.commands, "push -u origin sync/project/readme"))
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "push -u origin "+generatedBranchName)
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "diff --stat origin/master..."+generatedBranchName)
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "diff --unified=3 origin/master..."+generatedBranchName)
+	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, "diff --stat origin/master..."+generatedBranchName), recordedGitCommandIndex(gitExecutor.commands, "push -u origin "+generatedBranchName))
 	require.Len(t, githubExecutor.commands, 1)
-	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", "sync/project/readme", "--title", "sync/project/readme", "--body", pullRequestBody}, githubExecutor.commands[0].Arguments)
-	require.Len(t, chatClient.requests, 2)
-	require.Contains(t, chatClient.requests[1].Messages[1].Content, "Comparison range: origin/master...sync/project/readme")
-	require.Contains(t, chatClient.requests[1].Messages[1].Content, "README.md | 1 +")
-	require.Contains(t, chatClient.requests[1].Messages[1].Content, "diff --git a/README.md b/README.md")
+	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", generatedBranchName, "--title", generatedBranchName, "--body", pullRequestBody}, githubExecutor.commands[0].Arguments)
+	require.Len(t, chatClient.requests, 3)
+	require.Contains(t, chatClient.requests[0].Messages[1].Content, "Diff source: ALL")
+	require.Contains(t, chatClient.requests[2].Messages[1].Content, "Comparison range: origin/master..."+generatedBranchName)
+	require.Contains(t, chatClient.requests[2].Messages[1].Content, "README.md | 1 +")
+	require.Contains(t, chatClient.requests[2].Messages[1].Content, "diff --git a/README.md b/README.md")
+}
+
+func TestHandleBranchSyncActionStrictPRBranchSkipsStaleGeneratedRemoteBranch(t *testing.T) {
+	generatedBranchName := "gix/cancel-upstream-request-on-downstream-timeout"
+	collisionBranchName := generatedBranchName + "-2"
+	pullRequestBody := "## Summary\n- Updates README content without reusing the stale branch."
+	gitExecutor := &strictSyncGitExecutor{
+		statusOutput: " M README.md\n",
+		missingReferences: map[string]bool{
+			"origin/" + collisionBranchName:     true,
+			"refs/heads/" + collisionBranchName: true,
+		},
+	}
+	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(t, managerError)
+	githubExecutor := &strictSyncGitHubExecutor{output: `[]`}
+	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
+	require.NoError(t, githubClientError)
+	chatClient := &strictSyncChatClient{responses: []string{"fix: cancel upstream request on downstream timeout", "docs: update readme", pullRequestBody}}
+	environment := &workflow.Environment{
+		GitExecutor:       gitExecutor,
+		RepositoryManager: gitManager,
+		GitHubClient:      githubClient,
+		Logger:            zap.NewNop(),
+		Output:            io.Discard,
+		Errors:            io.Discard,
+		Reporter:          &recordingReporter{},
+	}
+	repository := &workflow.RepositoryState{
+		Path: "/tmp/project",
+		Inspection: audit.RepositoryInspection{
+			LocalBranch:    "master",
+			FinalOwnerRepo: "owner/project",
+		},
+	}
+	parameters := map[string]any{
+		taskOptionBranchName:         "master",
+		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
+		taskOptionRequirePullRequest: true,
+		taskOptionBaseBranch:         "master",
+		taskOptionRequireClean:       false,
+		taskOptionWorktreeCommitMessage: worktreeAdoptionCommitMessageOptions{
+			Client: chatClient,
+		},
+	}
+
+	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
+	require.NotContains(t, recordedGitCommands(gitExecutor.commands), "switch -c "+generatedBranchName+" origin/master")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "switch -c "+collisionBranchName+" origin/master")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "push -u origin "+collisionBranchName)
+	require.Len(t, githubExecutor.commands, 2)
+	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", collisionBranchName, "--title", collisionBranchName, "--body", pullRequestBody}, githubExecutor.commands[1].Arguments)
+	require.Len(t, chatClient.requests, 3)
+	require.Contains(t, chatClient.requests[0].Messages[1].Content, "Diff source: ALL")
+	require.Contains(t, chatClient.requests[2].Messages[1].Content, "Comparison range: origin/master..."+collisionBranchName)
+}
+
+func TestGeneratedSyncBranchNameLimitsSemanticSlug(t *testing.T) {
+	longSemanticSubject := "fix: cancel upstream request on downstream timeout while preserving router context propagation"
+	gitExecutor := &strictSyncGitExecutor{statusOutput: " M README.md\n"}
+	chatClient := &strictSyncChatClient{response: longSemanticSubject}
+
+	branchName, branchNameErr := generatedSyncBranchName(context.Background(), gitExecutor, "/tmp/project", worktreeAdoptionCommitMessageOptions{Client: chatClient})
+
+	require.NoError(t, branchNameErr)
+	require.Equal(t, "gix/cancel-upstream-request-on-downstream-timeout-while", branchName)
+	_, semanticSlug, found := strings.Cut(branchName, "/")
+	require.True(t, found)
+	require.LessOrEqual(t, len(semanticSlug), strictSyncGeneratedSemanticSlugLimit)
+	collisionBranchName := generatedSyncBranchCandidateName(branchName, 1)
+	require.Equal(t, "gix/cancel-upstream-request-on-downstream-timeout-while-2", collisionBranchName)
+	_, collisionSemanticSlug, collisionFound := strings.Cut(collisionBranchName, "/")
+	require.True(t, collisionFound)
+	require.LessOrEqual(t, len(collisionSemanticSlug), strictSyncGeneratedSemanticSlugLimit)
 }
 
 func TestHandleBranchSyncActionStrictPRBranchDoesNotPushWhenPullRequestBodyGenerationFails(t *testing.T) {

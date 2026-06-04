@@ -499,7 +499,11 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 		}
 		commitBranchName := branchName
 		if commitBranchName == baseBranch {
-			commitBranchName = generatedSyncBranchName(repository, statusEntries)
+			generatedBranchName, generatedBranchErr := selectGeneratedSyncBranchName(ctx, environment, repository, remoteName, baseBranch, options.CommitMessages)
+			if generatedBranchErr != nil {
+				return generatedBranchErr
+			}
+			commitBranchName = generatedBranchName
 		}
 		if prepareErr := prepareStrictSyncBranchForDirtyWork(ctx, environment, repository, remoteName, baseBranch, commitBranchName, options.CommitMessages); prepareErr != nil {
 			return prepareErr
