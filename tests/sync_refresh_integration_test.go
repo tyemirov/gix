@@ -349,6 +349,7 @@ operations:
 	invocationLog := string(invocationLogContents)
 	require.Contains(testInstance, invocationLog, "check-ignore --stdin")
 	require.Contains(testInstance, invocationLog, "ls-files --cached --ignored --exclude-standard -- python/llm_proxy_client/__pycache__/client.cpython-313.pyc python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc scripts/release.sh")
+	require.Contains(testInstance, invocationLog, "restore --staged --worktree -- python/llm_proxy_client/__pycache__/client.cpython-313.pyc python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc")
 	require.Contains(testInstance, invocationLog, "switch -c "+expectedGeneratedBranchName+" origin/master")
 	require.Contains(testInstance, invocationLog, "add --all -- scripts/release.sh")
 	require.NotContains(testInstance, invocationLog, "add --all -- python/llm_proxy_client/__pycache__")
@@ -360,7 +361,11 @@ operations:
 	require.Equal(testInstance, "M\tscripts/release.sh", strings.TrimSpace(runGit(testInstance, repositoryPath, "show", "--name-status", "--pretty=format:", "HEAD")))
 
 	statusOutput := runGit(testInstance, repositoryPath, "status", "--porcelain")
-	require.Contains(testInstance, statusOutput, " M python/llm_proxy_client/__pycache__/client.cpython-313.pyc")
-	require.Contains(testInstance, statusOutput, " D python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc")
-	require.NotContains(testInstance, statusOutput, "scripts/release.sh")
+	require.Empty(testInstance, strings.TrimSpace(statusOutput))
+	clientCacheContents, clientCacheReadError := os.ReadFile(clientCacheFile)
+	require.NoError(testInstance, clientCacheReadError)
+	require.Equal(testInstance, "client cache before\n", string(clientCacheContents))
+	testCacheContents, testCacheReadError := os.ReadFile(testCacheFile)
+	require.NoError(testInstance, testCacheReadError)
+	require.Equal(testInstance, "test cache before\n", string(testCacheContents))
 }

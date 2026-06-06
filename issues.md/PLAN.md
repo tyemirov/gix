@@ -1,7 +1,5 @@
-# B010 sync tracked ignored pathspecs
-
-- Reproduced the missed `gix sync` case where tracked `.pyc` files live under ignored `__pycache__` directories.
-- Extended shared ignore filtering with Git's cached ignored view so tracked ignored files are filtered before `git add --all --`.
-- Kept unignored tracked and untracked dirty paths eligible for auto-commit.
-- Added regression coverage for cached ignored paths and the strict PR dirty-sync staging path.
-- `make test-fast`, `make test-slow`, `make lint`, and `make ci` passed locally.
+- Confirmed the existing B010 integration test expected tracked ignored dirty paths to remain.
+- Changed strict sync coverage so tracked ignored dirty paths are restored, not staged or committed.
+- Implemented a sync status filter result that keeps stageable entries and tracked ignored entries separate.
+- Restored tracked ignored entries with `git restore --staged --worktree -- <paths>` after fetch succeeds and before dirty sync continues.
+- Ran targeted sync tests plus `make test-fast`, non-cached `make test-slow`, `make test`, `make lint`, and `make ci`.

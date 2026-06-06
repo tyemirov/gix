@@ -11,6 +11,24 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
 
 ## BugFixes
 
+- [x] [B011] (P1) `gix sync` leaves tracked ignored dirty paths after a successful sync.
+  Requested on 2026-06-06 after `v0.6.5` allowed `gix sync` to finish in `/Users/tyemirov/Development/llm-proxy`, but `git status` still showed deleted `python/llm_proxy_client.egg-info/*` files and modified/deleted tracked `__pycache__` files.
+  ## Observation
+  - B010 filters tracked ignored paths out of dirty sync staging so they no longer trigger ignored pathspec failures.
+  - Filtered tracked ignored paths are then dropped from the dirty set entirely, so sync can report `SYNCED` while `git status --porcelain` still contains tracked ignored generated artifacts.
+  ## Deliverable
+  - Restore tracked ignored dirty paths before sync proceeds so ignored generated artifacts do not remain as tracked worktree dirt.
+  - Preserve the B010 guarantee that ignored generated pathspecs never reach `git add --all --`.
+  - Preserve auto-commit behavior for ordinary tracked and unignored untracked changes.
+  - Add integration coverage proving `gix sync` leaves the worktree clean after mixed ordinary and tracked ignored dirty paths.
+  ## Resolution
+  - Dirty sync now keeps stageable status entries separate from tracked ignored status entries.
+  - After the remote fetch succeeds, `gix sync` restores tracked ignored dirty paths with `git restore --staged --worktree -- <paths>` before saving ordinary dirty work.
+  - Ignored untracked paths remain unstaged, tracked ignored generated artifacts are restored to `HEAD`, and ordinary dirty files still flow through the existing generated-commit path.
+  - Updated strict-sync table coverage to assert restore commands for cached ignored modifications/deletions and ignored-only tracked dirt.
+  - Updated the black-box sync integration test to prove modified/deleted tracked `.pyc` files are restored, ignored pathspecs never reach `git add --all --`, the ordinary script change is committed, and final `git status --porcelain` is clean.
+  - `make test-fast`, non-cached `make test-slow`, `make test`, `make lint`, and `make ci` passed locally.
+
 - [x] [B010] (P1) `gix sync` still stages tracked files under ignored parent directories.
   Requested on 2026-06-06 after installing `v0.6.4` and rerunning `gix sync` in `/Users/tyemirov/Development/llm-proxy`.
   ## Observation
