@@ -20,6 +20,26 @@
 - Add strict action and CLI-level sync coverage for Python `egg-info` files mixed with ignored `__pycache__` entries.
 - Add strict-sync coverage proving ignored-only status stays on the clean `master` sync path.
 
+## [v0.6.4] - 2026-06-06
+
+### Features ✨
+- _No changes._
+
+### Improvements ⚙️
+- Filter dirty `gix sync` pathspec clusters through Git ignore rules to avoid staging ignored generated files.
+- Treat ignored-only dirty status as clean before selecting a generated `gix sync` work branch.
+
+### Bug Fixes 🐛
+- Fix ignored-only sync dirty detection to prevent staging ignored paths during auto-commit.
+- Fix B009 sync ignored path staging issue where ignored `__pycache__` files caused `git add` failures.
+
+### Testing 🧪
+- Add strict-sync coverage for Python `egg-info` files mixed with ignored `__pycache__` entries.
+- Add strict-sync regression coverage proving ignored-only status stays on the clean `master` sync path.
+
+### Docs 📚
+- Document B009 issue and resolution for ignored generated paths staging in `gix sync`.
+
 ## [v0.6.3] - 2026-06-03
 
 ### Features ✨
