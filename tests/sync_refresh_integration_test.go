@@ -37,6 +37,14 @@ func TestSyncCommitsDirtyMasterWorktreeOnGeneratedBranch(testInstance *testing.T
 		"#!/bin/sh",
 		"echo \"$@\" >> " + gitInvocationLog,
 		"if [ \"$1\" = \"pull\" ] && [ \"$2\" = \"--rebase\" ]; then exit 42; fi",
+		"if [ \"$1\" = \"status\" ] && [ \"$2\" = \"--porcelain\" ]; then",
+		"  " + realGitPath + " \"$@\"",
+		"  status_exit=$?",
+		"  if [ \"$status_exit\" -eq 0 ]; then",
+		"    printf '%s\\n' '!! python/llm_proxy_client/__pycache__/client.cpython-313.pyc' '!! python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc'",
+		"  fi",
+		"  exit \"$status_exit\"",
+		"fi",
 		"exec " + realGitPath + " \"$@\"",
 	}, "\n") + "\n")
 	pathVariable := buildStubbedExecutablePath(testInstance, "git", string(gitStubScript))
@@ -59,14 +67,21 @@ func TestSyncCommitsDirtyMasterWorktreeOnGeneratedBranch(testInstance *testing.T
 	configEmailCommand.Env = buildGitCommandEnvironment(nil)
 	require.NoError(testInstance, configEmailCommand.Run())
 
+	statusConfigCommand := exec.Command("git", "-C", repositoryPath, "config", "status.showUntrackedFiles", "all")
+	statusConfigCommand.Env = buildGitCommandEnvironment(nil)
+	require.NoError(testInstance, statusConfigCommand.Run())
+
 	remoteAddCommand := exec.Command("git", "-C", repositoryPath, "remote", "add", "origin", remotePath)
 	remoteAddCommand.Env = buildGitCommandEnvironment(nil)
 	require.NoError(testInstance, remoteAddCommand.Run())
 
+	gitignorePath := filepath.Join(repositoryPath, ".gitignore")
+	require.NoError(testInstance, os.WriteFile(gitignorePath, []byte("__pycache__/\n"), 0o644))
+
 	readmePath := filepath.Join(repositoryPath, "README.md")
 	require.NoError(testInstance, os.WriteFile(readmePath, []byte("initial\n"), 0o644))
 
-	addCommand := exec.Command("git", "-C", repositoryPath, "add", "README.md")
+	addCommand := exec.Command("git", "-C", repositoryPath, "add", ".gitignore", "README.md")
 	addCommand.Env = buildGitCommandEnvironment(nil)
 	require.NoError(testInstance, addCommand.Run())
 
@@ -107,6 +122,16 @@ func TestSyncCommitsDirtyMasterWorktreeOnGeneratedBranch(testInstance *testing.T
 	require.NoError(testInstance, upstreamPushCommand.Run())
 
 	require.NoError(testInstance, os.WriteFile(readmePath, []byte("modified locally\n"), 0o644))
+	eggInfoPath := filepath.Join(repositoryPath, "python", "llm_proxy_client.egg-info")
+	require.NoError(testInstance, os.MkdirAll(eggInfoPath, 0o755))
+	require.NoError(testInstance, os.WriteFile(filepath.Join(eggInfoPath, "PKG-INFO"), []byte("metadata\n"), 0o644))
+	require.NoError(testInstance, os.WriteFile(filepath.Join(eggInfoPath, "SOURCES.txt"), []byte("sources\n"), 0o644))
+	clientCachePath := filepath.Join(repositoryPath, "python", "llm_proxy_client", "__pycache__")
+	require.NoError(testInstance, os.MkdirAll(clientCachePath, 0o755))
+	require.NoError(testInstance, os.WriteFile(filepath.Join(clientCachePath, "client.cpython-313.pyc"), []byte("cache\n"), 0o644))
+	testCachePath := filepath.Join(repositoryPath, "python", "tests", "__pycache__")
+	require.NoError(testInstance, os.MkdirAll(testCachePath, 0o755))
+	require.NoError(testInstance, os.WriteFile(filepath.Join(testCachePath, "test_client.cpython-313-pytest-9.0.3.pyc"), []byte("cache\n"), 0o644))
 
 	llmServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 		if request.URL.Path != "/chat/completions" {
@@ -172,8 +197,11 @@ operations:
 	invocationLogContents, readError := os.ReadFile(gitInvocationLog)
 	require.NoError(testInstance, readError)
 	invocationLog := string(invocationLogContents)
+	require.Contains(testInstance, invocationLog, "check-ignore --stdin")
 	require.Contains(testInstance, invocationLog, "switch -c "+expectedGeneratedBranchName+" origin/master")
 	require.Contains(testInstance, invocationLog, "add --all -- README.md")
+	require.Contains(testInstance, invocationLog, "add --all -- python/llm_proxy_client.egg-info/PKG-INFO python/llm_proxy_client.egg-info/SOURCES.txt")
+	require.NotContains(testInstance, invocationLog, "__pycache__")
 	require.Contains(testInstance, invocationLog, "commit -m docs: sync dirty work")
 	require.NotContains(testInstance, string(invocationLogContents), "pull --ff-only")
 	require.NotContains(testInstance, string(invocationLogContents), "pull --rebase")

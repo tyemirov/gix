@@ -467,6 +467,11 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 	if statusErr != nil {
 		return statusErr
 	}
+	stageableStatusEntries, stageableStatusErr := filterIgnoredSyncStatusEntries(ctx, environment.GitExecutor, repository.Path, statusEntries)
+	if stageableStatusErr != nil {
+		return stageableStatusErr
+	}
+	statusEntries = stageableStatusEntries
 	trackedStatus, untrackedStatus := worktree.SplitStatusEntries(statusEntries, nil)
 	dirty := len(trackedStatus) > 0 || len(untrackedStatus) > 0
 
