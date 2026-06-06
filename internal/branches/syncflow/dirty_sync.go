@@ -20,6 +20,7 @@ const (
 	strictSyncDirtyStageFailureTemplate   = "failed to stage dirty sync cluster %q: %w"
 	strictSyncDirtyMessageFailureTemplate = "failed to generate dirty sync commit message for %q: %w"
 	strictSyncDirtyClusterFailureTemplate = "failed to commit dirty sync cluster %q: %w"
+	strictSyncDirtyIgnoreFailureTemplate  = "failed to inspect ignored dirty sync paths: %w"
 	strictSyncGeneratedBranchPrefix       = "gix"
 	strictSyncGeneratedSemanticFallback   = "work"
 	strictSyncGeneratedSemanticSlugLimit  = 56
@@ -49,6 +50,14 @@ type syncCommitCluster struct {
 
 func saveDirtyWorkClusters(ctx context.Context, executor shared.GitExecutor, repositoryPath string, statusEntries []string, options worktreeAdoptionCommitMessageOptions) (int, error) {
 	clusters := buildSyncCommitClusters(statusEntries)
+	if len(clusters) == 0 {
+		return 0, nil
+	}
+	filteredClusters, filterErr := filterIgnoredSyncCommitClusters(ctx, executor, repositoryPath, clusters)
+	if filterErr != nil {
+		return 0, filterErr
+	}
+	clusters = filteredClusters
 	if len(clusters) == 0 {
 		return 0, nil
 	}
@@ -96,6 +105,58 @@ func saveDirtyWorkClusters(ctx context.Context, executor shared.GitExecutor, rep
 	}
 
 	return committedClusters, nil
+}
+
+func filterIgnoredSyncCommitClusters(ctx context.Context, executor shared.GitExecutor, repositoryPath string, clusters []syncCommitCluster) ([]syncCommitCluster, error) {
+	clusterPaths := syncCommitClusterPaths(clusters)
+	if len(clusterPaths) == 0 {
+		return nil, nil
+	}
+	ignoredPaths, ignoredErr := shared.CheckIgnoredPaths(ctx, executor, repositoryPath, clusterPaths)
+	if ignoredErr != nil {
+		return nil, fmt.Errorf(strictSyncDirtyIgnoreFailureTemplate, ignoredErr)
+	}
+	if len(ignoredPaths) == 0 {
+		return clusters, nil
+	}
+
+	filteredClusters := make([]syncCommitCluster, 0, len(clusters))
+	for clusterIndex := range clusters {
+		cluster := clusters[clusterIndex]
+		filteredPaths := make([]string, 0, len(cluster.Paths))
+		for pathIndex := range cluster.Paths {
+			path := cluster.Paths[pathIndex]
+			if _, ignored := ignoredPaths[path]; ignored {
+				continue
+			}
+			filteredPaths = append(filteredPaths, path)
+		}
+		if len(filteredPaths) == 0 {
+			continue
+		}
+		filteredClusters = append(filteredClusters, syncCommitCluster{
+			Root:  cluster.Root,
+			Paths: filteredPaths,
+		})
+	}
+	return filteredClusters, nil
+}
+
+func syncCommitClusterPaths(clusters []syncCommitCluster) []string {
+	paths := make([]string, 0)
+	seenPaths := make(map[string]struct{})
+	for clusterIndex := range clusters {
+		cluster := clusters[clusterIndex]
+		for pathIndex := range cluster.Paths {
+			path := cluster.Paths[pathIndex]
+			if _, seen := seenPaths[path]; seen {
+				continue
+			}
+			seenPaths[path] = struct{}{}
+			paths = append(paths, path)
+		}
+	}
+	return paths
 }
 
 func prepareStrictSyncBranchForDirtyWork(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, remoteName string, baseBranch string, branchName string, commitMessages worktreeAdoptionCommitMessageOptions) error {

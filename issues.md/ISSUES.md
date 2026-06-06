@@ -11,6 +11,21 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
 
 ## BugFixes
 
+- [x] [B009] (P1) `gix sync` tries to stage ignored generated paths during dirty auto-commit.
+  Requested on 2026-06-06 after `gix sync` in `/Users/tyemirov/Development/llm-proxy` failed while running `git add --all --` with Python generated files from `egg-info` and ignored `__pycache__` folders.
+  ## Observation
+  - Dirty sync builds explicit pathspec clusters from worktree status and passes them to `git add --all --`.
+  - In the reported failure, ignored `python/llm_proxy_client/__pycache__` and `python/tests/__pycache__` paths reached `git add`, which Git rejected because they are ignored by `.gitignore`.
+  ## Deliverable
+  - Ensure dirty sync filters ignored generated paths before staging explicit pathspec clusters.
+  - Preserve auto-commit behavior for tracked changes and unignored untracked files.
+  - Add regression coverage proving ignored paths do not reach `git add`.
+  ## Resolution
+  - Dirty sync now checks each selected staging pathspec with Git ignore rules before invoking `git add --all --`.
+  - Ignored pathspecs are removed from their commit cluster while unignored generated metadata files remain stageable.
+  - Added strict-sync action coverage and CLI-level sync coverage for Python `egg-info` files mixed with ignored `__pycache__` entries.
+  - `make test`, `make lint`, and `make ci` passed locally.
+
 - [x] [B008] (P1) `gix sync` strict PR flow no longer adopts dirty sibling worktrees for the requested branch.
   Requested on 2026-06-03 after the `v0.6.1` release check showed the old sibling-worktree adoption helper still existed, but the public strict `gix sync` path did not call it when Git refused to switch to a branch already checked out in another folder.
   ## Observation
