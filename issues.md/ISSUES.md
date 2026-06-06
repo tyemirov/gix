@@ -11,6 +11,24 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
 
 ## BugFixes
 
+- [x] [B010] (P1) `gix sync` still stages tracked files under ignored parent directories.
+  Requested on 2026-06-06 after installing `v0.6.4` and rerunning `gix sync` in `/Users/tyemirov/Development/llm-proxy`.
+  ## Observation
+  - B009 filtered paths reported by `git check-ignore --stdin`.
+  - `git check-ignore` intentionally does not report tracked files, so tracked `.pyc` files under ignored `__pycache__` directories still reached `git add --all --`.
+  - Git rejects that explicit add with the ignored parent directory error, even though the files are already tracked.
+  ## Deliverable
+  - Detect tracked dirty paths that match ignore rules through Git's cached ignored view.
+  - Filter those paths from dirty sync status and staging clusters before `git add --all --`.
+  - Preserve auto-commit behavior for ordinary tracked changes and unignored untracked files.
+  - Add regression coverage for tracked ignored pathspecs.
+  ## Resolution
+  - `CheckIgnoredPaths` now combines `git check-ignore --stdin` with `git ls-files --cached --ignored --exclude-standard --` so tracked files that now match ignore rules are reported.
+  - Dirty sync keeps filtering ignored status entries and staging clusters through the shared helper, so cached ignored `.pyc` pathspecs are removed before `git add --all --`.
+  - Added stubbed and real-Git regression coverage for modified and deleted tracked ignored `.pyc` files under `__pycache__`.
+  - Added strict-sync coverage proving cached ignored paths are inspected but not staged while unignored files are still committed.
+  - `make test-fast`, `make test-slow`, `make lint`, and `make ci` passed locally.
+
 - [x] [B009] (P1) `gix sync` tries to stage ignored generated paths during dirty auto-commit.
   Requested on 2026-06-06 after `gix sync` in `/Users/tyemirov/Development/llm-proxy` failed while running `git add --all --` with Python generated files from `egg-info` and ignored `__pycache__` folders.
   ## Observation

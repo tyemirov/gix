@@ -279,8 +279,9 @@ func TestServiceRunBehaviors(testInstance *testing.T) {
 			},
 			discoverer: stubDiscoverer{repositories: []string{"/tmp/example", "/tmp/example/tools/licenser"}},
 			executorOutputs: map[string]execshell.ExecutionResult{
-				"check-ignore --stdin":            {StandardOutput: "tools/licenser\n"},
-				"rev-parse --is-inside-work-tree": {StandardOutput: "true"},
+				"check-ignore --stdin": {StandardOutput: "tools/licenser\n"},
+				"ls-files --cached --ignored --exclude-standard -- tools/licenser": {},
+				"rev-parse --is-inside-work-tree":                                  {StandardOutput: "true"},
 			},
 			gitManager: stubGitManager{
 				cleanWorktree: true,

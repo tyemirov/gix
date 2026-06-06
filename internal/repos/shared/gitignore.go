@@ -34,35 +34,63 @@ func CheckIgnoredPaths(ctx context.Context, executor GitExecutor, worktreeRoot s
 	if err != nil {
 		var failed execshell.CommandFailedError
 		if errors.As(err, &failed) && failed.Result.ExitCode == 1 {
+			result = execshell.ExecutionResult{}
+		} else if isNotGitRepositoryError(err) {
 			return ignored, nil
+		} else {
+			return nil, err
 		}
-		if isNotGitRepositoryError(err) {
-			return ignored, nil
-		}
-		return nil, err
 	}
 
-	for _, line := range strings.Split(result.StandardOutput, "\n") {
+	markIgnoredPathOutput(ignored, indexMap, result.StandardOutput, true)
+
+	cachedIgnoredArguments := []string{"ls-files", "--cached", "--ignored", "--exclude-standard", "--"}
+	cachedIgnoredArguments = append(cachedIgnoredArguments, normalized...)
+	cachedIgnoredCommand := execshell.CommandDetails{
+		Arguments:        cachedIgnoredArguments,
+		WorkingDirectory: worktreeRoot,
+	}
+	cachedIgnoredResult, cachedIgnoredErr := executor.ExecuteGit(ctx, cachedIgnoredCommand)
+	if cachedIgnoredErr != nil {
+		if isNotGitRepositoryError(cachedIgnoredErr) {
+			return ignored, nil
+		}
+		return nil, cachedIgnoredErr
+	}
+	markIgnoredPathOutput(ignored, indexMap, cachedIgnoredResult.StandardOutput, false)
+
+	return ignored, nil
+}
+
+func markIgnoredPathOutput(ignored map[string]struct{}, indexMap map[string]string, output string, includeAncestorMatches bool) {
+	for _, line := range strings.Split(output, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if len(trimmed) == 0 {
 			continue
 		}
-		if original, exists := indexMap[trimmed]; exists {
-			ignored[original] = struct{}{}
-			continue
-		}
-		normalizedKey := strings.ReplaceAll(trimmed, "\\", "/")
-		if original, exists := indexMap[normalizedKey]; exists {
-			ignored[original] = struct{}{}
-			continue
-		}
-		restoredKey := strings.ReplaceAll(trimmed, "/", string(filepath.Separator))
-		if original, exists := indexMap[restoredKey]; exists {
+		markIgnoredPath(ignored, indexMap, trimmed, includeAncestorMatches)
+	}
+}
+
+func markIgnoredPath(ignored map[string]struct{}, indexMap map[string]string, gitPath string, includeAncestorMatches bool) {
+	normalizedKey := normalizeIgnoredGitPath(gitPath)
+	for candidate, original := range indexMap {
+		if ignoredPathMatchesCandidate(normalizedKey, candidate, includeAncestorMatches) {
 			ignored[original] = struct{}{}
 		}
 	}
+}
 
-	return ignored, nil
+func ignoredPathMatchesCandidate(ignoredPath string, candidatePath string, includeAncestorMatches bool) bool {
+	normalizedCandidate := normalizeIgnoredGitPath(candidatePath)
+	if ignoredPath == normalizedCandidate {
+		return true
+	}
+	return includeAncestorMatches && strings.HasPrefix(normalizedCandidate, ignoredPath+"/")
+}
+
+func normalizeIgnoredGitPath(gitPath string) string {
+	return strings.Trim(strings.ReplaceAll(strings.TrimSpace(gitPath), "\\", "/"), "/")
 }
 
 // FilterIgnoredRepositories removes repositories ignored by ancestor worktrees according to gitignore rules.

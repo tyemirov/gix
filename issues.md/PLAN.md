@@ -1,6 +1,7 @@
-- Derive dirty `master` generated branch names as `gix/<semantic-change>` instead of repository or file paths.
-- Limit the semantic branch component to 56 characters, including any collision suffix.
-- Keep dirty `master` sync reusing a semantic generated branch only when that remote branch still has an open PR.
-- Select the next generated branch suffix only when the semantic branch name already exists remotely without an open PR.
-- Preserve existing partial-run recovery for local-only generated branches.
-- `make test`, `make lint`, and `make ci` passed locally.
+# B010 sync tracked ignored pathspecs
+
+- Reproduced the missed `gix sync` case where tracked `.pyc` files live under ignored `__pycache__` directories.
+- Extended shared ignore filtering with Git's cached ignored view so tracked ignored files are filtered before `git add --all --`.
+- Kept unignored tracked and untracked dirty paths eligible for auto-commit.
+- Added regression coverage for cached ignored paths and the strict PR dirty-sync staging path.
+- `make test-fast`, `make test-slow`, `make lint`, and `make ci` passed locally.
