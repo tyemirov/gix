@@ -23,6 +23,28 @@
 - Add sync-flow and black-box CLI coverage proving tracked ignored modified/deleted paths are restored while ordinary dirty files are still committed.
 - Add strict-sync failure-mode coverage for staged tracked ignored dirt, `--require-clean`, `--stash`, fetch-before-restore ordering, and restore failures.
 
+## [v0.6.6] - 2026-06-06
+
+### Features ✨
+- Restore tracked ignored dirty paths during successful `gix sync` runs to prevent generated artifacts from appearing in `git status`.
+
+### Improvements ⚙️
+- Tighten integration test coverage for strict `gix sync` including pull request creation, branch diff context, and failure-before-push ordering.
+- Add strict-sync coverage for committing, pushing, removing, pruning, refetching, and retrying dirty sibling worktrees.
+- Enhance sync-flow and CLI tests to verify handling of Python `egg-info` files mixed with ignored `__pycache__` entries.
+- Add failure-mode coverage for staged tracked ignored dirt, `--require-clean`, `--stash`, fetch-before-restore ordering, and restore failures.
+
+### Bug Fixes 🐛
+- Fix cleanup of tracked ignored files during `gix sync` to avoid leaving generated artifacts staged or modified.
+
+### Testing 🧪
+- Add extensive tests for strict-sync branch sync actions filtering ignored dirty paths before staging.
+- Add tests verifying restoration of tracked ignored-only status before switching branches and stashing dirty work.
+- Add regression tests covering failure modes and edge cases in sync restore operations.
+
+### Docs 📚
+- Update issue and plan documentation related to sync flow and failure modes.
+
 ## [v0.6.5] - 2026-06-06
 
 ### Features ✨
