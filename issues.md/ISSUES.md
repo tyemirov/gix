@@ -23,6 +23,7 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   ## Resolution
   - Dirty sync now checks each selected staging pathspec with Git ignore rules before invoking `git add --all --`.
   - Ignored pathspecs are removed from their commit cluster while unignored generated metadata files remain stageable.
+  - Ignored-only status entries are filtered before dirty branch selection, so `gix sync master` stays on the clean base-branch sync path when there is nothing stageable.
   - Added strict-sync action coverage and CLI-level sync coverage for Python `egg-info` files mixed with ignored `__pycache__` entries.
   - `make test`, `make lint`, and `make ci` passed locally.
 

@@ -142,6 +142,36 @@ func filterIgnoredSyncCommitClusters(ctx context.Context, executor shared.GitExe
 	return filteredClusters, nil
 }
 
+func filterIgnoredSyncStatusEntries(ctx context.Context, executor shared.GitExecutor, repositoryPath string, statusEntries []string) ([]string, error) {
+	statusPaths := syncStatusEntriesPaths(statusEntries)
+	if len(statusPaths) == 0 {
+		return nil, nil
+	}
+	ignoredPaths, ignoredErr := shared.CheckIgnoredPaths(ctx, executor, repositoryPath, statusPaths)
+	if ignoredErr != nil {
+		return nil, fmt.Errorf(strictSyncDirtyIgnoreFailureTemplate, ignoredErr)
+	}
+	if len(ignoredPaths) == 0 {
+		return statusEntries, nil
+	}
+
+	filteredEntries := make([]string, 0, len(statusEntries))
+	for entryIndex := range statusEntries {
+		entryPaths := syncStatusEntryPaths(statusEntries[entryIndex])
+		for pathIndex := range entryPaths {
+			normalizedPath := normalizeSyncStatusPath(entryPaths[pathIndex])
+			if normalizedPath == "" {
+				continue
+			}
+			if _, ignored := ignoredPaths[normalizedPath]; !ignored {
+				filteredEntries = append(filteredEntries, statusEntries[entryIndex])
+				break
+			}
+		}
+	}
+	return filteredEntries, nil
+}
+
 func syncCommitClusterPaths(clusters []syncCommitCluster) []string {
 	paths := make([]string, 0)
 	seenPaths := make(map[string]struct{})
@@ -149,6 +179,26 @@ func syncCommitClusterPaths(clusters []syncCommitCluster) []string {
 		cluster := clusters[clusterIndex]
 		for pathIndex := range cluster.Paths {
 			path := cluster.Paths[pathIndex]
+			if _, seen := seenPaths[path]; seen {
+				continue
+			}
+			seenPaths[path] = struct{}{}
+			paths = append(paths, path)
+		}
+	}
+	return paths
+}
+
+func syncStatusEntriesPaths(statusEntries []string) []string {
+	paths := make([]string, 0)
+	seenPaths := make(map[string]struct{})
+	for entryIndex := range statusEntries {
+		entryPaths := syncStatusEntryPaths(statusEntries[entryIndex])
+		for pathIndex := range entryPaths {
+			path := normalizeSyncStatusPath(entryPaths[pathIndex])
+			if path == "" {
+				continue
+			}
 			if _, seen := seenPaths[path]; seen {
 				continue
 			}

@@ -521,6 +521,61 @@ func TestHandleBranchSyncActionStrictPRBranchFiltersIgnoredDirtyPathsBeforeStagi
 	require.Len(t, chatClient.requests, 1)
 }
 
+func TestHandleBranchSyncActionStrictPRBranchTreatsIgnoredOnlyStatusAsClean(t *testing.T) {
+	gitExecutor := &strictSyncGitExecutor{
+		statusOutput: strings.Join([]string{
+			"!! python/llm_proxy_client/__pycache__/client.cpython-313.pyc",
+			"!! python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc",
+		}, "\n") + "\n",
+		ignoredPaths: map[string]bool{
+			"python/llm_proxy_client/__pycache__/client.cpython-313.pyc":        true,
+			"python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc": true,
+		},
+	}
+	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(t, managerError)
+	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":8,"title":"Generated","headRefName":"gix/sync-dirty-work"}]`}
+	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
+	require.NoError(t, githubClientError)
+	chatClient := &strictSyncChatClient{}
+	environment := &workflow.Environment{
+		GitExecutor:       gitExecutor,
+		RepositoryManager: gitManager,
+		GitHubClient:      githubClient,
+		Logger:            zap.NewNop(),
+		Output:            io.Discard,
+		Errors:            io.Discard,
+		Reporter:          &recordingReporter{},
+	}
+	repository := &workflow.RepositoryState{
+		Path: "/tmp/project",
+		Inspection: audit.RepositoryInspection{
+			LocalBranch:    "master",
+			FinalOwnerRepo: "owner/project",
+		},
+	}
+	parameters := map[string]any{
+		taskOptionBranchName:         "master",
+		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
+		taskOptionRequirePullRequest: true,
+		taskOptionBaseBranch:         "master",
+		taskOptionRequireClean:       false,
+		taskOptionWorktreeCommitMessage: worktreeAdoptionCommitMessageOptions{
+			Client: chatClient,
+		},
+	}
+
+	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
+	recordedCommands := recordedGitCommands(gitExecutor.commands)
+	require.Contains(t, recordedCommands, "check-ignore --stdin")
+	require.Contains(t, recordedCommands, "switch master")
+	require.Contains(t, recordedCommands, "reset --hard origin/master")
+	require.NotContains(t, recordedCommands, "switch -c gix/sync-dirty-work")
+	require.NotContains(t, recordedCommands, "add --all")
+	require.NotContains(t, recordedCommands, "commit -m")
+	require.Len(t, chatClient.requests, 0)
+}
+
 func TestHandleBranchSyncActionStrictPRBranchAdoptsDirtySiblingWorktree(t *testing.T) {
 	gitExecutor := &strictSyncGitExecutor{
 		blockedBranch:   "feature/foo",

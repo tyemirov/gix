@@ -11,12 +11,14 @@
 ### Bug Fixes 🐛
 - Restore strict `gix sync` adoption of dirty sibling worktrees when the requested branch is already checked out in another folder.
 - Filter dirty `gix sync` pathspec clusters through Git ignore rules so ignored generated files do not cause `git add` failures.
+- Treat ignored-only dirty status as clean before selecting a generated `gix sync` work branch.
 
 ### Testing 🧪
 - Update strict-sync pull request creation coverage for requested branches and generated dirty-`master` branches, including the branch diff context sent to the PR body generator and failure-before-push ordering.
 - Add sync command and strict action coverage for explicit PR title/body controls.
 - Add strict-sync regression coverage for committing, pushing, removing, pruning, refetching, and retrying a dirty sibling worktree before switching to the requested branch.
 - Add strict action and CLI-level sync coverage for Python `egg-info` files mixed with ignored `__pycache__` entries.
+- Add strict-sync coverage proving ignored-only status stays on the clean `master` sync path.
 
 ## [v0.6.3] - 2026-06-03
 
