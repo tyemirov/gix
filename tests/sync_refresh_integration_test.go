@@ -214,3 +214,153 @@ operations:
 	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
 	require.Equal(testInstance, "docs: sync dirty work", strings.TrimSpace(runGit(testInstance, repositoryPath, "log", "-1", "--pretty=%s")))
 }
+
+func TestSyncFiltersTrackedIgnoredDirtyPathsBeforeStaging(testInstance *testing.T) {
+	testInstance.Helper()
+
+	expectedGeneratedBranchName := "gix/sync-tracked-dirty-work"
+	repositoryRoot := integrationRepositoryRoot(testInstance)
+	realGitPath, lookupError := exec.LookPath("git")
+	require.NoError(testInstance, lookupError)
+
+	gitInvocationLog := filepath.Join(testInstance.TempDir(), syncRefreshIntegrationGitInvocationLog)
+	gitStubScript := []byte(strings.Join([]string{
+		"#!/bin/sh",
+		"echo \"$@\" >> " + gitInvocationLog,
+		"exec " + realGitPath + " \"$@\"",
+	}, "\n") + "\n")
+	pathVariable := buildStubbedExecutablePath(testInstance, "git", string(gitStubScript))
+
+	remotePath := filepath.Join(testInstance.TempDir(), "remote.git")
+	remoteInitCommand := exec.Command("git", "init", "--bare", remotePath)
+	remoteInitCommand.Env = buildGitCommandEnvironment(nil)
+	require.NoError(testInstance, remoteInitCommand.Run())
+
+	repositoryPath := filepath.Join(testInstance.TempDir(), "worktree")
+	initCommand := exec.Command("git", "init", "--initial-branch=master", repositoryPath)
+	initCommand.Env = buildGitCommandEnvironment(nil)
+	require.NoError(testInstance, initCommand.Run())
+
+	configNameCommand := exec.Command("git", "-C", repositoryPath, "config", "user.name", "Sync Refresh")
+	configNameCommand.Env = buildGitCommandEnvironment(nil)
+	require.NoError(testInstance, configNameCommand.Run())
+
+	configEmailCommand := exec.Command("git", "-C", repositoryPath, "config", "user.email", "sync-refresh@example.com")
+	configEmailCommand.Env = buildGitCommandEnvironment(nil)
+	require.NoError(testInstance, configEmailCommand.Run())
+
+	remoteAddCommand := exec.Command("git", "-C", repositoryPath, "remote", "add", "origin", remotePath)
+	remoteAddCommand.Env = buildGitCommandEnvironment(nil)
+	require.NoError(testInstance, remoteAddCommand.Run())
+
+	gitignorePath := filepath.Join(repositoryPath, ".gitignore")
+	require.NoError(testInstance, os.WriteFile(gitignorePath, []byte("__pycache__/\n"), 0o644))
+	scriptPath := filepath.Join(repositoryPath, "scripts", "release.sh")
+	require.NoError(testInstance, os.MkdirAll(filepath.Dir(scriptPath), 0o755))
+	require.NoError(testInstance, os.WriteFile(scriptPath, []byte("#!/bin/sh\necho initial\n"), 0o755))
+	clientCacheFile := filepath.Join(repositoryPath, "python", "llm_proxy_client", "__pycache__", "client.cpython-313.pyc")
+	testCacheFile := filepath.Join(repositoryPath, "python", "tests", "__pycache__", "test_client.cpython-313-pytest-9.0.3.pyc")
+	require.NoError(testInstance, os.MkdirAll(filepath.Dir(clientCacheFile), 0o755))
+	require.NoError(testInstance, os.MkdirAll(filepath.Dir(testCacheFile), 0o755))
+	require.NoError(testInstance, os.WriteFile(clientCacheFile, []byte("client cache before\n"), 0o644))
+	require.NoError(testInstance, os.WriteFile(testCacheFile, []byte("test cache before\n"), 0o644))
+
+	addCommand := exec.Command("git", "-C", repositoryPath, "add", ".gitignore", "scripts/release.sh")
+	addCommand.Env = buildGitCommandEnvironment(nil)
+	require.NoError(testInstance, addCommand.Run())
+	forceAddCommand := exec.Command("git", "-C", repositoryPath, "add", "-f", "python/llm_proxy_client/__pycache__/client.cpython-313.pyc", "python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc")
+	forceAddCommand.Env = buildGitCommandEnvironment(nil)
+	require.NoError(testInstance, forceAddCommand.Run())
+
+	commitCommand := exec.Command("git", "-C", repositoryPath, "commit", "-m", "initial commit")
+	commitCommand.Env = buildGitCommandEnvironment(nil)
+	require.NoError(testInstance, commitCommand.Run())
+
+	pushCommand := exec.Command("git", "-C", repositoryPath, "push", "-u", "origin", "master")
+	pushCommand.Env = buildGitCommandEnvironment(nil)
+	require.NoError(testInstance, pushCommand.Run())
+
+	require.NoError(testInstance, os.WriteFile(scriptPath, []byte("#!/bin/sh\necho updated\n"), 0o755))
+	require.NoError(testInstance, os.WriteFile(clientCacheFile, []byte("client cache after\n"), 0o644))
+	require.NoError(testInstance, os.Remove(testCacheFile))
+
+	llmServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/chat/completions" {
+			http.NotFound(responseWriter, request)
+			return
+		}
+		responseWriter.Header().Set("Content-Type", "application/json")
+		_, _ = responseWriter.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"docs: sync tracked dirty work"}}]}`))
+	}))
+	testInstance.Cleanup(llmServer.Close)
+
+	configurationPath := filepath.Join(testInstance.TempDir(), "config.yaml")
+	configurationContent := fmt.Sprintf(`common:
+  log_level: error
+  log_format: console
+  require_clean: false
+operations:
+  - command: ["sync"]
+    with:
+      remote: origin
+  - command: ["message", "commit"]
+    with:
+      api_key_env: %s
+      base_url: %q
+      model: mock-model
+      diff_source: staged
+      max_completion_tokens: 64
+      temperature: 0
+      timeout_seconds: 5
+`, syncRefreshIntegrationAPIKeyVariable, llmServer.URL)
+	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
+
+	commandArguments := []string{
+		syncRefreshIntegrationRunCommand,
+		syncRefreshIntegrationModulePath,
+		"--config",
+		configurationPath,
+		syncRefreshIntegrationLogLevelFlag,
+		syncRefreshIntegrationErrorLogLevel,
+		"sync",
+		"master",
+		"--roots",
+		repositoryPath,
+	}
+	output, runError := runFailingIntegrationCommand(
+		testInstance,
+		repositoryRoot,
+		integrationCommandOptions{
+			PathVariable: pathVariable,
+			EnvironmentOverrides: map[string]string{
+				syncRefreshIntegrationAPIKeyVariable: "test-key",
+			},
+		},
+		syncRefreshIntegrationTimeout,
+		commandArguments,
+	)
+	require.Error(testInstance, runError)
+	require.Contains(testInstance, output, "strict sync requires a GitHub repository remote")
+	require.NotContains(testInstance, output, "failed to stage dirty sync cluster")
+	require.NotContains(testInstance, output, "The following paths are ignored")
+
+	invocationLogContents, readError := os.ReadFile(gitInvocationLog)
+	require.NoError(testInstance, readError)
+	invocationLog := string(invocationLogContents)
+	require.Contains(testInstance, invocationLog, "check-ignore --stdin")
+	require.Contains(testInstance, invocationLog, "ls-files --cached --ignored --exclude-standard -- python/llm_proxy_client/__pycache__/client.cpython-313.pyc python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc scripts/release.sh")
+	require.Contains(testInstance, invocationLog, "switch -c "+expectedGeneratedBranchName+" origin/master")
+	require.Contains(testInstance, invocationLog, "add --all -- scripts/release.sh")
+	require.NotContains(testInstance, invocationLog, "add --all -- python/llm_proxy_client/__pycache__")
+	require.NotContains(testInstance, invocationLog, "add --all -- python/tests/__pycache__")
+	require.Contains(testInstance, invocationLog, "commit -m docs: sync tracked dirty work")
+
+	require.Equal(testInstance, expectedGeneratedBranchName, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
+	require.Equal(testInstance, "docs: sync tracked dirty work", strings.TrimSpace(runGit(testInstance, repositoryPath, "log", "-1", "--pretty=%s")))
+	require.Equal(testInstance, "M\tscripts/release.sh", strings.TrimSpace(runGit(testInstance, repositoryPath, "show", "--name-status", "--pretty=format:", "HEAD")))
+
+	statusOutput := runGit(testInstance, repositoryPath, "status", "--porcelain")
+	require.Contains(testInstance, statusOutput, " M python/llm_proxy_client/__pycache__/client.cpython-313.pyc")
+	require.Contains(testInstance, statusOutput, " D python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc")
+	require.NotContains(testInstance, statusOutput, "scripts/release.sh")
+}
