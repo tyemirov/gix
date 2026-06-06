@@ -476,6 +476,17 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 	trackedStatus, untrackedStatus := worktree.SplitStatusEntries(statusEntries, nil)
 	dirty := len(trackedStatus) > 0 || len(untrackedStatus) > 0
 
+	if dirty && options.RequireClean && !options.CommitChanges && !options.StashChanges {
+		return errors.New(strictSyncDirtyWorktreeTemplate)
+	}
+
+	if fetchErr := executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitFetchSubcommandConstant, gitFetchPruneFlagConstant, remoteName}); fetchErr != nil {
+		return fmt.Errorf(gitFetchFailureTemplateConstant, fetchErr)
+	}
+	if restoreErr := restoreIgnoredSyncStatusEntries(ctx, environment.GitExecutor, repository.Path, filteredStatus.IgnoredTrackedEntries); restoreErr != nil {
+		return restoreErr
+	}
+
 	stashPushed := false
 	if dirty && options.StashChanges {
 		if stashErr := stashAllChanges(ctx, environment.GitExecutor, repository.Path); stashErr != nil {
@@ -493,13 +504,6 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 	checkpointCommitted := false
 	if dirty && options.RequireClean && !options.CommitChanges {
 		return errors.New(strictSyncDirtyWorktreeTemplate)
-	}
-
-	if fetchErr := executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitFetchSubcommandConstant, gitFetchPruneFlagConstant, remoteName}); fetchErr != nil {
-		return fmt.Errorf(gitFetchFailureTemplateConstant, fetchErr)
-	}
-	if restoreErr := restoreIgnoredSyncStatusEntries(ctx, environment.GitExecutor, repository.Path, filteredStatus.IgnoredTrackedEntries); restoreErr != nil {
-		return restoreErr
 	}
 
 	if dirty {

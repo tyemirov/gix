@@ -21,6 +21,7 @@
 - Add strict action and CLI-level sync coverage for Python `egg-info` files mixed with ignored `__pycache__` entries.
 - Add strict-sync coverage proving ignored-only status stays on the clean `master` sync path.
 - Add sync-flow and black-box CLI coverage proving tracked ignored modified/deleted paths are restored while ordinary dirty files are still committed.
+- Add strict-sync failure-mode coverage for staged tracked ignored dirt, `--require-clean`, `--stash`, fetch-before-restore ordering, and restore failures.
 
 ## [v0.6.5] - 2026-06-06
 
