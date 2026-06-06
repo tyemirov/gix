@@ -25,8 +25,8 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   ## Resolution
   - `CheckIgnoredPaths` now combines `git check-ignore --stdin` with `git ls-files --cached --ignored --exclude-standard --` so tracked files that now match ignore rules are reported.
   - Dirty sync keeps filtering ignored status entries and staging clusters through the shared helper, so cached ignored `.pyc` pathspecs are removed before `git add --all --`.
-  - Added stubbed and real-Git regression coverage for modified and deleted tracked ignored `.pyc` files under `__pycache__`.
-  - Added strict-sync coverage proving cached ignored paths are inspected but not staged while unignored files are still committed.
+  - Refactored ignore-path and strict-sync regressions into table-driven coverage for exact ignored paths, ignored parent directory output, Windows-style Git output, cached ignored exact matches, cached ignored child output under directory pathspecs, modified/deleted tracked ignored files, untracked ignored files, and mixed ignored sources.
+  - Added strict-sync coverage proving cached ignored modifications and deletions are inspected but not staged while unignored files are still committed.
   - `make test-fast`, `make test-slow`, `make lint`, and `make ci` passed locally.
 
 - [x] [B009] (P1) `gix sync` tries to stage ignored generated paths during dirty auto-commit.
