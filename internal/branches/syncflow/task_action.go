@@ -48,6 +48,7 @@ const (
 	gitMergeFastForwardOnlyFlagConstant          = "--ff-only"
 	gitResetSubcommandConstant                   = "reset"
 	gitResetHardFlagConstant                     = "--hard"
+	gitRestoreSubcommandConstant                 = "restore"
 	gitPushSubcommandConstant                    = "push"
 	gitPushSetUpstreamFlagConstant               = "-u"
 	gitRevListSubcommandConstant                 = "rev-list"
@@ -467,13 +468,24 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 	if statusErr != nil {
 		return statusErr
 	}
-	stageableStatusEntries, stageableStatusErr := filterIgnoredSyncStatusEntries(ctx, environment.GitExecutor, repository.Path, statusEntries)
-	if stageableStatusErr != nil {
-		return stageableStatusErr
+	filteredStatus, filteredStatusErr := filterIgnoredSyncStatusEntries(ctx, environment.GitExecutor, repository.Path, statusEntries)
+	if filteredStatusErr != nil {
+		return filteredStatusErr
 	}
-	statusEntries = stageableStatusEntries
+	statusEntries = filteredStatus.StageableEntries
 	trackedStatus, untrackedStatus := worktree.SplitStatusEntries(statusEntries, nil)
 	dirty := len(trackedStatus) > 0 || len(untrackedStatus) > 0
+
+	if dirty && options.RequireClean && !options.CommitChanges && !options.StashChanges {
+		return errors.New(strictSyncDirtyWorktreeTemplate)
+	}
+
+	if fetchErr := executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitFetchSubcommandConstant, gitFetchPruneFlagConstant, remoteName}); fetchErr != nil {
+		return fmt.Errorf(gitFetchFailureTemplateConstant, fetchErr)
+	}
+	if restoreErr := restoreIgnoredSyncStatusEntries(ctx, environment.GitExecutor, repository.Path, filteredStatus.IgnoredTrackedEntries); restoreErr != nil {
+		return restoreErr
+	}
 
 	stashPushed := false
 	if dirty && options.StashChanges {
@@ -492,10 +504,6 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 	checkpointCommitted := false
 	if dirty && options.RequireClean && !options.CommitChanges {
 		return errors.New(strictSyncDirtyWorktreeTemplate)
-	}
-
-	if fetchErr := executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitFetchSubcommandConstant, gitFetchPruneFlagConstant, remoteName}); fetchErr != nil {
-		return fmt.Errorf(gitFetchFailureTemplateConstant, fetchErr)
 	}
 
 	if dirty {
