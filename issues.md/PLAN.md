@@ -2,4 +2,5 @@
 - Changed strict sync coverage so tracked ignored dirty paths are restored, not staged or committed.
 - Implemented a sync status filter result that keeps stageable entries and tracked ignored entries separate.
 - Restored tracked ignored entries with `git restore --staged --worktree -- <paths>` after fetch succeeds and before dirty sync continues.
+- Tightened the black-box integration scenario to match the reported `llm-proxy` shape: tracked `egg-info` deletions plus tracked ignored `__pycache__` modifications/deletions.
 - Ran targeted sync tests plus `make test-fast`, non-cached `make test-slow`, `make test`, `make lint`, and `make ci`.

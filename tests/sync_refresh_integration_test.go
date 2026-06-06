@@ -255,9 +255,12 @@ func TestSyncFiltersTrackedIgnoredDirtyPathsBeforeStaging(testInstance *testing.
 
 	gitignorePath := filepath.Join(repositoryPath, ".gitignore")
 	require.NoError(testInstance, os.WriteFile(gitignorePath, []byte("__pycache__/\n"), 0o644))
-	scriptPath := filepath.Join(repositoryPath, "scripts", "release.sh")
-	require.NoError(testInstance, os.MkdirAll(filepath.Dir(scriptPath), 0o755))
-	require.NoError(testInstance, os.WriteFile(scriptPath, []byte("#!/bin/sh\necho initial\n"), 0o755))
+	eggInfoPath := filepath.Join(repositoryPath, "python", "llm_proxy_client.egg-info")
+	eggInfoPackageFile := filepath.Join(eggInfoPath, "PKG-INFO")
+	eggInfoSourcesFile := filepath.Join(eggInfoPath, "SOURCES.txt")
+	require.NoError(testInstance, os.MkdirAll(eggInfoPath, 0o755))
+	require.NoError(testInstance, os.WriteFile(eggInfoPackageFile, []byte("metadata before\n"), 0o644))
+	require.NoError(testInstance, os.WriteFile(eggInfoSourcesFile, []byte("sources before\n"), 0o644))
 	clientCacheFile := filepath.Join(repositoryPath, "python", "llm_proxy_client", "__pycache__", "client.cpython-313.pyc")
 	testCacheFile := filepath.Join(repositoryPath, "python", "tests", "__pycache__", "test_client.cpython-313-pytest-9.0.3.pyc")
 	require.NoError(testInstance, os.MkdirAll(filepath.Dir(clientCacheFile), 0o755))
@@ -265,7 +268,7 @@ func TestSyncFiltersTrackedIgnoredDirtyPathsBeforeStaging(testInstance *testing.
 	require.NoError(testInstance, os.WriteFile(clientCacheFile, []byte("client cache before\n"), 0o644))
 	require.NoError(testInstance, os.WriteFile(testCacheFile, []byte("test cache before\n"), 0o644))
 
-	addCommand := exec.Command("git", "-C", repositoryPath, "add", ".gitignore", "scripts/release.sh")
+	addCommand := exec.Command("git", "-C", repositoryPath, "add", ".gitignore", "python/llm_proxy_client.egg-info/PKG-INFO", "python/llm_proxy_client.egg-info/SOURCES.txt")
 	addCommand.Env = buildGitCommandEnvironment(nil)
 	require.NoError(testInstance, addCommand.Run())
 	forceAddCommand := exec.Command("git", "-C", repositoryPath, "add", "-f", "python/llm_proxy_client/__pycache__/client.cpython-313.pyc", "python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc")
@@ -280,7 +283,8 @@ func TestSyncFiltersTrackedIgnoredDirtyPathsBeforeStaging(testInstance *testing.
 	pushCommand.Env = buildGitCommandEnvironment(nil)
 	require.NoError(testInstance, pushCommand.Run())
 
-	require.NoError(testInstance, os.WriteFile(scriptPath, []byte("#!/bin/sh\necho updated\n"), 0o755))
+	require.NoError(testInstance, os.Remove(eggInfoPackageFile))
+	require.NoError(testInstance, os.Remove(eggInfoSourcesFile))
 	require.NoError(testInstance, os.WriteFile(clientCacheFile, []byte("client cache after\n"), 0o644))
 	require.NoError(testInstance, os.Remove(testCacheFile))
 
@@ -348,17 +352,21 @@ operations:
 	require.NoError(testInstance, readError)
 	invocationLog := string(invocationLogContents)
 	require.Contains(testInstance, invocationLog, "check-ignore --stdin")
-	require.Contains(testInstance, invocationLog, "ls-files --cached --ignored --exclude-standard -- python/llm_proxy_client/__pycache__/client.cpython-313.pyc python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc scripts/release.sh")
+	require.Contains(testInstance, invocationLog, "ls-files --cached --ignored --exclude-standard -- python/llm_proxy_client.egg-info/PKG-INFO python/llm_proxy_client.egg-info/SOURCES.txt python/llm_proxy_client/__pycache__/client.cpython-313.pyc python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc")
 	require.Contains(testInstance, invocationLog, "restore --staged --worktree -- python/llm_proxy_client/__pycache__/client.cpython-313.pyc python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc")
 	require.Contains(testInstance, invocationLog, "switch -c "+expectedGeneratedBranchName+" origin/master")
-	require.Contains(testInstance, invocationLog, "add --all -- scripts/release.sh")
+	require.Contains(testInstance, invocationLog, "add --all -- python/llm_proxy_client.egg-info/PKG-INFO python/llm_proxy_client.egg-info/SOURCES.txt")
 	require.NotContains(testInstance, invocationLog, "add --all -- python/llm_proxy_client/__pycache__")
 	require.NotContains(testInstance, invocationLog, "add --all -- python/tests/__pycache__")
 	require.Contains(testInstance, invocationLog, "commit -m docs: sync tracked dirty work")
 
 	require.Equal(testInstance, expectedGeneratedBranchName, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
 	require.Equal(testInstance, "docs: sync tracked dirty work", strings.TrimSpace(runGit(testInstance, repositoryPath, "log", "-1", "--pretty=%s")))
-	require.Equal(testInstance, "M\tscripts/release.sh", strings.TrimSpace(runGit(testInstance, repositoryPath, "show", "--name-status", "--pretty=format:", "HEAD")))
+	nameStatusOutput := strings.TrimSpace(runGit(testInstance, repositoryPath, "show", "--name-status", "--pretty=format:", "HEAD"))
+	require.ElementsMatch(testInstance, []string{
+		"D\tpython/llm_proxy_client.egg-info/PKG-INFO",
+		"D\tpython/llm_proxy_client.egg-info/SOURCES.txt",
+	}, strings.Split(nameStatusOutput, "\n"))
 
 	statusOutput := runGit(testInstance, repositoryPath, "status", "--porcelain")
 	require.Empty(testInstance, strings.TrimSpace(statusOutput))

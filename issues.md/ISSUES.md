@@ -26,7 +26,7 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - After the remote fetch succeeds, `gix sync` restores tracked ignored dirty paths with `git restore --staged --worktree -- <paths>` before saving ordinary dirty work.
   - Ignored untracked paths remain unstaged, tracked ignored generated artifacts are restored to `HEAD`, and ordinary dirty files still flow through the existing generated-commit path.
   - Updated strict-sync table coverage to assert restore commands for cached ignored modifications/deletions and ignored-only tracked dirt.
-  - Updated the black-box sync integration test to prove modified/deleted tracked `.pyc` files are restored, ignored pathspecs never reach `git add --all --`, the ordinary script change is committed, and final `git status --porcelain` is clean.
+  - Updated the black-box sync integration test to prove modified/deleted tracked `.pyc` files are restored, ignored pathspecs never reach `git add --all --`, tracked `egg-info` deletions are committed, and final `git status --porcelain` is clean.
   - `make test-fast`, non-cached `make test-slow`, `make test`, `make lint`, and `make ci` passed locally.
 
 - [x] [B010] (P1) `gix sync` still stages tracked files under ignored parent directories.
