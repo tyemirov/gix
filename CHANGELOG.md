@@ -20,6 +20,26 @@
 - Add strict action and CLI-level sync coverage for Python `egg-info` files mixed with ignored `__pycache__` entries.
 - Add strict-sync coverage proving ignored-only status stays on the clean `master` sync path.
 
+## [v0.6.5] - 2026-06-06
+
+### Features ✨
+- Add tracked ignored sync integration coverage for better test reliability.
+
+### Improvements ⚙️
+- Refactor ignored sync tests to improve table coverage and test clarity.
+- Enhance ignored path filtering in tracked ignored sync to handle cached ignored paths correctly.
+- Improve gitignore path normalization and matching logic to better handle ancestor matches and path separators.
+
+### Bug Fixes 🐛
+- Fix tracked ignored sync path filtering to exclude ignored paths from staging and commits properly.
+
+### Testing 🧪
+- Add comprehensive test cases covering various ignored and cached ignored path scenarios in branch sync actions.
+- Extend gitignore tests with stub executor to verify ignored path detection and command execution behavior.
+
+### Docs 📚
+- Update issues and plan documentation with minor clarifications.
+
 ## [v0.6.4] - 2026-06-06
 
 ### Features ✨
