@@ -96,34 +96,54 @@ func TestCommandExecutesAcrossRoots(t *testing.T) {
 }
 
 func TestCommandSuppressesWorkflowFailureEcho(t *testing.T) {
-	temporaryRoot := t.TempDir()
-	missingPullRequestError := errors.New(`branch "feature/foo" does not have an open pull request into master`)
-	runner := &recordingTaskRunner{
-		errorOutput: missingPullRequestError.Error(),
-		err:         missingPullRequestError,
-	}
-	builder := CommandBuilder{
-		LoggerProvider: func() *zap.Logger { return zap.NewNop() },
-		ConfigurationProvider: func() CommandConfiguration {
-			return CommandConfiguration{RepositoryRoots: []string{temporaryRoot}, RemoteName: "origin"}
+	testCases := []struct {
+		name       string
+		runError   error
+		branchName string
+	}{
+		{
+			name:       "missing_pull_request",
+			runError:   errors.New(`branch "feature/foo" does not have an open pull request into master`),
+			branchName: "feature/foo",
 		},
-		GitExecutor: &stubGitExecutor{},
-		TaskRunnerFactory: func(deps workflow.Dependencies) TaskRunnerExecutor {
-			runner.dependencies = deps
-			return runner
+		{
+			name:       "local_branch_ahead_of_remote",
+			runError:   errors.New(`local branch "bugfix/B025-auth-console-coop-header" has commits not on origin/bugfix/B025-auth-console-coop-header`),
+			branchName: "bugfix/B025-auth-console-coop-header",
 		},
 	}
-	command, err := builder.Build()
-	require.NoError(t, err)
-	errorOutput := &strings.Builder{}
-	command.SetErr(errorOutput)
-	flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Enabled: true})
 
-	contextAccessor := utils.NewCommandContextAccessor()
-	command.SetContext(contextAccessor.WithExecutionFlags(context.Background(), utils.ExecutionFlags{}))
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			temporaryRoot := t.TempDir()
+			runner := &recordingTaskRunner{
+				errorOutput: testCase.runError.Error(),
+				err:         testCase.runError,
+			}
+			builder := CommandBuilder{
+				LoggerProvider: func() *zap.Logger { return zap.NewNop() },
+				ConfigurationProvider: func() CommandConfiguration {
+					return CommandConfiguration{RepositoryRoots: []string{temporaryRoot}, RemoteName: "origin"}
+				},
+				GitExecutor: &stubGitExecutor{},
+				TaskRunnerFactory: func(deps workflow.Dependencies) TaskRunnerExecutor {
+					runner.dependencies = deps
+					return runner
+				},
+			}
+			command, err := builder.Build()
+			require.NoError(t, err)
+			errorOutput := &strings.Builder{}
+			command.SetErr(errorOutput)
+			flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Enabled: true})
 
-	require.ErrorIs(t, command.RunE(command, []string{"feature/foo"}), missingPullRequestError)
-	require.Equal(t, "", errorOutput.String())
+			contextAccessor := utils.NewCommandContextAccessor()
+			command.SetContext(contextAccessor.WithExecutionFlags(context.Background(), utils.ExecutionFlags{}))
+
+			require.ErrorIs(t, command.RunE(command, []string{testCase.branchName}), testCase.runError)
+			require.Equal(t, "", errorOutput.String())
+		})
+	}
 }
 
 func TestCommandKeepsWorkflowStandardOutput(t *testing.T) {
