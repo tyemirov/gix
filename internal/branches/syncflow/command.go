@@ -56,6 +56,7 @@ type CommandBuilder struct {
 	GitManager                   shared.GitRepositoryManager
 	GitHubResolver               shared.GitHubMetadataResolver
 	FileSystem                   shared.FileSystem
+	PrompterFactory              func(*cobra.Command) shared.ConfirmationPrompter
 	TaskRunnerFactory            func(workflow.Dependencies) TaskRunnerExecutor
 }
 
@@ -133,17 +134,18 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 			GitRepositoryManager:         builder.GitManager,
 			GitHubResolver:               builder.GitHubResolver,
 			FileSystem:                   builder.FileSystem,
+			PrompterFactory:              builder.PrompterFactory,
 		},
 		taskrunner.DependenciesOptions{
-			Command:         command,
-			Output:          command.OutOrStdout(),
-			Errors:          command.ErrOrStderr(),
-			DisablePrompter: true,
+			Command: command,
+			Output:  command.OutOrStdout(),
+			Errors:  command.ErrOrStderr(),
 		},
 	)
 	if dependencyError != nil {
 		return dependencyError
 	}
+	dependencyResult.Workflow.SuppressOperationFailureOutput = true
 
 	if remoteURL, remoteTarget := resolveRemoteTarget(command, dependencyResult.GitExecutor, explicitBranch); remoteTarget {
 		if len(remainingArgs) > 0 {
@@ -206,8 +208,12 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 		},
 	}
 
+	assumeYes := false
+	if executionFlagsAvailable {
+		assumeYes = executionFlags.AssumeYes
+	}
 	runtimeOptions := workflow.RuntimeOptions{
-		AssumeYes: false,
+		AssumeYes: assumeYes,
 	}
 
 	_, runErr := taskRunner.Run(

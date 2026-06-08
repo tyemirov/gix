@@ -11,6 +11,25 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
 
 ## BugFixes
 
+- [x] [B012] (P1) `gix sync` should offer to sync `master` when a branch pull request is already merged.
+  Requested on 2026-06-07 after `gix sync` in `/Users/tyemirov/Development/MediaOps` on branch `gix/add-provider-gated-speech-speed-capability-and` printed `branch "gix/add-provider-gated-speech-speed-capability-and" does not have an open pull request into master` twice instead of recognizing that a closed-and-merged pull request should hand off to the base branch.
+  ## Observation
+  - Direct `gix sync` runs the sync action through the workflow task runner.
+  - Strict PR sync checks only for open pull requests before returning the missing-PR error, so a branch whose PR has already merged is treated like a branch that never had a PR.
+  - The workflow runner also writes the operation failure to stderr, then returns the same failure to `main`, which prints it again.
+  ## Deliverable
+  - When a branch has no open PR but has a merged PR into the configured base branch, prompt the user to sync the base branch instead.
+  - Make `--yes` accept that base-branch sync handoff without prompting.
+  - Keep true missing-PR failures visible exactly once.
+  - Preserve direct `gix sync` success output such as `SYNCED: ...`.
+  - Preserve workflow logging for explicit `gix workflow` runs.
+  ## Resolution
+  - Strict PR sync now checks for a merged pull request after the open-PR lookup fails.
+  - When a merged PR exists, direct `gix sync` prompts to sync the configured base branch instead; `--yes` accepts that handoff without prompting.
+  - Declining the prompt preserves the true missing-open-PR failure path.
+  - Direct `gix sync` suppresses only the duplicate workflow stderr echo, while workflow failures still return to the command and workflow stdout remains intact.
+  - Focused syncflow/workflow tests, `make test-fast`, `make test-slow`, `make test`, `make lint`, and `make ci` passed locally.
+
 - [x] [B011] (P1) `gix sync` leaves tracked ignored dirty paths after a successful sync.
   Requested on 2026-06-06 after `v0.6.5` allowed `gix sync` to finish in `/Users/tyemirov/Development/llm-proxy`, but `git status` still showed deleted `python/llm_proxy_client.egg-info/*` files and modified/deleted tracked `__pycache__` files.
   ## Observation

@@ -1,7 +1,3 @@
-- Confirmed the existing B010 integration test expected tracked ignored dirty paths to remain.
-- Changed strict sync coverage so tracked ignored dirty paths are restored, not staged or committed.
-- Implemented a sync status filter result that keeps stageable entries and tracked ignored entries separate.
-- Restored tracked ignored entries with `git restore --staged --worktree -- <paths>` after fetch succeeds and before dirty sync continues.
-- Tightened the black-box integration scenario to match the reported `llm-proxy` shape: tracked `egg-info` deletions plus tracked ignored `__pycache__` modifications/deletions.
-- Added focused syncflow tests for staged tracked ignored dirt, `--require-clean`, `--stash`, fetch failure before restore, and restore failure abort behavior.
-- Ran targeted sync tests plus `make test-fast`, non-cached `make test-slow`, `make test`, `make lint`, and `make ci`.
+- Completed B012: strict `gix sync` now detects merged pull requests after the open-PR lookup fails and prompts to sync the configured base branch.
+- Added coverage for confirmed prompts, declined prompts, `--yes`, true missing-open-PR failures, single direct-command failure output, and preserved stdout.
+- Validated with focused sync/workflow tests plus `make test-fast`, `make test-slow`, `make test`, `make lint`, and `make ci`.

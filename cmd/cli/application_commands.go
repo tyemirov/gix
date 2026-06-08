@@ -55,6 +55,12 @@ func (application *Application) registerCommands(cobraCommand *cobra.Command) {
 		},
 		HumanReadableLoggingProvider: application.humanReadableLoggingEnabled,
 		ConfigurationProvider:        application.branchSyncConfiguration,
+		PrompterFactory: func(command *cobra.Command) shared.ConfirmationPrompter {
+			if command == nil {
+				return nil
+			}
+			return prompt.NewIOConfirmationPrompter(command.InOrStdin(), command.OutOrStdout())
+		},
 	}
 
 	defaultCommandBuilder := migratecli.CommandBuilder{

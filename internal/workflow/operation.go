@@ -33,22 +33,23 @@ type RepositoryScopedOperation interface {
 
 // Environment exposes shared dependencies for workflow operations.
 type Environment struct {
-	AuditService      *audit.Service
-	GitExecutor       shared.GitExecutor
-	RepositoryManager *gitrepo.RepositoryManager
-	GitHubClient      *githubcli.Client
-	FileSystem        shared.FileSystem
-	Prompter          shared.ConfirmationPrompter
-	PromptState       *prompt.SessionState
-	Output            io.Writer
-	Errors            io.Writer
-	Reporter          shared.SummaryReporter
-	Logger            *zap.Logger
-	Variables         *VariableStore
-	currentStepName   string
-	State             *State
-	sharedState       *environmentSharedState
-	suppressHeaders   bool
+	AuditService                   *audit.Service
+	GitExecutor                    shared.GitExecutor
+	RepositoryManager              *gitrepo.RepositoryManager
+	GitHubClient                   *githubcli.Client
+	FileSystem                     shared.FileSystem
+	Prompter                       shared.ConfirmationPrompter
+	PromptState                    *prompt.SessionState
+	Output                         io.Writer
+	Errors                         io.Writer
+	Reporter                       shared.SummaryReporter
+	Logger                         *zap.Logger
+	Variables                      *VariableStore
+	currentStepName                string
+	State                          *State
+	sharedState                    *environmentSharedState
+	suppressHeaders                bool
+	suppressOperationFailureOutput bool
 }
 
 type environmentSharedState struct {
