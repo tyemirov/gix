@@ -631,21 +631,12 @@ func syncPullRequestBranch(ctx context.Context, environment *workflow.Environmen
 			return strictPullRequestBranchResult{}, pullRequestErr
 		}
 		if !openPullRequest {
-			mergedPullRequest, mergedPullRequestErr := branchHasMergedPullRequest(ctx, environment, repositoryIdentifier, options.BaseBranch, options.BranchName)
-			if mergedPullRequestErr != nil {
-				return strictPullRequestBranchResult{}, mergedPullRequestErr
+			syncedBaseBranch, syncBaseBranchErr := syncBaseBranchAfterMergedPullRequest(ctx, environment, repository, repositoryIdentifier, options)
+			if syncBaseBranchErr != nil {
+				return strictPullRequestBranchResult{}, syncBaseBranchErr
 			}
-			if mergedPullRequest {
-				syncBaseBranchConfirmed, confirmErr := confirmSyncBaseAfterMergedPullRequest(environment, options.BranchName, options.BaseBranch)
-				if confirmErr != nil {
-					return strictPullRequestBranchResult{}, confirmErr
-				}
-				if syncBaseBranchConfirmed {
-					if syncErr := syncBaseBranch(ctx, environment, repository, options.RemoteName, options.BaseBranch, options.CommitMessages); syncErr != nil {
-						return strictPullRequestBranchResult{}, syncErr
-					}
-					return strictPullRequestBranchResult{SyncedBranch: options.BaseBranch}, nil
-				}
+			if syncedBaseBranch {
+				return strictPullRequestBranchResult{SyncedBranch: options.BaseBranch}, nil
 			}
 			return strictPullRequestBranchResult{}, fmt.Errorf(strictSyncMissingPullRequestTemplate, options.BranchName, options.BaseBranch)
 		}
@@ -682,6 +673,13 @@ func syncPullRequestBranch(ctx context.Context, environment *workflow.Environmen
 	}
 	if localExists {
 		if !options.AllowAheadCommit {
+			syncedBaseBranch, syncBaseBranchErr := syncBaseBranchAfterMergedPullRequest(ctx, environment, repository, repositoryIdentifier, options)
+			if syncBaseBranchErr != nil {
+				return strictPullRequestBranchResult{}, syncBaseBranchErr
+			}
+			if syncedBaseBranch {
+				return strictPullRequestBranchResult{SyncedBranch: options.BaseBranch}, nil
+			}
 			return strictPullRequestBranchResult{}, fmt.Errorf(strictSyncLocalOnlyCommitTemplate, options.BranchName, options.RemoteName, options.BranchName)
 		}
 		if switchErr := switchToLocalOrRemoteBranchWithAdoption(ctx, environment, repository, options.RemoteName, options.BranchName, options.CommitMessages); switchErr != nil {
@@ -711,6 +709,27 @@ func syncPullRequestBranch(ctx context.Context, environment *workflow.Environmen
 		return strictPullRequestBranchResult{}, pullRequestErr
 	}
 	return strictPullRequestBranchResult{Created: true}, nil
+}
+
+func syncBaseBranchAfterMergedPullRequest(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, repositoryIdentifier string, options strictPullRequestBranchOptions) (bool, error) {
+	mergedPullRequest, mergedPullRequestErr := branchHasMergedPullRequest(ctx, environment, repositoryIdentifier, options.BaseBranch, options.BranchName)
+	if mergedPullRequestErr != nil {
+		return false, mergedPullRequestErr
+	}
+	if !mergedPullRequest {
+		return false, nil
+	}
+	syncBaseBranchConfirmed, confirmErr := confirmSyncBaseAfterMergedPullRequest(environment, options.BranchName, options.BaseBranch)
+	if confirmErr != nil {
+		return false, confirmErr
+	}
+	if !syncBaseBranchConfirmed {
+		return false, nil
+	}
+	if syncErr := syncBaseBranch(ctx, environment, repository, options.RemoteName, options.BaseBranch, options.CommitMessages); syncErr != nil {
+		return false, syncErr
+	}
+	return true, nil
 }
 
 func pushAndCreatePullRequest(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, repositoryIdentifier string, options strictPullRequestBranchOptions) error {

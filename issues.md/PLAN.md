@@ -1,3 +1,4 @@
-- Completed B012: strict `gix sync` now detects merged pull requests after the open-PR lookup fails and prompts to sync the configured base branch.
-- Added coverage for confirmed prompts, declined prompts, `--yes`, true missing-open-PR failures, single direct-command failure output, and preserved stdout.
-- Validated with focused sync/workflow tests plus `make test-fast`, `make test-slow`, `make test`, `make lint`, and `make ci`.
+- Completed PR #369 review feedback for B012 pruned merged branches.
+- Added a strict-sync regression where `origin/<branch>` was pruned after merge but the local branch still exists.
+- Reused the merged-PR base-branch sync path from both remote-backed and non-`AllowAheadCommit` local-only strict PR branches.
+- Validated with focused syncflow tests, `make test`, `make lint`, and `make ci`.

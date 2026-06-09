@@ -1176,6 +1176,57 @@ func TestHandleBranchSyncActionStrictPRBranchPromptsToSyncMasterWhenPullRequestM
 	require.Contains(t, strings.Join(githubExecutor.commands[1].Arguments, " "), "--state merged")
 }
 
+func TestHandleBranchSyncActionStrictPRBranchPromptsToSyncMasterWhenMergedPullRequestRemotePruned(t *testing.T) {
+	gitExecutor := &strictSyncGitExecutor{
+		missingReferences: map[string]bool{
+			"origin/feature/foo": true,
+		},
+	}
+	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(t, managerError)
+	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":7,"title":"Merged","headRefName":"feature/foo"}]`}
+	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
+	require.NoError(t, githubClientError)
+	output := &strings.Builder{}
+	prompter := &strictSyncPrompter{result: shared.ConfirmationResult{Confirmed: true}}
+	environment := &workflow.Environment{
+		GitExecutor:       gitExecutor,
+		RepositoryManager: gitManager,
+		GitHubClient:      githubClient,
+		Logger:            zap.NewNop(),
+		Output:            output,
+		Errors:            io.Discard,
+		Reporter:          &recordingReporter{},
+		Prompter:          prompter,
+		PromptState:       prompt.NewSessionState(false),
+	}
+	repository := &workflow.RepositoryState{
+		Path: "/tmp/project",
+		Inspection: audit.RepositoryInspection{
+			LocalBranch:    "feature/foo",
+			FinalOwnerRepo: "owner/project",
+		},
+	}
+	parameters := map[string]any{
+		taskOptionBranchName:         "feature/foo",
+		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
+		taskOptionRequirePullRequest: true,
+		taskOptionBaseBranch:         "master",
+		taskOptionRequireClean:       true,
+	}
+
+	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
+	recordedCommands := recordedGitCommands(gitExecutor.commands)
+	require.Contains(t, recordedCommands, "switch master")
+	require.Contains(t, recordedCommands, "reset --hard origin/master")
+	require.NotContains(t, recordedCommands, "merge --no-edit origin/master")
+	require.NotContains(t, recordedCommands, "push origin feature/foo")
+	require.Equal(t, "SYNCED: /tmp/project (master)\n", output.String())
+	require.Equal(t, []string{`Pull request for branch "feature/foo" into master is already merged. Sync master instead? [a/N/y] `}, prompter.prompts)
+	require.Len(t, githubExecutor.commands, 1)
+	require.Contains(t, strings.Join(githubExecutor.commands[0].Arguments, " "), "--state merged")
+}
+
 func TestHandleBranchSyncActionStrictPRBranchKeepsMissingPullRequestErrorWhenMergedSyncDeclined(t *testing.T) {
 	gitExecutor := &strictSyncGitExecutor{}
 	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
