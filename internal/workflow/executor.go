@@ -47,6 +47,8 @@ type Dependencies struct {
 	DisableWorkflowLogging  bool
 	ReporterOptions         []shared.ReporterOption
 	DisableHeaderDecoration bool
+	// SuppressOperationFailureOutput leaves operation failures in returned errors without echoing them to Errors.
+	SuppressOperationFailureOutput bool
 }
 
 // RuntimeOptions captures user-provided execution modifiers.
@@ -272,20 +274,21 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 		reporterOptions...,
 	)
 	environment := &Environment{
-		AuditService:      auditService,
-		GitExecutor:       executor.dependencies.GitExecutor,
-		RepositoryManager: executor.dependencies.RepositoryManager,
-		GitHubClient:      executor.dependencies.GitHubClient,
-		FileSystem:        executor.dependencies.FileSystem,
-		Prompter:          dispatchingPrompter,
-		PromptState:       promptState,
-		Output:            executor.dependencies.Output,
-		Errors:            executor.dependencies.Errors,
-		Reporter:          reporter,
-		Logger:            executor.dependencies.Logger,
-		Variables:         NewVariableStore(),
-		sharedState:       &environmentSharedState{},
-		suppressHeaders:   executor.dependencies.DisableHeaderDecoration,
+		AuditService:                   auditService,
+		GitExecutor:                    executor.dependencies.GitExecutor,
+		RepositoryManager:              executor.dependencies.RepositoryManager,
+		GitHubClient:                   executor.dependencies.GitHubClient,
+		FileSystem:                     executor.dependencies.FileSystem,
+		Prompter:                       dispatchingPrompter,
+		PromptState:                    promptState,
+		Output:                         executor.dependencies.Output,
+		Errors:                         executor.dependencies.Errors,
+		Reporter:                       reporter,
+		Logger:                         executor.dependencies.Logger,
+		Variables:                      NewVariableStore(),
+		sharedState:                    &environmentSharedState{},
+		suppressHeaders:                executor.dependencies.DisableHeaderDecoration,
+		suppressOperationFailureOutput: executor.dependencies.SuppressOperationFailureOutput,
 	}
 	environment.State = state
 	if environment.Variables != nil {

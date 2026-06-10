@@ -2,6 +2,8 @@ package syncflow
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -91,6 +93,86 @@ func TestCommandExecutesAcrossRoots(t *testing.T) {
 	require.Equal(t, "origin", action.Options[taskOptionBranchRemote])
 	require.Equal(t, true, action.Options[taskOptionRequirePullRequest])
 	require.Equal(t, "master", action.Options[taskOptionBaseBranch])
+}
+
+func TestCommandSuppressesWorkflowFailureEcho(t *testing.T) {
+	testCases := []struct {
+		name       string
+		runError   error
+		branchName string
+	}{
+		{
+			name:       "missing_pull_request",
+			runError:   errors.New(`branch "feature/foo" does not have an open pull request into master`),
+			branchName: "feature/foo",
+		},
+		{
+			name:       "local_branch_ahead_of_remote",
+			runError:   errors.New(`local branch "bugfix/B025-auth-console-coop-header" has commits not on origin/bugfix/B025-auth-console-coop-header`),
+			branchName: "bugfix/B025-auth-console-coop-header",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			temporaryRoot := t.TempDir()
+			runner := &recordingTaskRunner{
+				errorOutput: testCase.runError.Error(),
+				err:         testCase.runError,
+			}
+			builder := CommandBuilder{
+				LoggerProvider: func() *zap.Logger { return zap.NewNop() },
+				ConfigurationProvider: func() CommandConfiguration {
+					return CommandConfiguration{RepositoryRoots: []string{temporaryRoot}, RemoteName: "origin"}
+				},
+				GitExecutor: &stubGitExecutor{},
+				TaskRunnerFactory: func(deps workflow.Dependencies) TaskRunnerExecutor {
+					runner.dependencies = deps
+					return runner
+				},
+			}
+			command, err := builder.Build()
+			require.NoError(t, err)
+			errorOutput := &strings.Builder{}
+			command.SetErr(errorOutput)
+			flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Enabled: true})
+
+			contextAccessor := utils.NewCommandContextAccessor()
+			command.SetContext(contextAccessor.WithExecutionFlags(context.Background(), utils.ExecutionFlags{}))
+
+			require.ErrorIs(t, command.RunE(command, []string{testCase.branchName}), testCase.runError)
+			require.Equal(t, "", errorOutput.String())
+		})
+	}
+}
+
+func TestCommandKeepsWorkflowStandardOutput(t *testing.T) {
+	temporaryRoot := t.TempDir()
+	runner := &recordingTaskRunner{
+		standardOutput: "SYNCED: /tmp/project (feature/foo)\n",
+	}
+	builder := CommandBuilder{
+		LoggerProvider: func() *zap.Logger { return zap.NewNop() },
+		ConfigurationProvider: func() CommandConfiguration {
+			return CommandConfiguration{RepositoryRoots: []string{temporaryRoot}, RemoteName: "origin"}
+		},
+		GitExecutor: &stubGitExecutor{},
+		TaskRunnerFactory: func(deps workflow.Dependencies) TaskRunnerExecutor {
+			runner.dependencies = deps
+			return runner
+		},
+	}
+	command, err := builder.Build()
+	require.NoError(t, err)
+	output := &strings.Builder{}
+	command.SetOut(output)
+	flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Enabled: true})
+
+	contextAccessor := utils.NewCommandContextAccessor()
+	command.SetContext(contextAccessor.WithExecutionFlags(context.Background(), utils.ExecutionFlags{}))
+
+	require.NoError(t, command.RunE(command, []string{"feature/foo"}))
+	require.Equal(t, "SYNCED: /tmp/project (feature/foo)\n", output.String())
 }
 
 func TestCommandPropagatesPullRequestTitleAndBodyOptions(t *testing.T) {
@@ -283,11 +365,20 @@ type recordingTaskRunner struct {
 	roots          []string
 	definitions    []workflow.TaskDefinition
 	runtimeOptions workflow.RuntimeOptions
+	standardOutput string
+	errorOutput    string
+	err            error
 }
 
 func (runner *recordingTaskRunner) Run(ctx context.Context, roots []string, definitions []workflow.TaskDefinition, options workflow.RuntimeOptions) (workflow.ExecutionOutcome, error) {
 	runner.roots = append([]string{}, roots...)
 	runner.definitions = append([]workflow.TaskDefinition{}, definitions...)
 	runner.runtimeOptions = options
-	return workflow.ExecutionOutcome{}, nil
+	if strings.TrimSpace(runner.standardOutput) != "" && runner.dependencies.Output != nil {
+		fmt.Fprint(runner.dependencies.Output, runner.standardOutput)
+	}
+	if strings.TrimSpace(runner.errorOutput) != "" && runner.dependencies.Errors != nil && !runner.dependencies.SuppressOperationFailureOutput {
+		fmt.Fprintln(runner.dependencies.Errors, runner.errorOutput)
+	}
+	return workflow.ExecutionOutcome{}, runner.err
 }

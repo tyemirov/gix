@@ -388,7 +388,7 @@ func executeRepositoryStageForRepository(
 		for _, failureErr := range subErrors {
 			formatted := formatOperationFailure(environment, failureErr, node.Operation.Name())
 			if !logRepositoryOperationError(environment, failureErr) {
-				if environment != nil && environment.Errors != nil {
+				if environment != nil && environment.Errors != nil && !environment.suppressOperationFailureOutput {
 					fmt.Fprintln(environment.Errors, formatted)
 				}
 			}
@@ -483,7 +483,7 @@ func executeGlobalStage(
 		for _, failureErr := range subErrors {
 			formatted := formatOperationFailure(environment, failureErr, node.Operation.Name())
 			if !logRepositoryOperationError(environment, failureErr) {
-				if environment != nil && environment.Errors != nil {
+				if environment != nil && environment.Errors != nil && !environment.suppressOperationFailureOutput {
 					fmt.Fprintln(environment.Errors, formatted)
 				}
 			}
