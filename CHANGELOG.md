@@ -23,6 +23,26 @@
 - Add sync-flow and black-box CLI coverage proving tracked ignored modified/deleted paths are restored while ordinary dirty files are still committed.
 - Add strict-sync failure-mode coverage for staged tracked ignored dirt, `--require-clean`, `--stash`, fetch-before-restore ordering, and restore failures.
 
+## [v0.6.7] - 2026-06-09
+
+### Features ✨
+- Add prompt and fallback handling for syncing merged pull requests in strict sync mode.
+
+### Improvements ⚙️
+- Suppress workflow failure echo output for specific error cases during sync.
+- Enable confirmation prompt integration in CLI commands for branch sync operations.
+- Sync base branch automatically when a merged pull request is detected during strict sync.
+
+### Bug Fixes 🐛
+- Fix strict sync to handle pruned merged branches by syncing the base branch instead.
+
+### Testing 🧪
+- Parameterize tests for command suppression of workflow failure echo with multiple error cases.
+- Add tests to verify standard output is preserved and error output is suppressed as expected.
+
+### Docs 📚
+- _No changes._
+
 ## [v0.6.6] - 2026-06-06
 
 ### Features ✨
