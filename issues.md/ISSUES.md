@@ -11,6 +11,24 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
 
 ## BugFixes
 
+- [x] [B013] (P1) `gix sync` should accept open chained pull requests instead of requiring the PR to target `master`.
+  Requested on 2026-06-23 after `gix sync` in `/Users/tyemirov/Development/MediaOps` on branch `tyemirov/bugfix/B159-mcp-migration-capability-inventory` failed with `branch "tyemirov/bugfix/B159-mcp-migration-capability-inventory" does not have an open pull request into master`, while `gh pr view` showed an open PR from that branch into `tyemirov/bugfix/B158-mcp-cli-parity-schemas`.
+  ## Observation
+  - Strict sync listed open pull requests with `gh pr list --base master`, so chained PRs targeting a previous issue branch were invisible.
+  - After the base-filtered lookup missed the open PR, sync fell through to the missing-PR error and never switched, merged, or pushed the branch.
+  - Even if the lookup accepted the PR, syncing against hard-coded `origin/master` would not align a chained branch with its actual review base.
+  ## Deliverable
+  - List open pull requests for the branch without filtering by base.
+  - Capture `baseRefName` from GitHub and merge that base branch for existing PR-backed syncs.
+  - Keep merged-PR handoff checks scoped to the configured base branch.
+  - Reject malformed open-PR responses that do not report a base branch instead of falling back silently.
+  ## Resolution
+  - `githubcli.ListPullRequests` now supports optional base filters and parses `baseRefName`.
+  - Existing strict sync PR branches now match open PRs with `--head` and without `--base`, then merge `origin/<baseRefName>` before pushing.
+  - Dirty generated-branch reuse uses the same head-filtered open-PR lookup.
+  - Missing-PR errors no longer claim the lookup was specifically into `master`.
+  - Added strict-sync and GitHub client regressions for chained PR bases, missing PR base metadata, optional `--base`, `--head`, and parsed `baseRefName`.
+
 - [x] [B012] (P1) `gix sync` should offer to sync `master` when a branch pull request is already merged.
   Requested on 2026-06-07 after `gix sync` in `/Users/tyemirov/Development/MediaOps` on branch `gix/add-provider-gated-speech-speed-capability-and` printed `branch "gix/add-provider-gated-speech-speed-capability-and" does not have an open pull request into master` twice instead of recognizing that a closed-and-merged pull request should hand off to the base branch.
   ## Observation

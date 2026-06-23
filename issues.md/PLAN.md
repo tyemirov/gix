@@ -1,4 +1,4 @@
-- Completed PR #369 review feedback for B012 pruned merged branches.
-- Added a strict-sync regression where `origin/<branch>` was pruned after merge but the local branch still exists.
-- Reused the merged-PR base-branch sync path from both remote-backed and non-`AllowAheadCommit` local-only strict PR branches.
-- Validated with focused syncflow tests, `make test`, `make lint`, and `make ci`.
+- Reproduce the chained pull request bug with a focused strict sync regression.
+- Fix strict sync so an open pull request from the current branch is accepted even when its base is a chained issue branch instead of `master`.
+- Preserve merged-PR handoff behavior for branches whose pull requests into the configured base are already merged.
+- Update issue/changelog notes and run `make format`, `make test`, `make lint`, and `make ci`.

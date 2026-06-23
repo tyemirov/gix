@@ -44,7 +44,7 @@ const (
 	requiredValueMessageConstant               = "value required"
 	executorNotConfiguredMessageConstant       = "github cli executor not configured"
 	pullRequestLimitDefaultValueConstant       = 100
-	pullRequestJSONFieldsConstant              = "number,title,headRefName"
+	pullRequestJSONFieldsConstant              = "number,title,headRefName,baseRefName"
 	repoViewJSONFieldsConstant                 = "defaultBranchRef,nameWithOwner,description,isInOrganization"
 	operationErrorMessageTemplateConstant      = "%s operation failed"
 	operationErrorWithCauseTemplateConstant    = "%s operation failed: %s"
@@ -96,12 +96,14 @@ type PullRequest struct {
 	Number      int
 	Title       string
 	HeadRefName string
+	BaseRefName string
 }
 
 // PullRequestListOptions configures ListPullRequests queries.
 type PullRequestListOptions struct {
 	State       PullRequestState
 	BaseBranch  string
+	HeadBranch  string
 	ResultLimit int
 }
 
@@ -275,10 +277,6 @@ func (client *Client) ListPullRequests(executionContext context.Context, reposit
 		return nil, InvalidInputError{FieldName: repositoryFieldNameConstant, Message: requiredValueMessageConstant}
 	}
 
-	if len(strings.TrimSpace(options.BaseBranch)) == 0 {
-		return nil, InvalidInputError{FieldName: baseBranchFieldNameConstant, Message: requiredValueMessageConstant}
-	}
-
 	if len(options.State) == 0 {
 		return nil, InvalidInputError{FieldName: stateFieldNameConstant, Message: requiredValueMessageConstant}
 	}
@@ -288,21 +286,31 @@ func (client *Client) ListPullRequests(executionContext context.Context, reposit
 		resultLimit = pullRequestLimitDefaultValueConstant
 	}
 
+	commandArguments := []string{
+		pullRequestSubcommandConstant,
+		listSubcommandConstant,
+		repoFlagConstant,
+		repositoryIdentifier,
+		stateFlagConstant,
+		string(options.State),
+	}
+	baseBranch := strings.TrimSpace(options.BaseBranch)
+	if baseBranch != "" {
+		commandArguments = append(commandArguments, baseFlagConstant, baseBranch)
+	}
+	headBranch := strings.TrimSpace(options.HeadBranch)
+	if headBranch != "" {
+		commandArguments = append(commandArguments, headFlagConstant, headBranch)
+	}
+	commandArguments = append(commandArguments,
+		jsonFlagConstant,
+		pullRequestJSONFieldsConstant,
+		limitFlagConstant,
+		strconv.Itoa(resultLimit),
+	)
+
 	commandDetails := execshell.CommandDetails{
-		Arguments: []string{
-			pullRequestSubcommandConstant,
-			listSubcommandConstant,
-			repoFlagConstant,
-			repositoryIdentifier,
-			stateFlagConstant,
-			string(options.State),
-			baseFlagConstant,
-			options.BaseBranch,
-			jsonFlagConstant,
-			pullRequestJSONFieldsConstant,
-			limitFlagConstant,
-			strconv.Itoa(resultLimit),
-		},
+		Arguments:              commandArguments,
 		GitHubTokenRequirement: githubauth.TokenOptional,
 	}
 
@@ -315,6 +323,7 @@ func (client *Client) ListPullRequests(executionContext context.Context, reposit
 		Number      int    `json:"number"`
 		Title       string `json:"title"`
 		HeadRefName string `json:"headRefName"`
+		BaseRefName string `json:"baseRefName"`
 	}
 
 	decodingError := json.Unmarshal([]byte(executionResult.StandardOutput), &response)
@@ -328,6 +337,7 @@ func (client *Client) ListPullRequests(executionContext context.Context, reposit
 			Number:      pullRequestEntry.Number,
 			Title:       pullRequestEntry.Title,
 			HeadRefName: pullRequestEntry.HeadRefName,
+			BaseRefName: pullRequestEntry.BaseRefName,
 		})
 	}
 

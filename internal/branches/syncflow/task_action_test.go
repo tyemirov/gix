@@ -422,7 +422,7 @@ func TestHandleBranchSyncActionStrictPRBranchMergesBaseAndPushes(t *testing.T) {
 	gitExecutor := &strictSyncGitExecutor{}
 	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
 	require.NoError(t, managerError)
-	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":7,"title":"Feature","headRefName":"feature/foo"}]`}
+	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":7,"title":"Feature","headRefName":"feature/foo","baseRefName":"master"}]`}
 	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
 	require.NoError(t, githubClientError)
 	buffer := &strings.Builder{}
@@ -462,6 +462,87 @@ func TestHandleBranchSyncActionStrictPRBranchMergesBaseAndPushes(t *testing.T) {
 	require.Contains(t, githubExecutor.commands[0].Arguments, "list")
 }
 
+func TestHandleBranchSyncActionStrictPRBranchUsesOpenPullRequestBase(t *testing.T) {
+	gitExecutor := &strictSyncGitExecutor{}
+	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(t, managerError)
+	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":665,"title":"Feature","headRefName":"feature/foo","baseRefName":"tyemirov/bugfix/B012-parent"}]`}
+	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
+	require.NoError(t, githubClientError)
+	buffer := &strings.Builder{}
+	environment := &workflow.Environment{
+		GitExecutor:       gitExecutor,
+		RepositoryManager: gitManager,
+		GitHubClient:      githubClient,
+		Logger:            zap.NewNop(),
+		Output:            buffer,
+		Errors:            io.Discard,
+		Reporter:          &recordingReporter{},
+	}
+	repository := &workflow.RepositoryState{
+		Path: "/tmp/project",
+		Inspection: audit.RepositoryInspection{
+			LocalBranch:    "master",
+			FinalOwnerRepo: "owner/project",
+		},
+	}
+	parameters := map[string]any{
+		taskOptionBranchName:         "feature/foo",
+		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
+		taskOptionRequirePullRequest: true,
+		taskOptionBaseBranch:         "master",
+		taskOptionRequireClean:       true,
+	}
+
+	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "merge --no-edit origin/tyemirov/bugfix/B012-parent")
+	require.NotContains(t, recordedGitCommands(gitExecutor.commands), "merge --no-edit origin/master")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "push origin feature/foo")
+	require.Len(t, githubExecutor.commands, 1)
+	require.False(t, commandHasArgument(githubExecutor.commands[0].Arguments, "--base"))
+	require.Contains(t, githubExecutor.commands[0].Arguments, "--head")
+	require.Contains(t, githubExecutor.commands[0].Arguments, "feature/foo")
+	require.Contains(t, buffer.String(), "SYNCED: /tmp/project (feature/foo)")
+}
+
+func TestHandleBranchSyncActionStrictPRBranchRejectsOpenPullRequestWithoutBase(t *testing.T) {
+	gitExecutor := &strictSyncGitExecutor{}
+	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(t, managerError)
+	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":665,"title":"Feature","headRefName":"feature/foo"}]`}
+	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
+	require.NoError(t, githubClientError)
+	environment := &workflow.Environment{
+		GitExecutor:       gitExecutor,
+		RepositoryManager: gitManager,
+		GitHubClient:      githubClient,
+		Logger:            zap.NewNop(),
+		Output:            io.Discard,
+		Errors:            io.Discard,
+		Reporter:          &recordingReporter{},
+	}
+	repository := &workflow.RepositoryState{
+		Path: "/tmp/project",
+		Inspection: audit.RepositoryInspection{
+			LocalBranch:    "master",
+			FinalOwnerRepo: "owner/project",
+		},
+	}
+	parameters := map[string]any{
+		taskOptionBranchName:         "feature/foo",
+		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
+		taskOptionRequirePullRequest: true,
+		taskOptionBaseBranch:         "master",
+		taskOptionRequireClean:       true,
+	}
+
+	syncError := handleBranchSyncAction(context.Background(), environment, repository, parameters)
+	require.Error(t, syncError)
+	require.Contains(t, syncError.Error(), `open pull request for branch "feature/foo" did not report a base branch`)
+	require.NotContains(t, recordedGitCommands(gitExecutor.commands), "merge --no-edit")
+	require.NotContains(t, recordedGitCommands(gitExecutor.commands), "push origin feature/foo")
+}
+
 func TestHandleBranchSyncActionStrictPRBranchAutoCommitsDirtySameBranch(t *testing.T) {
 	gitExecutor := &strictSyncGitExecutor{
 		statusOutput:  " M README.md\n",
@@ -469,7 +550,7 @@ func TestHandleBranchSyncActionStrictPRBranchAutoCommitsDirtySameBranch(t *testi
 	}
 	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
 	require.NoError(t, managerError)
-	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":7,"title":"Feature","headRefName":"feature/foo"}]`}
+	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":7,"title":"Feature","headRefName":"feature/foo","baseRefName":"master"}]`}
 	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
 	require.NoError(t, githubClientError)
 	chatClient := &strictSyncChatClient{}
@@ -623,7 +704,7 @@ func TestHandleBranchSyncActionStrictPRBranchFiltersIgnoredDirtyPathsBeforeStagi
 			}
 			gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
 			require.NoError(t, managerError)
-			githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":7,"title":"Feature","headRefName":"feature/foo"}]`}
+			githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":7,"title":"Feature","headRefName":"feature/foo","baseRefName":"master"}]`}
 			githubClient, githubClientError := githubcli.NewClient(githubExecutor)
 			require.NoError(t, githubClientError)
 			chatClient := &strictSyncChatClient{response: testCase.commitMessage}
@@ -682,7 +763,7 @@ func TestHandleBranchSyncActionStrictPRBranchRestoresTrackedIgnoredOnlyStatus(t 
 	}
 	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
 	require.NoError(t, managerError)
-	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":8,"title":"Generated","headRefName":"gix/sync-dirty-work"}]`}
+	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":8,"title":"Generated","headRefName":"gix/sync-dirty-work","baseRefName":"master"}]`}
 	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
 	require.NoError(t, githubClientError)
 	chatClient := &strictSyncChatClient{}
@@ -739,7 +820,7 @@ func TestHandleBranchSyncActionStrictPRBranchRestoresStagedTrackedIgnoredOnlySta
 	}
 	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
 	require.NoError(t, managerError)
-	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":7,"title":"Feature","headRefName":"feature/foo"}]`}
+	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":7,"title":"Feature","headRefName":"feature/foo","baseRefName":"master"}]`}
 	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
 	require.NoError(t, githubClientError)
 	chatClient := &strictSyncChatClient{}
@@ -795,7 +876,7 @@ func TestHandleBranchSyncActionStrictPRBranchRestoresTrackedIgnoredStatusBeforeS
 	}
 	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
 	require.NoError(t, managerError)
-	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":7,"title":"Feature","headRefName":"feature/foo"}]`}
+	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":7,"title":"Feature","headRefName":"feature/foo","baseRefName":"master"}]`}
 	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
 	require.NoError(t, githubClientError)
 	chatClient := &strictSyncChatClient{}
@@ -946,7 +1027,7 @@ func TestHandleBranchSyncActionStrictPRBranchTreatsIgnoredOnlyStatusAsClean(t *t
 	}
 	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
 	require.NoError(t, managerError)
-	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":8,"title":"Generated","headRefName":"gix/sync-dirty-work"}]`}
+	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":8,"title":"Generated","headRefName":"gix/sync-dirty-work","baseRefName":"master"}]`}
 	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
 	require.NoError(t, githubClientError)
 	chatClient := &strictSyncChatClient{}
@@ -995,7 +1076,7 @@ func TestHandleBranchSyncActionStrictPRBranchAdoptsDirtySiblingWorktree(t *testi
 	}
 	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
 	require.NoError(t, managerError)
-	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":7,"title":"Feature","headRefName":"feature/foo"}]`}
+	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":7,"title":"Feature","headRefName":"feature/foo","baseRefName":"master"}]`}
 	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
 	require.NoError(t, githubClientError)
 	chatClient := &strictSyncChatClient{response: "fix: adopt sibling worktree"}
@@ -1049,7 +1130,7 @@ func TestHandleBranchSyncActionStrictPRBranchRequireCleanRejectsDirtyWorktree(t 
 	gitExecutor := &strictSyncGitExecutor{statusOutput: " M README.md\n"}
 	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
 	require.NoError(t, managerError)
-	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":7,"title":"Feature","headRefName":"feature/foo"}]`}
+	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":7,"title":"Feature","headRefName":"feature/foo","baseRefName":"master"}]`}
 	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
 	require.NoError(t, githubClientError)
 	chatClient := &strictSyncChatClient{}
@@ -1319,7 +1400,7 @@ func TestHandleBranchSyncActionStrictPRBranchCommitFlagUsesDirtySyncCommitWithRe
 	}
 	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
 	require.NoError(t, managerError)
-	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":7,"title":"Feature","headRefName":"feature/foo"}]`}
+	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":7,"title":"Feature","headRefName":"feature/foo","baseRefName":"master"}]`}
 	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
 	require.NoError(t, githubClientError)
 	chatClient := &strictSyncChatClient{response: "fix: describe dirty sync"}
@@ -1657,7 +1738,7 @@ func TestHandleBranchSyncActionStrictPRBranchStopsBeforePushOnMergeConflict(t *t
 	gitExecutor := &strictSyncGitExecutor{mergeError: commandFailedError("CONFLICT (content): Merge conflict in README.md")}
 	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
 	require.NoError(t, managerError)
-	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":7,"title":"Feature","headRefName":"feature/foo"}]`}
+	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":7,"title":"Feature","headRefName":"feature/foo","baseRefName":"master"}]`}
 	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
 	require.NoError(t, githubClientError)
 	environment := &workflow.Environment{
