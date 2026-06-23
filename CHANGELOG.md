@@ -13,6 +13,7 @@
 - Filter dirty `gix sync` pathspec clusters through Git ignore rules so ignored generated files do not cause `git add` failures.
 - Treat ignored-only dirty status as clean before selecting a generated `gix sync` work branch.
 - Restore tracked ignored dirty paths during successful `gix sync` runs so generated artifacts do not remain in `git status`.
+- Accept existing `gix sync` PR branches whose open pull request targets a chained issue branch and merge the pull request's actual base instead of requiring `master`.
 
 ### Testing 🧪
 - Update strict-sync pull request creation coverage for requested branches and generated dirty-`master` branches, including the branch diff context sent to the PR body generator and failure-before-push ordering.
@@ -22,6 +23,7 @@
 - Add strict-sync coverage proving ignored-only status stays on the clean `master` sync path.
 - Add sync-flow and black-box CLI coverage proving tracked ignored modified/deleted paths are restored while ordinary dirty files are still committed.
 - Add strict-sync failure-mode coverage for staged tracked ignored dirt, `--require-clean`, `--stash`, fetch-before-restore ordering, and restore failures.
+- Add strict-sync coverage for unfiltered open-PR lookup, PR `baseRefName` merges, and missing PR-base rejection.
 
 ## [v0.6.7] - 2026-06-09
 

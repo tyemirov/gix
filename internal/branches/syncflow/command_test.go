@@ -103,7 +103,7 @@ func TestCommandSuppressesWorkflowFailureEcho(t *testing.T) {
 	}{
 		{
 			name:       "missing_pull_request",
-			runError:   errors.New(`branch "feature/foo" does not have an open pull request into master`),
+			runError:   errors.New(`branch "feature/foo" does not have an open pull request`),
 			branchName: "feature/foo",
 		},
 		{

@@ -254,12 +254,12 @@ func prepareStrictSyncBranchForDirtyWork(ctx context.Context, environment *workf
 		if repositoryIdentifier == "" {
 			return errors.New(strictSyncMissingRepositoryMessage)
 		}
-		openPullRequest, pullRequestErr := branchHasOpenPullRequest(ctx, environment, repositoryIdentifier, baseBranch, branchName)
+		openPullRequest, pullRequestErr := openPullRequestForBranch(ctx, environment, repositoryIdentifier, branchName)
 		if pullRequestErr != nil {
 			return pullRequestErr
 		}
-		if !openPullRequest {
-			return fmt.Errorf(strictSyncMissingPullRequestTemplate, branchName, baseBranch)
+		if openPullRequest == nil {
+			return fmt.Errorf(strictSyncMissingPullRequestTemplate, branchName)
 		}
 		return switchToLocalOrRemoteBranchWithAdoption(ctx, environment, repository, remoteName, branchName, commitMessages)
 	}
@@ -384,11 +384,11 @@ func selectGeneratedSyncBranchName(ctx context.Context, environment *workflow.En
 		if repositoryIdentifier == "" {
 			return "", errors.New(strictSyncMissingRepositoryMessage)
 		}
-		openPullRequest, pullRequestErr := branchHasOpenPullRequest(ctx, environment, repositoryIdentifier, baseBranch, candidateBranchName)
+		openPullRequest, pullRequestErr := openPullRequestForBranch(ctx, environment, repositoryIdentifier, candidateBranchName)
 		if pullRequestErr != nil {
 			return "", pullRequestErr
 		}
-		if openPullRequest {
+		if openPullRequest != nil {
 			return candidateBranchName, nil
 		}
 	}

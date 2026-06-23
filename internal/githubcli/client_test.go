@@ -29,7 +29,7 @@ const (
 	testListDecodeFailureCaseNameConstant                = "list_decode_failure"
 	testListCommandFailureCaseNameConstant               = "list_command_failure"
 	testListRepositoryValidationCaseNameConstant         = "list_repository_validation"
-	testListBaseValidationCaseNameConstant               = "list_base_validation"
+	testListWithoutBaseFilterCaseNameConstant            = "list_without_base_filter"
 	testListStateValidationCaseNameConstant              = "list_state_validation"
 	testPagesSuccessCaseNameConstant                     = "pages_success"
 	testPagesCommandFailureCaseNameConstant              = "pages_command_failure"
@@ -170,15 +170,17 @@ func TestListPullRequests(testInstance *testing.T) {
 				ResultLimit: 50,
 			},
 			executor: &stubGitHubExecutor{executeFunc: func(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
-				return execshell.ExecutionResult{StandardOutput: `[{"number":42,"title":"Example","headRefName":"feature/example"}]`}, nil
+				return execshell.ExecutionResult{StandardOutput: `[{"number":42,"title":"Example","headRefName":"feature/example","baseRefName":"main"}]`}, nil
 			}},
 			verify: func(testInstance *testing.T, pullRequests []githubcli.PullRequest, executor *stubGitHubExecutor) {
 				require.Len(testInstance, pullRequests, 1)
 				require.Equal(testInstance, 42, pullRequests[0].Number)
 				require.Equal(testInstance, testPullRequestTitleConstant, pullRequests[0].Title)
 				require.Equal(testInstance, testPullRequestHeadConstant, pullRequests[0].HeadRefName)
+				require.Equal(testInstance, testBaseBranchConstant, pullRequests[0].BaseRefName)
 				require.Len(testInstance, executor.recordedDetails, 1)
 				require.Contains(testInstance, executor.recordedDetails[0].Arguments, testRepositoryIdentifierConstant)
+				require.Contains(testInstance, executor.recordedDetails[0].Arguments, testBaseBranchConstant)
 			},
 		},
 		{
@@ -210,12 +212,17 @@ func TestListPullRequests(testInstance *testing.T) {
 			errorType:   githubcli.InvalidInputError{},
 		},
 		{
-			name:        testListBaseValidationCaseNameConstant,
-			repository:  testRepositoryIdentifierConstant,
-			options:     githubcli.PullRequestListOptions{State: githubcli.PullRequestStateOpen, BaseBranch: " "},
-			executor:    &stubGitHubExecutor{},
-			expectError: true,
-			errorType:   githubcli.InvalidInputError{},
+			name:       testListWithoutBaseFilterCaseNameConstant,
+			repository: testRepositoryIdentifierConstant,
+			options:    githubcli.PullRequestListOptions{State: githubcli.PullRequestStateOpen, BaseBranch: " "},
+			executor: &stubGitHubExecutor{executeFunc: func(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
+				return execshell.ExecutionResult{StandardOutput: `[]`}, nil
+			}},
+			verify: func(testInstance *testing.T, pullRequests []githubcli.PullRequest, executor *stubGitHubExecutor) {
+				require.Empty(testInstance, pullRequests)
+				require.Len(testInstance, executor.recordedDetails, 1)
+				require.NotContains(testInstance, executor.recordedDetails[0].Arguments, "--base")
+			},
 		},
 		{
 			name:        testListStateValidationCaseNameConstant,

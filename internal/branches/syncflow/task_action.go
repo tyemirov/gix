@@ -65,7 +65,8 @@ const (
 	strictSyncMissingRepositoryMessage           = "strict sync requires a GitHub repository remote"
 	strictSyncDirtyWorktreeTemplate              = "worktree is dirty; remove --require-clean or use --stash before syncing"
 	strictSyncLocalOnlyCommitTemplate            = "local branch %q has commits not on %s/%s"
-	strictSyncMissingPullRequestTemplate         = "branch %q does not have an open pull request into %s"
+	strictSyncMissingPullRequestTemplate         = "branch %q does not have an open pull request"
+	strictSyncMissingPullRequestBaseTemplate     = "open pull request for branch %q did not report a base branch"
 	strictSyncMergedPullRequestPromptTemplate    = "Pull request for branch %q into %s is already merged. Sync %s instead? [a/N/y] "
 	strictSyncConflictTemplate                   = "merge from %s/%s into %s stopped with conflicts; resolve them before pushing"
 	strictSyncFastForwardTemplate                = "fast-forward from %s/%s into %s stopped; commit, stash, or clean local changes before syncing"
@@ -626,11 +627,11 @@ func syncPullRequestBranch(ctx context.Context, environment *workflow.Environmen
 	}
 
 	if remoteExists {
-		openPullRequest, pullRequestErr := branchHasOpenPullRequest(ctx, environment, repositoryIdentifier, options.BaseBranch, options.BranchName)
+		openPullRequest, pullRequestErr := openPullRequestForBranch(ctx, environment, repositoryIdentifier, options.BranchName)
 		if pullRequestErr != nil {
 			return strictPullRequestBranchResult{}, pullRequestErr
 		}
-		if !openPullRequest {
+		if openPullRequest == nil {
 			syncedBaseBranch, syncBaseBranchErr := syncBaseBranchAfterMergedPullRequest(ctx, environment, repository, repositoryIdentifier, options)
 			if syncBaseBranchErr != nil {
 				return strictPullRequestBranchResult{}, syncBaseBranchErr
@@ -638,7 +639,11 @@ func syncPullRequestBranch(ctx context.Context, environment *workflow.Environmen
 			if syncedBaseBranch {
 				return strictPullRequestBranchResult{SyncedBranch: options.BaseBranch}, nil
 			}
-			return strictPullRequestBranchResult{}, fmt.Errorf(strictSyncMissingPullRequestTemplate, options.BranchName, options.BaseBranch)
+			return strictPullRequestBranchResult{}, fmt.Errorf(strictSyncMissingPullRequestTemplate, options.BranchName)
+		}
+		pullRequestBaseBranch, pullRequestBaseBranchErr := openPullRequestBaseBranch(*openPullRequest, options.BranchName)
+		if pullRequestBaseBranchErr != nil {
+			return strictPullRequestBranchResult{}, pullRequestBaseBranchErr
 		}
 		if switchErr := switchToLocalOrRemoteBranchWithAdoption(ctx, environment, repository, options.RemoteName, options.BranchName, options.CommitMessages); switchErr != nil {
 			return strictPullRequestBranchResult{}, switchErr
@@ -661,7 +666,7 @@ func syncPullRequestBranch(ctx context.Context, environment *workflow.Environmen
 		} else if resetErr := executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitResetSubcommandConstant, gitResetHardFlagConstant, remoteReference}); resetErr != nil {
 			return strictPullRequestBranchResult{}, resetErr
 		}
-		if mergeErr := mergeBaseIntoBranch(ctx, environment.GitExecutor, repository.Path, options.RemoteName, options.BaseBranch, options.BranchName); mergeErr != nil {
+		if mergeErr := mergeBaseIntoBranch(ctx, environment.GitExecutor, repository.Path, options.RemoteName, pullRequestBaseBranch, options.BranchName); mergeErr != nil {
 			return strictPullRequestBranchResult{}, mergeErr
 		}
 		return strictPullRequestBranchResult{}, executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitPushSubcommandConstant, options.RemoteName, options.BranchName})
@@ -802,17 +807,21 @@ func fastForwardRemoteBranchIntoLocal(ctx context.Context, executor shared.GitEx
 	return nil
 }
 
-func branchHasOpenPullRequest(ctx context.Context, environment *workflow.Environment, repositoryIdentifier string, baseBranch string, branchName string) (bool, error) {
-	return branchHasPullRequestWithState(ctx, environment, repositoryIdentifier, baseBranch, branchName, githubcli.PullRequestStateOpen)
+func openPullRequestForBranch(ctx context.Context, environment *workflow.Environment, repositoryIdentifier string, branchName string) (*githubcli.PullRequest, error) {
+	return pullRequestForBranchWithState(ctx, environment, repositoryIdentifier, "", branchName, githubcli.PullRequestStateOpen)
 }
 
 func branchHasMergedPullRequest(ctx context.Context, environment *workflow.Environment, repositoryIdentifier string, baseBranch string, branchName string) (bool, error) {
-	return branchHasPullRequestWithState(ctx, environment, repositoryIdentifier, baseBranch, branchName, githubcli.PullRequestStateMerged)
+	pullRequest, pullRequestErr := pullRequestForBranchWithState(ctx, environment, repositoryIdentifier, baseBranch, branchName, githubcli.PullRequestStateMerged)
+	if pullRequestErr != nil {
+		return false, pullRequestErr
+	}
+	return pullRequest != nil, nil
 }
 
-func branchHasPullRequestWithState(ctx context.Context, environment *workflow.Environment, repositoryIdentifier string, baseBranch string, branchName string, state githubcli.PullRequestState) (bool, error) {
+func pullRequestForBranchWithState(ctx context.Context, environment *workflow.Environment, repositoryIdentifier string, baseBranch string, branchName string, state githubcli.PullRequestState) (*githubcli.PullRequest, error) {
 	if environment.GitHubClient == nil {
-		return false, errors.New(strictSyncMissingGitHubClientMessage)
+		return nil, errors.New(strictSyncMissingGitHubClientMessage)
 	}
 	pullRequests, pullRequestErr := environment.GitHubClient.ListPullRequests(ctx, repositoryIdentifier, githubcli.PullRequestListOptions{
 		State:       state,
@@ -820,14 +829,23 @@ func branchHasPullRequestWithState(ctx context.Context, environment *workflow.En
 		ResultLimit: 100,
 	})
 	if pullRequestErr != nil {
-		return false, pullRequestErr
+		return nil, pullRequestErr
 	}
 	for _, pullRequest := range pullRequests {
 		if strings.TrimSpace(pullRequest.HeadRefName) == branchName {
-			return true, nil
+			matchedPullRequest := pullRequest
+			return &matchedPullRequest, nil
 		}
 	}
-	return false, nil
+	return nil, nil
+}
+
+func openPullRequestBaseBranch(pullRequest githubcli.PullRequest, branchName string) (string, error) {
+	baseBranch := strings.TrimSpace(pullRequest.BaseRefName)
+	if baseBranch != "" {
+		return baseBranch, nil
+	}
+	return "", fmt.Errorf(strictSyncMissingPullRequestBaseTemplate, branchName)
 }
 
 func confirmSyncBaseAfterMergedPullRequest(environment *workflow.Environment, branchName string, baseBranch string) (bool, error) {
