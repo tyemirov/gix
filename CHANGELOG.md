@@ -23,7 +23,7 @@
 - Add strict-sync coverage proving ignored-only status stays on the clean `master` sync path.
 - Add sync-flow and black-box CLI coverage proving tracked ignored modified/deleted paths are restored while ordinary dirty files are still committed.
 - Add strict-sync failure-mode coverage for staged tracked ignored dirt, `--require-clean`, `--stash`, fetch-before-restore ordering, and restore failures.
-- Add strict-sync coverage for unfiltered open-PR lookup, PR `baseRefName` merges, and missing PR-base rejection.
+- Add strict-sync coverage for head-filtered open-PR lookup, PR `baseRefName` merges, and missing PR-base rejection.
 
 ## [v0.6.7] - 2026-06-09
 

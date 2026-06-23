@@ -103,6 +103,7 @@ type PullRequest struct {
 type PullRequestListOptions struct {
 	State       PullRequestState
 	BaseBranch  string
+	HeadBranch  string
 	ResultLimit int
 }
 
@@ -296,6 +297,10 @@ func (client *Client) ListPullRequests(executionContext context.Context, reposit
 	baseBranch := strings.TrimSpace(options.BaseBranch)
 	if baseBranch != "" {
 		commandArguments = append(commandArguments, baseFlagConstant, baseBranch)
+	}
+	headBranch := strings.TrimSpace(options.HeadBranch)
+	if headBranch != "" {
+		commandArguments = append(commandArguments, headFlagConstant, headBranch)
 	}
 	commandArguments = append(commandArguments,
 		jsonFlagConstant,

@@ -167,6 +167,7 @@ func TestListPullRequests(testInstance *testing.T) {
 			options: githubcli.PullRequestListOptions{
 				State:       githubcli.PullRequestStateOpen,
 				BaseBranch:  testBaseBranchConstant,
+				HeadBranch:  testPullRequestHeadConstant,
 				ResultLimit: 50,
 			},
 			executor: &stubGitHubExecutor{executeFunc: func(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
@@ -181,6 +182,8 @@ func TestListPullRequests(testInstance *testing.T) {
 				require.Len(testInstance, executor.recordedDetails, 1)
 				require.Contains(testInstance, executor.recordedDetails[0].Arguments, testRepositoryIdentifierConstant)
 				require.Contains(testInstance, executor.recordedDetails[0].Arguments, testBaseBranchConstant)
+				require.Contains(testInstance, executor.recordedDetails[0].Arguments, "--head")
+				require.Contains(testInstance, executor.recordedDetails[0].Arguments, testPullRequestHeadConstant)
 			},
 		},
 		{

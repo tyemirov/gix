@@ -500,6 +500,8 @@ func TestHandleBranchSyncActionStrictPRBranchUsesOpenPullRequestBase(t *testing.
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "push origin feature/foo")
 	require.Len(t, githubExecutor.commands, 1)
 	require.False(t, commandHasArgument(githubExecutor.commands[0].Arguments, "--base"))
+	require.Contains(t, githubExecutor.commands[0].Arguments, "--head")
+	require.Contains(t, githubExecutor.commands[0].Arguments, "feature/foo")
 	require.Contains(t, buffer.String(), "SYNCED: /tmp/project (feature/foo)")
 }
 

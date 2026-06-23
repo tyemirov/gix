@@ -826,6 +826,7 @@ func pullRequestForBranchWithState(ctx context.Context, environment *workflow.En
 	pullRequests, pullRequestErr := environment.GitHubClient.ListPullRequests(ctx, repositoryIdentifier, githubcli.PullRequestListOptions{
 		State:       state,
 		BaseBranch:  baseBranch,
+		HeadBranch:  branchName,
 		ResultLimit: 100,
 	})
 	if pullRequestErr != nil {
