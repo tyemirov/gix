@@ -25,6 +25,29 @@
 - Add strict-sync failure-mode coverage for staged tracked ignored dirt, `--require-clean`, `--stash`, fetch-before-restore ordering, and restore failures.
 - Add strict-sync coverage for head-filtered open-PR lookup, PR `baseRefName` merges, and missing PR-base rejection.
 
+## [v0.6.8] - 2026-06-23
+
+### Features ✨
+- Accept existing `gix sync` PR branches whose open pull request targets a chained issue branch and merge the pull request's actual base instead of requiring `master`.
+
+### Improvements ⚙️
+- Update `gix sync` to sync existing PR branches against their current PR base branch instead of always merging `master`.
+- Refine error messages and PR base branch handling for better sync flow clarity.
+- Enhance `gix sync` documentation and CLI descriptions to reflect updated PR base branch behavior.
+
+### Bug Fixes 🐛
+- Fix sync chained PR base detection to properly merge the actual PR base branch.
+- Filter sync pull request lookup by head branch to correctly identify open PRs.
+
+### Testing 🧪
+- Add strict-sync coverage for head-filtered open-PR lookup, PR `baseRefName` merges, and missing PR-base rejection.
+- Update strict-sync pull request creation coverage for requested branches and generated dirty-`master` branches.
+- Add strict-sync failure-mode coverage for staged tracked ignored dirt, `--require-clean`, `--stash`, fetch-before-restore ordering, and restore failures.
+
+### Docs 📚
+- Update README and CLI command descriptions to clarify `gix sync` behavior with existing PR branches and base branch merging.
+- Clarify sync workflow and PR handling in usage examples and documentation.
+
 ## [v0.6.7] - 2026-06-09
 
 ### Features ✨
