@@ -123,7 +123,13 @@ type strictSyncGitExecutor struct {
 	blockedBranch      string
 	blockedWorktree    string
 	worktreeRemoved    bool
+	currentBranch      string
 }
+
+const (
+	strictSyncGitAbbrevRefFlag = "--abbrev-ref"
+	strictSyncGitHeadReference = "HEAD"
+)
 
 func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
 	executor.commands = append(executor.commands, details)
@@ -193,6 +199,13 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 		}
 		return execshell.ExecutionResult{StandardOutput: output}, nil
 	case "rev-parse":
+		if len(details.Arguments) > 2 && details.Arguments[1] == strictSyncGitAbbrevRefFlag && details.Arguments[2] == strictSyncGitHeadReference {
+			currentBranch := executor.currentBranch
+			if currentBranch == "" {
+				currentBranch = defaultSyncBaseBranch
+			}
+			return execshell.ExecutionResult{StandardOutput: currentBranch + "\n"}, nil
+		}
 		if len(details.Arguments) > 2 && details.Arguments[1] == "--verify" && executor.missingReferences[details.Arguments[2]] {
 			return execshell.ExecutionResult{}, commandFailedError("fatal: Needed a single revision")
 		}
@@ -1593,7 +1606,8 @@ func TestHandleBranchSyncActionStrictPRBranchCreatesGeneratedBranchFromDirtyMast
 	}
 
 	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
-	require.Contains(t, recordedGitCommands(gitExecutor.commands), "switch -c "+generatedBranchName+" origin/master")
+	require.NotEqual(t, -1, recordedGitCommandIndex(gitExecutor.commands, "switch -c "+generatedBranchName))
+	require.Equal(t, -1, recordedGitCommandIndex(gitExecutor.commands, "switch -c "+generatedBranchName+" origin/master"))
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "add --all -- README.md")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "commit -m docs: update readme")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "merge --no-edit origin/master")
@@ -1655,8 +1669,9 @@ func TestHandleBranchSyncActionStrictPRBranchSkipsStaleGeneratedRemoteBranch(t *
 	}
 
 	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
-	require.NotContains(t, recordedGitCommands(gitExecutor.commands), "switch -c "+generatedBranchName+" origin/master")
-	require.Contains(t, recordedGitCommands(gitExecutor.commands), "switch -c "+collisionBranchName+" origin/master")
+	require.Equal(t, -1, recordedGitCommandIndex(gitExecutor.commands, "switch -c "+generatedBranchName+" origin/master"))
+	require.NotEqual(t, -1, recordedGitCommandIndex(gitExecutor.commands, "switch -c "+collisionBranchName))
+	require.Equal(t, -1, recordedGitCommandIndex(gitExecutor.commands, "switch -c "+collisionBranchName+" origin/master"))
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "push -u origin "+collisionBranchName)
 	require.Len(t, githubExecutor.commands, 2)
 	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", collisionBranchName, "--title", collisionBranchName, "--body", pullRequestBody}, githubExecutor.commands[1].Arguments)
