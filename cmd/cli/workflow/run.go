@@ -116,15 +116,13 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 	configurationPath := configurationPathCandidate
 	var workflowConfiguration workflow.Configuration
 	loadedFromPreset := false
-	if presetCatalog != nil {
-		presetConfiguration, presetFound, presetError := presetCatalog.Load(configurationPath)
-		if presetError != nil {
-			return fmt.Errorf(loadPresetErrorTemplateConstant, configurationPath, presetError)
-		}
-		if presetFound {
-			workflowConfiguration = presetConfiguration
-			loadedFromPreset = true
-		}
+	presetConfiguration, presetFound, presetError := presetCatalog.Load(configurationPath)
+	if presetError != nil {
+		return fmt.Errorf(loadPresetErrorTemplateConstant, configurationPath, presetError)
+	}
+	if presetFound {
+		workflowConfiguration = presetConfiguration
+		loadedFromPreset = true
 	}
 
 	if !loadedFromPreset {

@@ -22,6 +22,8 @@ const (
 	strictSyncDirtyClusterFailureTemplate = "failed to commit dirty sync cluster %q: %w"
 	strictSyncDirtyIgnoreFailureTemplate  = "failed to inspect ignored dirty sync paths: %w"
 	strictSyncDirtyRestoreFailureTemplate = "failed to restore ignored dirty sync paths: %w"
+	strictSyncCurrentBranchFailure        = "failed to inspect current branch before dirty sync branch creation: %w"
+	strictSyncCurrentBranchRepository     = "repository required to inspect current branch before dirty sync branch creation"
 	strictSyncGeneratedBranchPrefix       = "gix"
 	strictSyncGeneratedSemanticFallback   = "work"
 	strictSyncGeneratedSemanticSlugLimit  = 56
@@ -280,7 +282,28 @@ func prepareStrictSyncBranchForDirtyWork(ctx context.Context, environment *workf
 	if !baseExists {
 		return fmt.Errorf("remote base branch %q does not exist", baseReference)
 	}
+	startAtCurrentCheckout, currentBranchErr := dirtySyncBranchStartsAtCurrentCheckout(ctx, environment, repository, baseBranch)
+	if currentBranchErr != nil {
+		return currentBranchErr
+	}
+	if startAtCurrentCheckout {
+		return executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitSwitchSubcommandConstant, gitCreateBranchFlagConstant, branchName})
+	}
 	return executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitSwitchSubcommandConstant, gitCreateBranchFlagConstant, branchName, baseReference})
+}
+
+func dirtySyncBranchStartsAtCurrentCheckout(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, baseBranch string) (bool, error) {
+	if repository == nil {
+		return false, errors.New(strictSyncCurrentBranchRepository)
+	}
+	if environment == nil || environment.RepositoryManager == nil {
+		return false, errors.New(refreshMissingRepositoryManagerMessage)
+	}
+	currentBranch, currentBranchErr := environment.RepositoryManager.GetCurrentBranch(ctx, repository.Path)
+	if currentBranchErr != nil {
+		return false, fmt.Errorf(strictSyncCurrentBranchFailure, currentBranchErr)
+	}
+	return strings.TrimSpace(currentBranch) == strings.TrimSpace(baseBranch), nil
 }
 
 func buildSyncCommitClusters(statusEntries []string) []syncCommitCluster {

@@ -79,7 +79,7 @@ func TestSyncCommitsDirtyMasterWorktreeOnGeneratedBranch(testInstance *testing.T
 	require.NoError(testInstance, os.WriteFile(gitignorePath, []byte("__pycache__/\n"), 0o644))
 
 	readmePath := filepath.Join(repositoryPath, "README.md")
-	require.NoError(testInstance, os.WriteFile(readmePath, []byte("initial\n"), 0o644))
+	require.NoError(testInstance, os.WriteFile(readmePath, []byte("initial\nmiddle\nstable\n"), 0o644))
 
 	addCommand := exec.Command("git", "-C", repositoryPath, "add", ".gitignore", "README.md")
 	addCommand.Env = buildGitCommandEnvironment(nil)
@@ -106,10 +106,10 @@ func TestSyncCommitsDirtyMasterWorktreeOnGeneratedBranch(testInstance *testing.T
 	upstreamEmailCommand.Env = buildGitCommandEnvironment(nil)
 	require.NoError(testInstance, upstreamEmailCommand.Run())
 
-	upstreamFilePath := filepath.Join(upstreamPath, "UPSTREAM.md")
-	require.NoError(testInstance, os.WriteFile(upstreamFilePath, []byte("remote update\n"), 0o644))
+	upstreamFilePath := filepath.Join(upstreamPath, "README.md")
+	require.NoError(testInstance, os.WriteFile(upstreamFilePath, []byte("remote update\nmiddle\nstable\n"), 0o644))
 
-	upstreamAddCommand := exec.Command("git", "-C", upstreamPath, "add", "UPSTREAM.md")
+	upstreamAddCommand := exec.Command("git", "-C", upstreamPath, "add", "README.md")
 	upstreamAddCommand.Env = buildGitCommandEnvironment(nil)
 	require.NoError(testInstance, upstreamAddCommand.Run())
 
@@ -121,7 +121,7 @@ func TestSyncCommitsDirtyMasterWorktreeOnGeneratedBranch(testInstance *testing.T
 	upstreamPushCommand.Env = buildGitCommandEnvironment(nil)
 	require.NoError(testInstance, upstreamPushCommand.Run())
 
-	require.NoError(testInstance, os.WriteFile(readmePath, []byte("modified locally\n"), 0o644))
+	require.NoError(testInstance, os.WriteFile(readmePath, []byte("initial\nmiddle\nmodified locally\n"), 0o644))
 	eggInfoPath := filepath.Join(repositoryPath, "python", "llm_proxy_client.egg-info")
 	require.NoError(testInstance, os.MkdirAll(eggInfoPath, 0o755))
 	require.NoError(testInstance, os.WriteFile(filepath.Join(eggInfoPath, "PKG-INFO"), []byte("metadata\n"), 0o644))
@@ -193,12 +193,14 @@ operations:
 	testInstance.Logf("sync output:\n%s", output)
 	require.Contains(testInstance, output, "strict sync requires a GitHub repository remote")
 	require.NotContains(testInstance, output, "worktree is dirty")
+	require.NotContains(testInstance, output, "would be overwritten by checkout")
 
 	invocationLogContents, readError := os.ReadFile(gitInvocationLog)
 	require.NoError(testInstance, readError)
 	invocationLog := string(invocationLogContents)
 	require.Contains(testInstance, invocationLog, "check-ignore --stdin")
-	require.Contains(testInstance, invocationLog, "switch -c "+expectedGeneratedBranchName+" origin/master")
+	require.Contains(testInstance, invocationLog, "switch -c "+expectedGeneratedBranchName+"\n")
+	require.NotContains(testInstance, invocationLog, "switch -c "+expectedGeneratedBranchName+" origin/master")
 	require.Contains(testInstance, invocationLog, "add --all -- README.md")
 	require.Contains(testInstance, invocationLog, "add --all -- python/llm_proxy_client.egg-info/PKG-INFO python/llm_proxy_client.egg-info/SOURCES.txt")
 	require.NotContains(testInstance, invocationLog, "add --all -- python/llm_proxy_client/__pycache__")
@@ -209,7 +211,7 @@ operations:
 
 	localFileContents, localReadError := os.ReadFile(readmePath)
 	require.NoError(testInstance, localReadError)
-	require.Equal(testInstance, "modified locally\n", string(localFileContents))
+	require.Equal(testInstance, "initial\nmiddle\nmodified locally\n", string(localFileContents))
 	require.Equal(testInstance, expectedGeneratedBranchName, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
 	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
 	require.Equal(testInstance, "docs: sync dirty work", strings.TrimSpace(runGit(testInstance, repositoryPath, "log", "-1", "--pretty=%s")))
@@ -354,7 +356,8 @@ operations:
 	require.Contains(testInstance, invocationLog, "check-ignore --stdin")
 	require.Contains(testInstance, invocationLog, "ls-files --cached --ignored --exclude-standard -- python/llm_proxy_client.egg-info/PKG-INFO python/llm_proxy_client.egg-info/SOURCES.txt python/llm_proxy_client/__pycache__/client.cpython-313.pyc python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc")
 	require.Contains(testInstance, invocationLog, "restore --staged --worktree -- python/llm_proxy_client/__pycache__/client.cpython-313.pyc python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc")
-	require.Contains(testInstance, invocationLog, "switch -c "+expectedGeneratedBranchName+" origin/master")
+	require.Contains(testInstance, invocationLog, "switch -c "+expectedGeneratedBranchName+"\n")
+	require.NotContains(testInstance, invocationLog, "switch -c "+expectedGeneratedBranchName+" origin/master")
 	require.Contains(testInstance, invocationLog, "add --all -- python/llm_proxy_client.egg-info/PKG-INFO python/llm_proxy_client.egg-info/SOURCES.txt")
 	require.NotContains(testInstance, invocationLog, "add --all -- python/llm_proxy_client/__pycache__")
 	require.NotContains(testInstance, invocationLog, "add --all -- python/tests/__pycache__")
