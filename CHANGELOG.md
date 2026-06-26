@@ -25,6 +25,26 @@
 - Add strict-sync failure-mode coverage for staged tracked ignored dirt, `--require-clean`, `--stash`, fetch-before-restore ordering, and restore failures.
 - Add strict-sync coverage for head-filtered open-PR lookup, PR `baseRefName` merges, and missing PR-base rejection.
 
+## [v0.6.9] - 2026-06-26
+
+### Features ✨
+- _No changes._
+
+### Improvements ⚙️
+- Simplified preset configuration loading logic in the workflow run command.
+- Added forward-only contract discipline documentation to AGENTS.md.
+
+### Bug Fixes 🐛
+- Fixed `gix sync master` to rescue dirty work on a generated PR branch when switching from `origin/master` would overwrite local changes.
+- Preserved dirty `master` rescue behavior when local `master` already has commits ahead of `origin/master`.
+
+### Testing 🧪
+- Improved sync integration test for dirty master worktree.
+- Added tests for strict PR branch creation from dirty master when local base is ahead.
+
+### Docs 📚
+- Updated ISSUES.md with latest changes and maintenance runbooks.
+
 ## [v0.6.8] - 2026-06-23
 
 ### Features ✨
