@@ -1624,8 +1624,9 @@ func TestHandleBranchSyncActionStrictPRBranchCreatesGeneratedBranchFromDirtyMast
 	require.Contains(t, chatClient.requests[2].Messages[1].Content, "diff --git a/README.md b/README.md")
 }
 
-func TestHandleBranchSyncActionStrictPRBranchRejectsDirtyMasterWhenLocalBaseAhead(t *testing.T) {
+func TestHandleBranchSyncActionStrictPRBranchCreatesGeneratedBranchFromDirtyMasterWhenLocalBaseAhead(t *testing.T) {
 	generatedBranchName := "gix/cancel-upstream-request-on-downstream-timeout"
+	pullRequestBody := "## Summary\n- Preserves local master commits and dirty README work."
 	gitExecutor := &strictSyncGitExecutor{
 		statusOutput:  " M README.md\n",
 		revListOutput: "1\n",
@@ -1639,7 +1640,7 @@ func TestHandleBranchSyncActionStrictPRBranchRejectsDirtyMasterWhenLocalBaseAhea
 	githubExecutor := &strictSyncGitHubExecutor{}
 	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
 	require.NoError(t, githubClientError)
-	chatClient := &strictSyncChatClient{response: "fix: cancel upstream request on downstream timeout"}
+	chatClient := &strictSyncChatClient{responses: []string{"fix: cancel upstream request on downstream timeout", "docs: update readme", pullRequestBody}}
 	environment := &workflow.Environment{
 		GitExecutor:       gitExecutor,
 		RepositoryManager: gitManager,
@@ -1669,14 +1670,17 @@ func TestHandleBranchSyncActionStrictPRBranchRejectsDirtyMasterWhenLocalBaseAhea
 
 	syncError := handleBranchSyncAction(context.Background(), environment, repository, parameters)
 
-	require.Error(t, syncError)
-	require.Contains(t, syncError.Error(), `local branch "master" has commits not on origin/master`)
+	require.NoError(t, syncError)
 	recordedCommands := recordedGitCommands(gitExecutor.commands)
-	require.Contains(t, recordedCommands, "rev-list --count origin/master..master")
-	require.NotContains(t, recordedCommands, "switch -c "+generatedBranchName)
-	require.NotContains(t, recordedCommands, "add --all -- README.md")
-	require.NotContains(t, recordedCommands, "commit -m")
-	require.Len(t, chatClient.requests, 1)
+	require.NotContains(t, recordedCommands, "rev-list --count origin/master..master")
+	require.Contains(t, recordedCommands, "switch -c "+generatedBranchName)
+	require.Contains(t, recordedCommands, "add --all -- README.md")
+	require.Contains(t, recordedCommands, "commit -m docs: update readme")
+	require.Contains(t, recordedCommands, "merge --no-edit origin/master")
+	require.Contains(t, recordedCommands, "push -u origin "+generatedBranchName)
+	require.Len(t, githubExecutor.commands, 1)
+	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", generatedBranchName, "--title", generatedBranchName, "--body", pullRequestBody}, githubExecutor.commands[0].Arguments)
+	require.Len(t, chatClient.requests, 3)
 }
 
 func TestHandleBranchSyncActionStrictPRBranchSkipsStaleGeneratedRemoteBranch(t *testing.T) {
