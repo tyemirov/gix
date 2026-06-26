@@ -287,6 +287,9 @@ func prepareStrictSyncBranchForDirtyWork(ctx context.Context, environment *workf
 		return currentBranchErr
 	}
 	if startAtCurrentCheckout {
+		if alignmentErr := ensureDirtySyncBaseBranchRemoteAligned(ctx, environment.GitExecutor, repository.Path, remoteName, baseBranch); alignmentErr != nil {
+			return alignmentErr
+		}
 		return executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitSwitchSubcommandConstant, gitCreateBranchFlagConstant, branchName})
 	}
 	return executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitSwitchSubcommandConstant, gitCreateBranchFlagConstant, branchName, baseReference})
@@ -304,6 +307,20 @@ func dirtySyncBranchStartsAtCurrentCheckout(ctx context.Context, environment *wo
 		return false, fmt.Errorf(strictSyncCurrentBranchFailure, currentBranchErr)
 	}
 	return strings.TrimSpace(currentBranch) == strings.TrimSpace(baseBranch), nil
+}
+
+func ensureDirtySyncBaseBranchRemoteAligned(ctx context.Context, executor shared.GitExecutor, repositoryPath string, remoteName string, baseBranch string) error {
+	trimmedRemoteName := strings.TrimSpace(remoteName)
+	trimmedBaseBranch := strings.TrimSpace(baseBranch)
+	remoteReference := fmt.Sprintf("%s/%s", trimmedRemoteName, trimmedBaseBranch)
+	aheadCount, aheadErr := commitCount(ctx, executor, repositoryPath, fmt.Sprintf("%s..%s", remoteReference, trimmedBaseBranch))
+	if aheadErr != nil {
+		return aheadErr
+	}
+	if aheadCount > 0 {
+		return fmt.Errorf(strictSyncLocalOnlyCommitTemplate, trimmedBaseBranch, trimmedRemoteName, trimmedBaseBranch)
+	}
+	return nil
 }
 
 func buildSyncCommitClusters(statusEntries []string) []syncCommitCluster {

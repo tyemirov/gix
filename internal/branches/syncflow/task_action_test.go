@@ -1624,6 +1624,61 @@ func TestHandleBranchSyncActionStrictPRBranchCreatesGeneratedBranchFromDirtyMast
 	require.Contains(t, chatClient.requests[2].Messages[1].Content, "diff --git a/README.md b/README.md")
 }
 
+func TestHandleBranchSyncActionStrictPRBranchRejectsDirtyMasterWhenLocalBaseAhead(t *testing.T) {
+	generatedBranchName := "gix/cancel-upstream-request-on-downstream-timeout"
+	gitExecutor := &strictSyncGitExecutor{
+		statusOutput:  " M README.md\n",
+		revListOutput: "1\n",
+		missingReferences: map[string]bool{
+			"origin/" + generatedBranchName:     true,
+			"refs/heads/" + generatedBranchName: true,
+		},
+	}
+	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(t, managerError)
+	githubExecutor := &strictSyncGitHubExecutor{}
+	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
+	require.NoError(t, githubClientError)
+	chatClient := &strictSyncChatClient{response: "fix: cancel upstream request on downstream timeout"}
+	environment := &workflow.Environment{
+		GitExecutor:       gitExecutor,
+		RepositoryManager: gitManager,
+		GitHubClient:      githubClient,
+		Logger:            zap.NewNop(),
+		Output:            io.Discard,
+		Errors:            io.Discard,
+		Reporter:          &recordingReporter{},
+	}
+	repository := &workflow.RepositoryState{
+		Path: "/tmp/project",
+		Inspection: audit.RepositoryInspection{
+			LocalBranch:    "master",
+			FinalOwnerRepo: "owner/project",
+		},
+	}
+	parameters := map[string]any{
+		taskOptionBranchName:         "master",
+		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
+		taskOptionRequirePullRequest: true,
+		taskOptionBaseBranch:         "master",
+		taskOptionRequireClean:       false,
+		taskOptionWorktreeCommitMessage: worktreeAdoptionCommitMessageOptions{
+			Client: chatClient,
+		},
+	}
+
+	syncError := handleBranchSyncAction(context.Background(), environment, repository, parameters)
+
+	require.Error(t, syncError)
+	require.Contains(t, syncError.Error(), `local branch "master" has commits not on origin/master`)
+	recordedCommands := recordedGitCommands(gitExecutor.commands)
+	require.Contains(t, recordedCommands, "rev-list --count origin/master..master")
+	require.NotContains(t, recordedCommands, "switch -c "+generatedBranchName)
+	require.NotContains(t, recordedCommands, "add --all -- README.md")
+	require.NotContains(t, recordedCommands, "commit -m")
+	require.Len(t, chatClient.requests, 1)
+}
+
 func TestHandleBranchSyncActionStrictPRBranchSkipsStaleGeneratedRemoteBranch(t *testing.T) {
 	generatedBranchName := "gix/cancel-upstream-request-on-downstream-timeout"
 	collisionBranchName := generatedBranchName + "-2"
