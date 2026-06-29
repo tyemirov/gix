@@ -166,8 +166,9 @@
               <h3>Developer Tooling</h3>
               <ul>
                 <li>
-                  Bootstrap new workspaces with `gix --init` and opinionated
-                  defaults.
+                  Bootstrap personal defaults with
+                  <code>gix --init user</code> or workspace defaults with
+                  <code>gix --init local</code>.
                 </li>
                 <li>
                   Refresh dozens of example repos nightly to keep mergable
@@ -190,11 +191,21 @@
             </p>
             <ol class="list-steps">
               <li><code>go install github.com/tyemirov/gix@latest</code></li>
-              <li><code>gix --init LOCAL</code> to bootstrap config.</li>
+              <li>
+                <code>gix --init user</code> to create
+                <code>$XDG_CONFIG_HOME/gix/config.yaml</code>, falling back to
+                <code>~/.gix/config.yaml</code>.
+              </li>
               <li>
                 <code>gix audit --roots ~/Development</code> for a first pass.
               </li>
             </ol>
+            <p>
+              Config controls reusable defaults for roots, remotes, logging,
+              confirmation prompts, clean-worktree policy, LLM provider
+              settings, and workflow operations. Use <code>gix --init local</code>
+              when a workspace needs its own <code>./config.yaml</code>.
+            </p>
           </div>
           <div class="docs-links">
             <h3>Documentation</h3>
@@ -202,7 +213,9 @@
             <a href="../ARCHITECTURE.md"
               >ARCHITECTURE — internals &amp; design</a
             >
-            <a href="../ISSUES.md">ISSUES — roadmap &amp; change log</a>
+            <a href="https://github.com/tyemirov/gix/blob/master/.mprlab/ISSUES.md"
+              >ISSUES — roadmap &amp; change log</a
+            >
           </div>
         </div>
       </section>
@@ -290,7 +303,7 @@
               <h3>Cobra + Viper CLI</h3>
               <p>
                 All commands live under <code>cmd/cli</code> with shared flags,
-                configuration, and logging.
+                user/local configuration, and logging.
               </p>
             </li>
             <li>
