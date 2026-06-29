@@ -15,10 +15,11 @@ gix makes one pull-request-centered Git workflow mechanical: `master` belongs to
 
 1. Install the CLI: `go install github.com/tyemirov/gix@latest` (Go 1.25+).
 2. Create user-level defaults: `gix --init user`.
-3. Attach or verify a workspace: `gix sync https://github.com/OWNER/REPO.git`.
-4. Restore the remote-owned base branch: `gix sync master`.
-5. Start or resume PR work: `gix sync feature/my-change`.
-6. Sync the current branch later with plain `gix sync`.
+3. To use MPR LLM Proxy for generated commit messages and changelog text, set `llm.transport: llm_proxy`, set `llm.provider` to the proxy upstream provider when needed, and export `LLM_PROXY_SECRET`.
+4. Attach or verify a workspace: `gix sync https://github.com/OWNER/REPO.git`.
+5. Restore the remote-owned base branch: `gix sync master`.
+6. Start or resume PR work: `gix sync feature/my-change`.
+7. Sync the current branch later with plain `gix sync`.
 
 ## The sync flow
 
@@ -92,23 +93,16 @@ gix message commit --roots .
 gix message changelog --since-tag v1.2.0 --version v1.3.0
 ```
 
-Use the reusable LLM client (`github.com/tyemirov/utils/llm`) to summarise staged changes or recent history. `gix sync` uses the same configured client for automatic dirty-work commit messages, including `provider`, `model`, `base_url`, `api_key_env`, `max_completion_tokens`, `temperature`, and `timeout_seconds`. The embedded default provider is `openai_compatible` with `OPENAI_API_KEY`; configure `provider: llm_proxy` in your user config when using the MPR LLM Proxy endpoint.
+Use the reusable LLM client (`github.com/tyemirov/utils/llm`) to summarise staged changes or recent history. `gix sync` uses the same configured client for automatic dirty-work commit messages. The embedded default transport is `openai_compatible` with `OPENAI_API_KEY`; configure the top-level LLM default when using MPR LLM Proxy:
 
 ```yaml
-operations:
-  - command: ["message", "commit"]
-    with:
-      provider: llm_proxy
-      api_key_env: LLM_PROXY_SECRET
-      base_url: https://llm-proxy-api.mprlab.com
-      model: gpt-4.1
-  - command: ["message", "changelog"]
-    with:
-      provider: llm_proxy
-      api_key_env: LLM_PROXY_SECRET
-      base_url: https://llm-proxy-api.mprlab.com
-      model: gpt-4.1
+llm:
+  transport: llm_proxy
+  provider: deepseek
+  model: <model-id-accepted-by-proxy>
 ```
+
+`transport: llm_proxy` selects `LLM_PROXY_SECRET` and `https://llm-proxy-api.mprlab.com` automatically. `provider` is the upstream provider name passed to LLM Proxy, not a local API-key selector; gix still uses only `LLM_PROXY_SECRET` for proxy authentication. Add `api_key_env`, `base_url`, or `model` under `llm` only when you need to override the transport defaults. Per-operation LLM fields remain available for granular overrides.
 
 ## Automate sequences with workflows
 
@@ -437,7 +431,7 @@ Schema highlights:
   - `mode: replace` rewrites matching substrings using `replacements: [{ from, to }]` (templated). File paths accept glob patterns, including recursive `**/*.ext`, so you can update many files with one entry.
 - Actions: `{ type, options }` where `type` is one of:
  - `repo.remote.update`, `repo.remote.convert-protocol`, `repo.folder.rename`, `branch.default`, `repo.release.tag`, `audit.report`, `repo.history.purge`, `repo.files.replace`, `repo.namespace.rewrite`
-- LLM: optional `{ provider, model, base_url, api_key_env, timeout_seconds, max_completion_tokens, temperature }` block. When present, commit/changelog actions reuse the configured client instead of requiring a programmatic injector.
+- LLM: optional `{ transport, provider, model, base_url, api_key_env, timeout_seconds, max_completion_tokens, temperature }` block. `transport` selects `openai_compatible` or `llm_proxy`; `provider` is passed to LLM Proxy as the upstream provider. When present, commit/changelog actions reuse the configured client instead of requiring a programmatic injector.
 - Commit: `{ message }` (templated). Defaults to `Apply task <name>` when empty.
 - Pull request: `{ title, body, base, draft }` (templated; optional).
 - Safeguards: `{ hard_stop: {...}, soft_skip: {...} }` blocks that control whether a violation aborts the repository (`hard_stop`) or just skips the current task/action (`soft_skip`). Legacy flat maps are treated as `hard_stop`.
@@ -557,9 +551,9 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
  - Creates and pushes an annotated tag for each repository root.
 - `gix release retag --map <tag=ref> [--map <tag=ref>...] [--message-template <text>] [--remote <name>] [--roots <dir>...] [-y]` (alias `fix`)
  - Reassigns existing release tags to provided commits and force-pushes updates.
-- `gix message changelog [--version <v>] [--release-date YYYY-MM-DD] [--since-tag <ref>] [--since-date <ts>] [--max-tokens <N>] [--temperature <0-2>] [--provider openai_compatible|llm_proxy] [--model <id>] [--base-url <url>] [--api-key-env <NAME>] [--timeout-seconds <N>] [--roots <dir>...]` (aliases `section`)
+- `gix message changelog [--version <v>] [--release-date YYYY-MM-DD] [--since-tag <ref>] [--since-date <ts>] [--max-tokens <N>] [--temperature <0-2>] [--transport openai_compatible|llm_proxy] [--provider <proxy-provider>] [--model <id>] [--base-url <url>] [--api-key-env <NAME>] [--timeout-seconds <N>] [--roots <dir>...]` (aliases `section`)
  - Generates a changelog section from git history using the configured LLM.
-- `gix message commit [--diff-source staged|worktree] [--max-tokens <N>] [--temperature <0-2>] [--provider openai_compatible|llm_proxy] [--model <id>] [--base-url <url>] [--api-key-env <NAME>] [--timeout-seconds <N>] [--roots <dir>...]` (alias `msg`)
+- `gix message commit [--diff-source staged|worktree] [--max-tokens <N>] [--temperature <0-2>] [--transport openai_compatible|llm_proxy] [--provider <proxy-provider>] [--model <id>] [--base-url <url>] [--api-key-env <NAME>] [--timeout-seconds <N>] [--roots <dir>...]` (alias `msg`)
  - Drafts Conventional Commit subjects and optional bullets using the configured LLM.
 - `gix default <target-branch> [--roots <dir>...] [-y]`
  - Promotes the default branch across repositories.
@@ -572,8 +566,9 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
 - Add `--force yes` when you intentionally want to replace an existing generated config.
 - Configuration precedence is: CLI flags → environment variables prefixed with `GIX_` → local config → user config.
 - The config controls shared behavior such as `log_level`, `log_format`, `assume_yes`, and `require_clean`.
-- Operation defaults can set recurring values for commands, including `roots`, `remote`, sync pull request `title`/`body`, LLM `provider`/`api_key_env`/`base_url`/`model`, release remotes, audit options, and workflow defaults.
-- User config is best for personal defaults such as `roots`, logging, confirmation behavior, and LLM provider settings; local config is best for repository- or workspace-specific defaults that should travel with the checkout.
+- The top-level `llm` block controls generated commit-message, changelog, sync, and web LLM clients globally. `llm.transport: llm_proxy` is the global switch for MPR LLM Proxy; gix derives `LLM_PROXY_SECRET` and the proxy base URL from that transport, while `llm.provider` selects the proxy upstream provider when needed.
+- Operation defaults can set recurring values for commands, including `roots`, `remote`, sync pull request `title`/`body`, per-command LLM overrides, release remotes, audit options, and workflow defaults.
+- User config is best for personal defaults such as `roots`, logging, confirmation behavior, and LLM transport/provider settings; local config is best for repository- or workspace-specific defaults that should travel with the checkout.
 
 ## Need more depth?
 
