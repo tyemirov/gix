@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/tyemirov/gix/internal/llmclient"
 	"github.com/tyemirov/gix/internal/repos/shared"
 	flagutils "github.com/tyemirov/gix/internal/utils/flags"
 	rootutils "github.com/tyemirov/gix/internal/utils/roots"
@@ -221,7 +222,7 @@ func (builder *MessageCommandBuilder) run(command *cobra.Command, arguments []st
 	clientFactory := builder.ClientFactory
 	if clientFactory == nil {
 		clientFactory = func(config llm.Config) (llm.ChatClient, error) {
-			return llm.NewFactory(config)
+			return llmclient.NewFactory(config)
 		}
 	}
 

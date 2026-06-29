@@ -63,18 +63,20 @@ operations:
     with:
       roots:
         - .
-      api_key_env: OPENAI_API_KEY
-      model: gpt-4.1-mini
+      api_key_env: LLM_PROXY_SECRET
+      base_url: https://llm-proxy-api.mprlab.com
+      model: gpt-4.1
       diff_source: staged
       max_completion_tokens: 256
-      temperature: 0.2
+      temperature: 0
       timeout_seconds: 60
   - command: ["message", "changelog"]
     with:
       roots:
         - .
-      api_key_env: OPENAI_API_KEY
-      model: gpt-4.1-mini
+      api_key_env: LLM_PROXY_SECRET
+      base_url: https://llm-proxy-api.mprlab.com
+      model: gpt-4.1
       max_completion_tokens: 1200
-      temperature: 0.3
+      temperature: 0
       timeout_seconds: 60
