@@ -13,30 +13,120 @@ import (
 )
 
 const (
-	DefaultAPIKeyEnvironment = "LLM_PROXY_SECRET"
-	DefaultBaseURL           = "https://llm-proxy-api.mprlab.com"
-	DefaultModel             = "gpt-4.1"
-	defaultRequestTimeout    = 60 * time.Second
+	DefaultAPIKeyEnvironment         = "OPENAI_API_KEY"
+	DefaultBaseURL                   = "https://api.openai.com/v1"
+	DefaultLLMProxyAPIKeyEnvironment = "LLM_PROXY_SECRET"
+	DefaultLLMProxyBaseURL           = "https://llm-proxy-api.mprlab.com"
+	DefaultModel                     = "gpt-4.1"
+	defaultRequestTimeout            = 60 * time.Second
 )
+
+// Provider identifies the transport used for chat requests.
+type Provider string
+
+const (
+	// ProviderOpenAICompatible sends requests to an OpenAI-compatible chat completions endpoint.
+	ProviderOpenAICompatible Provider = "openai_compatible"
+	// ProviderLLMProxy sends requests to the MPR LLM Proxy v2 endpoint.
+	ProviderLLMProxy Provider = "llm_proxy"
+	// DefaultProvider is the embedded provider used when no user configuration overrides it.
+	DefaultProvider = ProviderOpenAICompatible
+)
+
+// Config describes the configured chat client.
+type Config struct {
+	Provider            Provider
+	BaseURL             string
+	APIKey              string
+	Model               string
+	MaxCompletionTokens int
+	Temperature         float64
+	HTTPClient          llm.HTTPClient
+	RequestTimeout      time.Duration
+	RetryAttempts       int
+	RetryInitialBackoff time.Duration
+	RetryMaxBackoff     time.Duration
+	RetryBackoffFactor  float64
+}
 
 type proxyChatClient struct {
 	client llmproxyclient.Client
 	model  string
 }
 
-// NewFactory creates the configured chat client.
-func NewFactory(configuration llm.Config) (llm.ChatClient, error) {
-	if isDefaultLLMProxyBaseURL(configuration.BaseURL) {
-		return newProxyChatClient(configuration)
+// NewProvider constructs a provider from a configuration value.
+func NewProvider(rawValue string) (Provider, error) {
+	trimmedValue := strings.TrimSpace(rawValue)
+	if trimmedValue == "" {
+		return DefaultProvider, nil
 	}
-	return llm.NewFactory(configuration)
+	provider := Provider(trimmedValue)
+	switch provider {
+	case ProviderOpenAICompatible, ProviderLLMProxy:
+		return provider, nil
+	default:
+		return "", fmt.Errorf("unsupported llm provider %q", trimmedValue)
+	}
 }
 
-func isDefaultLLMProxyBaseURL(baseURL string) bool {
-	return strings.TrimRight(strings.TrimSpace(baseURL), "/") == DefaultBaseURL
+// NormalizeProviderName trims a provider string and applies the embedded default for empty values.
+func NormalizeProviderName(rawValue string) string {
+	trimmedValue := strings.TrimSpace(rawValue)
+	if trimmedValue == "" {
+		return string(DefaultProvider)
+	}
+	return trimmedValue
 }
 
-func newProxyChatClient(configuration llm.Config) (llm.ChatClient, error) {
+// DefaultAPIKeyEnvironmentForProviderName returns the canonical secret environment variable for a provider.
+func DefaultAPIKeyEnvironmentForProviderName(rawProvider string) string {
+	if Provider(NormalizeProviderName(rawProvider)) == ProviderLLMProxy {
+		return DefaultLLMProxyAPIKeyEnvironment
+	}
+	return DefaultAPIKeyEnvironment
+}
+
+// DefaultBaseURLForProviderName returns the canonical endpoint for a provider.
+func DefaultBaseURLForProviderName(rawProvider string) string {
+	if Provider(NormalizeProviderName(rawProvider)) == ProviderLLMProxy {
+		return DefaultLLMProxyBaseURL
+	}
+	return DefaultBaseURL
+}
+
+// NewFactory creates the configured chat client.
+func NewFactory(configuration Config) (llm.ChatClient, error) {
+	provider, providerError := NewProvider(string(configuration.Provider))
+	if providerError != nil {
+		return nil, providerError
+	}
+	switch provider {
+	case ProviderLLMProxy:
+		return newProxyChatClient(configuration)
+	case ProviderOpenAICompatible:
+		return llm.NewFactory(configuration.toOpenAICompatibleConfig())
+	default:
+		return nil, fmt.Errorf("unsupported llm provider %q", provider)
+	}
+}
+
+func (configuration Config) toOpenAICompatibleConfig() llm.Config {
+	return llm.Config{
+		BaseURL:             strings.TrimSpace(configuration.BaseURL),
+		APIKey:              configuration.APIKey,
+		Model:               configuration.Model,
+		MaxCompletionTokens: configuration.MaxCompletionTokens,
+		Temperature:         configuration.Temperature,
+		HTTPClient:          configuration.HTTPClient,
+		RequestTimeout:      configuration.RequestTimeout,
+		RetryAttempts:       configuration.RetryAttempts,
+		RetryInitialBackoff: configuration.RetryInitialBackoff,
+		RetryMaxBackoff:     configuration.RetryMaxBackoff,
+		RetryBackoffFactor:  configuration.RetryBackoffFactor,
+	}
+}
+
+func newProxyChatClient(configuration Config) (llm.ChatClient, error) {
 	if configuration.Temperature > 0 {
 		return nil, errors.New("llm proxy client does not support temperature")
 	}
@@ -44,8 +134,12 @@ func newProxyChatClient(configuration llm.Config) (llm.ChatClient, error) {
 	if timeout <= 0 {
 		timeout = defaultRequestTimeout
 	}
+	baseURL := strings.TrimSpace(configuration.BaseURL)
+	if baseURL == "" {
+		baseURL = DefaultLLMProxyBaseURL
+	}
 	proxyConfiguration, configurationError := llmproxyclient.NewConfig(llmproxyclient.ConfigInput{
-		BaseURL: configuration.BaseURL,
+		BaseURL: baseURL,
 		Secret:  configuration.APIKey,
 		Timeout: timeout,
 	})

@@ -47,7 +47,7 @@ const (
 	worktreeRemoteInspectionFailureTemplate   = "failed to inspect remote branch %q from %s: %w"
 	worktreeRemoveFailureTemplate             = "failed to remove sibling worktree %s: %w"
 	worktreePruneFailureTemplate              = "failed to prune worktrees after removing %s: %w"
-	worktreeMessageClientConfigurationFailure = "commit message generation requires model and api key configuration"
+	worktreeMessageClientConfigurationFailure = "commit message generation requires model configuration"
 	worktreeMessageAPIKeyFailureTemplate      = "environment variable %s must be set to generate a commit message"
 	worktreeMessageClientFailureTemplate      = "failed to initialize commit message client: %w"
 	worktreeMessageGenerationFailureTemplate  = "failed to generate commit message for sibling worktree %s: %w"
@@ -132,6 +132,7 @@ func isBranchAlreadyUsedByWorktreeError(err error) bool {
 }
 
 type worktreeAdoptionCommitMessageOptions struct {
+	Provider       string
 	APIKeyEnv      string
 	BaseURL        string
 	Model          string
@@ -155,6 +156,7 @@ type worktreeStatus struct {
 func worktreeAdoptionCommitMessageOptionsFromConfiguration(configuration CommitMessageConfiguration) worktreeAdoptionCommitMessageOptions {
 	sanitized := configuration.Sanitize()
 	return worktreeAdoptionCommitMessageOptions{
+		Provider:       sanitized.Provider,
 		APIKeyEnv:      sanitized.APIKeyEnv,
 		BaseURL:        sanitized.BaseURL,
 		Model:          sanitized.Model,
@@ -451,21 +453,33 @@ func resolveCommitMessageClient(options worktreeAdoptionCommitMessageOptions) (l
 	if options.Client != nil {
 		return options.Client, nil
 	}
+	provider, providerErr := llmclient.NewProvider(options.Provider)
+	if providerErr != nil {
+		return nil, providerErr
+	}
 	apiKeyEnv := strings.TrimSpace(options.APIKeyEnv)
 	model := strings.TrimSpace(options.Model)
-	if apiKeyEnv == "" || model == "" {
+	if model == "" {
 		return nil, errors.New(worktreeMessageClientConfigurationFailure)
+	}
+	if apiKeyEnv == "" {
+		apiKeyEnv = llmclient.DefaultAPIKeyEnvironmentForProviderName(string(provider))
 	}
 	apiKey := strings.TrimSpace(os.Getenv(apiKeyEnv))
 	if apiKey == "" {
 		return nil, fmt.Errorf(worktreeMessageAPIKeyFailureTemplate, apiKeyEnv)
 	}
+	baseURL := strings.TrimSpace(options.BaseURL)
+	if baseURL == "" {
+		baseURL = llmclient.DefaultBaseURLForProviderName(string(provider))
+	}
 	timeoutSeconds := options.TimeoutSeconds
 	if timeoutSeconds <= 0 {
 		timeoutSeconds = defaultCommitMessageTimeoutSeconds
 	}
-	client, clientErr := llmclient.NewFactory(llm.Config{
-		BaseURL:             strings.TrimSpace(options.BaseURL),
+	client, clientErr := llmclient.NewFactory(llmclient.Config{
+		Provider:            provider,
+		BaseURL:             baseURL,
 		APIKey:              apiKey,
 		Model:               model,
 		MaxCompletionTokens: options.MaxTokens,

@@ -15,6 +15,7 @@ import (
 
 const (
 	optionTaskLLMKeyConstant            = "llm"
+	optionTaskLLMProviderKeyConstant    = "provider"
 	optionTaskLLMModelKeyConstant       = "model"
 	optionTaskLLMBaseURLKeyConstant     = "base_url"
 	optionTaskLLMAPIKeyEnvKeyConstant   = "api_key_env"
@@ -25,6 +26,7 @@ const (
 
 // TaskLLMClientConfiguration describes the client parameters for workflow task actions.
 type TaskLLMClientConfiguration struct {
+	provider            llmclient.Provider
 	baseURL             string
 	model               string
 	apiKeyEnv           string
@@ -49,6 +51,15 @@ func buildTaskLLMConfiguration(reader optionReader) (*TaskLLMClientConfiguration
 
 	configReader := newOptionReader(rawConfiguration)
 
+	providerName, _, providerErr := configReader.stringValue(optionTaskLLMProviderKeyConstant)
+	if providerErr != nil {
+		return nil, providerErr
+	}
+	provider, providerCreationErr := llmclient.NewProvider(providerName)
+	if providerCreationErr != nil {
+		return nil, providerCreationErr
+	}
+
 	model, modelExists, modelErr := configReader.stringValue(optionTaskLLMModelKeyConstant)
 	if modelErr != nil {
 		return nil, modelErr
@@ -67,7 +78,7 @@ func buildTaskLLMConfiguration(reader optionReader) (*TaskLLMClientConfiguration
 		return nil, apiKeyErr
 	}
 	if !apiKeyExists || apiKeyEnv == "" {
-		return nil, errors.New("llm configuration requires api_key_env")
+		apiKeyEnv = llmclient.DefaultAPIKeyEnvironmentForProviderName(string(provider))
 	}
 
 	timeout, timeoutErr := parseOptionalDurationSeconds(rawConfiguration[optionTaskLLMTimeoutKeyConstant])
@@ -86,9 +97,10 @@ func buildTaskLLMConfiguration(reader optionReader) (*TaskLLMClientConfiguration
 	}
 
 	return &TaskLLMClientConfiguration{
-		baseURL:             strings.TrimSpace(baseURL),
+		provider:            provider,
+		baseURL:             resolvedTaskLLMBaseURL(provider, baseURL),
 		model:               model,
-		apiKeyEnv:           apiKeyEnv,
+		apiKeyEnv:           strings.TrimSpace(apiKeyEnv),
 		maxCompletionTokens: maxTokens,
 		temperature:         temperature,
 		hasTemperature:      hasTemperature,
@@ -109,7 +121,8 @@ func (configuration *TaskLLMClientConfiguration) Client() (llm.ChatClient, error
 			return
 		}
 
-		clientConfiguration := llm.Config{
+		clientConfiguration := llmclient.Config{
+			Provider:       configuration.provider,
 			BaseURL:        configuration.baseURL,
 			APIKey:         apiKey,
 			Model:          configuration.model,
@@ -131,6 +144,14 @@ func (configuration *TaskLLMClientConfiguration) Client() (llm.ChatClient, error
 	})
 
 	return configuration.client, configuration.clientErr
+}
+
+func resolvedTaskLLMBaseURL(provider llmclient.Provider, baseURL string) string {
+	trimmedBaseURL := strings.TrimSpace(baseURL)
+	if trimmedBaseURL == "" {
+		return llmclient.DefaultBaseURLForProviderName(string(provider))
+	}
+	return trimmedBaseURL
 }
 
 func parseOptionalDurationSeconds(raw any) (time.Duration, error) {

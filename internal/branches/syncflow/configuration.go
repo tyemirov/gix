@@ -10,6 +10,7 @@ import (
 var commandConfigurationRepositorySanitizer = pathutils.NewRepositoryPathSanitizerWithConfiguration(nil, pathutils.RepositoryPathSanitizerConfiguration{PruneNestedPaths: true})
 
 const (
+	defaultCommitMessageProvider          = string(llmclient.DefaultProvider)
 	defaultCommitMessageAPIKeyEnvironment = llmclient.DefaultAPIKeyEnvironment
 	defaultCommitMessageBaseURL           = llmclient.DefaultBaseURL
 	defaultCommitMessageModel             = llmclient.DefaultModel
@@ -18,6 +19,7 @@ const (
 
 // CommitMessageConfiguration captures LLM settings for automatic worktree checkpoint commits.
 type CommitMessageConfiguration struct {
+	Provider       string  `mapstructure:"provider"`
 	APIKeyEnv      string  `mapstructure:"api_key_env"`
 	BaseURL        string  `mapstructure:"base_url"`
 	Model          string  `mapstructure:"model"`
@@ -56,6 +58,7 @@ func DefaultCommandConfiguration() CommandConfiguration {
 // DefaultCommitMessageConfiguration returns baseline LLM settings for adoption commits.
 func DefaultCommitMessageConfiguration() CommitMessageConfiguration {
 	return CommitMessageConfiguration{
+		Provider:       defaultCommitMessageProvider,
 		APIKeyEnv:      defaultCommitMessageAPIKeyEnvironment,
 		BaseURL:        defaultCommitMessageBaseURL,
 		Model:          defaultCommitMessageModel,
@@ -86,15 +89,18 @@ func (configuration PullRequestConfiguration) Sanitize() PullRequestConfiguratio
 func (configuration CommitMessageConfiguration) Sanitize() CommitMessageConfiguration {
 	sanitized := configuration
 
+	provider := llmclient.NormalizeProviderName(configuration.Provider)
+	sanitized.Provider = provider
+
 	apiKeyEnv := strings.TrimSpace(configuration.APIKeyEnv)
 	if apiKeyEnv == "" {
-		apiKeyEnv = defaultCommitMessageAPIKeyEnvironment
+		apiKeyEnv = llmclient.DefaultAPIKeyEnvironmentForProviderName(provider)
 	}
 	sanitized.APIKeyEnv = apiKeyEnv
 
 	baseURL := strings.TrimSpace(configuration.BaseURL)
 	if baseURL == "" {
-		baseURL = defaultCommitMessageBaseURL
+		baseURL = llmclient.DefaultBaseURLForProviderName(provider)
 	}
 	sanitized.BaseURL = baseURL
 

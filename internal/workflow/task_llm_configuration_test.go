@@ -47,3 +47,21 @@ func TestTaskLLMClientConfigurationClientFailsWithoutEnvironment(t *testing.T) {
 	require.Nil(t, client)
 	require.Error(t, clientErr)
 }
+
+func TestTaskLLMClientConfigurationDefaultsToOpenAIEnvironment(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "token")
+
+	configurationReader := newOptionReader(map[string]any{
+		optionTaskLLMKeyConstant: map[string]any{
+			optionTaskLLMModelKeyConstant: "gpt-test",
+		},
+	})
+
+	configuration, buildErr := buildTaskLLMConfiguration(configurationReader)
+	require.NoError(t, buildErr)
+	require.NotNil(t, configuration)
+
+	client, clientErr := configuration.Client()
+	require.NoError(t, clientErr)
+	require.NotNil(t, client)
+}

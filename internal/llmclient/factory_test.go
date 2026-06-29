@@ -27,7 +27,7 @@ func (client rewriteHTTPClient) Do(request *http.Request) (*http.Response, error
 	return http.DefaultClient.Do(rewrittenRequest)
 }
 
-func TestNewFactoryUsesLLMProxyV2ForCanonicalBaseURL(t *testing.T) {
+func TestNewFactoryUsesLLMProxyV2ForExplicitProvider(t *testing.T) {
 	var capturedBody struct {
 		Messages []struct {
 			Role    string `json:"role"`
@@ -48,8 +48,9 @@ func TestNewFactoryUsesLLMProxyV2ForCanonicalBaseURL(t *testing.T) {
 
 	targetURL, parseError := url.Parse(server.URL)
 	require.NoError(t, parseError)
-	client, clientError := NewFactory(llm.Config{
-		BaseURL:             DefaultBaseURL,
+	client, clientError := NewFactory(Config{
+		Provider:            ProviderLLMProxy,
+		BaseURL:             DefaultLLMProxyBaseURL,
 		APIKey:              "test-secret",
 		Model:               DefaultModel,
 		MaxCompletionTokens: 64,
@@ -85,7 +86,8 @@ func TestNewFactoryKeepsOpenAICompatibleTransportForExplicitNonProxyBase(t *test
 	}))
 	t.Cleanup(server.Close)
 
-	client, clientError := NewFactory(llm.Config{
+	client, clientError := NewFactory(Config{
+		Provider:       ProviderOpenAICompatible,
 		BaseURL:        server.URL,
 		APIKey:         "test-token",
 		Model:          "mock-model",
@@ -102,12 +104,21 @@ func TestNewFactoryKeepsOpenAICompatibleTransportForExplicitNonProxyBase(t *test
 }
 
 func TestNewFactoryRejectsTemperatureForLLMProxy(t *testing.T) {
-	_, clientError := NewFactory(llm.Config{
-		BaseURL:     DefaultBaseURL,
+	_, clientError := NewFactory(Config{
+		Provider:    ProviderLLMProxy,
+		BaseURL:     DefaultLLMProxyBaseURL,
 		APIKey:      "test-secret",
 		Model:       DefaultModel,
 		Temperature: 0.2,
 	})
 
 	require.EqualError(t, clientError, "llm proxy client does not support temperature")
+}
+
+func TestProviderDefaultsSelectOpenAICompatibleEnvironment(t *testing.T) {
+	require.Equal(t, ProviderOpenAICompatible, DefaultProvider)
+	require.Equal(t, DefaultAPIKeyEnvironment, DefaultAPIKeyEnvironmentForProviderName(""))
+	require.Equal(t, DefaultBaseURL, DefaultBaseURLForProviderName(""))
+	require.Equal(t, DefaultLLMProxyAPIKeyEnvironment, DefaultAPIKeyEnvironmentForProviderName(string(ProviderLLMProxy)))
+	require.Equal(t, DefaultLLMProxyBaseURL, DefaultBaseURLForProviderName(string(ProviderLLMProxy)))
 }
