@@ -14,10 +14,11 @@ gix makes one pull-request-centered Git workflow mechanical: `master` belongs to
 ## Quick Start
 
 1. Install the CLI: `go install github.com/tyemirov/gix@latest` (Go 1.25+).
-2. Attach or verify a workspace: `gix sync https://github.com/OWNER/REPO.git`.
-3. Restore the remote-owned base branch: `gix sync master`.
-4. Start or resume PR work: `gix sync feature/my-change`.
-5. Sync the current branch later with plain `gix sync`.
+2. Create user-level defaults: `gix --init user`.
+3. Attach or verify a workspace: `gix sync https://github.com/OWNER/REPO.git`.
+4. Restore the remote-owned base branch: `gix sync master`.
+5. Start or resume PR work: `gix sync feature/my-change`.
+6. Sync the current branch later with plain `gix sync`.
 
 ## The sync flow
 
@@ -91,7 +92,23 @@ gix message commit --roots .
 gix message changelog --since-tag v1.2.0 --version v1.3.0
 ```
 
-Use the reusable LLM client (`github.com/tyemirov/utils/llm`) to summarise staged changes or recent history. `gix sync` uses the same configured client for automatic dirty-work commit messages, including `model`, `base_url`, `api_key_env`, `max_completion_tokens`, `temperature`, and `timeout_seconds`.
+Use the reusable LLM client (`github.com/tyemirov/utils/llm`) to summarise staged changes or recent history. `gix sync` uses the same configured client for automatic dirty-work commit messages, including `provider`, `model`, `base_url`, `api_key_env`, `max_completion_tokens`, `temperature`, and `timeout_seconds`. The embedded default provider is `openai_compatible` with `OPENAI_API_KEY`; configure `provider: llm_proxy` in your user config when using the MPR LLM Proxy endpoint.
+
+```yaml
+operations:
+  - command: ["message", "commit"]
+    with:
+      provider: llm_proxy
+      api_key_env: LLM_PROXY_SECRET
+      base_url: https://llm-proxy-api.mprlab.com
+      model: gpt-4.1
+  - command: ["message", "changelog"]
+    with:
+      provider: llm_proxy
+      api_key_env: LLM_PROXY_SECRET
+      base_url: https://llm-proxy-api.mprlab.com
+      model: gpt-4.1
+```
 
 ## Automate sequences with workflows
 
@@ -403,7 +420,7 @@ workflow:
 Notes:
 
 - The namespace rewrite step commits and pushes changes when `push: true` is set.
-- Generating the commit message via LLM inside a workflow is not yet supported. You can either supply a static `commit_message` (as above) or generate one per repository using `gix message commit` before running the workflow. See ISSUES.md for the improvement request to support LLM in workflows and piping outputs between steps.
+- Generating the commit message via LLM inside a workflow is not yet supported. You can either supply a static `commit_message` (as above) or generate one per repository using `gix message commit` before running the workflow. See `.mprlab/ISSUES.md` for the improvement request to support LLM in workflows and piping outputs between steps.
 
 ### Apply tasks (custom sequences)
 
@@ -420,7 +437,7 @@ Schema highlights:
   - `mode: replace` rewrites matching substrings using `replacements: [{ from, to }]` (templated). File paths accept glob patterns, including recursive `**/*.ext`, so you can update many files with one entry.
 - Actions: `{ type, options }` where `type` is one of:
  - `repo.remote.update`, `repo.remote.convert-protocol`, `repo.folder.rename`, `branch.default`, `repo.release.tag`, `audit.report`, `repo.history.purge`, `repo.files.replace`, `repo.namespace.rewrite`
-- LLM: optional `{ model, base_url, api_key_env, timeout_seconds, max_completion_tokens, temperature }` block. When present, commit/changelog actions reuse the configured client instead of requiring a programmatic injector.
+- LLM: optional `{ provider, model, base_url, api_key_env, timeout_seconds, max_completion_tokens, temperature }` block. When present, commit/changelog actions reuse the configured client instead of requiring a programmatic injector.
 - Commit: `{ message }` (templated). Defaults to `Apply task <name>` when empty.
 - Pull request: `{ title, body, base, draft }` (templated; optional).
 - Safeguards: `{ hard_stop: {...}, soft_skip: {...} }` blocks that control whether a violation aborts the repository (`hard_stop`) or just skips the current task/action (`soft_skip`). Legacy flat maps are treated as `hard_stop`.
@@ -487,7 +504,7 @@ Additional shared flags:
 
 - `--remote <name>` — override the remote name used by commands that push or fetch (default `origin`).
 - `--version` — print the gix version (works at the root or with any command).
-- `--init [local|user] [--force]` — write an embedded default config (to `./config.yaml` or `$XDG_CONFIG_HOME/gix/config.yaml`), overwriting when `--force` is provided.
+- `--init [local|user] [--force yes]` — write an embedded default config (to `./config.yaml` or `$XDG_CONFIG_HOME/gix/config.yaml`), overwriting when `--force yes` is provided.
 - `--web` — launch the local browser UI on `127.0.0.1:8080` by default.
 - `--bind <host>`, `--port <port>` — override the web bind address or port when used with `--web`.
 - `--roots <dir>...` — when used with `--web`, scope the initial repository tree to the provided roots.
@@ -540,9 +557,9 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
  - Creates and pushes an annotated tag for each repository root.
 - `gix release retag --map <tag=ref> [--map <tag=ref>...] [--message-template <text>] [--remote <name>] [--roots <dir>...] [-y]` (alias `fix`)
  - Reassigns existing release tags to provided commits and force-pushes updates.
-- `gix message changelog [--version <v>] [--release-date YYYY-MM-DD] [--since-tag <ref>] [--since-date <ts>] [--max-tokens <N>] [--temperature <0-2>] [--model <id>] [--base-url <url>] [--api-key-env <NAME>] [--timeout-seconds <N>] [--roots <dir>...]` (aliases `section`)
+- `gix message changelog [--version <v>] [--release-date YYYY-MM-DD] [--since-tag <ref>] [--since-date <ts>] [--max-tokens <N>] [--temperature <0-2>] [--provider openai_compatible|llm_proxy] [--model <id>] [--base-url <url>] [--api-key-env <NAME>] [--timeout-seconds <N>] [--roots <dir>...]` (aliases `section`)
  - Generates a changelog section from git history using the configured LLM.
-- `gix message commit [--diff-source staged|worktree] [--max-tokens <N>] [--temperature <0-2>] [--model <id>] [--base-url <url>] [--api-key-env <NAME>] [--timeout-seconds <N>] [--roots <dir>...]` (alias `msg`)
+- `gix message commit [--diff-source staged|worktree] [--max-tokens <N>] [--temperature <0-2>] [--provider openai_compatible|llm_proxy] [--model <id>] [--base-url <url>] [--api-key-env <NAME>] [--timeout-seconds <N>] [--roots <dir>...]` (alias `msg`)
  - Drafts Conventional Commit subjects and optional bullets using the configured LLM.
 - `gix default <target-branch> [--roots <dir>...] [-y]`
  - Promotes the default branch across repositories.
@@ -550,9 +567,13 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
  - Synchronizes the current workspace through the Gix flow: remote attach/clone, remote-owned `master`, or PR-backed work branches. Existing PR branches sync against their current PR base branch. Dirty work is clustered, LLM-described, committed, and pushed by default; dirty `master` sync creates a generated PR work branch. Sync never rebases or force-pushes. PR body text is generated from the branch diff unless `--body` or `sync.pull_request.body` is set; PR title defaults to the branch unless `--title` or `sync.pull_request.title` is set. `--stash` temporarily shelves dirty work, `--commit` explicitly selects the auto-commit policy, and `--require-clean` requires a clean worktree only when no dirty-work policy is selected.
 ## Configuration essentials
 
-- `gix --init LOCAL` writes an embeddable starter `config.yaml` to the current directory; `gix --init user` places it under `$XDG_CONFIG_HOME/gix` or `$HOME/.gix`.
+- `gix --init local` writes an embeddable starter `./config.yaml` for the current workspace.
+- `gix --init user` writes user-level defaults to `$XDG_CONFIG_HOME/gix/config.yaml`; when `XDG_CONFIG_HOME` is not set, gix falls back to `$HOME/.gix/config.yaml`.
+- Add `--force yes` when you intentionally want to replace an existing generated config.
 - Configuration precedence is: CLI flags → environment variables prefixed with `GIX_` → local config → user config.
-- Default settings include log level, log format, behaviour, confirmation prompts, and reusable workflow definitions.
+- The config controls shared behavior such as `log_level`, `log_format`, `assume_yes`, and `require_clean`.
+- Operation defaults can set recurring values for commands, including `roots`, `remote`, sync pull request `title`/`body`, LLM `provider`/`api_key_env`/`base_url`/`model`, release remotes, audit options, and workflow defaults.
+- User config is best for personal defaults such as `roots`, logging, confirmation behavior, and LLM provider settings; local config is best for repository- or workspace-specific defaults that should travel with the checkout.
 
 ## Need more depth?
 
