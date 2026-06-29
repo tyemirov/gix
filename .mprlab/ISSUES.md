@@ -438,7 +438,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - [ ] Execute existing `gix` commands in-process from the web layer and stream logs/results back to the browser.
   - [ ] Expose command metadata so the UI can render flags, args, defaults, and help text.
   - [ ] Add integration coverage for web launch, command catalog, and at least one end-to-end command execution path.
-- [ ] [F003] (P1) Duplicate logging.
+- [x] [F003] (P1) Duplicate logging.
   LegacyExternalID: GX-111
   ### Summary
   When the `gix cd` command fails (for example, due to local changes blocking a branch switch), the error message is printed twice in the terminal. This duplicate logging clutters the output and violates the repository's principle of structured, single-entry reporting.
