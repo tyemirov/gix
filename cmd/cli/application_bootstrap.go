@@ -346,37 +346,17 @@ func (application *Application) resolveConfigurationSearchPaths() []string {
 }
 
 func (application *Application) resolveUserConfigurationDirectoryPaths() []string {
-	userConfigurationDirectoryPaths := make([]string, 0, 3)
-
-	appendConfigurationDirectory := func(baseDirectoryPath string) {
-		trimmedBaseDirectoryPath := strings.TrimSpace(baseDirectoryPath)
-		if len(trimmedBaseDirectoryPath) == 0 {
-			return
-		}
-
-		candidateDirectoryPath := filepath.Join(trimmedBaseDirectoryPath, userConfigurationDirectoryNameConstant)
-		for _, existingDirectoryPath := range userConfigurationDirectoryPaths {
-			if existingDirectoryPath == candidateDirectoryPath {
-				return
-			}
-		}
-
-		userConfigurationDirectoryPaths = append(userConfigurationDirectoryPaths, candidateDirectoryPath)
-	}
-
-	appendConfigurationDirectory(os.Getenv(xdgConfigHomeEnvironmentVariableConstant))
-
-	userConfigurationBaseDirectoryPath, userConfigurationDirectoryError := os.UserConfigDir()
-	if userConfigurationDirectoryError == nil {
-		appendConfigurationDirectory(userConfigurationBaseDirectoryPath)
-	}
-
 	userHomeDirectoryPath, userHomeDirectoryError := os.UserHomeDir()
-	if userHomeDirectoryError == nil {
-		appendConfigurationDirectory(userHomeDirectoryPath)
+	if userHomeDirectoryError != nil {
+		return nil
 	}
 
-	return userConfigurationDirectoryPaths
+	trimmedUserHomeDirectoryPath := strings.TrimSpace(userHomeDirectoryPath)
+	if len(trimmedUserHomeDirectoryPath) == 0 {
+		return nil
+	}
+
+	return []string{filepath.Join(trimmedUserHomeDirectoryPath, userConfigurationDirectoryNameConstant)}
 }
 
 func (application *Application) initializeConfiguration(command *cobra.Command) error {
