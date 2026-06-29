@@ -11,21 +11,21 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
 
 ## BugFixes
 
-- [x] [B014] (P1) `gix sync` should not require `LLM_PROXY_SECRET` unless the LLM proxy provider is explicitly configured.
+- [x] [B014] (P1) `gix sync` should not require `LLM_PROXY_SECRET` unless the LLM Proxy transport is explicitly configured.
   Requested on 2026-06-29 after `gix sync` in `/Users/tyemirov/Development/llm-proxy` on branch `feature/F007-dashboard-settings-modal` failed with `environment variable LLM_PROXY_SECRET must be set to generate a commit message`.
   ## Observation
   - Dirty `gix sync` inherited the `message commit` LLM defaults.
   - The embedded `message commit` and `message changelog` defaults still pointed at the MPR LLM Proxy endpoint and `LLM_PROXY_SECRET`.
-  - The LLM client selected the proxy transport implicitly from the base URL, so an operator who had not explicitly selected the proxy provider still hit the proxy-specific secret requirement.
+  - The LLM client selected the proxy transport implicitly from the base URL, so an operator who had not explicitly selected the proxy transport still hit the proxy-specific secret requirement.
   ## Deliverable
-  - Make the canonical default LLM provider OpenAI-compatible with `OPENAI_API_KEY`.
-  - Add an explicit `provider` setting for message, sync, web, and workflow LLM client construction.
-  - Use the MPR LLM Proxy transport and `LLM_PROXY_SECRET` only when `provider: llm_proxy` or `--provider llm_proxy` is configured.
+  - Make the canonical default LLM transport OpenAI-compatible with `OPENAI_API_KEY`.
+  - Add an explicit `transport` setting for message, sync, web, and workflow LLM client construction.
+  - Use the MPR LLM Proxy transport and `LLM_PROXY_SECRET` only when `transport: llm_proxy` or `--transport llm_proxy` is configured.
   - Preserve explicit custom OpenAI-compatible base URLs without proxy inference.
   ## Resolution
-  - Added provider-aware LLM client configuration with `openai_compatible` as the default provider and `llm_proxy` as an explicit provider.
-  - Updated embedded message defaults, sync commit-message config, web message helpers, and workflow LLM configuration to pass the provider field.
-  - Added regressions for embedded sync defaults, provider default env/base URL selection, workflow omitted-env behavior, and provider-aware web/message tests.
+  - Added transport-aware LLM client configuration with `openai_compatible` as the default transport and `llm_proxy` as an explicit transport.
+  - Updated embedded message defaults, sync commit-message config, web message helpers, and workflow LLM configuration to pass the transport field.
+  - Added regressions for embedded sync defaults, transport default env/base URL selection, workflow omitted-env behavior, and transport-aware web/message tests.
   - Updated README LLM configuration docs.
 
 - [x] [B013] (P1) `gix sync` should accept open chained pull requests instead of requiring the PR to target `master`.
@@ -440,8 +440,21 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - The docs site only mentioned `gix --init LOCAL`, omitted the user config path and fallback, and linked to the old root `ISSUES.md`.
   ## Resolution
   - Updated README Quick Start and configuration essentials to describe `gix --init user`, `gix --init local`, `--force yes`, `$XDG_CONFIG_HOME/gix/config.yaml`, and `$HOME/.gix/config.yaml`.
-  - Documented that config controls shared logging, confirmation, clean-worktree behavior, roots/remotes, sync PR metadata, LLM provider settings, release/audit defaults, and workflow defaults.
+  - Documented that config controls shared logging, confirmation, clean-worktree behavior, roots/remotes, sync PR metadata, LLM transport/provider settings, release/audit defaults, and workflow defaults.
   - Updated the docs site getting-started flow, developer-tooling copy, architecture copy, and roadmap link to reflect current config and `.mprlab/ISSUES.md` contracts.
+
+- [x] [M004] (P2) Add a global LLM transport switch for user config.
+  Requested on 2026-06-29 after the operation-level LLM Proxy config felt too involved for a user who only wants gix to use MPR LLM Proxy.
+  ## Observation
+  - `gix --init user` generated separate LLM transport, provider, env, base URL, and model settings under each message operation.
+  - A user had to edit multiple fields to express one global preference.
+  - Changing only `transport` in an operation could leave inherited env/base settings from another transport.
+  ## Resolution
+  - Added a top-level `llm` config block for shared LLM defaults.
+  - Updated message, changelog, sync, and web LLM config assembly so `llm.transport: llm_proxy` selects `LLM_PROXY_SECRET` and the MPR LLM Proxy endpoint automatically.
+  - Kept per-operation LLM fields as overrides and made transport-only operation overrides reset env/base defaults to the selected transport.
+  - Preserved `llm.provider` as the upstream provider value passed through to LLM Proxy without requiring a provider-specific API key in gix.
+  - Updated generated config, README, architecture notes, docs site copy, changelog, and focused application configuration tests.
 
 ## Features
 
