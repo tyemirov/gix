@@ -14,6 +14,7 @@
 - Treat ignored-only dirty status as clean before selecting a generated `gix sync` work branch.
 - Restore tracked ignored dirty paths during successful `gix sync` runs so generated artifacts do not remain in `git status`.
 - Accept existing `gix sync` PR branches whose open pull request targets a chained issue branch and merge the pull request's actual base instead of requiring `master`.
+- Default LLM-backed `gix sync`, commit message, changelog, web, and workflow helpers to the OpenAI-compatible provider with `OPENAI_API_KEY`; require `LLM_PROXY_SECRET` only when `llm_proxy` is explicitly configured.
 
 ### Testing 🧪
 - Update strict-sync pull request creation coverage for requested branches and generated dirty-`master` branches, including the branch diff context sent to the PR body generator and failure-before-push ordering.
@@ -24,6 +25,12 @@
 - Add sync-flow and black-box CLI coverage proving tracked ignored modified/deleted paths are restored while ordinary dirty files are still committed.
 - Add strict-sync failure-mode coverage for staged tracked ignored dirt, `--require-clean`, `--stash`, fetch-before-restore ordering, and restore failures.
 - Add strict-sync coverage for head-filtered open-PR lookup, PR `baseRefName` merges, and missing PR-base rejection.
+
+### Docs 📚
+- Consolidate MPR Lab governance docs under `.mprlab/` and remove legacy `issues.md/` and `.mprl/` folders.
+- Document the explicit `provider` LLM option and the OpenAI-compatible default.
+- Document `gix --init user`, `$XDG_CONFIG_HOME/gix/config.yaml`, the `~/.gix/config.yaml` fallback, and the configuration defaults controlled by user/local config in the README and docs site.
+- Add provider-default regressions for embedded sync configuration, workflow LLM configuration, web message helpers, and the shared LLM client factory.
 
 ## [v0.6.10] - 2026-06-29
 
