@@ -27,6 +27,10 @@ const (
 	maxTokensFlagUsage             = "Override the maximum completion tokens"
 	temperatureFlagName            = "temperature"
 	temperatureFlagUsage           = "Override the sampling temperature (0-2)"
+	transportFlagName              = "transport"
+	transportFlagUsage             = "Override the LLM transport (openai_compatible|llm_proxy)"
+	providerFlagName               = "provider"
+	providerFlagUsage              = "Override the LLM Proxy upstream provider"
 	modelFlagName                  = "model"
 	modelFlagUsage                 = "Override the model identifier"
 	baseURLFlagName                = "base-url"
@@ -44,7 +48,7 @@ const (
 )
 
 // ClientFactory builds chat clients from configuration.
-type ClientFactory func(config llm.Config) (llm.ChatClient, error)
+type ClientFactory func(config llmclient.Config) (llm.ChatClient, error)
 
 // MessageCommandBuilder assembles the commit message command.
 type MessageCommandBuilder struct {
@@ -72,6 +76,8 @@ func (builder *MessageCommandBuilder) Build() (*cobra.Command, error) {
 	command.Flags().String(diffSourceFlagName, "", diffSourceFlagUsage)
 	command.Flags().Int(maxTokensFlagName, 0, maxTokensFlagUsage)
 	command.Flags().Float64(temperatureFlagName, 0, temperatureFlagUsage)
+	command.Flags().String(transportFlagName, "", transportFlagUsage)
+	command.Flags().String(providerFlagName, "", providerFlagUsage)
 	command.Flags().String(modelFlagName, "", modelFlagUsage)
 	command.Flags().String(baseURLFlagName, "", baseURLFlagUsage)
 	command.Flags().String(apiKeyEnvFlagName, "", apiKeyEnvFlagUsage)
@@ -105,6 +111,30 @@ func (builder *MessageCommandBuilder) run(command *cobra.Command, arguments []st
 		return temperatureError
 	}
 
+	transportName := configuration.Transport
+	transportChanged := false
+	if command != nil {
+		if flagValue, flagError := command.Flags().GetString(transportFlagName); flagError == nil && command.Flags().Changed(transportFlagName) {
+			transportName = strings.TrimSpace(flagValue)
+			transportChanged = true
+		}
+	}
+	transport, transportError := llmclient.NewTransport(transportName)
+	if transportError != nil {
+		return transportError
+	}
+	transportName = string(transport)
+
+	providerName := configuration.Provider
+	if command != nil {
+		if flagValue, flagError := command.Flags().GetString(providerFlagName); flagError == nil && command.Flags().Changed(providerFlagName) {
+			providerName = strings.TrimSpace(flagValue)
+		}
+	}
+	if providerError := llmclient.ValidateProviderForTransport(transport, providerName); providerError != nil {
+		return providerError
+	}
+
 	modelIdentifier := configuration.Model
 	if command != nil {
 		if flagValue, flagError := command.Flags().GetString(modelFlagName); flagError == nil && command.Flags().Changed(modelFlagName) {
@@ -116,20 +146,27 @@ func (builder *MessageCommandBuilder) run(command *cobra.Command, arguments []st
 	}
 
 	baseURL := configuration.BaseURL
+	baseURLChanged := false
 	if command != nil {
 		if flagValue, flagError := command.Flags().GetString(baseURLFlagName); flagError == nil && command.Flags().Changed(baseURLFlagName) {
 			baseURL = strings.TrimSpace(flagValue)
+			baseURLChanged = true
 		}
+	}
+	if baseURL == "" || transportChanged && !baseURLChanged {
+		baseURL = llmclient.DefaultBaseURLForTransportName(transportName)
 	}
 
 	apiKeyEnv := configuration.APIKeyEnv
+	apiKeyEnvChanged := false
 	if command != nil {
 		if flagValue, flagError := command.Flags().GetString(apiKeyEnvFlagName); flagError == nil && command.Flags().Changed(apiKeyEnvFlagName) {
 			apiKeyEnv = strings.TrimSpace(flagValue)
+			apiKeyEnvChanged = true
 		}
 	}
-	if apiKeyEnv == "" {
-		apiKeyEnv = defaultAPIKeyEnvironment
+	if apiKeyEnv == "" || transportChanged && !apiKeyEnvChanged {
+		apiKeyEnv = llmclient.DefaultAPIKeyEnvironmentForTransportName(transportName)
 	}
 	apiKey, apiKeyPresent := lookupEnvironmentValue(apiKeyEnv)
 	if !apiKeyPresent || apiKey == "" {
@@ -171,12 +208,14 @@ func (builder *MessageCommandBuilder) run(command *cobra.Command, arguments []st
 
 	clientFactory := builder.ClientFactory
 	if clientFactory == nil {
-		clientFactory = func(config llm.Config) (llm.ChatClient, error) {
+		clientFactory = func(config llmclient.Config) (llm.ChatClient, error) {
 			return llmclient.NewFactory(config)
 		}
 	}
 
-	client, clientError := clientFactory(llm.Config{
+	client, clientError := clientFactory(llmclient.Config{
+		Transport:           transport,
+		Provider:            providerName,
 		BaseURL:             baseURL,
 		APIKey:              apiKey,
 		Model:               modelIdentifier,

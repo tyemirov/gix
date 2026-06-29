@@ -10,6 +10,7 @@ import (
 var commandConfigurationRepositorySanitizer = pathutils.NewRepositoryPathSanitizerWithConfiguration(nil, pathutils.RepositoryPathSanitizerConfiguration{PruneNestedPaths: true})
 
 const (
+	defaultCommitMessageTransport         = string(llmclient.DefaultTransport)
 	defaultCommitMessageAPIKeyEnvironment = llmclient.DefaultAPIKeyEnvironment
 	defaultCommitMessageBaseURL           = llmclient.DefaultBaseURL
 	defaultCommitMessageModel             = llmclient.DefaultModel
@@ -18,6 +19,8 @@ const (
 
 // CommitMessageConfiguration captures LLM settings for automatic worktree checkpoint commits.
 type CommitMessageConfiguration struct {
+	Transport      string  `mapstructure:"transport"`
+	Provider       string  `mapstructure:"provider"`
 	APIKeyEnv      string  `mapstructure:"api_key_env"`
 	BaseURL        string  `mapstructure:"base_url"`
 	Model          string  `mapstructure:"model"`
@@ -56,6 +59,7 @@ func DefaultCommandConfiguration() CommandConfiguration {
 // DefaultCommitMessageConfiguration returns baseline LLM settings for adoption commits.
 func DefaultCommitMessageConfiguration() CommitMessageConfiguration {
 	return CommitMessageConfiguration{
+		Transport:      defaultCommitMessageTransport,
 		APIKeyEnv:      defaultCommitMessageAPIKeyEnvironment,
 		BaseURL:        defaultCommitMessageBaseURL,
 		Model:          defaultCommitMessageModel,
@@ -86,15 +90,19 @@ func (configuration PullRequestConfiguration) Sanitize() PullRequestConfiguratio
 func (configuration CommitMessageConfiguration) Sanitize() CommitMessageConfiguration {
 	sanitized := configuration
 
+	transport := llmclient.NormalizeTransportName(configuration.Transport)
+	sanitized.Transport = transport
+	sanitized.Provider = strings.TrimSpace(configuration.Provider)
+
 	apiKeyEnv := strings.TrimSpace(configuration.APIKeyEnv)
 	if apiKeyEnv == "" {
-		apiKeyEnv = defaultCommitMessageAPIKeyEnvironment
+		apiKeyEnv = llmclient.DefaultAPIKeyEnvironmentForTransportName(transport)
 	}
 	sanitized.APIKeyEnv = apiKeyEnv
 
 	baseURL := strings.TrimSpace(configuration.BaseURL)
 	if baseURL == "" {
-		baseURL = defaultCommitMessageBaseURL
+		baseURL = llmclient.DefaultBaseURLForTransportName(transport)
 	}
 	sanitized.BaseURL = baseURL
 

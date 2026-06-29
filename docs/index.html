@@ -115,7 +115,8 @@
               <h3>LLM Helpers</h3>
               <p>
                 Optional integrations assist with commit messages or changelog
-                summaries while keeping human approvals in the loop.
+                summaries while keeping human approvals in the loop. Set
+                <code>llm.transport: llm_proxy</code> once to use MPR LLM Proxy.
               </p>
             </article>
             <article class="card">
@@ -166,8 +167,9 @@
               <h3>Developer Tooling</h3>
               <ul>
                 <li>
-                  Bootstrap new workspaces with `gix --init` and opinionated
-                  defaults.
+                  Bootstrap personal defaults with
+                  <code>gix --init user</code> or workspace defaults with
+                  <code>gix --init local</code>.
                 </li>
                 <li>
                   Refresh dozens of example repos nightly to keep mergable
@@ -190,11 +192,25 @@
             </p>
             <ol class="list-steps">
               <li><code>go install github.com/tyemirov/gix@latest</code></li>
-              <li><code>gix --init LOCAL</code> to bootstrap config.</li>
+              <li>
+                <code>gix --init user</code> to create
+                <code>~/.gix/config.yaml</code>.
+              </li>
               <li>
                 <code>gix audit --roots ~/Development</code> for a first pass.
               </li>
             </ol>
+            <p>
+              Config controls reusable defaults for roots, remotes, logging,
+              confirmation prompts, clean-worktree policy, LLM transport/provider
+              settings, and workflow operations. Use
+              <code>llm.transport: llm_proxy</code> to route generated messages
+              through MPR LLM Proxy; gix derives the proxy secret environment
+              variable and base URL from that transport, and
+              <code>llm.provider</code> selects the proxy upstream provider. Use
+              <code>gix --init local</code> when a workspace needs its own
+              <code>./config.yaml</code>.
+            </p>
           </div>
           <div class="docs-links">
             <h3>Documentation</h3>
@@ -202,7 +218,9 @@
             <a href="../ARCHITECTURE.md"
               >ARCHITECTURE — internals &amp; design</a
             >
-            <a href="../ISSUES.md">ISSUES — roadmap &amp; change log</a>
+            <a href="https://github.com/tyemirov/gix/blob/master/.mprlab/ISSUES.md"
+              >ISSUES — roadmap &amp; change log</a
+            >
           </div>
         </div>
       </section>
@@ -290,7 +308,7 @@
               <h3>Cobra + Viper CLI</h3>
               <p>
                 All commands live under <code>cmd/cli</code> with shared flags,
-                configuration, and logging.
+                user/local configuration, and logging.
               </p>
             </li>
             <li>

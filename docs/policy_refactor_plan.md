@@ -1,6 +1,6 @@
 # GX-402 Refactor Roadmap (Policy Compliance)
 
-## 1. Gaps against `POLICY.md`
+## 1. Gaps against `.mprlab/POLICY.md`
 
 - **Domain types missing** – repository paths, owner/repo slugs, remote URLs, and branch names flow through the system as raw `string` values (`internal/repos/rename/executor.go`, `internal/repos/remotes/executor.go`, `internal/workflow/task_runner.go`). Smart constructors and invariants are absent, so illegal states remain representable.
 - **Edge validation vs. core trust** – CLI builders parse flags but do not construct domain types; downstream executors defensively trim and validate strings repeatedly (for example, `strings.TrimSpace` in `internal/repos/rename/executor.go:59`, `internal/repos/protocol/executor.go:61`, `internal/repos/rename/planner.go:28`), violating the “validate exactly once at edges” rule.
@@ -36,7 +36,7 @@
 4. Expand workflow integration tests to ensure domain types propagate correctly after refactors.
 
 ### Phase E – Documentation & Tooling
-1. Update `POLICY.md` appendix or a new `docs/refactor_status.md` with the domain types and error codes introduced.
+1. Update `.mprlab/POLICY.md` appendix or a new `docs/refactor_status.md` with the domain types and error codes introduced.
 2. Document the edge-validation contract in `docs/cli_design.md` so future commands follow the same pattern.
 3. Wire CI to run `staticcheck` and `ineffassign` alongside existing `go test` gate once code compiles with new types.
 

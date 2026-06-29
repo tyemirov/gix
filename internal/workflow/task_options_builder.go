@@ -12,6 +12,8 @@ type TasksApplyDefinition struct {
 
 // TaskLLMDefinition configures optional LLM client parameters for tasks.apply presets.
 type TaskLLMDefinition struct {
+	Transport           string
+	Provider            string
 	Model               string
 	BaseURL             string
 	APIKeyEnv           string
@@ -33,6 +35,8 @@ func (definition TasksApplyDefinition) Options() map[string]any {
 
 func (definition TaskLLMDefinition) encode() map[string]any {
 	options := map[string]any{
+		optionTaskLLMTransportKeyConstant: strings.TrimSpace(definition.Transport),
+		optionTaskLLMProviderKeyConstant:  strings.TrimSpace(definition.Provider),
 		optionTaskLLMModelKeyConstant:     strings.TrimSpace(definition.Model),
 		optionTaskLLMBaseURLKeyConstant:   strings.TrimSpace(definition.BaseURL),
 		optionTaskLLMAPIKeyEnvKeyConstant: strings.TrimSpace(definition.APIKeyEnv),

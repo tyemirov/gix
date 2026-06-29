@@ -33,6 +33,7 @@ func (errorDetails MissingOperationConfigurationError) Error() string {
 // ApplicationConfiguration describes the persisted configuration for the CLI entrypoint.
 type ApplicationConfiguration struct {
 	Common     ApplicationCommonConfiguration      `mapstructure:"common"`
+	LLM        ApplicationLLMConfiguration         `mapstructure:"llm"`
 	Operations []ApplicationOperationConfiguration `mapstructure:"operations"`
 }
 
@@ -42,6 +43,18 @@ type ApplicationCommonConfiguration struct {
 	LogFormat    string `mapstructure:"log_format"`
 	AssumeYes    bool   `mapstructure:"assume_yes"`
 	RequireClean bool   `mapstructure:"require_clean"`
+}
+
+// ApplicationLLMConfiguration stores language-model defaults shared across LLM-backed commands.
+type ApplicationLLMConfiguration struct {
+	Transport           string  `mapstructure:"transport"`
+	Provider            string  `mapstructure:"provider"`
+	APIKeyEnv           string  `mapstructure:"api_key_env"`
+	BaseURL             string  `mapstructure:"base_url"`
+	Model               string  `mapstructure:"model"`
+	MaxCompletionTokens int     `mapstructure:"max_completion_tokens"`
+	Temperature         float64 `mapstructure:"temperature"`
+	TimeoutSeconds      int     `mapstructure:"timeout_seconds"`
 }
 
 // ApplicationOperationConfiguration captures reusable operation defaults from the configuration file.
@@ -55,8 +68,25 @@ type OperationConfigurations struct {
 	entries map[string]map[string]any
 }
 
+// Clone returns an independent copy of the operation configuration index.
+func (configurations OperationConfigurations) Clone() OperationConfigurations {
+	if len(configurations.entries) == 0 {
+		return OperationConfigurations{}
+	}
+	copiedEntries := make(map[string]map[string]any, len(configurations.entries))
+	for operationName, operationOptions := range configurations.entries {
+		copiedOptions := make(map[string]any, len(operationOptions))
+		for optionKey, optionValue := range operationOptions {
+			copiedOptions[optionKey] = optionValue
+		}
+		copiedEntries[operationName] = copiedOptions
+	}
+	return OperationConfigurations{entries: copiedEntries}
+}
+
 // MergeDefaults ensures default operation configurations are available when not overridden.
 func (configurations OperationConfigurations) MergeDefaults(defaults OperationConfigurations) OperationConfigurations {
+	configurations = configurations.Clone()
 	if len(defaults.entries) == 0 {
 		return configurations
 	}

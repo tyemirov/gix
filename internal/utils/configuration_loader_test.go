@@ -13,39 +13,38 @@ import (
 )
 
 const (
-	testEnvironmentPrefixConstant                     = "TESTGIX"
-	testCommonSectionKeyConstant                      = "common"
-	testLogLevelKeyConstant                           = testCommonSectionKeyConstant + ".log_level"
-	testDefaultLogLevelConstant                       = "info"
-	testConfiguredLogLevelConstant                    = "debug"
-	testOverriddenLogLevelConstant                    = "error"
-	testFileLogLevelConstant                          = "warn"
-	testConfigFileNameConstant                        = "config.yaml"
-	testConfigContentTemplateConstant                 = "common:\n  log_level: %s\n"
-	testCaseEmbeddedMessageConstant                   = "embedded configuration merges"
-	testCaseDefaultsMessageConstant                   = "defaults are applied"
-	testCaseFileMessageConstant                       = "config file overrides defaults"
-	testCaseEnvironmentMessageConstant                = "environment overrides file"
-	testConfigurationNameConstant                     = "config"
-	testConfigurationTypeConstant                     = "yaml"
-	configurationLoaderSubtestNameTemplateConstant    = "%d_%s"
-	testEmbeddedLogLevelConstant                      = "debug"
-	testUserConfigurationDirectoryNameConstant        = ".gix"
-	testXDGConfigHomeDirectoryNameConstant            = "config"
-	testCaseSearchPathWorkingDirectoryMessageConstant = "searches working directory"
-	testCaseSearchPathXDGDirectoryMessageConstant     = "searches xdg configuration directory"
-	testCaseSearchPathHomeDirectoryMessageConstant    = "searches home configuration directory"
-	testCaseSearchPathWorkingPreferredMessageConstant = "prefers working directory when all directories contain configuration"
-	testCaseSearchPathXDGPreferredMessageConstant     = "prefers xdg configuration directory when working directory lacks configuration"
-	testCaseSearchPathWorkingOverHomeMessageConstant  = "prefers working directory over home configuration directory"
+	testEnvironmentPrefixConstant                       = "TESTGIX"
+	testCommonSectionKeyConstant                        = "common"
+	testLogLevelKeyConstant                             = testCommonSectionKeyConstant + ".log_level"
+	testDefaultLogLevelConstant                         = "info"
+	testConfiguredLogLevelConstant                      = "debug"
+	testOverriddenLogLevelConstant                      = "error"
+	testFileLogLevelConstant                            = "warn"
+	testConfigFileNameConstant                          = "config.yaml"
+	testConfigContentTemplateConstant                   = "common:\n  log_level: %s\n"
+	testCaseEmbeddedMessageConstant                     = "embedded configuration merges"
+	testCaseDefaultsMessageConstant                     = "defaults are applied"
+	testCaseFileMessageConstant                         = "config file overrides defaults"
+	testCaseEnvironmentMessageConstant                  = "environment overrides file"
+	testConfigurationNameConstant                       = "config"
+	testConfigurationTypeConstant                       = "yaml"
+	configurationLoaderSubtestNameTemplateConstant      = "%d_%s"
+	testEmbeddedLogLevelConstant                        = "debug"
+	testUserConfigurationDirectoryNameConstant          = ".gix"
+	testCaseSearchPathWorkingDirectoryMessageConstant   = "searches working directory"
+	testCaseSearchPathSecondaryDirectoryMessageConstant = "searches secondary configuration directory"
+	testCaseSearchPathHomeDirectoryMessageConstant      = "searches home configuration directory"
+	testCaseSearchPathWorkingPreferredMessageConstant   = "prefers working directory when all directories contain configuration"
+	testCaseSearchPathSecondaryPreferredMessageConstant = "prefers secondary configuration directory when working directory lacks configuration"
+	testCaseSearchPathWorkingOverHomeMessageConstant    = "prefers working directory over home configuration directory"
 )
 
 type configurationDirectoryRole string
 
 const (
-	configurationDirectoryRoleWorking configurationDirectoryRole = "working"
-	configurationDirectoryRoleXDG     configurationDirectoryRole = "xdg"
-	configurationDirectoryRoleHome    configurationDirectoryRole = "home"
+	configurationDirectoryRoleWorking   configurationDirectoryRole = "working"
+	configurationDirectoryRoleSecondary configurationDirectoryRole = "secondary"
+	configurationDirectoryRoleHome      configurationDirectoryRole = "home"
 )
 
 type configurationFixture struct {
@@ -149,9 +148,9 @@ func TestConfigurationLoaderSearchPaths(testInstance *testing.T) {
 			expectedConfigurationDirectoryRole: configurationDirectoryRoleWorking,
 		},
 		{
-			name:                               testCaseSearchPathXDGDirectoryMessageConstant,
-			directoriesWithConfiguration:       []configurationDirectoryRole{configurationDirectoryRoleXDG},
-			expectedConfigurationDirectoryRole: configurationDirectoryRoleXDG,
+			name:                               testCaseSearchPathSecondaryDirectoryMessageConstant,
+			directoriesWithConfiguration:       []configurationDirectoryRole{configurationDirectoryRoleSecondary},
+			expectedConfigurationDirectoryRole: configurationDirectoryRoleSecondary,
 		},
 		{
 			name:                               testCaseSearchPathHomeDirectoryMessageConstant,
@@ -160,13 +159,13 @@ func TestConfigurationLoaderSearchPaths(testInstance *testing.T) {
 		},
 		{
 			name:                               testCaseSearchPathWorkingPreferredMessageConstant,
-			directoriesWithConfiguration:       []configurationDirectoryRole{configurationDirectoryRoleWorking, configurationDirectoryRoleXDG, configurationDirectoryRoleHome},
+			directoriesWithConfiguration:       []configurationDirectoryRole{configurationDirectoryRoleWorking, configurationDirectoryRoleSecondary, configurationDirectoryRoleHome},
 			expectedConfigurationDirectoryRole: configurationDirectoryRoleWorking,
 		},
 		{
-			name:                               testCaseSearchPathXDGPreferredMessageConstant,
-			directoriesWithConfiguration:       []configurationDirectoryRole{configurationDirectoryRoleXDG, configurationDirectoryRoleHome},
-			expectedConfigurationDirectoryRole: configurationDirectoryRoleXDG,
+			name:                               testCaseSearchPathSecondaryPreferredMessageConstant,
+			directoriesWithConfiguration:       []configurationDirectoryRole{configurationDirectoryRoleSecondary, configurationDirectoryRoleHome},
+			expectedConfigurationDirectoryRole: configurationDirectoryRoleSecondary,
 		},
 		{
 			name:                               testCaseSearchPathWorkingOverHomeMessageConstant,
@@ -176,31 +175,26 @@ func TestConfigurationLoaderSearchPaths(testInstance *testing.T) {
 	}
 
 	logLevelByDirectoryRole := map[configurationDirectoryRole]string{
-		configurationDirectoryRoleWorking: testConfiguredLogLevelConstant,
-		configurationDirectoryRoleXDG:     testFileLogLevelConstant,
-		configurationDirectoryRoleHome:    testOverriddenLogLevelConstant,
+		configurationDirectoryRoleWorking:   testConfiguredLogLevelConstant,
+		configurationDirectoryRoleSecondary: testFileLogLevelConstant,
+		configurationDirectoryRoleHome:      testOverriddenLogLevelConstant,
 	}
 
 	for testCaseIndex, testCase := range testCases {
 		testInstance.Run(fmt.Sprintf(configurationLoaderSubtestNameTemplateConstant, testCaseIndex, testCase.name), func(testInstance *testing.T) {
 			workingDirectoryPath := testInstance.TempDir()
 			homeDirectoryPath := testInstance.TempDir()
-			xdgConfigHomeDirectoryPath := filepath.Join(homeDirectoryPath, testXDGConfigHomeDirectoryNameConstant)
-
-			testInstance.Setenv("HOME", homeDirectoryPath)
-			testInstance.Setenv("XDG_CONFIG_HOME", xdgConfigHomeDirectoryPath)
-
-			xdgConfigurationDirectoryPath := filepath.Join(xdgConfigHomeDirectoryPath, testUserConfigurationDirectoryNameConstant)
+			secondaryConfigurationDirectoryPath := filepath.Join(homeDirectoryPath, "secondary", testUserConfigurationDirectoryNameConstant)
 			homeConfigurationDirectoryPath := filepath.Join(homeDirectoryPath, testUserConfigurationDirectoryNameConstant)
 
 			require.NoError(testInstance, os.MkdirAll(workingDirectoryPath, 0o755))
-			require.NoError(testInstance, os.MkdirAll(xdgConfigurationDirectoryPath, 0o755))
+			require.NoError(testInstance, os.MkdirAll(secondaryConfigurationDirectoryPath, 0o755))
 			require.NoError(testInstance, os.MkdirAll(homeConfigurationDirectoryPath, 0o755))
 
 			directoryPathByRole := map[configurationDirectoryRole]string{
-				configurationDirectoryRoleWorking: workingDirectoryPath,
-				configurationDirectoryRoleXDG:     xdgConfigurationDirectoryPath,
-				configurationDirectoryRoleHome:    homeConfigurationDirectoryPath,
+				configurationDirectoryRoleWorking:   workingDirectoryPath,
+				configurationDirectoryRoleSecondary: secondaryConfigurationDirectoryPath,
+				configurationDirectoryRoleHome:      homeConfigurationDirectoryPath,
 			}
 
 			for _, directoryRole := range testCase.directoriesWithConfiguration {
@@ -215,7 +209,7 @@ func TestConfigurationLoaderSearchPaths(testInstance *testing.T) {
 				testConfigurationNameConstant,
 				testConfigurationTypeConstant,
 				testEnvironmentPrefixConstant,
-				[]string{workingDirectoryPath, xdgConfigurationDirectoryPath, homeConfigurationDirectoryPath},
+				[]string{workingDirectoryPath, secondaryConfigurationDirectoryPath, homeConfigurationDirectoryPath},
 			)
 
 			defaultValues := map[string]any{

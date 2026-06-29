@@ -3,13 +3,30 @@
 
 Entries record newly discovered requests or changes, with their outcomes.
 
-Each issue is formatted as `- [ ] [GX-<number>]`. When resolved it becomes -` [x] [GX-<number>]`. Resolved issues are archived in `issues.md/ARCHIVE.md`.
+Each issue is formatted as `- [ ] [B001] (P1) Short title`, using the section-aware identifiers defined in `.mprlab/issues-md-format.md`. Resolved issues are archived in `.mprlab/ARCHIVE.md`.
 
-Read @AGENTS.md, @README.md and ARCHITECTURE.md. Read issues.md/@POLICY.md, issues.md/PLANNING.md, issues.md/@NOTES.md, and issues.md/@ISSUES.md. Start working on open issues. Prioritize bugfixes and maintenance. Work autonomously and stack up PRs. 
+Read `AGENTS.md`, `README.md`, `ARCHITECTURE.md`, `.mprlab/POLICY.md`, `.mprlab/PLANNING.md`, `.mprlab/NOTES.md`, `.mprlab/issues-md-format.md`, and the relevant `.mprlab/AGENTS.*.md` guides before implementation. Start with open issues. Prioritize bugfixes and maintenance.
 
 Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse completed numbers; cleanup renumbers remaining entries so numbering stays monotonic.
 
 ## BugFixes
+
+- [x] [B014] (P1) `gix sync` should not require `LLM_PROXY_SECRET` unless the LLM Proxy transport is explicitly configured.
+  Requested on 2026-06-29 after `gix sync` in `/Users/tyemirov/Development/llm-proxy` on branch `feature/F007-dashboard-settings-modal` failed with `environment variable LLM_PROXY_SECRET must be set to generate a commit message`.
+  ## Observation
+  - Dirty `gix sync` inherited the `message commit` LLM defaults.
+  - The embedded `message commit` and `message changelog` defaults still pointed at the MPR LLM Proxy endpoint and `LLM_PROXY_SECRET`.
+  - The LLM client selected the proxy transport implicitly from the base URL, so an operator who had not explicitly selected the proxy transport still hit the proxy-specific secret requirement.
+  ## Deliverable
+  - Make the canonical default LLM transport OpenAI-compatible with `OPENAI_API_KEY`.
+  - Add an explicit `transport` setting for message, sync, web, and workflow LLM client construction.
+  - Use the MPR LLM Proxy transport and `LLM_PROXY_SECRET` only when `transport: llm_proxy` or `--transport llm_proxy` is configured.
+  - Preserve explicit custom OpenAI-compatible base URLs without proxy inference.
+  ## Resolution
+  - Added transport-aware LLM client configuration with `openai_compatible` as the default transport and `llm_proxy` as an explicit transport.
+  - Updated embedded message defaults, sync commit-message config, web message helpers, and workflow LLM configuration to pass the transport field.
+  - Added regressions for embedded sync defaults, transport default env/base URL selection, workflow omitted-env behavior, and transport-aware web/message tests.
+  - Updated README LLM configuration docs.
 
 - [x] [B013] (P1) `gix sync` should accept open chained pull requests instead of requiring the PR to target `master`.
   Requested on 2026-06-23 after `gix sync` in `/Users/tyemirov/Development/MediaOps` on branch `tyemirov/bugfix/B159-mcp-migration-capability-inventory` failed with `branch "tyemirov/bugfix/B159-mcp-migration-capability-inventory" does not have an open pull request into master`, while `gh pr view` showed an open PR from that branch into `tyemirov/bugfix/B158-mcp-cli-parity-schemas`.
@@ -172,7 +189,7 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - Workflow execution emits `TASK_PLAN` and `TASK_APPLY` events (`internal/workflow/task_plan.go`, `internal/workflow/task_execute.go`), but `internal/repos/shared/reporting.go` suppresses those event codes in console output via `consoleSuppressedEventCodes`.
   - The cleanup service logs progress only at Info level (`internal/branches/service.go`), while the default config in `cmd/cli/default_config.yaml` sets `log_level: error`, so those logs are filtered.
   - The summary renderer in `pkg/taskrunner/summary.go` returns an empty string for single-repo runs, leaving no fallback output.
-  
+
   ## Deliverables
   - Emit a dedicated, non-suppressed console line for `gix prs delete` per repository that reports the outcome (deleted count or no-op) without requiring a log-level change.
   - Keep suppression of `TASK_*` workflow noise intact so other commands remain quiet; only add the explicit output needed for branch cleanup.
@@ -238,15 +255,15 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - Validate section names, identifier prefixes, recurrence suffixes, priority markers, dependencies, and duplicate IDs against the current `issues-md-format.md`.
   - Reconcile stale statuses, duplicate issues, broken references, obsolete instructions, and entries filed under the wrong section.
   - Move completed non-recurring history to the repository issue archive or durable documentation when the active tracker becomes noisy.
-  - Keep active, blocked, planning, and recurring entries visible in `ISSUES.md`.
+  - Keep active, blocked, planning, and recurring entries visible in `.mprlab/ISSUES.md`.
 
   Deliverables:
-  - Normalized `ISSUES.md` structure and statuses.
+  - Normalized `.mprlab/ISSUES.md` structure and statuses.
   - Updated issue archive or docs when completed entries are removed from the active tracker.
   - A short `Last run:` note summarizing the cleanup and any follow-up issues filed.
 
   Validation:
-  - Re-read `ISSUES.md` after edits and confirm every issue is under the right section with a unique section-aware ID.
+  - Re-read `.mprlab/ISSUES.md` after edits and confirm every issue is under the right section with a unique section-aware ID.
   - Confirm recurring entries remain open and keep the `R` suffix.
   - Confirm no active, blocked, recurring, or planning work was archived.
 
@@ -277,7 +294,7 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
 
   Requirements:
   - Cadence: run monthly, before large refactors, and after major framework or runtime changes.
-  - Review the codebase, docs, and workflow against `AGENTS.md`, `POLICY.md`, stack guides, and the current architecture notes.
+  - Review the codebase, docs, and workflow against `AGENTS.md`, `.mprlab/POLICY.md`, relevant `.mprlab/AGENTS.*.md` guides, and the current architecture notes.
   - Look for drift from forward-only contracts, edge-validation boundaries, smart-constructor usage, testing policy, and module ownership.
   - Record findings as new Maintenance issues with concrete scope, priority, and validation.
   - Close the pass with a no-action note only when the review finds no actionable drift.
@@ -404,6 +421,50 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   ## Deliverable
   - Fix the invalid test file or exclude it from `check-format` so formatting checks run cleanly.
 
+- [x] [M002] Consolidate MPR Lab governance under `.mprlab/`.
+  Requested on 2026-06-29.
+  ## Resolution
+  - Moved the active tracker, archive, and process notes into `.mprlab/`.
+  - Generated current governor-managed policy, planning, Git, Go, and frontend guides.
+  - Removed legacy `issues.md/` and `.mprl/` folders.
+  - Discarded the stale tracked active plan and obsolete Docker, Python, and legacy root agent guides that do not match this repository profile.
+  - Updated root guidance, docs, and changelog references to the current `.mprlab/` paths.
+  ## Validation
+  - `/Users/tyemirov/Development/Smith/mprlab-governor/scripts/normalize-mprlab --repo /Users/tyemirov/Development/gix --check`
+  - `git diff --check`
+
+- [x] [M003] (P2) Document user config initialization and configuration scope.
+  Requested on 2026-06-29 after reviewing whether the advertising page and README explain `gix --init user`, `$HOME/.gix/config.yaml`, and what config controls.
+  ## Observation
+  - README listed `gix --init user` and basic precedence, but did not explain the config's practical control surface.
+  - The docs site only mentioned `gix --init LOCAL`, omitted the user config path, and linked to the old root `ISSUES.md`.
+  ## Resolution
+  - Updated README Quick Start and configuration essentials to describe `gix --init user`, `gix --init local`, `--force yes`, and `$HOME/.gix/config.yaml`.
+  - Documented that config controls shared logging, confirmation, clean-worktree behavior, roots/remotes, sync PR metadata, LLM transport/provider settings, release/audit defaults, and workflow defaults.
+  - Updated the docs site getting-started flow, developer-tooling copy, architecture copy, and roadmap link to reflect current config and `.mprlab/ISSUES.md` contracts.
+
+- [x] [M004] (P2) Add a global LLM transport switch for user config.
+  Requested on 2026-06-29 after the operation-level LLM Proxy config felt too involved for a user who only wants gix to use MPR LLM Proxy.
+  ## Observation
+  - `gix --init user` generated separate LLM transport, provider, env, base URL, and model settings under each message operation.
+  - A user had to edit multiple fields to express one global preference.
+  - Changing only `transport` in an operation could leave inherited env/base settings from another transport.
+  ## Resolution
+  - Added a top-level `llm` config block for shared LLM defaults.
+  - Updated message, changelog, sync, and web LLM config assembly so `llm.transport: llm_proxy` selects `LLM_PROXY_SECRET` and the MPR LLM Proxy endpoint automatically.
+  - Kept per-operation LLM fields as overrides and made transport-only operation overrides reset env/base defaults to the selected transport.
+  - Preserved `llm.provider` as the upstream provider value passed through to LLM Proxy without requiring a provider-specific API key in gix.
+  - Updated generated config, README, architecture notes, docs site copy, changelog, and focused application configuration tests.
+
+- [x] [M005] (P2) Keep user configuration under `$HOME`.
+  Requested on 2026-06-29 after deciding not to honor `$XDG_CONFIG_HOME` for gix user configuration.
+  ## Observation
+  - The application searched XDG-derived paths before `$HOME/.gix/config.yaml`, including the indirect `os.UserConfigDir()` path.
+  - README, architecture notes, the docs site, CLI help, and changelog notes still described XDG-based user config paths.
+  ## Resolution
+  - Removed XDG-derived user config discovery and kept `$HOME/.gix/config.yaml` as the only user-level config path.
+  - Updated README, architecture notes, docs site copy, CLI design notes, CLI help text, changelog, and application tests to reflect the HOME-only contract.
+
 ## Features
 
 - [x] [F001] Add a step that allows running an arbitrary command, such as `go get -u ./...` and `go mod tidy`.
@@ -430,15 +491,15 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   LegacyExternalID: GX-111
   ### Summary
   When the `gix cd` command fails (for example, due to local changes blocking a branch switch), the error message is printed twice in the terminal. This duplicate logging clutters the output and violates the repository's principle of structured, single-entry reporting.
-  
+
   ### Analysis
   The duplication is caused by a lack of coordination between the domain service, the workflow executor, and the CLI entry point:
-  
+
   1.  **Improper Error Types**: `internal/branches/syncflow/service.go` returns standard errors via `fmt.Errorf` instead of the structured `repoerrors.OperationError` type. This prevents the workflow layer from identifying the error as a handled repository event.
   2.  **Fallback Printing**: In `internal/workflow/executor_runner.go`, the function `executeRepositoryStageForRepository` attempts to log the error. Because it is not an `OperationError`, it fails the check in `logRepositoryOperationError` (found in `internal/workflow/error_handling.go`) and falls back to a manual `fmt.Fprintln` to `stderr`.
   3.  **CLI Exit Redundancy**: The error is then bubbled up to `main.go`. Since the command's `RunE` returns the error, the main function prints it a second time before exiting.
   4.  **Context Loss**: The `collectOperationErrors` helper in `internal/workflow/executor.go` unwraps the error chain too aggressively, resulting in the same underlying Git error being printed in both instances, stripped of its high-level context (e.g., "Switch branch to master").
-  
+
   ### Deliverables
   - [ ] **Structured Error Implementation**: Refactor `internal/branches/syncflow/service.go` to utilize `repoerrors.Wrap` for all Git-related failures.
   - [ ] **Reporting Logic Alignment**: Update `internal/workflow/error_handling.go` to ensure that all repository-scoped errors are processed via the `StructuredReporter`, eliminating the need for manual fallback printing.

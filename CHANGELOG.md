@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### Improvements ⚙️
+- Add a top-level `llm` configuration block so `llm.transport: llm_proxy` globally routes generated commit-message, changelog, sync, and web LLM helpers through MPR LLM Proxy while `llm.provider` selects the proxy upstream provider.
+- Use `$HOME/.gix/config.yaml` as the only user-level configuration path and ignore `$XDG_CONFIG_HOME`.
 - Make `gix sync` pull request descriptions come from the branch diff through the configured LLM path instead of predefined body text.
 - Generate the sync PR body before pushing new PR branches so body-generation failures do not leave remote branches without pull requests.
 - Expose sync-created pull request `title` and `body` controls through `gix sync --title/--body` and `sync.pull_request`, with explicit bodies bypassing generated descriptions.
@@ -14,8 +16,11 @@
 - Treat ignored-only dirty status as clean before selecting a generated `gix sync` work branch.
 - Restore tracked ignored dirty paths during successful `gix sync` runs so generated artifacts do not remain in `git status`.
 - Accept existing `gix sync` PR branches whose open pull request targets a chained issue branch and merge the pull request's actual base instead of requiring `master`.
+- Default LLM-backed `gix sync`, commit message, changelog, web, and workflow helpers to the OpenAI-compatible transport with `OPENAI_API_KEY`; require `LLM_PROXY_SECRET` only when the `llm_proxy` transport is explicitly configured.
 
 ### Testing 🧪
+- Add application configuration coverage for global LLM defaults and transport-only per-operation overrides.
+- Add application configuration coverage proving `$XDG_CONFIG_HOME` is ignored for user-level configuration discovery.
 - Update strict-sync pull request creation coverage for requested branches and generated dirty-`master` branches, including the branch diff context sent to the PR body generator and failure-before-push ordering.
 - Add sync command and strict action coverage for explicit PR title/body controls.
 - Add strict-sync regression coverage for committing, pushing, removing, pruning, refetching, and retrying a dirty sibling worktree before switching to the requested branch.
@@ -24,6 +29,12 @@
 - Add sync-flow and black-box CLI coverage proving tracked ignored modified/deleted paths are restored while ordinary dirty files are still committed.
 - Add strict-sync failure-mode coverage for staged tracked ignored dirt, `--require-clean`, `--stash`, fetch-before-restore ordering, and restore failures.
 - Add strict-sync coverage for head-filtered open-PR lookup, PR `baseRefName` merges, and missing PR-base rejection.
+
+### Docs 📚
+- Consolidate MPR Lab governance docs under `.mprlab/` and remove legacy `issues.md/` and `.mprl/` folders.
+- Document the explicit `transport` LLM switch, proxy upstream `provider`, and the OpenAI-compatible default.
+- Document `gix --init user`, `$HOME/.gix/config.yaml`, and the configuration defaults controlled by user/local config in the README and docs site.
+- Add transport-default regressions for embedded sync configuration, workflow LLM configuration, web message helpers, and the shared LLM client factory.
 
 ## [v0.6.10] - 2026-06-29
 
@@ -1810,11 +1821,11 @@ Summary: total.repos=0 duration_ms=0
 
 ### Highlights
 
-- CLI configuration discovery now honors `XDG_CONFIG_HOME` while normalizing resolved paths for consistent behavior across platforms and tests.
+- CLI configuration discovery normalizes resolved paths for consistent behavior across platforms and tests.
 
 ### Improvements ⚙️
 
-- Updated the application bootstrap to expand XDG-aware configuration search paths and align emitted logs with the resolved directories.
+- Updated the application bootstrap to expand user configuration search paths and align emitted logs with the resolved directories.
 
 ### Testing 🧪
 

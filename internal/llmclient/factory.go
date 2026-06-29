@@ -13,30 +13,136 @@ import (
 )
 
 const (
-	DefaultAPIKeyEnvironment = "LLM_PROXY_SECRET"
-	DefaultBaseURL           = "https://llm-proxy-api.mprlab.com"
-	DefaultModel             = "gpt-4.1"
-	defaultRequestTimeout    = 60 * time.Second
+	DefaultAPIKeyEnvironment         = "OPENAI_API_KEY"
+	DefaultBaseURL                   = "https://api.openai.com/v1"
+	DefaultLLMProxyAPIKeyEnvironment = "LLM_PROXY_SECRET"
+	DefaultLLMProxyBaseURL           = "https://llm-proxy-api.mprlab.com"
+	DefaultModel                     = "gpt-4.1"
+	defaultRequestTimeout            = 60 * time.Second
+	providerRequiresProxyTransport   = "llm provider requires llm_proxy transport"
 )
+
+// Transport identifies how chat requests are sent.
+type Transport string
+
+const (
+	// TransportOpenAICompatible sends requests to an OpenAI-compatible chat completions endpoint.
+	TransportOpenAICompatible Transport = "openai_compatible"
+	// TransportLLMProxy sends requests to the MPR LLM Proxy v2 endpoint.
+	TransportLLMProxy Transport = "llm_proxy"
+	// DefaultTransport is the embedded transport used when no user configuration overrides it.
+	DefaultTransport = TransportOpenAICompatible
+)
+
+// Config describes the configured chat client.
+type Config struct {
+	Transport           Transport
+	Provider            string
+	BaseURL             string
+	APIKey              string
+	Model               string
+	MaxCompletionTokens int
+	Temperature         float64
+	HTTPClient          llm.HTTPClient
+	RequestTimeout      time.Duration
+	RetryAttempts       int
+	RetryInitialBackoff time.Duration
+	RetryMaxBackoff     time.Duration
+	RetryBackoffFactor  float64
+}
 
 type proxyChatClient struct {
 	client llmproxyclient.Client
 	model  string
 }
 
-// NewFactory creates the configured chat client.
-func NewFactory(configuration llm.Config) (llm.ChatClient, error) {
-	if isDefaultLLMProxyBaseURL(configuration.BaseURL) {
-		return newProxyChatClient(configuration)
+// NewTransport constructs a transport from a configuration value.
+func NewTransport(rawValue string) (Transport, error) {
+	trimmedValue := strings.TrimSpace(rawValue)
+	if trimmedValue == "" {
+		return DefaultTransport, nil
 	}
-	return llm.NewFactory(configuration)
+	transport := Transport(trimmedValue)
+	switch transport {
+	case TransportOpenAICompatible, TransportLLMProxy:
+		return transport, nil
+	default:
+		return "", fmt.Errorf("unsupported llm transport %q", trimmedValue)
+	}
 }
 
-func isDefaultLLMProxyBaseURL(baseURL string) bool {
-	return strings.TrimRight(strings.TrimSpace(baseURL), "/") == DefaultBaseURL
+// NormalizeTransportName trims a transport string and applies the embedded default for empty values.
+func NormalizeTransportName(rawValue string) string {
+	trimmedValue := strings.TrimSpace(rawValue)
+	if trimmedValue == "" {
+		return string(DefaultTransport)
+	}
+	return trimmedValue
 }
 
-func newProxyChatClient(configuration llm.Config) (llm.ChatClient, error) {
+// DefaultAPIKeyEnvironmentForTransportName returns the canonical secret environment variable for a transport.
+func DefaultAPIKeyEnvironmentForTransportName(rawTransport string) string {
+	if Transport(NormalizeTransportName(rawTransport)) == TransportLLMProxy {
+		return DefaultLLMProxyAPIKeyEnvironment
+	}
+	return DefaultAPIKeyEnvironment
+}
+
+// DefaultBaseURLForTransportName returns the canonical endpoint for a transport.
+func DefaultBaseURLForTransportName(rawTransport string) string {
+	if Transport(NormalizeTransportName(rawTransport)) == TransportLLMProxy {
+		return DefaultLLMProxyBaseURL
+	}
+	return DefaultBaseURL
+}
+
+// ValidateProviderForTransport verifies that proxy provider routing is attached to the proxy transport.
+func ValidateProviderForTransport(transport Transport, provider string) error {
+	if strings.TrimSpace(provider) == "" {
+		return nil
+	}
+	if transport == TransportLLMProxy {
+		return nil
+	}
+	return errors.New(providerRequiresProxyTransport)
+}
+
+// NewFactory creates the configured chat client.
+func NewFactory(configuration Config) (llm.ChatClient, error) {
+	transport, transportError := NewTransport(string(configuration.Transport))
+	if transportError != nil {
+		return nil, transportError
+	}
+	if providerError := ValidateProviderForTransport(transport, configuration.Provider); providerError != nil {
+		return nil, providerError
+	}
+	switch transport {
+	case TransportLLMProxy:
+		return newProxyChatClient(configuration)
+	case TransportOpenAICompatible:
+		return llm.NewFactory(configuration.toOpenAICompatibleConfig())
+	default:
+		return nil, fmt.Errorf("unsupported llm transport %q", transport)
+	}
+}
+
+func (configuration Config) toOpenAICompatibleConfig() llm.Config {
+	return llm.Config{
+		BaseURL:             strings.TrimSpace(configuration.BaseURL),
+		APIKey:              configuration.APIKey,
+		Model:               configuration.Model,
+		MaxCompletionTokens: configuration.MaxCompletionTokens,
+		Temperature:         configuration.Temperature,
+		HTTPClient:          configuration.HTTPClient,
+		RequestTimeout:      configuration.RequestTimeout,
+		RetryAttempts:       configuration.RetryAttempts,
+		RetryInitialBackoff: configuration.RetryInitialBackoff,
+		RetryMaxBackoff:     configuration.RetryMaxBackoff,
+		RetryBackoffFactor:  configuration.RetryBackoffFactor,
+	}
+}
+
+func newProxyChatClient(configuration Config) (llm.ChatClient, error) {
 	if configuration.Temperature > 0 {
 		return nil, errors.New("llm proxy client does not support temperature")
 	}
@@ -44,10 +150,15 @@ func newProxyChatClient(configuration llm.Config) (llm.ChatClient, error) {
 	if timeout <= 0 {
 		timeout = defaultRequestTimeout
 	}
+	baseURL := strings.TrimSpace(configuration.BaseURL)
+	if baseURL == "" {
+		baseURL = DefaultLLMProxyBaseURL
+	}
 	proxyConfiguration, configurationError := llmproxyclient.NewConfig(llmproxyclient.ConfigInput{
-		BaseURL: configuration.BaseURL,
-		Secret:  configuration.APIKey,
-		Timeout: timeout,
+		BaseURL:  baseURL,
+		Secret:   configuration.APIKey,
+		Provider: strings.TrimSpace(configuration.Provider),
+		Timeout:  timeout,
 	})
 	if configurationError != nil {
 		return nil, fmt.Errorf("initialize llm proxy client: %w", configurationError)

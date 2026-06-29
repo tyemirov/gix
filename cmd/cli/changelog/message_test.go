@@ -12,6 +12,7 @@ import (
 
 	"github.com/tyemirov/gix/internal/execshell"
 	"github.com/tyemirov/gix/internal/gitrepo"
+	"github.com/tyemirov/gix/internal/llmclient"
 	flagutils "github.com/tyemirov/gix/internal/utils/flags"
 	"github.com/tyemirov/utils/llm"
 )
@@ -30,7 +31,7 @@ func TestMessageCommandValidatesSinceInputs(t *testing.T) {
 				Model:     "mock-model",
 			}.Sanitize()
 		},
-		ClientFactory: func(config llm.Config) (llm.ChatClient, error) {
+		ClientFactory: func(config llmclient.Config) (llm.ChatClient, error) {
 			return &fakeChatClient{}, nil
 		},
 	}
@@ -69,7 +70,7 @@ func (executor *fakeGitExecutor) ExecuteGitHubCLI(ctx context.Context, details e
 }
 
 type fakeChatClient struct {
-	config   llm.Config
+	config   llmclient.Config
 	response string
 	err      error
 	request  *llm.ChatRequest
@@ -131,7 +132,7 @@ func TestMessageCommandOutputsChangelogOnce(t *testing.T) {
 				SinceReference: "",
 			}.Sanitize()
 		},
-		ClientFactory: func(config llm.Config) (llm.ChatClient, error) {
+		ClientFactory: func(config llmclient.Config) (llm.ChatClient, error) {
 			client.config = config
 			return client, nil
 		},
@@ -155,4 +156,5 @@ func TestMessageCommandOutputsChangelogOnce(t *testing.T) {
 	require.NotContains(t, out, "TASK_PLAN", "workflow logs should be suppressed for changelog command")
 	require.NotContains(t, out, "TASK_APPLY", "workflow logs should be suppressed for changelog command")
 	require.Equal(t, 1, client.calls, "chat client should be invoked exactly once")
+	require.Equal(t, llmclient.TransportOpenAICompatible, client.config.Transport)
 }

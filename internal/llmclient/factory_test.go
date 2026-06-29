@@ -27,7 +27,7 @@ func (client rewriteHTTPClient) Do(request *http.Request) (*http.Response, error
 	return http.DefaultClient.Do(rewrittenRequest)
 }
 
-func TestNewFactoryUsesLLMProxyV2ForCanonicalBaseURL(t *testing.T) {
+func TestNewFactoryUsesLLMProxyV2ForExplicitTransportAndProvider(t *testing.T) {
 	var capturedBody struct {
 		Messages []struct {
 			Role    string `json:"role"`
@@ -40,6 +40,7 @@ func TestNewFactoryUsesLLMProxyV2ForCanonicalBaseURL(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 		require.Equal(t, "/v2", request.URL.Path)
 		require.Equal(t, "test-secret", request.URL.Query().Get("key"))
+		require.Equal(t, "deepseek", request.URL.Query().Get("provider"))
 		require.Equal(t, "text/plain", request.Header.Get("Accept"))
 		require.NoError(t, json.NewDecoder(request.Body).Decode(&capturedBody))
 		_, _ = responseWriter.Write([]byte("  docs: sync dirty work\n"))
@@ -48,8 +49,10 @@ func TestNewFactoryUsesLLMProxyV2ForCanonicalBaseURL(t *testing.T) {
 
 	targetURL, parseError := url.Parse(server.URL)
 	require.NoError(t, parseError)
-	client, clientError := NewFactory(llm.Config{
-		BaseURL:             DefaultBaseURL,
+	client, clientError := NewFactory(Config{
+		Transport:           TransportLLMProxy,
+		Provider:            "deepseek",
+		BaseURL:             DefaultLLMProxyBaseURL,
 		APIKey:              "test-secret",
 		Model:               DefaultModel,
 		MaxCompletionTokens: 64,
@@ -85,7 +88,8 @@ func TestNewFactoryKeepsOpenAICompatibleTransportForExplicitNonProxyBase(t *test
 	}))
 	t.Cleanup(server.Close)
 
-	client, clientError := NewFactory(llm.Config{
+	client, clientError := NewFactory(Config{
+		Transport:      TransportOpenAICompatible,
 		BaseURL:        server.URL,
 		APIKey:         "test-token",
 		Model:          "mock-model",
@@ -102,12 +106,33 @@ func TestNewFactoryKeepsOpenAICompatibleTransportForExplicitNonProxyBase(t *test
 }
 
 func TestNewFactoryRejectsTemperatureForLLMProxy(t *testing.T) {
-	_, clientError := NewFactory(llm.Config{
-		BaseURL:     DefaultBaseURL,
+	_, clientError := NewFactory(Config{
+		Transport:   TransportLLMProxy,
+		BaseURL:     DefaultLLMProxyBaseURL,
 		APIKey:      "test-secret",
 		Model:       DefaultModel,
 		Temperature: 0.2,
 	})
 
 	require.EqualError(t, clientError, "llm proxy client does not support temperature")
+}
+
+func TestNewFactoryRejectsProviderWithoutLLMProxyTransport(t *testing.T) {
+	_, clientError := NewFactory(Config{
+		Transport: TransportOpenAICompatible,
+		Provider:  "deepseek",
+		BaseURL:   DefaultBaseURL,
+		APIKey:    "test-secret",
+		Model:     DefaultModel,
+	})
+
+	require.EqualError(t, clientError, "llm provider requires llm_proxy transport")
+}
+
+func TestTransportDefaultsSelectOpenAICompatibleEnvironment(t *testing.T) {
+	require.Equal(t, TransportOpenAICompatible, DefaultTransport)
+	require.Equal(t, DefaultAPIKeyEnvironment, DefaultAPIKeyEnvironmentForTransportName(""))
+	require.Equal(t, DefaultBaseURL, DefaultBaseURLForTransportName(""))
+	require.Equal(t, DefaultLLMProxyAPIKeyEnvironment, DefaultAPIKeyEnvironmentForTransportName(string(TransportLLMProxy)))
+	require.Equal(t, DefaultLLMProxyBaseURL, DefaultBaseURLForTransportName(string(TransportLLMProxy)))
 }

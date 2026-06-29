@@ -1,6 +1,6 @@
 # ISSUES ARCHIVE
 
-Resolved issues archived from `issues.md/ISSUES.md` during backlog cleanup.
+Resolved issues archived from `.mprlab/ISSUES.md` during backlog cleanup.
 
 Each issue is formatted as `- [x] [GX-<number>]`.
 

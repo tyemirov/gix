@@ -74,12 +74,13 @@ const (
 	testUserConfigurationDirectoryNameConstant               = ".gix"
 	testXDGConfigHomeDirectoryNameConstant                   = "config"
 	testCaseWorkingDirectoryPreferredMessageConstant         = "WorkingDirectoryPreferred"
-	testCaseXDGDirectoryFallbackMessageConstant              = "XDGDirectoryFallback"
+	testCaseXDGDirectoryIgnoredMessageConstant               = "XDGDirectoryIgnored"
 	testCaseHomeDirectoryFallbackMessageConstant             = "HomeDirectoryFallback"
+	testCaseXDGOnlyIgnoredMessageConstant                    = "XDGOnlyIgnored"
 	applicationSearchPathSubtestNameTemplateConstant         = "%d_%s"
 	configurationDirectoryRoleWorkingConstant                = "working"
-	configurationDirectoryRoleXDGConstant                    = "xdg"
 	configurationDirectoryRoleHomeConstant                   = "home"
+	configurationDirectoryRoleNoneConstant                   = "none"
 	configurationInitializationLocalTestNameConstant         = "LocalScope"
 	configurationInitializationUserTestNameConstant          = "UserScope"
 	configurationInitializationForceRequiredTestNameConstant = "ForceRequired"
@@ -475,12 +476,20 @@ func TestApplicationConfigurationSearchPaths(testInstance *testing.T) {
 			expectedDirectoryRole:               configurationDirectoryRoleWorkingConstant,
 		},
 		{
-			name:                                testCaseXDGDirectoryFallbackMessageConstant,
+			name:                                testCaseXDGDirectoryIgnoredMessageConstant,
 			createWorkingDirectoryConfiguration: false,
 			createXDGConfiguration:              true,
 			createHomeConfiguration:             true,
 			workingDirectoryConfiguration:       "",
-			expectedDirectoryRole:               configurationDirectoryRoleXDGConstant,
+			expectedDirectoryRole:               configurationDirectoryRoleHomeConstant,
+		},
+		{
+			name:                                testCaseXDGOnlyIgnoredMessageConstant,
+			createWorkingDirectoryConfiguration: false,
+			createXDGConfiguration:              true,
+			createHomeConfiguration:             false,
+			workingDirectoryConfiguration:       "",
+			expectedDirectoryRole:               configurationDirectoryRoleNoneConstant,
 		},
 		{
 			name:                                testCaseHomeDirectoryFallbackMessageConstant,
@@ -533,13 +542,15 @@ func TestApplicationConfigurationSearchPaths(testInstance *testing.T) {
 
 			expectedConfigurationPathByRole := map[string]string{
 				configurationDirectoryRoleWorkingConstant: filepath.Join(workingDirectoryPath, testConfigurationFileNameConstant),
-				configurationDirectoryRoleXDGConstant:     filepath.Join(xdgConfigurationDirectoryPath, testConfigurationFileNameConstant),
 				configurationDirectoryRoleHomeConstant:    filepath.Join(homeConfigurationDirectoryPath, testConfigurationFileNameConstant),
+				configurationDirectoryRoleNoneConstant:    "",
 			}
 
 			expectedConfigurationPath, expectedPathKnown := expectedConfigurationPathByRole[testCase.expectedDirectoryRole]
 			require.True(testInstance, expectedPathKnown, "unexpected directory role %s", testCase.expectedDirectoryRole)
-			expectedConfigurationPath = resolveSymlinkedPath(testInstance, expectedConfigurationPath)
+			if len(expectedConfigurationPath) > 0 {
+				expectedConfigurationPath = resolveSymlinkedPath(testInstance, expectedConfigurationPath)
+			}
 
 			application := cli.NewApplication()
 
@@ -550,7 +561,10 @@ func TestApplicationConfigurationSearchPaths(testInstance *testing.T) {
 			require.NoError(testInstance, initializationError)
 			require.Empty(testInstance, strings.TrimSpace(capturedOutput))
 
-			configurationFilePath := resolveSymlinkedPath(testInstance, application.ConfigFileUsed())
+			configurationFilePath := application.ConfigFileUsed()
+			if len(configurationFilePath) > 0 {
+				configurationFilePath = resolveSymlinkedPath(testInstance, configurationFilePath)
+			}
 			require.Equal(testInstance, expectedConfigurationPath, configurationFilePath)
 		})
 	}
@@ -559,14 +573,11 @@ func TestApplicationConfigurationSearchPaths(testInstance *testing.T) {
 func TestApplicationConfigurationCliFlagOverridesScopes(t *testing.T) {
 	workingDirectory := t.TempDir()
 	homeDirectory := t.TempDir()
-	xdgConfigHome := filepath.Join(homeDirectory, testXDGConfigHomeDirectoryNameConstant)
 
 	t.Setenv("HOME", homeDirectory)
-	t.Setenv("XDG_CONFIG_HOME", xdgConfigHome)
 	t.Setenv(testConfigurationSearchPathEnvironmentName, "")
 
 	require.NoError(t, os.MkdirAll(filepath.Join(homeDirectory, testUserConfigurationDirectoryNameConstant), 0o755))
-	require.NoError(t, os.MkdirAll(filepath.Join(xdgConfigHome, testUserConfigurationDirectoryNameConstant), 0o755))
 
 	originalWorkingDirectory, workingDirectoryError := os.Getwd()
 	require.NoError(t, workingDirectoryError)
@@ -576,7 +587,6 @@ func TestApplicationConfigurationCliFlagOverridesScopes(t *testing.T) {
 	})
 
 	localConfigurationPath := filepath.Join(workingDirectory, testConfigurationFileNameConstant)
-	xdgConfigurationPath := filepath.Join(xdgConfigHome, testUserConfigurationDirectoryNameConstant, testConfigurationFileNameConstant)
 	userConfigurationPath := filepath.Join(homeDirectory, testUserConfigurationDirectoryNameConstant, testConfigurationFileNameConstant)
 
 	buildHeader := func(logLevel string) string {
@@ -584,7 +594,6 @@ func TestApplicationConfigurationCliFlagOverridesScopes(t *testing.T) {
 	}
 
 	writeConfigurationFile(t, localConfigurationPath, buildConfigurationContentWithHeader(buildHeader("info"), requiredCommandKeys))
-	writeConfigurationFile(t, xdgConfigurationPath, buildConfigurationContentWithHeader(buildHeader("warn"), requiredCommandKeys))
 	writeConfigurationFile(t, userConfigurationPath, buildConfigurationContentWithHeader(buildHeader("error"), requiredCommandKeys))
 
 	cliConfigurationDirectory := t.TempDir()
@@ -632,6 +641,11 @@ func TestApplicationConfigurationCliFlagOverridesScopes(t *testing.T) {
 }
 
 func TestApplicationEmbeddedDefaultsProvideCommandConfigurations(testInstance *testing.T) {
+	embeddedConfiguration := decodeEmbeddedApplicationConfiguration(testInstance)
+	require.Equal(testInstance, "openai_compatible", embeddedConfiguration.LLM.Transport)
+	require.Empty(testInstance, embeddedConfiguration.LLM.Provider)
+	require.Equal(testInstance, "gpt-4.1", embeddedConfiguration.LLM.Model)
+
 	operationIndex := buildEmbeddedOperationIndex(testInstance)
 
 	testCases := []struct {
@@ -760,6 +774,34 @@ func TestApplicationEmbeddedDefaultsProvideCommandConfigurations(testInstance *t
 
 				assertions := require.New(assertionTarget)
 				assertions.Equal([]string{embeddedDefaultRootPathConstant}, sanitized.Roots)
+			},
+		},
+		{
+			name:       "CommitMessageDefaults",
+			commandUse: testCommitMessageCommandKeyConstant,
+			commandKey: testCommitMessageCommandKeyConstant,
+			assertion: func(assertionTarget testing.TB, options map[string]any) {
+				assertionTarget.Helper()
+
+				assertions := require.New(assertionTarget)
+				assertions.NotContains(options, "provider")
+				assertions.NotContains(options, "api_key_env")
+				assertions.NotContains(options, "base_url")
+				assertions.Equal(256, options["max_completion_tokens"])
+			},
+		},
+		{
+			name:       "ChangelogMessageDefaults",
+			commandUse: testChangelogMessageCommandKeyConstant,
+			commandKey: testChangelogMessageCommandKeyConstant,
+			assertion: func(assertionTarget testing.TB, options map[string]any) {
+				assertionTarget.Helper()
+
+				assertions := require.New(assertionTarget)
+				assertions.NotContains(options, "provider")
+				assertions.NotContains(options, "api_key_env")
+				assertions.NotContains(options, "base_url")
+				assertions.Equal(1200, options["max_completion_tokens"])
 			},
 		},
 	}

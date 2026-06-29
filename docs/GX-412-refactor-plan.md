@@ -1,8 +1,8 @@
 # GX-412 — POLICY.md Refactor Plan
 
-We audited the repo against the confident-programming rules in `POLICY.md` plus the workflow/CLI expectations in `AGENTS.*`. The following areas need structured refactors before we can claim full compliance.
+We audited the repo against the confident-programming rules in `.mprlab/POLICY.md` plus the workflow/CLI expectations in `.mprlab/AGENTS.*.md`. The following areas need structured refactors before we can claim full compliance.
 
-Each topic below now maps to an open maintenance issue so progress can be tracked in `ISSUES.md`.
+Each topic below now maps to an open maintenance issue so progress can be tracked in `.mprlab/ISSUES.md`.
 
 ## 1. Duplicate preset CLI plumbing (edge validation drift) — see GX-413
 - Evidence: CLI shims such as `cmd/cli/repos/files_add.go:85-256`, `cmd/cli/repos/replace.go:39-214`, and `cmd/cli/repos/remove.go:48-200` all re-implement the same sequence of flag parsing, config fallback, root resolution, and taskrunner wiring. Each command validates `--roots`, `--assume-yes`, and `--remote` independently, which leads to inconsistent error messages and makes it easy to forget new exec flags (e.g., `--workflow-workers` never flows into repo commands).

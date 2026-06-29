@@ -58,7 +58,7 @@ The Cobra application (split across `cmd/cli/application_bootstrap.go`, `cmd/cli
 - `cmd/cli/default_configuration.go` houses the embedded default YAML used by the `gix --init` flag.
 - `cmd/cli/workflow/presets` embeds reusable workflows (for example, license distribution and namespace rewrite) so both the `workflow` command and legacy CLI wrappers can reuse identical task graphs.
 
-All commands accept shared flags for log level, log format, previews, repository roots, and confirmation prompts. Validation occurs in Cobra `PreRunE` functions, aligning with the confident-programming rules in `POLICY.md`.
+All commands accept shared flags for log level, log format, previews, repository roots, and confirmation prompts. Validation occurs in Cobra `PreRunE` functions, aligning with the confident-programming rules in `.mprlab/POLICY.md`.
 
 ## Domain Packages
 
@@ -98,10 +98,9 @@ Configuration is managed by Viper with an uppercase `GIX` environment prefix. Th
 
 1. Explicit `--config` path, if provided.
 2. `config.yaml` in the working directory.
-3. `$XDG_CONFIG_HOME/gix/config.yaml`.
-4. `$HOME/.gix/config.yaml`.
+3. `$HOME/.gix/config.yaml`.
 
-`gix --init` bootstraps either a local `./config.yaml` or a user-level configuration directory when invoked with `--init LOCAL` (default) or `--init user`. Logging relies on Uber's Zap; format is configurable (structured JSON or console) through a flag or configuration.
+`gix --init` bootstraps either a local `./config.yaml` or a user-level configuration directory when invoked with `--init LOCAL` (default) or `--init user`. The top-level `llm` block defines transport and provider defaults shared by message, changelog, sync, and web helpers; operation-specific LLM fields remain overrides. `transport` selects `openai_compatible` or `llm_proxy`, while `provider` is the upstream provider name passed through to LLM Proxy. Logging relies on Uber's Zap; format is configurable (structured JSON or console) through a flag or configuration.
 
 The `workflow` command is special-cased: it uses a YAML formatter that emits machine-friendly step summaries (one per repository) and prints a final end-of-run summary line. Non-workflow commands continue to use the existing human-readable console logging format.
 
@@ -114,6 +113,11 @@ The example below matches the configuration used in the documentation tests. It 
 common:
   log_level: error
   log_format: structured
+
+llm:
+  transport: openai_compatible
+  provider: ""
+  model: gpt-4.1
 
 operations:
   - command: ["audit"]

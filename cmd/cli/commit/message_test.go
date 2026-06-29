@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tyemirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/llmclient"
 	flagutils "github.com/tyemirov/gix/internal/utils/flags"
 	"github.com/tyemirov/gix/internal/workflow"
 	"github.com/tyemirov/utils/llm"
@@ -40,7 +41,7 @@ func TestMessageCommandGeneratesCommitMessage(t *testing.T) {
 				DiffSource: "staged",
 			}.Sanitize()
 		},
-		ClientFactory: func(config llm.Config) (llm.ChatClient, error) {
+		ClientFactory: func(config llmclient.Config) (llm.ChatClient, error) {
 			client.config = config
 			return client, nil
 		},
@@ -71,9 +72,23 @@ func TestMessageCommandGeneratesCommitMessage(t *testing.T) {
 	require.Equal(t, "staged", action.Options[taskOptionCommitDiffSource])
 	require.Equal(t, 0, action.Options[taskOptionCommitMaxTokens])
 	require.NotNil(t, action.Options[taskOptionCommitClient])
+	require.Equal(t, llmclient.TransportOpenAICompatible, client.config.Transport)
 	require.Equal(t, "mock-model", client.config.Model)
 	require.Equal(t, "test-api-key", client.config.APIKey)
 	require.Nil(t, client.request)
+}
+
+func TestMessageConfigurationSanitizeDefaultsLLMProxyTransport(t *testing.T) {
+	configuration := MessageConfiguration{
+		Transport: string(llmclient.TransportLLMProxy),
+		Provider:  "deepseek",
+		Model:     "gpt-4.1",
+	}.Sanitize()
+
+	require.Equal(t, string(llmclient.TransportLLMProxy), configuration.Transport)
+	require.Equal(t, "deepseek", configuration.Provider)
+	require.Equal(t, llmclient.DefaultLLMProxyAPIKeyEnvironment, configuration.APIKeyEnv)
+	require.Equal(t, llmclient.DefaultLLMProxyBaseURL, configuration.BaseURL)
 }
 
 func TestMessageCommandValidatesDiffSource(t *testing.T) {
@@ -91,7 +106,7 @@ func TestMessageCommandValidatesDiffSource(t *testing.T) {
 				DiffSource: "invalid",
 			}.Sanitize()
 		},
-		ClientFactory: func(config llm.Config) (llm.ChatClient, error) {
+		ClientFactory: func(config llmclient.Config) (llm.ChatClient, error) {
 			return &fakeChatClient{}, nil
 		},
 	}
@@ -129,7 +144,7 @@ func (executor *fakeGitExecutor) ExecuteGitHubCLI(ctx context.Context, details e
 }
 
 type fakeChatClient struct {
-	config   llm.Config
+	config   llmclient.Config
 	response string
 	err      error
 	request  *llm.ChatRequest

@@ -4,6 +4,11 @@ common:
   assume_yes: false
   require_clean: false
 
+llm:
+  transport: openai_compatible
+  provider: ""
+  model: gpt-4.1
+
 operations:
   - command: ["audit"]
     with:
@@ -63,9 +68,6 @@ operations:
     with:
       roots:
         - .
-      api_key_env: LLM_PROXY_SECRET
-      base_url: https://llm-proxy-api.mprlab.com
-      model: gpt-4.1
       diff_source: staged
       max_completion_tokens: 256
       temperature: 0
@@ -74,9 +76,6 @@ operations:
     with:
       roots:
         - .
-      api_key_env: LLM_PROXY_SECRET
-      base_url: https://llm-proxy-api.mprlab.com
-      model: gpt-4.1
       max_completion_tokens: 1200
       temperature: 0
       timeout_seconds: 60
