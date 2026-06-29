@@ -423,7 +423,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 - [x] [F001] Add a step that allows running an arbitrary command, such as `go get -u ./...` and `go mod tidy`.
   LegacyExternalID: GX-110
   The changed files need to be committed after this step. Deliver both the DSL and the implementation.
-- [ ] [F002] Add a local web interface for `gix`.
+- [x] [F002] Add a local web interface for `gix`.
   Requested on 2026-03-05.
   ### Summary
   Launching `gix --web <port:-8080>` should start a local HTTP server that exposes the existing CLI command surface through a browser UI, rather than requiring users to compose all operations in the terminal.
