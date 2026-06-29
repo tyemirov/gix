@@ -498,7 +498,7 @@ Additional shared flags:
 
 - `--remote <name>` — override the remote name used by commands that push or fetch (default `origin`).
 - `--version` — print the gix version (works at the root or with any command).
-- `--init [local|user] [--force yes]` — write an embedded default config (to `./config.yaml` or `$XDG_CONFIG_HOME/gix/config.yaml`), overwriting when `--force yes` is provided.
+- `--init [local|user] [--force yes]` — write an embedded default config (to `./config.yaml` or `$HOME/.gix/config.yaml`), overwriting when `--force yes` is provided.
 - `--web` — launch the local browser UI on `127.0.0.1:8080` by default.
 - `--bind <host>`, `--port <port>` — override the web bind address or port when used with `--web`.
 - `--roots <dir>...` — when used with `--web`, scope the initial repository tree to the provided roots.
@@ -562,7 +562,7 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
 ## Configuration essentials
 
 - `gix --init local` writes an embeddable starter `./config.yaml` for the current workspace.
-- `gix --init user` writes user-level defaults to `$XDG_CONFIG_HOME/gix/config.yaml`; when `XDG_CONFIG_HOME` is not set, gix falls back to `$HOME/.gix/config.yaml`.
+- `gix --init user` writes user-level defaults to `$HOME/.gix/config.yaml`.
 - Add `--force yes` when you intentionally want to replace an existing generated config.
 - Configuration precedence is: CLI flags → environment variables prefixed with `GIX_` → local config → user config.
 - The config controls shared behavior such as `log_level`, `log_format`, `assume_yes`, and `require_clean`.
