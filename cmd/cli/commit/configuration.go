@@ -8,6 +8,7 @@ import (
 )
 
 const (
+	defaultProvider          = string(llmclient.DefaultProvider)
 	defaultAPIKeyEnvironment = llmclient.DefaultAPIKeyEnvironment
 	defaultBaseURL           = llmclient.DefaultBaseURL
 	defaultModel             = llmclient.DefaultModel
@@ -17,6 +18,7 @@ const (
 // MessageConfiguration captures configuration values for commit message generation.
 type MessageConfiguration struct {
 	Roots          []string `mapstructure:"roots"`
+	Provider       string   `mapstructure:"provider"`
 	APIKeyEnv      string   `mapstructure:"api_key_env"`
 	BaseURL        string   `mapstructure:"base_url"`
 	Model          string   `mapstructure:"model"`
@@ -29,6 +31,7 @@ type MessageConfiguration struct {
 // DefaultMessageConfiguration provides baseline configuration.
 func DefaultMessageConfiguration() MessageConfiguration {
 	return MessageConfiguration{
+		Provider:       defaultProvider,
 		APIKeyEnv:      defaultAPIKeyEnvironment,
 		BaseURL:        defaultBaseURL,
 		Model:          defaultModel,
@@ -44,15 +47,18 @@ func (configuration MessageConfiguration) Sanitize() MessageConfiguration {
 	sanitized := configuration
 	sanitized.Roots = rootutils.SanitizeConfigured(configuration.Roots)
 
+	provider := llmclient.NormalizeProviderName(configuration.Provider)
+	sanitized.Provider = provider
+
 	apiKeyEnv := strings.TrimSpace(configuration.APIKeyEnv)
 	if apiKeyEnv == "" {
-		apiKeyEnv = defaultAPIKeyEnvironment
+		apiKeyEnv = llmclient.DefaultAPIKeyEnvironmentForProviderName(provider)
 	}
 	sanitized.APIKeyEnv = apiKeyEnv
 
 	baseURL := strings.TrimSpace(configuration.BaseURL)
 	if baseURL == "" {
-		baseURL = defaultBaseURL
+		baseURL = llmclient.DefaultBaseURLForProviderName(provider)
 	}
 	sanitized.BaseURL = baseURL
 

@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	"github.com/tyemirov/gix/internal/llmclient"
 	flagutils "github.com/tyemirov/gix/internal/utils/flags"
 )
 
@@ -97,6 +98,21 @@ func TestApplicationOperationOverridesTakePriority(t *testing.T) {
 	workflowConfiguration := application.workflowCommandConfiguration()
 	require.False(t, workflowConfiguration.AssumeYes)
 	require.False(t, workflowConfiguration.RequireClean)
+}
+
+func TestBranchSyncEmbeddedDefaultsUseOpenAICompatibleProvider(t *testing.T) {
+	application := &Application{
+		logger:                  zap.NewNop(),
+		configuration:           ApplicationConfiguration{},
+		operationConfigurations: loadEmbeddedOperationConfigurations(),
+	}
+
+	configuration := application.branchSyncConfiguration()
+
+	require.Equal(t, string(llmclient.ProviderOpenAICompatible), configuration.CommitMessage.Provider)
+	require.Equal(t, llmclient.DefaultAPIKeyEnvironment, configuration.CommitMessage.APIKeyEnv)
+	require.Equal(t, llmclient.DefaultBaseURL, configuration.CommitMessage.BaseURL)
+	require.Equal(t, llmclient.DefaultModel, configuration.CommitMessage.Model)
 }
 
 func TestOperationConfigurationsErrorOnLegacyCommandNames(t *testing.T) {

@@ -87,7 +87,7 @@ type Application struct {
 	versionExitEnabled                bool
 	exitFunction                      func(int)
 	webRunner                         webRunner
-	llmClientFactory                  func(llm.Config) (llm.ChatClient, error)
+	llmClientFactory                  func(llmclient.Config) (llm.ChatClient, error)
 }
 
 // NewApplication assembles a fully wired CLI application instance.
@@ -102,7 +102,7 @@ func NewApplication() *Application {
 	application.versionExitEnabled = true
 	application.exitFunction = os.Exit
 	application.webRunner = application.launchWebInterface
-	application.llmClientFactory = func(configuration llm.Config) (llm.ChatClient, error) {
+	application.llmClientFactory = func(configuration llmclient.Config) (llm.ChatClient, error) {
 		return llmclient.NewFactory(configuration)
 	}
 
@@ -544,6 +544,7 @@ func (application *Application) branchSyncConfiguration() syncflowcmd.CommandCon
 	configuration := syncflowcmd.DefaultCommandConfiguration()
 	messageConfiguration := application.commitMessageConfiguration()
 	configuration.CommitMessage = syncflowcmd.CommitMessageConfiguration{
+		Provider:       messageConfiguration.Provider,
 		APIKeyEnv:      messageConfiguration.APIKeyEnv,
 		BaseURL:        messageConfiguration.BaseURL,
 		Model:          messageConfiguration.Model,

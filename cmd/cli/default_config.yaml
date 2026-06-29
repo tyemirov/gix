@@ -63,8 +63,9 @@ operations:
     with:
       roots:
         - .
-      api_key_env: LLM_PROXY_SECRET
-      base_url: https://llm-proxy-api.mprlab.com
+      provider: openai_compatible
+      api_key_env: OPENAI_API_KEY
+      base_url: https://api.openai.com/v1
       model: gpt-4.1
       diff_source: staged
       max_completion_tokens: 256
@@ -74,8 +75,9 @@ operations:
     with:
       roots:
         - .
-      api_key_env: LLM_PROXY_SECRET
-      base_url: https://llm-proxy-api.mprlab.com
+      provider: openai_compatible
+      api_key_env: OPENAI_API_KEY
+      base_url: https://api.openai.com/v1
       model: gpt-4.1
       max_completion_tokens: 1200
       temperature: 0

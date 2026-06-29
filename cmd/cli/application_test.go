@@ -762,6 +762,32 @@ func TestApplicationEmbeddedDefaultsProvideCommandConfigurations(testInstance *t
 				assertions.Equal([]string{embeddedDefaultRootPathConstant}, sanitized.Roots)
 			},
 		},
+		{
+			name:       "CommitMessageDefaults",
+			commandUse: testCommitMessageCommandKeyConstant,
+			commandKey: testCommitMessageCommandKeyConstant,
+			assertion: func(assertionTarget testing.TB, options map[string]any) {
+				assertionTarget.Helper()
+
+				assertions := require.New(assertionTarget)
+				assertions.Equal("openai_compatible", options["provider"])
+				assertions.Equal("OPENAI_API_KEY", options["api_key_env"])
+				assertions.Equal("https://api.openai.com/v1", options["base_url"])
+			},
+		},
+		{
+			name:       "ChangelogMessageDefaults",
+			commandUse: testChangelogMessageCommandKeyConstant,
+			commandKey: testChangelogMessageCommandKeyConstant,
+			assertion: func(assertionTarget testing.TB, options map[string]any) {
+				assertionTarget.Helper()
+
+				assertions := require.New(assertionTarget)
+				assertions.Equal("openai_compatible", options["provider"])
+				assertions.Equal("OPENAI_API_KEY", options["api_key_env"])
+				assertions.Equal("https://api.openai.com/v1", options["base_url"])
+			},
+		},
 	}
 
 	for _, testCase := range testCases {

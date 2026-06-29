@@ -998,6 +998,7 @@ func (application *Application) applyWebAuditUpdateChangelog(
 func (application *Application) webCommitMessageClient() (llm.ChatClient, commitcmd.MessageConfiguration, error) {
 	configuration := application.commitMessageConfiguration()
 	client, clientError := application.newWebLLMClient(
+		configuration.Provider,
 		configuration.BaseURL,
 		configuration.APIKeyEnv,
 		configuration.Model,
@@ -1011,6 +1012,7 @@ func (application *Application) webCommitMessageClient() (llm.ChatClient, commit
 func (application *Application) webChangelogMessageClient() (llm.ChatClient, changelogcmd.MessageConfiguration, error) {
 	configuration := application.changelogMessageConfiguration()
 	client, clientError := application.newWebLLMClient(
+		configuration.Provider,
 		configuration.BaseURL,
 		configuration.APIKeyEnv,
 		configuration.Model,
@@ -1022,6 +1024,7 @@ func (application *Application) webChangelogMessageClient() (llm.ChatClient, cha
 }
 
 func (application *Application) newWebLLMClient(
+	providerName string,
 	baseURL string,
 	apiKeyEnv string,
 	modelIdentifier string,
@@ -1029,9 +1032,14 @@ func (application *Application) newWebLLMClient(
 	temperature float64,
 	timeoutSeconds int,
 ) (llm.ChatClient, error) {
+	provider, providerError := llmclient.NewProvider(providerName)
+	if providerError != nil {
+		return nil, providerError
+	}
+
 	trimmedAPIKeyEnv := strings.TrimSpace(apiKeyEnv)
 	if trimmedAPIKeyEnv == "" {
-		return nil, errors.New("llm api key environment is required")
+		trimmedAPIKeyEnv = llmclient.DefaultAPIKeyEnvironmentForProviderName(string(provider))
 	}
 
 	apiKeyValue := strings.TrimSpace(os.Getenv(trimmedAPIKeyEnv))
@@ -1041,13 +1049,19 @@ func (application *Application) newWebLLMClient(
 
 	clientFactory := application.llmClientFactory
 	if clientFactory == nil {
-		clientFactory = func(configuration llm.Config) (llm.ChatClient, error) {
+		clientFactory = func(configuration llmclient.Config) (llm.ChatClient, error) {
 			return llmclient.NewFactory(configuration)
 		}
 	}
 
-	clientConfiguration := llm.Config{
-		BaseURL:             strings.TrimSpace(baseURL),
+	trimmedBaseURL := strings.TrimSpace(baseURL)
+	if trimmedBaseURL == "" {
+		trimmedBaseURL = llmclient.DefaultBaseURLForProviderName(string(provider))
+	}
+
+	clientConfiguration := llmclient.Config{
+		Provider:            provider,
+		BaseURL:             trimmedBaseURL,
 		APIKey:              apiKeyValue,
 		Model:               strings.TrimSpace(modelIdentifier),
 		MaxCompletionTokens: maxTokens,

@@ -17,6 +17,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/tyemirov/gix/internal/llmclient"
 	"github.com/tyemirov/gix/internal/repos/shared"
 	"github.com/tyemirov/gix/internal/web"
 	"github.com/tyemirov/gix/internal/workflow"
@@ -701,12 +702,13 @@ func TestWebAuditChangeExecutorCommitChangesCommitsDirtyWorktree(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(repositoryPath, "README.md"), []byte("updated\n"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(repositoryPath, "notes.txt"), []byte("draft\n"), 0o644))
 
-	t.Setenv("LLM_PROXY_SECRET", "test-token")
+	t.Setenv("OPENAI_API_KEY", "test-token")
 	stubClient := &stubWebChatClient{response: "feat: commit pending changes"}
 
 	application := NewApplication()
-	application.llmClientFactory = func(configuration llm.Config) (llm.ChatClient, error) {
-		require.Equal(t, "https://llm-proxy-api.mprlab.com", configuration.BaseURL)
+	application.llmClientFactory = func(configuration llmclient.Config) (llm.ChatClient, error) {
+		require.Equal(t, llmclient.ProviderOpenAICompatible, configuration.Provider)
+		require.Equal(t, "https://api.openai.com/v1", configuration.BaseURL)
 		require.Equal(t, "gpt-4.1", configuration.Model)
 		require.Equal(t, "test-token", configuration.APIKey)
 		return stubClient, nil
@@ -747,15 +749,16 @@ func TestWebAuditChangeExecutorUpdateChangelogInsertsNextVersionSection(t *testi
 		0o644,
 	))
 
-	t.Setenv("LLM_PROXY_SECRET", "test-token")
+	t.Setenv("OPENAI_API_KEY", "test-token")
 	releaseDate := time.Now().Format("2006-01-02")
 	stubClient := &stubWebChatClient{
 		response: "## [v1.2.4] - " + releaseDate + "\n\n### Features ✨\n- Add pending feature.\n\n### Improvements ⚙️\n- _No changes._\n\n### Bug Fixes 🐛\n- _No changes._\n\n### Testing 🧪\n- _No changes._\n\n### Docs 📚\n- _No changes._",
 	}
 
 	application := NewApplication()
-	application.llmClientFactory = func(configuration llm.Config) (llm.ChatClient, error) {
-		require.Equal(t, "https://llm-proxy-api.mprlab.com", configuration.BaseURL)
+	application.llmClientFactory = func(configuration llmclient.Config) (llm.ChatClient, error) {
+		require.Equal(t, llmclient.ProviderOpenAICompatible, configuration.Provider)
+		require.Equal(t, "https://api.openai.com/v1", configuration.BaseURL)
 		require.Equal(t, "gpt-4.1", configuration.Model)
 		require.Equal(t, "test-token", configuration.APIKey)
 		return stubClient, nil
@@ -789,9 +792,9 @@ func TestWebAuditChangeExecutorUpdateChangelogRejectsTaggedHead(t *testing.T) {
 	runGitCommand(t, repositoryPath, "tag", "v1.2.3")
 	require.NoError(t, os.WriteFile(filepath.Join(repositoryPath, "feature.txt"), []byte("pending feature\n"), 0o644))
 
-	t.Setenv("LLM_PROXY_SECRET", "test-token")
+	t.Setenv("OPENAI_API_KEY", "test-token")
 	application := NewApplication()
-	application.llmClientFactory = func(configuration llm.Config) (llm.ChatClient, error) {
+	application.llmClientFactory = func(configuration llmclient.Config) (llm.ChatClient, error) {
 		return &stubWebChatClient{response: "## [v1.2.4]\n"}, nil
 	}
 
@@ -824,9 +827,9 @@ func TestWebAuditChangeExecutorUpdateChangelogRejectsNonDefaultBranch(t *testing
 	runGitCommand(t, repositoryPath, "checkout", "-b", "feature/demo")
 	require.NoError(t, os.WriteFile(filepath.Join(repositoryPath, "feature.txt"), []byte("pending feature\n"), 0o644))
 
-	t.Setenv("LLM_PROXY_SECRET", "test-token")
+	t.Setenv("OPENAI_API_KEY", "test-token")
 	application := NewApplication()
-	application.llmClientFactory = func(configuration llm.Config) (llm.ChatClient, error) {
+	application.llmClientFactory = func(configuration llmclient.Config) (llm.ChatClient, error) {
 		return &stubWebChatClient{response: "## [v1.2.4]\n"}, nil
 	}
 
