@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tyemirov/gix/internal/llmclient"
 	"github.com/tyemirov/utils/llm"
 )
 
@@ -121,7 +122,7 @@ func (configuration *TaskLLMClientConfiguration) Client() (llm.ChatClient, error
 			clientConfiguration.Temperature = configuration.temperature
 		}
 
-		client, clientErr := llm.NewFactory(clientConfiguration)
+		client, clientErr := llmclient.NewFactory(clientConfiguration)
 		if clientErr != nil {
 			configuration.clientErr = clientErr
 			return

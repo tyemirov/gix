@@ -3,14 +3,16 @@ package syncflow
 import (
 	"strings"
 
+	"github.com/tyemirov/gix/internal/llmclient"
 	pathutils "github.com/tyemirov/gix/internal/utils/path"
 )
 
 var commandConfigurationRepositorySanitizer = pathutils.NewRepositoryPathSanitizerWithConfiguration(nil, pathutils.RepositoryPathSanitizerConfiguration{PruneNestedPaths: true})
 
 const (
-	defaultCommitMessageAPIKeyEnvironment = "OPENAI_API_KEY"
-	defaultCommitMessageModel             = "gpt-4.1-mini"
+	defaultCommitMessageAPIKeyEnvironment = llmclient.DefaultAPIKeyEnvironment
+	defaultCommitMessageBaseURL           = llmclient.DefaultBaseURL
+	defaultCommitMessageModel             = llmclient.DefaultModel
 	defaultCommitMessageTimeoutSeconds    = 60
 )
 
@@ -55,6 +57,7 @@ func DefaultCommandConfiguration() CommandConfiguration {
 func DefaultCommitMessageConfiguration() CommitMessageConfiguration {
 	return CommitMessageConfiguration{
 		APIKeyEnv:      defaultCommitMessageAPIKeyEnvironment,
+		BaseURL:        defaultCommitMessageBaseURL,
 		Model:          defaultCommitMessageModel,
 		TimeoutSeconds: defaultCommitMessageTimeoutSeconds,
 	}
@@ -89,7 +92,11 @@ func (configuration CommitMessageConfiguration) Sanitize() CommitMessageConfigur
 	}
 	sanitized.APIKeyEnv = apiKeyEnv
 
-	sanitized.BaseURL = strings.TrimSpace(configuration.BaseURL)
+	baseURL := strings.TrimSpace(configuration.BaseURL)
+	if baseURL == "" {
+		baseURL = defaultCommitMessageBaseURL
+	}
+	sanitized.BaseURL = baseURL
 
 	model := strings.TrimSpace(configuration.Model)
 	if model == "" {
