@@ -250,6 +250,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Re-read `.mprlab/ISSUES.md` after edits and confirm every issue is under the right section with a unique section-aware ID.
   - Confirm recurring entries remain open and keep the `R` suffix.
   - Confirm no active, blocked, recurring, or planning work was archived.
+  Last run: 2026-06-29.
 - [ ] [M002R] (P2) Polish open issues.
   Goal:
   Keep unresolved work executable by making each open issue concrete, ordered, and testable.
