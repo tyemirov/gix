@@ -11,6 +11,7 @@ import (
 
 	"github.com/tyemirov/gix/internal/commitmsg"
 	"github.com/tyemirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/llmclient"
 	"github.com/tyemirov/gix/internal/repos/shared"
 	"github.com/tyemirov/gix/internal/workflow"
 	"github.com/tyemirov/utils/llm"
@@ -463,7 +464,7 @@ func resolveCommitMessageClient(options worktreeAdoptionCommitMessageOptions) (l
 	if timeoutSeconds <= 0 {
 		timeoutSeconds = defaultCommitMessageTimeoutSeconds
 	}
-	client, clientErr := llm.NewFactory(llm.Config{
+	client, clientErr := llmclient.NewFactory(llm.Config{
 		BaseURL:             strings.TrimSpace(options.BaseURL),
 		APIKey:              apiKey,
 		Model:               model,

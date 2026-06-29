@@ -3,12 +3,14 @@ package commit
 import (
 	"strings"
 
+	"github.com/tyemirov/gix/internal/llmclient"
 	rootutils "github.com/tyemirov/gix/internal/utils/roots"
 )
 
 const (
-	defaultAPIKeyEnvironment = "OPENAI_API_KEY"
-	defaultModel             = "gpt-4.1-mini"
+	defaultAPIKeyEnvironment = llmclient.DefaultAPIKeyEnvironment
+	defaultBaseURL           = llmclient.DefaultBaseURL
+	defaultModel             = llmclient.DefaultModel
 	defaultDiffSource        = "staged"
 )
 
@@ -28,6 +30,7 @@ type MessageConfiguration struct {
 func DefaultMessageConfiguration() MessageConfiguration {
 	return MessageConfiguration{
 		APIKeyEnv:      defaultAPIKeyEnvironment,
+		BaseURL:        defaultBaseURL,
 		Model:          defaultModel,
 		DiffSource:     defaultDiffSource,
 		MaxTokens:      0,
@@ -47,7 +50,11 @@ func (configuration MessageConfiguration) Sanitize() MessageConfiguration {
 	}
 	sanitized.APIKeyEnv = apiKeyEnv
 
-	sanitized.BaseURL = strings.TrimSpace(configuration.BaseURL)
+	baseURL := strings.TrimSpace(configuration.BaseURL)
+	if baseURL == "" {
+		baseURL = defaultBaseURL
+	}
+	sanitized.BaseURL = baseURL
 
 	model := strings.TrimSpace(configuration.Model)
 	if model == "" {

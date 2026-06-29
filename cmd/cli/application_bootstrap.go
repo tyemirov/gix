@@ -22,6 +22,7 @@ import (
 	"github.com/tyemirov/gix/internal/audit"
 	"github.com/tyemirov/gix/internal/branches"
 	syncflowcmd "github.com/tyemirov/gix/internal/branches/syncflow"
+	"github.com/tyemirov/gix/internal/llmclient"
 	"github.com/tyemirov/gix/internal/migrate"
 	"github.com/tyemirov/gix/internal/packages"
 	reposdeps "github.com/tyemirov/gix/internal/repos/dependencies"
@@ -102,7 +103,7 @@ func NewApplication() *Application {
 	application.exitFunction = os.Exit
 	application.webRunner = application.launchWebInterface
 	application.llmClientFactory = func(configuration llm.Config) (llm.ChatClient, error) {
-		return llm.NewFactory(configuration)
+		return llmclient.NewFactory(configuration)
 	}
 
 	application.configurationLoader = utils.NewConfigurationLoader(

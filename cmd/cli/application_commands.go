@@ -165,6 +165,7 @@ func (application *Application) registerCommands(cobraCommand *cobra.Command) {
 		},
 		HumanReadableLoggingProvider: application.humanReadableLoggingEnabled,
 		ConfigurationProvider:        application.changelogMessageConfiguration,
+		ClientFactory:                application.llmClientFactory,
 	}
 	messageNamespaceCommand := newNamespaceCommand(messageNamespaceUseNameConstant, messageNamespaceShortDescriptionConstant, messageNamespaceAliasConstant)
 	changelogMessageCommand, changelogMessageBuildError := changelogMessageBuilder.Build()
@@ -178,6 +179,7 @@ func (application *Application) registerCommands(cobraCommand *cobra.Command) {
 		},
 		HumanReadableLoggingProvider: application.humanReadableLoggingEnabled,
 		ConfigurationProvider:        application.commitMessageConfiguration,
+		ClientFactory:                application.llmClientFactory,
 	}
 	commitMessageCommand, commitMessageBuildError := commitMessageBuilder.Build()
 	if commitMessageBuildError == nil {

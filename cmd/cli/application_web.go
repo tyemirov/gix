@@ -28,6 +28,7 @@ import (
 	internalchangelog "github.com/tyemirov/gix/internal/changelog"
 	"github.com/tyemirov/gix/internal/commitmsg"
 	"github.com/tyemirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/llmclient"
 	reposdeps "github.com/tyemirov/gix/internal/repos/dependencies"
 	"github.com/tyemirov/gix/internal/repos/shared"
 	flagutils "github.com/tyemirov/gix/internal/utils/flags"
@@ -1041,7 +1042,7 @@ func (application *Application) newWebLLMClient(
 	clientFactory := application.llmClientFactory
 	if clientFactory == nil {
 		clientFactory = func(configuration llm.Config) (llm.ChatClient, error) {
-			return llm.NewFactory(configuration)
+			return llmclient.NewFactory(configuration)
 		}
 	}
 
