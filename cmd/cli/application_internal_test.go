@@ -100,19 +100,104 @@ func TestApplicationOperationOverridesTakePriority(t *testing.T) {
 	require.False(t, workflowConfiguration.RequireClean)
 }
 
-func TestBranchSyncEmbeddedDefaultsUseOpenAICompatibleProvider(t *testing.T) {
+func TestBranchSyncEmbeddedDefaultsUseOpenAICompatibleTransport(t *testing.T) {
 	application := &Application{
-		logger:                  zap.NewNop(),
-		configuration:           ApplicationConfiguration{},
-		operationConfigurations: loadEmbeddedOperationConfigurations(),
+		logger:                          zap.NewNop(),
+		configuration:                   ApplicationConfiguration{},
+		embeddedOperationConfigurations: loadEmbeddedOperationConfigurations(),
+		operationConfigurations:         loadEmbeddedOperationConfigurations(),
 	}
 
 	configuration := application.branchSyncConfiguration()
 
-	require.Equal(t, string(llmclient.ProviderOpenAICompatible), configuration.CommitMessage.Provider)
+	require.Equal(t, string(llmclient.TransportOpenAICompatible), configuration.CommitMessage.Transport)
+	require.Empty(t, configuration.CommitMessage.Provider)
 	require.Equal(t, llmclient.DefaultAPIKeyEnvironment, configuration.CommitMessage.APIKeyEnv)
 	require.Equal(t, llmclient.DefaultBaseURL, configuration.CommitMessage.BaseURL)
 	require.Equal(t, llmclient.DefaultModel, configuration.CommitMessage.Model)
+}
+
+func TestApplicationGlobalLLMDefaultsUseLLMProxyTransport(t *testing.T) {
+	application := newApplicationConfigurationTestHarness(t, ApplicationConfiguration{
+		LLM: ApplicationLLMConfiguration{
+			Transport: string(llmclient.TransportLLMProxy),
+			Provider:  "deepseek",
+		},
+	}, nil)
+
+	commitConfiguration := application.commitMessageConfiguration()
+	require.Equal(t, string(llmclient.TransportLLMProxy), commitConfiguration.Transport)
+	require.Equal(t, "deepseek", commitConfiguration.Provider)
+	require.Equal(t, llmclient.DefaultLLMProxyAPIKeyEnvironment, commitConfiguration.APIKeyEnv)
+	require.Equal(t, llmclient.DefaultLLMProxyBaseURL, commitConfiguration.BaseURL)
+	require.Equal(t, llmclient.DefaultModel, commitConfiguration.Model)
+	require.Equal(t, 256, commitConfiguration.MaxTokens)
+
+	changelogConfiguration := application.changelogMessageConfiguration()
+	require.Equal(t, string(llmclient.TransportLLMProxy), changelogConfiguration.Transport)
+	require.Equal(t, "deepseek", changelogConfiguration.Provider)
+	require.Equal(t, llmclient.DefaultLLMProxyAPIKeyEnvironment, changelogConfiguration.APIKeyEnv)
+	require.Equal(t, llmclient.DefaultLLMProxyBaseURL, changelogConfiguration.BaseURL)
+	require.Equal(t, llmclient.DefaultModel, changelogConfiguration.Model)
+	require.Equal(t, 1200, changelogConfiguration.MaxTokens)
+
+	syncConfiguration := application.branchSyncConfiguration()
+	require.Equal(t, string(llmclient.TransportLLMProxy), syncConfiguration.CommitMessage.Transport)
+	require.Equal(t, "deepseek", syncConfiguration.CommitMessage.Provider)
+	require.Equal(t, llmclient.DefaultLLMProxyAPIKeyEnvironment, syncConfiguration.CommitMessage.APIKeyEnv)
+	require.Equal(t, llmclient.DefaultLLMProxyBaseURL, syncConfiguration.CommitMessage.BaseURL)
+}
+
+func TestApplicationOperationTransportOverrideResetsTransportDefaults(t *testing.T) {
+	application := newApplicationConfigurationTestHarness(t, ApplicationConfiguration{
+		LLM: ApplicationLLMConfiguration{
+			Transport: string(llmclient.TransportLLMProxy),
+			Provider:  "deepseek",
+		},
+	}, []ApplicationOperationConfiguration{
+		{
+			Command: []string{"message", "commit"},
+			Options: map[string]any{
+				"transport": string(llmclient.TransportOpenAICompatible),
+			},
+		},
+	})
+
+	commitConfiguration := application.commitMessageConfiguration()
+	require.Equal(t, string(llmclient.TransportOpenAICompatible), commitConfiguration.Transport)
+	require.Empty(t, commitConfiguration.Provider)
+	require.Equal(t, llmclient.DefaultAPIKeyEnvironment, commitConfiguration.APIKeyEnv)
+	require.Equal(t, llmclient.DefaultBaseURL, commitConfiguration.BaseURL)
+
+	changelogConfiguration := application.changelogMessageConfiguration()
+	require.Equal(t, string(llmclient.TransportLLMProxy), changelogConfiguration.Transport)
+	require.Equal(t, "deepseek", changelogConfiguration.Provider)
+	require.Equal(t, llmclient.DefaultLLMProxyAPIKeyEnvironment, changelogConfiguration.APIKeyEnv)
+	require.Equal(t, llmclient.DefaultLLMProxyBaseURL, changelogConfiguration.BaseURL)
+}
+
+func TestApplicationSyncCommitMessageTransportOverrideResetsTransportDefaults(t *testing.T) {
+	application := newApplicationConfigurationTestHarness(t, ApplicationConfiguration{
+		LLM: ApplicationLLMConfiguration{
+			Transport: string(llmclient.TransportLLMProxy),
+			Provider:  "deepseek",
+		},
+	}, []ApplicationOperationConfiguration{
+		{
+			Command: []string{"sync"},
+			Options: map[string]any{
+				"commit_message": map[string]any{
+					"transport": string(llmclient.TransportOpenAICompatible),
+				},
+			},
+		},
+	})
+
+	configuration := application.branchSyncConfiguration()
+	require.Equal(t, string(llmclient.TransportOpenAICompatible), configuration.CommitMessage.Transport)
+	require.Empty(t, configuration.CommitMessage.Provider)
+	require.Equal(t, llmclient.DefaultAPIKeyEnvironment, configuration.CommitMessage.APIKeyEnv)
+	require.Equal(t, llmclient.DefaultBaseURL, configuration.CommitMessage.BaseURL)
 }
 
 func TestOperationConfigurationsErrorOnLegacyCommandNames(t *testing.T) {
@@ -130,6 +215,22 @@ func TestOperationConfigurationsErrorOnLegacyCommandNames(t *testing.T) {
 	var missing MissingOperationConfigurationError
 	require.ErrorAs(t, lookupError, &missing)
 	require.Equal(t, reposRemotesOperationNameConstant, missing.OperationName)
+}
+
+func newApplicationConfigurationTestHarness(t *testing.T, configuration ApplicationConfiguration, definitions []ApplicationOperationConfiguration) *Application {
+	t.Helper()
+
+	configuredOperations, buildError := newOperationConfigurations(definitions)
+	require.NoError(t, buildError)
+	embeddedOperations := loadEmbeddedOperationConfigurations()
+
+	return &Application{
+		logger:                            zap.NewNop(),
+		configuration:                     configuration,
+		embeddedOperationConfigurations:   embeddedOperations,
+		configuredOperationConfigurations: configuredOperations,
+		operationConfigurations:           configuredOperations.MergeDefaults(embeddedOperations),
+	}
 }
 
 func TestInitializeConfigurationAttachesBranchContext(t *testing.T) {

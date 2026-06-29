@@ -998,6 +998,7 @@ func (application *Application) applyWebAuditUpdateChangelog(
 func (application *Application) webCommitMessageClient() (llm.ChatClient, commitcmd.MessageConfiguration, error) {
 	configuration := application.commitMessageConfiguration()
 	client, clientError := application.newWebLLMClient(
+		configuration.Transport,
 		configuration.Provider,
 		configuration.BaseURL,
 		configuration.APIKeyEnv,
@@ -1012,6 +1013,7 @@ func (application *Application) webCommitMessageClient() (llm.ChatClient, commit
 func (application *Application) webChangelogMessageClient() (llm.ChatClient, changelogcmd.MessageConfiguration, error) {
 	configuration := application.changelogMessageConfiguration()
 	client, clientError := application.newWebLLMClient(
+		configuration.Transport,
 		configuration.Provider,
 		configuration.BaseURL,
 		configuration.APIKeyEnv,
@@ -1024,6 +1026,7 @@ func (application *Application) webChangelogMessageClient() (llm.ChatClient, cha
 }
 
 func (application *Application) newWebLLMClient(
+	transportName string,
 	providerName string,
 	baseURL string,
 	apiKeyEnv string,
@@ -1032,14 +1035,19 @@ func (application *Application) newWebLLMClient(
 	temperature float64,
 	timeoutSeconds int,
 ) (llm.ChatClient, error) {
-	provider, providerError := llmclient.NewProvider(providerName)
-	if providerError != nil {
+	transport, transportError := llmclient.NewTransport(transportName)
+	if transportError != nil {
+		return nil, transportError
+	}
+	normalizedTransportName := string(transport)
+	trimmedProviderName := strings.TrimSpace(providerName)
+	if providerError := llmclient.ValidateProviderForTransport(transport, trimmedProviderName); providerError != nil {
 		return nil, providerError
 	}
 
 	trimmedAPIKeyEnv := strings.TrimSpace(apiKeyEnv)
 	if trimmedAPIKeyEnv == "" {
-		trimmedAPIKeyEnv = llmclient.DefaultAPIKeyEnvironmentForProviderName(string(provider))
+		trimmedAPIKeyEnv = llmclient.DefaultAPIKeyEnvironmentForTransportName(normalizedTransportName)
 	}
 
 	apiKeyValue := strings.TrimSpace(os.Getenv(trimmedAPIKeyEnv))
@@ -1056,11 +1064,12 @@ func (application *Application) newWebLLMClient(
 
 	trimmedBaseURL := strings.TrimSpace(baseURL)
 	if trimmedBaseURL == "" {
-		trimmedBaseURL = llmclient.DefaultBaseURLForProviderName(string(provider))
+		trimmedBaseURL = llmclient.DefaultBaseURLForTransportName(normalizedTransportName)
 	}
 
 	clientConfiguration := llmclient.Config{
-		Provider:            provider,
+		Transport:           transport,
+		Provider:            trimmedProviderName,
 		BaseURL:             trimmedBaseURL,
 		APIKey:              apiKeyValue,
 		Model:               strings.TrimSpace(modelIdentifier),

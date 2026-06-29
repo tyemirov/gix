@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	defaultProvider          = string(llmclient.DefaultProvider)
+	defaultTransport         = string(llmclient.DefaultTransport)
 	defaultAPIKeyEnvironment = llmclient.DefaultAPIKeyEnvironment
 	defaultBaseURL           = llmclient.DefaultBaseURL
 	defaultModel             = llmclient.DefaultModel
@@ -17,6 +17,7 @@ const (
 // MessageConfiguration captures configuration values for changelog generation.
 type MessageConfiguration struct {
 	Roots          []string `mapstructure:"roots"`
+	Transport      string   `mapstructure:"transport"`
 	Provider       string   `mapstructure:"provider"`
 	APIKeyEnv      string   `mapstructure:"api_key_env"`
 	BaseURL        string   `mapstructure:"base_url"`
@@ -33,7 +34,7 @@ type MessageConfiguration struct {
 // DefaultMessageConfiguration provides baseline configuration.
 func DefaultMessageConfiguration() MessageConfiguration {
 	return MessageConfiguration{
-		Provider:       defaultProvider,
+		Transport:      defaultTransport,
 		APIKeyEnv:      defaultAPIKeyEnvironment,
 		BaseURL:        defaultBaseURL,
 		Model:          defaultModel,
@@ -48,18 +49,19 @@ func (configuration MessageConfiguration) Sanitize() MessageConfiguration {
 	sanitized := configuration
 	sanitized.Roots = rootutils.SanitizeConfigured(configuration.Roots)
 
-	provider := llmclient.NormalizeProviderName(configuration.Provider)
-	sanitized.Provider = provider
+	transport := llmclient.NormalizeTransportName(configuration.Transport)
+	sanitized.Transport = transport
+	sanitized.Provider = strings.TrimSpace(configuration.Provider)
 
 	apiKeyEnv := strings.TrimSpace(configuration.APIKeyEnv)
 	if apiKeyEnv == "" {
-		apiKeyEnv = llmclient.DefaultAPIKeyEnvironmentForProviderName(provider)
+		apiKeyEnv = llmclient.DefaultAPIKeyEnvironmentForTransportName(transport)
 	}
 	sanitized.APIKeyEnv = apiKeyEnv
 
 	baseURL := strings.TrimSpace(configuration.BaseURL)
 	if baseURL == "" {
-		baseURL = llmclient.DefaultBaseURLForProviderName(provider)
+		baseURL = llmclient.DefaultBaseURLForTransportName(transport)
 	}
 	sanitized.BaseURL = baseURL
 

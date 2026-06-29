@@ -632,6 +632,11 @@ func TestApplicationConfigurationCliFlagOverridesScopes(t *testing.T) {
 }
 
 func TestApplicationEmbeddedDefaultsProvideCommandConfigurations(testInstance *testing.T) {
+	embeddedConfiguration := decodeEmbeddedApplicationConfiguration(testInstance)
+	require.Equal(testInstance, "openai_compatible", embeddedConfiguration.LLM.Transport)
+	require.Empty(testInstance, embeddedConfiguration.LLM.Provider)
+	require.Equal(testInstance, "gpt-4.1", embeddedConfiguration.LLM.Model)
+
 	operationIndex := buildEmbeddedOperationIndex(testInstance)
 
 	testCases := []struct {
@@ -770,9 +775,10 @@ func TestApplicationEmbeddedDefaultsProvideCommandConfigurations(testInstance *t
 				assertionTarget.Helper()
 
 				assertions := require.New(assertionTarget)
-				assertions.Equal("openai_compatible", options["provider"])
-				assertions.Equal("OPENAI_API_KEY", options["api_key_env"])
-				assertions.Equal("https://api.openai.com/v1", options["base_url"])
+				assertions.NotContains(options, "provider")
+				assertions.NotContains(options, "api_key_env")
+				assertions.NotContains(options, "base_url")
+				assertions.Equal(256, options["max_completion_tokens"])
 			},
 		},
 		{
@@ -783,9 +789,10 @@ func TestApplicationEmbeddedDefaultsProvideCommandConfigurations(testInstance *t
 				assertionTarget.Helper()
 
 				assertions := require.New(assertionTarget)
-				assertions.Equal("openai_compatible", options["provider"])
-				assertions.Equal("OPENAI_API_KEY", options["api_key_env"])
-				assertions.Equal("https://api.openai.com/v1", options["base_url"])
+				assertions.NotContains(options, "provider")
+				assertions.NotContains(options, "api_key_env")
+				assertions.NotContains(options, "base_url")
+				assertions.Equal(1200, options["max_completion_tokens"])
 			},
 		},
 	}

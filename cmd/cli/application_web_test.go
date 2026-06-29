@@ -707,7 +707,8 @@ func TestWebAuditChangeExecutorCommitChangesCommitsDirtyWorktree(t *testing.T) {
 
 	application := NewApplication()
 	application.llmClientFactory = func(configuration llmclient.Config) (llm.ChatClient, error) {
-		require.Equal(t, llmclient.ProviderOpenAICompatible, configuration.Provider)
+		require.Equal(t, llmclient.TransportOpenAICompatible, configuration.Transport)
+		require.Empty(t, configuration.Provider)
 		require.Equal(t, "https://api.openai.com/v1", configuration.BaseURL)
 		require.Equal(t, "gpt-4.1", configuration.Model)
 		require.Equal(t, "test-token", configuration.APIKey)
@@ -757,7 +758,8 @@ func TestWebAuditChangeExecutorUpdateChangelogInsertsNextVersionSection(t *testi
 
 	application := NewApplication()
 	application.llmClientFactory = func(configuration llmclient.Config) (llm.ChatClient, error) {
-		require.Equal(t, llmclient.ProviderOpenAICompatible, configuration.Provider)
+		require.Equal(t, llmclient.TransportOpenAICompatible, configuration.Transport)
+		require.Empty(t, configuration.Provider)
 		require.Equal(t, "https://api.openai.com/v1", configuration.BaseURL)
 		require.Equal(t, "gpt-4.1", configuration.Model)
 		require.Equal(t, "test-token", configuration.APIKey)

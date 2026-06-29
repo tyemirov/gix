@@ -75,6 +75,7 @@ type Application struct {
 	logFormatFlagValue                string
 	commandContextAccessor            utils.CommandContextAccessor
 	operationConfigurations           OperationConfigurations
+	configuredOperationConfigurations OperationConfigurations
 	embeddedOperationConfigurations   OperationConfigurations
 	rootFlagValues                    *flagutils.RootFlagValues
 	configurationInitializationScope  string
@@ -396,6 +397,7 @@ func (application *Application) initializeConfiguration(command *cobra.Command) 
 	if configurationBuildError != nil {
 		return configurationBuildError
 	}
+	application.configuredOperationConfigurations = operationConfigurations.Clone()
 	application.operationConfigurations = operationConfigurations
 
 	if validationError := application.validateOperationConfigurations(command); validationError != nil {
@@ -544,6 +546,7 @@ func (application *Application) branchSyncConfiguration() syncflowcmd.CommandCon
 	configuration := syncflowcmd.DefaultCommandConfiguration()
 	messageConfiguration := application.commitMessageConfiguration()
 	configuration.CommitMessage = syncflowcmd.CommitMessageConfiguration{
+		Transport:      messageConfiguration.Transport,
 		Provider:       messageConfiguration.Provider,
 		APIKeyEnv:      messageConfiguration.APIKeyEnv,
 		BaseURL:        messageConfiguration.BaseURL,
@@ -552,7 +555,7 @@ func (application *Application) branchSyncConfiguration() syncflowcmd.CommandCon
 		Temperature:    messageConfiguration.Temperature,
 		TimeoutSeconds: messageConfiguration.TimeoutSeconds,
 	}
-	application.decodeOperationConfiguration(branchSyncOperationNameConstant, &configuration)
+	application.decodeBranchSyncOperationConfiguration(branchSyncOperationNameConstant, &configuration)
 
 	options, optionsExist := application.lookupOperationOptions(branchSyncOperationNameConstant)
 	if !optionsExist || !optionExists(options, requireCleanOptionKeyConstant) {
@@ -684,15 +687,21 @@ func (application *Application) workflowCommandConfiguration() workflowcmd.Comma
 
 func (application *Application) changelogMessageConfiguration() changelogcmd.MessageConfiguration {
 	configuration := changelogcmd.DefaultMessageConfiguration()
-	application.decodeOperationConfigurationIfPresent(changelogMessageConfigurationKeyConstant, &configuration)
-	application.decodeOperationConfigurationIfPresent(changelogMessageOperationNameConstant, &configuration)
+	application.decodeChangelogMessageOperationConfigurationIfPresent(application.embeddedOperationConfigurations, changelogMessageConfigurationKeyConstant, &configuration)
+	application.decodeChangelogMessageOperationConfigurationIfPresent(application.embeddedOperationConfigurations, changelogMessageOperationNameConstant, &configuration)
+	application.applyGlobalLLMDefaultsToChangelogMessageConfiguration(&configuration)
+	application.decodeChangelogMessageOperationConfigurationIfPresent(application.configuredOperationConfigurations, changelogMessageConfigurationKeyConstant, &configuration)
+	application.decodeChangelogMessageOperationConfigurationIfPresent(application.configuredOperationConfigurations, changelogMessageOperationNameConstant, &configuration)
 	return configuration.Sanitize()
 }
 
 func (application *Application) commitMessageConfiguration() commitcmd.MessageConfiguration {
 	configuration := commitcmd.DefaultMessageConfiguration()
-	application.decodeOperationConfigurationIfPresent(commitMessageConfigurationKeyConstant, &configuration)
-	application.decodeOperationConfigurationIfPresent(commitMessageOperationNameConstant, &configuration)
+	application.decodeCommitMessageOperationConfigurationIfPresent(application.embeddedOperationConfigurations, commitMessageConfigurationKeyConstant, &configuration)
+	application.decodeCommitMessageOperationConfigurationIfPresent(application.embeddedOperationConfigurations, commitMessageOperationNameConstant, &configuration)
+	application.applyGlobalLLMDefaultsToCommitMessageConfiguration(&configuration)
+	application.decodeCommitMessageOperationConfigurationIfPresent(application.configuredOperationConfigurations, commitMessageConfigurationKeyConstant, &configuration)
+	application.decodeCommitMessageOperationConfigurationIfPresent(application.configuredOperationConfigurations, commitMessageOperationNameConstant, &configuration)
 	return configuration.Sanitize()
 }
 
@@ -706,7 +715,11 @@ func (application *Application) defaultCommandConfiguration() migrate.CommandCon
 }
 
 func (application *Application) decodeOperationConfiguration(operationName string, target any) {
-	if decodeError := application.operationConfigurations.decode(operationName, target); decodeError != nil {
+	application.decodeOperationConfigurationFrom(application.operationConfigurations, operationName, target)
+}
+
+func (application *Application) decodeOperationConfigurationFrom(configurations OperationConfigurations, operationName string, target any) {
+	if decodeError := configurations.decode(operationName, target); decodeError != nil {
 		if application.logger == nil {
 			return
 		}
@@ -718,19 +731,200 @@ func (application *Application) decodeOperationConfiguration(operationName strin
 	}
 }
 
-func (application *Application) decodeOperationConfigurationIfPresent(operationName string, target any) {
-	if _, exists := application.lookupOperationOptions(operationName); !exists {
-		return
+func (application *Application) decodeOperationConfigurationIfPresentFrom(configurations OperationConfigurations, operationName string, target any) (map[string]any, bool) {
+	options, exists := application.lookupOperationOptionsFrom(configurations, operationName)
+	if !exists {
+		return nil, false
 	}
-	application.decodeOperationConfiguration(operationName, target)
+	application.decodeOperationConfigurationFrom(configurations, operationName, target)
+	return options, true
 }
 
 func (application *Application) lookupOperationOptions(operationName string) (map[string]any, bool) {
-	options, lookupError := application.operationConfigurations.Lookup(operationName)
+	return application.lookupOperationOptionsFrom(application.operationConfigurations, operationName)
+}
+
+func (application *Application) lookupOperationOptionsFrom(configurations OperationConfigurations, operationName string) (map[string]any, bool) {
+	options, lookupError := configurations.Lookup(operationName)
 	if lookupError != nil {
 		return nil, false
 	}
 	return options, true
+}
+
+func (application *Application) decodeBranchSyncOperationConfiguration(operationName string, target *syncflowcmd.CommandConfiguration) {
+	options, exists := application.decodeOperationConfigurationIfPresentFrom(application.operationConfigurations, operationName, target)
+	if !exists {
+		return
+	}
+	resetBranchSyncCommitMessageTransportDependentDefaults(options, target)
+}
+
+func (application *Application) decodeCommitMessageOperationConfigurationIfPresent(configurations OperationConfigurations, operationName string, target *commitcmd.MessageConfiguration) {
+	options, exists := application.decodeOperationConfigurationIfPresentFrom(configurations, operationName, target)
+	if !exists {
+		return
+	}
+	resetCommitMessageTransportDependentDefaults(options, target)
+}
+
+func (application *Application) decodeChangelogMessageOperationConfigurationIfPresent(configurations OperationConfigurations, operationName string, target *changelogcmd.MessageConfiguration) {
+	options, exists := application.decodeOperationConfigurationIfPresentFrom(configurations, operationName, target)
+	if !exists {
+		return
+	}
+	resetChangelogMessageTransportDependentDefaults(options, target)
+}
+
+func (application *Application) applyGlobalLLMDefaultsToCommitMessageConfiguration(target *commitcmd.MessageConfiguration) {
+	if target == nil {
+		return
+	}
+	configuration := application.configuration.LLM
+	if transport := strings.TrimSpace(configuration.Transport); transport != "" {
+		target.Transport = transport
+		target.APIKeyEnv = ""
+		target.BaseURL = ""
+	}
+	if provider := strings.TrimSpace(configuration.Provider); provider != "" {
+		target.Provider = provider
+	}
+	if apiKeyEnv := strings.TrimSpace(configuration.APIKeyEnv); apiKeyEnv != "" {
+		target.APIKeyEnv = apiKeyEnv
+	}
+	if baseURL := strings.TrimSpace(configuration.BaseURL); baseURL != "" {
+		target.BaseURL = baseURL
+	}
+	if model := strings.TrimSpace(configuration.Model); model != "" {
+		target.Model = model
+	}
+	if configuration.MaxCompletionTokens > 0 {
+		target.MaxTokens = configuration.MaxCompletionTokens
+	}
+	if configuration.Temperature != 0 {
+		target.Temperature = configuration.Temperature
+	}
+	if configuration.TimeoutSeconds > 0 {
+		target.TimeoutSeconds = configuration.TimeoutSeconds
+	}
+}
+
+func (application *Application) applyGlobalLLMDefaultsToChangelogMessageConfiguration(target *changelogcmd.MessageConfiguration) {
+	if target == nil {
+		return
+	}
+	configuration := application.configuration.LLM
+	if transport := strings.TrimSpace(configuration.Transport); transport != "" {
+		target.Transport = transport
+		target.APIKeyEnv = ""
+		target.BaseURL = ""
+	}
+	if provider := strings.TrimSpace(configuration.Provider); provider != "" {
+		target.Provider = provider
+	}
+	if apiKeyEnv := strings.TrimSpace(configuration.APIKeyEnv); apiKeyEnv != "" {
+		target.APIKeyEnv = apiKeyEnv
+	}
+	if baseURL := strings.TrimSpace(configuration.BaseURL); baseURL != "" {
+		target.BaseURL = baseURL
+	}
+	if model := strings.TrimSpace(configuration.Model); model != "" {
+		target.Model = model
+	}
+	if configuration.MaxCompletionTokens > 0 {
+		target.MaxTokens = configuration.MaxCompletionTokens
+	}
+	if configuration.Temperature != 0 {
+		target.Temperature = configuration.Temperature
+	}
+	if configuration.TimeoutSeconds > 0 {
+		target.TimeoutSeconds = configuration.TimeoutSeconds
+	}
+}
+
+func resetCommitMessageTransportDependentDefaults(options map[string]any, target *commitcmd.MessageConfiguration) {
+	if target == nil || !optionExists(options, llmTransportOptionKeyConstant) {
+		return
+	}
+	if !optionExists(options, llmAPIKeyEnvOptionKeyConstant) {
+		target.APIKeyEnv = ""
+	}
+	if !optionExists(options, llmBaseURLOptionKeyConstant) {
+		target.BaseURL = ""
+	}
+	if !optionExists(options, llmProviderOptionKeyConstant) && llmclient.Transport(llmclient.NormalizeTransportName(target.Transport)) != llmclient.TransportLLMProxy {
+		target.Provider = ""
+	}
+}
+
+func resetChangelogMessageTransportDependentDefaults(options map[string]any, target *changelogcmd.MessageConfiguration) {
+	if target == nil || !optionExists(options, llmTransportOptionKeyConstant) {
+		return
+	}
+	if !optionExists(options, llmAPIKeyEnvOptionKeyConstant) {
+		target.APIKeyEnv = ""
+	}
+	if !optionExists(options, llmBaseURLOptionKeyConstant) {
+		target.BaseURL = ""
+	}
+	if !optionExists(options, llmProviderOptionKeyConstant) && llmclient.Transport(llmclient.NormalizeTransportName(target.Transport)) != llmclient.TransportLLMProxy {
+		target.Provider = ""
+	}
+}
+
+func resetBranchSyncCommitMessageTransportDependentDefaults(options map[string]any, target *syncflowcmd.CommandConfiguration) {
+	if target == nil {
+		return
+	}
+	commitMessageOptions, exists := optionMap(options, syncCommitMessageOptionKeyConstant)
+	if !exists || !optionExists(commitMessageOptions, llmTransportOptionKeyConstant) {
+		return
+	}
+	if !optionExists(commitMessageOptions, llmAPIKeyEnvOptionKeyConstant) {
+		target.CommitMessage.APIKeyEnv = ""
+	}
+	if !optionExists(commitMessageOptions, llmBaseURLOptionKeyConstant) {
+		target.CommitMessage.BaseURL = ""
+	}
+	if !optionExists(commitMessageOptions, llmProviderOptionKeyConstant) && llmclient.Transport(llmclient.NormalizeTransportName(target.CommitMessage.Transport)) != llmclient.TransportLLMProxy {
+		target.CommitMessage.Provider = ""
+	}
+}
+
+func optionMap(options map[string]any, optionKey string) (map[string]any, bool) {
+	optionValue, exists := optionValue(options, optionKey)
+	if !exists {
+		return nil, false
+	}
+	switch typedValue := optionValue.(type) {
+	case map[string]any:
+		return typedValue, true
+	case map[interface{}]interface{}:
+		converted := make(map[string]any, len(typedValue))
+		for key, value := range typedValue {
+			keyString, keyOK := key.(string)
+			if !keyOK {
+				continue
+			}
+			converted[keyString] = value
+		}
+		return converted, true
+	default:
+		return nil, false
+	}
+}
+
+func optionValue(options map[string]any, optionKey string) (any, bool) {
+	if len(options) == 0 {
+		return nil, false
+	}
+	normalizedOptionKey := strings.ToLower(strings.TrimSpace(optionKey))
+	for candidateKey, candidateValue := range options {
+		if strings.ToLower(strings.TrimSpace(candidateKey)) == normalizedOptionKey {
+			return candidateValue, true
+		}
+	}
+	return nil, false
 }
 
 func optionExists(options map[string]any, optionKey string) bool {

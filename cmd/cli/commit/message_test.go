@@ -72,19 +72,21 @@ func TestMessageCommandGeneratesCommitMessage(t *testing.T) {
 	require.Equal(t, "staged", action.Options[taskOptionCommitDiffSource])
 	require.Equal(t, 0, action.Options[taskOptionCommitMaxTokens])
 	require.NotNil(t, action.Options[taskOptionCommitClient])
-	require.Equal(t, llmclient.ProviderOpenAICompatible, client.config.Provider)
+	require.Equal(t, llmclient.TransportOpenAICompatible, client.config.Transport)
 	require.Equal(t, "mock-model", client.config.Model)
 	require.Equal(t, "test-api-key", client.config.APIKey)
 	require.Nil(t, client.request)
 }
 
-func TestMessageConfigurationSanitizeDefaultsLLMProxyProvider(t *testing.T) {
+func TestMessageConfigurationSanitizeDefaultsLLMProxyTransport(t *testing.T) {
 	configuration := MessageConfiguration{
-		Provider: string(llmclient.ProviderLLMProxy),
-		Model:    "gpt-4.1",
+		Transport: string(llmclient.TransportLLMProxy),
+		Provider:  "deepseek",
+		Model:     "gpt-4.1",
 	}.Sanitize()
 
-	require.Equal(t, string(llmclient.ProviderLLMProxy), configuration.Provider)
+	require.Equal(t, string(llmclient.TransportLLMProxy), configuration.Transport)
+	require.Equal(t, "deepseek", configuration.Provider)
 	require.Equal(t, llmclient.DefaultLLMProxyAPIKeyEnvironment, configuration.APIKeyEnv)
 	require.Equal(t, llmclient.DefaultLLMProxyBaseURL, configuration.BaseURL)
 }

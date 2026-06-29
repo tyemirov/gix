@@ -33,8 +33,10 @@ const (
 	maxTokensFlagUsage             = "Override the maximum completion tokens"
 	temperatureFlagName            = "temperature"
 	temperatureFlagUsage           = "Override the sampling temperature (0-2)"
+	transportFlagName              = "transport"
+	transportFlagUsage             = "Override the LLM transport (openai_compatible|llm_proxy)"
 	providerFlagName               = "provider"
-	providerFlagUsage              = "Override the LLM provider (openai_compatible|llm_proxy)"
+	providerFlagUsage              = "Override the LLM Proxy upstream provider"
 	modelFlagName                  = "model"
 	modelFlagUsage                 = "Override the model identifier"
 	baseURLFlagName                = "base-url"
@@ -86,6 +88,7 @@ func (builder *MessageCommandBuilder) Build() (*cobra.Command, error) {
 	command.Flags().String(sinceDateFlagName, "", sinceDateFlagUsage)
 	command.Flags().Int(maxTokensFlagName, 0, maxTokensFlagUsage)
 	command.Flags().Float64(temperatureFlagName, 0, temperatureFlagUsage)
+	command.Flags().String(transportFlagName, "", transportFlagUsage)
 	command.Flags().String(providerFlagName, "", providerFlagUsage)
 	command.Flags().String(modelFlagName, "", modelFlagUsage)
 	command.Flags().String(baseURLFlagName, "", baseURLFlagUsage)
@@ -158,19 +161,29 @@ func (builder *MessageCommandBuilder) run(command *cobra.Command, arguments []st
 		return temperatureError
 	}
 
+	transportName := configuration.Transport
+	transportChanged := false
+	if command != nil {
+		if flagValue, flagError := command.Flags().GetString(transportFlagName); flagError == nil && command.Flags().Changed(transportFlagName) {
+			transportName = strings.TrimSpace(flagValue)
+			transportChanged = true
+		}
+	}
+	transport, transportError := llmclient.NewTransport(transportName)
+	if transportError != nil {
+		return transportError
+	}
+	transportName = string(transport)
+
 	providerName := configuration.Provider
-	providerChanged := false
 	if command != nil {
 		if flagValue, flagError := command.Flags().GetString(providerFlagName); flagError == nil && command.Flags().Changed(providerFlagName) {
 			providerName = strings.TrimSpace(flagValue)
-			providerChanged = true
 		}
 	}
-	provider, providerError := llmclient.NewProvider(providerName)
-	if providerError != nil {
+	if providerError := llmclient.ValidateProviderForTransport(transport, providerName); providerError != nil {
 		return providerError
 	}
-	providerName = string(provider)
 
 	modelIdentifier := configuration.Model
 	if command != nil {
@@ -190,8 +203,8 @@ func (builder *MessageCommandBuilder) run(command *cobra.Command, arguments []st
 			baseURLChanged = true
 		}
 	}
-	if baseURL == "" || providerChanged && !baseURLChanged {
-		baseURL = llmclient.DefaultBaseURLForProviderName(providerName)
+	if baseURL == "" || transportChanged && !baseURLChanged {
+		baseURL = llmclient.DefaultBaseURLForTransportName(transportName)
 	}
 
 	apiKeyEnv := configuration.APIKeyEnv
@@ -202,8 +215,8 @@ func (builder *MessageCommandBuilder) run(command *cobra.Command, arguments []st
 			apiKeyEnvChanged = true
 		}
 	}
-	if apiKeyEnv == "" || providerChanged && !apiKeyEnvChanged {
-		apiKeyEnv = llmclient.DefaultAPIKeyEnvironmentForProviderName(providerName)
+	if apiKeyEnv == "" || transportChanged && !apiKeyEnvChanged {
+		apiKeyEnv = llmclient.DefaultAPIKeyEnvironmentForTransportName(transportName)
 	}
 	apiKey, apiKeyPresent := lookupEnvironmentValue(apiKeyEnv)
 	if !apiKeyPresent || apiKey == "" {
@@ -251,7 +264,8 @@ func (builder *MessageCommandBuilder) run(command *cobra.Command, arguments []st
 	}
 
 	client, clientError := clientFactory(llmclient.Config{
-		Provider:            provider,
+		Transport:           transport,
+		Provider:            providerName,
 		BaseURL:             baseURL,
 		APIKey:              apiKey,
 		Model:               modelIdentifier,

@@ -4,6 +4,11 @@ common:
   assume_yes: false
   require_clean: false
 
+llm:
+  transport: openai_compatible
+  provider: ""
+  model: gpt-4.1
+
 operations:
   - command: ["audit"]
     with:
@@ -63,10 +68,6 @@ operations:
     with:
       roots:
         - .
-      provider: openai_compatible
-      api_key_env: OPENAI_API_KEY
-      base_url: https://api.openai.com/v1
-      model: gpt-4.1
       diff_source: staged
       max_completion_tokens: 256
       temperature: 0
@@ -75,10 +76,6 @@ operations:
     with:
       roots:
         - .
-      provider: openai_compatible
-      api_key_env: OPENAI_API_KEY
-      base_url: https://api.openai.com/v1
-      model: gpt-4.1
       max_completion_tokens: 1200
       temperature: 0
       timeout_seconds: 60
