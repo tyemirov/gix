@@ -115,7 +115,8 @@
               <h3>LLM Helpers</h3>
               <p>
                 Optional integrations assist with commit messages or changelog
-                summaries while keeping human approvals in the loop.
+                summaries while keeping human approvals in the loop. Set
+                <code>llm.transport: llm_proxy</code> once to use MPR LLM Proxy.
               </p>
             </article>
             <article class="card">
@@ -202,9 +203,14 @@
             </ol>
             <p>
               Config controls reusable defaults for roots, remotes, logging,
-              confirmation prompts, clean-worktree policy, LLM provider
-              settings, and workflow operations. Use <code>gix --init local</code>
-              when a workspace needs its own <code>./config.yaml</code>.
+              confirmation prompts, clean-worktree policy, LLM transport/provider
+              settings, and workflow operations. Use
+              <code>llm.transport: llm_proxy</code> to route generated messages
+              through MPR LLM Proxy; gix derives the proxy secret environment
+              variable and base URL from that transport, and
+              <code>llm.provider</code> selects the proxy upstream provider. Use
+              <code>gix --init local</code> when a workspace needs its own
+              <code>./config.yaml</code>.
             </p>
           </div>
           <div class="docs-links">
