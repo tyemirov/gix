@@ -423,7 +423,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 - [x] [F001] Add a step that allows running an arbitrary command, such as `go get -u ./...` and `go mod tidy`.
   LegacyExternalID: GX-110
   The changed files need to be committed after this step. Deliver both the DSL and the implementation.
-- [ ] [F002] Add a local web interface for `gix`.
+- [x] [F002] Add a local web interface for `gix`.
   Requested on 2026-03-05.
   ### Summary
   Launching `gix --web <port:-8080>` should start a local HTTP server that exposes the existing CLI command surface through a browser UI, rather than requiring users to compose all operations in the terminal.
@@ -438,7 +438,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - [ ] Execute existing `gix` commands in-process from the web layer and stream logs/results back to the browser.
   - [ ] Expose command metadata so the UI can render flags, args, defaults, and help text.
   - [ ] Add integration coverage for web launch, command catalog, and at least one end-to-end command execution path.
-- [ ] [F003] (P1) Duplicate logging.
+- [x] [F003] (P1) Duplicate logging.
   LegacyExternalID: GX-111
   ### Summary
   When the `gix cd` command fails (for example, due to local changes blocking a branch switch), the error message is printed twice in the terminal. This duplicate logging clutters the output and violates the repository's principle of structured, single-entry reporting.
