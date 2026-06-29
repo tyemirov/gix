@@ -1,4 +1,0 @@
-- Reproduce the chained pull request bug with a focused strict sync regression.
-- Fix strict sync so an open pull request from the current branch is accepted even when its base is a chained issue branch instead of `master`.
-- Preserve merged-PR handoff behavior for branches whose pull requests into the configured base are already merged.
-- Update issue/changelog notes and run `make format`, `make test`, `make lint`, and `make ci`.
