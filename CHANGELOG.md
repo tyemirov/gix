@@ -25,6 +25,26 @@
 - Add strict-sync failure-mode coverage for staged tracked ignored dirt, `--require-clean`, `--stash`, fetch-before-restore ordering, and restore failures.
 - Add strict-sync coverage for head-filtered open-PR lookup, PR `baseRefName` merges, and missing PR-base rejection.
 
+## [v0.6.10] - 2026-06-29
+
+### Features ✨
+- Add LLM proxy client factory with proxy support for improved LLM client integration.
+
+### Improvements ⚙️
+- Switch LLM client to use the new llmclient package and update default configuration to use proxy URL and new environment variable.
+- Update dependencies including llm-proxy module and other indirect dependencies.
+- Update default configuration to use LLM proxy secret and proxy API URL with updated model defaults.
+- Sanitize and default BaseURL configuration for changelog and commit message generation.
+
+### Bug Fixes 🐛
+- _No changes._
+
+### Testing 🧪
+- Update tests to use LLM proxy secret environment variable and verify proxy URL and model usage.
+
+### Docs 📚
+- Update Content Security Policy connect-src URL to llm-proxy-api.mprlab.com.
+
 ## [v0.6.9] - 2026-06-26
 
 ### Features ✨
