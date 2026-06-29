@@ -104,7 +104,8 @@ func TestTasksApplyDefinitionOptionsSerializesLLMConfiguration(t *testing.T) {
 			},
 		},
 		LLM: &TaskLLMDefinition{
-			Provider:            "openai_compatible",
+			Transport:           "llm_proxy",
+			Provider:            "deepseek",
 			Model:               "gpt-test",
 			BaseURL:             "https://example.com",
 			APIKeyEnv:           "LLM_TOKEN",
@@ -117,7 +118,8 @@ func TestTasksApplyDefinitionOptionsSerializesLLMConfiguration(t *testing.T) {
 	options := definition.Options()
 	llmOptions, ok := options[optionTaskLLMKeyConstant].(map[string]any)
 	require.True(t, ok)
-	require.Equal(t, "openai_compatible", llmOptions[optionTaskLLMProviderKeyConstant])
+	require.Equal(t, "llm_proxy", llmOptions[optionTaskLLMTransportKeyConstant])
+	require.Equal(t, "deepseek", llmOptions[optionTaskLLMProviderKeyConstant])
 	require.Equal(t, "gpt-test", llmOptions[optionTaskLLMModelKeyConstant])
 	require.Equal(t, "https://example.com", llmOptions[optionTaskLLMBaseURLKeyConstant])
 	require.Equal(t, "LLM_TOKEN", llmOptions[optionTaskLLMAPIKeyEnvKeyConstant])

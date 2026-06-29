@@ -132,6 +132,7 @@ func isBranchAlreadyUsedByWorktreeError(err error) bool {
 }
 
 type worktreeAdoptionCommitMessageOptions struct {
+	Transport      string
 	Provider       string
 	APIKeyEnv      string
 	BaseURL        string
@@ -156,6 +157,7 @@ type worktreeStatus struct {
 func worktreeAdoptionCommitMessageOptionsFromConfiguration(configuration CommitMessageConfiguration) worktreeAdoptionCommitMessageOptions {
 	sanitized := configuration.Sanitize()
 	return worktreeAdoptionCommitMessageOptions{
+		Transport:      sanitized.Transport,
 		Provider:       sanitized.Provider,
 		APIKeyEnv:      sanitized.APIKeyEnv,
 		BaseURL:        sanitized.BaseURL,
@@ -453,8 +455,13 @@ func resolveCommitMessageClient(options worktreeAdoptionCommitMessageOptions) (l
 	if options.Client != nil {
 		return options.Client, nil
 	}
-	provider, providerErr := llmclient.NewProvider(options.Provider)
-	if providerErr != nil {
+	transport, transportErr := llmclient.NewTransport(options.Transport)
+	if transportErr != nil {
+		return nil, transportErr
+	}
+	transportName := string(transport)
+	providerName := strings.TrimSpace(options.Provider)
+	if providerErr := llmclient.ValidateProviderForTransport(transport, providerName); providerErr != nil {
 		return nil, providerErr
 	}
 	apiKeyEnv := strings.TrimSpace(options.APIKeyEnv)
@@ -463,7 +470,7 @@ func resolveCommitMessageClient(options worktreeAdoptionCommitMessageOptions) (l
 		return nil, errors.New(worktreeMessageClientConfigurationFailure)
 	}
 	if apiKeyEnv == "" {
-		apiKeyEnv = llmclient.DefaultAPIKeyEnvironmentForProviderName(string(provider))
+		apiKeyEnv = llmclient.DefaultAPIKeyEnvironmentForTransportName(transportName)
 	}
 	apiKey := strings.TrimSpace(os.Getenv(apiKeyEnv))
 	if apiKey == "" {
@@ -471,14 +478,15 @@ func resolveCommitMessageClient(options worktreeAdoptionCommitMessageOptions) (l
 	}
 	baseURL := strings.TrimSpace(options.BaseURL)
 	if baseURL == "" {
-		baseURL = llmclient.DefaultBaseURLForProviderName(string(provider))
+		baseURL = llmclient.DefaultBaseURLForTransportName(transportName)
 	}
 	timeoutSeconds := options.TimeoutSeconds
 	if timeoutSeconds <= 0 {
 		timeoutSeconds = defaultCommitMessageTimeoutSeconds
 	}
 	client, clientErr := llmclient.NewFactory(llmclient.Config{
-		Provider:            provider,
+		Transport:           transport,
+		Provider:            providerName,
 		BaseURL:             baseURL,
 		APIKey:              apiKey,
 		Model:               model,

@@ -10,7 +10,7 @@ import (
 var commandConfigurationRepositorySanitizer = pathutils.NewRepositoryPathSanitizerWithConfiguration(nil, pathutils.RepositoryPathSanitizerConfiguration{PruneNestedPaths: true})
 
 const (
-	defaultCommitMessageProvider          = string(llmclient.DefaultProvider)
+	defaultCommitMessageTransport         = string(llmclient.DefaultTransport)
 	defaultCommitMessageAPIKeyEnvironment = llmclient.DefaultAPIKeyEnvironment
 	defaultCommitMessageBaseURL           = llmclient.DefaultBaseURL
 	defaultCommitMessageModel             = llmclient.DefaultModel
@@ -19,6 +19,7 @@ const (
 
 // CommitMessageConfiguration captures LLM settings for automatic worktree checkpoint commits.
 type CommitMessageConfiguration struct {
+	Transport      string  `mapstructure:"transport"`
 	Provider       string  `mapstructure:"provider"`
 	APIKeyEnv      string  `mapstructure:"api_key_env"`
 	BaseURL        string  `mapstructure:"base_url"`
@@ -58,7 +59,7 @@ func DefaultCommandConfiguration() CommandConfiguration {
 // DefaultCommitMessageConfiguration returns baseline LLM settings for adoption commits.
 func DefaultCommitMessageConfiguration() CommitMessageConfiguration {
 	return CommitMessageConfiguration{
-		Provider:       defaultCommitMessageProvider,
+		Transport:      defaultCommitMessageTransport,
 		APIKeyEnv:      defaultCommitMessageAPIKeyEnvironment,
 		BaseURL:        defaultCommitMessageBaseURL,
 		Model:          defaultCommitMessageModel,
@@ -89,18 +90,19 @@ func (configuration PullRequestConfiguration) Sanitize() PullRequestConfiguratio
 func (configuration CommitMessageConfiguration) Sanitize() CommitMessageConfiguration {
 	sanitized := configuration
 
-	provider := llmclient.NormalizeProviderName(configuration.Provider)
-	sanitized.Provider = provider
+	transport := llmclient.NormalizeTransportName(configuration.Transport)
+	sanitized.Transport = transport
+	sanitized.Provider = strings.TrimSpace(configuration.Provider)
 
 	apiKeyEnv := strings.TrimSpace(configuration.APIKeyEnv)
 	if apiKeyEnv == "" {
-		apiKeyEnv = llmclient.DefaultAPIKeyEnvironmentForProviderName(provider)
+		apiKeyEnv = llmclient.DefaultAPIKeyEnvironmentForTransportName(transport)
 	}
 	sanitized.APIKeyEnv = apiKeyEnv
 
 	baseURL := strings.TrimSpace(configuration.BaseURL)
 	if baseURL == "" {
-		baseURL = llmclient.DefaultBaseURLForProviderName(provider)
+		baseURL = llmclient.DefaultBaseURLForTransportName(transport)
 	}
 	sanitized.BaseURL = baseURL
 

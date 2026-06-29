@@ -19,23 +19,25 @@ const (
 	DefaultLLMProxyBaseURL           = "https://llm-proxy-api.mprlab.com"
 	DefaultModel                     = "gpt-4.1"
 	defaultRequestTimeout            = 60 * time.Second
+	providerRequiresProxyTransport   = "llm provider requires llm_proxy transport"
 )
 
-// Provider identifies the transport used for chat requests.
-type Provider string
+// Transport identifies how chat requests are sent.
+type Transport string
 
 const (
-	// ProviderOpenAICompatible sends requests to an OpenAI-compatible chat completions endpoint.
-	ProviderOpenAICompatible Provider = "openai_compatible"
-	// ProviderLLMProxy sends requests to the MPR LLM Proxy v2 endpoint.
-	ProviderLLMProxy Provider = "llm_proxy"
-	// DefaultProvider is the embedded provider used when no user configuration overrides it.
-	DefaultProvider = ProviderOpenAICompatible
+	// TransportOpenAICompatible sends requests to an OpenAI-compatible chat completions endpoint.
+	TransportOpenAICompatible Transport = "openai_compatible"
+	// TransportLLMProxy sends requests to the MPR LLM Proxy v2 endpoint.
+	TransportLLMProxy Transport = "llm_proxy"
+	// DefaultTransport is the embedded transport used when no user configuration overrides it.
+	DefaultTransport = TransportOpenAICompatible
 )
 
 // Config describes the configured chat client.
 type Config struct {
-	Provider            Provider
+	Transport           Transport
+	Provider            string
 	BaseURL             string
 	APIKey              string
 	Model               string
@@ -54,59 +56,73 @@ type proxyChatClient struct {
 	model  string
 }
 
-// NewProvider constructs a provider from a configuration value.
-func NewProvider(rawValue string) (Provider, error) {
+// NewTransport constructs a transport from a configuration value.
+func NewTransport(rawValue string) (Transport, error) {
 	trimmedValue := strings.TrimSpace(rawValue)
 	if trimmedValue == "" {
-		return DefaultProvider, nil
+		return DefaultTransport, nil
 	}
-	provider := Provider(trimmedValue)
-	switch provider {
-	case ProviderOpenAICompatible, ProviderLLMProxy:
-		return provider, nil
+	transport := Transport(trimmedValue)
+	switch transport {
+	case TransportOpenAICompatible, TransportLLMProxy:
+		return transport, nil
 	default:
-		return "", fmt.Errorf("unsupported llm provider %q", trimmedValue)
+		return "", fmt.Errorf("unsupported llm transport %q", trimmedValue)
 	}
 }
 
-// NormalizeProviderName trims a provider string and applies the embedded default for empty values.
-func NormalizeProviderName(rawValue string) string {
+// NormalizeTransportName trims a transport string and applies the embedded default for empty values.
+func NormalizeTransportName(rawValue string) string {
 	trimmedValue := strings.TrimSpace(rawValue)
 	if trimmedValue == "" {
-		return string(DefaultProvider)
+		return string(DefaultTransport)
 	}
 	return trimmedValue
 }
 
-// DefaultAPIKeyEnvironmentForProviderName returns the canonical secret environment variable for a provider.
-func DefaultAPIKeyEnvironmentForProviderName(rawProvider string) string {
-	if Provider(NormalizeProviderName(rawProvider)) == ProviderLLMProxy {
+// DefaultAPIKeyEnvironmentForTransportName returns the canonical secret environment variable for a transport.
+func DefaultAPIKeyEnvironmentForTransportName(rawTransport string) string {
+	if Transport(NormalizeTransportName(rawTransport)) == TransportLLMProxy {
 		return DefaultLLMProxyAPIKeyEnvironment
 	}
 	return DefaultAPIKeyEnvironment
 }
 
-// DefaultBaseURLForProviderName returns the canonical endpoint for a provider.
-func DefaultBaseURLForProviderName(rawProvider string) string {
-	if Provider(NormalizeProviderName(rawProvider)) == ProviderLLMProxy {
+// DefaultBaseURLForTransportName returns the canonical endpoint for a transport.
+func DefaultBaseURLForTransportName(rawTransport string) string {
+	if Transport(NormalizeTransportName(rawTransport)) == TransportLLMProxy {
 		return DefaultLLMProxyBaseURL
 	}
 	return DefaultBaseURL
 }
 
+// ValidateProviderForTransport verifies that proxy provider routing is attached to the proxy transport.
+func ValidateProviderForTransport(transport Transport, provider string) error {
+	if strings.TrimSpace(provider) == "" {
+		return nil
+	}
+	if transport == TransportLLMProxy {
+		return nil
+	}
+	return errors.New(providerRequiresProxyTransport)
+}
+
 // NewFactory creates the configured chat client.
 func NewFactory(configuration Config) (llm.ChatClient, error) {
-	provider, providerError := NewProvider(string(configuration.Provider))
-	if providerError != nil {
+	transport, transportError := NewTransport(string(configuration.Transport))
+	if transportError != nil {
+		return nil, transportError
+	}
+	if providerError := ValidateProviderForTransport(transport, configuration.Provider); providerError != nil {
 		return nil, providerError
 	}
-	switch provider {
-	case ProviderLLMProxy:
+	switch transport {
+	case TransportLLMProxy:
 		return newProxyChatClient(configuration)
-	case ProviderOpenAICompatible:
+	case TransportOpenAICompatible:
 		return llm.NewFactory(configuration.toOpenAICompatibleConfig())
 	default:
-		return nil, fmt.Errorf("unsupported llm provider %q", provider)
+		return nil, fmt.Errorf("unsupported llm transport %q", transport)
 	}
 }
 
@@ -139,9 +155,10 @@ func newProxyChatClient(configuration Config) (llm.ChatClient, error) {
 		baseURL = DefaultLLMProxyBaseURL
 	}
 	proxyConfiguration, configurationError := llmproxyclient.NewConfig(llmproxyclient.ConfigInput{
-		BaseURL: baseURL,
-		Secret:  configuration.APIKey,
-		Timeout: timeout,
+		BaseURL:  baseURL,
+		Secret:   configuration.APIKey,
+		Provider: strings.TrimSpace(configuration.Provider),
+		Timeout:  timeout,
 	})
 	if configurationError != nil {
 		return nil, fmt.Errorf("initialize llm proxy client: %w", configurationError)
