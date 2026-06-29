@@ -434,12 +434,12 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - `git diff --check`
 
 - [x] [M003] (P2) Document user config initialization and configuration scope.
-  Requested on 2026-06-29 after reviewing whether the advertising page and README explain `gix --init user`, `$XDG_CONFIG_HOME`, the `~/.gix` fallback, and what config controls.
+  Requested on 2026-06-29 after reviewing whether the advertising page and README explain `gix --init user`, `$HOME/.gix/config.yaml`, and what config controls.
   ## Observation
   - README listed `gix --init user` and basic precedence, but did not explain the config's practical control surface.
-  - The docs site only mentioned `gix --init LOCAL`, omitted the user config path and fallback, and linked to the old root `ISSUES.md`.
+  - The docs site only mentioned `gix --init LOCAL`, omitted the user config path, and linked to the old root `ISSUES.md`.
   ## Resolution
-  - Updated README Quick Start and configuration essentials to describe `gix --init user`, `gix --init local`, `--force yes`, `$XDG_CONFIG_HOME/gix/config.yaml`, and `$HOME/.gix/config.yaml`.
+  - Updated README Quick Start and configuration essentials to describe `gix --init user`, `gix --init local`, `--force yes`, and `$HOME/.gix/config.yaml`.
   - Documented that config controls shared logging, confirmation, clean-worktree behavior, roots/remotes, sync PR metadata, LLM transport/provider settings, release/audit defaults, and workflow defaults.
   - Updated the docs site getting-started flow, developer-tooling copy, architecture copy, and roadmap link to reflect current config and `.mprlab/ISSUES.md` contracts.
 
@@ -455,6 +455,15 @@ Issue IDs in Features, Improvements, BugFixes, and Maintenance never reuse compl
   - Kept per-operation LLM fields as overrides and made transport-only operation overrides reset env/base defaults to the selected transport.
   - Preserved `llm.provider` as the upstream provider value passed through to LLM Proxy without requiring a provider-specific API key in gix.
   - Updated generated config, README, architecture notes, docs site copy, changelog, and focused application configuration tests.
+
+- [x] [M005] (P2) Keep user configuration under `$HOME`.
+  Requested on 2026-06-29 after deciding not to honor `$XDG_CONFIG_HOME` for gix user configuration.
+  ## Observation
+  - The application searched XDG-derived paths before `$HOME/.gix/config.yaml`, including the indirect `os.UserConfigDir()` path.
+  - README, architecture notes, the docs site, CLI help, and changelog notes still described XDG-based user config paths.
+  ## Resolution
+  - Removed XDG-derived user config discovery and kept `$HOME/.gix/config.yaml` as the only user-level config path.
+  - Updated README, architecture notes, docs site copy, CLI design notes, CLI help text, changelog, and application tests to reflect the HOME-only contract.
 
 ## Features
 
