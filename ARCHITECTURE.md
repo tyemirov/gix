@@ -98,8 +98,7 @@ Configuration is managed by Viper with an uppercase `GIX` environment prefix. Th
 
 1. Explicit `--config` path, if provided.
 2. `config.yaml` in the working directory.
-3. `$XDG_CONFIG_HOME/gix/config.yaml`.
-4. `$HOME/.gix/config.yaml`.
+3. `$HOME/.gix/config.yaml`.
 
 `gix --init` bootstraps either a local `./config.yaml` or a user-level configuration directory when invoked with `--init LOCAL` (default) or `--init user`. The top-level `llm` block defines transport and provider defaults shared by message, changelog, sync, and web helpers; operation-specific LLM fields remain overrides. `transport` selects `openai_compatible` or `llm_proxy`, while `provider` is the upstream provider name passed through to LLM Proxy. Logging relies on Uber's Zap; format is configurable (structured JSON or console) through a flag or configuration.
 
