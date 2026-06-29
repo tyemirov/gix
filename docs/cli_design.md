@@ -144,7 +144,7 @@ Notes:
 ### 5.2 Configuration precedence (Viper)
 - Viper initialized with prefix `GIX`.
 - Precedence: **command-line flags > environment variables > config file > defaults**.
-- Config file search order: `./gix.yaml`, `$XDG_CONFIG_HOME/gix/config.yaml`, `$HOME/.config/gix/config.yaml`.
+- Config file search order: explicit `--config`, `./config.yaml`, `$HOME/.gix/config.yaml`.
 - Flags bind to Viper keys so environment/config seamlessly fill defaults.
 - Sensitive values (tokens) read from env/flag only; we will not persist secrets to disk by default.
 
