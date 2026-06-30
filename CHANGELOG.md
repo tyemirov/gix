@@ -11,12 +11,14 @@
 ### Bug Fixes 🐛
 - Add `gix init --user` as the user-facing config initialization command and keep the obsolete root `gix --init user` form unsupported.
 - Make `gix sync` push local-ahead work branches through the PR flow instead of failing with a local-only commit error.
+- Reject local-only strict-sync branches that have no commits beyond the base instead of creating empty pull requests.
 - Resolve strict-sync merge conflicts with the configured AI client so dirty generated branches can merge the current base while retaining local changes.
+- Preserve file deletions during AI-assisted strict-sync merge conflict resolution.
 
 ### Testing 🧪
 - Cover `gix init`, `gix init --user`, and rejected `gix --init user` through in-process application tests and black-box CLI initialization tests.
-- Add strict-sync regressions for local-ahead branches with existing remote PRs and local-only branches that need an upstream push plus pull request.
-- Cover generated dirty-master sync branches that hit a merge conflict, resolve conflicted files through AI, complete the merge commit, then push and open the PR.
+- Add strict-sync regressions for local-ahead branches with existing remote PRs, local-only branches that need an upstream push plus pull request, and empty local-only branches that must stop before PR creation.
+- Cover generated dirty-master sync branches that hit a merge conflict, resolve conflicted files or deletions through AI, complete the merge commit, then push and open the PR.
 
 ### Docs 📚
 - Update README, architecture notes, and the docs site to document `gix init --user` and local `gix init`.
