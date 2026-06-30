@@ -237,6 +237,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Existing remote PR branches with local-ahead commits now merge the remote branch, merge the PR base, and push the local commits.
   - Local-only work branches with commits beyond the base now merge the base, push with upstream, and create the pull request.
   - Merged/pruned local branches with no commits beyond the base keep the existing prompt to sync the base branch.
+  - Local-only branches with no commits beyond the base and no merged pull request handoff now stop before push or pull request creation.
   ## Validation
   - `go test ./internal/branches/syncflow`
   - `go test ./cmd/cli ./internal/branches/syncflow ./tests`
@@ -251,6 +252,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Added an AI-backed merge conflict resolution service for strict sync merges.
   - When a strict sync merge stops with unmerged files, inspect the Git stages for each conflicted path, send BASE/OURS/THEIRS context to the configured LLM client, write the resolved file, stage it, and complete the merge with `git commit --no-edit`.
   - The resolver prompt explicitly preserves local OURS changes while integrating compatible remote THEIRS changes, and rejects LLM output that still contains conflict markers.
+  - The resolver can now stage an intentional deletion with `git rm -f -- <path>` when the AI returns the canonical delete directive.
   - Dirty generated branches still merge `origin/master`; conflicts are resolved as part of that merge before push and PR creation.
   ## Validation
   - `go test ./internal/branches/syncflow`
