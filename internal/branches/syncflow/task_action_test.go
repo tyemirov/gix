@@ -518,6 +518,50 @@ func TestHandleBranchSyncActionStrictPRBranchUsesOpenPullRequestBase(t *testing.
 	require.Contains(t, buffer.String(), "SYNCED: /tmp/project (feature/foo)")
 }
 
+func TestHandleBranchSyncActionStrictPRBranchPushesLocalAheadOpenPullRequest(t *testing.T) {
+	gitExecutor := &strictSyncGitExecutor{
+		revListOutput: "2\n",
+		currentBranch: "feature/foo",
+	}
+	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(t, managerError)
+	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":7,"title":"Open","headRefName":"feature/foo","baseRefName":"master"}]`}
+	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
+	require.NoError(t, githubClientError)
+	environment := &workflow.Environment{
+		GitExecutor:       gitExecutor,
+		RepositoryManager: gitManager,
+		GitHubClient:      githubClient,
+		Logger:            zap.NewNop(),
+		Output:            io.Discard,
+		Errors:            io.Discard,
+		Reporter:          &recordingReporter{},
+	}
+	repository := &workflow.RepositoryState{
+		Path: "/tmp/project",
+		Inspection: audit.RepositoryInspection{
+			LocalBranch:    "feature/foo",
+			FinalOwnerRepo: "owner/project",
+		},
+	}
+	parameters := map[string]any{
+		taskOptionBranchName:         "feature/foo",
+		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
+		taskOptionRequirePullRequest: true,
+		taskOptionBaseBranch:         "master",
+		taskOptionRequireClean:       true,
+	}
+
+	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
+	recordedCommands := recordedGitCommands(gitExecutor.commands)
+	require.Contains(t, recordedCommands, "merge --no-edit origin/feature/foo")
+	require.Contains(t, recordedCommands, "merge --no-edit origin/master")
+	require.Contains(t, recordedCommands, "push origin feature/foo")
+	require.NotContains(t, recordedCommands, "reset --hard origin/feature/foo")
+	require.Len(t, githubExecutor.commands, 1)
+	require.Contains(t, strings.Join(githubExecutor.commands[0].Arguments, " "), "--state open")
+}
+
 func TestHandleBranchSyncActionStrictPRBranchRejectsOpenPullRequestWithoutBase(t *testing.T) {
 	gitExecutor := &strictSyncGitExecutor{}
 	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
@@ -1510,6 +1554,60 @@ func TestHandleBranchSyncActionStrictPRBranchCreatesMissingRemoteBranchAndPullRe
 	require.Contains(t, chatClient.requests[0].Messages[1].Content, "diff --git a/README.md b/README.md")
 }
 
+func TestHandleBranchSyncActionStrictPRBranchPushesLocalAheadMissingRemoteBranchAndCreatesPullRequest(t *testing.T) {
+	pullRequestBody := "## Summary\n- Publishes local commits."
+	gitExecutor := &strictSyncGitExecutor{
+		missingReferences: map[string]bool{
+			"origin/feature/foo": true,
+		},
+		revListOutput: "2\n",
+		currentBranch: "feature/foo",
+	}
+	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(t, managerError)
+	githubExecutor := &strictSyncGitHubExecutor{}
+	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
+	require.NoError(t, githubClientError)
+	chatClient := &strictSyncChatClient{responses: []string{pullRequestBody}}
+	environment := &workflow.Environment{
+		GitExecutor:       gitExecutor,
+		RepositoryManager: gitManager,
+		GitHubClient:      githubClient,
+		Logger:            zap.NewNop(),
+		Output:            io.Discard,
+		Errors:            io.Discard,
+		Reporter:          &recordingReporter{},
+	}
+	repository := &workflow.RepositoryState{
+		Path: "/tmp/project",
+		Inspection: audit.RepositoryInspection{
+			LocalBranch:    "feature/foo",
+			FinalOwnerRepo: "owner/project",
+		},
+	}
+	parameters := map[string]any{
+		taskOptionBranchName:         "feature/foo",
+		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
+		taskOptionRequirePullRequest: true,
+		taskOptionBaseBranch:         "master",
+		taskOptionRequireClean:       true,
+		taskOptionWorktreeCommitMessage: worktreeAdoptionCommitMessageOptions{
+			Client: chatClient,
+		},
+	}
+
+	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
+	recordedCommands := recordedGitCommands(gitExecutor.commands)
+	require.Contains(t, recordedCommands, "switch feature/foo")
+	require.NotContains(t, recordedCommands, "switch -c feature/foo origin/master")
+	require.Contains(t, recordedCommands, "merge --no-edit origin/master")
+	require.Contains(t, recordedCommands, "push -u origin feature/foo")
+	require.Len(t, githubExecutor.commands, 1)
+	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", "feature/foo", "--title", "feature/foo", "--body", pullRequestBody}, githubExecutor.commands[0].Arguments)
+	require.Len(t, chatClient.requests, 1)
+	require.Contains(t, chatClient.requests[0].Messages[1].Content, "Comparison range: origin/master...feature/foo")
+}
+
 func TestHandleBranchSyncActionStrictPRBranchUsesExplicitPullRequestMetadata(t *testing.T) {
 	gitExecutor := &strictSyncGitExecutor{
 		missingReferences: map[string]bool{
@@ -1566,7 +1664,8 @@ func TestHandleBranchSyncActionStrictPRBranchCreatesGeneratedBranchFromDirtyMast
 	generatedBranchName := "gix/cancel-upstream-request-on-downstream-timeout"
 	pullRequestBody := "## Summary\n- Updates README content from the dirty master branch."
 	gitExecutor := &strictSyncGitExecutor{
-		statusOutput: " M README.md\n",
+		statusOutput:  " M README.md\n",
+		revListOutput: "1\n",
 		missingReferences: map[string]bool{
 			"origin/" + generatedBranchName:     true,
 			"refs/heads/" + generatedBranchName: true,
@@ -1688,7 +1787,8 @@ func TestHandleBranchSyncActionStrictPRBranchSkipsStaleGeneratedRemoteBranch(t *
 	collisionBranchName := generatedBranchName + "-2"
 	pullRequestBody := "## Summary\n- Updates README content without reusing the stale branch."
 	gitExecutor := &strictSyncGitExecutor{
-		statusOutput: " M README.md\n",
+		statusOutput:  " M README.md\n",
+		revListOutput: "1\n",
 		missingReferences: map[string]bool{
 			"origin/" + collisionBranchName:     true,
 			"refs/heads/" + collisionBranchName: true,

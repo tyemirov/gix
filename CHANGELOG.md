@@ -10,9 +10,11 @@
 
 ### Bug Fixes 🐛
 - Add `gix init --user` as the user-facing config initialization command and keep the obsolete root `gix --init user` form unsupported.
+- Make `gix sync` push local-ahead work branches through the PR flow instead of failing with a local-only commit error.
 
 ### Testing 🧪
 - Cover `gix init`, `gix init --user`, and rejected `gix --init user` through in-process application tests and black-box CLI initialization tests.
+- Add strict-sync regressions for local-ahead branches with existing remote PRs and local-only branches that need an upstream push plus pull request.
 
 ### Docs 📚
 - Update README, architecture notes, and the docs site to document `gix init --user` and local `gix init`.

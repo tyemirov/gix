@@ -227,6 +227,20 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - `go run . init --user` with a temporary `HOME`
   - `go run . --init user` fails with `unknown flag: --init`
   - `make ci`
+- [x] [B016] (P1) `gix sync` should push local-ahead work branches.
+  Requested on 2026-06-29 after running `gix sync` on `tyemirov/bugfix/init-subcommand` and seeing `local branch "tyemirov/bugfix/init-subcommand" has commits not on origin/tyemirov/bugfix/init-subcommand`.
+  ## Observation
+  - Work branches are intended to be remote-backed and PR-backed.
+  - A local-ahead work branch represents unpublished local work that `gix sync` should synchronize by pushing, not a terminal error.
+  - A stale local branch whose PR already merged and has no commits beyond the base should still hand off to the base branch instead of recreating work.
+  ## Resolution
+  - Existing remote PR branches with local-ahead commits now merge the remote branch, merge the PR base, and push the local commits.
+  - Local-only work branches with commits beyond the base now merge the base, push with upstream, and create the pull request.
+  - Merged/pruned local branches with no commits beyond the base keep the existing prompt to sync the base branch.
+  ## Validation
+  - `go test ./internal/branches/syncflow`
+  - `go test ./cmd/cli ./internal/branches/syncflow ./tests`
+  - `make ci`
 
 
 ## Improvements
