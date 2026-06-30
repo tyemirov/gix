@@ -241,6 +241,23 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - `go test ./internal/branches/syncflow`
   - `go test ./cmd/cli ./internal/branches/syncflow ./tests`
   - `make ci`
+- [x] [B017] (P1) Dirty `gix sync master` should not conflict by merging `origin/master` after creating a generated branch.
+  Requested on 2026-06-29 after `gix sync` in `/Users/tyemirov/Development/ISSUES.md` created `gix/support-agentic-model-and-reasoning-effort-settings-in` from dirty `master`, then failed with `CONFLICT (content): Merge conflict in .mprlab/ISSUES.md` while running `merge --no-edit origin/master`.
+  ## Observation
+  - Dirty base-branch sync is a preservation flow: create a generated work branch at the current checkout, commit the dirty tree there, then publish that branch through the PR flow.
+  - After B016, the generated dirty branch reached the same local-only work-branch path as preexisting local branches and merged `origin/master` before push.
+  - That base merge can conflict when local `master` was stale, but avoiding the merge would leave the generated branch unsynchronized with the current base.
+  ## Resolution
+  - Added an AI-backed merge conflict resolution service for strict sync merges.
+  - When a strict sync merge stops with unmerged files, inspect the Git stages for each conflicted path, send BASE/OURS/THEIRS context to the configured LLM client, write the resolved file, stage it, and complete the merge with `git commit --no-edit`.
+  - The resolver prompt explicitly preserves local OURS changes while integrating compatible remote THEIRS changes, and rejects LLM output that still contains conflict markers.
+  - Dirty generated branches still merge `origin/master`; conflicts are resolved as part of that merge before push and PR creation.
+  ## Validation
+  - `go test ./internal/branches/syncflow`
+  - `git diff --check`
+  - `make test`
+  - `make lint`
+  - `make ci`
 
 
 ## Improvements
