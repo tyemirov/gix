@@ -9,19 +9,40 @@
 - _No changes._
 
 ### Bug Fixes 🐛
-- Add `gix init --user` as the user-facing config initialization command and keep the obsolete root `gix --init user` form unsupported.
-- Make `gix sync` push local-ahead work branches through the PR flow instead of failing with a local-only commit error.
-- Reject local-only strict-sync branches that have no commits beyond the base instead of creating empty pull requests.
-- Resolve strict-sync merge conflicts with the configured AI client so dirty generated branches can merge the current base while retaining local changes.
-- Preserve file deletions during AI-assisted strict-sync merge conflict resolution.
+- _No changes._
 
 ### Testing 🧪
-- Cover `gix init`, `gix init --user`, and rejected `gix --init user` through in-process application tests and black-box CLI initialization tests.
-- Add strict-sync regressions for local-ahead branches with existing remote PRs, local-only branches that need an upstream push plus pull request, and empty local-only branches that must stop before PR creation.
-- Cover generated dirty-master sync branches that hit a merge conflict, resolve conflicted files or deletions through AI, complete the merge commit, then push and open the PR.
+- _No changes._
 
 ### Docs 📚
-- Update README, architecture notes, and the docs site to document `gix init --user` and local `gix init`.
+- _No changes._
+
+## [v0.8.0] - 2026-06-30
+
+### Features ✨
+- Add AI-powered merge conflict resolution to strict-sync flows, automatically generating resolutions for conflicted files via the configured LLM client.
+- Enable `gix init` and `gix init --user` commands for straightforward config initialization, replacing the former root `--init` flag approach.
+- Support AI-based resolution of file deletions and missing branches during merge conflict handling.
+
+### Improvements ⚙️
+- Push local-ahead work branches when running `gix sync`, ensuring unpublished local commits reach the remote and PR flow.
+- Reject creation of empty pull requests for strict-sync branches with no new commits beyond the base.
+- Clarify, update, and document all configuration initialization flows across README, developer docs, and the docs website.
+
+### Bug Fixes 🐛
+- Resolve merge conflicts on dirty sync branches using AI, including preservation of deleted files and handling of missing branches.
+- Add missing `init` subcommand; update tests and CLI behavior for correct config initialization.
+- Prevent failure of `gix sync` on local-ahead branches by pushing changes as intended.
+
+### Testing 🧪
+- Extend CLI and integration test coverage for `gix init`, `gix init --user`, and invalid initialization flows.
+- Add strict-sync regression tests, including for dirty base branches, local-ahead, and empty branch scenarios.
+- Validate AI-based merge resolution via comprehensive black-box and in-process tests on branch sync, PR creation, and merge cases.
+
+### Docs 📚
+- Update README, architecture docs, and site documentation to reflect new `gix init` flow and removal of the obsolete `--init` flag.
+- Document AI-based merge resolution and new configuration commands across all user-facing guides.
+- Clarify sync behavior and configuration controls in updated documentation.
 
 ## [v0.7.0] - 2026-06-29
 
