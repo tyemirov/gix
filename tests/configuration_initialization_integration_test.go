@@ -15,11 +15,14 @@ const (
 	configurationInitializationOverwriteCaseNameConstant    = "overwrite_protection"
 	configurationInitializationForceCaseNameConstant        = "force_overwrite"
 	configurationInitializationCommandArgumentConstant      = "init"
+	configurationInitializationLegacyArgumentConstant       = "--init"
+	configurationInitializationLegacyUserArgumentConstant   = "user"
 	configurationInitializationUserFlagConstant             = "--user"
 	configurationInitializationForceFlagConstant            = "--force"
 	configurationInitializationHomeEnvNameConstant          = "HOME"
 	configurationInitializationUserDirectoryNameConstant    = ".gix"
 	configurationInitializationErrorMessageFragmentConstant = "already exists"
+	configurationInitializationUnknownFlagFragmentConstant  = "unknown flag: --init"
 )
 
 type configurationInitializationEnvironment struct {
@@ -98,6 +101,39 @@ func TestCLIConfigurationInitializationCreatesFiles(testInstance *testing.T) {
 			require.True(t, directoryInfo.IsDir())
 		})
 	}
+}
+
+func TestCLIConfigurationInitializationRejectsRootInitFlag(testInstance *testing.T) {
+	currentWorkingDirectory, workingDirectoryError := os.Getwd()
+	require.NoError(testInstance, workingDirectoryError)
+	repositoryRootDirectory := filepath.Dir(currentWorkingDirectory)
+
+	binaryPath := buildIntegrationBinary(testInstance, repositoryRootDirectory)
+	workingDirectory := testInstance.TempDir()
+	homeDirectory := testInstance.TempDir()
+
+	outputText, runError := runBinaryIntegrationCommand(
+		testInstance,
+		binaryPath,
+		workingDirectory,
+		map[string]string{
+			configurationInitializationHomeEnvNameConstant: homeDirectory,
+		},
+		integrationCommandTimeout,
+		[]string{
+			configurationInitializationLegacyArgumentConstant,
+			configurationInitializationLegacyUserArgumentConstant,
+		},
+	)
+
+	require.Error(testInstance, runError)
+	require.Contains(testInstance, outputText, configurationInitializationUnknownFlagFragmentConstant)
+
+	_, localStatError := os.Stat(filepath.Join(workingDirectory, integrationConfigFileNameConstant))
+	require.ErrorIs(testInstance, localStatError, os.ErrNotExist)
+
+	_, userStatError := os.Stat(filepath.Join(homeDirectory, configurationInitializationUserDirectoryNameConstant, integrationConfigFileNameConstant))
+	require.ErrorIs(testInstance, userStatError, os.ErrNotExist)
 }
 
 func TestCLIConfigurationInitializationOverwriteProtection(testInstance *testing.T) {

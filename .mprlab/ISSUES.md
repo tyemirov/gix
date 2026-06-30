@@ -219,11 +219,13 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - The natural command shape for writing `$HOME/.gix/config.yaml` is `gix init --user`.
   ## Resolution
   - Added a top-level `gix init` command that writes local `./config.yaml` by default and writes `$HOME/.gix/config.yaml` with `--user`.
+  - Kept `gix --init user` unsupported; it now remains an unknown root flag instead of a compatibility path.
   - Kept `--force` on the init command for explicit overwrite and rejected conflicting `--local` plus `--user` selections.
   - Updated README, architecture notes, docs site copy, in-process tests, and black-box integration tests to use `gix init --user`.
   ## Validation
   - `go test ./cmd/cli ./tests`
   - `go run . init --user` with a temporary `HOME`
+  - `go run . --init user` fails with `unknown flag: --init`
   - `make ci`
 
 
@@ -401,18 +403,18 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - `/Users/tyemirov/Development/Smith/mprlab-governor/scripts/normalize-mprlab --repo /Users/tyemirov/Development/gix --check`
   - `git diff --check`
 - [x] [M011R] (P2) Document user config initialization and configuration scope.
-  Requested on 2026-06-29 after reviewing whether the advertising page and README explain `gix --init user`, `$HOME/.gix/config.yaml`, and what config controls.
+  Requested on 2026-06-29 after reviewing whether the advertising page and README explain `gix init --user`, `$HOME/.gix/config.yaml`, and what config controls.
   ## Observation
-  - README listed `gix --init user` and basic precedence, but did not explain the config's practical control surface.
-  - The docs site only mentioned `gix --init LOCAL`, omitted the user config path, and linked to the old root `ISSUES.md`.
+  - README listed user config initialization and basic precedence, but did not explain the config's practical control surface.
+  - The docs site omitted the user config path and linked to the old root `ISSUES.md`.
   ## Resolution
-  - Updated README Quick Start and configuration essentials to describe `gix --init user`, `gix --init local`, `--force yes`, and `$HOME/.gix/config.yaml`.
+  - Updated README Quick Start and configuration essentials to describe `gix init --user`, local `gix init`, `--force yes`, and `$HOME/.gix/config.yaml`.
   - Documented that config controls shared logging, confirmation, clean-worktree behavior, roots/remotes, sync PR metadata, LLM transport/provider settings, release/audit defaults, and workflow defaults.
   - Updated the docs site getting-started flow, developer-tooling copy, architecture copy, and roadmap link to reflect current config and `.mprlab/ISSUES.md` contracts.
 - [x] [M012R] (P2) Add a global LLM transport switch for user config.
   Requested on 2026-06-29 after the operation-level LLM Proxy config felt too involved for a user who only wants gix to use MPR LLM Proxy.
   ## Observation
-  - `gix --init user` generated separate LLM transport, provider, env, base URL, and model settings under each message operation.
+  - User initialization generated separate LLM transport, provider, env, base URL, and model settings under each message operation.
   - A user had to edit multiple fields to express one global preference.
   - Changing only `transport` in an operation could leave inherited env/base settings from another transport.
   ## Resolution
