@@ -20,6 +20,8 @@ const (
 	gitLsFilesSubcommandConstant                = "ls-files"
 	gitLsFilesUnmergedFlagConstant              = "-u"
 	gitShowSubcommandConstant                   = "show"
+	gitRmSubcommandConstant                     = "rm"
+	gitRmForceFlagConstant                      = "-f"
 	gitCommitNoEditFlagConstant                 = "--no-edit"
 	mergeConflictResolutionMaxTokens            = 8192
 	mergeConflictResolutionFailureTemplate      = "failed to resolve merge conflicts with AI: %w"
@@ -30,10 +32,12 @@ const (
 	mergeConflictResolutionConflictMarkers      = "llm left conflict markers in merge resolution for %s"
 	mergeConflictResolutionWriteTemplate        = "write resolved merge file %s: %w"
 	mergeConflictResolutionStageTemplate        = "stage resolved merge file %s: %w"
+	mergeConflictResolutionDeleteTemplate       = "stage deleted merge file %s: %w"
 	mergeConflictResolutionCommitTemplate       = "complete resolved merge commit: %w"
 	mergeConflictResolutionPathTemplate         = "invalid conflicted path %q"
-	mergeConflictResolutionSystemPrompt         = "You are an expert merge engineer resolving Git conflicts. Return only the complete final file contents. Preserve every intentional local OURS change while integrating compatible remote THEIRS changes. Do not drop local changes to make the merge easier. Remove conflict markers. Do not include explanations, markdown fences, or quotes."
-	mergeConflictResolutionUserPrompt           = "Repository: %s\nPath: %s\nTarget branch: %s\nMerged reference: %s\n\nBASE common ancestor:\n%s\n\nOURS current branch with local work that must be preserved:\n%s\n\nTHEIRS incoming branch to integrate:\n%s\n\nReturn only the resolved final contents for this path."
+	mergeConflictResolutionDeleteDirective      = "GIX_MERGE_RESOLUTION_DELETE_FILE"
+	mergeConflictResolutionSystemPrompt         = "You are an expert merge engineer resolving Git conflicts. Return only the complete final file contents. If the correct resolution is to delete this path, return exactly " + mergeConflictResolutionDeleteDirective + ". Preserve every intentional local OURS change while integrating compatible remote THEIRS changes. Do not drop local changes to make the merge easier. Remove conflict markers. Do not include explanations, markdown fences, or quotes."
+	mergeConflictResolutionUserPrompt           = "Repository: %s\nPath: %s\nTarget branch: %s\nMerged reference: %s\n\nBASE common ancestor:\n%s\n\nOURS current branch with local work that must be preserved:\n%s\n\nTHEIRS incoming branch to integrate:\n%s\n\nReturn only the resolved final contents for this path, or " + mergeConflictResolutionDeleteDirective + " if the path should be deleted."
 	mergeConflictResolutionAbsentStage          = "(file absent in this stage)"
 )
 
@@ -53,6 +57,11 @@ type mergeConflictFile struct {
 	Base   string
 	Ours   string
 	Theirs string
+}
+
+type mergeConflictFileResolution struct {
+	Delete  bool
+	Content string
 }
 
 func resolveMergeConflictOrError(ctx context.Context, executor shared.GitExecutor, repositoryPath string, sourceReference string, targetBranch string, conflictMessage string, commitMessages worktreeAdoptionCommitMessageOptions, mergeErr error) error {
@@ -93,15 +102,21 @@ func (service mergeConflictResolutionService) Resolve(ctx context.Context, optio
 		if conflictFileErr != nil {
 			return true, conflictFileErr
 		}
-		resolvedContent, resolvedContentErr := service.resolveConflictFile(ctx, client, options, conflictFile)
-		if resolvedContentErr != nil {
-			return true, resolvedContentErr
+		resolution, resolutionErr := service.resolveConflictFile(ctx, client, options, conflictFile)
+		if resolutionErr != nil {
+			return true, resolutionErr
 		}
-		if writeErr := service.writeResolvedFile(conflictFile.Path, resolvedContent); writeErr != nil {
-			return true, writeErr
-		}
-		if stageErr := service.stageResolvedFile(ctx, conflictFile.Path); stageErr != nil {
-			return true, stageErr
+		if resolution.Delete {
+			if deleteErr := service.stageDeletedFile(ctx, conflictFile.Path); deleteErr != nil {
+				return true, deleteErr
+			}
+		} else {
+			if writeErr := service.writeResolvedFile(conflictFile.Path, resolution.Content); writeErr != nil {
+				return true, writeErr
+			}
+			if stageErr := service.stageResolvedFile(ctx, conflictFile.Path); stageErr != nil {
+				return true, stageErr
+			}
 		}
 	}
 
@@ -209,20 +224,23 @@ func (service mergeConflictResolutionService) conflictStageContent(ctx context.C
 	return result.StandardOutput, nil
 }
 
-func (service mergeConflictResolutionService) resolveConflictFile(ctx context.Context, client llm.ChatClient, options mergeConflictResolutionOptions, conflictFile mergeConflictFile) (string, error) {
+func (service mergeConflictResolutionService) resolveConflictFile(ctx context.Context, client llm.ChatClient, options mergeConflictResolutionOptions, conflictFile mergeConflictFile) (mergeConflictFileResolution, error) {
 	request := service.buildResolutionRequest(options, conflictFile)
 	response, responseErr := client.Chat(ctx, request)
 	if responseErr != nil {
-		return "", responseErr
+		return mergeConflictFileResolution{}, responseErr
 	}
 	resolvedContent := strings.TrimSpace(response)
 	if resolvedContent == "" {
-		return "", fmt.Errorf(mergeConflictResolutionEmptyResponse, conflictFile.Path)
+		return mergeConflictFileResolution{}, fmt.Errorf(mergeConflictResolutionEmptyResponse, conflictFile.Path)
+	}
+	if resolvedContent == mergeConflictResolutionDeleteDirective {
+		return mergeConflictFileResolution{Delete: true}, nil
 	}
 	if containsConflictMarker(resolvedContent) {
-		return "", fmt.Errorf(mergeConflictResolutionConflictMarkers, conflictFile.Path)
+		return mergeConflictFileResolution{}, fmt.Errorf(mergeConflictResolutionConflictMarkers, conflictFile.Path)
 	}
-	return response, nil
+	return mergeConflictFileResolution{Content: response}, nil
 }
 
 func (service mergeConflictResolutionService) buildResolutionRequest(options mergeConflictResolutionOptions, conflictFile mergeConflictFile) llm.ChatRequest {
@@ -270,6 +288,16 @@ func (service mergeConflictResolutionService) writeResolvedFile(path string, con
 func (service mergeConflictResolutionService) stageResolvedFile(ctx context.Context, path string) error {
 	if stageErr := executeGit(ctx, service.executor, service.repositoryPath, []string{gitAddSubcommandConstant, gitPathspecSeparatorConstant, path}); stageErr != nil {
 		return fmt.Errorf(mergeConflictResolutionStageTemplate, path, stageErr)
+	}
+	return nil
+}
+
+func (service mergeConflictResolutionService) stageDeletedFile(ctx context.Context, path string) error {
+	if _, pathErr := mergeConflictResolutionFilesystemPath(service.repositoryPath, path); pathErr != nil {
+		return pathErr
+	}
+	if deleteErr := executeGit(ctx, service.executor, service.repositoryPath, []string{gitRmSubcommandConstant, gitRmForceFlagConstant, gitPathspecSeparatorConstant, path}); deleteErr != nil {
+		return fmt.Errorf(mergeConflictResolutionDeleteTemplate, path, deleteErr)
 	}
 	return nil
 }

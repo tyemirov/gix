@@ -65,6 +65,7 @@ const (
 	strictSyncMissingRepositoryMessage           = "strict sync requires a GitHub repository remote"
 	strictSyncDirtyWorktreeTemplate              = "worktree is dirty; remove --require-clean or use --stash before syncing"
 	strictSyncLocalOnlyCommitTemplate            = "local branch %q has commits not on %s/%s"
+	strictSyncEmptyLocalBranchTemplate           = "local branch %q has no commits beyond %s/%s and no merged pull request handoff"
 	strictSyncMissingPullRequestTemplate         = "branch %q does not have an open pull request"
 	strictSyncMissingPullRequestBaseTemplate     = "open pull request for branch %q did not report a base branch"
 	strictSyncMergedPullRequestPromptTemplate    = "Pull request for branch %q into %s is already merged. Sync %s instead? [a/N/y] "
@@ -682,6 +683,7 @@ func syncPullRequestBranch(ctx context.Context, environment *workflow.Environmen
 			if syncedBaseBranch {
 				return strictPullRequestBranchResult{SyncedBranch: options.BaseBranch}, nil
 			}
+			return strictPullRequestBranchResult{}, fmt.Errorf(strictSyncEmptyLocalBranchTemplate, options.BranchName, options.RemoteName, options.BaseBranch)
 		}
 		if switchErr := switchToLocalOrRemoteBranchWithAdoption(ctx, environment, repository, options.RemoteName, options.BranchName, options.CommitMessages); switchErr != nil {
 			return strictPullRequestBranchResult{}, switchErr
