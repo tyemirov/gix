@@ -78,7 +78,6 @@ type Application struct {
 	configuredOperationConfigurations OperationConfigurations
 	embeddedOperationConfigurations   OperationConfigurations
 	rootFlagValues                    *flagutils.RootFlagValues
-	configurationInitializationScope  string
 	configurationInitializationForced bool
 	versionFlag                       bool
 	webFlagValue                      bool
@@ -160,32 +159,6 @@ func NewApplication() *Application {
 	cobraCommand.PersistentFlags().BoolVar(&application.webFlagValue, webFlagNameConstant, false, webFlagUsageConstant)
 	cobraCommand.PersistentFlags().StringVar(&application.webBindFlagValue, webBindFlagNameConstant, "", webBindFlagUsageConstant)
 	cobraCommand.PersistentFlags().StringVar(&application.webPortFlagValue, webPortFlagNameConstant, "", webPortFlagUsageConstant)
-	cobraCommand.PersistentFlags().StringVar(
-		&application.configurationInitializationScope,
-		configurationInitializationFlagNameConstant,
-		configurationInitializationDefaultScopeConstant,
-		configurationInitializationFlagUsageConstant,
-	)
-	initializationFlag := cobraCommand.PersistentFlags().Lookup(configurationInitializationFlagNameConstant)
-	if initializationFlag != nil {
-		initializationFlag.Usage = flagutils.FormatChoiceUsage(
-			configurationInitializationDefaultScopeConstant,
-			[]string{
-				configurationInitializationScopeLocalConstant,
-				configurationInitializationScopeUserConstant,
-			},
-			configurationInitializationFlagUsageConstant,
-		)
-	}
-	flagutils.AddToggleFlag(
-		cobraCommand.PersistentFlags(),
-		&application.configurationInitializationForced,
-		configurationInitializationForceFlagNameConstant,
-		"",
-		false,
-		configurationInitializationForceFlagUsageConstant,
-	)
-
 	application.rootFlagValues = flagutils.BindRootFlags(
 		cobraCommand,
 		flagutils.RootFlagValues{},
@@ -221,6 +194,7 @@ func NewApplication() *Application {
 			return application.printVersion(command.Context(), command.OutOrStdout())
 		},
 	}
+	cobraCommand.AddCommand(application.configurationInitializationCommand())
 	cobraCommand.AddCommand(versionCommand)
 
 	application.registerCommands(cobraCommand)
@@ -228,6 +202,47 @@ func NewApplication() *Application {
 	application.rootCommand = cobraCommand
 
 	return application
+}
+
+func (application *Application) configurationInitializationCommand() *cobra.Command {
+	command := &cobra.Command{
+		Use:           configurationInitializationFlagNameConstant,
+		Short:         configurationInitializationCommandShortDescriptionConstant,
+		Long:          configurationInitializationCommandLongDescriptionConstant,
+		Args:          cobra.NoArgs,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(command *cobra.Command, arguments []string) error {
+			return application.runConfigurationInitializationCommand(command)
+		},
+	}
+
+	flagutils.AddToggleFlag(
+		command.Flags(),
+		nil,
+		configurationInitializationLocalFlagNameConstant,
+		"",
+		false,
+		configurationInitializationLocalFlagUsageConstant,
+	)
+	flagutils.AddToggleFlag(
+		command.Flags(),
+		nil,
+		configurationInitializationUserFlagNameConstant,
+		"",
+		false,
+		configurationInitializationUserFlagUsageConstant,
+	)
+	flagutils.AddToggleFlag(
+		command.Flags(),
+		&application.configurationInitializationForced,
+		configurationInitializationForceFlagNameConstant,
+		"",
+		false,
+		configurationInitializationForceFlagUsageConstant,
+	)
+
+	return command
 }
 
 // Execute runs the configured Cobra command hierarchy and ensures logger flushing.
@@ -244,47 +259,6 @@ func (application *Application) Execute() error {
 // Execute builds a fresh application instance and executes the root command hierarchy.
 func Execute() error {
 	return NewApplication().Execute()
-}
-
-func normalizeInitializationScopeArguments(arguments []string) []string {
-	if len(arguments) == 0 {
-		return nil
-	}
-
-	normalizedArguments := make([]string, 0, len(arguments))
-	flagPrefix := "--" + configurationInitializationFlagNameConstant
-
-	for index := 0; index < len(arguments); index++ {
-		currentArgument := arguments[index]
-
-		if strings.HasPrefix(currentArgument, flagPrefix+"=") {
-			value := strings.TrimSpace(strings.TrimPrefix(currentArgument, flagPrefix+"="))
-			if len(value) == 0 {
-				normalizedArguments = append(
-					normalizedArguments,
-					fmt.Sprintf("%s=%s", flagPrefix, configurationInitializationDefaultScopeConstant),
-				)
-				continue
-			}
-			normalizedArguments = append(normalizedArguments, currentArgument)
-			continue
-		}
-
-		if currentArgument == flagPrefix {
-			nextIndex := index + 1
-			if nextIndex >= len(arguments) || strings.HasPrefix(arguments[nextIndex], "-") {
-				normalizedArguments = append(
-					normalizedArguments,
-					fmt.Sprintf("%s=%s", flagPrefix, configurationInitializationDefaultScopeConstant),
-				)
-				continue
-			}
-		}
-
-		normalizedArguments = append(normalizedArguments, currentArgument)
-	}
-
-	return normalizedArguments
 }
 
 func normalizeWebArguments(arguments []string) []string {
@@ -1001,28 +975,30 @@ func (application *Application) operationsRequiredForCommand(command *cobra.Comm
 
 	return nil
 }
-func (application *Application) handleConfigurationInitialization(command *cobra.Command) (bool, error) {
-	if !application.configurationInitializationRequested(command) {
-		return false, nil
+func (application *Application) runConfigurationInitializationCommand(command *cobra.Command) error {
+	initializationScope, scopeError := application.configurationInitializationScopeForCommand(command)
+	if scopeError != nil {
+		return scopeError
 	}
 
-	initializationScope := strings.TrimSpace(application.configurationInitializationScope)
-	if len(initializationScope) == 0 {
-		initializationScope = configurationInitializationDefaultScopeConstant
+	forceEnabled, _, forceFlagError := flagutils.BoolFlag(command, configurationInitializationForceFlagNameConstant)
+	if forceFlagError != nil {
+		return forceFlagError
 	}
+	application.configurationInitializationForced = forceEnabled
 
 	initializationPlan, planError := application.resolveConfigurationInitializationPlan(initializationScope)
 	if planError != nil {
-		return true, planError
+		return planError
 	}
 
 	configurationContent, _ := EmbeddedDefaultConfiguration()
 	if len(configurationContent) == 0 {
-		return true, errors.New(configurationInitializationContentUnavailableErrorConstant)
+		return errors.New(configurationInitializationContentUnavailableErrorConstant)
 	}
 
 	if writeError := application.writeConfigurationFile(initializationPlan, configurationContent); writeError != nil {
-		return true, writeError
+		return writeError
 	}
 
 	application.logger.Info(
@@ -1030,11 +1006,30 @@ func (application *Application) handleConfigurationInitialization(command *cobra
 		zap.String(configurationFileFieldConstant, initializationPlan.FilePath),
 	)
 
-	return true, nil
+	return nil
 }
 
-func (application *Application) configurationInitializationRequested(command *cobra.Command) bool {
-	return application.persistentFlagChanged(command, configurationInitializationFlagNameConstant)
+func (application *Application) configurationInitializationScopeForCommand(command *cobra.Command) (string, error) {
+	localEnabled, localChanged, localFlagError := flagutils.BoolFlag(command, configurationInitializationLocalFlagNameConstant)
+	if localFlagError != nil {
+		return "", localFlagError
+	}
+	userEnabled, userChanged, userFlagError := flagutils.BoolFlag(command, configurationInitializationUserFlagNameConstant)
+	if userFlagError != nil {
+		return "", userFlagError
+	}
+
+	if localChanged && localEnabled && userChanged && userEnabled {
+		return "", errors.New(configurationInitializationScopeConflictErrorConstant)
+	}
+	if userChanged && userEnabled {
+		return configurationInitializationScopeUserConstant, nil
+	}
+	if localChanged && localEnabled {
+		return configurationInitializationScopeLocalConstant, nil
+	}
+
+	return configurationInitializationDefaultScopeConstant, nil
 }
 
 func (application *Application) resolveConfigurationInitializationPlan(initializationScope string) (configurationInitializationPlan, error) {
@@ -1140,14 +1135,6 @@ func (application *Application) writeConfigurationFile(initializationPlan config
 func (application *Application) runRootCommand(command *cobra.Command, arguments []string) error {
 	if application.logger == nil {
 		return errors.New(loggerNotInitializedMessageConstant)
-	}
-
-	initializationHandled, initializationError := application.handleConfigurationInitialization(command)
-	if initializationError != nil {
-		return initializationError
-	}
-	if initializationHandled {
-		return nil
 	}
 
 	webLaunchHandled, webLaunchError := application.handleWebLaunch(command, arguments)

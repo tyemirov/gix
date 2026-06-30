@@ -260,58 +260,20 @@ func TestRootCommandToggleHelpFormatting(t *testing.T) {
 	usage := application.rootCommand.PersistentFlags().FlagUsages()
 
 	require.Contains(t, usage, "--yes <yes|NO>")
-	require.Contains(t, usage, "--init <LOCAL|user>")
+	require.NotContains(t, usage, "--init")
 	require.NotContains(t, usage, "--init string")
-	require.NotContains(t, usage, "[=\"local\"]")
 	require.NotContains(t, usage, "__toggle_true__")
 	require.NotContains(t, usage, "toggle[")
-}
 
-func TestNormalizeInitializationScopeArguments(t *testing.T) {
-	testCases := []struct {
-		name         string
-		input        []string
-		expectedArgs []string
-	}{
-		{
-			name:         "NoArguments",
-			input:        nil,
-			expectedArgs: nil,
-		},
-		{
-			name:         "ImplicitLocalValue",
-			input:        []string{"--init"},
-			expectedArgs: []string{"--init=local"},
-		},
-		{
-			name:         "ImplicitLocalWithFollowingFlag",
-			input:        []string{"--init", "--force"},
-			expectedArgs: []string{"--init=local", "--force"},
-		},
-		{
-			name:         "ExplicitLocalValue",
-			input:        []string{"--init", "local"},
-			expectedArgs: []string{"--init", "local"},
-		},
-		{
-			name:         "ExplicitUserValue",
-			input:        []string{"--init=user"},
-			expectedArgs: []string{"--init=user"},
-		},
-		{
-			name:         "EmptyAssignmentDefaultsToLocal",
-			input:        []string{"--init="},
-			expectedArgs: []string{"--init=local"},
-		},
-	}
+	initCommand, _, findError := application.rootCommand.Find([]string{"init"})
+	require.NoError(t, findError)
+	initUsage := initCommand.Flags().FlagUsages()
 
-	for _, testCase := range testCases {
-		testCase := testCase
-		t.Run(testCase.name, func(t *testing.T) {
-			normalized := normalizeInitializationScopeArguments(testCase.input)
-			require.Equal(t, testCase.expectedArgs, normalized)
-		})
-	}
+	require.Contains(t, initUsage, "--local <yes|NO>")
+	require.Contains(t, initUsage, "--user <yes|NO>")
+	require.Contains(t, initUsage, "--force <yes|NO>")
+	require.NotContains(t, initUsage, "__toggle_true__")
+	require.NotContains(t, initUsage, "toggle[")
 }
 
 func TestNormalizeWebArguments(t *testing.T) {

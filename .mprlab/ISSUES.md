@@ -212,6 +212,19 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   ## Resolution
   - Treat missing local branches as already-clean, so successful remote deletions count as deleted.
   - Record failure details in the cleanup summary and print bounded failure samples to stderr when failures occur; added regression coverage.
+- [x] [B015] (P1) `gix init --user` should initialize user config.
+  Requested on 2026-06-29 after installing `github.com/tyemirov/gix@latest` at `v0.7.0` and running `gix init --user`, which failed with `unknown command "init" for "gix"`.
+  ## Observation
+  - The released setup documentation and discussion led users toward an initialization command, but the CLI only exposed initialization as the awkward root `--init` flag.
+  - The natural command shape for writing `$HOME/.gix/config.yaml` is `gix init --user`.
+  ## Resolution
+  - Added a top-level `gix init` command that writes local `./config.yaml` by default and writes `$HOME/.gix/config.yaml` with `--user`.
+  - Kept `--force` on the init command for explicit overwrite and rejected conflicting `--local` plus `--user` selections.
+  - Updated README, architecture notes, docs site copy, in-process tests, and black-box integration tests to use `gix init --user`.
+  ## Validation
+  - `go test ./cmd/cli ./tests`
+  - `go run . init --user` with a temporary `HOME`
+  - `make ci`
 
 
 ## Improvements
@@ -1007,5 +1020,3 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Capped the semantic branch component at 56 characters and trims at word boundaries when possible.
   - Kept collision handling as a last resort: an already-occupied semantic branch advances to the next numeric suffix before the normal commit, push, and pull-request flow continues.
   - `make test`, `make lint`, and `make ci` passed locally.
-
-

@@ -9,13 +9,13 @@
 - _No changes._
 
 ### Bug Fixes 🐛
-- _No changes._
+- Add `gix init --user` as the user-facing config initialization command and move initialization off the obsolete root `--init` flag.
 
 ### Testing 🧪
-- _No changes._
+- Cover `gix init` and `gix init --user` through in-process application tests and black-box CLI initialization tests.
 
 ### Docs 📚
-- _No changes._
+- Update README, architecture notes, and the docs site to document `gix init --user` and local `gix init`.
 
 ## [v0.7.0] - 2026-06-29
 

@@ -55,7 +55,7 @@ The Cobra application (split across `cmd/cli/application_bootstrap.go`, `cmd/cli
 - `cmd/cli/repos` registers multi-command groups such as `folder rename`, `remote update-to-canonical`, `prs delete`, and `files rm/replace/add` (history purge plus file seeding).
 - `cmd/cli/repos/release` contains the `release` tagging workflow.
 - `cmd/cli/changelog`, `cmd/cli/commit`, and `cmd/cli/workflow` expose focused entrypoints for changelog generation, AI-assisted commit messaging, and workflow execution.
-- `cmd/cli/default_configuration.go` houses the embedded default YAML used by the `gix --init` flag.
+- `cmd/cli/default_configuration.go` houses the embedded default YAML used by `gix init`.
 - `cmd/cli/workflow/presets` embeds reusable workflows (for example, license distribution and namespace rewrite) so both the `workflow` command and legacy CLI wrappers can reuse identical task graphs.
 
 All commands accept shared flags for log level, log format, previews, repository roots, and confirmation prompts. Validation occurs in Cobra `PreRunE` functions, aligning with the confident-programming rules in `.mprlab/POLICY.md`.
@@ -100,7 +100,7 @@ Configuration is managed by Viper with an uppercase `GIX` environment prefix. Th
 2. `config.yaml` in the working directory.
 3. `$HOME/.gix/config.yaml`.
 
-`gix --init` bootstraps either a local `./config.yaml` or a user-level configuration directory when invoked with `--init LOCAL` (default) or `--init user`. The top-level `llm` block defines transport and provider defaults shared by message, changelog, sync, and web helpers; operation-specific LLM fields remain overrides. `transport` selects `openai_compatible` or `llm_proxy`, while `provider` is the upstream provider name passed through to LLM Proxy. Logging relies on Uber's Zap; format is configurable (structured JSON or console) through a flag or configuration.
+`gix init` bootstraps a local `./config.yaml` by default; `gix init --user` writes user-level configuration to `$HOME/.gix/config.yaml`. The top-level `llm` block defines transport and provider defaults shared by message, changelog, sync, and web helpers; operation-specific LLM fields remain overrides. `transport` selects `openai_compatible` or `llm_proxy`, while `provider` is the upstream provider name passed through to LLM Proxy. Logging relies on Uber's Zap; format is configurable (structured JSON or console) through a flag or configuration.
 
 The `workflow` command is special-cased: it uses a YAML formatter that emits machine-friendly step summaries (one per repository) and prints a final end-of-run summary line. Non-workflow commands continue to use the existing human-readable console logging format.
 

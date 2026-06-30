@@ -14,7 +14,7 @@ gix makes one pull-request-centered Git workflow mechanical: `master` belongs to
 ## Quick Start
 
 1. Install the CLI: `go install github.com/tyemirov/gix@latest` (Go 1.25+).
-2. Create user-level defaults: `gix --init user`.
+2. Create user-level defaults: `gix init --user`.
 3. To use MPR LLM Proxy for generated commit messages and changelog text, set `llm.transport: llm_proxy`, set `llm.provider` to the proxy upstream provider when needed, and export `LLM_PROXY_SECRET`.
 4. Attach or verify a workspace: `gix sync https://github.com/OWNER/REPO.git`.
 5. Restore the remote-owned base branch: `gix sync master`.
@@ -498,7 +498,6 @@ Additional shared flags:
 
 - `--remote <name>` — override the remote name used by commands that push or fetch (default `origin`).
 - `--version` — print the gix version (works at the root or with any command).
-- `--init [local|user] [--force yes]` — write an embedded default config (to `./config.yaml` or `$HOME/.gix/config.yaml`), overwriting when `--force yes` is provided.
 - `--web` — launch the local browser UI on `127.0.0.1:8080` by default.
 - `--bind <host>`, `--port <port>` — override the web bind address or port when used with `--web`.
 - `--roots <dir>...` — when used with `--web`, scope the initial repository tree to the provided roots.
@@ -510,6 +509,10 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
 - `gix version`
 
  - Prints the current release. Also available as `gix --version`.
+
+- `gix init [--local | --user] [--force yes]`
+
+ - Writes an embedded default config to `./config.yaml` by default, or to `$HOME/.gix/config.yaml` with `--user`. Use `--force yes` to replace an existing generated config.
 
 - `gix --web [--bind <host>] [--port <port>] [--roots <dir>...]`
 
@@ -561,8 +564,8 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
  - Synchronizes the current workspace through the Gix flow: remote attach/clone, remote-owned `master`, or PR-backed work branches. Existing PR branches sync against their current PR base branch. Dirty work is clustered, LLM-described, committed, and pushed by default; dirty `master` sync creates a generated PR work branch. Sync never rebases or force-pushes. PR body text is generated from the branch diff unless `--body` or `sync.pull_request.body` is set; PR title defaults to the branch unless `--title` or `sync.pull_request.title` is set. `--stash` temporarily shelves dirty work, `--commit` explicitly selects the auto-commit policy, and `--require-clean` requires a clean worktree only when no dirty-work policy is selected.
 ## Configuration essentials
 
-- `gix --init local` writes an embeddable starter `./config.yaml` for the current workspace.
-- `gix --init user` writes user-level defaults to `$HOME/.gix/config.yaml`.
+- `gix init` or `gix init --local` writes an embeddable starter `./config.yaml` for the current workspace.
+- `gix init --user` writes user-level defaults to `$HOME/.gix/config.yaml`.
 - Add `--force yes` when you intentionally want to replace an existing generated config.
 - Configuration precedence is: CLI flags → environment variables prefixed with `GIX_` → local config → user config.
 - The config controls shared behavior such as `log_level`, `log_format`, `assume_yes`, and `require_clean`.

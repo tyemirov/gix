@@ -85,8 +85,8 @@ const (
 	configurationInitializationUserTestNameConstant          = "UserScope"
 	configurationInitializationForceRequiredTestNameConstant = "ForceRequired"
 	configurationInitializationForceEnabledTestNameConstant  = "ForceEnabled"
-	configurationInitializationArgumentsLocalConstant        = "--init"
-	configurationInitializationArgumentsUserConstant         = "--init=user"
+	configurationInitializationCommandArgumentConstant       = "init"
+	configurationInitializationUserFlagConstant              = "--user"
 	configurationInitializationForceFlagConstant             = "--force"
 	configurationInitializationExistingContentConstant       = "common:\n  log_level: error\n"
 	configurationInitializationErrorMessageFragmentConstant  = "already exists"
@@ -337,7 +337,7 @@ func TestApplicationConfigurationInitializationCreatesConfiguration(testInstance
 	}{
 		{
 			name:      configurationInitializationLocalTestNameConstant,
-			arguments: []string{configurationInitializationArgumentsLocalConstant},
+			arguments: []string{configurationInitializationCommandArgumentConstant},
 			setup: func(t *testing.T) string {
 				workingDirectory := t.TempDir()
 				originalWorkingDirectory, workingDirectoryError := os.Getwd()
@@ -351,8 +351,11 @@ func TestApplicationConfigurationInitializationCreatesConfiguration(testInstance
 			},
 		},
 		{
-			name:      configurationInitializationUserTestNameConstant,
-			arguments: []string{configurationInitializationArgumentsUserConstant},
+			name: configurationInitializationUserTestNameConstant,
+			arguments: []string{
+				configurationInitializationCommandArgumentConstant,
+				configurationInitializationUserFlagConstant,
+			},
 			setup: func(t *testing.T) string {
 				workingDirectory := t.TempDir()
 				originalWorkingDirectory, workingDirectoryError := os.Getwd()
@@ -402,13 +405,13 @@ func TestApplicationConfigurationInitializationForceHandling(testInstance *testi
 	}{
 		{
 			name:        configurationInitializationForceRequiredTestNameConstant,
-			arguments:   []string{configurationInitializationArgumentsLocalConstant},
+			arguments:   []string{configurationInitializationCommandArgumentConstant},
 			expectError: true,
 		},
 		{
 			name: configurationInitializationForceEnabledTestNameConstant,
 			arguments: []string{
-				configurationInitializationArgumentsLocalConstant,
+				configurationInitializationCommandArgumentConstant,
 				configurationInitializationForceFlagConstant,
 			},
 			expectError: false,
