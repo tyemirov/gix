@@ -212,6 +212,54 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   ## Resolution
   - Treat missing local branches as already-clean, so successful remote deletions count as deleted.
   - Record failure details in the cleanup summary and print bounded failure samples to stderr when failures occur; added regression coverage.
+- [x] [B015] (P1) `gix init --user` should initialize user config.
+  Requested on 2026-06-29 after installing `github.com/tyemirov/gix@latest` at `v0.7.0` and running `gix init --user`, which failed with `unknown command "init" for "gix"`.
+  ## Observation
+  - The released setup documentation and discussion led users toward an initialization command, but the CLI only exposed initialization as the awkward root `--init` flag.
+  - The natural command shape for writing `$HOME/.gix/config.yaml` is `gix init --user`.
+  ## Resolution
+  - Added a top-level `gix init` command that writes local `./config.yaml` by default and writes `$HOME/.gix/config.yaml` with `--user`.
+  - Kept `gix --init user` unsupported; it now remains an unknown root flag instead of a compatibility path.
+  - Kept `--force` on the init command for explicit overwrite and rejected conflicting `--local` plus `--user` selections.
+  - Updated README, architecture notes, docs site copy, in-process tests, and black-box integration tests to use `gix init --user`.
+  ## Validation
+  - `go test ./cmd/cli ./tests`
+  - `go run . init --user` with a temporary `HOME`
+  - `go run . --init user` fails with `unknown flag: --init`
+  - `make ci`
+- [x] [B016] (P1) `gix sync` should push local-ahead work branches.
+  Requested on 2026-06-29 after running `gix sync` on `tyemirov/bugfix/init-subcommand` and seeing `local branch "tyemirov/bugfix/init-subcommand" has commits not on origin/tyemirov/bugfix/init-subcommand`.
+  ## Observation
+  - Work branches are intended to be remote-backed and PR-backed.
+  - A local-ahead work branch represents unpublished local work that `gix sync` should synchronize by pushing, not a terminal error.
+  - A stale local branch whose PR already merged and has no commits beyond the base should still hand off to the base branch instead of recreating work.
+  ## Resolution
+  - Existing remote PR branches with local-ahead commits now merge the remote branch, merge the PR base, and push the local commits.
+  - Local-only work branches with commits beyond the base now merge the base, push with upstream, and create the pull request.
+  - Merged/pruned local branches with no commits beyond the base keep the existing prompt to sync the base branch.
+  - Local-only branches with no commits beyond the base and no merged pull request handoff now stop before push or pull request creation.
+  ## Validation
+  - `go test ./internal/branches/syncflow`
+  - `go test ./cmd/cli ./internal/branches/syncflow ./tests`
+  - `make ci`
+- [x] [B017] (P1) Dirty `gix sync master` should not conflict by merging `origin/master` after creating a generated branch.
+  Requested on 2026-06-29 after `gix sync` in `/Users/tyemirov/Development/ISSUES.md` created `gix/support-agentic-model-and-reasoning-effort-settings-in` from dirty `master`, then failed with `CONFLICT (content): Merge conflict in .mprlab/ISSUES.md` while running `merge --no-edit origin/master`.
+  ## Observation
+  - Dirty base-branch sync is a preservation flow: create a generated work branch at the current checkout, commit the dirty tree there, then publish that branch through the PR flow.
+  - After B016, the generated dirty branch reached the same local-only work-branch path as preexisting local branches and merged `origin/master` before push.
+  - That base merge can conflict when local `master` was stale, but avoiding the merge would leave the generated branch unsynchronized with the current base.
+  ## Resolution
+  - Added an AI-backed merge conflict resolution service for strict sync merges.
+  - When a strict sync merge stops with unmerged files, inspect the Git stages for each conflicted path, send BASE/OURS/THEIRS context to the configured LLM client, write the resolved file, stage it, and complete the merge with `git commit --no-edit`.
+  - The resolver prompt explicitly preserves local OURS changes while integrating compatible remote THEIRS changes, and rejects LLM output that still contains conflict markers.
+  - The resolver can now stage an intentional deletion with `git rm -f -- <path>` when the AI returns the canonical delete directive.
+  - Dirty generated branches still merge `origin/master`; conflicts are resolved as part of that merge before push and PR creation.
+  ## Validation
+  - `go test ./internal/branches/syncflow`
+  - `git diff --check`
+  - `make test`
+  - `make lint`
+  - `make ci`
 
 
 ## Improvements
@@ -388,18 +436,18 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - `/Users/tyemirov/Development/Smith/mprlab-governor/scripts/normalize-mprlab --repo /Users/tyemirov/Development/gix --check`
   - `git diff --check`
 - [x] [M011R] (P2) Document user config initialization and configuration scope.
-  Requested on 2026-06-29 after reviewing whether the advertising page and README explain `gix --init user`, `$HOME/.gix/config.yaml`, and what config controls.
+  Requested on 2026-06-29 after reviewing whether the advertising page and README explain `gix init --user`, `$HOME/.gix/config.yaml`, and what config controls.
   ## Observation
-  - README listed `gix --init user` and basic precedence, but did not explain the config's practical control surface.
-  - The docs site only mentioned `gix --init LOCAL`, omitted the user config path, and linked to the old root `ISSUES.md`.
+  - README listed user config initialization and basic precedence, but did not explain the config's practical control surface.
+  - The docs site omitted the user config path and linked to the old root `ISSUES.md`.
   ## Resolution
-  - Updated README Quick Start and configuration essentials to describe `gix --init user`, `gix --init local`, `--force yes`, and `$HOME/.gix/config.yaml`.
+  - Updated README Quick Start and configuration essentials to describe `gix init --user`, local `gix init`, `--force yes`, and `$HOME/.gix/config.yaml`.
   - Documented that config controls shared logging, confirmation, clean-worktree behavior, roots/remotes, sync PR metadata, LLM transport/provider settings, release/audit defaults, and workflow defaults.
   - Updated the docs site getting-started flow, developer-tooling copy, architecture copy, and roadmap link to reflect current config and `.mprlab/ISSUES.md` contracts.
 - [x] [M012R] (P2) Add a global LLM transport switch for user config.
   Requested on 2026-06-29 after the operation-level LLM Proxy config felt too involved for a user who only wants gix to use MPR LLM Proxy.
   ## Observation
-  - `gix --init user` generated separate LLM transport, provider, env, base URL, and model settings under each message operation.
+  - User initialization generated separate LLM transport, provider, env, base URL, and model settings under each message operation.
   - A user had to edit multiple fields to express one global preference.
   - Changing only `transport` in an operation could leave inherited env/base settings from another transport.
   ## Resolution
@@ -1007,5 +1055,3 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Capped the semantic branch component at 56 characters and trims at word boundaries when possible.
   - Kept collision handling as a last resort: an already-occupied semantic branch advances to the next numeric suffix before the normal commit, push, and pull-request flow continues.
   - `make test`, `make lint`, and `make ci` passed locally.
-
-

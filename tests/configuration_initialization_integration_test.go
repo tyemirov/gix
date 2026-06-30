@@ -14,12 +14,15 @@ const (
 	configurationInitializationUserCaseNameConstant         = "user_scope"
 	configurationInitializationOverwriteCaseNameConstant    = "overwrite_protection"
 	configurationInitializationForceCaseNameConstant        = "force_overwrite"
-	configurationInitializationLocalArgumentConstant        = "--init"
-	configurationInitializationUserArgumentConstant         = "--init=user"
+	configurationInitializationCommandArgumentConstant      = "init"
+	configurationInitializationLegacyArgumentConstant       = "--init"
+	configurationInitializationLegacyUserArgumentConstant   = "user"
+	configurationInitializationUserFlagConstant             = "--user"
 	configurationInitializationForceFlagConstant            = "--force"
 	configurationInitializationHomeEnvNameConstant          = "HOME"
 	configurationInitializationUserDirectoryNameConstant    = ".gix"
 	configurationInitializationErrorMessageFragmentConstant = "already exists"
+	configurationInitializationUnknownFlagFragmentConstant  = "unknown flag: --init"
 )
 
 type configurationInitializationEnvironment struct {
@@ -42,7 +45,7 @@ func TestCLIConfigurationInitializationCreatesFiles(testInstance *testing.T) {
 	}{
 		{
 			name:      configurationInitializationLocalCaseNameConstant,
-			arguments: []string{configurationInitializationLocalArgumentConstant},
+			arguments: []string{configurationInitializationCommandArgumentConstant},
 			prepare: func(t *testing.T) configurationInitializationEnvironment {
 				workingDirectory := t.TempDir()
 				expectedPath := filepath.Join(workingDirectory, integrationConfigFileNameConstant)
@@ -54,8 +57,11 @@ func TestCLIConfigurationInitializationCreatesFiles(testInstance *testing.T) {
 			},
 		},
 		{
-			name:      configurationInitializationUserCaseNameConstant,
-			arguments: []string{configurationInitializationUserArgumentConstant},
+			name: configurationInitializationUserCaseNameConstant,
+			arguments: []string{
+				configurationInitializationCommandArgumentConstant,
+				configurationInitializationUserFlagConstant,
+			},
 			prepare: func(t *testing.T) configurationInitializationEnvironment {
 				workingDirectory := t.TempDir()
 				homeDirectory := t.TempDir()
@@ -97,6 +103,39 @@ func TestCLIConfigurationInitializationCreatesFiles(testInstance *testing.T) {
 	}
 }
 
+func TestCLIConfigurationInitializationRejectsRootInitFlag(testInstance *testing.T) {
+	currentWorkingDirectory, workingDirectoryError := os.Getwd()
+	require.NoError(testInstance, workingDirectoryError)
+	repositoryRootDirectory := filepath.Dir(currentWorkingDirectory)
+
+	binaryPath := buildIntegrationBinary(testInstance, repositoryRootDirectory)
+	workingDirectory := testInstance.TempDir()
+	homeDirectory := testInstance.TempDir()
+
+	outputText, runError := runBinaryIntegrationCommand(
+		testInstance,
+		binaryPath,
+		workingDirectory,
+		map[string]string{
+			configurationInitializationHomeEnvNameConstant: homeDirectory,
+		},
+		integrationCommandTimeout,
+		[]string{
+			configurationInitializationLegacyArgumentConstant,
+			configurationInitializationLegacyUserArgumentConstant,
+		},
+	)
+
+	require.Error(testInstance, runError)
+	require.Contains(testInstance, outputText, configurationInitializationUnknownFlagFragmentConstant)
+
+	_, localStatError := os.Stat(filepath.Join(workingDirectory, integrationConfigFileNameConstant))
+	require.ErrorIs(testInstance, localStatError, os.ErrNotExist)
+
+	_, userStatError := os.Stat(filepath.Join(homeDirectory, configurationInitializationUserDirectoryNameConstant, integrationConfigFileNameConstant))
+	require.ErrorIs(testInstance, userStatError, os.ErrNotExist)
+}
+
 func TestCLIConfigurationInitializationOverwriteProtection(testInstance *testing.T) {
 	currentWorkingDirectory, workingDirectoryError := os.Getwd()
 	require.NoError(testInstance, workingDirectoryError)
@@ -111,13 +150,13 @@ func TestCLIConfigurationInitializationOverwriteProtection(testInstance *testing
 	}{
 		{
 			name:            configurationInitializationOverwriteCaseNameConstant,
-			secondArguments: []string{configurationInitializationLocalArgumentConstant},
+			secondArguments: []string{configurationInitializationCommandArgumentConstant},
 			expectError:     true,
 		},
 		{
 			name: configurationInitializationForceCaseNameConstant,
 			secondArguments: []string{
-				configurationInitializationLocalArgumentConstant,
+				configurationInitializationCommandArgumentConstant,
 				configurationInitializationForceFlagConstant,
 			},
 			expectError: false,
@@ -134,7 +173,7 @@ func TestCLIConfigurationInitializationOverwriteProtection(testInstance *testing
 				workingDirectory,
 				map[string]string{},
 				integrationCommandTimeout,
-				[]string{configurationInitializationLocalArgumentConstant},
+				[]string{configurationInitializationCommandArgumentConstant},
 			)
 			require.NoError(t, firstError, firstOutput)
 

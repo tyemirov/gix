@@ -168,8 +168,8 @@
               <ul>
                 <li>
                   Bootstrap personal defaults with
-                  <code>gix --init user</code> or workspace defaults with
-                  <code>gix --init local</code>.
+                  <code>gix init --user</code> or workspace defaults with
+                  <code>gix init</code>.
                 </li>
                 <li>
                   Refresh dozens of example repos nightly to keep mergable
@@ -193,7 +193,7 @@
             <ol class="list-steps">
               <li><code>go install github.com/tyemirov/gix@latest</code></li>
               <li>
-                <code>gix --init user</code> to create
+                <code>gix init --user</code> to create
                 <code>~/.gix/config.yaml</code>.
               </li>
               <li>
@@ -208,7 +208,7 @@
               through MPR LLM Proxy; gix derives the proxy secret environment
               variable and base URL from that transport, and
               <code>llm.provider</code> selects the proxy upstream provider. Use
-              <code>gix --init local</code> when a workspace needs its own
+              <code>gix init</code> when a workspace needs its own
               <code>./config.yaml</code>.
             </p>
           </div>

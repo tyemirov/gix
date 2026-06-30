@@ -29,7 +29,6 @@ func (application *Application) ExecuteWithOptions(options ExecutionOptions) err
 	}
 
 	normalizedArguments := flagutils.NormalizeToggleArguments(options.Arguments)
-	normalizedArguments = normalizeInitializationScopeArguments(normalizedArguments)
 	normalizedArguments = normalizeWebArguments(normalizedArguments)
 
 	application.rootCommand.SetContext(executionContext)
