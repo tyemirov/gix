@@ -260,6 +260,37 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - `make test`
   - `make lint`
   - `make ci`
+- [x] [B018] (P1) `gix sync` should open a pull request for an existing remote branch with real changes and no open PR.
+  Requested on 2026-07-05 after `gix sync` in `/Users/tyemirov/Development/social_threader` on branch `gix/add-ci-for-mobile-app-with-coverage-and-config-checks` failed with `branch "gix/add-ci-for-mobile-app-with-coverage-and-config-checks" does not have an open pull request`, even though the branch had a diff against `origin/master`.
+  ## Observation
+  - Strict sync handled local-only branches with commits beyond the base by pushing and creating a pull request.
+  - When the remote branch already existed, strict sync checked only for an open PR and a merged-PR handoff before returning the missing-PR error.
+  - That skipped the real branch-diff check for `origin/<branch>` and refused to create a PR for an already-pushed work branch.
+  ## Resolution
+  - Existing remote branches with no open PR now check both `origin/<base>..origin/<branch>` and the local branch before falling back to merged-PR handoff.
+  - When either ref has commits beyond the base, strict sync switches to the branch, aligns it with the remote branch, merges the base, generates PR metadata from the diff, pushes, and opens the PR.
+  - Branches with no base delta still keep the merged-PR handoff and true missing-PR error paths.
+  ## Validation
+  - `go test ./tests -run TestSyncExistingRemoteBranchWithoutPullRequestCreatesPullRequest -count=1`
+  - `git diff --check`
+  - `make test`
+  - `make lint`
+  - `make ci`
+- [x] [B019] (P1) `gix sync` should hand off merged PR branches before creating new PRs and should honor explicit `master` sync from linked worktrees.
+  Requested on 2026-07-06 after `gix sync` on `improvement/I053-provider-history-handles` reported no open pull request instead of prompting to sync `master`, and `gix sync master` then failed while trying to remove `/Users/tyemirov/Development/MediaOps` even though that path is the main working tree.
+  ## Observation
+  - The existing-remote no-PR path checked branch diffs before checking merged pull requests, so squash-merged branches could look like new review branches because their commits were not ancestors of `origin/master`.
+  - Explicit base-branch sync used the sibling-worktree adoption flow when `master` was already checked out elsewhere, and that flow always attempted `git worktree remove`, which Git rejects for a main working tree.
+  ## Resolution
+  - Strict sync now checks merged pull request handoff before creating a pull request for an existing remote branch with no open PR.
+  - If the merged-PR prompt is declined, sync keeps the missing-open-PR error instead of opening a new PR for the already-merged branch.
+  - Worktree adoption now preserves any sibling worktree changes, pushes when needed, and detaches a sibling main worktree instead of trying to remove it; removable linked worktrees still use the existing remove-and-prune path.
+  ## Validation
+  - `go test ./tests -run 'TestSync(CurrentMergedBranchPromptsAndSyncsMasterBeforeCreatingPullRequest|ExplicitMasterReleasesMainWorktreeAndSwitchesLinkedWorktree|ExistingRemoteBranchWithoutPullRequestCreatesPullRequest)' -count=1`
+  - `git diff --check`
+  - `make test`
+  - `make lint`
+  - `make ci`
 
 
 ## Improvements

@@ -24,6 +24,7 @@ const (
 	gitWorktreePruneSubcommandConstant        = "prune"
 	gitPorcelainFlagConstant                  = "--porcelain"
 	gitPorcelainBranchFlagConstant            = "--branch"
+	gitSwitchDetachFlagConstant               = "--detach"
 	gitStatusSubcommand                       = "status"
 	gitAddSubcommand                          = "add"
 	gitCommitSubcommand                       = "commit"
@@ -45,7 +46,9 @@ const (
 	worktreePushFailureTemplate               = "failed to push adopted worktree branch %q from %s: %w"
 	worktreePushInspectionFailureTemplate     = "failed to inspect push requirement for branch %q against %q from %s: %w"
 	worktreeRemoteInspectionFailureTemplate   = "failed to inspect remote branch %q from %s: %w"
+	worktreeKindInspectionFailureTemplate     = "failed to inspect worktree kind at %s: %w"
 	worktreeRemoveFailureTemplate             = "failed to remove sibling worktree %s: %w"
+	worktreeDetachFailureTemplate             = "failed to detach sibling main worktree %s: %w"
 	worktreePruneFailureTemplate              = "failed to prune worktrees after removing %s: %w"
 	worktreeMessageClientConfigurationFailure = "commit message generation requires model configuration"
 	worktreeMessageAPIKeyFailureTemplate      = "environment variable %s must be set to generate a commit message"
@@ -56,6 +59,7 @@ const (
 	worktreeAdoptCommitMessage                = "committed sibling worktree changes"
 	worktreeAdoptPushMessage                  = "pushed sibling worktree branch"
 	worktreeAdoptRemoveMessage                = "removed sibling worktree"
+	worktreeAdoptDetachMessage                = "detached sibling main worktree"
 	worktreeAdoptPruneMessage                 = "pruned worktree metadata"
 )
 
@@ -329,6 +333,24 @@ func (service worktreeAdoptionService) adoptSiblingWorktree(ctx context.Context,
 		)
 	}
 
+	mainWorktree, mainWorktreeErr := isMainWorktreePath(worktree.Path)
+	if mainWorktreeErr != nil {
+		return mainWorktreeErr
+	}
+	if mainWorktree {
+		if detachErr := executeGit(ctx, service.environment.GitExecutor, worktree.Path, []string{gitSwitchSubcommandConstant, gitSwitchDetachFlagConstant}); detachErr != nil {
+			return fmt.Errorf(worktreeDetachFailureTemplate, worktree.Path, detachErr)
+		}
+		service.environment.ReportRepositoryEvent(
+			service.repository,
+			shared.EventLevelInfo,
+			shared.EventCodeWorktreeAdopt,
+			worktreeAdoptDetachMessage,
+			map[string]string{"branch": branchName, "worktree": worktree.Path},
+		)
+		return nil
+	}
+
 	if removeErr := executeGit(ctx, service.environment.GitExecutor, service.repository.Path, []string{gitWorktreeSubcommandConstant, gitWorktreeRemoveSubcommandConstant, worktree.Path}); removeErr != nil {
 		return fmt.Errorf(worktreeRemoveFailureTemplate, worktree.Path, removeErr)
 	}
@@ -352,6 +374,17 @@ func (service worktreeAdoptionService) adoptSiblingWorktree(ctx context.Context,
 	)
 
 	return nil
+}
+
+func isMainWorktreePath(worktreePath string) (bool, error) {
+	metadataInfo, metadataErr := os.Stat(filepath.Join(worktreePath, ".git"))
+	if metadataErr != nil {
+		if os.IsNotExist(metadataErr) {
+			return false, nil
+		}
+		return false, fmt.Errorf(worktreeKindInspectionFailureTemplate, worktreePath, metadataErr)
+	}
+	return metadataInfo.IsDir(), nil
 }
 
 func inspectSiblingWorktreeStatus(ctx context.Context, executor shared.GitExecutor, worktreePath string) (worktreeStatus, error) {
