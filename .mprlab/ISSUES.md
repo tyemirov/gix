@@ -291,7 +291,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - `make test`
   - `make lint`
   - `make ci`
-- [ ] [B020] (P0) Investigate missing GitHub PR for branch gix/publish-seo-resource-hub-45-resource-pages-sitemap-and.
+- [ ] [B020] (P0) Investigate missing GitHub PR for branch after gix sync operation.
   Goal:
   Determine why `gh pr view -w` reports no pull requests for branch `gix/publish-seo-resource-hub-45-resource-pages-sitemap-and` in the SummerCan repo and ensure the correct PR exists or can be created without confusion.
   
