@@ -50,7 +50,7 @@ func TestSyncCurrentMergedBranchPromptsAndSyncsMasterBeforeCreatingPullRequest(t
 		},
 		syncMergedBranchIntegrationTimeout,
 		"y\n",
-		[]string{"run", ".", "--config", configurationPath, "--log-level", "error", "sync", branchName, "--roots", fixture.RepositoryPath},
+		[]string{"run", ".", "--config", configurationPath, "--log-level", "error", "sync", "--roots", fixture.RepositoryPath},
 	)
 	require.NoError(testInstance, runError, output)
 
