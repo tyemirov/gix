@@ -291,6 +291,18 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - `make test`
   - `make lint`
   - `make ci`
+- [ ] [B020] (P0) Investigate missing GitHub PR for branch after gix sync operation.
+  Goal:
+  Determine why `gh pr view -w` reports no pull requests for branch `gix/publish-seo-resource-hub-45-resource-pages-sitemap-and` in the SummerCan repo and ensure the correct PR exists or can be created without confusion.
+  
+  Requirements:
+  Do not force-push, delete, or rename the `gix/publish-seo-resource-hub-45-resource-pages-sitemap-and` branch without confirmation from the code owner. Preserve all existing commits on this branch. Use only standard git and GitHub CLI operations available to the team. Keep changes scoped to resolving the PR visibility/association issue for this specific branch and repository.
+  
+  Deliverables:
+  Diagnosis summary explaining why `gh pr view` cannot find a PR for `gix/publish-seo-resource-hub-45-resource-pages-sitemap-and` (for example, branch not pushed, PR created from a different fork, or PR closed). Clear instructions or executed steps to either associate the existing branch with its correct PR or create a new PR targeting the intended base branch. Updated internal notes or docs (if applicable) describing how to troubleshoot similar `gh pr view` no-pull-requests-found scenarios for feature branches.
+  
+  Validation:
+  From the `gix/publish-seo-resource-hub-45-resource-pages-sitemap-and` branch, running `gh pr view` without extra flags returns the expected PR details instead of `no pull requests found`. The GitHub web UI shows an open or intentionally closed/merged PR that clearly references this branch as the head, with the correct base branch. The developer who reported the issue can follow the documented steps to reproduce the prior failure state and confirm it is explained and resolved or no longer reproducible.
 
 
 ## Improvements
@@ -1086,3 +1098,5 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Capped the semantic branch component at 56 characters and trims at word boundaries when possible.
   - Kept collision handling as a last resort: an already-occupied semantic branch advances to the next numeric suffix before the normal commit, push, and pull-request flow continues.
   - `make test`, `make lint`, and `make ci` passed locally.
+
+
