@@ -17,6 +17,28 @@
 ### Docs 📚
 - _No changes._
 
+## [v0.8.1] - 2026-07-06
+
+### Features ✨
+- _No changes._
+
+### Improvements ⚙️
+- Improved `gix sync` to better handle orphaned remote branches and adoption of the main worktree during sync operations.
+- Enhanced the flow for existing remote branches with no open PRs: now checks for actual diffs before prompting for merged PR handoff or raising errors.
+- Worktree adoption now safely detaches the main worktree instead of attempting its removal, preserving local changes and stability.
+
+### Bug Fixes 🐛
+- Fixed an issue where `gix sync` would mistakenly refuse to open a pull request for an existing remote branch with real changes.
+- Resolved handling of merged PR branches so that users are prompted to sync `master` before any new PR is created.
+- Corrected errors during explicit `master` sync from linked worktrees, preventing failed attempts to remove the main working tree.
+
+### Testing 🧪
+- Added integration tests covering merged branch sync scenarios, including PR creation, merged-PR handoff, and linked worktree behaviors.
+- Removed redundant `branchName` argument from sync command integration tests.
+
+### Docs 📚
+- Documented sync pull request behavior, worktree handoff resolutions, and validations in `.mprlab/ISSUES.md`.
+
 ## [v0.8.0] - 2026-06-30
 
 ### Features ✨
