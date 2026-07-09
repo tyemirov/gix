@@ -291,6 +291,34 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - `make test`
   - `make lint`
   - `make ci`
+- [x] [B020] (P1) Dirty `gix sync <new-branch>` should create the new branch from the current checkout before committing clustered changes.
+  Requested on 2026-07-09 after explicit new-branch sync proved unreliable when the current non-base branch had uncommitted files.
+  ## Observation
+  - Dirty sync creates a missing explicit target from `origin/master` unless the current branch itself is `master`.
+  - Switching a dirty non-base checkout to a new branch at `origin/master` can fail because tracked changes would be overwritten.
+  - When the switch succeeds, the new branch can still discard the current branch's committed ancestry instead of matching normal `git switch -c <new-branch>` semantics.
+  ## Deliverable
+  - Create a missing explicit dirty-sync target at the current checkout.
+  - Preserve the current branch's committed ancestry and split stageable dirty paths into a linear sequence of top-level-area commits on the new branch.
+  - Continue through the existing merge-based push and pull-request flow after the dirty work is committed.
+  - Add black-box CLI coverage from a dirty non-base branch where switching back to `origin/master` would overwrite the local work.
+  ## Validation
+  - Focused failing-then-passing sync integration regression.
+  - `make test`
+  - `make lint`
+  - `make ci`
+  ## Resolution
+  - Missing explicit sync targets now use one canonical `git switch -c <new-branch>` path rooted at the current branch's `HEAD` for both dirty and clean worktrees.
+  - Dirty sync creates that branch before staging, message generation, and top-level cluster commits, then merges the configured remote base before push and pull-request creation.
+  - Added a public-CLI regression proving the source branch remains unchanged and ancestral, two dirty clusters form an exact linear parent chain, the remote-base merge occurs after both commits, and the resulting branch is clean, tracked, pushed, and PR-backed.
+  - Extended the same regression through a clean child-branch run so the separate clean missing-target path is also proven to start at the current `HEAD` without adding commits.
+  ## Validation Result
+  - Initial `make test` failed at `switch -c feature/clustered-work origin/master` with Git's tracked-file overwrite error.
+  - `env GOFLAGS=-count=1 make test-slow`
+  - `make test`
+  - `make lint`
+  - `make ci`
+  - `git diff --check`
 
 
 ## Improvements
