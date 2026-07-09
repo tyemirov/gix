@@ -720,8 +720,11 @@ func syncPullRequestBranch(ctx context.Context, environment *workflow.Environmen
 	if !baseExists {
 		return strictPullRequestBranchResult{}, fmt.Errorf("remote base branch %q does not exist", baseReference)
 	}
-	if createErr := executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitSwitchSubcommandConstant, gitCreateBranchFlagConstant, options.BranchName, baseReference}); createErr != nil {
+	if createErr := createStrictSyncBranchFromCurrentCheckout(ctx, environment.GitExecutor, repository.Path, options.BranchName); createErr != nil {
 		return strictPullRequestBranchResult{}, createErr
+	}
+	if mergeErr := mergeBaseIntoBranch(ctx, environment.GitExecutor, repository.Path, options.RemoteName, options.BaseBranch, options.BranchName, options.CommitMessages); mergeErr != nil {
+		return strictPullRequestBranchResult{}, mergeErr
 	}
 	if pullRequestErr := pushAndCreatePullRequest(ctx, environment, repository, repositoryIdentifier, options); pullRequestErr != nil {
 		return strictPullRequestBranchResult{}, pullRequestErr

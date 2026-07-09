@@ -1568,7 +1568,9 @@ func TestHandleBranchSyncActionStrictPRBranchCreatesMissingRemoteBranchAndPullRe
 	}
 
 	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
-	require.Contains(t, recordedGitCommands(gitExecutor.commands), "switch -c feature/foo origin/master")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "switch -c feature/foo")
+	require.NotContains(t, recordedGitCommands(gitExecutor.commands), "switch -c feature/foo origin/master")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "merge --no-edit origin/master")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "push -u origin feature/foo")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "diff --stat origin/master...feature/foo")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "diff --unified=3 origin/master...feature/foo")
@@ -1726,7 +1728,9 @@ func TestHandleBranchSyncActionStrictPRBranchUsesExplicitPullRequestMetadata(t *
 	}
 
 	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
-	require.Contains(t, recordedGitCommands(gitExecutor.commands), "switch -c feature/foo origin/master")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "switch -c feature/foo")
+	require.NotContains(t, recordedGitCommands(gitExecutor.commands), "switch -c feature/foo origin/master")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "merge --no-edit origin/master")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "push -u origin feature/foo")
 	require.NotContains(t, recordedGitCommands(gitExecutor.commands), "diff --stat origin/master...feature/foo")
 	require.NotContains(t, recordedGitCommands(gitExecutor.commands), "diff --unified=3 origin/master...feature/foo")
@@ -2137,7 +2141,9 @@ func TestHandleBranchSyncActionStrictPRBranchDoesNotPushWhenPullRequestBodyGener
 	syncError := handleBranchSyncAction(context.Background(), environment, repository, parameters)
 	require.Error(t, syncError)
 	require.Contains(t, syncError.Error(), "empty_response")
-	require.Contains(t, recordedGitCommands(gitExecutor.commands), "switch -c feature/foo origin/master")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "switch -c feature/foo")
+	require.NotContains(t, recordedGitCommands(gitExecutor.commands), "switch -c feature/foo origin/master")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "merge --no-edit origin/master")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "diff --stat origin/master...feature/foo")
 	require.NotContains(t, recordedGitCommands(gitExecutor.commands), "push -u origin feature/foo")
 	require.Len(t, githubExecutor.commands, 0)
