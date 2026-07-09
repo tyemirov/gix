@@ -18,6 +18,7 @@ const (
 	syncMergedBranchIntegrationTimeout = 20 * time.Second
 	syncMergedBranchOwnerRepository    = "owner/project"
 	syncMergedBranchRemoteURL          = "https://github.com/" + syncMergedBranchOwnerRepository + ".git"
+	syncMergedBranchGitLogVariable     = "GIX_SYNC_TEST_GIT_LOG"
 	syncMergedBranchGitHubLogVariable  = "GIX_SYNC_TEST_GH_LOG"
 	syncMergedBranchNameVariable       = "GIX_SYNC_TEST_BRANCH"
 	syncMergedBranchMergedVariable     = "GIX_SYNC_TEST_MERGED"
@@ -281,6 +282,9 @@ func buildSyncMergedBranchExecutablePath(testInstance *testing.T) string {
 	require.NoError(testInstance, lookupError)
 
 	gitStubScript := fmt.Sprintf(`#!/bin/sh
+if [ -n "$GIX_SYNC_TEST_GIT_LOG" ]; then
+  printf '%%s\n' "$*" >>"$GIX_SYNC_TEST_GIT_LOG"
+fi
 if [ "$1" = "remote" ] && [ "$2" = "get-url" ] && [ "$3" = "origin" ]; then
   printf '%%s\n' %q
   exit 0
