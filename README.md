@@ -21,6 +21,16 @@ gix makes one pull-request-centered Git workflow mechanical: `master` belongs to
 6. Start or resume PR work: `gix sync feature/my-change`.
 7. Sync the current branch later with plain `gix sync`.
 
+## Release, Publish, Deploy
+
+```bash
+make release
+make publish
+make deploy
+```
+
+`make release` runs CI and prepares the cross-platform binaries, checksums, documentation Pages archive, changelog commit, annotated tag, and release manifest entirely from local state under `.git/mprlab-release`. It performs no remote write. `make publish` pushes the exact prepared Git refs and GitHub Release assets without rebuilding. `make deploy` activates the published documentation archive at `gix.mprlab.com`; the CLI itself has no runtime rollout.
+
 ## The sync flow
 
 `gix sync` has four forms:
@@ -29,10 +39,10 @@ gix makes one pull-request-centered Git workflow mechanical: `master` belongs to
 | --- | --- |
 | `gix sync <remote-url>` | Clone into an empty directory or verify the current workspace already points at that remote. |
 | `gix sync master` | Clean tree: restore local `master` from `origin/master`. Dirty tree: create a generated PR work branch, commit the dirty work, then push. |
-| `gix sync <branch>` | Require or create a remote branch with an open PR, commit dirty work when present, merge the existing PR base branch (or `origin/master` for a new PR branch), then push. |
+| `gix sync <branch>` | Reuse an existing PR branch, or create a missing branch on top of the current branch; commit dirty work when present, merge the review base, then push. |
 | `gix sync` | Apply the same rule to the current branch. |
 
-By default, a dirty `gix sync` clusters changed paths by top-level area, stages and commits each cluster with a Conventional Commit message from the configured `github.com/tyemirov/utils/llm` client, then continues the no-rebase sync and push. When sync creates a pull request, its body is generated from the branch diff unless `--body` or `sync.pull_request.body` supplies explicit text; the title defaults to the branch unless `--title` or `sync.pull_request.title` supplies it. `--stash` temporarily shelves dirty work instead of committing it, `--commit` explicitly selects the auto-commit policy for scripts that already pass it, and `--require-clean` by itself opts back into failing when the worktree is dirty.
+When an explicit branch does not exist, sync creates it at the current branch's `HEAD`. By default, a dirty `gix sync` then clusters changed paths by top-level area, stages and commits each cluster with a Conventional Commit message from the configured `github.com/tyemirov/utils/llm` client, and continues the no-rebase sync and push. The configured remote base is merged only after the new branch and its clustered commits exist, so the current branch remains in the new branch's ancestry. When sync creates a pull request, its body is generated from the branch diff unless `--body` or `sync.pull_request.body` supplies explicit text; the title defaults to the branch unless `--title` or `sync.pull_request.title` supplies it. `--stash` temporarily shelves dirty work instead of committing it, `--commit` explicitly selects the auto-commit policy for scripts that already pass it, and `--require-clean` by itself opts back into failing when the worktree is dirty.
 
 Merge conflicts stop before push and leave the repository in Git's normal conflict state. The PR branch is "ours"; `origin/master` is "theirs".
 
@@ -561,7 +571,7 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
 - `gix default <target-branch> [--roots <dir>...] [-y]`
  - Promotes the default branch across repositories.
 - `gix sync [remote-url|branch] [--remote <name>] [--title <text>] [--body <markdown>] [--stash | --commit] [--require-clean] [--roots <dir>...]` (alias `switch`)
- - Synchronizes the current workspace through the Gix flow: remote attach/clone, remote-owned `master`, or PR-backed work branches. Existing PR branches sync against their current PR base branch. Dirty work is clustered, LLM-described, committed, and pushed by default; dirty `master` sync creates a generated PR work branch. Sync never rebases or force-pushes. PR body text is generated from the branch diff unless `--body` or `sync.pull_request.body` is set; PR title defaults to the branch unless `--title` or `sync.pull_request.title` is set. `--stash` temporarily shelves dirty work, `--commit` explicitly selects the auto-commit policy, and `--require-clean` requires a clean worktree only when no dirty-work policy is selected.
+ - Synchronizes the current workspace through the Gix flow: remote attach/clone, remote-owned `master`, or PR-backed work branches. Existing PR branches sync against their current PR base branch; missing explicit branches are created on top of the current branch. Dirty work is clustered, LLM-described, committed, and pushed by default; dirty `master` sync creates a generated PR work branch. Sync never rebases or force-pushes. PR body text is generated from the branch diff unless `--body` or `sync.pull_request.body` is set; PR title defaults to the branch unless `--title` or `sync.pull_request.title` is set. `--stash` temporarily shelves dirty work, `--commit` explicitly selects the auto-commit policy, and `--require-clean` requires a clean worktree only when no dirty-work policy is selected.
 ## Configuration essentials
 
 - `gix init` or `gix init --local` writes an embeddable starter `./config.yaml` for the current workspace.
