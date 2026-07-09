@@ -9,13 +9,13 @@
 - _No changes._
 
 ### Bug Fixes 🐛
-- _No changes._
+- Fixed `gix sync <new-branch>` to create a missing target on top of the current branch before clustering dirty work, preventing checkout-overwrite failures and lost branch ancestry.
 
 ### Testing 🧪
-- _No changes._
+- Added a black-box dirty-sync regression that verifies two top-level change clusters become two linear commits above the original branch before push and pull-request creation.
 
 ### Docs 📚
-- _No changes._
+- Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 
 ## [v0.8.1] - 2026-07-06
 
