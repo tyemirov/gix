@@ -274,7 +274,7 @@ func (application *Application) registerCommands(cobraCommand *cobra.Command) {
 			branchSyncCommand,
 			branchSyncTopLevelUsageTemplateConstant,
 			branchSyncCommand.Short,
-			branchSyncLongDescriptionConstant,
+			branchSyncCommand.Long,
 			branchSyncCommandAliasConstant,
 		)
 		cobraCommand.AddCommand(branchSyncCommand)

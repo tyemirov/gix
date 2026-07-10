@@ -294,15 +294,101 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 - [ ] [B020] (P0) Investigate missing GitHub PR for branch after gix sync operation.
   Goal:
   Determine why `gh pr view -w` reports no pull requests for branch `gix/publish-seo-resource-hub-45-resource-pages-sitemap-and` in the SummerCan repo and ensure the correct PR exists or can be created without confusion.
-  
+
   Requirements:
   Do not force-push, delete, or rename the `gix/publish-seo-resource-hub-45-resource-pages-sitemap-and` branch without confirmation from the code owner. Preserve all existing commits on this branch. Use only standard git and GitHub CLI operations available to the team. Keep changes scoped to resolving the PR visibility/association issue for this specific branch and repository.
-  
+
   Deliverables:
   Diagnosis summary explaining why `gh pr view` cannot find a PR for `gix/publish-seo-resource-hub-45-resource-pages-sitemap-and` (for example, branch not pushed, PR created from a different fork, or PR closed). Clear instructions or executed steps to either associate the existing branch with its correct PR or create a new PR targeting the intended base branch. Updated internal notes or docs (if applicable) describing how to troubleshoot similar `gh pr view` no-pull-requests-found scenarios for feature branches.
-  
+
   Validation:
   From the `gix/publish-seo-resource-hub-45-resource-pages-sitemap-and` branch, running `gh pr view` without extra flags returns the expected PR details instead of `no pull requests found`. The GitHub web UI shows an open or intentionally closed/merged PR that clearly references this branch as the head, with the correct base branch. The developer who reported the issue can follow the documented steps to reproduce the prior failure state and confirm it is explained and resolved or no longer reproducible.
+- [x] [B021] (P1) Dirty `gix sync <new-branch>` should create the new branch from the current checkout before committing clustered changes.
+  Requested on 2026-07-09 after explicit new-branch sync proved unreliable when the current non-base branch had uncommitted files.
+  ## Observation
+  - Dirty sync creates a missing explicit target from `origin/master` unless the current branch itself is `master`.
+  - Switching a dirty non-base checkout to a new branch at `origin/master` can fail because tracked changes would be overwritten.
+  - When the switch succeeds, the new branch can still discard the current branch's committed ancestry instead of matching normal `git switch -c <new-branch>` semantics.
+  ## Deliverable
+  - Create a missing explicit dirty-sync target at the current checkout.
+  - Preserve the current branch's committed ancestry and split stageable dirty paths into a linear sequence of top-level-area commits on the new branch.
+  - Continue through the existing merge-based push and pull-request flow after the dirty work is committed.
+  - Add black-box CLI coverage from a dirty non-base branch where switching back to `origin/master` would overwrite the local work.
+  ## Validation
+  - Focused failing-then-passing sync integration regression.
+  - `make test`
+  - `make lint`
+  - `make ci`
+  ## Resolution
+  - Missing explicit sync targets now use one canonical `git switch -c <new-branch>` path rooted at the current branch's `HEAD` for both dirty and clean worktrees.
+  - Dirty sync creates that branch before staging, message generation, and top-level cluster commits, then merges the configured remote base before push and pull-request creation.
+  - Explicit `gix sync master` from a different dirty feature branch now stashes only the dirty files, creates the generated rescue branch at `origin/master`, restores the dirty files, and excludes the feature branch's committed ancestry; dirty sync while already on `master` keeps the intentional current-HEAD rescue behavior.
+  - Generated-name selection treats local-only branches as occupied, so a retry advances to a fresh suffix instead of adopting stale ancestry that has never been published.
+  - Added a public-CLI regression proving the source branch remains unchanged and ancestral, two dirty clusters form an exact linear parent chain, the remote-base merge occurs after both commits, and the resulting branch is clean, tracked, pushed, and PR-backed.
+  - Extended the same regression through a clean child-branch run so the separate clean missing-target path is also proven to start at the current `HEAD` without adding commits.
+  ## Validation Result
+  - Initial `make test` failed at `switch -c feature/clustered-work origin/master` with Git's tracked-file overwrite error.
+  - `env GOFLAGS=-count=1 make test-slow`
+  - `make test`
+  - `make lint`
+  - `make ci`
+  - `git diff --check`
+  - Review-fix regression proved explicit `gix sync master` from a dirty feature branch stashes before creating the generated branch at `origin/master`, restores only dirty files, and excludes the source commit.
+- [x] [B022] (P0) Reject truncated AI merge-conflict resolutions before commit or push.
+  Goal:
+  Prevent `gix sync` from accepting an LLM response that resolves a conflict hunk by silently deleting unrelated file content.
+  Requirements:
+  - Preserve every non-conflicting region of a conflicted file byte-for-byte while resolving only the conflicting regions.
+  - Reject incomplete, truncated, or structurally invalid resolution output before `git commit --no-edit`.
+  - Stop before push and leave the repository in an inspectable conflict state when the resolution cannot be proven complete.
+  Deliverables:
+  - A public sync regression using a long conflicted file that exceeds a typical LLM response and proves unrelated tail content survives.
+  - Conflict-resolution validation that detects missing non-conflicting regions without a fallback or best-effort path.
+  Validation:
+  - Reproduce merge `0840b797`, where `.mprlab/ISSUES.md` shrank from 1,116 and 1,102 parent lines to 365 lines.
+  - Prove a rejected resolution creates no merge commit and performs no push.
+  - `make test`
+  - `make lint`
+  - `make ci`
+  Resolution:
+  - Conflict resolution now reads the actual marker-bearing worktree file and parses its non-conflicting prefix, interstitial, and suffix regions.
+  - Every non-conflicting byte region must remain in the returned complete file in its original order; truncated, marker-bearing, structurally invalid, or deletion responses that would discard non-conflicting regions are rejected before write, stage, merge commit, push, or pull-request creation.
+  - Marker-free modify/delete and rename/delete conflicts accept only an exact preservation of the local stage, including its explicit deletion; synthesized or truncated whole-file output is rejected because its completeness cannot be proven.
+  - Added a public `gix sync master` regression with a 1,100-line conflicted tracker that reproduces the `0840b797` truncation class and proves rejection leaves the original conflict markers and unrelated tail content inspectable.
+  Validation Result:
+  - The new regression failed before implementation because the truncated response was accepted and the flow requested pull-request text; it passes after preservation validation and proves no merge commit, push, or pull-request creation occurs.
+  - A separate public modify/delete regression failed before implementation because marker-free truncated output was committed and pushed; it now remains unmerged and inspectable with the remote file intact.
+  - `make format`
+  - `make test`
+  - `make lint`
+  - `make ci`
+  - `git diff --check`
+- [x] [B023] (P1) Repository release targets must be self-contained and fail closed.
+  Requested on 2026-07-09 after branch review found that the local release workflow depended on an untracked sibling checkout and could report success after a platform build failed.
+  Observation:
+  - `RELEASE_TOOL_DIR` pointed at `../agentSkills/gitrelease/scripts`, so a clean repository checkout could not run the documented release, publish, or deploy targets.
+  - The multi-platform shell loop did not stop on a failed `go build`, allowing a later checksum command to hide a missing binary.
+  Resolution:
+  - Added the required Python and shell release helpers under the repository-owned `scripts/release` directory and made the Makefile use that canonical path.
+  - Release artifact construction now stops on the first failed or missing build, verifies the exact five expected platform binaries, rejects unexpected outputs, and checksums only the validated set.
+  - Pages deployment now requires the downloaded GitHub Release manifest to match the locally prepared manifest before trusting its archive digest, and preflights every integrity command including `curl` and `shasum`.
+  - Removed the partially supported alternate publish remote; prepared release fetch, tag validation, branch/tag push, and GitHub publication now use the repository's canonical `origin` contract consistently.
+  - Added black-box Makefile coverage for isolated-checkout helper availability, a failed platform build, and a successful build command that omits its expected output.
+  Validation Result:
+  - `env GOFLAGS='-run=TestRelease' make test-slow`
+  - Shell and Python syntax checks passed.
+  - A real five-platform `make release-artifacts` run produced the five expected binaries and a five-entry checksum file.
+  - Black-box deployment tests reject a replaced published manifest and fail immediately when `curl` or `shasum` is unavailable.
+  - Public helper coverage proves `publish-prepared-release` no longer advertises the unsupported `--remote` override.
+  - `make test`, `make lint`, and `make ci` passed.
+- [x] [B024] (P2) Root sync help must expose the syncflow builder contract.
+  Requested on 2026-07-09 after branch review showed that the application command registry overwrote the updated sync description with a stale duplicate constant.
+  Resolution:
+  - Removed the duplicate application-level long description and retained the syncflow builder's description when registering the root command.
+  - Added a public `gix sync --help` regression proving the current-HEAD missing-branch contract is visible to operators.
+  Validation Result:
+  - The focused public help regression failed against the stale application-level text before the fix and passed after the duplicate was removed.
+  - `make test`, `make lint`, and `make ci` passed.
 
 
 ## Improvements
@@ -1098,5 +1184,3 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Capped the semantic branch component at 56 characters and trims at word boundaries when possible.
   - Kept collision handling as a last resort: an already-occupied semantic branch advances to the next numeric suffix before the normal commit, push, and pull-request flow continues.
   - `make test`, `make lint`, and `make ci` passed locally.
-
-

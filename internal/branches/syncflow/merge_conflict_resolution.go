@@ -28,8 +28,11 @@ const (
 	mergeConflictResolutionInspectFailure       = "inspect unmerged files: %w"
 	mergeConflictResolutionStageInspectTemplate = "inspect conflict stages for %s: %w"
 	mergeConflictResolutionStageReadTemplate    = "read %s stage %d: %w"
+	mergeConflictResolutionWorktreeReadTemplate = "read conflicted worktree file %s: %w"
 	mergeConflictResolutionEmptyResponse        = "llm returned an empty merge resolution for %s"
 	mergeConflictResolutionConflictMarkers      = "llm left conflict markers in merge resolution for %s"
+	mergeConflictResolutionPreservationTemplate = "llm merge resolution for %s does not preserve non-conflicting content"
+	mergeConflictResolutionStructureTemplate    = "conflicted worktree file %s has invalid conflict marker structure"
 	mergeConflictResolutionWriteTemplate        = "write resolved merge file %s: %w"
 	mergeConflictResolutionStageTemplate        = "stage resolved merge file %s: %w"
 	mergeConflictResolutionDeleteTemplate       = "stage deleted merge file %s: %w"
@@ -53,16 +56,27 @@ type mergeConflictResolutionOptions struct {
 }
 
 type mergeConflictFile struct {
-	Path   string
-	Base   string
-	Ours   string
-	Theirs string
+	Path            string
+	Base            string
+	Ours            string
+	OursPresent     bool
+	Theirs          string
+	WorktreeContent string
 }
 
 type mergeConflictFileResolution struct {
 	Delete  bool
 	Content string
 }
+
+type mergeConflictMarkerState uint8
+
+const (
+	mergeConflictMarkerStateOutside mergeConflictMarkerState = iota
+	mergeConflictMarkerStateOurs
+	mergeConflictMarkerStateBase
+	mergeConflictMarkerStateTheirs
+)
 
 func resolveMergeConflictOrError(ctx context.Context, executor shared.GitExecutor, repositoryPath string, sourceReference string, targetBranch string, conflictMessage string, commitMessages worktreeAdoptionCommitMessageOptions, mergeErr error) error {
 	service := mergeConflictResolutionService{
@@ -75,7 +89,7 @@ func resolveMergeConflictOrError(ctx context.Context, executor shared.GitExecuto
 		TargetBranch:    targetBranch,
 	})
 	if resolveErr != nil {
-		return fmt.Errorf("%s: %w", conflictMessage, errors.Join(mergeErr, fmt.Errorf(mergeConflictResolutionFailureTemplate, resolveErr)))
+		return fmt.Errorf("%s: %w", conflictMessage, errors.Join(fmt.Errorf(mergeConflictResolutionFailureTemplate, resolveErr), mergeErr))
 	}
 	if !resolved {
 		return fmt.Errorf("%s: %w", conflictMessage, mergeErr)
@@ -177,12 +191,34 @@ func (service mergeConflictResolutionService) collectConflictFile(ctx context.Co
 	if theirsErr != nil {
 		return mergeConflictFile{}, theirsErr
 	}
+	worktreeContent, worktreeContentErr := service.conflictedWorktreeContent(path)
+	if worktreeContentErr != nil {
+		return mergeConflictFile{}, worktreeContentErr
+	}
+	_, oursPresent := stages[2]
 	return mergeConflictFile{
-		Path:   path,
-		Base:   base,
-		Ours:   ours,
-		Theirs: theirs,
+		Path:            path,
+		Base:            base,
+		Ours:            ours,
+		OursPresent:     oursPresent,
+		Theirs:          theirs,
+		WorktreeContent: worktreeContent,
 	}, nil
+}
+
+func (service mergeConflictResolutionService) conflictedWorktreeContent(path string) (string, error) {
+	worktreePath, pathErr := mergeConflictResolutionFilesystemPath(service.repositoryPath, path)
+	if pathErr != nil {
+		return "", pathErr
+	}
+	content, readErr := os.ReadFile(worktreePath)
+	if readErr == nil {
+		return string(content), nil
+	}
+	if os.IsNotExist(readErr) {
+		return "", nil
+	}
+	return "", fmt.Errorf(mergeConflictResolutionWorktreeReadTemplate, path, readErr)
 }
 
 func (service mergeConflictResolutionService) conflictStages(ctx context.Context, path string) (map[int]struct{}, error) {
@@ -234,13 +270,16 @@ func (service mergeConflictResolutionService) resolveConflictFile(ctx context.Co
 	if resolvedContent == "" {
 		return mergeConflictFileResolution{}, fmt.Errorf(mergeConflictResolutionEmptyResponse, conflictFile.Path)
 	}
+	resolution := mergeConflictFileResolution{Content: response}
 	if resolvedContent == mergeConflictResolutionDeleteDirective {
-		return mergeConflictFileResolution{Delete: true}, nil
-	}
-	if containsConflictMarker(resolvedContent) {
+		resolution = mergeConflictFileResolution{Delete: true}
+	} else if containsConflictMarker(resolvedContent) {
 		return mergeConflictFileResolution{}, fmt.Errorf(mergeConflictResolutionConflictMarkers, conflictFile.Path)
 	}
-	return mergeConflictFileResolution{Content: response}, nil
+	if preservationErr := validateMergeConflictResolutionPreservation(conflictFile, resolution); preservationErr != nil {
+		return mergeConflictFileResolution{}, preservationErr
+	}
+	return resolution, nil
 }
 
 func (service mergeConflictResolutionService) buildResolutionRequest(options mergeConflictResolutionOptions, conflictFile mergeConflictFile) llm.ChatRequest {
@@ -317,4 +356,156 @@ func containsConflictMarker(value string) bool {
 		}
 	}
 	return false
+}
+
+func validateMergeConflictResolutionPreservation(conflictFile mergeConflictFile, resolution mergeConflictFileResolution) error {
+	nonConflictingRegions, conflictCount, parseErr := mergeConflictNonConflictingRegions(conflictFile.WorktreeContent)
+	if parseErr != nil {
+		return fmt.Errorf(mergeConflictResolutionStructureTemplate+": %w", conflictFile.Path, parseErr)
+	}
+	if conflictCount == 0 {
+		return validateMarkerFreeMergeConflictResolution(conflictFile, resolution)
+	}
+	if !mergeConflictRegionsContainContent(nonConflictingRegions) {
+		return nil
+	}
+	if resolution.Delete || !mergeConflictResolutionPreservesRegions(resolution.Content, nonConflictingRegions) {
+		return fmt.Errorf(mergeConflictResolutionPreservationTemplate, conflictFile.Path)
+	}
+	return nil
+}
+
+func validateMarkerFreeMergeConflictResolution(conflictFile mergeConflictFile, resolution mergeConflictFileResolution) error {
+	if !conflictFile.OursPresent {
+		if resolution.Delete {
+			return nil
+		}
+		return fmt.Errorf(mergeConflictResolutionPreservationTemplate, conflictFile.Path)
+	}
+	if resolution.Delete || resolution.Content != conflictFile.Ours {
+		return fmt.Errorf(mergeConflictResolutionPreservationTemplate, conflictFile.Path)
+	}
+	return nil
+}
+
+func mergeConflictNonConflictingRegions(content string) ([]string, int, error) {
+	regions := make([]string, 0)
+	var currentRegion strings.Builder
+	state := mergeConflictMarkerStateOutside
+	conflictCount := 0
+
+	for _, line := range mergeConflictLines(content) {
+		switch state {
+		case mergeConflictMarkerStateOutside:
+			if mergeConflictLineHasPrefix(line, "<<<<<<<") {
+				regions = append(regions, currentRegion.String())
+				currentRegion.Reset()
+				state = mergeConflictMarkerStateOurs
+				conflictCount++
+				continue
+			}
+			currentRegion.WriteString(line)
+		case mergeConflictMarkerStateOurs:
+			switch {
+			case mergeConflictLineHasPrefix(line, "|||||||"):
+				state = mergeConflictMarkerStateBase
+			case mergeConflictLineHasPrefix(line, "======="):
+				state = mergeConflictMarkerStateTheirs
+			case mergeConflictLineHasPrefix(line, "<<<<<<<"), mergeConflictLineHasPrefix(line, ">>>>>>>"):
+				return nil, 0, errors.New("invalid ours conflict marker sequence")
+			}
+		case mergeConflictMarkerStateBase:
+			switch {
+			case mergeConflictLineHasPrefix(line, "======="):
+				state = mergeConflictMarkerStateTheirs
+			case mergeConflictLineHasPrefix(line, "<<<<<<<"), mergeConflictLineHasPrefix(line, "|||||||"), mergeConflictLineHasPrefix(line, ">>>>>>>"):
+				return nil, 0, errors.New("invalid base conflict marker sequence")
+			}
+		case mergeConflictMarkerStateTheirs:
+			switch {
+			case mergeConflictLineHasPrefix(line, ">>>>>>>"):
+				state = mergeConflictMarkerStateOutside
+			case mergeConflictLineHasPrefix(line, "<<<<<<<"):
+				return nil, 0, errors.New("invalid theirs conflict marker sequence")
+			}
+		}
+	}
+
+	if state != mergeConflictMarkerStateOutside {
+		return nil, 0, errors.New("unterminated conflict marker sequence")
+	}
+	if conflictCount == 0 {
+		return nil, 0, nil
+	}
+	regions = append(regions, currentRegion.String())
+	return regions, conflictCount, nil
+}
+
+func mergeConflictLines(content string) []string {
+	if content == "" {
+		return nil
+	}
+	lines := make([]string, 0, strings.Count(content, "\n")+1)
+	lineStart := 0
+	for characterIndex := range content {
+		if content[characterIndex] != '\n' {
+			continue
+		}
+		lines = append(lines, content[lineStart:characterIndex+1])
+		lineStart = characterIndex + 1
+	}
+	if lineStart < len(content) {
+		lines = append(lines, content[lineStart:])
+	}
+	return lines
+}
+
+func mergeConflictLineHasPrefix(line string, prefix string) bool {
+	lineWithoutTerminator := strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")
+	return strings.HasPrefix(lineWithoutTerminator, prefix)
+}
+
+func mergeConflictRegionsContainContent(regions []string) bool {
+	for regionIndex := range regions {
+		if regions[regionIndex] != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func mergeConflictResolutionPreservesRegions(resolution string, regions []string) bool {
+	if len(regions) == 0 {
+		return true
+	}
+	cursor := 0
+	prefix := regions[0]
+	if prefix != "" {
+		if !strings.HasPrefix(resolution, prefix) {
+			return false
+		}
+		cursor = len(prefix)
+	}
+
+	lastRegionIndex := len(regions) - 1
+	for regionIndex := 1; regionIndex < lastRegionIndex; regionIndex++ {
+		region := regions[regionIndex]
+		if region == "" {
+			continue
+		}
+		regionOffset := strings.Index(resolution[cursor:], region)
+		if regionOffset < 0 {
+			return false
+		}
+		cursor += regionOffset + len(region)
+	}
+
+	suffix := regions[lastRegionIndex]
+	if suffix == "" {
+		return true
+	}
+	if !strings.HasSuffix(resolution, suffix) {
+		return false
+	}
+	return len(resolution)-len(suffix) >= cursor
 }

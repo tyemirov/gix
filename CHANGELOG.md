@@ -9,13 +9,20 @@
 - _No changes._
 
 ### Bug Fixes 🐛
-- _No changes._
+- Fixed `gix sync <new-branch>` to create a missing target on top of the current branch before clustering dirty work, preventing checkout-overwrite failures and lost branch ancestry.
+- Prevented explicit `gix sync master` from a dirty feature branch from republishing the feature branch's committed ancestry, including retries where the generated name already exists only locally.
+- Rejected incomplete AI merge-conflict output before it can truncate a file, create a merge commit, push, or open a pull request, including marker-free modify/delete conflicts.
+- Made repository release targets self-contained, fail closed when any expected platform artifact is missing, anchor Pages deployment to the locally prepared release manifest, and publish consistently through canonical `origin`.
+- Kept the syncflow builder description as the canonical text shown by `gix sync --help`.
 
 ### Testing 🧪
-- _No changes._
+- Added a black-box dirty-sync regression that verifies two top-level change clusters become two linear commits above the original branch before push and pull-request creation.
+- Added CLI regressions for isolated explicit-master rescue, local-only generated-name collisions, marker-bearing and marker-free merge-resolution truncation, and the assembled sync help output.
+- Added black-box release coverage for clean-checkout helpers, failed or missing platform outputs, replaced published manifests, and missing integrity prerequisites.
 
 ### Docs 📚
-- _No changes._
+- Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
+- Documented validated AI conflict resolution and the repository-owned release workflow prerequisites.
 
 ## [v0.8.1] - 2026-07-06
 

@@ -22,8 +22,6 @@ const (
 	strictSyncDirtyClusterFailureTemplate = "failed to commit dirty sync cluster %q: %w"
 	strictSyncDirtyIgnoreFailureTemplate  = "failed to inspect ignored dirty sync paths: %w"
 	strictSyncDirtyRestoreFailureTemplate = "failed to restore ignored dirty sync paths: %w"
-	strictSyncCurrentBranchFailure        = "failed to inspect current branch before dirty sync branch creation: %w"
-	strictSyncCurrentBranchRepository     = "repository required to inspect current branch before dirty sync branch creation"
 	strictSyncGeneratedBranchPrefix       = "gix"
 	strictSyncGeneratedSemanticFallback   = "work"
 	strictSyncGeneratedSemanticSlugLimit  = 56
@@ -55,6 +53,13 @@ type syncStatusFilterResult struct {
 	StageableEntries      []string
 	IgnoredTrackedEntries []string
 }
+
+type strictSyncDirtyBranchStartPoint uint8
+
+const (
+	strictSyncDirtyBranchStartCurrentCheckout strictSyncDirtyBranchStartPoint = iota
+	strictSyncDirtyBranchStartRemoteBase
+)
 
 func saveDirtyWorkClusters(ctx context.Context, executor shared.GitExecutor, repositoryPath string, statusEntries []string, options worktreeAdoptionCommitMessageOptions) (int, error) {
 	clusters := buildSyncCommitClusters(statusEntries)
@@ -244,7 +249,7 @@ func syncStatusEntriesPaths(statusEntries []string) []string {
 	return paths
 }
 
-func prepareStrictSyncBranchForDirtyWork(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, remoteName string, baseBranch string, branchName string, commitMessages worktreeAdoptionCommitMessageOptions) error {
+func prepareStrictSyncBranchForDirtyWork(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, remoteName string, baseBranch string, branchName string, startPoint strictSyncDirtyBranchStartPoint, commitMessages worktreeAdoptionCommitMessageOptions) error {
 	remoteReference := fmt.Sprintf("%s/%s", remoteName, branchName)
 	remoteExists, remoteExistsErr := remoteReferenceExists(ctx, environment.GitExecutor, repository.Path, remoteReference)
 	if remoteExistsErr != nil {
@@ -282,28 +287,18 @@ func prepareStrictSyncBranchForDirtyWork(ctx context.Context, environment *workf
 	if !baseExists {
 		return fmt.Errorf("remote base branch %q does not exist", baseReference)
 	}
-	startAtCurrentCheckout, currentBranchErr := dirtySyncBranchStartsAtCurrentCheckout(ctx, environment, repository, baseBranch)
-	if currentBranchErr != nil {
-		return currentBranchErr
+	if startPoint == strictSyncDirtyBranchStartRemoteBase {
+		return createStrictSyncBranchFromReference(ctx, environment.GitExecutor, repository.Path, branchName, baseReference)
 	}
-	if startAtCurrentCheckout {
-		return executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitSwitchSubcommandConstant, gitCreateBranchFlagConstant, branchName})
-	}
-	return executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitSwitchSubcommandConstant, gitCreateBranchFlagConstant, branchName, baseReference})
+	return createStrictSyncBranchFromCurrentCheckout(ctx, environment.GitExecutor, repository.Path, branchName)
 }
 
-func dirtySyncBranchStartsAtCurrentCheckout(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, baseBranch string) (bool, error) {
-	if repository == nil {
-		return false, errors.New(strictSyncCurrentBranchRepository)
-	}
-	if environment == nil || environment.RepositoryManager == nil {
-		return false, errors.New(refreshMissingRepositoryManagerMessage)
-	}
-	currentBranch, currentBranchErr := environment.RepositoryManager.GetCurrentBranch(ctx, repository.Path)
-	if currentBranchErr != nil {
-		return false, fmt.Errorf(strictSyncCurrentBranchFailure, currentBranchErr)
-	}
-	return strings.TrimSpace(currentBranch) == strings.TrimSpace(baseBranch), nil
+func createStrictSyncBranchFromCurrentCheckout(ctx context.Context, executor shared.GitExecutor, repositoryPath string, branchName string) error {
+	return executeGit(ctx, executor, repositoryPath, []string{gitSwitchSubcommandConstant, gitCreateBranchFlagConstant, branchName})
+}
+
+func createStrictSyncBranchFromReference(ctx context.Context, executor shared.GitExecutor, repositoryPath string, branchName string, startReference string) error {
+	return executeGit(ctx, executor, repositoryPath, []string{gitSwitchSubcommandConstant, gitCreateBranchFlagConstant, branchName, startReference})
 }
 
 func buildSyncCommitClusters(statusEntries []string) []syncCommitCluster {
@@ -402,6 +397,13 @@ func selectGeneratedSyncBranchName(ctx context.Context, environment *workflow.En
 			return "", remoteExistsErr
 		}
 		if !remoteExists {
+			localExists, localExistsErr := localBranchExists(ctx, environment.GitExecutor, repository.Path, candidateBranchName)
+			if localExistsErr != nil {
+				return "", localExistsErr
+			}
+			if localExists {
+				continue
+			}
 			return candidateBranchName, nil
 		}
 		if repositoryIdentifier == "" {

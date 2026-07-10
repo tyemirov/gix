@@ -520,8 +520,25 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 			}
 			commitBranchName = generatedBranchName
 		}
-		if prepareErr := prepareStrictSyncBranchForDirtyWork(ctx, environment, repository, remoteName, baseBranch, commitBranchName, options.CommitMessages); prepareErr != nil {
+		branchStartPoint := strictSyncDirtyBranchStartCurrentCheckout
+		currentBranch := strings.TrimSpace(repository.Inspection.LocalBranch)
+		isolateFromCurrentBranch := branchName == baseBranch && currentBranch != "" && currentBranch != baseBranch
+		if isolateFromCurrentBranch {
+			branchStartPoint = strictSyncDirtyBranchStartRemoteBase
+			if stashErr := stashAllChanges(ctx, environment.GitExecutor, repository.Path); stashErr != nil {
+				return stashErr
+			}
+		}
+		if prepareErr := prepareStrictSyncBranchForDirtyWork(ctx, environment, repository, remoteName, baseBranch, commitBranchName, branchStartPoint, options.CommitMessages); prepareErr != nil {
+			if isolateFromCurrentBranch {
+				return errors.Join(prepareErr, restoreStashedChanges(ctx, environment.GitExecutor, repository.Path, 1))
+			}
 			return prepareErr
+		}
+		if isolateFromCurrentBranch {
+			if restoreErr := restoreStashedChanges(ctx, environment.GitExecutor, repository.Path, 1); restoreErr != nil {
+				return restoreErr
+			}
 		}
 		_, commitErr := saveDirtyWorkClusters(ctx, environment.GitExecutor, repository.Path, statusEntries, options.CommitMessages)
 		if commitErr != nil {
@@ -720,8 +737,11 @@ func syncPullRequestBranch(ctx context.Context, environment *workflow.Environmen
 	if !baseExists {
 		return strictPullRequestBranchResult{}, fmt.Errorf("remote base branch %q does not exist", baseReference)
 	}
-	if createErr := executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitSwitchSubcommandConstant, gitCreateBranchFlagConstant, options.BranchName, baseReference}); createErr != nil {
+	if createErr := createStrictSyncBranchFromCurrentCheckout(ctx, environment.GitExecutor, repository.Path, options.BranchName); createErr != nil {
 		return strictPullRequestBranchResult{}, createErr
+	}
+	if mergeErr := mergeBaseIntoBranch(ctx, environment.GitExecutor, repository.Path, options.RemoteName, options.BaseBranch, options.BranchName, options.CommitMessages); mergeErr != nil {
+		return strictPullRequestBranchResult{}, mergeErr
 	}
 	if pullRequestErr := pushAndCreatePullRequest(ctx, environment, repository, repositoryIdentifier, options); pullRequestErr != nil {
 		return strictPullRequestBranchResult{}, pullRequestErr
