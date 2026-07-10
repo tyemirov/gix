@@ -2,6 +2,7 @@ package tests
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -219,13 +220,17 @@ operations:
 	require.Equal(testInstance, "docs: sync dirty work", strings.TrimSpace(runGit(testInstance, repositoryPath, "log", "-1", "--pretty=%s")))
 }
 
-func TestSyncExplicitNewBranchCommitsDirtyNonBaseWorktreeInClusters(testInstance *testing.T) {
+func TestSyncExplicitNewBranchCreatesStackedPullRequestsAndCommitsDirtyWorkInClusters(testInstance *testing.T) {
 	testInstance.Helper()
 
 	const (
-		sourceBranchName = "feature/source-work"
-		targetBranchName = "feature/clustered-work"
-		pullRequestBody  = "Publish the clustered dirty work for review."
+		grandparentBranchName = "feature/grandparent-work"
+		sourceBranchName      = "feature/source-work"
+		targetBranchName      = "feature/clustered-work"
+		rescueBranchName      = "feature/post-merge-work"
+		sourcePullRequestBody = "Publish the source branch for review before stacking the clustered work."
+		pullRequestBody       = "Publish the clustered dirty work for review."
+		rescuePullRequestBody = "Publish the work preserved through the merged-branch handoff."
 	)
 
 	repositoryRoot := integrationRepositoryRoot(testInstance)
@@ -241,11 +246,23 @@ func TestSyncExplicitNewBranchCommitsDirtyNonBaseWorktreeInClusters(testInstance
 	runGit(testInstance, repositoryPath, "commit", "-m", "initial commit")
 	runGit(testInstance, repositoryPath, "push", "-u", "origin", "master")
 
+	runGit(testInstance, repositoryPath, "switch", "-c", grandparentBranchName)
+	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "grandparent.txt"), []byte("grandparent branch work\n"), 0o644))
+	runGit(testInstance, repositoryPath, "add", "grandparent.txt")
+	runGit(testInstance, repositoryPath, "commit", "-m", "grandparent branch work")
+	runGit(testInstance, repositoryPath, "push", "-u", "origin", grandparentBranchName)
+	grandparentCommit := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD"))
+
 	runGit(testInstance, repositoryPath, "switch", "-c", sourceBranchName)
 	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "README.md"), []byte("source branch\n"), 0o644))
 	runGit(testInstance, repositoryPath, "add", "README.md")
 	runGit(testInstance, repositoryPath, "commit", "-m", "source branch work")
 	sourceCommit := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD"))
+	runGit(testInstance, repositoryPath, "config", "branch."+sourceBranchName+".gix-review-base", grandparentBranchName)
+	runGit(testInstance, repositoryPath, "branch", "-D", grandparentBranchName)
+	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--list", grandparentBranchName)))
+	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--remotes", "--list", "origin/"+sourceBranchName)))
+	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "for-each-ref", "--format=%(upstream:short)", "refs/heads/"+sourceBranchName)))
 
 	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "README.md"), []byte("source branch\nuncommitted docs\n"), 0o644))
 	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "pkg", "new.go"), []byte("package pkg\n\nconst Added = true\n"), 0o644))
@@ -254,19 +271,32 @@ func TestSyncExplicitNewBranchCommitsDirtyNonBaseWorktreeInClusters(testInstance
 		"docs: save uncommitted guide changes",
 		"feat: add clustered package work",
 	}
+	allCommitMessages := append(append([]string{}, commitMessages...), "docs: preserve post-merge work")
 	var responseIndex atomic.Int64
+	var sourceDescriptionRequests atomic.Int64
 	llmServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 		if request.URL.Path != "/chat/completions" {
 			http.NotFound(responseWriter, request)
 			return
 		}
+		requestBody, readError := io.ReadAll(request.Body)
+		if readError != nil {
+			http.Error(responseWriter, readError.Error(), http.StatusBadRequest)
+			return
+		}
+		if strings.Contains(string(requestBody), "expert maintainer writing pull request descriptions") {
+			sourceDescriptionRequests.Add(1)
+			responseWriter.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprintf(responseWriter, `{"choices":[{"message":{"role":"assistant","content":%q}}]}`, sourcePullRequestBody)
+			return
+		}
 		currentResponseIndex := int(responseIndex.Add(1) - 1)
-		if currentResponseIndex >= len(commitMessages) {
+		if currentResponseIndex >= len(allCommitMessages) {
 			http.Error(responseWriter, "unexpected LLM request", http.StatusBadRequest)
 			return
 		}
 		responseWriter.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprintf(responseWriter, `{"choices":[{"message":{"role":"assistant","content":%q}}]}`, commitMessages[currentResponseIndex])
+		_, _ = fmt.Fprintf(responseWriter, `{"choices":[{"message":{"role":"assistant","content":%q}}]}`, allCommitMessages[currentResponseIndex])
 	}))
 	testInstance.Cleanup(llmServer.Close)
 
@@ -293,19 +323,23 @@ operations:
 
 	githubLogPath := filepath.Join(testInstance.TempDir(), "gh.log")
 	gitLogPath := filepath.Join(testInstance.TempDir(), "git.log")
+	operationLogPath := filepath.Join(testInstance.TempDir(), "operations.log")
+	require.NoError(testInstance, os.WriteFile(githubLogPath, []byte("created-pr --base master --head "+grandparentBranchName+"\n"), 0o600))
 	pathVariable := buildSyncMergedBranchExecutablePath(testInstance)
-	runSync := func(branchName string, body string) (string, error) {
+	runSync := func(branchName string, body string, failPullRequestHead string) (string, error) {
 		return runIntegrationCommandWithInput(
 			testInstance,
 			repositoryRoot,
 			integrationCommandOptions{
 				PathVariable: pathVariable,
 				EnvironmentOverrides: map[string]string{
-					syncRefreshIntegrationAPIKeyVariable: "test-key",
-					syncMergedBranchGitLogVariable:       gitLogPath,
-					syncMergedBranchGitHubLogVariable:    githubLogPath,
-					syncMergedBranchNameVariable:         branchName,
-					syncMergedBranchMergedVariable:       "false",
+					syncRefreshIntegrationAPIKeyVariable:        "test-key",
+					syncMergedBranchGitLogVariable:              gitLogPath,
+					syncMergedBranchGitHubLogVariable:           githubLogPath,
+					syncMergedBranchOperationLogVariable:        operationLogPath,
+					syncMergedBranchFailPullRequestHeadVariable: failPullRequestHead,
+					syncMergedBranchNameVariable:                branchName,
+					syncMergedBranchMergedVariable:              "false",
 				},
 			},
 			syncMergedBranchIntegrationTimeout,
@@ -327,12 +361,22 @@ operations:
 		)
 	}
 
-	output, runError := runSync(targetBranchName, pullRequestBody)
+	failedOutput, failedRunError := runSync(targetBranchName, pullRequestBody, targetBranchName)
+	require.Error(testInstance, failedRunError)
+	require.Contains(testInstance, failedOutput, "simulated pull request creation failure for "+targetBranchName)
+	require.Equal(testInstance, sourceBranchName, strings.TrimSpace(runGit(testInstance, repositoryPath, "config", "--get", "branch."+targetBranchName+".gix-review-base")))
+
+	output, runError := runSync(targetBranchName, pullRequestBody, "")
 	require.NoError(testInstance, runError, output)
 
 	require.Contains(testInstance, output, fmt.Sprintf("SYNCED: %s (%s)", repositoryPath, targetBranchName))
 	require.Equal(testInstance, targetBranchName, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
+	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--list", grandparentBranchName)))
+	require.Equal(testInstance, grandparentCommit, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "origin/"+grandparentBranchName)))
 	require.Equal(testInstance, sourceCommit, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", sourceBranchName)))
+	require.Equal(testInstance, sourceCommit, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "origin/"+sourceBranchName)))
+	require.Equal(testInstance, "origin/"+sourceBranchName, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "--abbrev-ref", sourceBranchName+"@{upstream}")))
+	runGit(testInstance, repositoryPath, "merge-base", "--is-ancestor", grandparentCommit, sourceBranchName)
 	runGit(testInstance, repositoryPath, "merge-base", "--is-ancestor", sourceCommit, targetBranchName)
 	require.Equal(testInstance, "2", strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-list", "--count", sourceCommit+".."+targetBranchName)))
 	require.Equal(testInstance, commitMessages, strings.Split(strings.TrimSpace(runGit(testInstance, repositoryPath, "log", "--reverse", "--format=%s", sourceCommit+".."+targetBranchName)), "\n"))
@@ -349,7 +393,7 @@ operations:
 	gitLog := readTextFile(testInstance, gitLogPath)
 	firstCommitIndex := strings.Index(gitLog, "commit -m "+commitMessages[0])
 	secondCommitIndex := strings.Index(gitLog, "commit -m "+commitMessages[1])
-	baseMergeIndex := strings.Index(gitLog, "merge --no-edit origin/master")
+	baseMergeIndex := strings.Index(gitLog, "merge --no-edit origin/"+sourceBranchName)
 	pushIndex := strings.Index(gitLog, "push -u origin "+targetBranchName)
 	require.NotEqual(testInstance, -1, firstCommitIndex)
 	require.NotEqual(testInstance, -1, secondCommitIndex)
@@ -361,19 +405,178 @@ operations:
 
 	cleanTargetBranchName := "feature/clean-child-work"
 	cleanPullRequestBody := "Publish the clean child branch for review."
-	cleanOutput, cleanRunError := runSync(cleanTargetBranchName, cleanPullRequestBody)
-	require.NoError(testInstance, cleanRunError, cleanOutput)
-	require.Contains(testInstance, cleanOutput, fmt.Sprintf("SYNCED: %s (%s)", repositoryPath, cleanTargetBranchName))
-	require.Equal(testInstance, cleanTargetBranchName, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
-	require.Equal(testInstance, commitHashes[1], strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", cleanTargetBranchName)))
-	require.Equal(testInstance, "0", strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-list", "--count", targetBranchName+".."+cleanTargetBranchName)))
-	require.Equal(testInstance, "origin/"+cleanTargetBranchName, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")))
+	cleanOutput, cleanRunError := runSync(cleanTargetBranchName, cleanPullRequestBody, "")
+	require.Error(testInstance, cleanRunError)
+	require.Contains(testInstance, cleanOutput, "cannot create stacked branch \""+cleanTargetBranchName+"\" from \""+targetBranchName+"\": no changes would remain for its pull request")
+	require.Equal(testInstance, targetBranchName, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
+	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--list", cleanTargetBranchName)))
 	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
 	require.Equal(testInstance, int64(len(commitMessages)), responseIndex.Load())
+	require.Equal(testInstance, int64(1), sourceDescriptionRequests.Load())
 
 	githubLog := readTextFile(testInstance, githubLogPath)
-	require.Contains(testInstance, githubLog, "pr create --repo owner/project --base master --head "+targetBranchName+" --title "+targetBranchName+" --body "+pullRequestBody)
-	require.Contains(testInstance, githubLog, "pr create --repo owner/project --base master --head "+cleanTargetBranchName+" --title "+cleanTargetBranchName+" --body "+cleanPullRequestBody)
+	sourcePullRequestCommand := "pr create --repo owner/project --base " + grandparentBranchName + " --head " + sourceBranchName + " --title " + sourceBranchName + " --body " + sourcePullRequestBody
+	targetPullRequestCommand := "pr create --repo owner/project --base " + sourceBranchName + " --head " + targetBranchName + " --title " + targetBranchName + " --body " + pullRequestBody
+	require.Contains(testInstance, githubLog, sourcePullRequestCommand)
+	require.Contains(testInstance, githubLog, targetPullRequestCommand)
+	require.NotContains(testInstance, githubLog, "pr create --repo owner/project --base "+targetBranchName+" --head "+cleanTargetBranchName)
+	require.NotContains(testInstance, githubLog, "pr create --repo owner/project --base master --head "+sourceBranchName+" ")
+	require.NotContains(testInstance, githubLog, "pr create --repo owner/project --base master --head "+targetBranchName+" ")
+	require.Equal(testInstance, 1, strings.Count(githubLog, "pr create --repo owner/project --base "+grandparentBranchName+" --head "+sourceBranchName+" "))
+	require.Equal(testInstance, 2, strings.Count(githubLog, "pr create --repo owner/project --base "+sourceBranchName+" --head "+targetBranchName+" "))
+	require.Equal(testInstance, 1, strings.Count(githubLog, "created-pr --base master --head "+grandparentBranchName))
+	require.Equal(testInstance, 1, strings.Count(githubLog, "created-pr --base "+grandparentBranchName+" --head "+sourceBranchName))
+	require.Equal(testInstance, 1, strings.Count(githubLog, "created-pr --base "+sourceBranchName+" --head "+targetBranchName))
+	require.Equal(testInstance, 3, strings.Count(githubLog, "created-pr "))
+
+	operationLog := readTextFile(testInstance, operationLogPath)
+	parentPushIndex := strings.Index(operationLog, "git push -u origin "+sourceBranchName)
+	parentPullRequestIndex := strings.Index(operationLog, "gh-created --base "+grandparentBranchName+" --head "+sourceBranchName)
+	targetCreationIndex := strings.Index(operationLog, "git switch -c "+targetBranchName)
+	targetPushIndex := strings.Index(operationLog, "git push -u origin "+targetBranchName)
+	targetPullRequestIndex := strings.Index(operationLog, "gh-created --base "+sourceBranchName+" --head "+targetBranchName)
+	require.NotEqual(testInstance, -1, parentPushIndex)
+	require.NotEqual(testInstance, -1, parentPullRequestIndex)
+	require.NotEqual(testInstance, -1, targetCreationIndex)
+	require.NotEqual(testInstance, -1, targetPushIndex)
+	require.NotEqual(testInstance, -1, targetPullRequestIndex)
+	require.Less(testInstance, parentPushIndex, parentPullRequestIndex)
+	require.Less(testInstance, parentPullRequestIndex, targetCreationIndex)
+	require.Less(testInstance, targetCreationIndex, targetPushIndex)
+	require.Less(testInstance, targetPushIndex, targetPullRequestIndex)
+	require.NotContains(testInstance, operationLog, "git push -u origin "+grandparentBranchName)
+	require.NotContains(testInstance, operationLog, "git switch -c "+cleanTargetBranchName)
+
+	runGit(testInstance, repositoryPath, "push", "origin", "--delete", targetBranchName)
+	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--remotes", "--list", "origin/"+targetBranchName)))
+	mergedPullRequests := readTextFile(testInstance, githubLogPath) +
+		"merged-pr --base " + grandparentBranchName + " --head " + sourceBranchName + "\n" +
+		"merged-pr --base " + sourceBranchName + " --head " + targetBranchName + "\n"
+	require.NoError(testInstance, os.WriteFile(githubLogPath, []byte(mergedPullRequests), 0o600))
+	runMergedSync := func(branchName string, additionalArguments ...string) (string, error) {
+		commandArguments := []string{
+			syncRefreshIntegrationRunCommand,
+			syncRefreshIntegrationModulePath,
+			"--config",
+			configurationPath,
+			syncRefreshIntegrationLogLevelFlag,
+			syncRefreshIntegrationErrorLogLevel,
+			"sync",
+			branchName,
+		}
+		commandArguments = append(commandArguments, additionalArguments...)
+		commandArguments = append(commandArguments, "--roots", repositoryPath, "--yes")
+		return runIntegrationCommandWithInput(
+			testInstance,
+			repositoryRoot,
+			integrationCommandOptions{
+				PathVariable: pathVariable,
+				EnvironmentOverrides: map[string]string{
+					syncRefreshIntegrationAPIKeyVariable: "test-key",
+					syncMergedBranchGitLogVariable:       gitLogPath,
+					syncMergedBranchGitHubLogVariable:    githubLogPath,
+					syncMergedBranchOperationLogVariable: operationLogPath,
+					syncMergedBranchNameVariable:         branchName,
+					syncMergedBranchMergedVariable:       "false",
+				},
+			},
+			syncMergedBranchIntegrationTimeout,
+			"",
+			commandArguments,
+		)
+	}
+	githubLogSuffix := func(previousLog string) string {
+		currentLog := readTextFile(testInstance, githubLogPath)
+		require.True(testInstance, strings.HasPrefix(currentLog, previousLog))
+		return currentLog[len(previousLog):]
+	}
+	preRecoveryPullRequestCreateCount := strings.Count(mergedPullRequests, "pr create ")
+	preRecoveryCreatedPullRequestCount := strings.Count(mergedPullRequests, "created-pr ")
+	targetCommitBeforeMergedHandoff := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", targetBranchName))
+	dirtyHeadBeforeMergedHandoff := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD"))
+	dirtyBranchBeforeMergedHandoff := strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current"))
+	strandedWorkContents := "must remain uncommitted\n"
+	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "stranded.txt"), []byte(strandedWorkContents), 0o644))
+	dirtyMergedLog := readTextFile(testInstance, githubLogPath)
+	dirtyMergedOutput, dirtyMergedRunError := runMergedSync(targetBranchName)
+	require.Error(testInstance, dirtyMergedRunError)
+	require.Contains(testInstance, dirtyMergedOutput, "cannot commit uncommitted changes on merged branch \""+targetBranchName+"\"")
+	require.Equal(testInstance, targetCommitBeforeMergedHandoff, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", targetBranchName)))
+	require.Equal(testInstance, dirtyHeadBeforeMergedHandoff, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD")))
+	require.Equal(testInstance, dirtyBranchBeforeMergedHandoff, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
+	require.Equal(testInstance, strandedWorkContents, readTextFile(testInstance, filepath.Join(repositoryPath, "stranded.txt")))
+	require.Equal(testInstance, "?? stranded.txt", strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
+	dirtyMergedSuffix := githubLogSuffix(dirtyMergedLog)
+	require.Contains(testInstance, dirtyMergedSuffix, "pr list --repo owner/project --state merged --head "+targetBranchName)
+	require.NotContains(testInstance, dirtyMergedSuffix, "pr create ")
+
+	runGit(testInstance, repositoryPath, "push", "origin", "--delete", sourceBranchName)
+	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--remotes", "--list", "origin/"+sourceBranchName)))
+	stashedHandoffLog := readTextFile(testInstance, githubLogPath)
+	stashedHandoffOutput, stashedHandoffError := runMergedSync(targetBranchName, "--stash")
+	require.NoError(testInstance, stashedHandoffError, stashedHandoffOutput)
+	require.Contains(testInstance, stashedHandoffOutput, fmt.Sprintf("SYNCED: %s (%s)", repositoryPath, grandparentBranchName))
+	require.Equal(testInstance, grandparentBranchName, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
+	require.Equal(testInstance, grandparentCommit, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD")))
+	require.Equal(testInstance, "origin/"+grandparentBranchName, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")))
+	require.Equal(testInstance, strandedWorkContents, readTextFile(testInstance, filepath.Join(repositoryPath, "stranded.txt")))
+	require.Equal(testInstance, "?? stranded.txt", strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
+	stashedHandoffSuffix := githubLogSuffix(stashedHandoffLog)
+	require.Contains(testInstance, stashedHandoffSuffix, "pr list --repo owner/project --state merged --base "+sourceBranchName+" --head "+targetBranchName)
+	require.Contains(testInstance, stashedHandoffSuffix, "pr list --repo owner/project --state merged --base "+grandparentBranchName+" --head "+sourceBranchName)
+	require.NotContains(testInstance, stashedHandoffSuffix, "pr create ")
+	require.Equal(testInstance, preRecoveryPullRequestCreateCount, strings.Count(readTextFile(testInstance, githubLogPath), "pr create "))
+	require.Equal(testInstance, preRecoveryCreatedPullRequestCount, strings.Count(readTextFile(testInstance, githubLogPath), "created-pr "))
+
+	rescueOutput, rescueRunError := runSync(rescueBranchName, rescuePullRequestBody, "")
+	require.NoError(testInstance, rescueRunError, rescueOutput)
+	require.Contains(testInstance, rescueOutput, fmt.Sprintf("SYNCED: %s (%s)", repositoryPath, rescueBranchName))
+	require.Equal(testInstance, rescueBranchName, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
+	require.Equal(testInstance, strandedWorkContents, runGit(testInstance, repositoryPath, "show", rescueBranchName+":stranded.txt"))
+	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
+	require.Equal(testInstance, grandparentBranchName, strings.TrimSpace(runGit(testInstance, repositoryPath, "config", "--get", "branch."+rescueBranchName+".gix-review-base")))
+	require.Equal(testInstance, int64(len(allCommitMessages)), responseIndex.Load())
+	rescueGitHubLog := readTextFile(testInstance, githubLogPath)
+	require.Contains(testInstance, rescueGitHubLog, "created-pr --base "+grandparentBranchName+" --head "+rescueBranchName)
+	require.NotContains(testInstance, rescueGitHubLog, "pr create --repo owner/project --base master --head "+rescueBranchName+" ")
+	pullRequestCreateCount := strings.Count(rescueGitHubLog, "pr create ")
+	createdPullRequestCount := strings.Count(rescueGitHubLog, "created-pr ")
+
+	mergedLog := readTextFile(testInstance, githubLogPath)
+	mergedOutput, mergedRunError := runMergedSync(targetBranchName)
+	require.NoError(testInstance, mergedRunError, mergedOutput)
+	require.Contains(testInstance, mergedOutput, fmt.Sprintf("SYNCED: %s (%s)", repositoryPath, grandparentBranchName))
+	require.NotContains(testInstance, mergedOutput, "parent branch pull request is already merged")
+	require.Equal(testInstance, grandparentBranchName, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
+	require.Equal(testInstance, grandparentCommit, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD")))
+	require.Equal(testInstance, "origin/"+grandparentBranchName, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")))
+	require.Equal(testInstance, sourceBranchName, strings.TrimSpace(runGit(testInstance, repositoryPath, "config", "--get", "branch."+targetBranchName+".gix-review-base")))
+	mergedSuffix := githubLogSuffix(mergedLog)
+	require.Contains(testInstance, mergedSuffix, "pr list --repo owner/project --state merged --head "+targetBranchName)
+	require.Contains(testInstance, mergedSuffix, "pr list --repo owner/project --state merged --base "+sourceBranchName+" --head "+targetBranchName)
+	require.Contains(testInstance, mergedSuffix, "pr list --repo owner/project --state merged --head "+sourceBranchName)
+	require.Contains(testInstance, mergedSuffix, "pr list --repo owner/project --state merged --base "+grandparentBranchName+" --head "+sourceBranchName)
+	require.NotContains(testInstance, mergedSuffix, "pr create ")
+	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--remotes", "--list", "origin/"+targetBranchName)))
+	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--remotes", "--list", "origin/"+sourceBranchName)))
+
+	parentMergedLog := readTextFile(testInstance, githubLogPath)
+	parentMergedOutput, parentMergedRunError := runMergedSync(sourceBranchName)
+	require.NoError(testInstance, parentMergedRunError, parentMergedOutput)
+	require.Contains(testInstance, parentMergedOutput, fmt.Sprintf("SYNCED: %s (%s)", repositoryPath, grandparentBranchName))
+	require.NotContains(testInstance, parentMergedOutput, "parent branch pull request is already merged")
+	require.Equal(testInstance, grandparentBranchName, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
+	require.Equal(testInstance, grandparentCommit, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD")))
+	require.Equal(testInstance, "origin/"+grandparentBranchName, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")))
+	parentMergedSuffix := githubLogSuffix(parentMergedLog)
+	require.Contains(testInstance, parentMergedSuffix, "pr list --repo owner/project --state merged --head "+sourceBranchName)
+	require.Contains(testInstance, parentMergedSuffix, "pr list --repo owner/project --state merged --base "+grandparentBranchName+" --head "+sourceBranchName)
+	require.NotContains(testInstance, parentMergedSuffix, "pr create ")
+	finalGitHubLog := readTextFile(testInstance, githubLogPath)
+	require.Equal(testInstance, pullRequestCreateCount, strings.Count(finalGitHubLog, "pr create "))
+	require.Equal(testInstance, createdPullRequestCount, strings.Count(finalGitHubLog, "created-pr "))
+	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--remotes", "--list", "origin/"+targetBranchName)))
+	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--remotes", "--list", "origin/"+sourceBranchName)))
 }
 
 func TestSyncExplicitMasterFromDirtyFeatureBranchIsolatesGeneratedRescueBranch(testInstance *testing.T) {

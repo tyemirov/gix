@@ -15,13 +15,15 @@ import (
 )
 
 const (
-	syncMergedBranchIntegrationTimeout = 20 * time.Second
-	syncMergedBranchOwnerRepository    = "owner/project"
-	syncMergedBranchRemoteURL          = "https://github.com/" + syncMergedBranchOwnerRepository + ".git"
-	syncMergedBranchGitLogVariable     = "GIX_SYNC_TEST_GIT_LOG"
-	syncMergedBranchGitHubLogVariable  = "GIX_SYNC_TEST_GH_LOG"
-	syncMergedBranchNameVariable       = "GIX_SYNC_TEST_BRANCH"
-	syncMergedBranchMergedVariable     = "GIX_SYNC_TEST_MERGED"
+	syncMergedBranchIntegrationTimeout          = 20 * time.Second
+	syncMergedBranchOwnerRepository             = "owner/project"
+	syncMergedBranchRemoteURL                   = "https://github.com/" + syncMergedBranchOwnerRepository + ".git"
+	syncMergedBranchGitLogVariable              = "GIX_SYNC_TEST_GIT_LOG"
+	syncMergedBranchGitHubLogVariable           = "GIX_SYNC_TEST_GH_LOG"
+	syncMergedBranchOperationLogVariable        = "GIX_SYNC_TEST_OPERATION_LOG"
+	syncMergedBranchFailPullRequestHeadVariable = "GIX_SYNC_TEST_FAIL_PR_HEAD"
+	syncMergedBranchNameVariable                = "GIX_SYNC_TEST_BRANCH"
+	syncMergedBranchMergedVariable              = "GIX_SYNC_TEST_MERGED"
 )
 
 type syncMergedBranchFixture struct {
@@ -233,29 +235,90 @@ operations:
 func syncMergedBranchGitHubStubScript() string {
 	return `#!/bin/sh
 printf '%s\n' "$*" >>"$GIX_SYNC_TEST_GH_LOG"
+if [ -n "$GIX_SYNC_TEST_OPERATION_LOG" ]; then
+  printf 'gh %s\n' "$*" >>"$GIX_SYNC_TEST_OPERATION_LOG"
+fi
 
 if [ "$1" = "repo" ] && [ "$2" = "view" ]; then
   printf '%s\n' '{"nameWithOwner":"owner/project","description":"","defaultBranchRef":{"name":"master"},"isInOrganization":false}'
   exit 0
 fi
 
+find_pull_request_marker() {
+  marker_kind="$1"
+  expected_head="$2"
+  expected_base="$3"
+  awk -v kind="$marker_kind" -v expected_head="$expected_head" -v expected_base="$expected_base" '
+    $1 == kind {
+      marker_base = ""
+      marker_head = ""
+      for (field = 2; field <= NF; field += 2) {
+        if ($field == "--base") {
+          marker_base = $(field + 1)
+        }
+        if ($field == "--head") {
+          marker_head = $(field + 1)
+        }
+      }
+      if (marker_head == expected_head && (expected_base == "" || marker_base == expected_base)) {
+        matched_marker = $0
+      }
+    }
+    END {
+      if (matched_marker != "") {
+        print matched_marker
+      }
+    }
+  ' "$GIX_SYNC_TEST_GH_LOG"
+}
+
 if [ "$1" = "pr" ] && [ "$2" = "list" ]; then
   state=""
+  base=""
+  head=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --state)
         state="$2"
         shift
         ;;
+      --base)
+        base="$2"
+        shift
+        ;;
+      --head)
+        head="$2"
+        shift
+        ;;
     esac
     shift
   done
+  merged_pull_request="$(find_pull_request_marker "merged-pr" "$head" "$base")"
   if [ "$state" = "open" ]; then
+    if [ -n "$merged_pull_request" ]; then
+      printf '%s\n' '[]'
+      exit 0
+    fi
+    created_pull_request="$(find_pull_request_marker "created-pr" "$head" "$base")"
+    if [ -n "$created_pull_request" ]; then
+      base="$(printf '%s\n' "$created_pull_request" | sed -n 's/.*--base \([^ ]*\) --head.*/\1/p')"
+      printf '[{"number":10,"title":"Open","headRefName":"%s","baseRefName":"%s"}]\n' "$head" "$base"
+      exit 0
+    fi
     printf '%s\n' '[]'
     exit 0
   fi
   if [ "$state" = "merged" ]; then
+    if [ -n "$merged_pull_request" ]; then
+      base="$(printf '%s\n' "$merged_pull_request" | sed -n 's/.*--base \([^ ]*\) --head.*/\1/p')"
+      printf '[{"number":9,"title":"Merged","headRefName":"%s","baseRefName":"%s"}]\n' "$head" "$base"
+      exit 0
+    fi
     if [ "$GIX_SYNC_TEST_MERGED" = "false" ]; then
+      printf '%s\n' '[]'
+      exit 0
+    fi
+    if [ "$head" != "$GIX_SYNC_TEST_BRANCH" ] || { [ -n "$base" ] && [ "$base" != "master" ]; }; then
       printf '%s\n' '[]'
       exit 0
     fi
@@ -265,6 +328,29 @@ if [ "$1" = "pr" ] && [ "$2" = "list" ]; then
 fi
 
 if [ "$1" = "pr" ] && [ "$2" = "create" ]; then
+  base=""
+  head=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --base)
+        base="$2"
+        shift
+        ;;
+      --head)
+        head="$2"
+        shift
+        ;;
+    esac
+    shift
+  done
+  if [ -n "$GIX_SYNC_TEST_FAIL_PR_HEAD" ] && [ "$head" = "$GIX_SYNC_TEST_FAIL_PR_HEAD" ]; then
+    printf 'simulated pull request creation failure for %s\n' "$head" >&2
+    exit 1
+  fi
+  printf 'created-pr --base %s --head %s\n' "$base" "$head" >>"$GIX_SYNC_TEST_GH_LOG"
+  if [ -n "$GIX_SYNC_TEST_OPERATION_LOG" ]; then
+    printf 'gh-created --base %s --head %s\n' "$base" "$head" >>"$GIX_SYNC_TEST_OPERATION_LOG"
+  fi
   printf '%s\n' 'https://github.com/owner/project/pull/10'
   exit 0
 fi
@@ -284,6 +370,9 @@ func buildSyncMergedBranchExecutablePath(testInstance *testing.T) string {
 	gitStubScript := fmt.Sprintf(`#!/bin/sh
 if [ -n "$GIX_SYNC_TEST_GIT_LOG" ]; then
   printf '%%s\n' "$*" >>"$GIX_SYNC_TEST_GIT_LOG"
+fi
+if [ -n "$GIX_SYNC_TEST_OPERATION_LOG" ]; then
+  printf 'git %%s\n' "$*" >>"$GIX_SYNC_TEST_OPERATION_LOG"
 fi
 if [ "$1" = "remote" ] && [ "$2" = "get-url" ] && [ "$3" = "origin" ]; then
   printf '%%s\n' %q

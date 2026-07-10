@@ -22,6 +22,9 @@ func TestSyncHelpDescribesMissingBranchCurrentHeadContract(testInstance *testing
 	require.Contains(
 		testInstance,
 		output,
-		"A missing explicit branch is created on top of the current branch, then aligned with the remote base before publication.",
+		"A missing explicit branch with dirty work is created on top of the current branch. If the current branch is not master, sync first ensures that its committed HEAD is remote-backed and has an open pull request, then opens the child pull request against that branch.",
 	)
+	require.Contains(testInstance, output, "The selected parent base is retained for retries after child push or pull-request failure.")
+	require.Contains(testInstance, output, "A clean or stashed missing branch is rejected because it would have no child pull request delta.")
+	require.Contains(testInstance, output, "Dirty auto-commit is rejected on a known-merged branch; use --stash to preserve that work through the merged handoff before creating a new review branch.")
 }
