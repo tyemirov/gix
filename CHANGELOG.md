@@ -24,6 +24,1177 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented validated AI conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.1.2] - 2026-07-10
+
+- Merge pull request #380 from tyemirov/bugfix/B020-dirty-sync-new-branch
+- chore(release): add release and pages artifact preparation/deploy scripts
+- test: add release and sync integration tests for makefile and CLI behavior
+- feat(syncflow): improve merge conflict resolution and strict sync logic
+- refactor(cli): use branchSyncCommand.Long for sync long description
+- docs: clarify release, publish, and merge conflict resolution behavior
+- build: improve release-artifacts validation and tighten artifact checks
+- docs(changelog): update for explicit master sync, AI merge validation, and release flow
+- docs(ISSUES): document recent sync, merge, release, and help contract fixes
+- docs(issues): add new priority-zero bugs and maintenance runbooks
+- Merge remote-tracking branch 'origin/master' into bugfix/B020-dirty-sync-new-branch
+- test: add integration for clustered dirty commits on new sync branches
+- fix(syncflow): consistently create branches from current checkout and merge base
+- docs: clarify sync branch creation and add release/publish/deploy section
+- build(makefile): add multi-platform release, artifact, and deploy targets
+- docs: update changelog with fixes and testing for dirty sync target behavior
+- docs(issues): document dirty sync branch creation regression and fix validation
+- ci: remove GitHub Actions release workflow
+- Merge pull request #379 from tyemirov/issues-md-1783374715345
+- Update ISSUES.md
+- Update ISSUES.md
+- Update ISSUES.md
+- Release v0.8.1
+- Merge pull request #378 from tyemirov/bugfix/sync-existing-branch-create-pr
+- test: remove branchName from sync command args in integration test
+- test: add integration tests for merged branch sync scenarios
+- fix(syncflow): handle adoption of orphaned remote branches and main worktree
+- docs(issues): add sync pull request and worktree handoff case resolutions
+- Release v0.8.0
+- Merge pull request #377 from tyemirov/tyemirov/bugfix/init-subcommand
+- fix(syncflow): support LLM merge resolution for deleted files and missing branches
+- chore: update CHANGELOG for strict-sync empty branch and file deletion fixes
+- docs(issues): document branch sync halt and AI merge delete support
+- feat(syncflow): add automated AI-powered merge conflict resolution
+- feat(syncflow): resolve merge conflicts in strict-sync using AI client
+- docs(issues): describe AI-based merge conflict resolution for dirty sync
+- fix: push local-ahead sync branches
+- test: reject root init flag
+- fix: add init subcommand
+- Release v0.7.0
+- Merge pull request #376 from tyemirov/issues-md-1782774323268
+- Update ISSUES.md
+- Update ISSUES.md
+- Merge pull request #375 from tyemirov/issues-md-1782774205639
+- Apply ISSUES.md execution changes
+- Merge pull request #374 from tyemirov/issues-md-1782774055936
+- Update ISSUES.md
+- Merge pull request #373 from tyemirov/tyemirov/improvement/optional-llm-provider-config
+- test: replace XDG config directory with secondary config directory in tests
+- docs: update config file search order and clarify default config path
+- refactor(config): drop XDG_CONFIG_HOME support for user config paths
+- docs: update config file path references to use $HOME/.gix/config.yaml
+- docs(changelog): update config path to use $HOME/.gix/config.yaml only
+- docs: update config file precedence in architecture documentation
+- docs(issues): clarify and enforce `$HOME` as sole user config location
+- refactor(llm): rename provider to transport and clarify configuration
+- docs: clarify LLM Proxy config and usage in setup instructions
+- feat(cli): add global LLM config defaults and override logic for commands
+- docs: clarify LLM Proxy configuration and update option names in README
+- docs: update changelog with global LLM config and transport/provider options
+- docs: clarify llm config block and defaults in architecture overview
+- docs(issues): add global LLM transport config and clarify transport semantics
+- docs: add agent, issue, planning, and policy guides under .mprlab
+- chore: remove legacy process and issue tracking markdown files
+- feat(llm): add provider selection and default handling for commit messages
+- docs: update policy references and clarify init workflow in documentation
+- refactor(cli): support configurable LLM provider and update defaults
+- docs: clarify LLM provider config and update usage instructions in README
+- docs: update changelog with LLM provider defaults and governance doc changes
+- docs: update POLICY.md reference to .mprlab/POLICY.md in architecture guide
+- docs: update AGENTS.md for .mprlab/ migration and add governance section
+- docs: remove obsolete .mprl agent and policy guideline documents
+- chore: ignore .mprlab/PLAN.md for local planning scratch files
+- Release v0.6.10
+- Merge pull request #372 from tyemirov/tyemirov/maintenance/update-llm-proxy-api-base
+- docs: update CSP connect-src URL to llm-proxy-api.mprlab.com
+- feat(llmclient): add llmproxy client factory with proxy support
+- chore: update dependencies in go.sum to latest versions
+- chore: update dependencies and add llm-proxy module
+- chore: switch LLM client to llmclient package and update defaults
+- Release v0.6.9
+- docs: update ISSUES.md with latest changes
+- Merge pull request #371 from tyemirov/tyemirov/bugfix/gix-sync-dirty-base-switch
+- fix(syncflow): allow dirty master branch with local commits ahead of remote
+- fix(syncflow): reject dirty sync if local base branch is ahead of remote
+- test: improve sync integration test for dirty master worktree
+- fix(syncflow): create dirty sync branch from current checkout if matching base
+- refactor: simplify preset configuration loading logic in workflow run command
+- docs: add forward-only contract discipline to AGENTS.md
+- Release v0.6.8
+- Merge pull request #370 from tyemirov/tyemirov/bugfix/B013-sync-chained-pr-base
+- Filter sync pull request lookup by head
+- Fix sync chained PR base detection
+- Release v0.6.7
+- Merge pull request #369 from tyemirov/bugfix/B012-sync-missing-pr-single-error
+- fix(strict-sync): handle pruned merged branches by syncing base branch
+- test(syncflow): parameterize TestCommandSuppressesWorkflowFailureEcho with multiple error cases
+- feat(syncflow): add prompt and handle merged PR sync fallback
+- Release v0.6.6
+- Merge pull request #368 from tyemirov/bugfix/B011-sync-restores-tracked-ignored-dirty-paths
+- Cover B011 sync restore failure modes
+- Tighten B011 sync integration coverage
+- Fix B011 tracked ignored sync cleanup
+- Release v0.6.5
+- Merge pull request #367 from tyemirov/bugfix/B010-sync-tracked-ignored-pathspecs
+- Add tracked ignored sync integration coverage
+- Refactor ignored sync tests table coverage
+- Fix tracked ignored sync path filtering
+- Release v0.6.4
+- Merge pull request #366 from tyemirov/bugfix/B009-sync-ignored-dirty-paths
+- Fix ignored-only sync dirty detection
+- Fix B009 sync ignored path staging
+- Release v0.6.3
+- Merge pull request #365 from tyemirov/bugfix/I009-stale-generated-sync-branch
+- test: use variable for expected branch name in sync refresh test
+- fix(sync): avoid stale branch collisions by using semantic branch names
+- refactor(syncflow): generate sync branch names using commit messages
+- Release v0.6.2
+- Merge pull request #364 from tyemirov/bugfix/B008-sync-sibling-worktree-adoption
+- Centralize B008 worktree adoption retry service
+- Fix B008 strict sync sibling worktree adoption
+- Release v0.6.1
+- Merge pull request #363 from tyemirov/improvement/I008-implementation-unification
+- Unify workflow action option builders
+- Release v0.6.0
+- Merge pull request #362 from tyemirov/improvement/I007-purposeful-sync-pr-descriptions
+- Expose I007 sync PR metadata controls
+- Fix I007 sync PR body generation ordering
+- Generate I007 sync PR descriptions from branch diffs
+- Improve I007 sync pull request descriptions
+- Release v0.5.0
+- Merge pull request #361 from tyemirov/improvement/I006-new-sync-semantics
+- Clarify I006 sync dirty-work modifiers
+- Fix I006 strict sync commit modifier
+- Implement dirty gix sync semantics
+- Merge pull request #360 from tyemirov/improvement/I006-new-sync-semantics
+- preserve dirty sync worktree
+- implement new sync semantics
+- Release v0.4.0
+- Merge pull request #359 from tyemirov/improvement/I005-rename-cd-to-sync
+- feat: rename cd command to sync
+- Release v0.3.5
+- Merge pull request #358 from tyemirov/tyemirov/bugfix/B006-cd-adopt-existing-worktree
+- fix: push clean adopted branches without upstream
+- fix: adopt sibling worktrees in cd
+- Release v0.3.4
+- Merge pull request #357 from tyemirov/bugfix/B005-cd-refresh-with-dirty-worktree
+- Fix B005 cd dirty worktree fast-forward refresh
+- Merge pull request #355 from tyemirov/codex/audit-only-web-ui
+- feat(web): add automated changelog update and commit message generation
+- refactor: remove deprecated web command execution and workflow from web interface
+- chore: seed planning templates
+- Merge pull request #354 from tyemirov/improvement/web-audit-workflow-surface
+- Refine web audit workflow and repo browsing
+- Merge pull request #353 from tyemirov/improvement/F003-web-startup-asset-verification
+- Refine the web audit flow and folder explorer
+- Improve F003 web startup asset verification
+- Merge pull request #352 from tyemirov/feature/F008-web-audit-sync-protocol
+- Merge pull request #351 from tyemirov/feature/F009-web-repo-tree
+- fix(web): normalize SSH protocol audit flow
+- fix(web): refine repository tree interactions
+- fix(web): keep audit action labels visible
+- fix(web): make current repo tree behave like explorer
+- fix(web): reveal higher folders in current repo tree
+- fix(web): show current repo in explorer tree
+- fix(web): move repository tree into left sidebar
+- chore(config): update repo-local workflow defaults
+- Hide nested repositories from the web tree
+- Implement F009 repository tree explorer
+- feat(web): add audit column filters
+- style(web): wrap dirty audit files in narrow column
+- fix(web): sync audit draft roots with inspection
+- fix(web): route audit runs through inspection
+- Merge pull request #346 from tyemirov/feature/web-audit-results
+- Merge pull request #350 from tyemirov/feature/F008-web-audit-sync-protocol
+- test(web): harden browser startup in ci
+- Merge pull request #347 from tyemirov/feature/F005-web-audit-queue-foundation
+- Merge pull request #348 from tyemirov/feature/F007-web-audit-delete-folder
+- Merge pull request #349 from tyemirov/feature/F008-web-audit-sync-protocol
+- fix(web): preserve audit apply scope and skipped outcomes
+- feat(web): queue audit sync and protocol fixes
+- feat(web): queue audit folder deletions
+- feat(web): queue audit remediations before apply
+- feat(web): render audit results in the web client
+- Merge pull request #345 from tyemirov/feature/F003-web-interface-mvp
+- Align web task copy with commands
+- Filter task-owned advanced commands
+- Reflow the web workspace into full-width task and runner rows
+- Collapse low-information target card states
+- Compact repository list rows
+- Compact the repository scope controls
+- Tighten the selected repo summary layout
+- Merge repository scope into the repos panel
+- Reflow the web interface into row-based panels
+- Move named ref selection into the target bar
+- Add browser coverage for web control surface
+- Add web workflow and remote tasks
+- Refactor web actions into task workspace
+- Polish ref browser rendering
+- Migrate web branch panel into ref browser
+- Redesign web targets around repo context
+- Add scope-aware file operation drafts
+- Redesign web UI around repository context
+- Filter inactionable web operations
+- Fix web UI root route and add branch panel
+- Add F003 local web interface for gix
+- Release v0.3.3
+- Merge pull request #344 from tyemirov/fix/proprietary-licensing-workflow
+- fix: preserve branch captures and add proprietary licensing workflow
+- Future development
+- Future development
+- chore(preflight): checkpoint dirty files before polish
+- chore: seed planning templates
+- Google Analytics tags added
+- Future development
+- Future development
+- Future development
+- Rlease v0.3.2
+- Merge pull request #343 from tyemirov/bugfix/GX-355-prs-delete-failure-details
+- Fix GX-355 prs delete failure accounting
+- Release v0.3.1
+- Merge pull request #339 from tyemirov/bugfix/GX-354-workflow-glob-root-match
+- Merge pull request #340 from tyemirov/bugfix/GX-346-prs-delete-output
+- Merge pull request #341 from tyemirov/bugfix/GX-345-workflow-discovery-output
+- Fix GX-345 workflow discovery output
+- Fix GX-346 prs delete output
+- Fix GX-354 workflow glob root matches
+- Future development
+- Future development
+- Future development
+- Future development
+- Future development
+- Future development
+- Future development
+- Future development
+- Future development
+- Merge pull request #338 from tyemirov/improvement/GX-254-license-templates
+- Merge branch 'master' into improvement/GX-254-license-templates
+- Release v0.3.0
+- Release v0.3.0
+- Merge pull request #337 from tyemirov/maintenance/GX-423-docs-cleanup
+- Merge branch 'master' into maintenance/GX-423-docs-cleanup
+- Merge pull request #336 from tyemirov/improvement/GX-254-license-templates
+- Improve GX-254 license workflow templates
+- Release candidate v0.3.0-rc17
+- Merge pull request #334 from tyemirov/bugfix/GX-353-clean-commandfailed-output
+- Merge pull request #329 from tyemirov/feature/GX-110-workflow-command-step
+- Merge pull request #330 from tyemirov/improvement/GX-252-account-rename-deps
+- Merge pull request #331 from tyemirov/improvement/GX-253-account-rename-go-version
+- Merge pull request #332 from tyemirov/improvement/GX-251-workflow-summary
+- Merge pull request #333 from tyemirov/maintenance/GX-423-docs-cleanup
+- Future development
+- feat(docs): introduce summary format alignment; move validation to edge
+- feat(reporting): refine workflow summary output; move validation to edge
+- feat(workflow): introduce go version update step; move validation to edge
+- feat(workflow): introduce go module bump steps; move validation to edge
+- Future development
+- feat(workflow): add command run step; move validation to edge
+- Future Development
+- future development
+- Future development
+- Improved automated coding flow
+- Merge pull request #328 from tyemirov/bugfix/GX-353-clean-commandfailed-output
+- gitignore workflow extended with often ignored folders
+- Fix GX-353: trim blank stderr lines in execshell errors
+- Release candidate v0.3.0-rc16
+- Merge pull request #326 from tyemirov/bugfix/GX-352-cd-stash-untracked
+- Fix GX-251: cd --stash handles untracked files
+- Merge pull request #325 from tyemirov/bugfix/GX-351-require-changes-after-commit
+- Fix GX-351: require_changes tracks workflow commits
+- Future development
+- Release candidate v0.3.0-rc15
+- Merge pull request #324 from tyemirov/bugfix/GX-350-succinct-non-workflow-logs
+- Fix GX-350: restore concise non-workflow logging
+- Merge pull request #322 from tyemirov/maintenance/GX-499-issues-cleanup
+- Merge pull request #323 from tyemirov/bugfix/GX-349-non-workflow-logging
+- Merge branch 'maintenance/GX-499-issues-cleanup' into bugfix/GX-349-non-workflow-logging
+- Future development
+- Fix GX-349: restore non-workflow logging
+- Maintenance: archive resolved issues
+- Docs: sync README/ARCHITECTURE with completed issues
+- Future development
+- AGENTS.md moved to root folder for easy discoverability
+- Release Candidate v0.3.0-rc14
+- Merge pull request #321 from tyemirov/improvement/GX-261-migrate-llm-utils
+- chore: update go.mod and go.sum dependencies
+- Docs: clarify GX-261 uses utils/llm
+- Improve GX-261: migrate LLM package to utils
+- Future development
+- Future development
+- Merge pull request #317 from tyemirov/maintenance/GX-345-logging-issues
+- Merge pull request #318 from tyemirov/bugfix/GX-346-workflow-yaml
+- Merge pull request #319 from tyemirov/bugfix/GX-347-workflow-summary
+- Merge pull request #320 from tyemirov/bugfix/GX-348-step-outcomes
+- Fix GX-348 step outcomes and reasons
+- Fix GX-347 workflow end summary
+- Fix GX-346 workflow YAML step logs
+- Log GX-345..348 logging follow-ups
+- Release Candidate v0.3.0-rc13
+- Merge pull request #316 from tyemirov/bugfix/GX-344-step-logging
+- Avoid duplicate step summaries in workflows
+- Improve step-centric workflow logging
+- Refine step summary reasons
+- Improve GX-259 step outcome logging
+- Release candidate v0.3.0-rc12
+- Merge pull request #315 from tyemirov/bugfix/GX-344-step-logging
+- Improved flow for automated coding
+- Future development
+- Merge pull request #314 from tyemirov/bugfix/GX-344-step-logging
+- Inject git manager stub into remotes step reporter test
+- Fix GX-344 step reporter test git manager
+- Fix GX-344 workflow step name logging
+- Future development
+- Release Candidate v0.3.0-rc11
+- Merge pull request #313 from tyemirov/bugfix/GX-259-branch-cleanup-default-base
+- GX-259: label safeguard task skips by step
+- GX-259: track step name per repository stage
+- Mark GX-259 step-based logging as complete
+- GX-259: propagate workflow step names into logging
+- Merge pull request #312 from tyemirov/bugfix/GX-259-branch-cleanup-default-base
+- Strengthen GX-260 branch cleanup default-base test
+- Clarify GX-259 logging vs GX-260 branch cleanup
+- Fix GX-259 branch cleanup default base
+- Future improvements
+- Release Candidate v0.3.0-rc10
+- Merge pull request #310 from tyemirov/improvement/GX-252-gitignore-safeguards
+- Merge pull request #311 from tyemirov/improvement/GX-258-branch-cleanup
+- improvement: GX-258 keep switch-branch capture when on master
+- Merge pull request #309 from tyemirov/improvement/GX-258-branch-cleanup
+- improvement: GX-258 expose branch-not safeguard in DSL
+- improvement: GX-258 refine branch cleanup semantics
+- improvement: GX-258 branch cleanup for no-op workflows
+- Merge pull request #308 from tyemirov/improvement/GX-252-gitignore-safeguards
+- improvement(GX-252): add require_changes safeguards to gitignore preset
+- candidate release v0.3.0-rc9
+- improvement(GX-252): clarify per-step no-op messages
+- improvement(GX-252): treat safeguard skips as non-issues
+- improvement(GX-252): nest issues under step output
+- Merge pull request #307 from tyemirov/improvement/GX-252-safeguard-messaging
+- Release Candidate v0.3.0-rc8
+- improvement(GX-252): clarify require_changes safeguard messaging
+- Release Candidate v0.3.0-rc7
+- Web site improvements
+- Footer improvements
+- Merge pull request #306 from tyemirov/feature/GX-110-docs-site
+- feature(GX-110): add About gix modal
+- feature(GX-110): align footer links with mpr-ui demo
+- feature(GX-110): integrate mpr-ui footer
+- Create CNAME
+- Merge pull request #305 from tyemirov/feature/GX-110-docs-site
+- feature(GX-110): move docs site for GitHub Pages
+- Future development
+- Future development
+- Merge pull request #304 from tyemirov/improvement/GX-252-safeguards
+- improvement: require explicit safeguards for git stage
+- Release Candidate v0.3.0-rc5
+- Merge pull request #301 from tyemirov/bugfix/GX-343-changelog-message
+- Merge pull request #302 from tyemirov/improvement/GX-252-cd-formatting
+- test: drop unused changelog executor stub
+- Merge branch 'bugfix/GX-257-namespace-mutations' into bugfix/GX-343-changelog-message
+- bugfix: avoid duplicate changelog no-change notice
+- bugfix: track namespace mutated files
+- Merge pull request #298 from tyemirov/bugfix/GX-342-workflow-ignore
+- Future development
+- bugfix: ignore non-repo check-ignore errors
+- Future development
+- Release candidate v0.3.0-rc4
+- Merge pull request #296 from tyemirov/improvement/GX-341-account-rename
+- Merge pull request #297 from tyemirov/improvement/GX-256-cd-logging
+- improvement: fix GX-256 cd summary and GX-257 staging
+- improvement: fix GX-341 recursive replacements
+- Future development
+- Future improvements
+- conflicts resolved
+- Release candidate v0.3.0-rc3
+- Merge pull request #294 from tyemirov/improvement/GX-254-session-prompts
+- chore(prompts): lowercase apply-all indicator
+- Merge pull request #293 from tyemirov/improvement/GX-254-session-prompts
+- feat(prompts): add session apply-all prompter
+- Release Candidate v0.3.0-rc2
+- Merge pull request #292 from tyemirov/feature/GX-235-track-remote
+- feat(domain): introduce TrackingRemoteConfigurator smart constructor; move validation to edge
+- Future development
+- Future development
+- Release v0.3.0-rc1
+- Merge pull request #291 from tyemirov/improvement/GX-254-accept-all-prompts
+- improvement(GX-254): add accept-all confirmation option
+- Release v0.2.11
+- Merge pull request #290 from tyemirov/improvement/GX-253-hide-cd-refresh-flag
+- Fix cd refresh default and add integration coverage
+- improvement(GX-253): hide gix cd refresh flag
+- Future development
+- Release v0.2.10
+- Merge pull request #289 from tyemirov/improvement/GX-252-cd-output
+- Improve GX-252 gix cd output
+- Release v0.2.9
+- Merge pull request #287 from tyemirov/bugfix/GX-340-remote-detection
+- Merge pull request #288 from tyemirov/improvement/GX-251-stash-switch
+- Handle multiple stashes during branch change refresh
+- Improve GX-251 gix cd stash flow
+- Fix GX-340 gix cd remote selection
+- Future development
+- Future development
+- release v0.2.8
+- Merge pull request #285 from tyemirov/maintenance/log-untracked-refresh
+- Log untracked worktree entries during branch refresh checks
+- Merge pull request #282 from tyemirov/improvement/GX-249-require-clean
+- Honor ignore_dirty_paths in worktree filters
+- Merge pull request #283 from tyemirov/improvement/GX-250-branch-change
+- Update branch change refresh expectations
+- Skip branch refresh pull on dirty worktrees
+- Merge pull request #284 from tyemirov/maintenance/next-issue
+- Add clean-worktree guard to account rename preset
+- Update workflow presets for relaxed branch change cleanliness
+- Align branch change refresh with git switch semantics
+- Normalize require_clean checks with shared worktree helper
+- Future development
+- Role added
+- Release v0.2.7
+- Merge pull request #281 from tyemirov/bugfix/cd-preclean-refresh
+- Go formatting
+- improvement: accept yes/no toggles for all bool flags
+- Allow stash/commit refresh options to skip pre-clean failure
+- bugfix: block branch change when refresh requires clean
+- Release v0.2.6
+- Merge pull request #280 from tyemirov/bugfix/gitignore-apply-require-clean
+- bugfix: honor ignore_dirty_paths in gitignore apply
+- Release v0.2.5
+- Merge pull request #279 from tyemirov/improvement/GX-251-cd-default-refresh
+- improvement: default cd refresh clean
+- account rename changes the account name in md files
+- Merge pull request #278 from tyemirov/improvement/GX-250-ignore-dirty-guard
+- Accept string require_clean values
+- improvement: nest require_clean ignore patterns
+- Merge pull request #277 from tyemirov/automation/gitignore/gix-20251119T204632
+- chore(workflows): capture/restore initial branch
+- Release v0.2.4
+- Merge pull request #275 from tyemirov/automation/gitignore/gix-20251119T073841
+- Protect capture state per repository
+- Merge pull request #276 from tyemirov/improvement/GX-249-capture-dsl
+- Update capture DSL and coverage
+- fix: add missing imports for capture storage
+- feat(workflow): refine capture DSL with named vars
+- chore: align capture DSL with kind keyword
+- chore(workflows): restore original commit after gitignore/account flows
+- feat(workflow): capture/restore support for branch change
+- Release v0.2.3
+- Merge pull request #274 from tyemirov/improvement/GX-247-ignore-dirty
+- Respect status codes when filtering dirty ignores
+- feat(workflow): allow ignore_dirty_paths safeguard
+- .gitignore workflow includes additional service files
+- chore: ensure gitignore entries
+- Release v0.2.2
+- account renaming flow improved
+- Release v0.2.1
+- .gitignore workflow includes additional service files
+- Merge pull request #273 from tyemirov/automation/gitignore/gix-20251119T015858
+- chore: ensure gitignore entries
+- Release v0.2.2
+- Merge pull request #271 from tyemirov/maintenance/GX-422-cli-doc
+- Merge pull request #270 from tyemirov/improvement/GX-246-audit-dirty-report-stacked
+- feat(audit): surface worktree dirty files for GX-246
+- account renaming flow improved
+- Release v0.2.1
+- Merge pull request #266 from tyemirov/bugfix/GX-337-workflow-replacements
+- Merge pull request #267 from tyemirov/maintenance/GX-338-module-rename
+- Merge pull request #268 from tyemirov/maintenance/GX-339-go-version-docs
+- Merge pull request #269 from tyemirov/maintenance/GX-422-cli-doc
+- docs: refresh CLI design for GX-422
+- docs: clarify Go 1.25 baseline for GX-339
+- chore: align module namespace for GX-338
+- fix: resolve GX-337 recursive replacements
+- Future development
+- Release v0.2.0
+- Merge pull request #264 from tyemirov/bugfix/GX-421-human-logging
+- bugfix: remove legacy workflow logging
+- Merge pull request #263 from tyemirov/bugfix/GX-420-human-logging
+- fix(logging): force workflow human formatter
+- Merge pull request #261 from tyemirov/bugfix/GX-419-files-replace-glob
+- Merge branch 'master' into bugfix/GX-419-files-replace-glob
+- docs(changelog): mention GX-419
+- fix(taskfiles): support replace mode globs
+- fix(cleanup): use replace action for go globs
+- Merge pull request #260 from tyemirov/bugfix/GX-418-changelog-logging
+- fix(changelog+commit): suppress workflow logging
+- Merge pull request #259 from tyemirov/maintenance/update-issues-gx-417
+- docs(issues): mark GX-417 resolved
+- Merge pull request #258 from tyemirov/maintenance/GX-417-files-command-tests
+- test(files-add): cover negative paths
+- Future development
+- Merge pull request #257 from tyemirov/maintenance/GX-416-taskrunner-environments
+- refactor(taskrunner): split dependency builders
+- Merge pull request #256 from tyemirov/maintenance/GX-415-domain-smart-constructors
+- fix(history): drop unused helper
+- feat(history+rename): enforce typed options
+- Futrue development
+- Merge pull request #255 from tyemirov/maintenance/GX-414-typed-preset-builders
+- maintenance: add typed preset builders
+- Merge pull request #254 from tyemirov/maintenance/GX-413-preset-helper
+- test: update audit fallback expectation
+- audit: avoid network fallback for default branch
+- Merge pull request #253 from tyemirov/maintenance/GX-413-preset-helper
+- maintenance: drop unused preset helpers
+- Merge remote-tracking branch 'origin/maintenance/GX-413-preset-helper' into maintenance/GX-413-preset-helper
+- maintenance: add preset workflow helper
+- maintenance: add preset workflow helper
+- Merge pull request #252 from tyemirov/maintenance/GX-412-policy-review
+- Future development
+- Merge pull request #251 from tyemirov/maintenance/GX-412-policy-review
+- Merge pull request #250 from tyemirov/bugfix/GX-343-workflow-cleanup
+- docs: add GX-412 refactor plan
+- Merge remote-tracking branch 'origin/bugfix/GX-343-workflow-cleanup' into bugfix/GX-343-workflow-cleanup
+- Fix GX-343 repo workflow executor wiring
+- Merge pull request #247 from tyemirov/bugfix/GX-344-files-replace
+- Merge pull request #248 from tyemirov/bugfix/GX-336-logging-refresh
+- Gate history variable overrides to history actions
+- bugfix(GX-336): refine workflow human-readable logging
+- Merge pull request #246 from tyemirov/bugfix/GX-345-safeguards
+- bugfix(GX-345): add hard-stop vs soft-skip safeguards
+- Merge pull request #244 from tyemirov/bugfix/GX-342-release-presets
+- Merge pull request #245 from tyemirov/bugfix/GX-344-files-replace
+- Wire workflow preset variables and add integration coverage
+- bugfix(GX-344): convert repo-files-replace to workflow preset
+- Merge pull request #243 from tyemirov/bugfix/GX-343-workflow-cleanup
+- bugfix(GX-343): remove bespoke repo workflow helpers
+- Merge pull request #242 from tyemirov/bugfix/GX-342-release-presets
+- Validate retag mapping inputs
+- bugfix(GX-342): convert release commands to workflow presets
+- Merge pull request #241 from tyemirov/bugfix/GX-341-files-add-preset
+- Ensure repo files add skips pushes when disabled
+- bugfix(GX-341): convert repo-files-add to preset
+- Future development
+- Merge pull request #238 from tyemirov/bugfix/GX-338-remote-preset
+- Propagate owner variable to canonical workflow preset
+- bugfix(GX-338): convert remote update to workflow preset
+- Merge pull request #234 from tyemirov/improvement/GX-336-workflow-logging
+- Preserve severity indicators for phase events
+- Merge pull request #235 from tyemirov/improvement/GX-337-folder-rename-preset
+- Ensure folder-rename preset uses boolean options
+- Merge pull request #236 from tyemirov/improvement/GX-345-safeguard-dsl
+- Merge pull request #237 from tyemirov/improvement/GX-346-docs-refresh
+- improvement: sync repo playbook docs (GX-346)
+- improvement: track safeguard hard-stop vs soft-skip work (GX-345)
+- improvement: turn repo-folders-rename into preset (GX-337)
+- improvement: redesign workflow logging (GX-336)
+- Future development
+- Merge pull request #233 from tyemirov/bugfix/workflow-header-format
+- Handle missing audit service during repository refresh
+- fix: clean workflow logging headers
+- Future development
+- feat(workflow): add concurrent repository execution
+- Future development
+- Candidate release v0.2.0-rc.12
+- Configs are committed to the version control system
+- Merge pull request #232 from tyemirov/bugfix/GX-335-append-env-line
+- bugfix(workflow): ensure append-if-missing matches literal lines
+- Future development
+- Merge pull request #226 from tyemirov/bugfix/GX-332-workflow-logging
+- Merge pull request #230 from tyemirov/bugfix/GX-334-pull-new-branch
+- Merge pull request #229 from tyemirov/improvement/GX-333-concise-logging
+- fix: output path before message in summaries
+- fix: include path in workflow event summary
+- fix: emit workflow event summaries
+- fix: log formatter includes event summaries
+- bugfix: skip pull on new branches
+- improvement: add concise workflow logging
+- bugfix: hide workflow stage logs
+- Merge pull request #222 from tyemirov/bugfix/GX-330-append-if-missing
+- Merge pull request #224 from tyemirov/bugfix/GX-331-workflow-skip
+- Stop repository stages after safeguard skip
+- bugfix: respect workflow skips
+- bugfix: normalize append-if-missing
+- Future development
+- Future development
+- Future Development
+- Merge pull request #221 from tyemirov/improvement/GX-327-workflow-per-repo
+- feat(workflow): execute tasks per repository
+- Merge pull request #218 from tyemirov/improvement/GX-327-workflow-per-repo
+- Deduplicate repositories in repository-scoped stages
+- feat(workflow): run repository-scoped stages per repo
+- Merge pull request #216 from tyemirov/bugfix/GX-325-branch-change-tracking
+- fix(cd): treat rev-parse missing revision as branch absence
+- fix(cd): avoid tracking remote refs for new automation branches
+- Merge pull request #215 from tyemirov/improvement/GX-324-missing-workflow-commands
+- fix(workflow): execute workflow operations directly
+- Future development
+- Merge pull request #214 from tyemirov/improvement/GX-238-workflow-actions
+- fix(workflow): honor ensure_clean for stage actions
+- feat(workflow): seed run id for branch templates
+- fix(workflow): remove branch-prepare command
+- feat(workflow): add atomic git command steps
+- improve(execshell): show command context on failure
+- Release candidate v0.2.0-rc.11
+- Merge pull request #213 from tyemirov/feature/append-if-missing
+- refactor(workflow): drop legacy line-edit mode
+- fix(workflow): accept legacy line-edit mode
+- feat(workflow): rename line-edit mode to append-if-missing
+- chore: rename ensure-lines mode to line-edit
+- feat(workflow): add ensure-lines file mode
+- llm and taskrunner packages documentation
+- Release candidate v0.2.0-rc.9
+- chore(cli): drop legacy command wrappers
+- Release Candidate v0.2.0-rc.9
+- fix(workflow): restore branch after tasks
+- Merge pull request #211 from tyemirov/improvement/GX-227-files-rm
+- Merge pull request #209 from tyemirov/improvement/GX-229-cli-bootstrap
+- fix(workflow): restore ensure_clean override parsing
+- Merge pull request #205 from tyemirov/improvement/GX-229-cli-bootstrap
+- Merge master into improvement/GX-229-cli-bootstrap
+- Merge pull request #204 from tyemirov/improvement/GX-228-embedded-workflows-nested
+- Merge pull request #206 from tyemirov/improvement/GX-230-workflow-outcome
+- fix(migrate): wire GitHub resolver for default
+- fix(taskrunner): allow skipping GitHub resolver
+- Merge pull request #207 from tyemirov/improvement/GX-231-task-operations
+- Merge pull request #208 from tyemirov/improvement/GX-236-runtime-variables
+- formatting
+- fix(workflow): skip push when remote missing
+- feat(workflow): honor runtime variable precedence
+- feat(workflow): layer task operations
+- feat(workflow): surface execution outcomes and stage metrics
+- GX-229: unify CLI commands on pkg/taskrunner
+- GX-227: move history purge under files namespace
+- GX-226: embed namespace workflow preset
+- chore(cli): drop unused helper functions
+- feat(cli): modularize bootstrap and task runner wiring
+- WIP
+- Future development
+- refactor(cli): scope history purge under files namespace
+- feat(workflow): drop namespace CLI in favor of preset
+- Merge pull request #198 from tyemirov/improvement/GX-234-test-targets
+- Merge pull request #200 from tyemirov/improvement/GX-225-license-workflow-embedded
+- improvement(GX-225): delegate license command to workflow
+- improvement(GX-236): add workflow runtime variables
+- improvement(GX-228): add embedded workflow presets
+- improvement(GX-234): split fast/slow tests
+- improvement(GX-233): expand structured reporter telemetry
+- Merge pull request #195 from tyemirov/improvement/GX-224-message-commit
+- feat(cli): move commit generator under message namespace
+- improvement: move changelog generator under message namespace
+- improvement: rename branch-default command to default
+- Future development
+- Centralize LLM client factory
+- Future development
+- Merge pull request #194 from tyemirov/improvement/GX-219-remove-dry-run-cleanup
+- BugFix: pre-requsites
+- tests: skip history purge when git filter-repo missing
+- Bugfix: unused functions
+- Merge pull request #193 from tyemirov/improvement/GX-219-remove-dry-run-cleanup
+- tests: update repos integration expectations
+- tests: auto-confirm destructive operations
+- docs: scrub dry-run references
+- cli: remove dry-run support
+- backend: remove dry-run plumbing
+- workflow: remove dry-run support
+- Future development
+- Merge pull request #191 from tyemirov/improvement/GX-220-rename-cd
+- feat(branches): fold refresh behaviors into cd command
+- improvement: rename cd command and add default fallback
+- Future development
+- Details of why the tree is "dirty" added to the output
+- Candidate release v0.2.0-rc.8
+- BugFix: do not perform further checks after remote destination branch matches the target
+- Future development
+- Future development
+- Release candidate  v0.2.0-rc.7
+- Future development
+- Merge pull request #188 from tyemirov/bugfix/GX-321-changelog-summary
+- Merge pull request #189 from tyemirov/bugfix/GX-322-workflow-resilience
+- Merge pull request #190 from tyemirov/maintenance/GX-411-policy-review
+- aggreagtion error fixed
+- GX-411 capture refactor roadmap
+- GX-322 keep workflow execution running after failures
+- GX-321 ensure changelog summary counts repositories
+- Merge pull request #187 from tyemirov/bugfix/GX-320-namespace-rewrite-message
+- GX-320 document resolution
+- GX-320 clarify namespace rewrite skip reason
+- Merge pull request #186 from tyemirov/improvement/GX-218-remove-top-level
+- GX-218 restructure CLI command surface
+- Merge pull request #185 from tyemirov/improvement/GX-217-summary-duration
+- improvement(reporting): fix workflow summary totals
+- Future development
+- Future development
+- Merge pull request #184 from tyemirov/improvement/GX-216-dirty-details
+- improvement(workflow): surface dirty worktree details
+- Merge pull request #183 from tyemirov/improvement/GX-215-llm-workflow-variables
+- feat(workflow): expose llm configuration and task variables
+- Merge pull request #182 from tyemirov/improvement/GX-212-summary-warnings
+- Future development
+- Future development
+- improvement: surface dirty worktree details
+- Future development
+- Future development
+- Release candidate v0.2.0-rc.6
+- Merge pull request #181 from tyemirov/feature/GX-22-license-injection
+- Merge pull request #173 from tyemirov/feature/GX-23-git-retag
+- fix(release): emit retag mappings as []any for workflow
+- Merge pull request #179 from tyemirov/improvement/GX-105-workflow-dsl
+- Merge pull request #180 from tyemirov/bugfix/GX-318-namespace-skip
+- Merge pull request #177 from tyemirov/bugfix/GX-318-namespace-skip
+- Merge pull request #176 from tyemirov/bugfix/GX-319-prs-delete-flag
+- fix(files-add): respect CLI roots and warn on positional args
+- Merge pull request #178 from tyemirov/maintenance/staticcheck-lint
+- chore(lint): fix staticcheck warning and document lint step
+- test(branches): cover --yes value edge-case
+- fix(namespace): clarify skip reasons and tolerate missing metadata
+- refactor(workflow): adopt command-path DSL; remove legacy operation keys
+- Future development
+- feat(repo): add files add command
+- feat(repo): add release retag workflow
+- feat(repo): add license apply command
+- Future development
+- Future development
+- Future development
+- Merge pull request #169 from tyemirov/improvement/GX-317-error-messages
+- improvement: clarify release error reporting (GX-317)
+- mac OS dependencies for tests fixed
+- Future development
+- Future development
+- Future development
+- Release v0.2.0-rc.4
+- Merge pull request #168 from tyemirov/bugfix/GX-316-branch-pull
+- Future development
+- Merge pull request #167 from tyemirov/bugfix/GX-316-branch-pull
+- Formatting
+- fix(workflow): deduplicate branch change reporting
+- Future development
+- fix(workflow): handle missing start point branches
+- Future development
+- fix(workflow): deduplicate changelog action execution
+- fix(namespace): rewrite Go test files during namespace updates
+- Future development
+- Release v0.2.0-rc.3
+- Future development
+- Merge pull request #160 from tyemirov/bugfix/GX-212-log-format
+- Merge pull request #161 from tyemirov/bugfix/GX-313-skip-gitignored
+- bugfix(gitignore): skip gitignored nested repositories
+- perf: batch git check-ignore calls during namespace rewrite
+- fix: skip gitignored files during namespace rewrite
+- refactor: join sentinel with detail errors
+- feat: attach git stderr to namespace error events
+- fix: ensure namespace errors log structured output
+- feat: add structured workflow logging
+- Future development
+- bugfix(protocol): display git-style remote URLs in logs
+- Future development
+- Merge pull request #158 from tyemirov/bugfix/GX-310-namespace-push
+- Merge pull request #159 from tyemirov/bugfix/GX-311-namespace-logs
+- chore: note namespace push safeguards in issues log
+- bugfix(namespace): skip push when remote missing or up to date
+- bugfix(workflow): render namespace logs with real newlines
+- bugfix(namespace): handle namespace push failures
+- Future development
+- Workflow examples
+- Configs are too specific to ba added to git
+- Future development
+- Workflow examples
+- Future development
+- Workflows described
+- Future development
+- full list of gix commands in the README.md
+- Future development
+- go v 1.25
+- Merge pull request #157 from tyemirov/test/branch-default-nested-no-remote
+- Add coverage for default branch on mixed nested repos
+- Merge pull request #156 from tyemirov/fix/default-branch-missing-remote
+- Handle default-branch updates without remotes
+- Merge pull request #149 from tyemirov/improvement/GX-205-error-schema
+- Merge pull request #155 from tyemirov/improvement/GX-206-error-prefix
+- Merge pull request #154 from tyemirov/improvement/GX-207-workflow-dag
+- Merge pull request #152 from tyemirov/improvement/GX-208-remote-metadata
+- Merge pull request #153 from tyemirov/bugfix/GX-304-no-remote
+- Merge pull request #148 from tyemirov/improvement/GX-206-error-prefix
+- Merge pull request #151 from tyemirov/improvement/GX-207-workflow-dag
+- Honor workflow dependencies when building tasks
+- Merge pull request #150 from tyemirov/bugfix/GX-304-no-remote
+- chore: address staticcheck suggestions
+- Typo
+- fix(workflow): avoid unused longestMatch lint warning
+- docs(issues): acknowledge no-remote handling coverage
+- test(cli): cover no-remote branch workflows
+- improvement(workflow): add dag execution with parallel stages
+- improvement(workflow): enforce remote skip policy
+- improvement(workflow): remove workflow operation prefixes
+- improvement(workflow): standardize repository error messaging
+- Future development
+- Future development
+- Future development
+- Future development
+- Merge pull request #146 from tyemirov/bugfix/GX-304-branch-default-workflow
+- fix(branch-default): handle inaccessible remotes gracefully
+- Merge pull request #145 from tyemirov/bugfix/GX-304-branch-default-workflow
+- refactor(remote): centralize remote identity normalization
+- fix(branch-default): normalize identifiers via repo metadata
+- fix(branch-default): canonicalize renamed repository identifiers
+- Merge pull request #144 from tyemirov/bugfix/GX-304-branch-default-workflow
+- fix(branch-default): derive repository identifier from remote URL
+- fix(branch-default): tolerate repos without canonical identifier
+- Merge pull request #143 from tyemirov/bugfix/GX-304-branch-default-workflow
+- feat(branch-default): ensure workflow creates missing branches
+- Merge pull request #139 from tyemirov/feature/GX-100-namespace-rewrite
+- fix: detect namespace root in go.mod
+- merge: bring safeguards into namespace rewrite
+- fix: retain namespace commit message during merge
+- test(workflow): cover namespace safeguards
+- test: use canonical assume-yes flag in namespace CLI test
+- Merge pull request #141 from tyemirov/codex/github-mention-improvement-add-workflow-safeguards
+- Fix namespace rewrite options and go.mod handling
+- chore: remove unused safeguard helpers
+- fix: repair namespace safeguard wiring
+- fix: accept branch prefix hyphen option
+- fix: rewrite go.mod block entries
+- improvement(workflow): add reusable safeguards
+- Fix go.mod namespace rewrite blocks
+- feat(repo): add namespace rewrite workflow action and CLI
+- Future development
+- Merge pull request #138 from tyemirov/bugfix/GX-303-token-default
+- Allow optional GitHub CLI commands without token
+- Merge pull request #137 from tyemirov/bugfix/GX-303-prs-delete-hang
+- refactor(github): centralize token guard behavior
+- bugfix(migrate): require GitHub token for default branch
+- Merge pull request #136 from tyemirov/improvement/GX-203-version-command
+- Future development
+- bugfix(branches): prevent repo prs delete hang
+- improvement(cli): align version command with flag output
+- Future development
+- Merge pull request #135 from tyemirov/bugfix/GX-302-actionable-messaging
+- Merge branch 'master' into bugfix/GX-302-actionable-messaging
+- Merge pull request #134 from tyemirov/bugfix/GX-302-tests
+- fix: refine missing remote detection
+- Formatting
+- fix: ensure CLI warnings and outputs match expectations
+- fix(branch-cd): collapse warning summaries to one line
+- Merge pull request #133 from tyemirov/bugfix/GX-302-actionable-messaging
+- fix(branch-cd): include repository path in skip warnings
+- Merge pull request #132 from tyemirov/bugfix/GX-302-actionable-messaging
+- fix(branch-cd): surface actionable branch switch failures
+- Future development
+- Merge pull request #131 from tyemirov/bugfix/GX-301-actionable-default-branch-error
+- fix(migrate): raise actionable default-branch errors
+- Future development
+- Future development
+- v0.2.0-rc.1 release
+- Merge pull request #130 from tyemirov/improvement/GX-202-error-messages
+- improvement(branch): warn on default migration aux failures
+- improvement(branch): downgrade branch cd network failures
+- Merge pull request #129 from tyemirov/improvement/GX-201-warning-downgrade
+- improvement(branch): warn on pages configuration failures
+- feat(branch): accept positional target for default command
+- Merge pull request #126 from tyemirov/maintenance/GX-406-policy-coverage
+- Merge pull request #127 from tyemirov/maintenance/GX-407-docs-ci
+- Merge pull request #125 from tyemirov/maintenance/GX-405-shared-helper-cleanup
+- docs(ci): document domain flow and add lint gates
+- test(repos): cover policy regressions for GX-406
+- maint(GX-405): unify repo option helpers and reporter
+- Merge pull request #124 from tyemirov/maintenance/GX-404-contextual-errors
+- maint(GX-404): add contextual repo error handling
+- Merge pull request #123 from tyemirov/bugfix/GX-300-branch-cd-no-remotes
+- fix(branch): skip network operations without remotes
+- Future development
+- Merge pull request #122 from tyemirov/maintenance/GX-402-policy-review
+- Merge pull request #121 from tyemirov/maintenance/GX-403-domain-types
+- maintenance: [GX-403] introduce repository domain types
+- Merge pull request #120 from tyemirov/feature/GX-21-replace-task
+- Merge pull request #117 from tyemirov/maintenance/GX-400-readme-architecture
+- Merge pull request #118 from tyemirov/maintenance/GX-401-architecture-sync
+- Merge pull request #119 from tyemirov/maintenance/GX-402-policy-review
+- maintenance: [GX-402] decompose refactor plan into issues
+- Future development
+- maintenance: [GX-402] author refactor roadmap
+- maintenance: [GX-401] sync architecture doc with code
+- Future development
+- maintenance: [GX-400] refocus docs around user workflows
+- Merge pull request #116 from tyemirov/feature/GX-21-replace-task
+- fix: align history purge test with multi-path command
+- Future development
+- Merge branch 'master' into feature/GX-21-replace-task
+- Merge branch 'origin/master' into work
+- Merge pull request #115 from tyemirov/improvement/GX-14-repo-rm-task
+- Fix history path detection and update tests
+- Ensure history purge fetches remote refs
+- feature: add repo files replace task
+- workflow: normalize audit roots before discovery
+- Merge pull request #114 from tyemirov/improvement/GX-07-task-runner-unification
+- Fix audit roots after renames and add coverage
+- improvement: add repo history purge command
+- improvement: route workflow cli through task runner
+- Checkpoint: route packages purge through task runner
+- Checkpoint: route branch refresh through task runner
+- Checkpoint: migrate LLM and branch commands to task runner
+- Future development
+- Checkpoint: migrate release command to workflow tasks
+- v0.1.4 release
+- Merge pull request #113 from tyemirov/improvement/GX-22-branch-default
+- feat: promote branch default command
+- Future development
+- v0.1.3 release
+- Merge pull request #112 from tyemirov/improvement/GX-20-init-help
+- improvement: clarify init flag scope (GX-20)
+- Future Development
+- Future development
+- Future development
+- Future development
+- Future development
+- Future development
+- Merge pull request #111 from tyemirov/gx-19-bugfix
+- bugfix
+- Merge pull request #110 from tyemirov/bugfix/GX-17-owner-message
+- Merge pull request #106 from tyemirov/bugfix/GX-18-owner-constraint
+- Merge pull request #108 from tyemirov/codex/fix-comment-in-executor.go
+- Merge pull request #109 from tyemirov/bugfix/GX-19-normalized-message
+- bugfix: surface already normalized rename skips
+- Restore repo remote owner option and document usage
+- Future development
+- v0.1.2 release
+- Furture development
+- Merge pull request #107 from tyemirov/bugfix/GX-18-owner-constraint
+- Merge branch 'master' into bugfix/GX-18-owner-constraint
+- bugfix: remove owner equality guard for canonical remotes
+- Bugs
+- Future development
+- v0.1.1 release
+- Merge pull request #105 from tyemirov/bugfix/GX-17-owner-message
+- Merge pull request #104 from tyemirov/bugfix/GX-16-log-levels
+- bugfix: clarify owner constraint skip message
+- bugfix: log configuration banner at debug level
+- Bugs
+- Improved autonomous flow
+- bugs
+- v0.1.0 Release
+- Merge pull request #103 from tyemirov/bugfix/GX-15-branch-logging
+- Handle default remote absence when fetching
+- Merge pull request #102 from tyemirov/bugfix/GX-14-suppress-logging
+- GX-15: clarify branch fetch logging
+- GX-14: silence default CLI logging
+- Bugs
+- Future development
+- Merge pull request #101 from tyemirov/improvement/GX-13-command-alignment
+- GX-13: regroup commit and changelog commands
+- GX-12: clarify workflow required configuration
+- GX-09: refresh command catalog
+- Bugs
+- Future development
+- Bugs
+- Merge pull request #98 from tyemirov/bugfix/GX-11-branch-flag
+- GX-11: remove global branch flag
+- GX-11: scope branch flag to branch commands
+- GX-11: document branch flag context
+- Merge pull request #97 from tyemirov/bugfix/GX-10-default-roots
+- cli: rely on embedded repo release defaults
+- cli: preserve embedded operation defaults
+- GX-10: default repo release roots
+- Merge pull request #96 from tyemirov/bugfix/GX-12-required-arg-help
+- GX-12: surface required branch argument
+- Bugs
+- Bugs
+- Bugs
+- Bugs
+- Merge pull request #95 from tyemirov/bugfix/GX-08-release-help-args
+- surface the required `<tag>` argument
+- Bugs
+- Preparations to v0.1.0 release
+- Bugs
+- Merge pull request #94 from tyemirov/feature/GX-06-release-command
+- chore: format application after release command
+- Feature: add release tag helper
+- Merge pull request #93 from tyemirov/feature/GX-03-commit-messages
+- Merge pull request #92 from tyemirov/feature/GX-04-changelog-messages
+- Feature: add changelog message assistant
+- Merge pull request #91 from tyemirov/feature/GX-03-commit-messages
+- feature(GX-03): add LLM-backed commit message tool
+- Merge pull request #90 from tyemirov/feature/GX-02-task-runner
+- feature(GX-02): add workflow task runner
+- Future development
+- tools subfolder is ignored
+- Merge pull request #89 from tyemirov/improvement/GX-01-command-syntax
+- Refactor CLI command syntax
+- PLAN.md ignored
+- Issues prefeix made GX
+- Documentation for autonomous coding agents
+- Future development planned
+- Automous agnets flow improved
+- Release link added to the readme
+- Changelog for v0.0.7 and v0.0.8 updated
+- Merge pull request #87 from temirov/bugfix2
+- Prompt before branch purge deletions
+- Merge pull request #88 from temirov/codex/fix-comments
+- Handle checkpoint commit rebase during refresh
+- Support stash and commit recovery in branch refresh
+- Use gix prefix in version output
+- Add version detection and CLI flag
+- Implement branch refresh command
+- Maintenance: AGENTS updated not to stream full files into stdout
+- Merge pull request #86 from temirov/bugfix1
+- Handle nested repository renames before parent directories
+- Documentation: explanation of config changes
+- Merge pull request #85 from temirov/fixes1
+- GS-02: clean toggle flag help formatting
+- GS-01: advertise apply-all confirmation choice
+- Update README.md
+- CHANGELOG updated for v0.0.5 release
+- Merge pull request #84 from temirov/fixes
+- Fix repository containment check for nested repos
+- agnets instructiosn for testing updated
+- Make audit folder_name relative to each root
+- Reorder audit CSV to lead with folder names
+- Restrict audit --all to top-level non-repository directories
+- Expose audit --all flag for non-repository directories
+- Adopt --roots flag and prune nested repository roots
+- Display audit usage when arguments are invalid
+- installation details added
+- Align release workflow with gix binary
+- Respect XDG config env and normalize test paths
+- Merge pull request #83 from temirov/boolean-flags
+- Changelog for v0.0.4 Updated
+- Merge pull request #82 from temirov/boolean-flags
+- add flagutils toggle helpers for yes/no inputs and argument normalization   - switch rename/workflow commands and execution flag bindings to use the shared toggle parser   - cover toggle behavior with new unit tests and add a workflow config exercising rename defaults
+- Merge pull request #81 from temirov/codex/update-operations_audit.go-for-path-handling
+- Handle audit report nested output directories
+- Merge pull request #78 from temirov/codex/add-includeowner-option-to-rename-workflow
+- Merge pull request #80 from temirov/codex/enhance-remote-configuration-with-owner-flag
+- Add owner constraint configuration for repo-remote-update
+- Merge pull request #79 from temirov/codex/extend-filesystem-with-mkdirall-method
+- Add parent directory creation to rename operations
+- Maintenance: Changelog for v0.0.3 added
+- Maintenance: Changelog for v0.0.2 added
+- Add owner-aware repo rename support
+- Merge pull request #76 from temirov/codex/update-configuration-search-path-handling
+- Merge pull request #77 from temirov/codex/add-init-and-force-options-to-cli
+- Add configuration initialization workflow to CLI
+- Extend CLI configuration search paths
+- Merge pull request #75 from temirov/flags
+- Feature: the --root flag is available for all commands
+- Feature: require-clean safeguard is applied to all branch level operations
+- Feature: migrate command accepts from and to flags
+- Feature: flags are made global and working across all of the commands
+- Merge pull request #67 from temirov/codex/add-embedded-yaml-configuration-and-tests
+- Merge pull request #74 from temirov/codex/refactor-confirmationprompter-return-type
+- Add apply-all confirmation state and prompt result struct
+- Merge pull request #73 from temirov/codex/emit-console-logging-for-initialization-banner
+- Adjust CLI initialization logging for console
+- Merge pull request #72 from temirov/codex/normalize-repository-paths-in-discovery
+- Normalize repository discovery paths
+- Merge pull request #71 from temirov/codex/add-option-to-skip-branch-data-retrieval
+- Add minimal audit inspection depth and update CLI usage
+- Merge pull request #70 from temirov/codex/update-logging-for-github-cli-views
+- Skip redundant gh repo view start log
+- Use MergeInConfig to preserve embedded defaults
+- Merge pull request #69 from temirov/codex/fix-logger-flush-error-on-binary-run
+- Merge pull request #68 from temirov/codex/update-resolveconfigurationsearchpaths-function
+- Handle ENOTTY zap sync errors
+- Add user config search path and tests
+- BugFix: default log format is for the console
+- Add embedded CLI configuration defaults
+- Maintenance: CHANGELOG.md defines the release of v0.0.1
+- Merge pull request #66 from temirov/codex/add-informational-message-for-dirty-worktree
+- Handle dirty worktrees with skip output
+- Merge pull request #65 from temirov/codex/update-codebase-to-use-gix-branding
+- Rename CLI branding to gix
+- Merge pull request #64 from temirov/codex/update-module-path-and-imports
+- Rename module to github.com/temirov/gix
+- Merge pull request #2 from temirov/go
+- refactor: centralize repository path sanitization
+- Handle boolean literals in repo roots
+- Use fixture config for CLI integration logs
+- Expand tilde roots for repository commands
+- Maintenance: console logging made a default
+- Handle missing operation defaults gracefully
+- Expand root sanitization to support tilde paths
+- Require repository roots for packages purge command
+- Enforce explicit workflow roots configuration
+- Enforce branch cleanup option validation
+- Refine workflow configuration examples
+- Run gofmt on command test
+- Remove migrate working directory default
+- Enforce explicit repository roots in CLI and command configs
+- Handle operation configuration validation
+- feat(packages): auto-detect GHCR metadata
+- Add repository discovery to packages purge command
+- Derive GHCR context from repository metadata
+- Simplify repo packages purge defaults
+- Add nested filesystem repository discovery test
+- Format configuration test
+- Refactor configuration schema to operations list
+- Refine config schema around tools and workflow steps
+- Refine configuration schema for operations list
+- Restore tools section anchors for workflow steps
+- Refactor workflow configuration anchors
+- Refine workflow configuration structure
+- Support sequence workflow configuration
+- Refactor workflow tool configuration schema
+- Maintenance: main branch removed from CI config
+- Normalize tool override key matching
+- docs: document tool_ref workflow usage
+- Add reusable tool configuration support to workflows
+- Limit CI to Go changes
+- Maintenance: README reformatted
+- Handle non-404 gh api failures in branch protection check
+- Respect configurable search paths for CLI configuration
+- Ensure workflow help test hides repository config
+- Ensure integration tests update remote default branch
+- Allow EBADF sync error in logger factory tests
+- Handle EBADF sync errors and test stderr pipe
+- BugFix: config.yaml is used
+- Rename CLI commands to audit and workflow variants
+- Add configuration support for rename command
+- Add configuration support for migrate command
+- docs: summarize CLI catalog in quick-reference table
+- Flatten packages purge command
+- Refactor audit command into dedicated audit-run workflow
+- Format rename command builder
+- Fix configuration utilities and tests
+- Refactor CLI commands to standalone names
+- Preserve repository config when running workflow integration test
+- Add integration test coverage for repository config defaults
+- docs: consolidate configuration guidance
+- Maintenance: README updated 1. Shell commands are not bash-specific 2. The past stays behind
+- Propagate configuration path through command context
+- Refactor configuration hierarchy for CLI and packages
+- Document execution modes
+- Adjust execshell logging levels
+- Maintenance: dependencies updated
+- Constrain branch migration to single target
+- Refine branch migration workflow DSL
+- Remove duplicate command constants
+- Format execshell messages
+- Format executor tests
+- Improve console logging responsiveness
+- Merge branch 'go' into work
+- Refine execshell tests to use constants
+- Align narration with updated generic messaging
+- Improve human readable shell logs
+- Improve console logging and command events
+- feat: show help for missing required arguments
+- Fix console event logger initialization
+- docs: expand gh prerequisite guidance
+- docs: update readme for go cli
+- Protect workflow state updates on rename
+- Add workflow runner with operations
+- Fix console log format flag handling
+- Handle case-only repo renames
+- Refine repos services and shared helpers
+- Add repos maintenance commands and tests
+- Handle context cancellation during repository resolution
+- Support migrating multiple repositories
+- Add console log format configuration
+- Propagate cleanup cancellations in multi-repo run
+- Enhance branch cleanup command for multi-repo processing
+- Show CLI help when no arguments are provided
+- Add release tooling and packages integration coverage
+- Refactor CLI entrypoint and expand integration coverage
+- Add GHCR purge command and service
+- Add branch migration command and GitHub helpers
+- Add pr-cleanup command with branch cleanup service
+- Format CLI entrypoint
+- Add audit CLI command and repository audit service
+- Add exec shell, GitHub CLI, and git repo utilities
+- Add Go CLI entrypoint and supporting tooling
+- Add design doc for Go-based CLI transition
+- AGENTS.md added to facilitate the usage of AI
+- Feature: search for a committed file across all repos (WIP)
+- BugFix: if there are no changes in the workflows we continue
+- Maintenance: CSV files are ignored
+- Feature: audit_repos script added
+- BugFix: updating the branch from Pages
+- Maintenance: README defines the prerequisites and explains scripts functions
+- Ignore IDE files
+- Working scripts
+- first commit
+
 ## [v0.8.1] - 2026-07-06
 
 ### Features ✨
