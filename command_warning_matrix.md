@@ -1,0 +1,22 @@
+# Command Failure Classification
+
+The table below categorises the major maintenance commands into **fatal** and **non‑fatal** steps. Non‑fatal steps emit structured warnings (`FETCH-SKIP`, `PULL-SKIP`, `PAGES-SKIP`, `PR-RETARGET-SKIP`, `PROTECTION-SKIP`, `DELETE-SKIP`) while the command continues processing the remaining repositories.
+
+| Command | Step | Classification | Behaviour |
+| --- | --- | --- | --- |
+| sync | Remote attach/clone, base branch restore, PR verification/creation | Fatal | Missing dependencies, remote mismatches, dirty worktrees, local-only commits, or missing PRs abort before mutation. |
+|  | Merge `origin/master` into a PR branch | Fatal | Merge conflicts stop before push and leave the repository in Git's normal conflict state. |
+|  | Push a synchronized PR branch | Fatal | Push failures abort so the branch is not reported as synchronized. |
+|  | Preview skip | Non-fatal | Explicit message and continue. |
+|  | Remote/local deletion (branch cleanup) | Non-fatal | Errors appear as warnings; remaining branches processed. |
+| default | Workflow rewrite, default branch update | Fatal | Required to guarantee correctness. |
+|  | GitHub Pages update | Non-fatal | Logged as `PAGES-SKIP`; migration continues. |
+|  | Pull request listing | Non-fatal | Logged as `PR-LIST-SKIP`; migration continues. |
+|  | Pull request retarget | Non-fatal | Each failure logs `PR-RETARGET-SKIP`; other PRs still processed. |
+|  | Branch protection check | Non-fatal | Logged as `PROTECTION-SKIP`; deletion guarded by safety gate. |
+|  | Source branch deletion | Non-fatal | Logged as `DELETE-SKIP`; migration still reports success. |
+| remote update-to-canonical / remote update-protocol / folder rename | Validation, remote URL construction, filesystem rename | Fatal | These steps define the primary behaviour; failures abort execution. |
+| branch cleanup | Confirmation, branch deletion | Non-fatal | Deletion failures logged; other branches continue. |
+| Workflow runner | Operation execution | Fatal (operation-defined) | Operations decide whether to downgrade issues; warnings bubble via environment output. |
+
+> Note: Commands that operate on remote URLs or filesystem mutations (`remote update-to-canonical`, `remote update-protocol`, `folder rename`, etc.) are treated as fatal for their core steps. Their tasks either succeed or abort with the contextual error catalogue introduced in prior issues.
