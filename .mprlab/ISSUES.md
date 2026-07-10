@@ -389,6 +389,38 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Validation Result:
   - The focused public help regression failed against the stale application-level text before the fix and passed after the duplicate was removed.
   - `make test`, `make lint`, and `make ci` passed.
+- [x] [B025] (P1) `gix sync <new-branch>` must create a stacked pull-request chain from the current branch.
+  Requested on 2026-07-10 after dirty sync created a new branch at the current branch's `HEAD` but opened its pull request directly against `master`.
+  Observation:
+  - The new branch preserves the current branch's commit ancestry, but pull-request creation still uses the configured repository base.
+  - When the current branch has no pull request, sync skips publishing that review boundary and opens only the child branch pull request.
+  Deliverable:
+  - Before creating an explicit missing branch from a non-base current branch, ensure the current branch is remote-backed and has an open pull request against its own review base.
+  - Create the requested branch at the current branch's `HEAD`, preserve dirty clustered commits there, and open its pull request against the previous branch.
+  - Keep the resulting pull-request chain linear and prove the creation order and base branches through the public CLI.
+  - Preserve the selected parent across a failed child push or pull-request operation so retries cannot fall back to `master`.
+  - Reject a missing clean or stashed child branch before creation because it would have no pull-request delta against its parent.
+  Validation:
+  - Focused failing-then-passing public sync regression.
+  - `make test`
+  - `make lint`
+  - `make ci`
+  Resolution:
+  - Missing explicit dirty targets now publish and open the current non-base branch pull request before child creation, then merge `origin/<parent>` into the child and open the child pull request against that parent.
+  - Parent publication operates only on the committed parent ref, so uncommitted clusters remain untouched until they are committed linearly on the child.
+  - The selected parent is recorded in local `branch.<child>.gix-review-base` Git config before child creation; a fail-after-push retry reuses it, while an actual open child pull request remains the canonical base source.
+  - Missing pull requests in deeper stacks recursively reuse each branch's recorded review base instead of flattening an ancestor to `master`; an actual merged child pull request likewise supplies the base for normal post-merge handoff without republishing a merged parent.
+  - Post-merge handoff follows actual merged pull-request bases through deleted child and ancestor remote heads to the first surviving base, while dirty known-merged branches fail before committing work onto the obsolete head and direct work through the stashed handoff before new branch creation.
+  - Clean and stashed missing children fail before child creation or pull-request publication, and unresolved worktree conflicts fail before parent publication.
+  - Existing targets without stack metadata retain the B018 existing-branch pull-request flow.
+  Validation Result:
+  - The public regression failed before implementation because the source review boundary was absent and the child merged/opened against `master`; it now proves a three-level stack keeps every base, parent PR completion precedes child creation, a failed child PR operation retries against the parent, deleted merged heads hand off to the surviving ancestor, dirty merged work is not committed or republished, and the documented stashed recovery creates a new review branch with the preserved bytes.
+  - Focused stack planning, invalid parent state, conflict ordering, metadata cleanup, public sync, and assembled help tests passed.
+  - `make format`
+  - `make test`
+  - `make lint`
+  - `make ci`
+  - `git diff --check`
 
 
 ## Improvements
