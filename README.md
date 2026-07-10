@@ -29,7 +29,9 @@ make publish
 make deploy
 ```
 
-`make release` runs CI and prepares the cross-platform binaries, checksums, documentation Pages archive, changelog commit, annotated tag, and release manifest entirely from local state under `.git/mprlab-release`. It performs no remote write. `make publish` pushes the exact prepared Git refs and GitHub Release assets without rebuilding. `make deploy` activates the published documentation archive at `gix.mprlab.com`; the CLI itself has no runtime rollout.
+`make release` runs CI and prepares the cross-platform binaries, checksums, documentation Pages archive, changelog commit, annotated tag, and release manifest entirely from local state under `.git/mprlab-release`. It performs no remote write. `make publish` pushes the exact prepared Git refs and GitHub Release assets through canonical `origin` without rebuilding. `make deploy` activates the published documentation archive at `gix.mprlab.com` only when the downloaded manifest matches that locally prepared release; the CLI itself has no runtime rollout.
+
+These maintainer targets use the repository-owned helpers under `scripts/release`. They require Bash 4+, Python 3.10+, GNU `timeout`, `rsync`, `tar`, `shasum`, `curl`, and an authenticated GitHub CLI in addition to the normal Go and Git prerequisites.
 
 ## The sync flow
 
@@ -44,7 +46,7 @@ make deploy
 
 When an explicit branch does not exist, sync creates it at the current branch's `HEAD`. By default, a dirty `gix sync` then clusters changed paths by top-level area, stages and commits each cluster with a Conventional Commit message from the configured `github.com/tyemirov/utils/llm` client, and continues the no-rebase sync and push. The configured remote base is merged only after the new branch and its clustered commits exist, so the current branch remains in the new branch's ancestry. When sync creates a pull request, its body is generated from the branch diff unless `--body` or `sync.pull_request.body` supplies explicit text; the title defaults to the branch unless `--title` or `sync.pull_request.title` supplies it. `--stash` temporarily shelves dirty work instead of committing it, `--commit` explicitly selects the auto-commit policy for scripts that already pass it, and `--require-clean` by itself opts back into failing when the worktree is dirty.
 
-Merge conflicts stop before push and leave the repository in Git's normal conflict state. The PR branch is "ours"; `origin/master` is "theirs".
+Merge conflicts use the configured LLM only when its complete-file response preserves every byte-exact non-conflicting region from Git's marker-bearing worktree file. Marker-free modify/delete or rename/delete conflicts accept only an exact preservation of the local stage, including its deletion. Truncated, incomplete, marker-bearing, structurally invalid, or deletion responses that would discard non-conflicting regions stop before merge commit or push and leave the conflict inspectable. The PR branch is "ours"; `origin/master` is "theirs".
 
 ## Other maintenance workflows
 
