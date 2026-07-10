@@ -30,6 +30,15 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented validated AI conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.1.3] - 2026-07-10
+
+- Merge pull request #381 from tyemirov/tyemirov/bugfix/B025-stack-sync-prs
+- test: expand and clarify sync branch/PR integration, support failure cases
+- feat(syncflow): implement strict stacked branch and pull request workflow
+- docs: clarify stacked branch creation and review flow in README
+- docs(changelog): record syncflow stack bug fixes, new CLI tests, and docs updates
+- docs(issues): document B025 stacked pull-request sync regression and resolution
+
 ## [v1.1.2] - 2026-07-10
 
 - Merge pull request #380 from tyemirov/bugfix/B020-dirty-sync-new-branch
