@@ -322,6 +322,8 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   ## Resolution
   - Missing explicit sync targets now use one canonical `git switch -c <new-branch>` path rooted at the current branch's `HEAD` for both dirty and clean worktrees.
   - Dirty sync creates that branch before staging, message generation, and top-level cluster commits, then merges the configured remote base before push and pull-request creation.
+  - Explicit `gix sync master` from a different dirty feature branch now stashes only the dirty files, creates the generated rescue branch at `origin/master`, restores the dirty files, and excludes the feature branch's committed ancestry; dirty sync while already on `master` keeps the intentional current-HEAD rescue behavior.
+  - Generated-name selection treats local-only branches as occupied, so a retry advances to a fresh suffix instead of adopting stale ancestry that has never been published.
   - Added a public-CLI regression proving the source branch remains unchanged and ancestral, two dirty clusters form an exact linear parent chain, the remote-base merge occurs after both commits, and the resulting branch is clean, tracked, pushed, and PR-backed.
   - Extended the same regression through a clean child-branch run so the separate clean missing-target path is also proven to start at the current `HEAD` without adding commits.
   ## Validation Result
@@ -331,7 +333,8 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - `make lint`
   - `make ci`
   - `git diff --check`
-- [ ] [B022] (P0) Reject truncated AI merge-conflict resolutions before commit or push.
+  - Review-fix regression proved explicit `gix sync master` from a dirty feature branch stashes before creating the generated branch at `origin/master`, restores only dirty files, and excludes the source commit.
+- [x] [B022] (P0) Reject truncated AI merge-conflict resolutions before commit or push.
   Goal:
   Prevent `gix sync` from accepting an LLM response that resolves a conflict hunk by silently deleting unrelated file content.
   Requirements:
@@ -347,6 +350,45 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - `make test`
   - `make lint`
   - `make ci`
+  Resolution:
+  - Conflict resolution now reads the actual marker-bearing worktree file and parses its non-conflicting prefix, interstitial, and suffix regions.
+  - Every non-conflicting byte region must remain in the returned complete file in its original order; truncated, marker-bearing, structurally invalid, or deletion responses that would discard non-conflicting regions are rejected before write, stage, merge commit, push, or pull-request creation.
+  - Marker-free modify/delete and rename/delete conflicts accept only an exact preservation of the local stage, including its explicit deletion; synthesized or truncated whole-file output is rejected because its completeness cannot be proven.
+  - Added a public `gix sync master` regression with a 1,100-line conflicted tracker that reproduces the `0840b797` truncation class and proves rejection leaves the original conflict markers and unrelated tail content inspectable.
+  Validation Result:
+  - The new regression failed before implementation because the truncated response was accepted and the flow requested pull-request text; it passes after preservation validation and proves no merge commit, push, or pull-request creation occurs.
+  - A separate public modify/delete regression failed before implementation because marker-free truncated output was committed and pushed; it now remains unmerged and inspectable with the remote file intact.
+  - `make format`
+  - `make test`
+  - `make lint`
+  - `make ci`
+  - `git diff --check`
+- [x] [B023] (P1) Repository release targets must be self-contained and fail closed.
+  Requested on 2026-07-09 after branch review found that the local release workflow depended on an untracked sibling checkout and could report success after a platform build failed.
+  Observation:
+  - `RELEASE_TOOL_DIR` pointed at `../agentSkills/gitrelease/scripts`, so a clean repository checkout could not run the documented release, publish, or deploy targets.
+  - The multi-platform shell loop did not stop on a failed `go build`, allowing a later checksum command to hide a missing binary.
+  Resolution:
+  - Added the required Python and shell release helpers under the repository-owned `scripts/release` directory and made the Makefile use that canonical path.
+  - Release artifact construction now stops on the first failed or missing build, verifies the exact five expected platform binaries, rejects unexpected outputs, and checksums only the validated set.
+  - Pages deployment now requires the downloaded GitHub Release manifest to match the locally prepared manifest before trusting its archive digest, and preflights every integrity command including `curl` and `shasum`.
+  - Removed the partially supported alternate publish remote; prepared release fetch, tag validation, branch/tag push, and GitHub publication now use the repository's canonical `origin` contract consistently.
+  - Added black-box Makefile coverage for isolated-checkout helper availability, a failed platform build, and a successful build command that omits its expected output.
+  Validation Result:
+  - `env GOFLAGS='-run=TestRelease' make test-slow`
+  - Shell and Python syntax checks passed.
+  - A real five-platform `make release-artifacts` run produced the five expected binaries and a five-entry checksum file.
+  - Black-box deployment tests reject a replaced published manifest and fail immediately when `curl` or `shasum` is unavailable.
+  - Public helper coverage proves `publish-prepared-release` no longer advertises the unsupported `--remote` override.
+  - `make test`, `make lint`, and `make ci` passed.
+- [x] [B024] (P2) Root sync help must expose the syncflow builder contract.
+  Requested on 2026-07-09 after branch review showed that the application command registry overwrote the updated sync description with a stale duplicate constant.
+  Resolution:
+  - Removed the duplicate application-level long description and retained the syncflow builder's description when registering the root command.
+  - Added a public `gix sync --help` regression proving the current-HEAD missing-branch contract is visible to operators.
+  Validation Result:
+  - The focused public help regression failed against the stale application-level text before the fix and passed after the duplicate was removed.
+  - `make test`, `make lint`, and `make ci` passed.
 
 
 ## Improvements
