@@ -421,6 +421,21 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - `make lint`
   - `make ci`
   - `git diff --check`
+- [ ] [B026] (P1) Pages deployment must preserve distinct release and source commit identities.
+  Requested on 2026-07-10 after `make deploy` pushed `gh-pages` but failed while waiting for the public `.mprlab-release.json` marker to report the changelog-only release commit.
+  Observation:
+  - The immutable Pages marker records the source commit whose site bytes were packaged, while the release tag points at the later release commit.
+  - Deployment used the release commit to verify the public source marker and did not require `.nojekyll` in the packaged artifact, so valid deployments could fail verification or publish no readable hidden marker.
+  Deliverable:
+  - Generate `.nojekyll` inside every immutable Pages archive.
+  - Validate the remote tag against `release_commit` and validate the archived and public marker schema, release version, and provenance against `source_commit`.
+  - Report `source_commit` consistently in already-deployed, verified, failure, and completion messages.
+  - Add black-box coverage with intentionally distinct commit roles that proves `.nojekyll` survives packaging and deployment and rejects invalid public marker fields.
+  Validation:
+  - Focused public Pages release regression.
+  - `make test`
+  - `make lint`
+  - `make ci`
 
 
 ## Improvements
