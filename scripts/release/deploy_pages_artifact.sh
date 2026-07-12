@@ -78,11 +78,14 @@ asset = next((item for item in manifest["payloads"] if item["path"] == "payloads
 if asset is None:
     raise SystemExit("published release has no Pages payload; run make release and make publish")
 print(manifest["release_commit"])
+print(manifest["source_commit"])
 print(asset["sha256"])
 PY
 )"
 release_commit="${release_values%%$'\n'*}"
-expected_sha256="${release_values#*$'\n'}"
+remaining_values="${release_values#*$'\n'}"
+source_commit="${remaining_values%%$'\n'*}"
+expected_sha256="${remaining_values#*$'\n'}"
 remote_tag_commit="$(git ls-remote --tags "${remote}" "refs/tags/${version}^{}" | awk 'NR == 1 {print $1}')"
 if [[ -z "${remote_tag_commit}" ]]; then
   remote_tag_commit="$(git ls-remote --tags "${remote}" "refs/tags/${version}" | awk 'NR == 1 {print $1}')"
@@ -102,6 +105,22 @@ with tarfile.open(sys.argv[1], "r:gz") as archive:
             raise SystemExit(f"unsafe Pages archive member: {member.name}")
 PY
 tar -xzf "${archive}" -C "${site_directory}"
+python3 - "${site_directory}/.mprlab-release.json" "${version}" "${source_commit}" <<'PY'
+import json
+import sys
+
+marker_path, version, source_commit = sys.argv[1:]
+try:
+    marker = json.load(open(marker_path, encoding="utf-8"))
+except (OSError, json.JSONDecodeError):
+    raise SystemExit(f"published Pages marker is invalid for source {source_commit}")
+if marker.get("schema_version") != 1:
+    raise SystemExit(f"published Pages marker has an invalid schema for source {source_commit}")
+if marker.get("release_version") != version:
+    raise SystemExit(f"published Pages marker has the wrong version for source {source_commit}")
+if marker.get("source_commit") != source_commit:
+    raise SystemExit(f"published Pages marker has the wrong source; expected source {source_commit}")
+PY
 
 remote_url="$(git remote get-url "${remote}")"
 git clone --no-checkout "${remote_url}" "${checkout_directory}" >/dev/null
@@ -117,7 +136,7 @@ if ! git -C "${checkout_directory}" diff --cached --quiet; then
   git -C "${checkout_directory}" -c user.name="MPR Lab Pages Deployer" -c user.email="pages-deployer@mprlab.invalid" commit -m "Deploy Pages for ${version}" >/dev/null
   git -C "${checkout_directory}" push origin "HEAD:refs/heads/${branch}"
 else
-  echo "Pages branch already contains ${version}."
+  echo "Pages branch already contains ${version} from source ${source_commit}."
 fi
 
 if [[ "${configure}" == "true" ]]; then
@@ -135,22 +154,26 @@ if [[ "${verify}" == "true" ]]; then
   delay_seconds="${PAGES_VERIFY_DELAY_SECONDS:-5}"
   for ((attempt = 1; attempt <= attempts; attempt += 1)); do
     marker="$(curl --fail --silent --show-error "${marker_url}" 2>/dev/null || true)"
-    if python3 - "${release_commit}" "${marker}" >/dev/null 2>&1 <<'PY'
+    if python3 - "${version}" "${source_commit}" "${marker}" >/dev/null 2>&1 <<'PY'
 import json
 import sys
 
-data = json.loads(sys.argv[2])
-if data.get("source_commit") != sys.argv[1]:
+data = json.loads(sys.argv[3])
+if data.get("schema_version") != 1:
+    raise SystemExit(1)
+if data.get("release_version") != sys.argv[1]:
+    raise SystemExit(1)
+if data.get("source_commit") != sys.argv[2]:
     raise SystemExit(1)
 PY
     then
-      echo "Verified ${url} at source ${release_commit}."
+      echo "Verified ${url} at source ${source_commit}."
       exit 0
     fi
     sleep "${delay_seconds}"
   done
-  echo "error: Pages marker did not reach source ${release_commit}: ${marker_url}" >&2
+  echo "error: Pages marker did not reach source ${source_commit}: ${marker_url}" >&2
   exit 1
 fi
 
-echo "Deployed Pages release ${version}."
+echo "Deployed Pages release ${version} from source ${source_commit}."

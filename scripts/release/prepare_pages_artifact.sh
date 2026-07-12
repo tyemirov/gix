@@ -47,6 +47,7 @@ if find "${site_directory}" -type l -print -quit | grep -q .; then
   echo "error: Pages source must not contain symlinks" >&2
   exit 1
 fi
+: >"${site_directory}/.nojekyll"
 if [[ -n "${domain}" ]]; then
   printf '%s\n' "${domain}" >"${site_directory}/CNAME"
 fi
