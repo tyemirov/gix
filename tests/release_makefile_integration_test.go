@@ -28,6 +28,7 @@ const (
 	releaseFakeReleaseCommitVariable    = "GIX_RELEASE_FAKE_RELEASE_COMMIT"
 	releaseFakeRemoteVariable           = "GIX_RELEASE_FAKE_REMOTE"
 	releaseRealGitVariable              = "GIX_RELEASE_REAL_GIT"
+	releaseFakeVersionVariable          = "GIX_RELEASE_FIXTURE_VERSION"
 	releaseExpectedFailureTarget        = "linux/arm64"
 	releaseMissingArtifactErrorFragment = "missing release artifact"
 	releaseManifestMismatchFragment     = "published release manifest does not match the locally prepared release"
@@ -207,7 +208,7 @@ func TestPagesReleasePreservesDistinctCommitRolesAndNoJekyll(testInstance *testi
 			PathVariable: preparePath,
 			EnvironmentOverrides: map[string]string{
 				releaseArtifactDirectoryVariable: artifactDirectory,
-				"RELEASE_VERSION":                 releaseFixtureVersion,
+				"RELEASE_VERSION":                releaseFixtureVersion,
 			},
 		},
 		"--source", siteDirectory,
@@ -258,6 +259,7 @@ func TestPagesReleasePreservesDistinctCommitRolesAndNoJekyll(testInstance *testi
 		releaseFakeReleaseCommitVariable: releaseFixtureReleaseCommit,
 		releaseFakeRemoteVariable:        remoteDirectory,
 		releaseRealGitVariable:           realGitPath,
+		releaseFakeVersionVariable:       releaseFixtureVersion,
 		"PAGES_VERIFY_ATTEMPTS":          "1",
 		"PAGES_VERIFY_DELAY_SECONDS":     "0",
 	}
@@ -286,21 +288,21 @@ func TestPagesReleasePreservesDistinctCommitRolesAndNoJekyll(testInstance *testi
 
 	invalidMarkers := []map[string]any{
 		{
-			"schema_version":   float64(2),
-			"release_version":  releaseFixtureVersion,
-			"source_commit":    releaseFixtureSourceCommit,
+			"schema_version":    float64(2),
+			"release_version":   releaseFixtureVersion,
+			"source_commit":     releaseFixtureSourceCommit,
 			"release_timestamp": "2026-07-09T12:00:00-07:00",
 		},
 		{
-			"schema_version":   float64(1),
-			"release_version":  "v9.9.9",
-			"source_commit":    releaseFixtureSourceCommit,
+			"schema_version":    float64(1),
+			"release_version":   "v9.9.9",
+			"source_commit":     releaseFixtureSourceCommit,
 			"release_timestamp": "2026-07-09T12:00:00-07:00",
 		},
 		{
-			"schema_version":   float64(1),
-			"release_version":  releaseFixtureVersion,
-			"source_commit":    releaseFixtureReleaseCommit,
+			"schema_version":    float64(1),
+			"release_version":   releaseFixtureVersion,
+			"source_commit":     releaseFixtureReleaseCommit,
 			"release_timestamp": "2026-07-09T12:00:00-07:00",
 		},
 	}
@@ -395,7 +397,7 @@ func runReleaseDeployScript(
 
 	scriptPath := filepath.Join(repositoryRoot, releaseToolDirectoryRelativePath, "deploy_pages_artifact.sh")
 	commandArguments := append([]string{scriptPath}, arguments...)
-	command := exec.CommandContext(executionContext, "/bin/bash", commandArguments...)
+	command := exec.CommandContext(executionContext, "bash", commandArguments...)
 	command.Dir = workingDirectory
 	command.Env = buildCommandEnvironment(commandOptions)
 	outputBytes, runError := command.CombinedOutput()
@@ -415,7 +417,7 @@ func runReleasePrepareScript(
 
 	scriptPath := filepath.Join(repositoryRoot, releaseToolDirectoryRelativePath, "prepare_pages_artifact.sh")
 	commandArguments := append([]string{scriptPath}, arguments...)
-	command := exec.CommandContext(executionContext, "/bin/bash", commandArguments...)
+	command := exec.CommandContext(executionContext, "bash", commandArguments...)
 	command.Dir = workingDirectory
 	command.Env = buildCommandEnvironment(commandOptions)
 	outputBytes, runError := command.CombinedOutput()
