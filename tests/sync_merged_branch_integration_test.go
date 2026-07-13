@@ -3,6 +3,8 @@ package tests
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"os/exec"
@@ -24,6 +26,7 @@ const (
 	syncMergedBranchFailPullRequestHeadVariable = "GIX_SYNC_TEST_FAIL_PR_HEAD"
 	syncMergedBranchNameVariable                = "GIX_SYNC_TEST_BRANCH"
 	syncMergedBranchMergedVariable              = "GIX_SYNC_TEST_MERGED"
+	syncMergedBranchAPIKeyVariable              = "GIX_SYNC_TEST_LLM_KEY"
 )
 
 type syncMergedBranchFixture struct {
@@ -65,6 +68,48 @@ func TestSyncCurrentMergedBranchPromptsAndSyncsMasterBeforeCreatingPullRequest(t
 	githubLog := readTextFile(testInstance, githubLogPath)
 	require.Contains(testInstance, githubLog, "pr list --repo owner/project --state open --head feature/squashed-review")
 	require.Contains(testInstance, githubLog, "pr list --repo owner/project --state merged --base master --head feature/squashed-review")
+	require.NotContains(testInstance, githubLog, "pr create")
+}
+
+func TestSyncDirtyCurrentMergedBranchRejectsCommitBeforeHandoff(testInstance *testing.T) {
+	repositoryRoot := integrationRepositoryRoot(testInstance)
+	branchName := "feature/squashed-review-dirty"
+	fixture := createSyncMergedBranchFixture(testInstance, branchName)
+	originalHead := strings.TrimSpace(runGit(testInstance, fixture.RepositoryPath, "rev-parse", "HEAD"))
+	require.NoError(testInstance, os.WriteFile(filepath.Join(fixture.RepositoryPath, "README.md"), []byte("dirty work for a new review\n"), 0o644))
+
+	llmServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+		http.Error(responseWriter, "merged branches must be rejected before commit message generation", http.StatusInternalServerError)
+	}))
+	testInstance.Cleanup(llmServer.Close)
+
+	configurationPath := writeDirtySyncMergedBranchConfiguration(testInstance, llmServer.URL)
+	githubLogPath := filepath.Join(testInstance.TempDir(), "gh.log")
+	pathVariable := buildSyncMergedBranchExecutablePath(testInstance)
+
+	output, runError := runIntegrationCommandWithInput(
+		testInstance,
+		repositoryRoot,
+		integrationCommandOptions{
+			PathVariable: pathVariable,
+			EnvironmentOverrides: map[string]string{
+				syncMergedBranchAPIKeyVariable:    "test-key",
+				syncMergedBranchGitHubLogVariable: githubLogPath,
+				syncMergedBranchNameVariable:      branchName,
+			},
+		},
+		syncMergedBranchIntegrationTimeout,
+		"",
+		[]string{"run", ".", "--config", configurationPath, "--log-level", "error", "sync", "--roots", fixture.RepositoryPath},
+	)
+	require.Error(testInstance, runError)
+	require.Contains(testInstance, output, `cannot commit uncommitted changes on merged branch "`+branchName+`"`)
+	require.Equal(testInstance, originalHead, strings.TrimSpace(runGit(testInstance, fixture.RepositoryPath, "rev-parse", "HEAD")))
+	require.Equal(testInstance, "M README.md", strings.TrimSpace(runGit(testInstance, fixture.RepositoryPath, "status", "--porcelain")))
+
+	githubLog := readTextFile(testInstance, githubLogPath)
+	require.Contains(testInstance, githubLog, "pr list --repo owner/project --state open --head "+branchName)
+	require.Contains(testInstance, githubLog, "pr list --repo owner/project --state merged --base master --head "+branchName)
 	require.NotContains(testInstance, githubLog, "pr create")
 }
 
@@ -169,6 +214,70 @@ func TestSyncExistingRemoteBranchWithoutPullRequestCreatesPullRequest(testInstan
 	require.Contains(testInstance, githubLog, "pr create --repo owner/project --base master --head feature/unreviewed-remote --title feature/unreviewed-remote --body Publish the existing remote branch for review.")
 }
 
+func TestSyncDirtyExistingRemoteBranchWithoutPullRequestCommitsAndCreatesPullRequest(testInstance *testing.T) {
+	repositoryRoot := integrationRepositoryRoot(testInstance)
+	branchName := "bugfix/transactional-remote-release-state"
+	workspacePath := syncHomeWorkspace(testInstance)
+	remotePath := filepath.Join(workspacePath, "remote.git")
+	repositoryPath := filepath.Join(workspacePath, "project")
+	createSyncGitHubBackedRepository(testInstance, remotePath, repositoryPath)
+
+	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "README.md"), []byte("initial\n"), 0o644))
+	runGit(testInstance, repositoryPath, "add", "README.md")
+	runGit(testInstance, repositoryPath, "commit", "-m", "initial commit")
+	runGit(testInstance, repositoryPath, "push", "-u", "origin", "master")
+
+	runGit(testInstance, repositoryPath, "switch", "-c", branchName)
+	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "release.txt"), []byte("prepared release\n"), 0o644))
+	runGit(testInstance, repositoryPath, "add", "release.txt")
+	runGit(testInstance, repositoryPath, "commit", "-m", "prepare release state")
+	runGit(testInstance, repositoryPath, "push", "-u", "origin", branchName)
+	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "release.txt"), []byte("prepared release\ntransactional remote state\n"), 0o644))
+
+	llmServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/chat/completions" {
+			http.NotFound(responseWriter, request)
+			return
+		}
+		responseWriter.Header().Set("Content-Type", "application/json")
+		_, _ = responseWriter.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"fix: preserve transactional remote release state"}}]}`))
+	}))
+	testInstance.Cleanup(llmServer.Close)
+
+	configurationPath := writeDirtySyncMergedBranchConfiguration(testInstance, llmServer.URL)
+	githubLogPath := filepath.Join(testInstance.TempDir(), "gh.log")
+	pathVariable := buildSyncMergedBranchExecutablePath(testInstance)
+	pullRequestBody := "Keep remote release state transactional."
+
+	output, runError := runIntegrationCommandWithInput(
+		testInstance,
+		repositoryRoot,
+		integrationCommandOptions{
+			PathVariable: pathVariable,
+			EnvironmentOverrides: map[string]string{
+				syncMergedBranchAPIKeyVariable:    "test-key",
+				syncMergedBranchGitHubLogVariable: githubLogPath,
+				syncMergedBranchNameVariable:      branchName,
+				syncMergedBranchMergedVariable:    "false",
+			},
+		},
+		syncMergedBranchIntegrationTimeout,
+		"",
+		[]string{"run", ".", "--config", configurationPath, "--log-level", "error", "sync", "--body", pullRequestBody, "--roots", repositoryPath},
+	)
+	require.NoError(testInstance, runError, output)
+
+	require.Contains(testInstance, output, fmt.Sprintf("SYNCED: %s (%s)", repositoryPath, branchName))
+	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
+	require.Equal(testInstance, "2", strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-list", "--count", "origin/master.."+branchName)))
+	require.Equal(testInstance, "fix: preserve transactional remote release state", strings.TrimSpace(runGit(testInstance, repositoryPath, "log", "-1", "--format=%s")))
+
+	githubLog := readTextFile(testInstance, githubLogPath)
+	require.Contains(testInstance, githubLog, "pr list --repo owner/project --state open --head "+branchName)
+	require.Contains(testInstance, githubLog, "pr list --repo owner/project --state merged --base master --head "+branchName)
+	require.Contains(testInstance, githubLog, "pr create --repo owner/project --base master --head "+branchName+" --title "+branchName+" --body "+pullRequestBody)
+}
+
 func createSyncMergedBranchFixture(testInstance *testing.T, branchName string) syncMergedBranchFixture {
 	testInstance.Helper()
 
@@ -228,6 +337,32 @@ operations:
       remote: origin
       require_clean: true
 `
+	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
+	return configurationPath
+}
+
+func writeDirtySyncMergedBranchConfiguration(testInstance *testing.T, baseURL string) string {
+	testInstance.Helper()
+
+	configurationPath := filepath.Join(testInstance.TempDir(), "config.yaml")
+	configurationContent := fmt.Sprintf(`common:
+  log_level: error
+  log_format: console
+  require_clean: false
+operations:
+  - command: ["sync"]
+    with:
+      remote: origin
+  - command: ["message", "commit"]
+    with:
+      api_key_env: %s
+      base_url: %q
+      model: mock-model
+      diff_source: staged
+      max_completion_tokens: 64
+      temperature: 0
+      timeout_seconds: 5
+`, syncMergedBranchAPIKeyVariable, baseURL)
 	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
 	return configurationPath
 }

@@ -266,7 +266,13 @@ func prepareStrictSyncBranchForDirtyWork(ctx context.Context, environment *workf
 			return pullRequestErr
 		}
 		if openPullRequest == nil {
-			return fmt.Errorf(strictSyncMissingPullRequestTemplate, branchName)
+			mergedPullRequest, mergedPullRequestErr := branchHasMergedPullRequest(ctx, environment, repositoryIdentifier, baseBranch, branchName)
+			if mergedPullRequestErr != nil {
+				return mergedPullRequestErr
+			}
+			if mergedPullRequest {
+				return fmt.Errorf(strictSyncStackedMergedDirtyTemplate, branchName)
+			}
 		}
 		return switchToLocalOrRemoteBranchWithAdoption(ctx, environment, repository, remoteName, branchName, commitMessages)
 	}
