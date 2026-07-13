@@ -9,6 +9,8 @@
 - _No changes._
 
 ### Bug Fixes 🐛
+- Fixed plain `gix sync` on a dirty, remote-backed branch with no pull request so it commits the pending work and opens the missing pull request instead of failing before the established base-delta flow.
+- Kept merged remote branches on the stashed-handoff path by detecting merged pull-request state before dirty commit generation.
 - Fixed `gix sync <new-branch>` to publish and open the current branch pull request first, then open the dirty child branch pull request against that parent instead of `master`.
 - Preserved recorded ancestors when retrying deeper pull-request stacks and followed merged ancestors whose remote heads were deleted until sync reached a surviving base.
 - Rejected dirty auto-commit on known-merged branches before work could be stranded and directed the work through the stashed handoff path.
@@ -20,12 +22,14 @@
 - Kept the syncflow builder description as the canonical text shown by `gix sync --help`.
 
 ### Testing 🧪
+- Added public CLI regressions for dirty unreviewed remote branches and dirty merged remote branches without stack metadata.
 - Added a public CLI regression proving a three-level parent stack remains intact, parent push/PR creation precedes child creation, clustered commits stay linear, a failed child PR creation retries against the persisted parent, and merged stacks hand off normally.
 - Added a black-box dirty-sync regression that verifies two top-level change clusters become two linear commits above the original branch before push and pull-request creation.
 - Added CLI regressions for isolated explicit-master rescue, local-only generated-name collisions, marker-bearing and marker-free merge-resolution truncation, and the assembled sync help output.
 - Added black-box release coverage for clean-checkout helpers, failed or missing platform outputs, replaced published manifests, and missing integrity prerequisites.
 
 ### Docs 📚
+- Documented that unreviewed remote-backed branches accept dirty commits before the missing pull request is opened, while merged branches reject auto-commit.
 - Documented the canonical `master <- parent PR <- child PR` sync chain and the no-delta rejection for clean missing branches.
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented validated AI conflict resolution and the repository-owned release workflow prerequisites.
