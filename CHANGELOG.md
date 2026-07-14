@@ -34,6 +34,16 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented validated AI conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.1.4] - 2026-07-13
+
+- Merge pull request #382 from tyemirov/gix/preserve-pages-source-vs-release-commit-identities-and
+- Merge pull request #383 from tyemirov/bugfix/B027-dirty-existing-remote-opens-pr
+- fix(sync): publish dirty unreviewed remote branches
+- test(release): fix Pages integration runtime
+- test: verify pages release creates marker, .nojekyll, and enforces commit roles
+- fix(release): verify Pages artifact marker and always write .nojekyll
+- docs(issues): add design for preserving release and source commit identities in Pages deployment
+
 ## [v1.1.3] - 2026-07-10
 
 - Merge pull request #381 from tyemirov/tyemirov/bugfix/B025-stack-sync-prs
