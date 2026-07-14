@@ -421,6 +421,49 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - `make lint`
   - `make ci`
   - `git diff --check`
+- [ ] [B026] (P1) Pages deployment must preserve distinct release and source commit identities.
+  Requested on 2026-07-10 after `make deploy` pushed `gh-pages` but failed while waiting for the public `.mprlab-release.json` marker to report the changelog-only release commit.
+  Observation:
+  - The immutable Pages marker records the source commit whose site bytes were packaged, while the release tag points at the later release commit.
+  - Deployment used the release commit to verify the public source marker and did not require `.nojekyll` in the packaged artifact, so valid deployments could fail verification or publish no readable hidden marker.
+  Deliverable:
+  - Generate `.nojekyll` inside every immutable Pages archive.
+  - Validate the remote tag against `release_commit` and validate the archived and public marker schema, release version, and provenance against `source_commit`.
+  - Report `source_commit` consistently in already-deployed, verified, failure, and completion messages.
+  - Add black-box coverage with intentionally distinct commit roles that proves `.nojekyll` survives packaging and deployment and rejects invalid public marker fields.
+  Validation:
+  - Focused public Pages release regression.
+  - `make test`
+  - `make lint`
+  - `make ci`
+- [x] [B027] (P1) Dirty `gix sync` must create a pull request for an unreviewed remote-backed branch.
+  Requested on 2026-07-12 after plain `gix sync` on LoopAware branch `bugfix/B050-transactional-remote-release-state` failed with `branch "bugfix/B050-transactional-remote-release-state" does not have an open pull request` while the branch existed on `origin`, had one commit beyond `origin/master`, and the worktree contained uncommitted release changes.
+  Observation:
+  - B018 creates a pull request for an existing remote branch with real base delta, but only after dirty-work preparation finishes.
+  - Dirty-work preparation rejects every existing remote branch without an open pull request before it can commit the changes or reach the B018 creation path.
+  - That early rejection also conflates an unreviewed branch with a branch whose pull request already merged.
+  Deliverable:
+  - Let a dirty unreviewed remote-backed branch preserve and commit its work, then continue through the canonical B018 pull-request creation path.
+  - Detect a merged pull request before committing and keep the merged-branch stashed-handoff contract.
+  - Add public CLI coverage for the exact no-argument `gix sync` boundary.
+  Validation:
+  - Focused failing-then-passing public sync regression.
+  - `make test`
+  - `make lint`
+  - `make ci`
+  Resolution:
+  - Dirty-work preparation now distinguishes an existing remote branch with no pull request from a branch whose pull request already merged.
+  - An unreviewed remote-backed branch proceeds through dirty clustered commit creation and then reaches the canonical B018 base-delta path, which pushes and opens its pull request.
+  - A merged branch is rejected before commit-message generation or worktree mutation and retains the `--stash` handoff instruction.
+  - Release integration helpers now invoke the documented Bash 4+ runtime from `PATH` and provide their required version fixture so the parent B026 branch remains testable in the full suite.
+  Validation Result:
+  - The exact plain-sync regression failed before implementation with `branch "bugfix/transactional-remote-release-state" does not have an open pull request`; it now proves the dirty change becomes a second branch commit and the missing pull request is created against `master`.
+  - The merged-branch regression failed with the same early missing-PR error before implementation; it now proves the dirty file remains uncommitted and no pull request is created.
+  - `make format`
+  - `make test`
+  - `make lint`
+  - `make ci`
+  - `git diff --check`
 
 
 ## Improvements

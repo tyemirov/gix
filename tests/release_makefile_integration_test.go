@@ -2,6 +2,9 @@ package tests
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,10 +24,18 @@ const (
 	releaseFakeGoMissingTargetVariable  = "GIX_RELEASE_FAKE_GO_MISSING_TARGET"
 	releaseFakeManifestVariable         = "GIX_RELEASE_FAKE_MANIFEST"
 	releaseFakePagesArchiveVariable     = "GIX_RELEASE_FAKE_PAGES_ARCHIVE"
+	releaseFakePagesMarkerVariable      = "GIX_RELEASE_FAKE_PAGES_MARKER"
+	releaseFakeReleaseCommitVariable    = "GIX_RELEASE_FAKE_RELEASE_COMMIT"
+	releaseFakeRemoteVariable           = "GIX_RELEASE_FAKE_REMOTE"
+	releaseRealGitVariable              = "GIX_RELEASE_REAL_GIT"
+	releaseFakeVersionVariable          = "GIX_RELEASE_FIXTURE_VERSION"
 	releaseExpectedFailureTarget        = "linux/arm64"
 	releaseMissingArtifactErrorFragment = "missing release artifact"
 	releaseManifestMismatchFragment     = "published release manifest does not match the locally prepared release"
 	releaseFixtureVersion               = "v9.8.7"
+	releaseFixtureURL                   = "https://pages.example.invalid"
+	releaseFixtureReleaseCommit         = "1111111111111111111111111111111111111111"
+	releaseFixtureSourceCommit          = "2222222222222222222222222222222222222222"
 )
 
 var releaseDeployRequiredCommands = []string{
@@ -176,6 +187,145 @@ func TestPagesDeployRejectsPublishedManifestThatDiffersFromPreparedRelease(testI
 	require.Contains(testInstance, outputText, releaseManifestMismatchFragment)
 }
 
+func TestPagesReleasePreservesDistinctCommitRolesAndNoJekyll(testInstance *testing.T) {
+	repositoryRoot := releaseRepositoryRoot(testInstance)
+	fixtureRepository := createGitRepository(testInstance, gitRepositoryOptions{InitialBranch: "master"})
+	artifactDirectory := filepath.Join(testInstance.TempDir(), "artifact")
+	writeReleaseFixtureFile(
+		testInstance,
+		filepath.Join(artifactDirectory, "staging.json"),
+		releaseStagingManifestFixture,
+	)
+	siteDirectory := filepath.Join(testInstance.TempDir(), "site")
+	writeReleaseFixtureFile(testInstance, filepath.Join(siteDirectory, "index.html"), "<!doctype html><title>Fixture</title>\n")
+
+	preparePath := buildReleaseStubbedExecutablePath(testInstance, map[string]string{"rsync": releaseFakeRsyncScript})
+	prepareOutput, prepareError := runReleasePrepareScript(
+		testInstance,
+		repositoryRoot,
+		fixtureRepository,
+		integrationCommandOptions{
+			PathVariable: preparePath,
+			EnvironmentOverrides: map[string]string{
+				releaseArtifactDirectoryVariable: artifactDirectory,
+				"RELEASE_VERSION":                releaseFixtureVersion,
+			},
+		},
+		"--source", siteDirectory,
+	)
+	require.NoError(testInstance, prepareError, prepareOutput)
+
+	archivePath := filepath.Join(artifactDirectory, "payloads", "release-assets", "pages.tar.gz")
+	extractedSite := testInstance.TempDir()
+	extractCommand := exec.Command("tar", "-xzf", archivePath, "-C", extractedSite)
+	extractOutput, extractError := extractCommand.CombinedOutput()
+	require.NoError(testInstance, extractError, string(extractOutput))
+	noJekyllInfo, noJekyllError := os.Stat(filepath.Join(extractedSite, ".nojekyll"))
+	require.NoError(testInstance, noJekyllError)
+	require.Zero(testInstance, noJekyllInfo.Size())
+	markerPath := filepath.Join(extractedSite, ".mprlab-release.json")
+	markerContents, markerReadError := os.ReadFile(markerPath)
+	require.NoError(testInstance, markerReadError)
+	var marker map[string]any
+	require.NoError(testInstance, json.Unmarshal(markerContents, &marker))
+	require.Equal(testInstance, float64(1), marker["schema_version"])
+	require.Equal(testInstance, releaseFixtureVersion, marker["release_version"])
+	require.Equal(testInstance, releaseFixtureSourceCommit, marker["source_commit"])
+
+	archiveContents, archiveReadError := os.ReadFile(archivePath)
+	require.NoError(testInstance, archiveReadError)
+	archiveHash := fmt.Sprintf("%x", sha256.Sum256(archiveContents))
+	preparedManifest := strings.Replace(releasePreparedManifestFixture, releasePreparedPagesHash, archiveHash, 1)
+	preparedManifestPath := filepath.Join(fixtureRepository, ".git", "mprlab-release", "manifest.json")
+	writeReleaseFixtureFile(testInstance, preparedManifestPath, preparedManifest)
+
+	remoteDirectory := filepath.Join(testInstance.TempDir(), "remote.git")
+	initRemoteCommand := exec.Command("git", "init", "--bare", remoteDirectory)
+	initRemoteOutput, initRemoteError := initRemoteCommand.CombinedOutput()
+	require.NoError(testInstance, initRemoteError, string(initRemoteOutput))
+	realGitPath, realGitError := exec.LookPath("git")
+	require.NoError(testInstance, realGitError)
+	publicMarkerPath := filepath.Join(testInstance.TempDir(), ".mprlab-release.json")
+	writeReleaseFixtureFile(testInstance, publicMarkerPath, string(markerContents))
+	deployPath := buildReleaseStubbedExecutablePath(testInstance, map[string]string{
+		"curl": releaseFakeCurlScript,
+		"gh":   releaseFakeGHDownloadScript,
+		"git":  releaseFakeGitDeployScript,
+	})
+	deployEnvironment := map[string]string{
+		releaseFakeManifestVariable:      preparedManifestPath,
+		releaseFakePagesArchiveVariable:  archivePath,
+		releaseFakePagesMarkerVariable:   publicMarkerPath,
+		releaseFakeReleaseCommitVariable: releaseFixtureReleaseCommit,
+		releaseFakeRemoteVariable:        remoteDirectory,
+		releaseRealGitVariable:           realGitPath,
+		releaseFakeVersionVariable:       releaseFixtureVersion,
+		"PAGES_VERIFY_ATTEMPTS":          "1",
+		"PAGES_VERIFY_DELAY_SECONDS":     "0",
+	}
+	deployOutput, deployError := runReleaseDeployScript(
+		testInstance,
+		repositoryRoot,
+		fixtureRepository,
+		integrationCommandOptions{PathVariable: deployPath, EnvironmentOverrides: deployEnvironment},
+		"--version", releaseFixtureVersion,
+		"--url", releaseFixtureURL,
+		"--skip-configure",
+	)
+	require.NoError(testInstance, deployError, deployOutput)
+	require.Contains(testInstance, deployOutput, "Verified "+releaseFixtureURL+" at source "+releaseFixtureSourceCommit+".")
+	require.NotContains(testInstance, deployOutput, "at source "+releaseFixtureReleaseCommit+".")
+
+	deployedNoJekyllCommand := exec.Command(realGitPath, "--git-dir", remoteDirectory, "cat-file", "-e", "refs/heads/gh-pages:.nojekyll")
+	deployedNoJekyllOutput, deployedNoJekyllError := deployedNoJekyllCommand.CombinedOutput()
+	require.NoError(testInstance, deployedNoJekyllError, string(deployedNoJekyllOutput))
+	deployedMarkerCommand := exec.Command(realGitPath, "--git-dir", remoteDirectory, "show", "refs/heads/gh-pages:.mprlab-release.json")
+	deployedMarkerContents, deployedMarkerError := deployedMarkerCommand.Output()
+	require.NoError(testInstance, deployedMarkerError)
+	var deployedMarker map[string]any
+	require.NoError(testInstance, json.Unmarshal(deployedMarkerContents, &deployedMarker))
+	require.Equal(testInstance, releaseFixtureSourceCommit, deployedMarker["source_commit"])
+
+	invalidMarkers := []map[string]any{
+		{
+			"schema_version":    float64(2),
+			"release_version":   releaseFixtureVersion,
+			"source_commit":     releaseFixtureSourceCommit,
+			"release_timestamp": "2026-07-09T12:00:00-07:00",
+		},
+		{
+			"schema_version":    float64(1),
+			"release_version":   "v9.9.9",
+			"source_commit":     releaseFixtureSourceCommit,
+			"release_timestamp": "2026-07-09T12:00:00-07:00",
+		},
+		{
+			"schema_version":    float64(1),
+			"release_version":   releaseFixtureVersion,
+			"source_commit":     releaseFixtureReleaseCommit,
+			"release_timestamp": "2026-07-09T12:00:00-07:00",
+		},
+	}
+	for invalidMarkerIndex, invalidMarker := range invalidMarkers {
+		testInstance.Run(fmt.Sprintf("invalid-public-marker-%d", invalidMarkerIndex), func(t *testing.T) {
+			invalidMarkerContents, marshalError := json.Marshal(invalidMarker)
+			require.NoError(t, marshalError)
+			writeReleaseFixtureFile(t, publicMarkerPath, string(invalidMarkerContents))
+			outputText, runError := runReleaseDeployScript(
+				t,
+				repositoryRoot,
+				fixtureRepository,
+				integrationCommandOptions{PathVariable: deployPath, EnvironmentOverrides: deployEnvironment},
+				"--version", releaseFixtureVersion,
+				"--url", releaseFixtureURL,
+				"--skip-configure",
+			)
+			require.Error(t, runError, outputText)
+			require.Contains(t, outputText, "source "+releaseFixtureSourceCommit)
+		})
+	}
+}
+
 func TestPagesDeployPreflightsIntegrityDependencies(testInstance *testing.T) {
 	repositoryRoot := releaseRepositoryRoot(testInstance)
 	for _, missingCommand := range []string{"curl", "shasum"} {
@@ -247,11 +397,41 @@ func runReleaseDeployScript(
 
 	scriptPath := filepath.Join(repositoryRoot, releaseToolDirectoryRelativePath, "deploy_pages_artifact.sh")
 	commandArguments := append([]string{scriptPath}, arguments...)
-	command := exec.CommandContext(executionContext, "/bin/bash", commandArguments...)
+	command := exec.CommandContext(executionContext, "bash", commandArguments...)
 	command.Dir = workingDirectory
 	command.Env = buildCommandEnvironment(commandOptions)
 	outputBytes, runError := command.CombinedOutput()
 	return string(outputBytes), runError
+}
+
+func runReleasePrepareScript(
+	testInstance *testing.T,
+	repositoryRoot string,
+	workingDirectory string,
+	commandOptions integrationCommandOptions,
+	arguments ...string,
+) (string, error) {
+	testInstance.Helper()
+	executionContext, cancelFunction := context.WithTimeout(context.Background(), releaseMakeCommandTimeout)
+	defer cancelFunction()
+
+	scriptPath := filepath.Join(repositoryRoot, releaseToolDirectoryRelativePath, "prepare_pages_artifact.sh")
+	commandArguments := append([]string{scriptPath}, arguments...)
+	command := exec.CommandContext(executionContext, "bash", commandArguments...)
+	command.Dir = workingDirectory
+	command.Env = buildCommandEnvironment(commandOptions)
+	outputBytes, runError := command.CombinedOutput()
+	return string(outputBytes), runError
+}
+
+func buildReleaseStubbedExecutablePath(testInstance *testing.T, scripts map[string]string) string {
+	testInstance.Helper()
+	stubDirectory := testInstance.TempDir()
+	for executableName, scriptContents := range scripts {
+		stubPath := filepath.Join(stubDirectory, executableName)
+		require.NoError(testInstance, os.WriteFile(stubPath, []byte(scriptContents), 0o755))
+	}
+	return stubDirectory + string(os.PathListSeparator) + os.Getenv("PATH")
 }
 
 func buildReleaseDependencyPath(testInstance *testing.T, missingCommand string) string {
@@ -337,5 +517,33 @@ done
 [[ -n "${download_directory}" ]] || { echo "missing download directory" >&2; exit 42; }
 cp "${GIX_RELEASE_FAKE_MANIFEST}" "${download_directory}/manifest.json"
 cp "${GIX_RELEASE_FAKE_PAGES_ARCHIVE}" "${download_directory}/pages.tar.gz"
+`
+	releaseFakeRsyncScript = `#!/bin/sh
+set -eu
+while [ "$#" -gt 2 ]; do shift; done
+cp -R "$1"/. "$2"/
+`
+	releaseFakeCurlScript = `#!/bin/sh
+set -eu
+cat "${GIX_RELEASE_FAKE_PAGES_MARKER}"
+`
+	releaseFakeGitDeployScript = `#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${1:-}" == "ls-remote" ]]; then
+  printf '%s\trefs/tags/%s^{}\n' "${GIX_RELEASE_FAKE_RELEASE_COMMIT}" "${GIX_RELEASE_FIXTURE_VERSION}"
+  exit 0
+fi
+if [[ "${1:-}" == "remote" && "${2:-}" == "get-url" ]]; then
+  printf '%s\n' "${GIX_RELEASE_FAKE_REMOTE}"
+  exit 0
+fi
+exec "${GIX_RELEASE_REAL_GIT}" "$@"
+`
+	releaseStagingManifestFixture = `{
+  "release_timestamp": "2026-07-09T12:00:00-07:00",
+  "source_commit": "2222222222222222222222222222222222222222",
+  "version": "v9.8.7"
+}
 `
 )
