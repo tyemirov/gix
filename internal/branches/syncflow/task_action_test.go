@@ -1775,7 +1775,7 @@ func TestHandleBranchSyncActionStrictPRBranchUsesExplicitPullRequestMetadata(t *
 	require.Len(t, chatClient.requests, 1)
 }
 
-func TestHandleBranchSyncActionStrictPRBranchCreatesGeneratedBranchFromDirtyMaster(t *testing.T) {
+func TestHandleBranchSyncActionStrictPRBranchCreatesGeneratedBranchFromCurrentDirtyMaster(t *testing.T) {
 	generatedBranchName := "gix/cancel-upstream-request-on-downstream-timeout"
 	pullRequestBody := "## Summary\n- Updates README content from the dirty master branch."
 	gitExecutor := &strictSyncGitExecutor{
@@ -1809,7 +1809,6 @@ func TestHandleBranchSyncActionStrictPRBranchCreatesGeneratedBranchFromDirtyMast
 		},
 	}
 	parameters := map[string]any{
-		taskOptionBranchName:         "master",
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
 		taskOptionBaseBranch:         "master",
@@ -1839,7 +1838,7 @@ func TestHandleBranchSyncActionStrictPRBranchCreatesGeneratedBranchFromDirtyMast
 	require.Contains(t, chatClient.requests[2].Messages[1].Content, "diff --git a/README.md b/README.md")
 }
 
-func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedDirtyMasterMergeConflict(t *testing.T) {
+func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedCurrentDirtyMasterMergeConflict(t *testing.T) {
 	generatedBranchName := "gix/support-agentic-model-and-reasoning-effort-settings"
 	pullRequestBody := "## Summary\n- Preserves local settings work and remote issue numbering."
 	resolvedContent := "stable preface\n# ISSUES\n\n- [x] [I010] Configure agentic model and effort from settings.\n- [x] [I003] Add clear search field.\nstable epilogue\n"
@@ -1886,7 +1885,6 @@ func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedDirtyMasterMergeCo
 		},
 	}
 	parameters := map[string]any{
-		taskOptionBranchName:         "master",
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
 		taskOptionBaseBranch:         "master",
@@ -1922,7 +1920,7 @@ func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedDirtyMasterMergeCo
 	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", generatedBranchName, "--title", generatedBranchName, "--body", pullRequestBody}, githubExecutor.commands[0].Arguments)
 }
 
-func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedDirtyMasterDeletionConflict(t *testing.T) {
+func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedCurrentDirtyMasterDeletionConflict(t *testing.T) {
 	generatedBranchName := "gix/remove-obsolete-readme-after-conflict"
 	pullRequestBody := "## Summary\n- Keeps the local deletion while merging the current base."
 	repositoryPath := t.TempDir()
@@ -1968,7 +1966,6 @@ func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedDirtyMasterDeletio
 		},
 	}
 	parameters := map[string]any{
-		taskOptionBranchName:         "master",
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
 		taskOptionBaseBranch:         "master",
@@ -2000,7 +1997,7 @@ func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedDirtyMasterDeletio
 	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", generatedBranchName, "--title", generatedBranchName, "--body", pullRequestBody}, githubExecutor.commands[0].Arguments)
 }
 
-func TestHandleBranchSyncActionStrictPRBranchCreatesGeneratedBranchFromDirtyMasterWhenLocalBaseAhead(t *testing.T) {
+func TestHandleBranchSyncActionStrictPRBranchCreatesGeneratedBranchFromCurrentDirtyMasterWhenLocalBaseAhead(t *testing.T) {
 	generatedBranchName := "gix/cancel-upstream-request-on-downstream-timeout"
 	pullRequestBody := "## Summary\n- Preserves local master commits and dirty README work."
 	gitExecutor := &strictSyncGitExecutor{
@@ -2034,7 +2031,6 @@ func TestHandleBranchSyncActionStrictPRBranchCreatesGeneratedBranchFromDirtyMast
 		},
 	}
 	parameters := map[string]any{
-		taskOptionBranchName:         "master",
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
 		taskOptionBaseBranch:         "master",
@@ -2059,7 +2055,7 @@ func TestHandleBranchSyncActionStrictPRBranchCreatesGeneratedBranchFromDirtyMast
 	require.Len(t, chatClient.requests, 3)
 }
 
-func TestHandleBranchSyncActionStrictPRBranchSkipsStaleGeneratedRemoteBranch(t *testing.T) {
+func TestHandleBranchSyncActionStrictPRBranchSkipsStaleGeneratedRemoteBranchForCurrentDirtyMaster(t *testing.T) {
 	generatedBranchName := "gix/cancel-upstream-request-on-downstream-timeout"
 	collisionBranchName := generatedBranchName + "-2"
 	pullRequestBody := "## Summary\n- Updates README content without reusing the stale branch."
@@ -2094,7 +2090,6 @@ func TestHandleBranchSyncActionStrictPRBranchSkipsStaleGeneratedRemoteBranch(t *
 		},
 	}
 	parameters := map[string]any{
-		taskOptionBranchName:         "master",
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
 		taskOptionBaseBranch:         "master",
@@ -2116,25 +2111,17 @@ func TestHandleBranchSyncActionStrictPRBranchSkipsStaleGeneratedRemoteBranch(t *
 	require.Contains(t, chatClient.requests[2].Messages[1].Content, "Comparison range: origin/master..."+collisionBranchName)
 }
 
-func TestHandleBranchSyncActionStrictPRBranchSkipsLocalOnlyGeneratedBranchDuringIsolatedMasterRescue(t *testing.T) {
-	generatedBranchName := "gix/rescue-dirty-base-work"
-	collisionBranchName := generatedBranchName + "-2"
-	pullRequestBody := "Publish only the isolated dirty work."
+func TestHandleBranchSyncActionStrictPRBranchCommitsDirtyWorkToExplicitMaster(t *testing.T) {
 	gitExecutor := &strictSyncGitExecutor{
 		statusOutput:  " M README.md\n",
 		revListOutput: "1\n",
-		missingReferences: map[string]bool{
-			"origin/" + generatedBranchName:     true,
-			"origin/" + collisionBranchName:     true,
-			"refs/heads/" + collisionBranchName: true,
-		},
 	}
 	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
 	require.NoError(t, managerError)
 	githubExecutor := &strictSyncGitHubExecutor{}
 	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
 	require.NoError(t, githubClientError)
-	chatClient := &strictSyncChatClient{responses: []string{"fix: rescue dirty base work", "docs: preserve isolated dirty work"}}
+	chatClient := &strictSyncChatClient{responses: []string{"docs: preserve dirty work on explicit master"}}
 	environment := &workflow.Environment{
 		GitExecutor:       gitExecutor,
 		RepositoryManager: gitManager,
@@ -2157,7 +2144,6 @@ func TestHandleBranchSyncActionStrictPRBranchSkipsLocalOnlyGeneratedBranchDuring
 		taskOptionRequirePullRequest: true,
 		taskOptionBaseBranch:         "master",
 		taskOptionRequireClean:       false,
-		taskOptionPullRequestBody:    pullRequestBody,
 		taskOptionWorktreeCommitMessage: worktreeAdoptionCommitMessageOptions{
 			Client: chatClient,
 		},
@@ -2165,11 +2151,15 @@ func TestHandleBranchSyncActionStrictPRBranchSkipsLocalOnlyGeneratedBranchDuring
 
 	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	recordedCommands := recordedGitCommands(gitExecutor.commands)
-	require.Equal(t, -1, recordedGitCommandIndex(gitExecutor.commands, "switch "+generatedBranchName))
-	require.Contains(t, recordedCommands, "switch -c "+collisionBranchName+" origin/master")
-	require.Contains(t, recordedCommands, "push -u origin "+collisionBranchName)
-	require.Len(t, githubExecutor.commands, 1)
-	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", collisionBranchName, "--title", collisionBranchName, "--body", pullRequestBody}, githubExecutor.commands[0].Arguments)
+	require.Contains(t, recordedCommands, "stash push --include-untracked")
+	require.Contains(t, recordedCommands, "switch master")
+	require.Contains(t, recordedCommands, "stash pop")
+	require.Contains(t, recordedCommands, "commit -m docs: preserve dirty work on explicit master")
+	require.Contains(t, recordedCommands, "merge --no-edit origin/master")
+	require.Contains(t, recordedCommands, "push origin master")
+	require.NotContains(t, recordedCommands, "switch -c gix/")
+	require.Empty(t, githubExecutor.commands)
+	require.Len(t, chatClient.requests, 1)
 }
 
 func TestGeneratedSyncBranchNameLimitsSemanticSlug(t *testing.T) {

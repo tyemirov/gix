@@ -26,7 +26,7 @@ const (
 	syncRefreshIntegrationAPIKeyVariable   = "TEST_GIX_SYNC_REFRESH_LLM_KEY"
 )
 
-func TestSyncCommitsDirtyMasterWorktreeOnGeneratedBranch(testInstance *testing.T) {
+func TestSyncExplicitMasterCommitsDirtyMasterWorktreeAndMergesRemote(testInstance *testing.T) {
 	testInstance.Helper()
 
 	expectedGeneratedBranchName := "gix/sync-dirty-work"
@@ -154,6 +154,8 @@ operations:
   - command: ["sync"]
     with:
       remote: origin
+      roots:
+        - .
   - command: ["message", "commit"]
     with:
       api_key_env: %s
@@ -166,34 +168,30 @@ operations:
 `, syncRefreshIntegrationAPIKeyVariable, llmServer.URL)
 	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
 
+	binaryPath := buildIntegrationBinary(testInstance, repositoryRoot)
 	commandArguments := []string{
-		syncRefreshIntegrationRunCommand,
-		syncRefreshIntegrationModulePath,
 		"--config",
 		configurationPath,
 		syncRefreshIntegrationLogLevelFlag,
 		syncRefreshIntegrationErrorLogLevel,
 		"sync",
 		"master",
-		"--roots",
-		repositoryPath,
 	}
 
-	output, runError := runFailingIntegrationCommand(
+	output, runError := runBinaryIntegrationCommand(
 		testInstance,
-		repositoryRoot,
-		integrationCommandOptions{
-			PathVariable: pathVariable,
-			EnvironmentOverrides: map[string]string{
-				syncRefreshIntegrationAPIKeyVariable: "test-key",
-			},
+		binaryPath,
+		repositoryPath,
+		map[string]string{
+			pathEnvironmentVariableNameConstant:  pathVariable,
+			syncRefreshIntegrationAPIKeyVariable: "test-key",
 		},
 		syncRefreshIntegrationTimeout,
 		commandArguments,
 	)
-	require.Error(testInstance, runError)
+	require.NoError(testInstance, runError, output)
 	testInstance.Logf("sync output:\n%s", output)
-	require.Contains(testInstance, output, "strict sync requires a GitHub repository remote")
+	require.Contains(testInstance, output, "SYNCED: . (master)")
 	require.NotContains(testInstance, output, "worktree is dirty")
 	require.NotContains(testInstance, output, "would be overwritten by checkout")
 
@@ -201,23 +199,129 @@ operations:
 	require.NoError(testInstance, readError)
 	invocationLog := string(invocationLogContents)
 	require.Contains(testInstance, invocationLog, "check-ignore --stdin")
-	require.Contains(testInstance, invocationLog, "switch -c "+expectedGeneratedBranchName+"\n")
-	require.NotContains(testInstance, invocationLog, "switch -c "+expectedGeneratedBranchName+" origin/master")
+	require.NotContains(testInstance, invocationLog, "switch -c "+expectedGeneratedBranchName)
 	require.NotContains(testInstance, invocationLog, "stash push --include-untracked")
 	require.Contains(testInstance, invocationLog, "add --all -- README.md")
 	require.Contains(testInstance, invocationLog, "add --all -- python/llm_proxy_client.egg-info/PKG-INFO python/llm_proxy_client.egg-info/SOURCES.txt")
 	require.NotContains(testInstance, invocationLog, "add --all -- python/llm_proxy_client/__pycache__")
 	require.NotContains(testInstance, invocationLog, "add --all -- python/tests/__pycache__")
 	require.Contains(testInstance, invocationLog, "commit -m docs: sync dirty work")
-	require.NotContains(testInstance, string(invocationLogContents), "pull --ff-only")
-	require.NotContains(testInstance, string(invocationLogContents), "pull --rebase")
+	require.Contains(testInstance, invocationLog, "merge --no-edit origin/master")
+	require.Contains(testInstance, invocationLog, "push origin master")
+	require.NotContains(testInstance, invocationLog, "pull --rebase")
 
 	localFileContents, localReadError := os.ReadFile(readmePath)
 	require.NoError(testInstance, localReadError)
-	require.Equal(testInstance, "initial\nmiddle\nmodified locally\n", string(localFileContents))
-	require.Equal(testInstance, expectedGeneratedBranchName, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
+	require.Equal(testInstance, "remote update\nmiddle\nmodified locally\n", string(localFileContents))
+	require.Equal(testInstance, "master", strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
+	require.Equal(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "master")), strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "origin/master")))
 	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
-	require.Equal(testInstance, "docs: sync dirty work", strings.TrimSpace(runGit(testInstance, repositoryPath, "log", "-1", "--pretty=%s")))
+	require.Contains(testInstance, runGit(testInstance, repositoryPath, "log", "-5", "--format=%s"), "docs: sync dirty work")
+}
+
+func TestSyncExplicitMasterCommitsDirtyMasterWorktreeToMaster(testInstance *testing.T) {
+	testInstance.Helper()
+
+	repositoryRoot := integrationRepositoryRoot(testInstance)
+	workspacePath := syncHomeWorkspace(testInstance)
+	remotePath := filepath.Join(workspacePath, "remote.git")
+	repositoryPath := filepath.Join(workspacePath, "project")
+	createSyncGitHubBackedRepository(testInstance, remotePath, repositoryPath)
+
+	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "README.md"), []byte("initial\n"), 0o644))
+	runGit(testInstance, repositoryPath, "add", "README.md")
+	runGit(testInstance, repositoryPath, "commit", "-m", "initial commit")
+	runGit(testInstance, repositoryPath, "push", "-u", "origin", "master")
+	baseCommit := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD"))
+
+	require.NoError(testInstance, os.MkdirAll(filepath.Join(repositoryPath, ".mprlab"), 0o755))
+	require.NoError(testInstance, os.MkdirAll(filepath.Join(repositoryPath, "scripts"), 0o755))
+	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, ".mprlab", "resources.yml"), []byte("tenant: kamu\n"), 0o644))
+	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "scripts", "site.sh"), []byte("deploy_kamu_backend\n"), 0o755))
+
+	responses := []string{
+		"feat(deploy): add kamu tenant resources",
+		"fix(site): update backend deployment",
+	}
+	var responseIndex atomic.Int64
+	llmServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/chat/completions" {
+			http.NotFound(responseWriter, request)
+			return
+		}
+		currentResponseIndex := int(responseIndex.Add(1) - 1)
+		if currentResponseIndex >= len(responses) {
+			http.Error(responseWriter, "unexpected LLM request", http.StatusBadRequest)
+			return
+		}
+		responseWriter.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(responseWriter, `{"choices":[{"message":{"role":"assistant","content":%q}}]}`, responses[currentResponseIndex])
+	}))
+	testInstance.Cleanup(llmServer.Close)
+
+	configurationPath := filepath.Join(testInstance.TempDir(), "config.yaml")
+	configurationContent := fmt.Sprintf(`common:
+  log_level: error
+  log_format: console
+  require_clean: false
+operations:
+  - command: ["sync"]
+    with:
+      remote: origin
+  - command: ["message", "commit"]
+    with:
+      api_key_env: %s
+      base_url: %q
+      model: mock-model
+      diff_source: staged
+      max_completion_tokens: 64
+      temperature: 0
+      timeout_seconds: 5
+`, syncRefreshIntegrationAPIKeyVariable, llmServer.URL)
+	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
+
+	gitLogPath := filepath.Join(testInstance.TempDir(), "git.log")
+	githubLogPath := filepath.Join(testInstance.TempDir(), "gh.log")
+	output, runError := runIntegrationCommandWithInput(
+		testInstance,
+		repositoryRoot,
+		integrationCommandOptions{
+			PathVariable: buildSyncMergedBranchExecutablePath(testInstance),
+			EnvironmentOverrides: map[string]string{
+				syncRefreshIntegrationAPIKeyVariable: "test-key",
+				syncMergedBranchGitLogVariable:       gitLogPath,
+				syncMergedBranchGitHubLogVariable:    githubLogPath,
+			},
+		},
+		syncMergedBranchIntegrationTimeout,
+		"",
+		[]string{
+			syncRefreshIntegrationRunCommand,
+			syncRefreshIntegrationModulePath,
+			"--config",
+			configurationPath,
+			syncRefreshIntegrationLogLevelFlag,
+			syncRefreshIntegrationErrorLogLevel,
+			"sync",
+			"master",
+			"--roots",
+			repositoryPath,
+		},
+	)
+	require.NoError(testInstance, runError, output)
+
+	require.Contains(testInstance, output, fmt.Sprintf("SYNCED: %s (master)", repositoryPath))
+	require.Equal(testInstance, "master", strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
+	require.Equal(testInstance, "2", strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-list", "--count", baseCommit+"..master")))
+	require.Equal(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "master")), strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "origin/master")))
+	require.Equal(testInstance, strings.Join([]string{responses[1], responses[0]}, "\n"), strings.TrimSpace(runGit(testInstance, repositoryPath, "log", "--format=%s", baseCommit+"..master")))
+	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
+	require.Equal(testInstance, int64(len(responses)), responseIndex.Load())
+
+	gitLog := readTextFile(testInstance, gitLogPath)
+	require.NotContains(testInstance, gitLog, "switch -c gix/")
+	require.Contains(testInstance, gitLog, "push origin master")
+	require.NotContains(testInstance, readTextFile(testInstance, githubLogPath), "pr create ")
 }
 
 func TestSyncExplicitNewBranchCreatesStackedPullRequestsAndCommitsDirtyWorkInClusters(testInstance *testing.T) {
@@ -579,13 +683,11 @@ operations:
 	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--remotes", "--list", "origin/"+sourceBranchName)))
 }
 
-func TestSyncExplicitMasterFromDirtyFeatureBranchIsolatesGeneratedRescueBranch(testInstance *testing.T) {
+func TestSyncExplicitMasterFromDirtyFeatureBranchCommitsToMaster(testInstance *testing.T) {
 	testInstance.Helper()
 
 	const (
-		sourceBranchName    = "feature/source-work"
-		generatedBranchName = "gix/rescue-dirty-base-work"
-		pullRequestBody     = "Publish only the rescued dirty work for review."
+		sourceBranchName = "feature/source-work"
 	)
 
 	repositoryRoot := integrationRepositoryRoot(testInstance)
@@ -607,10 +709,7 @@ func TestSyncExplicitMasterFromDirtyFeatureBranchIsolatesGeneratedRescueBranch(t
 	sourceCommit := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD"))
 	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "README.md"), []byte("initial\nrescued dirty work\n"), 0o644))
 
-	responses := []string{
-		"fix: rescue dirty base work",
-		"docs: preserve rescued work",
-	}
+	responses := []string{"docs: commit dirty work to explicit master"}
 	var responseIndex atomic.Int64
 	llmServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 		if request.URL.Path != "/chat/completions" {
@@ -660,7 +759,7 @@ operations:
 				syncRefreshIntegrationAPIKeyVariable: "test-key",
 				syncMergedBranchGitLogVariable:       gitLogPath,
 				syncMergedBranchGitHubLogVariable:    githubLogPath,
-				syncMergedBranchNameVariable:         generatedBranchName,
+				syncMergedBranchNameVariable:         "unused-generated-branch",
 				syncMergedBranchMergedVariable:       "false",
 			},
 		},
@@ -675,20 +774,18 @@ operations:
 			syncRefreshIntegrationErrorLogLevel,
 			"sync",
 			"master",
-			"--body",
-			pullRequestBody,
 			"--roots",
 			repositoryPath,
 		},
 	)
 	require.NoError(testInstance, runError, output)
 
-	require.Contains(testInstance, output, fmt.Sprintf("SYNCED: %s (%s)", repositoryPath, generatedBranchName))
-	require.Equal(testInstance, generatedBranchName, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
+	require.Contains(testInstance, output, fmt.Sprintf("SYNCED: %s (master)", repositoryPath))
+	require.Equal(testInstance, "master", strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
 	require.Equal(testInstance, sourceCommit, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", sourceBranchName)))
-	require.Equal(testInstance, baseCommit, strings.TrimSpace(runGit(testInstance, repositoryPath, "merge-base", generatedBranchName, sourceBranchName)))
-	require.Equal(testInstance, baseCommit, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", generatedBranchName+"^")))
-	require.Equal(testInstance, "docs: preserve rescued work", strings.TrimSpace(runGit(testInstance, repositoryPath, "log", "-1", "--pretty=%s")))
+	require.Equal(testInstance, baseCommit, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "master^")))
+	require.Equal(testInstance, "docs: commit dirty work to explicit master", strings.TrimSpace(runGit(testInstance, repositoryPath, "log", "-1", "--pretty=%s")))
+	require.Equal(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "master")), strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "origin/master")))
 	require.Equal(testInstance, "initial\nrescued dirty work\n", readTextFile(testInstance, filepath.Join(repositoryPath, "README.md")))
 	_, featureFileError := os.Stat(filepath.Join(repositoryPath, "feature.txt"))
 	require.True(testInstance, os.IsNotExist(featureFileError))
@@ -697,22 +794,22 @@ operations:
 
 	gitLog := readTextFile(testInstance, gitLogPath)
 	require.Contains(testInstance, gitLog, "stash push --include-untracked")
-	require.Contains(testInstance, gitLog, "switch -c "+generatedBranchName+" origin/master")
+	require.Contains(testInstance, gitLog, "switch master")
 	require.Contains(testInstance, gitLog, "stash pop")
-	require.NotContains(testInstance, gitLog, "switch -c "+generatedBranchName+"\n")
-	require.Contains(testInstance, gitLog, "push -u origin "+generatedBranchName)
+	require.NotContains(testInstance, gitLog, "switch -c gix/")
+	require.Contains(testInstance, gitLog, "commit -m docs: commit dirty work to explicit master")
+	require.Contains(testInstance, gitLog, "push origin master")
 
 	githubLog := readTextFile(testInstance, githubLogPath)
-	require.Contains(testInstance, githubLog, "pr create --repo owner/project --base master --head "+generatedBranchName+" --title "+generatedBranchName+" --body "+pullRequestBody)
+	require.NotContains(testInstance, githubLog, "pr create ")
 }
 
 func TestSyncRejectsTruncatedLongFileMergeResolutionBeforeCommitOrPush(testInstance *testing.T) {
 	testInstance.Helper()
 
 	const (
-		generatedBranchName = "gix/preserve-long-issue-tracker"
-		conflictedFileName  = "ISSUES.md"
-		stableTailLine      = "- [ ] [B1100] Preserve final unrelated issue."
+		conflictedFileName = "ISSUES.md"
+		stableTailLine     = "- [ ] [B1100] Preserve final unrelated issue."
 	)
 
 	repositoryRoot := integrationRepositoryRoot(testInstance)
@@ -748,7 +845,6 @@ func TestSyncRejectsTruncatedLongFileMergeResolutionBeforeCommitOrPush(testInsta
 	require.NoError(testInstance, os.WriteFile(conflictedFilePath, []byte(localContent), 0o644))
 	truncatedResolution := "# ISSUES\n\n- [x] [B000] combined conflict entry\n"
 	responses := []string{
-		"fix: preserve long issue tracker",
 		"docs: update issue tracker entry",
 		truncatedResolution,
 	}
@@ -801,7 +897,7 @@ operations:
 				syncRefreshIntegrationAPIKeyVariable: "test-key",
 				syncMergedBranchGitLogVariable:       gitLogPath,
 				syncMergedBranchGitHubLogVariable:    githubLogPath,
-				syncMergedBranchNameVariable:         generatedBranchName,
+				syncMergedBranchNameVariable:         "unused-generated-branch",
 				syncMergedBranchMergedVariable:       "false",
 			},
 		},
@@ -824,7 +920,7 @@ operations:
 	require.Contains(testInstance, output, "does not preserve non-conflicting content")
 	require.Equal(testInstance, int64(len(responses)), responseIndex.Load())
 
-	require.Equal(testInstance, generatedBranchName, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
+	require.Equal(testInstance, "master", strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
 	require.Equal(testInstance, conflictedFileName, strings.TrimSpace(runGit(testInstance, repositoryPath, "diff", "--name-only", "--diff-filter=U")))
 	headWithParents := strings.Fields(runGit(testInstance, repositoryPath, "rev-list", "--parents", "-n", "1", "HEAD"))
 	require.Len(testInstance, headWithParents, 2)
@@ -838,7 +934,7 @@ operations:
 	gitLog := readTextFile(testInstance, gitLogPath)
 	require.Contains(testInstance, gitLog, "merge --no-edit origin/master")
 	require.NotContains(testInstance, gitLog, "commit --no-edit")
-	require.NotContains(testInstance, gitLog, "push -u origin "+generatedBranchName)
+	require.NotContains(testInstance, gitLog, "push origin master")
 	if githubLogBytes, githubLogReadError := os.ReadFile(githubLogPath); githubLogReadError == nil {
 		require.NotContains(testInstance, string(githubLogBytes), "pr create")
 	} else {
@@ -850,10 +946,8 @@ func TestSyncRejectsTruncatedMarkerFreeModifyDeleteResolutionBeforeCommitOrPush(
 	testInstance.Helper()
 
 	const (
-		generatedBranchName = "gix/preserve-marker-free-conflict"
-		conflictedFileName  = "NOTES.md"
-		stableTailLine      = "stable unrelated tail content"
-		pullRequestBody     = "Publish the validated marker-free resolution."
+		conflictedFileName = "NOTES.md"
+		stableTailLine     = "stable unrelated tail content"
 	)
 
 	repositoryRoot := integrationRepositoryRoot(testInstance)
@@ -882,7 +976,6 @@ func TestSyncRejectsTruncatedMarkerFreeModifyDeleteResolutionBeforeCommitOrPush(
 	require.NoError(testInstance, os.Remove(conflictedFilePath))
 	truncatedResolution := "remote heading\n"
 	responses := []string{
-		"fix: preserve marker free conflict",
 		"docs: delete obsolete notes",
 		truncatedResolution,
 	}
@@ -935,7 +1028,7 @@ operations:
 				syncRefreshIntegrationAPIKeyVariable: "test-key",
 				syncMergedBranchGitLogVariable:       gitLogPath,
 				syncMergedBranchGitHubLogVariable:    githubLogPath,
-				syncMergedBranchNameVariable:         generatedBranchName,
+				syncMergedBranchNameVariable:         "unused-generated-branch",
 				syncMergedBranchMergedVariable:       "false",
 			},
 		},
@@ -950,8 +1043,6 @@ operations:
 			syncRefreshIntegrationErrorLogLevel,
 			"sync",
 			"master",
-			"--body",
-			pullRequestBody,
 			"--roots",
 			repositoryPath,
 		},
@@ -960,7 +1051,7 @@ operations:
 	require.Contains(testInstance, output, "does not preserve non-conflicting content")
 	require.Equal(testInstance, int64(len(responses)), responseIndex.Load())
 
-	require.Equal(testInstance, generatedBranchName, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
+	require.Equal(testInstance, "master", strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
 	require.Equal(testInstance, conflictedFileName, strings.TrimSpace(runGit(testInstance, repositoryPath, "diff", "--name-only", "--diff-filter=U")))
 	headWithParents := strings.Fields(runGit(testInstance, repositoryPath, "rev-list", "--parents", "-n", "1", "HEAD"))
 	require.Len(testInstance, headWithParents, 2)
@@ -975,7 +1066,7 @@ operations:
 	gitLog := readTextFile(testInstance, gitLogPath)
 	require.Contains(testInstance, gitLog, "merge --no-edit origin/master")
 	require.NotContains(testInstance, gitLog, "commit --no-edit")
-	require.NotContains(testInstance, gitLog, "push -u origin "+generatedBranchName)
+	require.NotContains(testInstance, gitLog, "push origin master")
 	if githubLogBytes, githubLogReadError := os.ReadFile(githubLogPath); githubLogReadError == nil {
 		require.NotContains(testInstance, string(githubLogBytes), "pr create")
 	} else {
@@ -986,7 +1077,6 @@ operations:
 func TestSyncFiltersTrackedIgnoredDirtyPathsBeforeStaging(testInstance *testing.T) {
 	testInstance.Helper()
 
-	expectedGeneratedBranchName := "gix/sync-tracked-dirty-work"
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	realGitPath, lookupError := exec.LookPath("git")
 	require.NoError(testInstance, lookupError)
@@ -1099,7 +1189,7 @@ operations:
 		"--roots",
 		repositoryPath,
 	}
-	output, runError := runFailingIntegrationCommand(
+	output := runIntegrationCommand(
 		testInstance,
 		repositoryRoot,
 		integrationCommandOptions{
@@ -1111,8 +1201,7 @@ operations:
 		syncRefreshIntegrationTimeout,
 		commandArguments,
 	)
-	require.Error(testInstance, runError)
-	require.Contains(testInstance, output, "strict sync requires a GitHub repository remote")
+	require.Contains(testInstance, output, fmt.Sprintf("SYNCED: %s (master)", repositoryPath))
 	require.NotContains(testInstance, output, "failed to stage dirty sync cluster")
 	require.NotContains(testInstance, output, "The following paths are ignored")
 
@@ -1122,14 +1211,15 @@ operations:
 	require.Contains(testInstance, invocationLog, "check-ignore --stdin")
 	require.Contains(testInstance, invocationLog, "ls-files --cached --ignored --exclude-standard -- python/llm_proxy_client.egg-info/PKG-INFO python/llm_proxy_client.egg-info/SOURCES.txt python/llm_proxy_client/__pycache__/client.cpython-313.pyc python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc")
 	require.Contains(testInstance, invocationLog, "restore --staged --worktree -- python/llm_proxy_client/__pycache__/client.cpython-313.pyc python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc")
-	require.Contains(testInstance, invocationLog, "switch -c "+expectedGeneratedBranchName+"\n")
-	require.NotContains(testInstance, invocationLog, "switch -c "+expectedGeneratedBranchName+" origin/master")
+	require.NotContains(testInstance, invocationLog, "switch -c gix/")
 	require.Contains(testInstance, invocationLog, "add --all -- python/llm_proxy_client.egg-info/PKG-INFO python/llm_proxy_client.egg-info/SOURCES.txt")
 	require.NotContains(testInstance, invocationLog, "add --all -- python/llm_proxy_client/__pycache__")
 	require.NotContains(testInstance, invocationLog, "add --all -- python/tests/__pycache__")
 	require.Contains(testInstance, invocationLog, "commit -m docs: sync tracked dirty work")
+	require.Contains(testInstance, invocationLog, "push origin master")
 
-	require.Equal(testInstance, expectedGeneratedBranchName, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
+	require.Equal(testInstance, "master", strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
+	require.Equal(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "master")), strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "origin/master")))
 	require.Equal(testInstance, "docs: sync tracked dirty work", strings.TrimSpace(runGit(testInstance, repositoryPath, "log", "-1", "--pretty=%s")))
 	nameStatusOutput := strings.TrimSpace(runGit(testInstance, repositoryPath, "show", "--name-status", "--pretty=format:", "HEAD"))
 	require.ElementsMatch(testInstance, []string{

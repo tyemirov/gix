@@ -257,6 +257,9 @@ func prepareStrictSyncBranchForDirtyWork(ctx context.Context, environment *workf
 	}
 
 	if remoteExists {
+		if branchName == baseBranch {
+			return switchToLocalOrRemoteBranchWithAdoption(ctx, environment, repository, remoteName, branchName, commitMessages)
+		}
 		repositoryIdentifier := strictSyncRepositoryIdentifier(repository)
 		if repositoryIdentifier == "" {
 			return errors.New(strictSyncMissingRepositoryMessage)
