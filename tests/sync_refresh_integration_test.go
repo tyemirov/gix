@@ -324,6 +324,62 @@ operations:
 	require.NotContains(testInstance, readTextFile(testInstance, githubLogPath), "pr create ")
 }
 
+func TestSyncExplicitMasterRejectsMissingRemoteBaseBeforeCommitting(testInstance *testing.T) {
+	testInstance.Helper()
+
+	repositoryRoot := integrationRepositoryRoot(testInstance)
+	workspacePath := syncHomeWorkspace(testInstance)
+	remotePath := filepath.Join(workspacePath, "remote.git")
+	repositoryPath := filepath.Join(workspacePath, "project")
+	createSyncGitHubBackedRepository(testInstance, remotePath, repositoryPath)
+
+	readmePath := filepath.Join(repositoryPath, "README.md")
+	require.NoError(testInstance, os.WriteFile(readmePath, []byte("initial\n"), 0o644))
+	runGit(testInstance, repositoryPath, "add", "README.md")
+	runGit(testInstance, repositoryPath, "commit", "-m", "initial commit")
+	baseCommit := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD"))
+	require.NoError(testInstance, os.WriteFile(readmePath, []byte("dirty local change\n"), 0o644))
+
+	var requestCount atomic.Int64
+	llmServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+		requestCount.Add(1)
+		responseWriter.Header().Set("Content-Type", "application/json")
+		_, _ = responseWriter.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"docs: commit dirty work"}}]}`))
+	}))
+	testInstance.Cleanup(llmServer.Close)
+
+	configurationPath := writeDirtySyncMergedBranchConfiguration(testInstance, llmServer.URL)
+	output, runError := runIntegrationCommandWithInput(
+		testInstance,
+		repositoryRoot,
+		integrationCommandOptions{
+			PathVariable: buildSyncMergedBranchExecutablePath(testInstance),
+			EnvironmentOverrides: map[string]string{
+				syncMergedBranchAPIKeyVariable: "test-key",
+			},
+		},
+		syncMergedBranchIntegrationTimeout,
+		"",
+		[]string{
+			syncRefreshIntegrationRunCommand,
+			syncRefreshIntegrationModulePath,
+			"--config",
+			configurationPath,
+			syncRefreshIntegrationLogLevelFlag,
+			syncRefreshIntegrationErrorLogLevel,
+			"sync",
+			"master",
+			"--roots",
+			repositoryPath,
+		},
+	)
+	require.Error(testInstance, runError)
+	require.Contains(testInstance, output, `remote base branch "origin/master" does not exist`)
+	require.Zero(testInstance, requestCount.Load())
+	require.Equal(testInstance, baseCommit, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD")))
+	require.Equal(testInstance, "M README.md", strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
+}
+
 func TestSyncExplicitNewBranchCreatesStackedPullRequestsAndCommitsDirtyWorkInClusters(testInstance *testing.T) {
 	testInstance.Helper()
 

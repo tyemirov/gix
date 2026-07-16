@@ -546,6 +546,16 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 	if dirty {
 		commitBranchName := branchName
 		commitToExplicitBaseBranch := commitBranchName == baseBranch && strings.TrimSpace(options.ResolutionSource) == branchResolutionSourceExplicit
+		if commitToExplicitBaseBranch {
+			remoteReference := fmt.Sprintf("%s/%s", remoteName, baseBranch)
+			remoteExists, remoteExistsErr := remoteReferenceExists(ctx, environment.GitExecutor, repository.Path, remoteReference)
+			if remoteExistsErr != nil {
+				return remoteExistsErr
+			}
+			if !remoteExists {
+				return fmt.Errorf("remote base branch %q does not exist", remoteReference)
+			}
+		}
 		if commitBranchName == baseBranch && !commitToExplicitBaseBranch {
 			generatedBranchName, generatedBranchErr := selectGeneratedSyncBranchName(ctx, environment, repository, remoteName, baseBranch, options.CommitMessages)
 			if generatedBranchErr != nil {
