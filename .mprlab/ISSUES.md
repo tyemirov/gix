@@ -465,6 +465,37 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - `make ci`
   - `git diff --check`
 
+- [x] [B028] (P1) Explicit `gix sync <branch>` must commit dirty work to the named branch.
+  Requested on 2026-07-16 after `gix sync master` in `/Users/tyemirov/Documents/Projects/Kamu` created `gix/add-kamu-tenant-for-tauth-and-update-backend-deploy` instead of treating the explicit `master` argument as the commit destination.
+  Observation:
+  - Dirty sync special-cased every resolved base-branch target into generated PR rescue, even when the operator explicitly named `master`.
+  - The implementation already records whether the branch came from an explicit argument or implicit current-branch resolution, but dirty base handling ignored that distinction.
+  Deliverable:
+  - Treat an explicit branch argument as the binding dirty-commit destination.
+  - For explicit `master`, switch to `master` when needed, restore the pending files, commit clusters there, merge `origin/master`, and push `master` directly.
+  - Keep generated dirty-master rescue only for plain `gix sync` with an implicitly resolved current branch.
+  - Prove the exact public CLI behavior from dirty `master` and from a dirty feature branch targeting `master`.
+  Validation:
+  - Focused failing-then-passing public CLI regression.
+  - `make format`
+  - `make test`
+  - `make lint`
+  - `make ci`
+  Resolution:
+  - Explicit base-branch targets now bypass generated-name selection and use the named branch as the dirty cluster commit destination.
+  - Explicit dirty base-branch sync now verifies the required remote ref before branch preparation, LLM requests, or local commit generation.
+  - Explicit `master` sync carries dirty files across a required branch switch, commits them on `master`, merges `origin/master`, and pushes `master` directly without PR creation.
+  - Plain current-branch sync retains generated dirty-master rescue because its resolution source is not explicit.
+  Validation Result:
+  - The public dirty-feature regression failed before implementation with an unexpected extra LLM request for generated-branch naming and passed after explicit target routing was added.
+  - Public CLI coverage passes for dirty `master`, dirty feature-to-`master` switching, two top-level commit clusters, remote-base merging, direct push, ignored tracked path restoration, and rejected incomplete merge resolutions.
+  - Missing-remote-base coverage proves explicit dirty `master` sync rejects before LLM requests or commits and preserves the pending worktree.
+  - `make format`
+  - `make test`
+  - `make lint`
+  - `make ci`
+  - `git diff --check`
+
 
 ## Improvements
 

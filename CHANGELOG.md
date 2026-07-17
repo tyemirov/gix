@@ -9,6 +9,8 @@
 - _No changes._
 
 ### Bug Fixes 🐛
+- Rejected explicit dirty base-branch sync before commit generation when the required remote base ref does not exist, preventing stranded local commits.
+- Made explicit `gix sync <branch>` commit dirty work to the named branch; explicit `gix sync master` now merges `origin/master` and pushes `master` instead of creating a generated rescue branch.
 - Fixed plain `gix sync` on a dirty, remote-backed branch with no pull request so it commits the pending work and opens the missing pull request instead of failing before the established base-delta flow.
 - Kept merged remote branches on the stashed-handoff path by detecting merged pull-request state before dirty commit generation.
 - Fixed `gix sync <new-branch>` to publish and open the current branch pull request first, then open the dirty child branch pull request against that parent instead of `master`.
@@ -16,12 +18,13 @@
 - Rejected dirty auto-commit on known-merged branches before work could be stranded and directed the work through the stashed handoff path.
 - Rejected clean or stashed missing branches before child creation or pull-request publication because a correctly stacked child would have no review delta.
 - Fixed `gix sync <new-branch>` to create a missing target on top of the current branch before clustering dirty work, preventing checkout-overwrite failures and lost branch ancestry.
-- Prevented explicit `gix sync master` from a dirty feature branch from republishing the feature branch's committed ancestry, including retries where the generated name already exists only locally.
 - Rejected incomplete AI merge-conflict output before it can truncate a file, create a merge commit, push, or open a pull request, including marker-free modify/delete conflicts.
 - Made repository release targets self-contained, fail closed when any expected platform artifact is missing, anchor Pages deployment to the locally prepared release manifest, and publish consistently through canonical `origin`.
 - Kept the syncflow builder description as the canonical text shown by `gix sync --help`.
 
 ### Testing 🧪
+- Added a black-box regression proving an explicit dirty `master` sync with no `origin/master` leaves local history and pending files unchanged without calling the LLM.
+- Added black-box coverage for explicit dirty `master` sync from both `master` and a feature branch, including clustered commits, remote merge, direct push, and absence of generated PR branches.
 - Added public CLI regressions for dirty unreviewed remote branches and dirty merged remote branches without stack metadata.
 - Added a public CLI regression proving a three-level parent stack remains intact, parent push/PR creation precedes child creation, clustered commits stay linear, a failed child PR creation retries against the persisted parent, and merged stacks hand off normally.
 - Added a black-box dirty-sync regression that verifies two top-level change clusters become two linear commits above the original branch before push and pull-request creation.
@@ -29,6 +32,7 @@
 - Added black-box release coverage for clean-checkout helpers, failed or missing platform outputs, replaced published manifests, and missing integrity prerequisites.
 
 ### Docs 📚
+- Documented explicit branch targets as binding dirty-commit destinations and distinguished explicit `master` from plain current-branch rescue.
 - Documented that unreviewed remote-backed branches accept dirty commits before the missing pull request is opened, while merged branches reject auto-commit.
 - Documented the canonical `master <- parent PR <- child PR` sync chain and the no-delta rejection for clean missing branches.
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.

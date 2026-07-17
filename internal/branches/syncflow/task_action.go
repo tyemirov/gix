@@ -545,7 +545,18 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 
 	if dirty {
 		commitBranchName := branchName
-		if commitBranchName == baseBranch {
+		commitToExplicitBaseBranch := commitBranchName == baseBranch && strings.TrimSpace(options.ResolutionSource) == branchResolutionSourceExplicit
+		if commitToExplicitBaseBranch {
+			remoteReference := fmt.Sprintf("%s/%s", remoteName, baseBranch)
+			remoteExists, remoteExistsErr := remoteReferenceExists(ctx, environment.GitExecutor, repository.Path, remoteReference)
+			if remoteExistsErr != nil {
+				return remoteExistsErr
+			}
+			if !remoteExists {
+				return fmt.Errorf("remote base branch %q does not exist", remoteReference)
+			}
+		}
+		if commitBranchName == baseBranch && !commitToExplicitBaseBranch {
 			generatedBranchName, generatedBranchErr := selectGeneratedSyncBranchName(ctx, environment, repository, remoteName, baseBranch, options.CommitMessages)
 			if generatedBranchErr != nil {
 				return generatedBranchErr
@@ -581,6 +592,16 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 		}
 		branchName = commitBranchName
 		dirty = false
+		if commitToExplicitBaseBranch {
+			if mergeErr := mergeRemoteBranchIntoLocal(ctx, environment.GitExecutor, repository.Path, remoteName, branchName, options.CommitMessages); mergeErr != nil {
+				return mergeErr
+			}
+			if pushErr := executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitPushSubcommandConstant, remoteName, branchName}); pushErr != nil {
+				return pushErr
+			}
+			reportStrictSync(repository, environment, branchName, options.ResolutionSource, false, stashPushed)
+			return nil
+		}
 	}
 
 	if branchName == baseBranch {

@@ -2,11 +2,11 @@
 
 [![GitHub release](https://img.shields.io/github/release/tyemirov/gix.svg)](https://github.com/tyemirov/gix/releases)
 
-gix makes one pull-request-centered Git workflow mechanical: `master` belongs to the remote, work branches are remote-backed and PR-backed, and local state is synchronized without rebasing or force-pushing.
+gix makes branch-targeted Git synchronization mechanical: explicit branch targets receive pending commits, work branches are remote-backed and PR-backed, and local state is synchronized without rebasing or force-pushing.
 
 ## Highlights
 
-- Return to remote-owned `master`, resume a PR branch, or create a new PR branch with one command.
+- Commit pending work to an explicitly named branch, resume a PR branch, or create a new PR branch with one command.
 - Merge `origin/master` into work branches and push the result without rewriting shared history.
 - Save dirty work automatically by clustering changed paths, drafting commit messages through the configured LLM client, and pushing through the PR flow.
 - Reuse discovery, prompting, and logging whether you call a single command or an entire workflow file.
@@ -17,7 +17,7 @@ gix makes one pull-request-centered Git workflow mechanical: `master` belongs to
 2. Create user-level defaults: `gix init --user`.
 3. To use MPR LLM Proxy for generated commit messages and changelog text, set `llm.transport: llm_proxy`, set `llm.provider` to the proxy upstream provider when needed, and export `LLM_PROXY_SECRET`.
 4. Attach or verify a workspace: `gix sync https://github.com/OWNER/REPO.git`.
-5. Restore the remote-owned base branch: `gix sync master`.
+5. Synchronize `master`: a clean tree restores it from `origin/master`; a dirty tree commits to and pushes `master`.
 6. With dirty work ready to commit, start a PR branch: `gix sync feature/my-change`; use the same command later to resume it.
 7. Sync the current branch later with plain `gix sync`.
 
@@ -40,9 +40,11 @@ These maintainer targets use the repository-owned helpers under `scripts/release
 | Command | Meaning |
 | --- | --- |
 | `gix sync <remote-url>` | Clone into an empty directory or verify the current workspace already points at that remote. |
-| `gix sync master` | Clean tree: restore local `master` from `origin/master`. Dirty tree: create a generated PR work branch, commit the dirty work, then push. |
-| `gix sync <branch>` | Reuse an existing PR branch, or with dirty work create a missing branch and pull-request stack on top of the current branch. |
-| `gix sync` | Apply the same rule to the current branch. |
+| `gix sync master` | Clean tree: restore local `master` from `origin/master`. Dirty tree: commit the dirty work to `master`, merge `origin/master`, then push `master`. |
+| `gix sync <branch>` | Treat the named branch as binding: switch to it and commit dirty work there, or create it and its pull-request stack when it does not exist. |
+| `gix sync` | Sync the current branch. A dirty current `master` without an explicit target keeps the generated PR rescue flow. |
+
+An explicit branch target is binding. With dirty work, sync carries the pending files to that branch when a switch is required, clusters the changed paths, and commits each cluster on the named branch. Explicit `gix sync master` then merges `origin/master` and pushes `master` directly; it does not create a generated rescue branch. Plain `gix sync` remains the current-branch form, including generated PR rescue when the implicitly resolved current branch is dirty `master`.
 
 When an explicit branch does not exist, sync requires dirty work that will become the new branch's commits and creates the branch at the current branch's `HEAD`. If the current branch is not `master`, sync first publishes its committed `HEAD`: an existing open pull request is preserved, while a missing pull request is opened against its recorded review base, recursively ensuring the existing stack, or against the configured base when no parent is recorded. Only after that parent pull request exists does sync create the child branch, cluster changed paths by top-level area, and commit each cluster with a Conventional Commit message from the configured `github.com/tyemirov/utils/llm` client. The child is aligned with `origin/<parent-branch>`, pushed, and opened as a pull request against the parent branch, producing a real review stack instead of duplicating the parent changes against `master`.
 
@@ -575,7 +577,7 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
 - `gix default <target-branch> [--roots <dir>...] [-y]`
  - Promotes the default branch across repositories.
 - `gix sync [remote-url|branch] [--remote <name>] [--title <text>] [--body <markdown>] [--stash | --commit] [--require-clean] [--roots <dir>...]` (alias `switch`)
- - Synchronizes the current workspace through the Gix flow: remote attach/clone, remote-owned `master`, or PR-backed work branches. Existing PR branches sync against their current PR base branch. A dirty missing explicit branch is created at the current `HEAD`; a non-`master` current branch is published and PR-backed first, then the child PR targets that parent branch. Clean or `--stash` creation of a missing branch is rejected because it has no child review delta. Dirty work is clustered, LLM-described, committed, and pushed by default, except known-merged branches reject auto-commit and require a stashed handoff before new review work is created; dirty `master` sync creates a generated PR work branch. Sync never rebases or force-pushes. PR body text is generated from the branch diff unless `--body` or `sync.pull_request.body` is set; PR title defaults to the branch unless `--title` or `sync.pull_request.title` is set. `--stash` temporarily shelves dirty work on existing branches, `--commit` explicitly selects the auto-commit policy, and `--require-clean` requires a clean worktree only when no dirty-work policy is selected.
+ - Synchronizes the current workspace through the Gix flow. An explicit branch is the dirty-commit target; explicit `master` sync commits to, merges, and pushes `master` directly. Existing non-base PR branches sync against their current PR base branch. A dirty missing explicit branch is created at the current `HEAD`; a non-`master` current branch is published and PR-backed first, then the child PR targets that parent branch. Clean or `--stash` creation of a missing branch is rejected because it has no child review delta. Dirty work is clustered, LLM-described, committed, and pushed by default, except known-merged branches reject auto-commit and require a stashed handoff before new review work is created. Plain `gix sync` on dirty current `master` keeps the generated PR rescue flow. Sync never rebases or force-pushes. PR body text is generated from the branch diff unless `--body` or `sync.pull_request.body` is set; PR title defaults to the branch unless `--title` or `sync.pull_request.title` is set. `--stash` temporarily shelves dirty work on existing branches, `--commit` explicitly selects the auto-commit policy, and `--require-clean` requires a clean worktree only when no dirty-work policy is selected.
 ## Configuration essentials
 
 - `gix init` or `gix init --local` writes an embeddable starter `./config.yaml` for the current workspace.
