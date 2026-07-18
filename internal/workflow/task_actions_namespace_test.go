@@ -291,7 +291,7 @@ func main() { dep.Do() }
 	require.NotEmpty(t, skipEvent["reason"])
 	recorded := executor.recorded()
 	require.GreaterOrEqual(t, len(recorded), 1)
-	require.Equal(t, "status --porcelain", recorded[0])
+	require.Equal(t, "status --porcelain=v1 -z", recorded[0])
 }
 
 func TestHandleNamespaceRewriteActionHardStopSafeguard(t *testing.T) {
@@ -349,7 +349,7 @@ func (executor *namespaceTestGitExecutor) ExecuteGit(_ context.Context, details 
 
 	switch args[0] {
 	case "status":
-		return execshell.ExecutionResult{StandardOutput: executor.statusOutput}, nil
+		return execshell.ExecutionResult{StandardOutput: testNULTerminatedStatusOutput(executor.statusOutput)}, nil
 	case "checkout":
 		return execshell.ExecutionResult{}, nil
 	case "check-ignore":

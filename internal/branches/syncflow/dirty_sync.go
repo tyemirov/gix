@@ -517,23 +517,7 @@ func syncStatusEntryHasConflict(statusEntry string) bool {
 }
 
 func syncStatusEntryPaths(statusEntry string) []string {
-	trimmed := strings.TrimSpace(statusEntry)
-	if len(trimmed) <= 2 {
-		return nil
-	}
-	pathPart := strings.TrimSpace(trimmed[2:])
-	if pathPart == "" {
-		return nil
-	}
-	if strings.Contains(pathPart, " -> ") {
-		sections := strings.Split(pathPart, " -> ")
-		paths := make([]string, 0, len(sections))
-		for sectionIndex := range sections {
-			paths = append(paths, strings.TrimSpace(sections[sectionIndex]))
-		}
-		return paths
-	}
-	return []string{pathPart}
+	return worktree.StatusEntryPaths(statusEntry)
 }
 
 func syncCommitClusterRoot(statusPath string) string {

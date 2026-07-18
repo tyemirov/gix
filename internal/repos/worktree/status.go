@@ -53,19 +53,18 @@ func FilterStatusEntries(entries []string, patterns []IgnorePattern) []string {
 
 	remaining := make([]string, 0, len(entries))
 	for _, entry := range entries {
-		trimmed := strings.TrimSpace(entry)
-		if len(trimmed) == 0 {
+		if entry == "" {
 			continue
 		}
-		if statusEntryIsUntrackedOrIgnored(trimmed) {
-			continue
-		}
-
-		if len(patterns) > 0 && pathMatchesIgnorePatterns(statusEntryPath(trimmed), patterns) {
+		if statusEntryIsUntrackedOrIgnored(entry) {
 			continue
 		}
 
-		remaining = append(remaining, trimmed)
+		if len(patterns) > 0 && pathMatchesIgnorePatterns(statusEntryPath(entry), patterns) {
+			continue
+		}
+
+		remaining = append(remaining, entry)
 	}
 	return remaining
 }
@@ -77,21 +76,20 @@ func SplitStatusEntries(entries []string, patterns []IgnorePattern) (tracked []s
 	}
 
 	for _, entry := range entries {
-		trimmed := strings.TrimSpace(entry)
-		if len(trimmed) == 0 {
+		if entry == "" {
 			continue
 		}
-		path := statusEntryPath(trimmed)
+		path := statusEntryPath(entry)
 		if pathMatchesIgnorePatterns(path, patterns) {
 			continue
 		}
 
-		if statusEntryIsUntrackedOrIgnored(trimmed) {
-			untracked = append(untracked, trimmed)
+		if statusEntryIsUntrackedOrIgnored(entry) {
+			untracked = append(untracked, entry)
 			continue
 		}
 
-		tracked = append(tracked, trimmed)
+		tracked = append(tracked, entry)
 	}
 
 	return tracked, untracked
@@ -198,27 +196,52 @@ func pathMatchesIgnorePatterns(path string, patterns []IgnorePattern) bool {
 }
 
 func statusEntryPath(entry string) string {
-	trimmed := strings.TrimSpace(entry)
-	if len(trimmed) <= len(gitStatusUntrackedPrefix) {
+	paths := statusEntryPaths(entry)
+	if len(paths) == 0 {
 		return ""
 	}
+	return paths[len(paths)-1]
+}
 
-	pathPart := strings.TrimSpace(trimmed[2:])
-	if len(pathPart) == 0 {
-		return ""
+func statusEntryPaths(entry string) []string {
+	trimmedLeadingSpace := strings.TrimLeft(entry, " \t")
+	separatorIndex := strings.IndexByte(trimmedLeadingSpace, ' ')
+	if separatorIndex <= 0 || separatorIndex == len(trimmedLeadingSpace)-1 {
+		return nil
 	}
 
-	if strings.Contains(pathPart, " -> ") {
-		sections := strings.Split(pathPart, " -> ")
-		return strings.TrimSpace(sections[len(sections)-1])
+	pathPart := trimmedLeadingSpace[separatorIndex+1:]
+	renameSeparatorIndex := strings.IndexByte(pathPart, '\x00')
+	if renameSeparatorIndex < 0 {
+		return []string{pathPart}
 	}
-
-	return pathPart
+	if renameSeparatorIndex == 0 || renameSeparatorIndex == len(pathPart)-1 || strings.IndexByte(pathPart[renameSeparatorIndex+1:], '\x00') >= 0 {
+		return nil
+	}
+	destinationPath := pathPart[:renameSeparatorIndex]
+	sourcePath := pathPart[renameSeparatorIndex+1:]
+	return []string{sourcePath, destinationPath}
 }
 
 // StatusEntryPath exposes the resolved path portion of a git status entry.
 func StatusEntryPath(entry string) string {
 	return statusEntryPath(entry)
+}
+
+// StatusEntryPaths exposes every literal path represented by a canonical status entry.
+func StatusEntryPaths(entry string) []string {
+	return statusEntryPaths(entry)
+}
+
+// FormatStatusEntry renders a canonical status entry for operator-facing output.
+func FormatStatusEntry(entry string) string {
+	paths := statusEntryPaths(entry)
+	if len(paths) != 2 {
+		return entry
+	}
+	trimmedLeadingSpace := strings.TrimLeft(entry, " \t")
+	separatorIndex := strings.IndexByte(trimmedLeadingSpace, ' ')
+	return trimmedLeadingSpace[:separatorIndex+1] + paths[0] + " -> " + paths[1]
 }
 
 const (
@@ -227,9 +250,9 @@ const (
 )
 
 func statusEntryIsUntrackedOrIgnored(entry string) bool {
-	trimmed := strings.TrimSpace(entry)
-	if len(trimmed) < len(gitStatusUntrackedPrefix) {
+	trimmedLeadingSpace := strings.TrimLeft(entry, " \t")
+	if len(trimmedLeadingSpace) < len(gitStatusUntrackedPrefix) {
 		return false
 	}
-	return strings.HasPrefix(trimmed, gitStatusUntrackedPrefix) || strings.HasPrefix(trimmed, gitStatusIgnoredPrefix)
+	return strings.HasPrefix(trimmedLeadingSpace, gitStatusUntrackedPrefix) || strings.HasPrefix(trimmedLeadingSpace, gitStatusIgnoredPrefix)
 }

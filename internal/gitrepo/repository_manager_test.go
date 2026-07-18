@@ -3,12 +3,14 @@ package gitrepo_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/tyemirov/gix/internal/execshell"
 	"github.com/tyemirov/gix/internal/gitrepo"
+	"github.com/tyemirov/gix/internal/repos/worktree"
 )
 
 const (
@@ -81,7 +83,7 @@ func TestCheckCleanWorktree(testInstance *testing.T) {
 		{
 			name: testDirtyWorktreeCaseNameConstant,
 			executor: &stubGitExecutor{executeFunc: func(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
-				return execshell.ExecutionResult{StandardOutput: " M file.txt"}, nil
+				return execshell.ExecutionResult{StandardOutput: " M file.txt\x00"}, nil
 			}},
 			expected: false,
 		},
@@ -121,6 +123,57 @@ func TestCheckCleanWorktree(testInstance *testing.T) {
 				require.Equal(testInstance, testCase.expected, clean)
 				require.Len(testInstance, testCase.executor.recordedDetails, 1)
 			}
+		})
+	}
+}
+
+func TestWorktreeStatusParsesLiteralPorcelainPaths(testInstance *testing.T) {
+	executor := &stubGitExecutor{executeFunc: func(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
+		return execshell.ExecutionResult{StandardOutput: strings.Join([]string{
+			" D legacy/managing-director/IMD Logo.png",
+			"R  new -> logo.png",
+			"old -> logo.png",
+			"?? notes with spaces.txt",
+			"",
+		}, "\x00")}, nil
+	}}
+	manager, creationError := gitrepo.NewRepositoryManager(executor)
+	require.NoError(testInstance, creationError)
+
+	entries, statusError := manager.WorktreeStatus(context.Background(), testRepositoryPathConstant)
+	require.NoError(testInstance, statusError)
+	require.Equal(testInstance, []string{
+		"D legacy/managing-director/IMD Logo.png",
+		"R new -> logo.png\x00old -> logo.png",
+		"?? notes with spaces.txt",
+	}, entries)
+	require.Equal(testInstance, []string{"old -> logo.png", "new -> logo.png"}, worktree.StatusEntryPaths(entries[1]))
+	require.Equal(testInstance, "R old -> logo.png -> new -> logo.png", worktree.FormatStatusEntry(entries[1]))
+	require.Equal(testInstance, []string{"status", "--porcelain=v1", "-z"}, executor.recordedDetails[0].Arguments)
+}
+
+func TestWorktreeStatusRejectsMalformedPorcelainOutput(testInstance *testing.T) {
+	testCases := []struct {
+		name   string
+		output string
+	}{
+		{name: "missing NUL terminator", output: " M README.md\n"},
+		{name: "invalid record shape", output: "M README.md\x00"},
+		{name: "missing rename source", output: "R  renamed.txt\x00"},
+	}
+
+	for _, testCase := range testCases {
+		testInstance.Run(testCase.name, func(testInstance *testing.T) {
+			executor := &stubGitExecutor{executeFunc: func(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
+				return execshell.ExecutionResult{StandardOutput: testCase.output}, nil
+			}}
+			manager, creationError := gitrepo.NewRepositoryManager(executor)
+			require.NoError(testInstance, creationError)
+
+			entries, statusError := manager.WorktreeStatus(context.Background(), testRepositoryPathConstant)
+			require.Error(testInstance, statusError)
+			require.IsType(testInstance, gitrepo.RepositoryOperationError{}, statusError)
+			require.Nil(testInstance, entries)
 		})
 	}
 }

@@ -9,6 +9,7 @@
 - _No changes._
 
 ### Bug Fixes 🐛
+- Switched worktree inspection to NUL-delimited porcelain status so `gix sync` passes literal filenames containing spaces to Git instead of treating display quotes as path bytes.
 - Rejected explicit dirty base-branch sync before commit generation when the required remote base ref does not exist, preventing stranded local commits.
 - Made explicit `gix sync <branch>` commit dirty work to the named branch; explicit `gix sync master` now merges `origin/master` and pushes `master` instead of creating a generated rescue branch.
 - Fixed plain `gix sync` on a dirty, remote-backed branch with no pull request so it commits the pending work and opens the missing pull request instead of failing before the established base-delta flow.
@@ -23,6 +24,7 @@
 - Kept the syncflow builder description as the canonical text shown by `gix sync --help`.
 
 ### Testing 🧪
+- Added a public plain-`gix sync` regression proving deletion of `legacy/managing-director/IMD Logo.png` is committed and pushed with the literal path argument.
 - Added a black-box regression proving an explicit dirty `master` sync with no `origin/master` leaves local history and pending files unchanged without calling the LLM.
 - Added black-box coverage for explicit dirty `master` sync from both `master` and a feature branch, including clustered commits, remote merge, direct push, and absence of generated PR branches.
 - Added public CLI regressions for dirty unreviewed remote branches and dirty merged remote branches without stack metadata.

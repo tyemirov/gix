@@ -74,5 +74,5 @@ type stubStatusExecutor struct {
 }
 
 func (executor stubStatusExecutor) ExecuteGit(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
-	return execshell.ExecutionResult{StandardOutput: executor.output}, nil
+	return execshell.ExecutionResult{StandardOutput: testNULTerminatedStatusOutput(executor.output)}, nil
 }

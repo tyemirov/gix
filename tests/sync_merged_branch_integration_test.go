@@ -278,6 +278,76 @@ func TestSyncDirtyExistingRemoteBranchWithoutPullRequestCommitsAndCreatesPullReq
 	require.Contains(testInstance, githubLog, "pr create --repo owner/project --base master --head "+branchName+" --title "+branchName+" --body "+pullRequestBody)
 }
 
+func TestSyncDirtyExistingRemoteBranchStagesDeletedPathContainingSpaces(testInstance *testing.T) {
+	repositoryRoot := integrationRepositoryRoot(testInstance)
+	branchName := "gix/update-dockerignore-to-include-owned-configs-workflows"
+	workspacePath := syncHomeWorkspace(testInstance)
+	remotePath := filepath.Join(workspacePath, "remote.git")
+	repositoryPath := filepath.Join(workspacePath, "project")
+	createSyncGitHubBackedRepository(testInstance, remotePath, repositoryPath)
+
+	logoRelativePath := filepath.Join("legacy", "managing-director", "IMD Logo.png")
+	logoPath := filepath.Join(repositoryPath, logoRelativePath)
+	require.NoError(testInstance, os.MkdirAll(filepath.Dir(logoPath), 0o755))
+	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "README.md"), []byte("initial\n"), 0o644))
+	require.NoError(testInstance, os.WriteFile(logoPath, []byte("logo\n"), 0o644))
+	runGit(testInstance, repositoryPath, "add", "README.md", logoRelativePath)
+	runGit(testInstance, repositoryPath, "commit", "-m", "initial commit")
+	runGit(testInstance, repositoryPath, "push", "-u", "origin", "master")
+
+	runGit(testInstance, repositoryPath, "switch", "-c", branchName)
+	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "workflow.txt"), []byte("owned workflow\n"), 0o644))
+	runGit(testInstance, repositoryPath, "add", "workflow.txt")
+	runGit(testInstance, repositoryPath, "commit", "-m", "add owned workflow")
+	runGit(testInstance, repositoryPath, "push", "-u", "origin", branchName)
+	require.NoError(testInstance, os.Remove(logoPath))
+
+	llmServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/chat/completions" {
+			http.NotFound(responseWriter, request)
+			return
+		}
+		responseWriter.Header().Set("Content-Type", "application/json")
+		_, _ = responseWriter.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"fix: remove obsolete managing director logo"}}]}`))
+	}))
+	testInstance.Cleanup(llmServer.Close)
+
+	configurationPath := writeDirtySyncMergedBranchConfiguration(testInstance, llmServer.URL)
+	githubLogPath := filepath.Join(testInstance.TempDir(), "gh.log")
+	gitLogPath := filepath.Join(testInstance.TempDir(), "git.log")
+	pathVariable := buildSyncMergedBranchExecutablePath(testInstance)
+	pullRequestBody := "Remove the obsolete managing director logo."
+
+	output, runError := runIntegrationCommandWithInput(
+		testInstance,
+		repositoryRoot,
+		integrationCommandOptions{
+			PathVariable: pathVariable,
+			EnvironmentOverrides: map[string]string{
+				syncMergedBranchAPIKeyVariable:    "test-key",
+				syncMergedBranchGitHubLogVariable: githubLogPath,
+				syncMergedBranchGitLogVariable:    gitLogPath,
+				syncMergedBranchNameVariable:      branchName,
+				syncMergedBranchMergedVariable:    "false",
+			},
+		},
+		syncMergedBranchIntegrationTimeout,
+		"",
+		[]string{"run", ".", "--config", configurationPath, "--log-level", "error", "sync", "--body", pullRequestBody, "--roots", repositoryPath},
+	)
+	require.NoError(testInstance, runError, output)
+
+	require.Contains(testInstance, output, fmt.Sprintf("SYNCED: %s (%s)", repositoryPath, branchName))
+	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
+	require.Equal(testInstance, "2", strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-list", "--count", "origin/master.."+branchName)))
+	require.NotContains(testInstance, runGit(testInstance, repositoryPath, "ls-tree", "-r", "--name-only", "HEAD"), filepath.ToSlash(logoRelativePath))
+	require.Contains(testInstance, runGit(testInstance, repositoryPath, "show", "--format=", "--name-status", "HEAD"), "D\t"+filepath.ToSlash(logoRelativePath))
+
+	gitLog := readTextFile(testInstance, gitLogPath)
+	require.Contains(testInstance, gitLog, "add --all -- "+filepath.ToSlash(logoRelativePath))
+	require.NotContains(testInstance, gitLog, `add --all -- "`+filepath.ToSlash(logoRelativePath)+`"`)
+}
+
 func createSyncMergedBranchFixture(testInstance *testing.T, branchName string) syncMergedBranchFixture {
 	testInstance.Helper()
 

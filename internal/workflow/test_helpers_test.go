@@ -52,3 +52,11 @@ func requireEventByCode(t *testing.T, events []map[string]string, code string) m
 	require.Failf(t, "event not found", "expected event code %s in %+v", code, events)
 	return nil
 }
+
+func testNULTerminatedStatusOutput(output string) string {
+	if output == "" {
+		return ""
+	}
+	trimmedOutput := strings.TrimSuffix(output, "\n")
+	return strings.ReplaceAll(trimmedOutput, "\n", "\x00") + "\x00"
+}
