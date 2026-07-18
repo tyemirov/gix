@@ -40,6 +40,11 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented validated AI conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.1.6] - 2026-07-18
+
+- Merge pull request #386 from tyemirov/bugfix/B029-sync-stages-spaced-paths
+- fix(sync): stage literal paths from NUL status
+
 ## [v1.1.5] - 2026-07-16
 
 - Merge pull request #385 from tyemirov/bugfix/B028-explicit-sync-commits-target-branch
