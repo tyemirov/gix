@@ -177,9 +177,9 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 			return execshell.ExecutionResult{StandardOutput: fmt.Sprintf("## %s...origin/%s\n M README.md\n", executor.blockedBranch, executor.blockedBranch)}, nil
 		}
 		if details.WorkingDirectory == executor.blockedWorktree {
-			return execshell.ExecutionResult{StandardOutput: "M  README.md\n"}, nil
+			return execshell.ExecutionResult{StandardOutput: testStatusCommandOutput(details.Arguments, "M  README.md\n")}, nil
 		}
-		return execshell.ExecutionResult{StandardOutput: executor.statusOutput}, nil
+		return execshell.ExecutionResult{StandardOutput: testStatusCommandOutput(details.Arguments, executor.statusOutput)}, nil
 	case "check-ignore":
 		ignored := make([]string, 0)
 		for _, candidatePath := range strings.Split(string(details.StandardInput), "\n") {
@@ -292,6 +292,14 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 		}
 	}
 	return execshell.ExecutionResult{}, nil
+}
+
+func testStatusCommandOutput(arguments []string, output string) string {
+	if !commandHasArgument(arguments, "-z") || output == "" {
+		return output
+	}
+	trimmedOutput := strings.TrimSuffix(output, "\n")
+	return strings.ReplaceAll(trimmedOutput, "\n", "\x00") + "\x00"
 }
 
 func (executor *strictSyncGitExecutor) ExecuteGitHubCLI(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
@@ -469,13 +477,13 @@ func TestHandleBranchSyncActionRefreshesBranch(t *testing.T) {
 
 	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	require.Len(t, executor.recorded, 10)
-	require.Equal(t, []string{"status", "--porcelain"}, executor.recorded[0].Arguments)
+	require.Equal(t, []string{"status", "--porcelain=v1", "-z"}, executor.recorded[0].Arguments)
 	require.Equal(t, []string{"remote"}, executor.recorded[1].Arguments)
 	require.Equal(t, []string{"fetch", "--prune", "origin"}, executor.recorded[2].Arguments)
 	require.Equal(t, []string{"switch", "feature/foo"}, executor.recorded[3].Arguments)
 	require.Equal(t, []string{"pull", "--ff-only"}, executor.recorded[4].Arguments)
 	require.Equal(t, []string{"config", "--get", "branch.feature/foo.remote"}, executor.recorded[5].Arguments)
-	require.Equal(t, []string{"status", "--porcelain"}, executor.recorded[6].Arguments)
+	require.Equal(t, []string{"status", "--porcelain=v1", "-z"}, executor.recorded[6].Arguments)
 	require.Equal(t, []string{"fetch", "--prune"}, executor.recorded[7].Arguments)
 	require.Equal(t, []string{"checkout", "feature/foo"}, executor.recorded[8].Arguments)
 	require.Equal(t, []string{"pull", "--ff-only"}, executor.recorded[9].Arguments)
@@ -2427,7 +2435,7 @@ func TestHandleBranchSyncActionSkipsRefreshWhenDirty(t *testing.T) {
 	err := handleBranchSyncAction(context.Background(), environment, repository, parameters)
 	require.NoError(t, err)
 	require.Len(t, executor.recorded, 5)
-	require.Equal(t, []string{"status", "--porcelain"}, executor.recorded[0].Arguments)
+	require.Equal(t, []string{"status", "--porcelain=v1", "-z"}, executor.recorded[0].Arguments)
 	require.Equal(t, []string{"remote"}, executor.recorded[1].Arguments)
 	require.Equal(t, []string{"fetch", "--prune", "origin"}, executor.recorded[2].Arguments)
 	require.Equal(t, []string{"switch", "feature/foo"}, executor.recorded[3].Arguments)

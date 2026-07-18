@@ -496,6 +496,37 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - `make ci`
   - `git diff --check`
 
+- [x] [B029] (P1) `gix sync` must stage Git-quoted paths as literal filesystem paths.
+  Requested on 2026-07-17 after plain `gix sync` in `/Users/tyemirov/Development/ISSUES.md` failed while staging the deleted tracked path `legacy/managing-director/IMD Logo.png`.
+  Observation:
+  - `git status --porcelain` C-quotes paths containing spaces.
+  - Dirty sync treats the quoted display representation as the filesystem path and passes the quote bytes to `git add --all --`, which Git rejects as a missing pathspec.
+  Deliverable:
+  - Read status through Git's canonical NUL-delimited porcelain contract so filenames are never reconstructed from display quoting.
+  - Pass the literal deleted path as one Git argument and preserve rename/copy source and destination paths.
+  - Add a public plain-`gix sync` regression for a deleted tracked filename containing spaces.
+  Validation:
+  - Focused failing-then-passing public CLI regression.
+  - `make format`
+  - `make test`
+  - `make lint`
+  - `make ci`
+  - `git diff --check`
+  Resolution:
+  - Repository worktree inspection now uses `git status --porcelain=v1 -z` and rejects malformed or non-NUL-terminated status output at the Git I/O edge.
+  - Canonical status records preserve literal path bytes and keep rename/copy source and destination paths distinct without relying on display quotes or ` -> ` parsing.
+  - Dirty sync stages the literal deleted filename as one argument, while audit output renders canonical rename/copy records for operators.
+  Validation Result:
+  - The new plain-sync regression failed before implementation with `add --all -- "legacy/managing-director/IMD Logo.png"` and the reported missing-pathspec error.
+  - The same regression passes after implementation and proves the deletion is committed, pushed, and absent from the final tree.
+  - Parser guardrails cover filenames with spaces, rename/copy paths containing ` ->`, and malformed porcelain rejection.
+  - Non-cached `make test-fast` and `make test-slow` passed.
+  - `make format`
+  - `make test`
+  - `make lint`
+  - `make ci`
+  - `git diff --check`
+
 
 ## Improvements
 

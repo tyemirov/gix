@@ -1327,7 +1327,7 @@ func TestTaskExecutorAppliesChanges(testInstance *testing.T) {
 		collected = append(collected, gitExecutor.commands[commandIndex].Arguments)
 	}
 
-	require.Contains(testInstance, collected, []string{"status", "--porcelain"})
+	require.Contains(testInstance, collected, []string{"status", "--porcelain=v1", "-z"})
 	require.Contains(testInstance, collected, []string{"checkout", "-B", "feature-sample-docs", "main"})
 	require.Contains(testInstance, collected, []string{"add", "docs/sample.md"})
 	require.Contains(testInstance, collected, []string{"commit", "-m", "docs: update Add Docs"})
@@ -1537,9 +1537,9 @@ func (executor *recordingGitExecutor) ExecuteGit(_ context.Context, details exec
 			return execshell.ExecutionResult{StandardOutput: ""}, nil
 		}
 		if len(executor.worktreeEntries) > 0 {
-			return execshell.ExecutionResult{StandardOutput: strings.Join(executor.worktreeEntries, "\n")}, nil
+			return execshell.ExecutionResult{StandardOutput: testNULTerminatedStatusOutput(strings.Join(executor.worktreeEntries, "\n"))}, nil
 		}
-		return execshell.ExecutionResult{StandardOutput: " M file.txt"}, nil
+		return execshell.ExecutionResult{StandardOutput: testNULTerminatedStatusOutput(" M file.txt")}, nil
 	case "rev-parse":
 		if len(details.Arguments) >= 2 {
 			switch details.Arguments[1] {

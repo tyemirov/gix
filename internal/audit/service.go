@@ -14,6 +14,7 @@ import (
 
 	"github.com/tyemirov/gix/internal/execshell"
 	"github.com/tyemirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/internal/repos/worktree"
 )
 
 const gitMetadataDirectoryNameConstant = ".git"
@@ -595,7 +596,9 @@ func (service *Service) collectWorktreeStatus(executionContext context.Context, 
 	}
 
 	copied := make([]string, len(statusEntries))
-	copy(copied, statusEntries)
+	for entryIndex := range statusEntries {
+		copied[entryIndex] = worktree.FormatStatusEntry(statusEntries[entryIndex])
+	}
 	return copied
 }
 

@@ -66,7 +66,7 @@ func (executor *scriptedGitExecutor) ExecuteGit(_ context.Context, details execs
 	case "remote":
 		return execshell.ExecutionResult{StandardOutput: executor.remoteOutput}, nil
 	case "status":
-		return execshell.ExecutionResult{StandardOutput: executor.statusOutput}, nil
+		return execshell.ExecutionResult{StandardOutput: testStatusCommandOutput(details.Arguments, executor.statusOutput)}, nil
 	case "config":
 		if executor.configError != nil {
 			return execshell.ExecutionResult{}, executor.configError

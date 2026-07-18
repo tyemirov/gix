@@ -30,7 +30,7 @@ func (executor *recordingShellExecutor) ExecuteGit(_ context.Context, details ex
 		if executor.clean {
 			return execshell.ExecutionResult{StandardOutput: ""}, nil
 		}
-		return execshell.ExecutionResult{StandardOutput: "M file.txt\n"}, nil
+		return execshell.ExecutionResult{StandardOutput: testNULTerminatedStatusOutput(" M file.txt")}, nil
 	case "rev-parse":
 		if len(details.Arguments) > 1 && details.Arguments[1] == "--abbrev-ref" {
 			branch := executor.branch

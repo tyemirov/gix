@@ -12,7 +12,13 @@ import (
 
 const (
 	gitStatusSubcommandConstant               = "status"
-	gitStatusPorcelainFlagConstant            = "--porcelain"
+	gitStatusPorcelainV1FlagConstant          = "--porcelain=v1"
+	gitNullTerminateFlagConstant              = "-z"
+	gitStatusRecordSeparatorConstant          = "\x00"
+	gitStatusPathSeparatorIndexConstant       = 2
+	gitStatusPathStartIndexConstant           = 3
+	gitStatusRenameCodeConstant               = 'R'
+	gitStatusCopyCodeConstant                 = 'C'
 	gitRevParseSubcommandConstant             = "rev-parse"
 	gitAbbrevRefFlagConstant                  = "--abbrev-ref"
 	gitHeadReferenceConstant                  = "HEAD"
@@ -40,6 +46,7 @@ const (
 	currentBranchOperationNameConstant        = RepositoryOperationName("GetCurrentBranch")
 	getRemoteURLOperationNameConstant         = RepositoryOperationName("GetRemoteURL")
 	setRemoteURLOperationNameConstant         = RepositoryOperationName("SetRemoteURL")
+	parseWorktreeStatusOperationConstant      = "parse NUL-delimited porcelain status"
 )
 
 // GitCommandExecutor exposes the subset of execshell functionality required by RepositoryManager.
@@ -115,7 +122,7 @@ func (manager *RepositoryManager) WorktreeStatus(executionContext context.Contex
 	}
 
 	commandDetails := execshell.CommandDetails{
-		Arguments:        []string{gitStatusSubcommandConstant, gitStatusPorcelainFlagConstant},
+		Arguments:        []string{gitStatusSubcommandConstant, gitStatusPorcelainV1FlagConstant, gitNullTerminateFlagConstant},
 		WorkingDirectory: trimmedPath,
 	}
 
@@ -124,19 +131,56 @@ func (manager *RepositoryManager) WorktreeStatus(executionContext context.Contex
 		return nil, RepositoryOperationError{Operation: cleanWorktreeOperationNameConstant, Cause: executionError}
 	}
 
-	trimmedOutput := strings.TrimSpace(executionResult.StandardOutput)
-	if len(trimmedOutput) == 0 {
+	if executionResult.StandardOutput == "" {
 		return nil, nil
 	}
 
-	lines := strings.Split(trimmedOutput, "\n")
-	entries := make([]string, 0, len(lines))
-	for _, line := range lines {
-		if trimmed := strings.TrimSpace(line); len(trimmed) > 0 {
-			entries = append(entries, trimmed)
+	entries, parseError := parseNULTerminatedPorcelainStatus(executionResult.StandardOutput)
+	if parseError != nil {
+		return nil, RepositoryOperationError{
+			Operation: cleanWorktreeOperationNameConstant,
+			Cause:     fmt.Errorf("%s: %w", parseWorktreeStatusOperationConstant, parseError),
 		}
 	}
 	return entries, nil
+}
+
+func parseNULTerminatedPorcelainStatus(output string) ([]string, error) {
+	if !strings.HasSuffix(output, gitStatusRecordSeparatorConstant) {
+		return nil, errors.New("status output is not NUL terminated")
+	}
+
+	records := strings.Split(output, gitStatusRecordSeparatorConstant)
+	records = records[:len(records)-1]
+	entries := make([]string, 0, len(records))
+	for recordIndex := 0; recordIndex < len(records); recordIndex++ {
+		record := records[recordIndex]
+		if len(record) <= gitStatusPathStartIndexConstant || record[gitStatusPathSeparatorIndexConstant] != ' ' {
+			return nil, fmt.Errorf("record %d has invalid porcelain v1 shape", recordIndex+1)
+		}
+
+		statusCode := strings.TrimSpace(record[:gitStatusPathSeparatorIndexConstant])
+		path := record[gitStatusPathStartIndexConstant:]
+		if statusCode == "" || path == "" {
+			return nil, fmt.Errorf("record %d is missing status or path", recordIndex+1)
+		}
+
+		entry := statusCode + " " + path
+		if gitStatusRecordIsRenameOrCopy(record) {
+			recordIndex++
+			if recordIndex >= len(records) || records[recordIndex] == "" {
+				return nil, fmt.Errorf("record %d is missing rename or copy source path", recordIndex)
+			}
+			entry += gitStatusRecordSeparatorConstant + records[recordIndex]
+		}
+		entries = append(entries, entry)
+	}
+	return entries, nil
+}
+
+func gitStatusRecordIsRenameOrCopy(record string) bool {
+	return record[0] == gitStatusRenameCodeConstant || record[1] == gitStatusRenameCodeConstant ||
+		record[0] == gitStatusCopyCodeConstant || record[1] == gitStatusCopyCodeConstant
 }
 
 // CheckoutBranch checks out an existing branch.

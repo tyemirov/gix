@@ -627,7 +627,7 @@ func newStubWorkflowGitExecutor() *stubWorkflowGitExecutor {
 	return &stubWorkflowGitExecutor{
 		responses: map[string]execshell.ExecutionResult{
 			"rev-parse --is-inside-work-tree":             {StandardOutput: "true\n"},
-			"status --porcelain":                          {StandardOutput: ""},
+			"status --porcelain=v1 -z":                    {StandardOutput: ""},
 			"remote get-url origin":                       {StandardOutput: "https://github.com/canonical/example.git\n"},
 			"rev-parse --abbrev-ref HEAD":                 {StandardOutput: "main\n"},
 			"ls-remote --symref origin HEAD":              {StandardOutput: "ref: refs/heads/main HEAD\n"},
