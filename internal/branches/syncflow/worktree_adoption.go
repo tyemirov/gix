@@ -50,6 +50,7 @@ const (
 	worktreeRemoveFailureTemplate             = "failed to remove sibling worktree %s: %w"
 	worktreeDetachFailureTemplate             = "failed to detach sibling main worktree %s: %w"
 	worktreePruneFailureTemplate              = "failed to prune worktrees after removing %s: %w"
+	worktreeStalePruneFailureTemplate         = "failed to prune stale worktree metadata for branch %q at %s: %w"
 	worktreeMessageClientConfigurationFailure = "commit message generation requires model configuration"
 	worktreeMessageAPIKeyFailureTemplate      = "environment variable %s must be set to generate a commit message"
 	worktreeMessageClientFailureTemplate      = "failed to initialize commit message client: %w"
@@ -61,6 +62,7 @@ const (
 	worktreeAdoptRemoveMessage                = "removed sibling worktree"
 	worktreeAdoptDetachMessage                = "detached sibling main worktree"
 	worktreeAdoptPruneMessage                 = "pruned worktree metadata"
+	worktreeAdoptPruneStaleMessage            = "pruned stale worktree metadata"
 )
 
 type worktreeAdoptionOptions struct {
@@ -151,6 +153,7 @@ type listedWorktree struct {
 	Path       string
 	BranchName string
 	Locked     bool
+	Prunable   bool
 }
 
 type worktreeStatus struct {
@@ -213,6 +216,19 @@ func (service worktreeAdoptionService) adoptExistingBranchWorktree(ctx context.C
 		if candidate.Locked {
 			return fmt.Errorf(worktreeLockedFailureTemplate, branchName, candidate.Path)
 		}
+		if candidate.Prunable {
+			if pruneErr := executeGit(ctx, service.environment.GitExecutor, service.repository.Path, []string{gitWorktreeSubcommandConstant, gitWorktreePruneSubcommandConstant}); pruneErr != nil {
+				return fmt.Errorf(worktreeStalePruneFailureTemplate, branchName, candidate.Path, pruneErr)
+			}
+			service.environment.ReportRepositoryEvent(
+				service.repository,
+				shared.EventLevelInfo,
+				shared.EventCodeWorktreeAdopt,
+				worktreeAdoptPruneStaleMessage,
+				map[string]string{"branch": branchName, "worktree": candidate.Path},
+			)
+			return nil
+		}
 		return service.adoptSiblingWorktree(ctx, candidate, options)
 	}
 
@@ -262,6 +278,8 @@ func parseListedWorktrees(output string) []listedWorktree {
 			current.BranchName = strings.TrimPrefix(referenceName, gitBranchReferencePrefix)
 		case "locked":
 			current.Locked = true
+		case "prunable":
+			current.Prunable = true
 		}
 	}
 	flushCurrent()
