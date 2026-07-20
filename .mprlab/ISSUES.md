@@ -552,6 +552,30 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - The regression failed before the fix with `WORKTREE_ADOPT` followed by a missing-directory `chdir` error.
   - `make format`, focused `make test-slow`, `make test`, `make lint`, `make ci`, and `git diff --check` passed locally.
 
+- [x] [B031] (P1) `gix sync` must make AI merge resolution visible, bounded, and actionable.
+  Requested on 2026-07-20 after `gix sync bugfix/B274-resumable-speech-render-plan` in `/Users/tyemirov/Development/MediaOps` pruned stale worktree metadata, then spent nearly two minutes resolving `.mprlab/ISSUES.md` before rejecting a lossy AI response without an immediate operator handoff.
+  Observation:
+  - The existing preservation guard correctly rejects an AI result that drops non-conflicting content and leaves the merge uncommitted and unpushed.
+  - Strict sync did not report conflict detection, the active AI-resolution phase, the configured deadline, validation, or an exact manual-recovery path.
+  - The configured LLM transport timeout did not bound the complete conflict-resolution operation across inspection, request retries, validation, staging, and the merge commit.
+  Deliverable:
+  - Emit visible structured events for conflict detection, per-path AI resolution with a deadline and progress heartbeat, validation, and an error-level manual-recovery handoff.
+  - Apply one deadline to the full AI merge-resolution operation using the existing configured `timeout_seconds`; cancellation or timeout must preserve the inspectable merge state and stop before push.
+  - Keep B022's strict non-conflicting-content preservation requirement; do not add a permissive merge fallback or silently abort the merge.
+  - Add public CLI regressions for both a rejected lossy resolution and a timed-out resolution, proving no merge-resolution commit, push, or pull-request creation occurs.
+  Resolution:
+  - Added `MERGE_CONFLICT`, `AI_MERGE_RESOLUTION`, `AI_MERGE_VALIDATION`, and `AI_MERGE_HANDOFF` console events. Resolution start reports the configured deadline and Ctrl-C behavior; long requests report bounded progress.
+  - Wrapped the complete resolver in a context deadline derived from the configured LLM timeout, including conflict inspection, model calls, validation, staging, and `git commit --no-edit`.
+  - On rejection, cancellation, or timeout, gix now reports that it did not push and gives the exact `git status` / manual-commit / `git merge --abort` recovery path while preserving the existing fail-closed validation.
+  - Extended the public rejection regression to assert every phase and recovery handoff, and added a delayed-server regression that proves a two-second configured deadline stops the unresolved merge without commit, push, or pull-request creation.
+  Validation Result:
+  - `make format`
+  - Focused public sync conflict-resolution regressions
+  - `make test`
+  - `make lint`
+  - `make ci`
+  - `git diff --check`
+
 
 ## Improvements
 
