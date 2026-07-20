@@ -42,6 +42,14 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented validated AI conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.1.7] - 2026-07-20
+
+- Merge pull request #387 from tyemirov/bugfix/B030-prune-stale-worktree-metadata
+- test: add case for pruning stale worktrees before explicit master switch
+- fix(syncflow): prune stale worktree metadata before branch adoption
+- fix(syncflow): prune stale linked-worktree metadata before adoption retry
+- docs(issues): document requirement and resolution for stale worktree pruning
+
 ## [v1.1.6] - 2026-07-18
 
 - Merge pull request #386 from tyemirov/bugfix/B029-sync-stages-spaced-paths
