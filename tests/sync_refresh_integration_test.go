@@ -973,7 +973,12 @@ operations:
 		},
 	)
 	require.Error(testInstance, runError)
+	require.Contains(testInstance, output, "MERGE_CONFLICT")
+	require.Contains(testInstance, output, "AI_MERGE_RESOLUTION")
+	require.Contains(testInstance, output, "AI_MERGE_VALIDATION")
+	require.Contains(testInstance, output, "AI_MERGE_HANDOFF")
 	require.Contains(testInstance, output, "does not preserve non-conflicting content")
+	require.Contains(testInstance, output, "git merge --abort")
 	require.Equal(testInstance, int64(len(responses)), responseIndex.Load())
 
 	require.Equal(testInstance, "master", strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
@@ -986,6 +991,154 @@ operations:
 	require.Contains(testInstance, conflictState, "<<<<<<< HEAD")
 	require.Contains(testInstance, conflictState, stableTailLine)
 	require.NotEqual(testInstance, truncatedResolution, conflictState)
+
+	gitLog := readTextFile(testInstance, gitLogPath)
+	require.Contains(testInstance, gitLog, "merge --no-edit origin/master")
+	require.NotContains(testInstance, gitLog, "commit --no-edit")
+	require.NotContains(testInstance, gitLog, "push origin master")
+	if githubLogBytes, githubLogReadError := os.ReadFile(githubLogPath); githubLogReadError == nil {
+		require.NotContains(testInstance, string(githubLogBytes), "pr create")
+	} else {
+		require.True(testInstance, os.IsNotExist(githubLogReadError))
+	}
+}
+
+func TestSyncTimesOutAIMergeResolutionWithVisibleRecoveryHandoff(testInstance *testing.T) {
+	testInstance.Helper()
+
+	const (
+		conflictedFileName = "ISSUES.md"
+		stableTailLine     = "stable unrelated tail content"
+	)
+
+	repositoryRoot := integrationRepositoryRoot(testInstance)
+	workspacePath := syncHomeWorkspace(testInstance)
+	remotePath := filepath.Join(workspacePath, "remote.git")
+	repositoryPath := filepath.Join(workspacePath, "project")
+	createSyncGitHubBackedRepository(testInstance, remotePath, repositoryPath)
+
+	baseContent := "# ISSUES\n\nbase issue\n" + stableTailLine + "\n"
+	conflictedFilePath := filepath.Join(repositoryPath, conflictedFileName)
+	require.NoError(testInstance, os.WriteFile(conflictedFilePath, []byte(baseContent), 0o644))
+	runGit(testInstance, repositoryPath, "add", conflictedFileName)
+	runGit(testInstance, repositoryPath, "commit", "-m", "seed merge timeout fixture")
+	runGit(testInstance, repositoryPath, "push", "-u", "origin", "master")
+	baseCommit := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD"))
+
+	upstreamPath := filepath.Join(workspacePath, "upstream")
+	runGitWithDir(testInstance, "", "clone", remotePath, upstreamPath)
+	configureGitIdentity(testInstance, upstreamPath)
+	remoteContent := strings.Replace(baseContent, "base issue", "remote issue", 1)
+	require.NoError(testInstance, os.WriteFile(filepath.Join(upstreamPath, conflictedFileName), []byte(remoteContent), 0o644))
+	runGit(testInstance, upstreamPath, "add", conflictedFileName)
+	runGit(testInstance, upstreamPath, "commit", "-m", "change issue remotely")
+	runGit(testInstance, upstreamPath, "push", "origin", "master")
+
+	localContent := strings.Replace(baseContent, "base issue", "local issue", 1)
+	require.NoError(testInstance, os.WriteFile(conflictedFilePath, []byte(localContent), 0o644))
+
+	var responseIndex atomic.Int64
+	resolutionStarted := make(chan time.Time, 1)
+	releaseResolution := make(chan struct{})
+	llmServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/chat/completions" {
+			http.NotFound(responseWriter, request)
+			return
+		}
+		if responseIndex.Add(1) == 1 {
+			responseWriter.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprint(responseWriter, `{"choices":[{"message":{"role":"assistant","content":"docs: update local issue"}}]}`)
+			return
+		}
+		resolutionStarted <- time.Now()
+		select {
+		case <-request.Context().Done():
+		case <-releaseResolution:
+		}
+	}))
+	testInstance.Cleanup(llmServer.Close)
+	testInstance.Cleanup(func() {
+		close(releaseResolution)
+	})
+
+	configurationPath := filepath.Join(testInstance.TempDir(), "config.yaml")
+	configurationContent := fmt.Sprintf(`common:
+  log_level: error
+  log_format: console
+  require_clean: false
+operations:
+  - command: ["sync"]
+    with:
+      remote: origin
+  - command: ["message", "commit"]
+    with:
+      api_key_env: %s
+      base_url: %q
+      model: mock-model
+      diff_source: staged
+      max_completion_tokens: 64
+      temperature: 0
+      timeout_seconds: 2
+`, syncRefreshIntegrationAPIKeyVariable, llmServer.URL)
+	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
+
+	gitLogPath := filepath.Join(testInstance.TempDir(), "git.log")
+	githubLogPath := filepath.Join(testInstance.TempDir(), "gh.log")
+	pathVariable := buildSyncMergedBranchExecutablePath(testInstance)
+	output, runError := runIntegrationCommandWithInput(
+		testInstance,
+		repositoryRoot,
+		integrationCommandOptions{
+			PathVariable: pathVariable,
+			EnvironmentOverrides: map[string]string{
+				syncRefreshIntegrationAPIKeyVariable: "test-key",
+				syncMergedBranchGitLogVariable:       gitLogPath,
+				syncMergedBranchGitHubLogVariable:    githubLogPath,
+				syncMergedBranchNameVariable:         "unused-generated-branch",
+				syncMergedBranchMergedVariable:       "false",
+			},
+		},
+		syncMergedBranchIntegrationTimeout,
+		"",
+		[]string{
+			syncRefreshIntegrationRunCommand,
+			syncRefreshIntegrationModulePath,
+			"--config",
+			configurationPath,
+			syncRefreshIntegrationLogLevelFlag,
+			syncRefreshIntegrationErrorLogLevel,
+			"sync",
+			"master",
+			"--roots",
+			repositoryPath,
+		},
+	)
+	require.Error(testInstance, runError)
+	require.Contains(testInstance, output, "MERGE_CONFLICT")
+	require.Contains(testInstance, output, "AI_MERGE_RESOLUTION")
+	require.Contains(testInstance, output, "deadline 2s")
+	require.Contains(testInstance, output, "still resolving "+conflictedFileName+" with AI")
+	require.Contains(testInstance, output, "AI_MERGE_HANDOFF")
+	require.Contains(testInstance, output, "AI merge resolution timed out after 2s")
+	require.Contains(testInstance, output, "git merge --abort")
+	require.Equal(testInstance, int64(2), responseIndex.Load())
+
+	select {
+	case startedAt := <-resolutionStarted:
+		require.Less(testInstance, time.Since(startedAt), 5*time.Second, output)
+	default:
+		testInstance.Fatal("expected the merge-resolution request to start")
+	}
+
+	require.Equal(testInstance, "master", strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
+	require.Equal(testInstance, conflictedFileName, strings.TrimSpace(runGit(testInstance, repositoryPath, "diff", "--name-only", "--diff-filter=U")))
+	headWithParents := strings.Fields(runGit(testInstance, repositoryPath, "rev-list", "--parents", "-n", "1", "HEAD"))
+	require.Len(testInstance, headWithParents, 2)
+	require.Equal(testInstance, baseCommit, headWithParents[1])
+
+	conflictState := readTextFile(testInstance, conflictedFilePath)
+	require.Contains(testInstance, conflictState, "<<<<<<< HEAD")
+	require.Contains(testInstance, conflictState, stableTailLine)
 
 	gitLog := readTextFile(testInstance, gitLogPath)
 	require.Contains(testInstance, gitLog, "merge --no-edit origin/master")
