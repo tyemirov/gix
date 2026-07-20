@@ -527,6 +527,31 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - `make ci`
   - `git diff --check`
 
+- [x] [B030] (P1) `gix sync` must prune stale linked-worktree metadata before adoption.
+  Requested on 2026-07-20 after `gix sync bugfix/B274-resumable-speech-render-plan` in `/Users/tyemirov/Development/MediaOps` reported `WORKTREE_ADOPT` and then failed to inspect the missing `/private/tmp/mediaops-b274.ymJPGA` directory.
+  Observation:
+  - Git marks the linked-worktree record as `prunable` because its gitdir points to a non-existent location.
+  - The sync adoption parser reads the path and branch but ignores the `prunable` record, treating it as a live sibling worktree.
+  - Adoption then invokes `git status` in the missing directory and aborts before retrying the requested branch switch.
+  Deliverable:
+  - Prune the repository's stale worktree metadata before adoption retries a branch switch.
+  - Preserve the existing adoption path for live linked and main worktrees.
+  - Add public CLI coverage starting from a missing, prunable linked worktree.
+  Validation:
+  - Focused failing-then-passing public CLI regression.
+  - `make format`
+  - `make test`
+  - `make lint`
+  - `make ci`
+  - `git diff --check`
+  Resolution:
+  - Parsed Git's `prunable` worktree marker and pruned stale metadata before retrying the requested switch.
+  - Kept locked, live linked, and main-worktree adoption behavior on their existing paths.
+  - Added a public CLI regression that deletes a linked `master` worktree, verifies Git reports it as prunable, and proves explicit `gix sync master` completes after cleanup.
+  Validation Result:
+  - The regression failed before the fix with `WORKTREE_ADOPT` followed by a missing-directory `chdir` error.
+  - `make format`, focused `make test-slow`, `make test`, `make lint`, `make ci`, and `git diff --check` passed locally.
+
 
 ## Improvements
 
