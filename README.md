@@ -109,7 +109,7 @@ gix message commit --roots .
 gix message changelog --since-tag v1.2.0 --version v1.3.0
 ```
 
-Use the reusable LLM client (`github.com/tyemirov/utils/llm`) to summarise staged changes or recent history. `gix sync` uses the same configured client for automatic dirty-work commit messages. The embedded default transport is `openai_compatible` with `OPENAI_API_KEY`; configure the top-level LLM default when using MPR LLM Proxy:
+Use the reusable LLM client (`github.com/tyemirov/utils/llm`) to summarise staged changes or recent history. `gix sync` uses the same configured client for automatic dirty-work commit messages and strict-sync merge resolution. Its configured `timeout_seconds` bounds the complete AI merge-resolution operation; gix reports the active resolution phase and leaves a rejected, cancelled, or timed-out merge intact for manual recovery before any push. The embedded default transport is `openai_compatible` with `OPENAI_API_KEY`; configure the top-level LLM default when using MPR LLM Proxy:
 
 ```yaml
 llm:
