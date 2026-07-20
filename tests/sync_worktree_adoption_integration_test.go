@@ -76,6 +76,47 @@ func TestSyncRejectsCleanAheadSiblingWorktreeWithoutGitHubPullRequest(testInstan
 	require.NoFileExists(testInstance, filepath.Join(fixture.RepositoryPath, "ahead.txt"))
 }
 
+func TestSyncExplicitMasterPrunesStaleLinkedWorktreeBeforeSwitch(testInstance *testing.T) {
+	repositoryRoot := integrationRepositoryRoot(testInstance)
+	workspacePath := testInstance.TempDir()
+	remotePath := filepath.Join(workspacePath, "remote.git")
+	repositoryPath := filepath.Join(workspacePath, "repository")
+	siblingPath := filepath.Join(workspacePath, "stale-master")
+
+	runGitWithDir(testInstance, "", "init", "--bare", remotePath)
+	runGitWithDir(testInstance, "", "init", "--initial-branch=master", repositoryPath)
+	configureGitIdentity(testInstance, repositoryPath)
+	runGit(testInstance, repositoryPath, "remote", "add", "origin", remotePath)
+	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "README.md"), []byte("initial\n"), 0o644))
+	runGit(testInstance, repositoryPath, "add", "README.md")
+	runGit(testInstance, repositoryPath, "commit", "-m", "initial commit")
+	runGit(testInstance, repositoryPath, "push", "-u", "origin", "master")
+
+	runGit(testInstance, repositoryPath, "switch", "-c", "feature/current-work")
+	runGit(testInstance, repositoryPath, "push", "-u", "origin", "feature/current-work")
+	runGit(testInstance, repositoryPath, "worktree", "add", siblingPath, "master")
+	canonicalSiblingPath, canonicalSiblingPathErr := filepath.EvalSymlinks(siblingPath)
+	require.NoError(testInstance, canonicalSiblingPathErr)
+	require.NoError(testInstance, os.RemoveAll(siblingPath))
+
+	staleWorktreeList := runGit(testInstance, repositoryPath, "worktree", "list", "--porcelain")
+	require.Contains(testInstance, staleWorktreeList, "worktree "+canonicalSiblingPath)
+	require.Contains(testInstance, staleWorktreeList, "prunable")
+
+	configurationPath := writeSyncWorktreeAdoptionConfiguration(testInstance, "")
+	output := runIntegrationCommand(
+		testInstance,
+		repositoryRoot,
+		integrationCommandOptions{},
+		syncWorktreeAdoptionTimeout,
+		[]string{"run", ".", "--config", configurationPath, "sync", "master", "--roots", repositoryPath},
+	)
+
+	require.Contains(testInstance, output, fmt.Sprintf("SYNCED: %s (master)", repositoryPath))
+	require.Equal(testInstance, "master", strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
+	require.NotContains(testInstance, runGit(testInstance, repositoryPath, "worktree", "list", "--porcelain"), "worktree "+canonicalSiblingPath)
+}
+
 func createSyncWorktreeAdoptionFixture(testInstance *testing.T) syncWorktreeAdoptionFixture {
 	testInstance.Helper()
 
