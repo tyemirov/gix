@@ -45,6 +45,15 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented validated AI conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.1.8] - 2026-07-20
+
+- Merge pull request #388 from tyemirov/bugfix/B031-ai-merge-resolution-handoff
+- test: add AI merge resolution timeout and handoff integration test
+- feat(syncflow): report AI merge progress, timeout, and handoff events
+- docs: clarify LLM client usage and AI merge resolution in README
+- docs: update changelog with strict-sync AI merge-resolution changes
+- docs(issues): record B031 AI merge resolution visibility and deadline reform
+
 ## [v1.1.7] - 2026-07-20
 
 - Merge pull request #387 from tyemirov/bugfix/B030-prune-stale-worktree-metadata
