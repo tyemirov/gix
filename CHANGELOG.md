@@ -9,6 +9,7 @@
 - _No changes._
 
 ### Bug Fixes 🐛
+- Made strict-sync AI merge resolution visible and bounded: gix now reports conflict, resolution, validation, and recovery phases; applies `timeout_seconds` to the complete operation; and gives an exact manual handoff without pushing when a result is rejected, cancelled, or timed out.
 - Pruned stale linked-worktree metadata before `gix sync` retries branch adoption, so a missing temporary worktree no longer causes a `chdir` failure.
 - Switched worktree inspection to NUL-delimited porcelain status so `gix sync` passes literal filenames containing spaces to Git instead of treating display quotes as path bytes.
 - Rejected explicit dirty base-branch sync before commit generation when the required remote base ref does not exist, preventing stranded local commits.
@@ -25,6 +26,7 @@
 - Kept the syncflow builder description as the canonical text shown by `gix sync --help`.
 
 ### Testing 🧪
+- Added public CLI regressions for lossy and timed-out AI merge resolution, including phase output, heartbeat, timeout, no merge-resolution commit or push, and the manual recovery handoff.
 - Added public CLI coverage for explicit `gix sync master` from a missing, Git-prunable linked worktree.
 - Added a public plain-`gix sync` regression proving deletion of `legacy/managing-director/IMD Logo.png` is committed and pushed with the literal path argument.
 - Added a black-box regression proving an explicit dirty `master` sync with no `origin/master` leaves local history and pending files unchanged without calling the LLM.
@@ -36,6 +38,7 @@
 - Added black-box release coverage for clean-checkout helpers, failed or missing platform outputs, replaced published manifests, and missing integrity prerequisites.
 
 ### Docs 📚
+- Documented strict-sync AI merge-resolution deadlines, progress, and manual recovery behavior.
 - Documented explicit branch targets as binding dirty-commit destinations and distinguished explicit `master` from plain current-branch rescue.
 - Documented that unreviewed remote-backed branches accept dirty commits before the missing pull request is opened, while merged branches reject auto-commit.
 - Documented the canonical `master <- parent PR <- child PR` sync chain and the no-delta rejection for clean missing branches.
