@@ -531,10 +531,7 @@ func resolveCommitMessageClient(options worktreeAdoptionCommitMessageOptions) (l
 	if baseURL == "" {
 		baseURL = llmclient.DefaultBaseURLForTransportName(transportName)
 	}
-	timeoutSeconds := options.TimeoutSeconds
-	if timeoutSeconds <= 0 {
-		timeoutSeconds = defaultCommitMessageTimeoutSeconds
-	}
+	timeout := worktreeAdoptionMessageTimeout(options)
 	client, clientErr := llmclient.NewFactory(llmclient.Config{
 		Transport:           transport,
 		Provider:            providerName,
@@ -543,12 +540,20 @@ func resolveCommitMessageClient(options worktreeAdoptionCommitMessageOptions) (l
 		Model:               model,
 		MaxCompletionTokens: options.MaxTokens,
 		Temperature:         options.Temperature,
-		RequestTimeout:      time.Duration(timeoutSeconds) * time.Second,
+		RequestTimeout:      timeout,
 	})
 	if clientErr != nil {
 		return nil, fmt.Errorf(worktreeMessageClientFailureTemplate, clientErr)
 	}
 	return client, nil
+}
+
+func worktreeAdoptionMessageTimeout(options worktreeAdoptionCommitMessageOptions) time.Duration {
+	timeoutSeconds := options.TimeoutSeconds
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = defaultCommitMessageTimeoutSeconds
+	}
+	return time.Duration(timeoutSeconds) * time.Second
 }
 
 func pushSiblingBranch(ctx context.Context, executor shared.GitExecutor, worktreePath string, remoteName string, branchName string) error {

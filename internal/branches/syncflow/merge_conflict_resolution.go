@@ -8,9 +8,11 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/tyemirov/gix/internal/execshell"
 	"github.com/tyemirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/internal/workflow"
 	"github.com/tyemirov/utils/llm"
 )
 
@@ -38,17 +40,26 @@ const (
 	mergeConflictResolutionDeleteTemplate       = "stage deleted merge file %s: %w"
 	mergeConflictResolutionCommitTemplate       = "complete resolved merge commit: %w"
 	mergeConflictResolutionPathTemplate         = "invalid conflicted path %q"
+	mergeConflictResolutionTimeoutTemplate      = "AI merge resolution timed out after %s"
+	mergeConflictResolutionCanceledMessage      = "AI merge resolution was canceled"
+	mergeConflictResolutionHandoffTemplate      = "AI merge resolution stopped after: %s. gix did not push. Inspect git status, then resolve and commit the merge, or run git merge --abort."
 	mergeConflictResolutionDeleteDirective      = "GIX_MERGE_RESOLUTION_DELETE_FILE"
 	mergeConflictResolutionSystemPrompt         = "You are an expert merge engineer resolving Git conflicts. Return only the complete final file contents. If the correct resolution is to delete this path, return exactly " + mergeConflictResolutionDeleteDirective + ". Preserve every intentional local OURS change while integrating compatible remote THEIRS changes. Do not drop local changes to make the merge easier. Remove conflict markers. Do not include explanations, markdown fences, or quotes."
 	mergeConflictResolutionUserPrompt           = "Repository: %s\nPath: %s\nTarget branch: %s\nMerged reference: %s\n\nBASE common ancestor:\n%s\n\nOURS current branch with local work that must be preserved:\n%s\n\nTHEIRS incoming branch to integrate:\n%s\n\nReturn only the resolved final contents for this path, or " + mergeConflictResolutionDeleteDirective + " if the path should be deleted."
 	mergeConflictResolutionAbsentStage          = "(file absent in this stage)"
+	mergeConflictResolutionProgressMaximum      = 10 * time.Second
 )
+
+var errMergeConflictResolutionDeadline = errors.New("AI merge resolution deadline exceeded")
 
 type mergeConflictResolutionService struct {
 	executor       shared.GitExecutor
 	repositoryPath string
 	commitMessages worktreeAdoptionCommitMessageOptions
+	reporter       mergeConflictResolutionReporter
 }
+
+type mergeConflictResolutionReporter func(level shared.EventLevel, code string, message string, details map[string]string)
 
 type mergeConflictResolutionOptions struct {
 	SourceReference string
@@ -78,74 +89,144 @@ const (
 	mergeConflictMarkerStateTheirs
 )
 
-func resolveMergeConflictOrError(ctx context.Context, executor shared.GitExecutor, repositoryPath string, sourceReference string, targetBranch string, conflictMessage string, commitMessages worktreeAdoptionCommitMessageOptions, mergeErr error) error {
+func resolveMergeConflictOrError(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, executor shared.GitExecutor, repositoryPath string, sourceReference string, targetBranch string, conflictMessage string, commitMessages worktreeAdoptionCommitMessageOptions, mergeErr error) error {
 	service := mergeConflictResolutionService{
 		executor:       executor,
 		repositoryPath: repositoryPath,
 		commitMessages: commitMessages,
+		reporter: func(level shared.EventLevel, code string, message string, details map[string]string) {
+			environment.ReportRepositoryEvent(repository, level, code, message, details)
+		},
 	}
-	resolved, resolveErr := service.Resolve(ctx, mergeConflictResolutionOptions{
+	conflictObserved, resolveErr := service.Resolve(ctx, mergeConflictResolutionOptions{
 		SourceReference: sourceReference,
 		TargetBranch:    targetBranch,
 	})
 	if resolveErr != nil {
+		if conflictObserved {
+			service.reportMergeConflictHandoff(resolveErr, sourceReference, targetBranch)
+		}
 		return fmt.Errorf("%s: %w", conflictMessage, errors.Join(fmt.Errorf(mergeConflictResolutionFailureTemplate, resolveErr), mergeErr))
 	}
-	if !resolved {
+	if !conflictObserved {
 		return fmt.Errorf("%s: %w", conflictMessage, mergeErr)
 	}
 	return nil
 }
 
 func (service mergeConflictResolutionService) Resolve(ctx context.Context, options mergeConflictResolutionOptions) (bool, error) {
-	paths, pathsErr := service.unmergedPaths(ctx)
+	timeout := worktreeAdoptionMessageTimeout(service.commitMessages)
+	resolutionContext, cancel := context.WithTimeoutCause(ctx, timeout, errMergeConflictResolutionDeadline)
+	defer cancel()
+	deadline := time.Now().Add(timeout)
+
+	paths, pathsErr := service.unmergedPaths(resolutionContext)
 	if pathsErr != nil {
-		return false, fmt.Errorf(mergeConflictResolutionInspectFailure, pathsErr)
+		return false, service.normalizeResolutionError(resolutionContext, timeout, fmt.Errorf(mergeConflictResolutionInspectFailure, pathsErr))
 	}
 	if len(paths) == 0 {
 		return false, nil
 	}
+	service.reportConflictDetected(paths, options, timeout)
 
 	client, clientErr := resolveCommitMessageClient(service.commitMessages)
 	if clientErr != nil {
-		return true, clientErr
+		return true, service.normalizeResolutionError(resolutionContext, timeout, clientErr)
 	}
 
 	for pathIndex := range paths {
-		conflictFile, conflictFileErr := service.collectConflictFile(ctx, paths[pathIndex])
+		conflictFile, conflictFileErr := service.collectConflictFile(resolutionContext, paths[pathIndex])
 		if conflictFileErr != nil {
-			return true, conflictFileErr
+			return true, service.normalizeResolutionError(resolutionContext, timeout, conflictFileErr)
 		}
-		resolution, resolutionErr := service.resolveConflictFile(ctx, client, options, conflictFile)
+		resolution, resolutionErr := service.resolveConflictFile(resolutionContext, client, options, conflictFile, deadline, timeout)
 		if resolutionErr != nil {
-			return true, resolutionErr
+			return true, service.normalizeResolutionError(resolutionContext, timeout, resolutionErr)
 		}
 		if resolution.Delete {
-			if deleteErr := service.stageDeletedFile(ctx, conflictFile.Path); deleteErr != nil {
-				return true, deleteErr
+			if deleteErr := service.stageDeletedFile(resolutionContext, conflictFile.Path); deleteErr != nil {
+				return true, service.normalizeResolutionError(resolutionContext, timeout, deleteErr)
 			}
 		} else {
 			if writeErr := service.writeResolvedFile(conflictFile.Path, resolution.Content); writeErr != nil {
-				return true, writeErr
+				return true, service.normalizeResolutionError(resolutionContext, timeout, writeErr)
 			}
-			if stageErr := service.stageResolvedFile(ctx, conflictFile.Path); stageErr != nil {
-				return true, stageErr
+			if stageErr := service.stageResolvedFile(resolutionContext, conflictFile.Path); stageErr != nil {
+				return true, service.normalizeResolutionError(resolutionContext, timeout, stageErr)
 			}
 		}
 	}
 
-	remainingPaths, remainingErr := service.unmergedPaths(ctx)
+	remainingPaths, remainingErr := service.unmergedPaths(resolutionContext)
 	if remainingErr != nil {
-		return true, fmt.Errorf(mergeConflictResolutionInspectFailure, remainingErr)
+		return true, service.normalizeResolutionError(resolutionContext, timeout, fmt.Errorf(mergeConflictResolutionInspectFailure, remainingErr))
 	}
 	if len(remainingPaths) > 0 {
 		return true, fmt.Errorf("unresolved merge conflicts remain: %s", strings.Join(remainingPaths, ", "))
 	}
 
-	if commitErr := executeGit(ctx, service.executor, service.repositoryPath, []string{gitCommitSubcommandConstant, gitCommitNoEditFlagConstant}); commitErr != nil {
-		return true, fmt.Errorf(mergeConflictResolutionCommitTemplate, commitErr)
+	service.report(shared.EventLevelInfo, shared.EventCodeAIMergeResolution, "all AI resolutions validated; completing merge commit", map[string]string{
+		"paths": strings.Join(paths, ", "),
+	})
+	if commitErr := executeGit(resolutionContext, service.executor, service.repositoryPath, []string{gitCommitSubcommandConstant, gitCommitNoEditFlagConstant}); commitErr != nil {
+		return true, service.normalizeResolutionError(resolutionContext, timeout, fmt.Errorf(mergeConflictResolutionCommitTemplate, commitErr))
 	}
+	service.report(shared.EventLevelInfo, shared.EventCodeAIMergeResolution, "AI merge resolution completed", map[string]string{
+		"paths": strings.Join(paths, ", "),
+	})
 	return true, nil
+}
+
+func (service mergeConflictResolutionService) normalizeResolutionError(ctx context.Context, timeout time.Duration, resolutionErr error) error {
+	if errors.Is(context.Cause(ctx), errMergeConflictResolutionDeadline) {
+		return fmt.Errorf(mergeConflictResolutionTimeoutTemplate+": %w", timeout, resolutionErr)
+	}
+	if errors.Is(resolutionErr, context.DeadlineExceeded) {
+		return fmt.Errorf("AI merge resolution request timed out: %w", resolutionErr)
+	}
+	if errors.Is(context.Cause(ctx), context.Canceled) || errors.Is(resolutionErr, context.Canceled) {
+		return fmt.Errorf(mergeConflictResolutionCanceledMessage+": %w", resolutionErr)
+	}
+	return resolutionErr
+}
+
+func (service mergeConflictResolutionService) reportConflictDetected(paths []string, options mergeConflictResolutionOptions, timeout time.Duration) {
+	pathNoun := "paths"
+	if len(paths) == 1 {
+		pathNoun = "path"
+	}
+	service.report(
+		shared.EventLevelInfo,
+		shared.EventCodeMergeConflict,
+		fmt.Sprintf("detected %d conflicted %s while merging %s into %s; resolving with AI", len(paths), pathNoun, strings.TrimSpace(options.SourceReference), strings.TrimSpace(options.TargetBranch)),
+		map[string]string{
+			"paths":            strings.Join(paths, ", "),
+			"source_reference": strings.TrimSpace(options.SourceReference),
+			"target_branch":    strings.TrimSpace(options.TargetBranch),
+			"timeout":          timeout.String(),
+		},
+	)
+}
+
+func (service mergeConflictResolutionService) reportMergeConflictHandoff(resolutionErr error, sourceReference string, targetBranch string) {
+	reason := strings.ReplaceAll(strings.TrimSpace(resolutionErr.Error()), "\n", "; ")
+	service.report(
+		shared.EventLevelError,
+		shared.EventCodeAIMergeHandoff,
+		fmt.Sprintf(mergeConflictResolutionHandoffTemplate, reason),
+		map[string]string{
+			"source_reference": strings.TrimSpace(sourceReference),
+			"target_branch":    strings.TrimSpace(targetBranch),
+			"reason":           reason,
+		},
+	)
+}
+
+func (service mergeConflictResolutionService) report(level shared.EventLevel, code string, message string, details map[string]string) {
+	if service.reporter == nil {
+		return
+	}
+	service.reporter(level, code, message, details)
 }
 
 func (service mergeConflictResolutionService) unmergedPaths(ctx context.Context) ([]string, error) {
@@ -260,12 +341,30 @@ func (service mergeConflictResolutionService) conflictStageContent(ctx context.C
 	return result.StandardOutput, nil
 }
 
-func (service mergeConflictResolutionService) resolveConflictFile(ctx context.Context, client llm.ChatClient, options mergeConflictResolutionOptions, conflictFile mergeConflictFile) (mergeConflictFileResolution, error) {
+func (service mergeConflictResolutionService) resolveConflictFile(ctx context.Context, client llm.ChatClient, options mergeConflictResolutionOptions, conflictFile mergeConflictFile, deadline time.Time, timeout time.Duration) (mergeConflictFileResolution, error) {
 	request := service.buildResolutionRequest(options, conflictFile)
+	service.report(
+		shared.EventLevelInfo,
+		shared.EventCodeAIMergeResolution,
+		fmt.Sprintf("resolving %s with AI (deadline %s; Ctrl-C leaves the merge intact)", conflictFile.Path, timeout),
+		map[string]string{
+			"path":      conflictFile.Path,
+			"timeout":   timeout.String(),
+			"remaining": mergeConflictResolutionRemaining(deadline),
+		},
+	)
+	stopProgress := service.startMergeConflictResolutionProgress(ctx, conflictFile.Path, deadline)
 	response, responseErr := client.Chat(ctx, request)
+	stopProgress()
 	if responseErr != nil {
 		return mergeConflictFileResolution{}, responseErr
 	}
+	service.report(
+		shared.EventLevelInfo,
+		shared.EventCodeAIMergeValidation,
+		fmt.Sprintf("validating AI resolution for %s", conflictFile.Path),
+		map[string]string{"path": conflictFile.Path},
+	)
 	resolvedContent := strings.TrimSpace(response)
 	if resolvedContent == "" {
 		return mergeConflictFileResolution{}, fmt.Errorf(mergeConflictResolutionEmptyResponse, conflictFile.Path)
@@ -279,7 +378,95 @@ func (service mergeConflictResolutionService) resolveConflictFile(ctx context.Co
 	if preservationErr := validateMergeConflictResolutionPreservation(conflictFile, resolution); preservationErr != nil {
 		return mergeConflictFileResolution{}, preservationErr
 	}
+	service.report(
+		shared.EventLevelInfo,
+		shared.EventCodeAIMergeResolution,
+		fmt.Sprintf("validated AI resolution for %s; staging", conflictFile.Path),
+		map[string]string{"path": conflictFile.Path},
+	)
 	return resolution, nil
+}
+
+func (service mergeConflictResolutionService) startMergeConflictResolutionProgress(ctx context.Context, path string, deadline time.Time) func() {
+	if service.reporter == nil {
+		return func() {}
+	}
+
+	remaining := time.Until(deadline)
+	interval := mergeConflictResolutionProgressInterval(remaining)
+	if interval <= 0 {
+		return func() {}
+	}
+
+	startedAt := time.Now()
+	done := make(chan struct{})
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				remainingDuration := time.Until(deadline)
+				if remainingDuration <= 0 {
+					return
+				}
+				service.report(
+					shared.EventLevelInfo,
+					shared.EventCodeAIMergeResolution,
+					fmt.Sprintf("still resolving %s with AI (%s elapsed; %s remaining)", path, mergeConflictResolutionElapsed(startedAt), mergeConflictResolutionRemaining(deadline)),
+					map[string]string{
+						"path":      path,
+						"elapsed":   mergeConflictResolutionElapsed(startedAt),
+						"remaining": mergeConflictResolutionRemaining(deadline),
+					},
+				)
+			}
+		}
+	}()
+
+	return func() {
+		close(done)
+		<-stopped
+	}
+}
+
+func mergeConflictResolutionProgressInterval(remaining time.Duration) time.Duration {
+	if remaining <= 0 {
+		return 0
+	}
+	interval := mergeConflictResolutionProgressMaximum
+	if halfRemaining := remaining / 2; halfRemaining < interval {
+		interval = halfRemaining
+	}
+	if interval < time.Second {
+		interval = time.Second
+	}
+	return interval
+}
+
+func mergeConflictResolutionRemaining(deadline time.Time) string {
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		return "0s"
+	}
+	if remaining < time.Second {
+		return "<1s"
+	}
+	return remaining.Round(time.Second).String()
+}
+
+func mergeConflictResolutionElapsed(startedAt time.Time) string {
+	elapsed := time.Since(startedAt)
+	if elapsed < time.Second {
+		return "<1s"
+	}
+	return elapsed.Round(time.Second).String()
 }
 
 func (service mergeConflictResolutionService) buildResolutionRequest(options mergeConflictResolutionOptions, conflictFile mergeConflictFile) llm.ChatRequest {

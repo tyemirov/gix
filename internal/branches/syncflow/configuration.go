@@ -17,7 +17,7 @@ const (
 	defaultCommitMessageTimeoutSeconds    = 60
 )
 
-// CommitMessageConfiguration captures LLM settings for automatic worktree checkpoint commits.
+// CommitMessageConfiguration captures LLM settings for automatic worktree checkpoint commits and strict-sync merge resolution.
 type CommitMessageConfiguration struct {
 	Transport      string  `mapstructure:"transport"`
 	Provider       string  `mapstructure:"provider"`
@@ -56,7 +56,7 @@ func DefaultCommandConfiguration() CommandConfiguration {
 	}
 }
 
-// DefaultCommitMessageConfiguration returns baseline LLM settings for adoption commits.
+// DefaultCommitMessageConfiguration returns baseline LLM settings for adoption commits and strict-sync merge resolution.
 func DefaultCommitMessageConfiguration() CommitMessageConfiguration {
 	return CommitMessageConfiguration{
 		Transport:      defaultCommitMessageTransport,
