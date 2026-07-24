@@ -98,6 +98,10 @@ func branchMissing(details execshell.CommandDetails) (execshell.ExecutionResult,
 	}
 }
 
+func migrationGitHubContext() context.Context {
+	return githubauth.WithCredential(context.Background(), "test-token")
+}
+
 func TestBranchMigrationOperationRequiresSingleTarget(testInstance *testing.T) {
 	executor := newScriptedExecutor()
 	executor.gitHandlers["remote"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
@@ -124,8 +128,6 @@ func TestBranchMigrationOperationRequiresSingleTarget(testInstance *testing.T) {
 }
 
 func TestBranchMigrationOperationReturnsActionableDefaultBranchError(testInstance *testing.T) {
-	testInstance.Setenv(githubauth.EnvGitHubCLIToken, "test-token")
-	testInstance.Setenv(githubauth.EnvGitHubToken, "test-token")
 	executor := newScriptedExecutor()
 	executor.gitHandlers["remote"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
 		return execshell.ExecutionResult{StandardOutput: "origin\n"}, nil
@@ -176,7 +178,7 @@ func TestBranchMigrationOperationReturnsActionableDefaultBranchError(testInstanc
 		GitHubClient:      githubClient,
 	}
 
-	executionError := operation.Execute(context.Background(), environment, state)
+	executionError := operation.Execute(migrationGitHubContext(), environment, state)
 
 	require.False(testInstance, len(executor.githubCommands) == 0, "expected GitHub commands to be executed")
 	require.Error(testInstance, executionError)
@@ -254,8 +256,6 @@ func TestBranchMigrationOperationCreatesLocalBranchWithoutRemote(testInstance *t
 }
 
 func TestBranchMigrationOperationCreatesRemoteBranchWhenMissing(testInstance *testing.T) {
-	testInstance.Setenv(githubauth.EnvGitHubToken, "test-token")
-	testInstance.Setenv(githubauth.EnvGitHubCLIToken, "test-token")
 	executor := newScriptedExecutor()
 	executor.gitHandlers["remote"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
 		return execshell.ExecutionResult{StandardOutput: "origin\n"}, nil
@@ -297,7 +297,7 @@ func TestBranchMigrationOperationCreatesRemoteBranchWhenMissing(testInstance *te
 		Output:            outputBuffer,
 	}
 
-	executionError := operation.Execute(context.Background(), environment, state)
+	executionError := operation.Execute(migrationGitHubContext(), environment, state)
 
 	require.NoError(testInstance, executionError)
 
@@ -336,8 +336,6 @@ func TestEnsureRemoteBranchPushesWhenMissing(testInstance *testing.T) {
 }
 
 func TestBranchMigrationOperationInfersIdentifierFromRemote(testInstance *testing.T) {
-	testInstance.Setenv(githubauth.EnvGitHubToken, "test-token")
-	testInstance.Setenv(githubauth.EnvGitHubCLIToken, "test-token")
 	executor := newScriptedExecutor()
 	executor.gitHandlers["remote"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
 		return execshell.ExecutionResult{StandardOutput: "origin\n"}, nil
@@ -388,7 +386,7 @@ func TestBranchMigrationOperationInfersIdentifierFromRemote(testInstance *testin
 		Output:            outputBuffer,
 	}
 
-	executionError := operation.Execute(context.Background(), environment, state)
+	executionError := operation.Execute(migrationGitHubContext(), environment, state)
 
 	require.NoError(testInstance, executionError)
 	require.NotEmpty(testInstance, executor.githubCommands)
@@ -410,8 +408,6 @@ func TestBranchMigrationOperationInfersIdentifierFromRemote(testInstance *testin
 }
 
 func TestBranchMigrationOperationSkipsRemotePushWhenUnavailable(testInstance *testing.T) {
-	testInstance.Setenv(githubauth.EnvGitHubToken, "test-token")
-	testInstance.Setenv(githubauth.EnvGitHubCLIToken, "test-token")
 	executor := newScriptedExecutor()
 	executor.graphqlDefaultBranch = "main"
 	executor.gitHandlers["remote"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
@@ -469,7 +465,7 @@ func TestBranchMigrationOperationSkipsRemotePushWhenUnavailable(testInstance *te
 		Output:            outputBuffer,
 	}
 
-	executionError := operation.Execute(context.Background(), environment, state)
+	executionError := operation.Execute(migrationGitHubContext(), environment, state)
 
 	require.NoError(testInstance, executionError)
 	require.Contains(testInstance, outputBuffer.String(), "WORKFLOW-DEFAULT: /repository (main → release)")
@@ -484,9 +480,6 @@ func TestBranchMigrationOperationSkipsRemotePushWhenUnavailable(testInstance *te
 }
 
 func TestBranchMigrationOperationSkipsWhenRemoteAlreadyTarget(testInstance *testing.T) {
-	testInstance.Setenv(githubauth.EnvGitHubToken, "test-token")
-	testInstance.Setenv(githubauth.EnvGitHubCLIToken, "test-token")
-
 	executor := newScriptedExecutor()
 	executor.graphqlDefaultBranch = "master"
 	executor.gitHandlers["remote"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
@@ -531,7 +524,7 @@ func TestBranchMigrationOperationSkipsWhenRemoteAlreadyTarget(testInstance *test
 		Output:            outputBuffer,
 	}
 
-	executionError := operation.Execute(context.Background(), environment, state)
+	executionError := operation.Execute(migrationGitHubContext(), environment, state)
 
 	require.NoError(testInstance, executionError)
 	require.Contains(testInstance, outputBuffer.String(), "WORKFLOW-DEFAULT-SKIP: /repository already defaults to master")

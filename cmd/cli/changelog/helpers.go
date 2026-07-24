@@ -1,9 +1,6 @@
 package changelog
 
 import (
-	"os"
-	"strings"
-
 	"go.uber.org/zap"
 
 	"github.com/tyemirov/gix/pkg/taskrunner"
@@ -17,8 +14,3 @@ type TaskRunnerExecutor = taskrunner.Executor
 
 // TaskRunnerFactory constructs workflow runners.
 type TaskRunnerFactory = taskrunner.Factory
-
-func lookupEnvironmentValue(name string) (string, bool) {
-	value, ok := os.LookupEnv(name)
-	return strings.TrimSpace(value), ok
-}

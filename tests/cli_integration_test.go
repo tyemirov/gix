@@ -20,8 +20,8 @@ const (
 	integrationInfoMessageConstant                     = "\"msg\":\"gix CLI executed\""
 	integrationDebugMessageConstant                    = "\"msg\":\"gix CLI diagnostics\""
 	integrationLogLevelEnvKeyConstant                  = "GIX_COMMON_LOG_LEVEL"
-	integrationConfigFileNameConstant                  = "config.yaml"
-	integrationConfigTemplateConstant                  = "common:\n  log_level: %s\n  log_format: %s\n"
+	integrationConfigFileNameConstant                  = "config.yml"
+	integrationConfigTemplateConstant                  = "common:\n  log_level: %s\n  log_format: %s\nllm:\n  openai:\n    priority: 1\n    model: gpt-4.1\n    base_url: https://api.openai.com/v1\n    credential: integration-openai-key\n  llm_proxy:\n    priority: 2\n    provider: meta\n    model: muse-spark-1.1\n    base_url: https://llm-proxy.example\n    credential: integration-proxy-key\n"
 	integrationDefaultCaseNameConstant                 = "default_info"
 	integrationConfigCaseNameConstant                  = "config_debug"
 	integrationEnvironmentCaseNameConstant             = "environment_error"
@@ -313,6 +313,7 @@ func TestCLIIntegrationHandlesPipeForStandardError(testInstance *testing.T) {
 	for testCaseIndex, testCase := range testCases {
 		testInstance.Run(fmt.Sprintf(integrationSubtestNameTemplateConstant, testCaseIndex, testCase.name), func(testInstance *testing.T) {
 			commandArguments := []string{integrationGoRunSubcommandConstant, integrationCurrentDirectoryArgumentConstant}
+			commandArguments = injectIntegrationConfiguration(testInstance, commandArguments, nil)
 
 			executionContext, cancelFunction := context.WithTimeout(context.Background(), integrationCommandTimeout)
 			defer cancelFunction()

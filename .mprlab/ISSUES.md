@@ -592,6 +592,82 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   LegacyExternalID: GX-253
 - [x] [I004] Embed license templates and wire the license workflow preset to render them per repository.
   LegacyExternalID: GX-254
+- [x] [I005] (P1) Make `config.yml` the sole interpolated runtime configuration source.
+  Requested on 2026-07-23 after investigation of switching gix from direct OpenAI to Meta Muse through llm-proxy exposed late environment lookup and incomplete configuration-file behavior.
+  Goal:
+  Load one complete, validated `config.yml` before command execution so runtime components receive concrete values and never resolve configuration from environment-variable names.
+  Requirements:
+  - Resolve an explicit `--config` file first, then `/etc/gix/config.yml`, then `$HOME/.gix/config.yml`; remove working-directory, `.yaml`, and environment search-path compatibility.
+  - When no discovered config exists, offer to create `$HOME/.gix/config.yml`; accepting writes the canonical template and declining stops before command execution.
+  - Expand plain `${NAME}` placeholders from a sibling `.env` plus the process environment only at the config-loading edge, with process values taking precedence and missing selected credentials failing before runtime work.
+  - Store both direct OpenAI and llm-proxy endpoint credentials as interpolated config values, using `${OPENAI_API_KEY}` and `${LLM_PROXY_SECRET_KEY}` in the canonical template.
+  - Expose only a required `provider` and optional `model` as the public LLM selection; derive the direct-OpenAI versus llm-proxy transport internally.
+  - Reject every configuration that omits `provider`, including configurations that specify a model without a provider. When `model` is omitted, use the direct OpenAI default or the selected llm-proxy provider's server-side default.
+  - Remove `api_key_env`, `GIX_*` configuration overrides, embedded runtime defaults, and late environment reads; do not preserve aliases or compatibility paths.
+  - Keep explicit provider/model command selection while resolving the internal transport endpoint and credential exclusively from the validated config.
+  Validation:
+  - Add black-box CLI coverage for explicit/system/user precedence, missing-config creation acceptance and decline, strict placeholder failures, sibling `.env` expansion, process precedence, and both LLM transports.
+  - Run `make format`, `make test`, `make lint`, and `make ci`.
+  Resolution:
+  - Replaced layered configuration and late environment reads with one strict `config.yml` selected from explicit, system, then user scope; missing configuration now offers canonical user-file creation.
+  - Restricted `${NAME}` interpolation to the configuration-loading edge and passed concrete GitHub, package, OpenAI, and llm-proxy credentials into runtime clients.
+  - Made `provider` mandatory and `model` optional, removed public transport fields/flags, and derived direct OpenAI versus llm-proxy routing internally. Direct OpenAI defaults to `gpt-4.1`; llm-proxy omits an unspecified model so the provider default applies.
+  - Rejected obsolete paths, extensions, schema fields, environment bindings, and provider-less LLM selections without compatibility aliases.
+  Validation Result:
+  - `make format`
+  - `make test`
+  - `make lint`
+  - `make ci`
+  Follow-up:
+  - I007 superseded the sibling `.env` behavior: gix now expands placeholders only from its inherited process environment and does not discover or parse dotenv files.
+- [x] [I006] (P1) Order LLM connections through provider-owned configuration.
+  Requested on 2026-07-23 after review of the provider-first schema introduced by I005.
+  Goal:
+  Make direct OpenAI and llm-proxy explicit, ordered connection candidates while keeping provider-specific settings inside the connection that owns them.
+  Requirements:
+  - Remove top-level `llm.provider` and `llm.model`; reject the obsolete shape instead of accepting aliases.
+  - Store the direct OpenAI model under `llm.openai`, and store the llm-proxy upstream `provider` and `model` under `llm.llm_proxy`.
+  - Require each connection to declare a distinct positive `priority`; lower numbers are attempted first.
+  - Attempt available connections in priority order, stop after the first successful response, and return contextual errors when every candidate fails.
+  - Preserve config-only endpoint and credential interpolation, including operation, workflow-task, sync, web, commit-message, and changelog client construction.
+  - Nest operation and workflow-task proxy overrides under `llm_proxy`; keep CLI `--provider` and `--model` as one-invocation llm-proxy overrides.
+  Validation:
+  - Add black-box CLI coverage proving priority ordering, successful failover, obsolete-schema rejection, and strict priority/provider validation.
+  - Run `make format`, `make test`, `make lint`, and `make ci`.
+  Resolution:
+  - Replaced top-level LLM selection with complete `openai` and `llm_proxy` profiles. Direct OpenAI owns its model; llm-proxy owns its upstream provider and model.
+  - Required distinct positive priorities and implemented ascending-priority request attempts, stop-after-success behavior, and contextual aggregate errors when all active connections fail.
+  - Nested operation, sync, and workflow-task proxy overrides under `llm_proxy` while keeping CLI `--provider` and `--model` as one-invocation proxy upstream overrides.
+  - Updated the canonical configuration, initialization fixtures, integration fixtures, architecture, CLI design, README, site copy, and changelog without accepting the obsolete flat schema.
+  Validation Result:
+  - `make format`
+  - `make test`
+  - `make lint`
+  - `make ci`
+- [x] [I007] (P1) Keep dotenv ownership outside gix.
+  Requested on 2026-07-23 after review of the generated setup instructions and configuration-loading boundary.
+  Goal:
+  Keep gix responsible for one `config.yml` and its inherited process environment without making the application aware of dotenv files.
+  Requirements:
+  - Expand `${NAME}` placeholders exclusively from the process environment inherited when gix starts.
+  - Never discover, open, parse, or merge a `.env` file at any system, user, configuration, or working-directory path.
+  - Preserve direct literal values in `config.yml` so users may provide credentials without placeholders.
+  - Remove the dotenv dependency and obsolete dotenv-specific errors instead of retaining an alternate loading path.
+  - Update setup instructions, architecture, design notes, changelog, and historical follow-up notes to state the process-environment-only contract.
+  Validation:
+  - Add unit and black-box CLI coverage proving a sibling `.env` file is ignored while process placeholders and literal credentials continue to work.
+  - Run `make format`, `make test`, `make lint`, and `make ci`.
+  Resolution:
+  - Removed all dotenv discovery and parsing; placeholder expansion now snapshots only the process environment inherited when gix starts.
+  - Replaced Viper with direct YAML parsing plus strict mapstructure decoding, removing both Viper and gotenv from the module graph.
+  - Preserved literal configuration values and optional unresolved credential placeholders without adding another configuration source.
+  - Updated setup, architecture, design, site, changelog, and I005 follow-up text to make user-owned environment loading explicit.
+  - Added unit and black-box CLI regressions proving sibling `.env` files are ignored while process placeholders and literal credentials work.
+  Validation Result:
+  - `make format`
+  - `make test`
+  - `make lint`
+  - `make ci`
 
 
 ## Maintenance

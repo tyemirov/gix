@@ -17,7 +17,7 @@ gix is a Go 1.25 command-line application built with Cobra and Viper. The binary
 ## Execution Flow
 
 1. The binary entrypoint (`main.go`) invokes `cli.Execute`, which builds the Cobra root command through `cmd/cli/application_bootstrap.go` (composition/flags) and `cmd/cli/application_commands.go` (command registration) after loading config from `cmd/cli/application_config.go`.
-2. `cmd/cli` initialises Viper, loads configuration files via `internal/utils/flags`, and prepares a structured Zap logger.
+2. `cmd/cli` discovers one canonical `config.yml`, expands its `${NAME}` placeholders through `internal/utils/configuration_loader.go`, decodes the exact schema, and prepares a structured Zap logger.
 3. Each namespace (`audit`, `repo`, `branch`, `commit`, `workflow`, etc.) registers subcommands via `registerCommands`, reusing shared task-runner wiring provided by `pkg/taskrunner`.
 4. Domain services resolve their collaborators through `internal/repos/dependencies`, which supplies defaults for repository discovery, filesystem access, Git execution, and GitHub metadata unless tests inject fakes.
 5. Commands perform work through `internal/...` packages (for example, `internal/repos/rename.Run`), returning contextual errors that bubble back to Cobra for consistent exit handling.
@@ -94,30 +94,46 @@ Each workflow step enforces previews and respects the global confirmation strate
 
 ## Configuration and Logging
 
-Configuration is managed by Viper with an uppercase `GIX` environment prefix. The search order is:
+Configuration is decoded from exactly one `config.yml`. The search order is:
 
 1. Explicit `--config` path, if provided.
-2. `config.yaml` in the working directory.
-3. `$HOME/.gix/config.yaml`.
+2. `/etc/gix/config.yml`.
+3. `$HOME/.gix/config.yml`.
 
-`gix init` bootstraps a local `./config.yaml` by default; `gix init --user` writes user-level configuration to `$HOME/.gix/config.yaml`. The top-level `llm` block defines transport and provider defaults shared by message, changelog, sync, and web helpers; operation-specific LLM fields remain overrides. `transport` selects `openai_compatible` or `llm_proxy`, while `provider` is the upstream provider name passed through to LLM Proxy. Logging relies on Uber's Zap; format is configurable (structured JSON or console) through a flag or configuration.
+When neither discovered file exists, gix offers to create `$HOME/.gix/config.yml`. `gix init` performs that user-level initialization directly; `gix init --system` writes `/etc/gix/config.yml`. Gix does not discover working-directory files, merge layers, accept `.yaml` aliases, or bind `GIX_*` environment overrides.
 
-The `workflow` command is special-cased: it uses a YAML formatter that emits machine-friendly step summaries (one per repository) and prints a final end-of-run summary line. Non-workflow commands continue to use the existing human-readable console logging format.
+The loader parses the selected file once, then expands `${NAME}` placeholders in YAML value scalars from the process environment inherited when gix starts. Substituted text remains literal scalar content even when it contains YAML-significant quotes, backslashes, newlines, colons, or hash characters. The loader never searches for or parses `.env` files; literal configuration values pass through unchanged. The top-level `llm` block defines complete `openai` and `llm_proxy` connection profiles shared by message, changelog, sync, workflow-task, and web helpers. Each profile owns its routing fields, endpoint, credential, and positive unique priority. Lower priority numbers run first, request failures continue to the next credentialed connection, and the first successful response wins. An empty interpolated credential disables that connection, but at least one connection must remain active. Operation-specific selections can override `llm_proxy.provider` and `llm_proxy.model`; endpoints, credentials, and connection priority stay in the top-level profiles. Logging relies on Uber's Zap; format is configurable (structured JSON or console) through a flag or configuration.
+
+The `workflow` command is special-cased: without a positional configuration, it executes the typed top-level `workflow` block produced by that single application-config decode rather than reopening the selected file. It uses a YAML formatter that emits machine-friendly step summaries (one per repository) and prints a final end-of-run summary line. Non-workflow commands continue to use the existing human-readable console logging format.
 
 ## Workflow configuration example
 
 The example below matches the configuration used in the documentation tests. It demonstrates how CLI defaults and workflow steps can share anchored maps so one file drives both direct commands and declarative workflows.
 
 ```yaml
-# config.yaml
+# config.yml
 common:
   log_level: error
   log_format: structured
 
+github:
+  credential: "${GH_TOKEN}"
+
 llm:
-  transport: openai_compatible
-  provider: ""
-  model: gpt-4.1
+  openai:
+    priority: 2
+    model: gpt-4.1
+    base_url: "https://api.openai.com/v1"
+    credential: "${OPENAI_API_KEY}"
+  llm_proxy:
+    priority: 1
+    provider: meta
+    model: muse-spark-1.1
+    base_url: "https://llm-proxy-api.mprlab.com"
+    credential: "${LLM_PROXY_SECRET_KEY}"
+  max_completion_tokens: 1200
+  temperature: 0
+  timeout_seconds: 60
 
 operations:
   - command: ["audit"]
@@ -129,6 +145,8 @@ operations:
   - command: ["packages", "delete"]
     with: &packages_purge_defaults
       # package: my-image  # Optional override; defaults to the repository name
+      base_url: "https://api.github.com"
+      credential: "${GITHUB_PACKAGES_TOKEN}"
       roots:
         - ~/Development
 
@@ -176,25 +194,21 @@ operations:
 
 workflow:
   - step:
-      order: 1
       command: ["remote", "update-protocol"]
       with:
         <<: *repo_protocol_defaults
 
   - step:
-      order: 2
       command: ["remote", "update-to-canonical"]
       with:
         <<: *repo_remotes_defaults
 
   - step:
-      order: 3
       command: ["folder", "rename"]
       with:
         <<: *repo_rename_defaults
 
   - step:
-      order: 4
       command: ["default"]
       with:
         <<: *branch_default_defaults
@@ -205,7 +219,6 @@ workflow:
             delete_source_branch: false
 
   - step:
-      order: 5
       command: ["audit", "report"]
       with:
         output: ./reports/audit-latest.csv

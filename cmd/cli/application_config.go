@@ -1,12 +1,13 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
 	mapstructure "github.com/go-viper/mapstructure/v2"
 
-	"github.com/tyemirov/gix/internal/utils"
+	"github.com/tyemirov/gix/internal/llmclient"
 	workflowpkg "github.com/tyemirov/gix/internal/workflow"
 )
 
@@ -30,11 +31,39 @@ func (errorDetails MissingOperationConfigurationError) Error() string {
 	return fmt.Sprintf(missingOperationConfigurationTemplateConstant, errorDetails.OperationName)
 }
 
+// InvalidOperationConfigurationError indicates that an operation contains unsupported configuration.
+type InvalidOperationConfigurationError struct {
+	OperationName string
+	Cause         error
+}
+
+// Error implements the error interface.
+func (errorDetails InvalidOperationConfigurationError) Error() string {
+	return fmt.Sprintf(invalidOperationConfigurationTemplateConstant, errorDetails.OperationName, errorDetails.Cause)
+}
+
+// Unwrap exposes the underlying schema error.
+func (errorDetails InvalidOperationConfigurationError) Unwrap() error {
+	return errorDetails.Cause
+}
+
 // ApplicationConfiguration describes the persisted configuration for the CLI entrypoint.
 type ApplicationConfiguration struct {
 	Common     ApplicationCommonConfiguration      `mapstructure:"common"`
+	GitHub     ApplicationGitHubConfiguration      `mapstructure:"github"`
 	LLM        ApplicationLLMConfiguration         `mapstructure:"llm"`
 	Operations []ApplicationOperationConfiguration `mapstructure:"operations"`
+	Workflow   []ApplicationWorkflowStep           `mapstructure:"workflow"`
+}
+
+// ApplicationWorkflowStep wraps one typed workflow step from the shared configuration file.
+type ApplicationWorkflowStep struct {
+	Step workflowpkg.StepConfiguration `mapstructure:"step"`
+}
+
+// ApplicationGitHubConfiguration stores the concrete credential used by GitHub CLI operations.
+type ApplicationGitHubConfiguration struct {
+	Credential string `mapstructure:"credential"`
 }
 
 // ApplicationCommonConfiguration stores logging and execution defaults shared across commands.
@@ -47,14 +76,22 @@ type ApplicationCommonConfiguration struct {
 
 // ApplicationLLMConfiguration stores language-model defaults shared across LLM-backed commands.
 type ApplicationLLMConfiguration struct {
-	Transport           string  `mapstructure:"transport"`
-	Provider            string  `mapstructure:"provider"`
-	APIKeyEnv           string  `mapstructure:"api_key_env"`
-	BaseURL             string  `mapstructure:"base_url"`
-	Model               string  `mapstructure:"model"`
-	MaxCompletionTokens int     `mapstructure:"max_completion_tokens"`
-	Temperature         float64 `mapstructure:"temperature"`
-	TimeoutSeconds      int     `mapstructure:"timeout_seconds"`
+	OpenAI              llmclient.OpenAIConnectionProfile   `mapstructure:"openai"`
+	LLMProxy            llmclient.LLMProxyConnectionProfile `mapstructure:"llm_proxy"`
+	MaxCompletionTokens int                                 `mapstructure:"max_completion_tokens"`
+	Temperature         float64                             `mapstructure:"temperature"`
+	TimeoutSeconds      int                                 `mapstructure:"timeout_seconds"`
+}
+
+func (configuration ApplicationLLMConfiguration) connectionProfiles() llmclient.ConnectionProfiles {
+	return llmclient.ConnectionProfiles{
+		OpenAI:   configuration.OpenAI,
+		LLMProxy: configuration.LLMProxy,
+	}
+}
+
+func (configuration ApplicationLLMConfiguration) validateConnections() error {
+	return configuration.connectionProfiles().Validate()
 }
 
 // ApplicationOperationConfiguration captures reusable operation defaults from the configuration file.
@@ -84,28 +121,6 @@ func (configurations OperationConfigurations) Clone() OperationConfigurations {
 	return OperationConfigurations{entries: copiedEntries}
 }
 
-// MergeDefaults ensures default operation configurations are available when not overridden.
-func (configurations OperationConfigurations) MergeDefaults(defaults OperationConfigurations) OperationConfigurations {
-	configurations = configurations.Clone()
-	if len(defaults.entries) == 0 {
-		return configurations
-	}
-	if configurations.entries == nil {
-		configurations.entries = map[string]map[string]any{}
-	}
-	for defaultName, defaultOptions := range defaults.entries {
-		if _, exists := configurations.entries[defaultName]; exists {
-			continue
-		}
-		copiedOptions := make(map[string]any, len(defaultOptions))
-		for optionKey, optionValue := range defaultOptions {
-			copiedOptions[optionKey] = optionValue
-		}
-		configurations.entries[defaultName] = copiedOptions
-	}
-	return configurations
-}
-
 type configurationInitializationPlan struct {
 	DirectoryPath string
 	FilePath      string
@@ -117,7 +132,9 @@ func newOperationConfigurations(definitions []ApplicationOperationConfiguration)
 	for definitionIndex := range definitions {
 		normalizedName := workflowpkg.CommandPathKey(definitions[definitionIndex].Command)
 		if len(normalizedName) == 0 {
-			continue
+			return OperationConfigurations{}, InvalidOperationConfigurationError{
+				Cause: errors.New(operationConfigurationCommandRequiredMessageConstant),
+			}
 		}
 
 		if _, exists := seenOperations[normalizedName]; exists {
@@ -178,6 +195,7 @@ func (configurations OperationConfigurations) decode(operationName string, targe
 		TagName:          "mapstructure",
 		Result:           target,
 		WeaklyTypedInput: true,
+		ErrorUnused:      true,
 	})
 	if decoderError != nil {
 		return decoderError
@@ -188,26 +206,4 @@ func (configurations OperationConfigurations) decode(operationName string, targe
 
 func normalizeOperationName(raw string) string {
 	return strings.ToLower(strings.TrimSpace(raw))
-}
-
-func loadEmbeddedOperationConfigurations() OperationConfigurations {
-	configurationData, configurationType := EmbeddedDefaultConfiguration()
-	if len(configurationData) == 0 {
-		return OperationConfigurations{}
-	}
-
-	loader := utils.NewConfigurationLoader(configurationNameConstant, configurationTypeConstant, environmentPrefixConstant, nil)
-	loader.SetEmbeddedConfiguration(configurationData, configurationType)
-
-	var configuration ApplicationConfiguration
-	if _, err := loader.LoadConfiguration("", nil, &configuration); err != nil {
-		return OperationConfigurations{}
-	}
-
-	embeddedConfigurations, configurationError := newOperationConfigurations(configuration.Operations)
-	if configurationError != nil {
-		return OperationConfigurations{}
-	}
-
-	return embeddedConfigurations
 }

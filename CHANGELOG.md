@@ -6,7 +6,12 @@
 - _No changes._
 
 ### Improvements ⚙️
-- _No changes._
+- Replaced layered implicit configuration with one strict `config.yml`: explicit path, system file, then user file, with interactive user-file creation when none exists.
+- Removed dotenv discovery and the Viper configuration layer; placeholders now resolve only from the inherited process environment, while literal configuration values pass through unchanged.
+- Replaced top-level LLM provider/model selection with complete `openai` and `llm_proxy` profiles: each owns its routing fields, endpoint, interpolated credential, and positive unique priority.
+- Added ordered LLM failover: credentialed profiles run from lowest priority number to highest, request failures advance to the next profile, and the first successful response wins.
+- Moved GitHub CLI and GHCR credentials into the same load-time interpolation contract, eliminating their late environment reads and package-service URL override.
+- Removed runtime `GIX_*`, `api_key_env`, LLM `base_url`, working-directory config, `.yaml`, and embedded-default fallbacks from the configuration contract.
 
 ### Bug Fixes 🐛
 - Made strict-sync AI merge resolution visible and bounded: gix now reports conflict, resolution, validation, and recovery phases; applies `timeout_seconds` to the complete operation; and gives an exact manual handoff without pushing when a result is rejected, cancelled, or timed out.
@@ -26,6 +31,8 @@
 - Kept the syncflow builder description as the canonical text shown by `gix sync --help`.
 
 ### Testing 🧪
+- Added black-box coverage for configuration discovery, initialization prompts, process-only interpolation, ignored sibling `.env` files, literal credentials, missing placeholders, strict operation schemas, and LLM profile routing.
+- Added public CLI coverage for LLM connection priority, successful OpenAI-to-llm-proxy failover, stop-after-success behavior, obsolete schema rejection, and profile validation.
 - Added public CLI regressions for lossy and timed-out AI merge resolution, including phase output, heartbeat, timeout, no merge-resolution commit or push, and the manual recovery handoff.
 - Added public CLI coverage for explicit `gix sync master` from a missing, Git-prunable linked worktree.
 - Added a public plain-`gix sync` regression proving deletion of `legacy/managing-director/IMD Logo.png` is committed and pushed with the literal path argument.
@@ -38,6 +45,7 @@
 - Added black-box release coverage for clean-checkout helpers, failed or missing platform outputs, replaced published manifests, and missing integrity prerequisites.
 
 ### Docs 📚
+- Documented the canonical `config.yml` discovery and interpolation contract plus the exact Meta Muse-first and OpenAI-first priority settings.
 - Documented strict-sync AI merge-resolution deadlines, progress, and manual recovery behavior.
 - Documented explicit branch targets as binding dirty-commit destinations and distinguished explicit `master` from plain current-branch rescue.
 - Documented that unreviewed remote-backed branches accept dirty commits before the missing pull request is opened, while merged branches reject auto-commit.

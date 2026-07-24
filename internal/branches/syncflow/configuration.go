@@ -9,24 +9,15 @@ import (
 
 var commandConfigurationRepositorySanitizer = pathutils.NewRepositoryPathSanitizerWithConfiguration(nil, pathutils.RepositoryPathSanitizerConfiguration{PruneNestedPaths: true})
 
-const (
-	defaultCommitMessageTransport         = string(llmclient.DefaultTransport)
-	defaultCommitMessageAPIKeyEnvironment = llmclient.DefaultAPIKeyEnvironment
-	defaultCommitMessageBaseURL           = llmclient.DefaultBaseURL
-	defaultCommitMessageModel             = llmclient.DefaultModel
-	defaultCommitMessageTimeoutSeconds    = 60
-)
+const defaultCommitMessageTimeoutSeconds = 60
 
 // CommitMessageConfiguration captures LLM settings for automatic worktree checkpoint commits and strict-sync merge resolution.
 type CommitMessageConfiguration struct {
-	Transport      string  `mapstructure:"transport"`
-	Provider       string  `mapstructure:"provider"`
-	APIKeyEnv      string  `mapstructure:"api_key_env"`
-	BaseURL        string  `mapstructure:"base_url"`
-	Model          string  `mapstructure:"model"`
-	MaxTokens      int     `mapstructure:"max_completion_tokens"`
-	Temperature    float64 `mapstructure:"temperature"`
-	TimeoutSeconds int     `mapstructure:"timeout_seconds"`
+	LLMProxy           llmclient.LLMProxySelection  `mapstructure:"llm_proxy"`
+	MaxTokens          int                          `mapstructure:"max_completion_tokens"`
+	Temperature        float64                      `mapstructure:"temperature"`
+	TimeoutSeconds     int                          `mapstructure:"timeout_seconds"`
+	ConnectionProfiles llmclient.ConnectionProfiles `mapstructure:"-"`
 }
 
 // PullRequestConfiguration captures optional PR metadata overrides for sync-created pull requests.
@@ -58,13 +49,7 @@ func DefaultCommandConfiguration() CommandConfiguration {
 
 // DefaultCommitMessageConfiguration returns baseline LLM settings for adoption commits and strict-sync merge resolution.
 func DefaultCommitMessageConfiguration() CommitMessageConfiguration {
-	return CommitMessageConfiguration{
-		Transport:      defaultCommitMessageTransport,
-		APIKeyEnv:      defaultCommitMessageAPIKeyEnvironment,
-		BaseURL:        defaultCommitMessageBaseURL,
-		Model:          defaultCommitMessageModel,
-		TimeoutSeconds: defaultCommitMessageTimeoutSeconds,
-	}
+	return CommitMessageConfiguration{}
 }
 
 // Sanitize normalizes textual configuration values and repository roots.
@@ -90,34 +75,11 @@ func (configuration PullRequestConfiguration) Sanitize() PullRequestConfiguratio
 func (configuration CommitMessageConfiguration) Sanitize() CommitMessageConfiguration {
 	sanitized := configuration
 
-	transport := llmclient.NormalizeTransportName(configuration.Transport)
-	sanitized.Transport = transport
-	sanitized.Provider = strings.TrimSpace(configuration.Provider)
-
-	apiKeyEnv := strings.TrimSpace(configuration.APIKeyEnv)
-	if apiKeyEnv == "" {
-		apiKeyEnv = llmclient.DefaultAPIKeyEnvironmentForTransportName(transport)
-	}
-	sanitized.APIKeyEnv = apiKeyEnv
-
-	baseURL := strings.TrimSpace(configuration.BaseURL)
-	if baseURL == "" {
-		baseURL = llmclient.DefaultBaseURLForTransportName(transport)
-	}
-	sanitized.BaseURL = baseURL
-
-	model := strings.TrimSpace(configuration.Model)
-	if model == "" {
-		model = defaultCommitMessageModel
-	}
-	sanitized.Model = model
+	sanitized.LLMProxy.Provider = strings.TrimSpace(configuration.LLMProxy.Provider)
+	sanitized.LLMProxy.Model = strings.TrimSpace(configuration.LLMProxy.Model)
 
 	if sanitized.MaxTokens < 0 {
 		sanitized.MaxTokens = 0
-	}
-
-	if sanitized.TimeoutSeconds <= 0 {
-		sanitized.TimeoutSeconds = defaultCommitMessageTimeoutSeconds
 	}
 
 	return sanitized

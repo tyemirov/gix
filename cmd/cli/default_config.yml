@@ -4,10 +4,24 @@ common:
   assume_yes: false
   require_clean: false
 
+github:
+  credential: "${GH_TOKEN}"
+
 llm:
-  transport: openai_compatible
-  provider: ""
-  model: gpt-4.1
+  openai:
+    priority: 2
+    model: gpt-4.1
+    base_url: "https://api.openai.com/v1"
+    credential: "${OPENAI_API_KEY}"
+  llm_proxy:
+    priority: 1
+    provider: meta
+    model: muse-spark-1.1
+    base_url: "https://llm-proxy-api.mprlab.com"
+    credential: "${LLM_PROXY_SECRET_KEY}"
+  max_completion_tokens: 1200
+  temperature: 0
+  timeout_seconds: 60
 
 operations:
   - command: ["audit"]
@@ -16,6 +30,8 @@ operations:
         - .
   - command: ["packages", "delete"]
     with:
+      base_url: "https://api.github.com"
+      credential: "${GITHUB_PACKAGES_TOKEN}"
       roots:
         - .
   - command: ["prs", "delete"]
@@ -41,6 +57,14 @@ operations:
       push: true
       restore: true
       push_missing: false
+  - command: ["files", "replace"]
+    with:
+      roots:
+        - .
+  - command: ["files", "add"]
+    with:
+      roots:
+        - .
   - command: ["folder", "rename"]
     with:
       roots:

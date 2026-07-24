@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/tyemirov/gix/cmd/cli"
 )
 
 const (
@@ -50,6 +52,7 @@ func runFailingIntegrationCommand(testInstance *testing.T, repositoryRoot string
 
 func executeIntegrationCommand(testInstance *testing.T, repositoryRoot string, options integrationCommandOptions, timeout time.Duration, arguments []string) (string, error) {
 	testInstance.Helper()
+	arguments = injectIntegrationConfiguration(testInstance, arguments, options.EnvironmentOverrides)
 	executionContext, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
@@ -173,7 +176,28 @@ func runBinaryIntegrationCommand(
 	timeout time.Duration,
 	arguments []string,
 ) (string, error) {
+	return runBinaryIntegrationCommandWithInput(
+		testInstance,
+		binaryPath,
+		workingDirectory,
+		environmentOverrides,
+		timeout,
+		"",
+		arguments,
+	)
+}
+
+func runBinaryIntegrationCommandWithInput(
+	testInstance *testing.T,
+	binaryPath string,
+	workingDirectory string,
+	environmentOverrides map[string]string,
+	timeout time.Duration,
+	input string,
+	arguments []string,
+) (string, error) {
 	testInstance.Helper()
+	arguments = injectBinaryIntegrationConfiguration(testInstance, arguments, environmentOverrides)
 
 	executionContext, cancelFunction := context.WithTimeout(context.Background(), timeout)
 	defer cancelFunction()
@@ -181,10 +205,61 @@ func runBinaryIntegrationCommand(
 	command := exec.CommandContext(executionContext, binaryPath, arguments...)
 	command.Dir = workingDirectory
 	command.Env = buildCommandEnvironment(integrationCommandOptions{EnvironmentOverrides: environmentOverrides})
+	command.Stdin = strings.NewReader(input)
 
 	outputBytes, runError := command.CombinedOutput()
 	outputText := string(outputBytes)
 	return outputText, runError
+}
+
+func injectIntegrationConfiguration(testInstance *testing.T, arguments []string, environmentOverrides map[string]string) []string {
+	testInstance.Helper()
+	if len(arguments) < 2 || arguments[0] != "run" || arguments[1] != "." {
+		return arguments
+	}
+	if integrationConfigurationInjectionDisabled(environmentOverrides) || containsConfigurationFlag(arguments[2:]) {
+		return arguments
+	}
+	configurationPath := writeCanonicalIntegrationConfiguration(testInstance)
+	injectedArguments := append([]string{}, arguments[:2]...)
+	injectedArguments = append(injectedArguments, "--config", configurationPath)
+	injectedArguments = append(injectedArguments, arguments[2:]...)
+	return injectedArguments
+}
+
+func injectBinaryIntegrationConfiguration(testInstance *testing.T, arguments []string, environmentOverrides map[string]string) []string {
+	testInstance.Helper()
+	if len(arguments) == 0 || arguments[0] == "init" || integrationConfigurationInjectionDisabled(environmentOverrides) || containsConfigurationFlag(arguments) {
+		return arguments
+	}
+	configurationPath := writeCanonicalIntegrationConfiguration(testInstance)
+	injectedArguments := []string{"--config", configurationPath}
+	return append(injectedArguments, arguments...)
+}
+
+func integrationConfigurationInjectionDisabled(environmentOverrides map[string]string) bool {
+	return environmentOverrides["GIX_TEST_DISABLE_CONFIG_INJECTION"] == "1"
+}
+
+func containsConfigurationFlag(arguments []string) bool {
+	for argumentIndex := range arguments {
+		if arguments[argumentIndex] == "--config" || strings.HasPrefix(arguments[argumentIndex], "--config=") {
+			return true
+		}
+	}
+	return false
+}
+
+func writeCanonicalIntegrationConfiguration(testInstance *testing.T) string {
+	testInstance.Helper()
+	configurationContent, _ := cli.EmbeddedDefaultConfiguration()
+	configurationText := strings.ReplaceAll(string(configurationContent), "${OPENAI_API_KEY}", "integration-openai-key")
+	configurationText = strings.ReplaceAll(configurationText, "${LLM_PROXY_SECRET_KEY}", "integration-proxy-key")
+	configurationText = strings.ReplaceAll(configurationText, "${GH_TOKEN}", "integration-github-key")
+	configurationText = strings.ReplaceAll(configurationText, "${GITHUB_PACKAGES_TOKEN}", "integration-packages-key")
+	configurationPath := filepath.Join(testInstance.TempDir(), "config.yml")
+	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(configurationText), 0o600))
+	return configurationPath
 }
 
 type gitRepositoryOptions struct {

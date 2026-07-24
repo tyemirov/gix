@@ -18,6 +18,7 @@ import (
 
 	"github.com/tyemirov/gix/internal/branches"
 	"github.com/tyemirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/githubauth"
 	"github.com/tyemirov/gix/internal/repos/shared"
 	flagutils "github.com/tyemirov/gix/internal/utils/flags"
 )
@@ -138,7 +139,7 @@ func TestPullRequestCleanupIntegration(testInstance *testing.T) {
 
 		flagutils.BindRootFlags(cleanupCommand, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Enabled: true})
 
-		cleanupCommand.SetContext(context.Background())
+		cleanupCommand.SetContext(githubauth.WithCredential(context.Background(), "test-token"))
 		cleanupCommand.SetArgs([]string{
 			integrationCommandRemoteFlagConstant,
 			integrationRemoteNameConstant,

@@ -15,6 +15,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/tyemirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/githubauth"
 	"github.com/tyemirov/gix/internal/githubcli"
 	"github.com/tyemirov/gix/internal/gitrepo"
 	migrate "github.com/tyemirov/gix/internal/migrate"
@@ -240,7 +241,8 @@ func TestMigrationIntegration(testInstance *testing.T) {
 				DeleteSourceBranch:   testCase.deleteSourceBranch,
 			}
 
-			result, migrationError := service.Execute(context.Background(), options)
+			executionContext := githubauth.WithCredential(context.Background(), "integration-token")
+			result, migrationError := service.Execute(executionContext, options)
 			require.NoError(subtest, migrationError)
 
 			require.Len(subtest, result.WorkflowOutcome.UpdatedFiles, 1)

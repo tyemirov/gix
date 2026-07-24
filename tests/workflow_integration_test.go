@@ -45,8 +45,7 @@ const (
 	workflowIntegrationHTTPSRemote             = "https://github.com/origin/example.git"
 	workflowIntegrationStubExecutable          = "gh"
 	workflowIntegrationStateFileName           = "default_branch.txt"
-	workflowIntegrationConfigFileName          = "config.yaml"
-	workflowIntegrationConfigSearchPathEnvVar  = "GIX_CONFIG_SEARCH_PATH"
+	workflowIntegrationConfigFileName          = "config.yml"
 	workflowIntegrationAuditFileName           = "audit.csv"
 	workflowIntegrationBranchCommitMessage     = "CI: switch workflow branch filters to master"
 	workflowIntegrationRepoViewJSONTemplate    = "{\"nameWithOwner\":\"canonical/example\",\"defaultBranchRef\":{\"name\":\"%s\"},\"description\":\"\"}\n"
@@ -64,9 +63,8 @@ const (
 	workflowIntegrationDefaultCaseName         = "protocol_default_audit"
 	workflowIntegrationConfigFlagCaseName      = "config_flag_without_positional"
 	workflowIntegrationRepositoryConfigCase    = "repository_root_configuration"
-	workflowIntegrationHelpCaseName            = "workflow_help_missing_configuration"
-	workflowIntegrationUsageSnippet            = "workflow <configuration|preset>"
-	workflowIntegrationMissingConfigMessage    = "workflow configuration path or preset name required; provide a positional argument or --config flag"
+	workflowIntegrationHelpCaseName            = "workflow_rejects_config_without_steps"
+	workflowIntegrationAuditPathVariable       = "GIX_WORKFLOW_AUDIT_PATH"
 )
 
 func TestWorkflowRunIntegration(testInstance *testing.T) {
@@ -95,7 +93,7 @@ func TestWorkflowRunIntegration(testInstance *testing.T) {
 		{
 			name:                         workflowIntegrationRepositoryConfigCase,
 			includePositionalWorkflowArg: false,
-			includeConfigFlag:            false,
+			includeConfigFlag:            true,
 			useRepositoryRootConfig:      true,
 		},
 	}
@@ -147,7 +145,13 @@ func TestWorkflowRunIntegration(testInstance *testing.T) {
 			}
 
 			auditPath := filepath.Join(tempDirectory, workflowIntegrationAuditFileName)
-			workflowConfig := buildWorkflowConfiguration(auditPath)
+			configuredAuditPath := auditPath
+			commandEnvironment := map[string]string{}
+			if testCase.name == workflowIntegrationConfigFlagCaseName {
+				configuredAuditPath = "${" + workflowIntegrationAuditPathVariable + "}"
+				commandEnvironment[workflowIntegrationAuditPathVariable] = auditPath
+			}
+			workflowConfig := buildWorkflowConfiguration(configuredAuditPath)
 			require.NoError(subtest, os.WriteFile(configPath, []byte(workflowConfig), 0o644))
 
 			if testCase.useRepositoryRootConfig {
@@ -191,7 +195,10 @@ func TestWorkflowRunIntegration(testInstance *testing.T) {
 				workflowIntegrationYesFlag,
 			)
 
-			commandOptions := integrationCommandOptions{PathVariable: extendedPath}
+			commandOptions := integrationCommandOptions{
+				PathVariable:         extendedPath,
+				EnvironmentOverrides: commandEnvironment,
+			}
 			rawOutput := runIntegrationCommand(subtest, repositoryRoot, commandOptions, workflowIntegrationTimeout, commandArguments)
 			filteredOutput := filterStructuredOutput(rawOutput)
 
@@ -511,9 +518,7 @@ func TestWorkflowRunDisplaysHelpWhenConfigurationMissing(testInstance *testing.T
 				workflowIntegrationCommand,
 			},
 			expectedSnippets: []string{
-				integrationHelpUsagePrefixConstant,
-				workflowIntegrationUsageSnippet,
-				workflowIntegrationMissingConfigMessage,
+				"workflow configuration must define at least one step",
 			},
 		},
 	}
@@ -522,12 +527,7 @@ func TestWorkflowRunDisplaysHelpWhenConfigurationMissing(testInstance *testing.T
 		testCase := testCases[testCaseIndex]
 		subtestName := fmt.Sprintf(workflowIntegrationSubtestNameTemplate, testCaseIndex, testCase.name)
 		testInstance.Run(subtestName, func(subtest *testing.T) {
-			emptyDirectory := subtest.TempDir()
-			commandOptions := integrationCommandOptions{
-				EnvironmentOverrides: map[string]string{
-					workflowIntegrationConfigSearchPathEnvVar: emptyDirectory,
-				},
-			}
+			commandOptions := integrationCommandOptions{}
 			outputText, _ := runFailingIntegrationCommand(subtest, repositoryRoot, commandOptions, workflowIntegrationTimeout, testCase.arguments)
 			filteredOutput := filterStructuredOutput(outputText)
 			for _, expectedSnippet := range testCase.expectedSnippets {
@@ -590,6 +590,21 @@ func initializeWorkflowRepository(testInstance *testing.T, repositoryPath string
 func buildWorkflowConfiguration(auditPath string) string {
 	return fmt.Sprintf(`common:
   log_level: error
+  log_format: console
+github:
+  credential: test-github-key
+llm:
+  openai:
+    priority: 1
+    model: gpt-4.1
+    base_url: https://api.openai.com/v1
+    credential: integration-openai-key
+  llm_proxy:
+    priority: 2
+    provider: meta
+    model: muse-spark-1.1
+    base_url: https://llm-proxy.example
+    credential: integration-proxy-key
 operations:
   - command: ["workflow"]
     with: &workflow_defaults
@@ -614,11 +629,6 @@ operations:
       roots:
         - .
       debug: false
-      targets:
-        - remote_name: origin
-          target_branch: master
-          push_to_remote: false
-          delete_source_branch: false
 workflow:
   - step:
       command: ["remote", "update-protocol"]
@@ -632,6 +642,11 @@ workflow:
       command: ["default"]
       with:
         <<: *migration_defaults
+        targets:
+          - remote_name: origin
+            target_branch: master
+            push_to_remote: false
+            delete_source_branch: false
   - step:
       command: ["audit", "report"]
       with:

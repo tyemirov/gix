@@ -1,7 +1,6 @@
 package cli_test
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,8 +10,8 @@ import (
 	"testing"
 
 	mapstructure "github.com/go-viper/mapstructure/v2"
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 
 	"github.com/tyemirov/gix/cmd/cli"
 	repos "github.com/tyemirov/gix/cmd/cli/repos"
@@ -26,15 +25,15 @@ import (
 )
 
 const (
-	testConfigurationFileNameConstant                        = "config.yaml"
-	testConfigurationHeaderConstant                          = "common:\n  log_level: error\n  log_format: structured\noperations:\n"
-	testConsoleConfigurationHeaderConstant                   = "common:\n  log_level: error\n  log_format: console\noperations:\n"
-	testDebugConfigurationHeaderConstant                     = "common:\n  log_level: debug\n  log_format: structured\noperations:\n"
-	testDebugConsoleConfigurationHeaderConstant              = "common:\n  log_level: debug\n  log_format: console\noperations:\n"
+	testConfigurationFileNameConstant                        = "config.yml"
+	testLLMConfigurationBlockConstant                        = "llm:\n  openai:\n    priority: 2\n    model: gpt-4.1\n    base_url: https://api.openai.com/v1\n    credential: openai-test-secret\n  llm_proxy:\n    priority: 1\n    provider: meta\n    model: muse-spark-1.1\n    base_url: https://llm-proxy.example\n    credential: proxy-test-secret\n"
+	testConfigurationHeaderConstant                          = "common:\n  log_level: error\n  log_format: structured\n" + testLLMConfigurationBlockConstant + "operations:\n"
+	testConsoleConfigurationHeaderConstant                   = "common:\n  log_level: error\n  log_format: console\n" + testLLMConfigurationBlockConstant + "operations:\n"
+	testDebugConfigurationHeaderConstant                     = "common:\n  log_level: debug\n  log_format: structured\n" + testLLMConfigurationBlockConstant + "operations:\n"
+	testDebugConsoleConfigurationHeaderConstant              = "common:\n  log_level: debug\n  log_format: console\n" + testLLMConfigurationBlockConstant + "operations:\n"
 	testOperationBlockTemplateConstant                       = "  - command: %s\n    with:\n%s"
 	testOperationRootsTemplateConstant                       = "      roots:\n        - %s\n"
 	testOperationRootDirectoryConstant                       = "/tmp/config-root"
-	testConfigurationSearchPathEnvironmentName               = "GIX_CONFIG_SEARCH_PATH"
 	testPackagesCommandNameConstant                          = "packages"
 	testPackagesCommandKeyConstant                           = "packages delete"
 	testBranchDefaultCommandNameConstant                     = "default"
@@ -81,12 +80,10 @@ const (
 	configurationDirectoryRoleWorkingConstant                = "working"
 	configurationDirectoryRoleHomeConstant                   = "home"
 	configurationDirectoryRoleNoneConstant                   = "none"
-	configurationInitializationLocalTestNameConstant         = "LocalScope"
 	configurationInitializationUserTestNameConstant          = "UserScope"
 	configurationInitializationForceRequiredTestNameConstant = "ForceRequired"
 	configurationInitializationForceEnabledTestNameConstant  = "ForceEnabled"
 	configurationInitializationCommandArgumentConstant       = "init"
-	configurationInitializationUserFlagConstant              = "--user"
 	configurationInitializationForceFlagConstant             = "--force"
 	configurationInitializationExistingContentConstant       = "common:\n  log_level: error\n"
 	configurationInitializationErrorMessageFragmentConstant  = "already exists"
@@ -133,7 +130,7 @@ func TestApplicationInitializeConfiguration(t *testing.T) {
 			commandUse:            testPackagesCommandNameConstant,
 		},
 		{
-			name: "CommandConfigurationMissingForTargetCommandIgnored",
+			name: "CommandConfigurationMissingForTargetCommandRejected",
 			commandKeys: []string{
 				"audit",
 				"packages delete",
@@ -143,20 +140,22 @@ func TestApplicationInitializeConfiguration(t *testing.T) {
 				"remote update-protocol",
 				"workflow",
 			},
-			commandUse: testBranchDefaultCommandNameConstant,
+			expectedErrorSample:   &cli.MissingOperationConfigurationError{},
+			expectedOperationName: testBranchDefaultCommandKeyConstant,
+			commandUse:            testBranchDefaultCommandNameConstant,
 		},
 	}
 
 	for _, testCase := range testCases {
 		testCase := testCase
 		t.Run(testCase.name, func(t *testing.T) {
-			temporaryDirectory := t.TempDir()
+			homeDirectory := t.TempDir()
 			configurationContent := buildConfigurationContent(testCase.commandKeys)
-			configurationPath := filepath.Join(temporaryDirectory, testConfigurationFileNameConstant)
+			configurationPath := filepath.Join(homeDirectory, testUserConfigurationDirectoryNameConstant, testConfigurationFileNameConstant)
 
 			writeConfigurationFile(t, configurationPath, configurationContent)
 
-			t.Setenv(testConfigurationSearchPathEnvironmentName, temporaryDirectory)
+			t.Setenv("HOME", homeDirectory)
 
 			application := cli.NewApplication()
 
@@ -302,12 +301,13 @@ func TestApplicationInitializationLoggingModes(testInstance *testing.T) {
 	for _, testCase := range testCases {
 		testCase := testCase
 		testInstance.Run(testCase.name, func(t *testing.T) {
-			configurationDirectory := t.TempDir()
+			homeDirectory := t.TempDir()
+			configurationDirectory := filepath.Join(homeDirectory, testUserConfigurationDirectoryNameConstant)
 			configurationContent := buildConfigurationContentWithHeader(testCase.configurationHeader, requiredCommandKeys)
 			configurationPath := filepath.Join(configurationDirectory, testConfigurationFileNameConstant)
 
 			writeConfigurationFile(t, configurationPath, configurationContent)
-			t.Setenv(testConfigurationSearchPathEnvironmentName, configurationDirectory)
+			t.Setenv("HOME", homeDirectory)
 
 			application := cli.NewApplication()
 			stderrCapture := startTestStderrCapture(t)
@@ -330,68 +330,23 @@ func TestApplicationConfigurationInitializationCreatesConfiguration(testInstance
 	embeddedConfigurationContent, _ := cli.EmbeddedDefaultConfiguration()
 	require.NotEmpty(testInstance, embeddedConfigurationContent)
 
-	testCases := []struct {
-		name      string
-		arguments []string
-		setup     func(*testing.T) string
-	}{
-		{
-			name:      configurationInitializationLocalTestNameConstant,
-			arguments: []string{configurationInitializationCommandArgumentConstant},
-			setup: func(t *testing.T) string {
-				workingDirectory := t.TempDir()
-				originalWorkingDirectory, workingDirectoryError := os.Getwd()
-				require.NoError(t, workingDirectoryError)
-				require.NoError(t, os.Chdir(workingDirectory))
-				t.Cleanup(func() {
-					require.NoError(t, os.Chdir(originalWorkingDirectory))
-				})
+	homeDirectory := testInstance.TempDir()
+	testInstance.Setenv(configurationInitializationUserHomeEnvNameConstant, homeDirectory)
+	expectedConfigurationPath := filepath.Join(homeDirectory, testUserConfigurationDirectoryNameConstant, testConfigurationFileNameConstant)
 
-				return filepath.Join(workingDirectory, testConfigurationFileNameConstant)
-			},
-		},
-		{
-			name: configurationInitializationUserTestNameConstant,
-			arguments: []string{
-				configurationInitializationCommandArgumentConstant,
-				configurationInitializationUserFlagConstant,
-			},
-			setup: func(t *testing.T) string {
-				workingDirectory := t.TempDir()
-				originalWorkingDirectory, workingDirectoryError := os.Getwd()
-				require.NoError(t, workingDirectoryError)
-				require.NoError(t, os.Chdir(workingDirectory))
-				t.Cleanup(func() {
-					require.NoError(t, os.Chdir(originalWorkingDirectory))
-				})
+	originalArguments := os.Args
+	os.Args = []string{configurationInitializationApplicationNameConstant, configurationInitializationCommandArgumentConstant}
+	testInstance.Cleanup(func() {
+		os.Args = originalArguments
+	})
 
-				homeDirectory := t.TempDir()
-				t.Setenv(configurationInitializationUserHomeEnvNameConstant, homeDirectory)
+	application := cli.NewApplication()
+	executionError := application.Execute()
+	require.NoError(testInstance, executionError)
 
-				return filepath.Join(homeDirectory, testUserConfigurationDirectoryNameConstant, testConfigurationFileNameConstant)
-			},
-		},
-	}
-
-	for testCaseIndex, testCase := range testCases {
-		testInstance.Run(fmt.Sprintf(applicationSearchPathSubtestNameTemplateConstant, testCaseIndex, testCase.name), func(t *testing.T) {
-			expectedConfigurationPath := testCase.setup(t)
-
-			originalArguments := os.Args
-			os.Args = append([]string{configurationInitializationApplicationNameConstant}, testCase.arguments...)
-			t.Cleanup(func() {
-				os.Args = originalArguments
-			})
-
-			application := cli.NewApplication()
-			executionError := application.Execute()
-			require.NoError(t, executionError)
-
-			fileContent, readError := os.ReadFile(expectedConfigurationPath)
-			require.NoError(t, readError)
-			require.Equal(t, embeddedConfigurationContent, fileContent)
-		})
-	}
+	fileContent, readError := os.ReadFile(expectedConfigurationPath)
+	require.NoError(testInstance, readError)
+	require.Equal(testInstance, embeddedConfigurationContent, fileContent)
 }
 
 func TestApplicationConfigurationInitializationForceHandling(testInstance *testing.T) {
@@ -420,15 +375,10 @@ func TestApplicationConfigurationInitializationForceHandling(testInstance *testi
 
 	for testCaseIndex, testCase := range testCases {
 		testInstance.Run(fmt.Sprintf(applicationSearchPathSubtestNameTemplateConstant, testCaseIndex, testCase.name), func(t *testing.T) {
-			workingDirectory := t.TempDir()
-			originalWorkingDirectory, workingDirectoryError := os.Getwd()
-			require.NoError(t, workingDirectoryError)
-			require.NoError(t, os.Chdir(workingDirectory))
-			t.Cleanup(func() {
-				require.NoError(t, os.Chdir(originalWorkingDirectory))
-			})
-
-			configurationPath := filepath.Join(workingDirectory, testConfigurationFileNameConstant)
+			homeDirectory := t.TempDir()
+			t.Setenv(configurationInitializationUserHomeEnvNameConstant, homeDirectory)
+			configurationPath := filepath.Join(homeDirectory, testUserConfigurationDirectoryNameConstant, testConfigurationFileNameConstant)
+			require.NoError(t, os.MkdirAll(filepath.Dir(configurationPath), 0o755))
 			writeError := os.WriteFile(configurationPath, []byte(configurationInitializationExistingContentConstant), 0o600)
 			require.NoError(t, writeError)
 
@@ -463,44 +413,17 @@ func TestApplicationConfigurationInitializationForceHandling(testInstance *testi
 func TestApplicationConfigurationSearchPaths(testInstance *testing.T) {
 	fullConfigurationContent := buildConfigurationContent(requiredCommandKeys)
 	testCases := []struct {
-		name                                string
-		createWorkingDirectoryConfiguration bool
-		createXDGConfiguration              bool
-		createHomeConfiguration             bool
-		workingDirectoryConfiguration       string
-		expectedDirectoryRole               string
+		name                    string
+		createUserConfiguration bool
+		expectMissingError      bool
 	}{
 		{
-			name:                                testCaseWorkingDirectoryPreferredMessageConstant,
-			createWorkingDirectoryConfiguration: true,
-			createXDGConfiguration:              true,
-			createHomeConfiguration:             true,
-			workingDirectoryConfiguration:       testConfigurationHeaderConstant,
-			expectedDirectoryRole:               configurationDirectoryRoleWorkingConstant,
+			name:                    "UserConfigurationPreferredOverWorkingAndXDG",
+			createUserConfiguration: true,
 		},
 		{
-			name:                                testCaseXDGDirectoryIgnoredMessageConstant,
-			createWorkingDirectoryConfiguration: false,
-			createXDGConfiguration:              true,
-			createHomeConfiguration:             true,
-			workingDirectoryConfiguration:       "",
-			expectedDirectoryRole:               configurationDirectoryRoleHomeConstant,
-		},
-		{
-			name:                                testCaseXDGOnlyIgnoredMessageConstant,
-			createWorkingDirectoryConfiguration: false,
-			createXDGConfiguration:              true,
-			createHomeConfiguration:             false,
-			workingDirectoryConfiguration:       "",
-			expectedDirectoryRole:               configurationDirectoryRoleNoneConstant,
-		},
-		{
-			name:                                testCaseHomeDirectoryFallbackMessageConstant,
-			createWorkingDirectoryConfiguration: false,
-			createXDGConfiguration:              false,
-			createHomeConfiguration:             true,
-			workingDirectoryConfiguration:       "",
-			expectedDirectoryRole:               configurationDirectoryRoleHomeConstant,
+			name:               "WorkingAndXDGConfigurationsIgnored",
+			expectMissingError: true,
 		},
 	}
 
@@ -513,7 +436,6 @@ func TestApplicationConfigurationSearchPaths(testInstance *testing.T) {
 
 			testInstance.Setenv("HOME", homeDirectoryPath)
 			testInstance.Setenv("XDG_CONFIG_HOME", xdgConfigHomeDirectoryPath)
-			testInstance.Setenv(testConfigurationSearchPathEnvironmentName, "")
 
 			homeConfigurationDirectoryPath := filepath.Join(homeDirectoryPath, testUserConfigurationDirectoryNameConstant)
 			xdgConfigurationDirectoryPath := filepath.Join(xdgConfigHomeDirectoryPath, testUserConfigurationDirectoryNameConstant)
@@ -528,31 +450,14 @@ func TestApplicationConfigurationSearchPaths(testInstance *testing.T) {
 				require.NoError(testInstance, os.Chdir(previousWorkingDirectoryPath))
 			})
 
-			if testCase.createWorkingDirectoryConfiguration {
-				workingDirectoryConfigurationPath := filepath.Join(workingDirectoryPath, testConfigurationFileNameConstant)
-				writeConfigurationFile(testInstance, workingDirectoryConfigurationPath, testCase.workingDirectoryConfiguration)
-			}
+			workingDirectoryConfigurationPath := filepath.Join(workingDirectoryPath, testConfigurationFileNameConstant)
+			writeConfigurationFile(testInstance, workingDirectoryConfigurationPath, fullConfigurationContent)
+			xdgConfigurationPath := filepath.Join(xdgConfigurationDirectoryPath, testConfigurationFileNameConstant)
+			writeConfigurationFile(testInstance, xdgConfigurationPath, fullConfigurationContent)
 
-			if testCase.createXDGConfiguration {
-				xdgConfigurationPath := filepath.Join(xdgConfigurationDirectoryPath, testConfigurationFileNameConstant)
-				writeConfigurationFile(testInstance, xdgConfigurationPath, fullConfigurationContent)
-			}
-
-			if testCase.createHomeConfiguration {
+			if testCase.createUserConfiguration {
 				homeConfigurationPath := filepath.Join(homeConfigurationDirectoryPath, testConfigurationFileNameConstant)
 				writeConfigurationFile(testInstance, homeConfigurationPath, fullConfigurationContent)
-			}
-
-			expectedConfigurationPathByRole := map[string]string{
-				configurationDirectoryRoleWorkingConstant: filepath.Join(workingDirectoryPath, testConfigurationFileNameConstant),
-				configurationDirectoryRoleHomeConstant:    filepath.Join(homeConfigurationDirectoryPath, testConfigurationFileNameConstant),
-				configurationDirectoryRoleNoneConstant:    "",
-			}
-
-			expectedConfigurationPath, expectedPathKnown := expectedConfigurationPathByRole[testCase.expectedDirectoryRole]
-			require.True(testInstance, expectedPathKnown, "unexpected directory role %s", testCase.expectedDirectoryRole)
-			if len(expectedConfigurationPath) > 0 {
-				expectedConfigurationPath = resolveSymlinkedPath(testInstance, expectedConfigurationPath)
 			}
 
 			application := cli.NewApplication()
@@ -561,14 +466,17 @@ func TestApplicationConfigurationSearchPaths(testInstance *testing.T) {
 			initializationError := application.InitializeForCommand(testPackagesCommandNameConstant)
 			capturedOutput := stderrCapture.Stop(testInstance)
 
-			require.NoError(testInstance, initializationError)
 			require.Empty(testInstance, strings.TrimSpace(capturedOutput))
-
-			configurationFilePath := application.ConfigFileUsed()
-			if len(configurationFilePath) > 0 {
-				configurationFilePath = resolveSymlinkedPath(testInstance, configurationFilePath)
+			if testCase.expectMissingError {
+				require.Error(testInstance, initializationError)
+				require.Contains(testInstance, initializationError.Error(), "requires config.yml")
+				require.Empty(testInstance, application.ConfigFileUsed())
+				return
 			}
-			require.Equal(testInstance, expectedConfigurationPath, configurationFilePath)
+
+			require.NoError(testInstance, initializationError)
+			expectedConfigurationPath := resolveSymlinkedPath(testInstance, filepath.Join(homeConfigurationDirectoryPath, testConfigurationFileNameConstant))
+			require.Equal(testInstance, expectedConfigurationPath, resolveSymlinkedPath(testInstance, application.ConfigFileUsed()))
 		})
 	}
 }
@@ -578,7 +486,6 @@ func TestApplicationConfigurationCliFlagOverridesScopes(t *testing.T) {
 	homeDirectory := t.TempDir()
 
 	t.Setenv("HOME", homeDirectory)
-	t.Setenv(testConfigurationSearchPathEnvironmentName, "")
 
 	require.NoError(t, os.MkdirAll(filepath.Join(homeDirectory, testUserConfigurationDirectoryNameConstant), 0o755))
 
@@ -593,7 +500,7 @@ func TestApplicationConfigurationCliFlagOverridesScopes(t *testing.T) {
 	userConfigurationPath := filepath.Join(homeDirectory, testUserConfigurationDirectoryNameConstant, testConfigurationFileNameConstant)
 
 	buildHeader := func(logLevel string) string {
-		return fmt.Sprintf("common:\n  log_level: %s\n  log_format: structured\noperations:\n", logLevel)
+		return fmt.Sprintf("common:\n  log_level: %s\n  log_format: structured\n%soperations:\n", logLevel, testLLMConfigurationBlockConstant)
 	}
 
 	writeConfigurationFile(t, localConfigurationPath, buildConfigurationContentWithHeader(buildHeader("info"), requiredCommandKeys))
@@ -643,11 +550,18 @@ func TestApplicationConfigurationCliFlagOverridesScopes(t *testing.T) {
 	require.Equal(t, expectedConfigPath, actualConfigPath)
 }
 
-func TestApplicationEmbeddedDefaultsProvideCommandConfigurations(testInstance *testing.T) {
+func TestCanonicalConfigurationTemplateProvidesCompleteCommandConfigurations(testInstance *testing.T) {
 	embeddedConfiguration := decodeEmbeddedApplicationConfiguration(testInstance)
-	require.Equal(testInstance, "openai_compatible", embeddedConfiguration.LLM.Transport)
-	require.Empty(testInstance, embeddedConfiguration.LLM.Provider)
-	require.Equal(testInstance, "gpt-4.1", embeddedConfiguration.LLM.Model)
+	require.Equal(testInstance, "${GH_TOKEN}", embeddedConfiguration.GitHub.Credential)
+	require.Equal(testInstance, 2, embeddedConfiguration.LLM.OpenAI.Priority)
+	require.Equal(testInstance, "gpt-4.1", embeddedConfiguration.LLM.OpenAI.Model)
+	require.Equal(testInstance, "https://api.openai.com/v1", embeddedConfiguration.LLM.OpenAI.BaseURL)
+	require.Equal(testInstance, "${OPENAI_API_KEY}", embeddedConfiguration.LLM.OpenAI.Credential)
+	require.Equal(testInstance, 1, embeddedConfiguration.LLM.LLMProxy.Priority)
+	require.Equal(testInstance, "meta", embeddedConfiguration.LLM.LLMProxy.Provider)
+	require.Equal(testInstance, "muse-spark-1.1", embeddedConfiguration.LLM.LLMProxy.Model)
+	require.Equal(testInstance, "https://llm-proxy-api.mprlab.com", embeddedConfiguration.LLM.LLMProxy.BaseURL)
+	require.Equal(testInstance, "${LLM_PROXY_SECRET_KEY}", embeddedConfiguration.LLM.LLMProxy.Credential)
 
 	operationIndex := buildEmbeddedOperationIndex(testInstance)
 
@@ -687,6 +601,8 @@ func TestApplicationEmbeddedDefaultsProvideCommandConfigurations(testInstance *t
 
 				assertions := require.New(assertionTarget)
 				assertions.Equal([]string{embeddedDefaultRootPathConstant}, sanitized.RepositoryRoots)
+				assertions.Equal("https://api.github.com", sanitized.BaseURL)
+				assertions.Equal("${GITHUB_PACKAGES_TOKEN}", sanitized.Credential)
 			},
 		},
 		{
@@ -812,12 +728,6 @@ func TestApplicationEmbeddedDefaultsProvideCommandConfigurations(testInstance *t
 	for _, testCase := range testCases {
 		testCase := testCase
 		testInstance.Run(testCase.name, func(t *testing.T) {
-			t.Setenv(testConfigurationSearchPathEnvironmentName, t.TempDir())
-
-			application := cli.NewApplication()
-			initializationError := application.InitializeForCommand(testCase.commandUse)
-			require.NoError(t, initializationError)
-
 			normalizedCommandKey := normalizeCommandKey(testCase.commandKey)
 			operationOptions, exists := operationIndex[normalizedCommandKey]
 			require.True(t, exists)
@@ -877,6 +787,7 @@ func normalizeCommandKey(commandKey string) string {
 func writeConfigurationFile(t *testing.T, configurationPath string, configurationContent string) {
 	t.Helper()
 
+	require.NoError(t, os.MkdirAll(filepath.Dir(configurationPath), 0o755))
 	writeError := os.WriteFile(configurationPath, []byte(configurationContent), 0o600)
 	require.NoError(t, writeError)
 }
@@ -907,16 +818,19 @@ func buildEmbeddedOperationIndex(testingInstance testing.TB) map[string]map[stri
 func decodeEmbeddedApplicationConfiguration(testingInstance testing.TB) cli.ApplicationConfiguration {
 	testingInstance.Helper()
 
-	configurationData, configurationType := cli.EmbeddedDefaultConfiguration()
-	viperInstance := viper.New()
-	viperInstance.SetConfigType(configurationType)
-
-	readError := viperInstance.ReadConfig(bytes.NewReader(configurationData))
-	require.NoError(testingInstance, readError)
+	configurationData, _ := cli.EmbeddedDefaultConfiguration()
+	rawConfiguration := map[string]any{}
+	require.NoError(testingInstance, yaml.Unmarshal(configurationData, &rawConfiguration))
 
 	var configuration cli.ApplicationConfiguration
-	unmarshalError := viperInstance.Unmarshal(&configuration)
-	require.NoError(testingInstance, unmarshalError)
+	decoder, decoderError := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		TagName:          "mapstructure",
+		Result:           &configuration,
+		ErrorUnused:      true,
+		WeaklyTypedInput: true,
+	})
+	require.NoError(testingInstance, decoderError)
+	require.NoError(testingInstance, decoder.Decode(rawConfiguration))
 
 	return configuration
 }

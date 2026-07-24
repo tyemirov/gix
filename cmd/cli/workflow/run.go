@@ -17,24 +17,25 @@ import (
 )
 
 const (
-	commandUseConstant                       = "workflow <configuration|preset>"
-	commandShortDescriptionConstant          = "Run a workflow configuration file or embedded preset"
-	commandLongDescriptionConstant           = "workflow executes operations defined in a YAML/JSON configuration or runs embedded presets (see --list-presets) across discovered repositories."
-	commandExampleConstant                   = "gix workflow ./workflow.yaml --roots ~/Development\n  gix workflow license --roots ~/Development --yes"
-	requireCleanFlagNameConstant             = "require-clean"
-	requireCleanFlagDescriptionConstant      = "Require clean worktrees for rename operations"
-	variableFlagNameConstant                 = "var"
-	variableFlagDescriptionConstant          = "Set workflow variable (key=value). Repeatable."
-	variableFileFlagNameConstant             = "var-file"
-	variableFileFlagDescriptionConstant      = "Load workflow variables from a YAML/JSON file. Repeatable."
-	workflowWorkersFlagNameConstant          = "workflow-workers"
-	workflowWorkersFlagDescriptionConstant   = "Maximum number of repositories to process concurrently (default 1)"
-	listPresetsFlagNameConstant              = "list-presets"
-	listPresetsFlagDescriptionConstant       = "List embedded workflow presets and exit"
-	configurationPathRequiredMessageConstant = "workflow configuration path or preset name required; provide a positional argument or --config flag"
-	loadConfigurationErrorTemplateConstant   = "unable to load workflow configuration: %w"
-	loadPresetErrorTemplateConstant          = "unable to load embedded workflow %q: %w"
-	buildOperationsErrorTemplateConstant     = "unable to build workflow operations: %w"
+	commandUseConstant                          = "workflow <configuration|preset>"
+	commandShortDescriptionConstant             = "Run a workflow configuration file or embedded preset"
+	commandLongDescriptionConstant              = "workflow executes operations defined in a YAML/JSON configuration or runs embedded presets (see --list-presets) across discovered repositories."
+	commandExampleConstant                      = "gix workflow ./workflow.yaml --roots ~/Development\n  gix workflow license --roots ~/Development --yes"
+	requireCleanFlagNameConstant                = "require-clean"
+	requireCleanFlagDescriptionConstant         = "Require clean worktrees for rename operations"
+	variableFlagNameConstant                    = "var"
+	variableFlagDescriptionConstant             = "Set workflow variable (key=value). Repeatable."
+	variableFileFlagNameConstant                = "var-file"
+	variableFileFlagDescriptionConstant         = "Load workflow variables from a YAML/JSON file. Repeatable."
+	workflowWorkersFlagNameConstant             = "workflow-workers"
+	workflowWorkersFlagDescriptionConstant      = "Maximum number of repositories to process concurrently (default 1)"
+	listPresetsFlagNameConstant                 = "list-presets"
+	listPresetsFlagDescriptionConstant          = "List embedded workflow presets and exit"
+	configurationPathRequiredMessageConstant    = "workflow configuration path or preset name required; provide a positional argument or --config flag"
+	loadConfigurationErrorTemplateConstant      = "unable to load workflow configuration: %w"
+	loadPresetErrorTemplateConstant             = "unable to load embedded workflow %q: %w"
+	buildOperationsErrorTemplateConstant        = "unable to build workflow operations: %w"
+	workflowConfigurationMissingMessageConstant = "workflow configuration must define at least one step"
 )
 
 // CommandBuilder assembles the workflow command.
@@ -73,6 +74,7 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 	executionFlags, executionFlagsAvailable := flagutils.ResolveExecutionFlags(command)
 	contextAccessor := utils.NewCommandContextAccessor()
 	presetCatalog := builder.resolvePresetCatalog()
+	commandConfiguration := builder.resolveConfiguration()
 	listPresets := false
 	if command != nil {
 		listFlagValue, _, listFlagError := flagutils.BoolFlag(command, listPresetsFlagNameConstant)
@@ -80,6 +82,10 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 			return listFlagError
 		}
 		listPresets = listFlagValue
+	}
+	if listPresets {
+		builder.printPresetList(command, presetCatalog)
+		return nil
 	}
 
 	configurationPathCandidate := ""
@@ -89,51 +95,48 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 		if len(arguments) > 1 {
 			remainingArguments = append(remainingArguments, arguments[1:]...)
 		}
-	} else {
+	} else if commandConfiguration.ConfiguredWorkflow == nil {
 		configurationPathFromContext, configurationPathAvailable := contextAccessor.ConfigurationFilePath(command.Context())
 		if configurationPathAvailable {
 			configurationPathCandidate = strings.TrimSpace(configurationPathFromContext)
 		}
 	}
 
-	if listPresets && len(configurationPathCandidate) == 0 {
-		builder.printPresetList(command, presetCatalog)
-		return nil
-	}
-
-	if len(configurationPathCandidate) == 0 {
+	configuredWorkflowSelected := len(arguments) == 0 && commandConfiguration.ConfiguredWorkflow != nil
+	if !configuredWorkflowSelected && len(configurationPathCandidate) == 0 {
 		if helpError := displayCommandHelp(command); helpError != nil {
 			return helpError
 		}
 		return errors.New(configurationPathRequiredMessageConstant)
 	}
 
-	if listPresets {
-		builder.printPresetList(command, presetCatalog)
-		return nil
-	}
-
-	configurationPath := configurationPathCandidate
 	var workflowConfiguration workflow.Configuration
-	loadedFromPreset := false
-	presetConfiguration, presetFound, presetError := presetCatalog.Load(configurationPath)
-	if presetError != nil {
-		return fmt.Errorf(loadPresetErrorTemplateConstant, configurationPath, presetError)
-	}
-	if presetFound {
-		workflowConfiguration = presetConfiguration
-		loadedFromPreset = true
-	}
-
-	if !loadedFromPreset {
-		loadedConfiguration, configurationError := workflow.LoadConfiguration(configurationPath)
-		if configurationError != nil {
-			return fmt.Errorf(loadConfigurationErrorTemplateConstant, configurationError)
+	if configuredWorkflowSelected {
+		workflowConfiguration = cloneConfiguredWorkflow(*commandConfiguration.ConfiguredWorkflow)
+		if len(workflowConfiguration.Steps) == 0 {
+			return errors.New(workflowConfigurationMissingMessageConstant)
 		}
-		workflowConfiguration = loadedConfiguration
+	} else {
+		configurationPath := configurationPathCandidate
+		loadedFromPreset := false
+		presetConfiguration, presetFound, presetError := presetCatalog.Load(configurationPath)
+		if presetError != nil {
+			return fmt.Errorf(loadPresetErrorTemplateConstant, configurationPath, presetError)
+		}
+		if presetFound {
+			workflowConfiguration = presetConfiguration
+			loadedFromPreset = true
+		}
+
+		if !loadedFromPreset {
+			loadedConfiguration, configurationError := workflow.LoadConfiguration(configurationPath)
+			if configurationError != nil {
+				return fmt.Errorf(loadConfigurationErrorTemplateConstant, configurationError)
+			}
+			workflowConfiguration = loadedConfiguration
+		}
 	}
 
-	commandConfiguration := builder.resolveConfiguration()
 	variableAssignments, variableError := builder.resolveVariables(command, commandConfiguration)
 	if variableError != nil {
 		return variableError
@@ -160,6 +163,7 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 	}
 
 	workflow.ApplyDefaults(nodes, workflow.OperationDefaults{RequireClean: requireCleanDefault})
+	workflow.ApplyLLMConnectionProfiles(nodes, commandConfiguration.ConnectionProfiles)
 	runtimeRequirements := deriveRuntimeRequirements(nodes)
 
 	dependencyOptions := taskrunner.DependenciesOptions{Command: command}

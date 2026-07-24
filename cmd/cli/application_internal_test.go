@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,6 +56,7 @@ func TestApplicationCommonDefaultsApplied(t *testing.T) {
 	workflowConfiguration := application.workflowCommandConfiguration()
 	require.True(t, workflowConfiguration.AssumeYes)
 	require.True(t, workflowConfiguration.RequireClean)
+	require.NotNil(t, workflowConfiguration.ConfiguredWorkflow)
 }
 
 func TestApplicationOperationOverridesTakePriority(t *testing.T) {
@@ -100,104 +102,153 @@ func TestApplicationOperationOverridesTakePriority(t *testing.T) {
 	require.False(t, workflowConfiguration.RequireClean)
 }
 
-func TestBranchSyncEmbeddedDefaultsUseOpenAICompatibleTransport(t *testing.T) {
-	application := &Application{
-		logger:                          zap.NewNop(),
-		configuration:                   ApplicationConfiguration{},
-		embeddedOperationConfigurations: loadEmbeddedOperationConfigurations(),
-		operationConfigurations:         loadEmbeddedOperationConfigurations(),
-	}
+func TestBranchSyncUsesGlobalLLMConnectionProfiles(t *testing.T) {
+	application := newApplicationConfigurationTestHarness(t, ApplicationConfiguration{
+		LLM: applicationTestLLMConfiguration(),
+	}, nil)
 
 	configuration := application.branchSyncConfiguration()
 
-	require.Equal(t, string(llmclient.TransportOpenAICompatible), configuration.CommitMessage.Transport)
-	require.Empty(t, configuration.CommitMessage.Provider)
-	require.Equal(t, llmclient.DefaultAPIKeyEnvironment, configuration.CommitMessage.APIKeyEnv)
-	require.Equal(t, llmclient.DefaultBaseURL, configuration.CommitMessage.BaseURL)
-	require.Equal(t, llmclient.DefaultModel, configuration.CommitMessage.Model)
+	require.Equal(t, 1, configuration.CommitMessage.ConnectionProfiles.LLMProxy.Priority)
+	require.Equal(t, "meta", configuration.CommitMessage.ConnectionProfiles.LLMProxy.Provider)
+	require.Equal(t, "muse-spark-1.1", configuration.CommitMessage.ConnectionProfiles.LLMProxy.Model)
+	require.Equal(t, "proxy-secret", configuration.CommitMessage.ConnectionProfiles.LLMProxy.Credential)
+	require.Equal(t, 2, configuration.CommitMessage.ConnectionProfiles.OpenAI.Priority)
 }
 
-func TestApplicationGlobalLLMDefaultsUseLLMProxyTransport(t *testing.T) {
+func TestApplicationGlobalLLMDefaultsUseConfiguredConnections(t *testing.T) {
 	application := newApplicationConfigurationTestHarness(t, ApplicationConfiguration{
-		LLM: ApplicationLLMConfiguration{
-			Transport: string(llmclient.TransportLLMProxy),
-			Provider:  "deepseek",
-		},
+		LLM: applicationTestLLMConfiguration(),
 	}, nil)
 
 	commitConfiguration := application.commitMessageConfiguration()
-	require.Equal(t, string(llmclient.TransportLLMProxy), commitConfiguration.Transport)
-	require.Equal(t, "deepseek", commitConfiguration.Provider)
-	require.Equal(t, llmclient.DefaultLLMProxyAPIKeyEnvironment, commitConfiguration.APIKeyEnv)
-	require.Equal(t, llmclient.DefaultLLMProxyBaseURL, commitConfiguration.BaseURL)
-	require.Equal(t, llmclient.DefaultModel, commitConfiguration.Model)
-	require.Equal(t, 256, commitConfiguration.MaxTokens)
+	require.Equal(t, "meta", commitConfiguration.ConnectionProfiles.LLMProxy.Provider)
+	require.Equal(t, "muse-spark-1.1", commitConfiguration.ConnectionProfiles.LLMProxy.Model)
+	require.Equal(t, 512, commitConfiguration.MaxTokens)
 
 	changelogConfiguration := application.changelogMessageConfiguration()
-	require.Equal(t, string(llmclient.TransportLLMProxy), changelogConfiguration.Transport)
-	require.Equal(t, "deepseek", changelogConfiguration.Provider)
-	require.Equal(t, llmclient.DefaultLLMProxyAPIKeyEnvironment, changelogConfiguration.APIKeyEnv)
-	require.Equal(t, llmclient.DefaultLLMProxyBaseURL, changelogConfiguration.BaseURL)
-	require.Equal(t, llmclient.DefaultModel, changelogConfiguration.Model)
-	require.Equal(t, 1200, changelogConfiguration.MaxTokens)
+	require.Equal(t, "meta", changelogConfiguration.ConnectionProfiles.LLMProxy.Provider)
+	require.Equal(t, "muse-spark-1.1", changelogConfiguration.ConnectionProfiles.LLMProxy.Model)
+	require.Equal(t, 512, changelogConfiguration.MaxTokens)
 
 	syncConfiguration := application.branchSyncConfiguration()
-	require.Equal(t, string(llmclient.TransportLLMProxy), syncConfiguration.CommitMessage.Transport)
-	require.Equal(t, "deepseek", syncConfiguration.CommitMessage.Provider)
-	require.Equal(t, llmclient.DefaultLLMProxyAPIKeyEnvironment, syncConfiguration.CommitMessage.APIKeyEnv)
-	require.Equal(t, llmclient.DefaultLLMProxyBaseURL, syncConfiguration.CommitMessage.BaseURL)
+	require.Equal(t, "meta", syncConfiguration.CommitMessage.ConnectionProfiles.LLMProxy.Provider)
 }
 
-func TestApplicationOperationTransportOverrideResetsTransportDefaults(t *testing.T) {
+func TestApplicationLLMConfigurationRequiresAtLeastOneCredential(t *testing.T) {
+	configuration := applicationTestLLMConfiguration()
+	configuration.LLMProxy.Credential = ""
+	configuration.OpenAI.Credential = ""
+
+	validationError := configuration.validateConnections()
+
+	require.EqualError(t, validationError, "llm requires at least one connection credential")
+}
+
+func TestInitializeConfigurationRejectsPublicLLMTransport(t *testing.T) {
+	configurationPath := filepath.Join(t.TempDir(), "config.yml")
+	configurationContent := `common:
+  log_level: error
+  log_format: console
+llm:
+  transport: llm_proxy
+  openai:
+    priority: 2
+    model: gpt-4.1
+    base_url: https://api.openai.com/v1
+    credential: openai-secret
+  llm_proxy:
+    priority: 1
+    provider: meta
+    model: muse-spark-1.1
+    base_url: https://llm-proxy.example
+    credential: proxy-secret
+operations: []
+`
+	require.NoError(t, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
+
+	application := NewApplication()
+	application.configurationFilePath = configurationPath
+
+	initializationError := application.initializeConfiguration(&cobra.Command{Use: versionCommandUseNameConstant})
+
+	require.Error(t, initializationError)
+	require.Contains(t, initializationError.Error(), "transport")
+}
+
+func TestInitializeConfigurationRequiresLLMProvider(t *testing.T) {
+	configurationPath := filepath.Join(t.TempDir(), "config.yml")
+	configurationContent := `common:
+  log_level: error
+  log_format: console
+llm:
+  openai:
+    priority: 2
+    model: gpt-4.1
+    base_url: https://api.openai.com/v1
+    credential: openai-secret
+  llm_proxy:
+    priority: 1
+    model: muse-spark-1.1
+    base_url: https://llm-proxy.example
+    credential: proxy-secret
+operations: []
+`
+	require.NoError(t, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
+
+	application := NewApplication()
+	application.configurationFilePath = configurationPath
+
+	initializationError := application.initializeConfiguration(&cobra.Command{Use: versionCommandUseNameConstant})
+
+	require.EqualError(t, initializationError, "invalid llm configuration: llm llm_proxy provider is required")
+}
+
+func TestApplicationOperationLLMProxyProviderOverrideClearsConfiguredModel(t *testing.T) {
 	application := newApplicationConfigurationTestHarness(t, ApplicationConfiguration{
-		LLM: ApplicationLLMConfiguration{
-			Transport: string(llmclient.TransportLLMProxy),
-			Provider:  "deepseek",
-		},
+		LLM: applicationTestLLMConfiguration(),
 	}, []ApplicationOperationConfiguration{
 		{
 			Command: []string{"message", "commit"},
 			Options: map[string]any{
-				"transport": string(llmclient.TransportOpenAICompatible),
+				"llm_proxy": map[string]any{
+					"provider": llmclient.ProviderOpenAI,
+				},
 			},
 		},
 	})
 
 	commitConfiguration := application.commitMessageConfiguration()
-	require.Equal(t, string(llmclient.TransportOpenAICompatible), commitConfiguration.Transport)
-	require.Empty(t, commitConfiguration.Provider)
-	require.Equal(t, llmclient.DefaultAPIKeyEnvironment, commitConfiguration.APIKeyEnv)
-	require.Equal(t, llmclient.DefaultBaseURL, commitConfiguration.BaseURL)
+	require.Equal(t, llmclient.ProviderOpenAI, commitConfiguration.LLMProxy.Provider)
+	require.Empty(t, commitConfiguration.LLMProxy.Model)
+	require.Equal(t, "meta", commitConfiguration.ConnectionProfiles.LLMProxy.Provider)
+	require.Equal(t, "muse-spark-1.1", commitConfiguration.ConnectionProfiles.LLMProxy.Model)
 
 	changelogConfiguration := application.changelogMessageConfiguration()
-	require.Equal(t, string(llmclient.TransportLLMProxy), changelogConfiguration.Transport)
-	require.Equal(t, "deepseek", changelogConfiguration.Provider)
-	require.Equal(t, llmclient.DefaultLLMProxyAPIKeyEnvironment, changelogConfiguration.APIKeyEnv)
-	require.Equal(t, llmclient.DefaultLLMProxyBaseURL, changelogConfiguration.BaseURL)
+	require.Empty(t, changelogConfiguration.LLMProxy.Provider)
+	require.Equal(t, "meta", changelogConfiguration.ConnectionProfiles.LLMProxy.Provider)
 }
 
-func TestApplicationSyncCommitMessageTransportOverrideResetsTransportDefaults(t *testing.T) {
+func TestApplicationSyncCommitMessageLLMProxyProviderOverrideClearsConfiguredModel(t *testing.T) {
 	application := newApplicationConfigurationTestHarness(t, ApplicationConfiguration{
-		LLM: ApplicationLLMConfiguration{
-			Transport: string(llmclient.TransportLLMProxy),
-			Provider:  "deepseek",
-		},
+		LLM: applicationTestLLMConfiguration(),
 	}, []ApplicationOperationConfiguration{
 		{
 			Command: []string{"sync"},
 			Options: map[string]any{
 				"commit_message": map[string]any{
-					"transport": string(llmclient.TransportOpenAICompatible),
+					"llm_proxy": map[string]any{
+						"provider": llmclient.ProviderOpenAI,
+					},
 				},
 			},
 		},
 	})
 
 	configuration := application.branchSyncConfiguration()
-	require.Equal(t, string(llmclient.TransportOpenAICompatible), configuration.CommitMessage.Transport)
-	require.Empty(t, configuration.CommitMessage.Provider)
-	require.Equal(t, llmclient.DefaultAPIKeyEnvironment, configuration.CommitMessage.APIKeyEnv)
-	require.Equal(t, llmclient.DefaultBaseURL, configuration.CommitMessage.BaseURL)
+	require.Equal(t, llmclient.ProviderOpenAI, configuration.CommitMessage.LLMProxy.Provider)
+	require.Empty(t, configuration.CommitMessage.LLMProxy.Model)
+	require.Equal(t, "meta", configuration.CommitMessage.ConnectionProfiles.LLMProxy.Provider)
 }
 
 func TestOperationConfigurationsErrorOnLegacyCommandNames(t *testing.T) {
@@ -217,24 +268,64 @@ func TestOperationConfigurationsErrorOnLegacyCommandNames(t *testing.T) {
 	require.Equal(t, reposRemotesOperationNameConstant, missing.OperationName)
 }
 
+func TestOperationConfigurationsRejectEmptyCommandPath(t *testing.T) {
+	_, buildError := newOperationConfigurations([]ApplicationOperationConfiguration{
+		{Command: []string{"", " "}, Options: map[string]any{"roots": []string{"."}}},
+	})
+
+	var invalidConfiguration InvalidOperationConfigurationError
+	require.ErrorAs(t, buildError, &invalidConfiguration)
+	require.Empty(t, invalidConfiguration.OperationName)
+	require.ErrorContains(t, buildError, "configured command path is required")
+}
+
 func newApplicationConfigurationTestHarness(t *testing.T, configuration ApplicationConfiguration, definitions []ApplicationOperationConfiguration) *Application {
 	t.Helper()
 
 	configuredOperations, buildError := newOperationConfigurations(definitions)
 	require.NoError(t, buildError)
-	embeddedOperations := loadEmbeddedOperationConfigurations()
-
 	return &Application{
 		logger:                            zap.NewNop(),
 		configuration:                     configuration,
-		embeddedOperationConfigurations:   embeddedOperations,
 		configuredOperationConfigurations: configuredOperations,
-		operationConfigurations:           configuredOperations.MergeDefaults(embeddedOperations),
+		operationConfigurations:           configuredOperations,
 	}
+}
+
+func applicationTestLLMConfiguration() ApplicationLLMConfiguration {
+	return ApplicationLLMConfiguration{
+		OpenAI: llmclient.OpenAIConnectionProfile{
+			Priority:   2,
+			BaseURL:    "https://api.openai.com/v1",
+			Credential: "openai-secret",
+			Model:      llmclient.DefaultOpenAIModel,
+		},
+		LLMProxy: llmclient.LLMProxyConnectionProfile{
+			Priority:   1,
+			BaseURL:    "https://llm-proxy.example",
+			Credential: "proxy-secret",
+			Provider:   "meta",
+			Model:      "muse-spark-1.1",
+		},
+		MaxCompletionTokens: 512,
+		TimeoutSeconds:      60,
+	}
+}
+
+func configureApplicationWithTestConfig(t *testing.T, application *Application) {
+	t.Helper()
+	configurationPath := filepath.Join(t.TempDir(), "config.yml")
+	configurationContent := embeddedDefaultTestConfiguration()
+	require.NoError(t, os.WriteFile(configurationPath, configurationContent, 0o600))
+	application.configurationFilePath = configurationPath
 }
 
 func TestInitializeConfigurationAttachesBranchContext(t *testing.T) {
 	application := NewApplication()
+	configurationPath := filepath.Join(t.TempDir(), "config.yml")
+	configurationContent := embeddedDefaultTestConfiguration()
+	require.NoError(t, os.WriteFile(configurationPath, configurationContent, 0o600))
+	application.configurationFilePath = configurationPath
 	rootCommand := application.rootCommand
 	rootCommand.SetContext(context.Background())
 
@@ -255,6 +346,63 @@ func TestInitializeConfigurationAttachesBranchContext(t *testing.T) {
 	require.Equal(t, "custom-remote", executionFlags.Remote)
 }
 
+func embeddedDefaultTestConfiguration() []byte {
+	configurationContent, _ := EmbeddedDefaultConfiguration()
+	return []byte(strings.NewReplacer(
+		"${GH_TOKEN}", "test-github-key",
+		"${GITHUB_PACKAGES_TOKEN}", "test-packages-key",
+		"${OPENAI_API_KEY}", "test-openai-key",
+		"${LLM_PROXY_SECRET_KEY}", "test-proxy-key",
+	).Replace(string(configurationContent)))
+}
+
+func TestConfigurationDiscoveryPrefersSystemFileOverUserFile(t *testing.T) {
+	originalSystemConfigurationPath := systemConfigurationFilePath
+	systemConfigurationFilePath = filepath.Join(t.TempDir(), "etc", "gix", "config.yml")
+	t.Cleanup(func() {
+		systemConfigurationFilePath = originalSystemConfigurationPath
+	})
+
+	homeDirectory := t.TempDir()
+	t.Setenv("HOME", homeDirectory)
+	userConfigurationPath := filepath.Join(homeDirectory, userConfigurationDirectoryNameConstant, configurationFileNameConstant)
+	require.NoError(t, os.MkdirAll(filepath.Dir(systemConfigurationFilePath), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Dir(userConfigurationPath), 0o755))
+	systemConfiguration := embeddedDefaultTestConfiguration()
+	userConfiguration := []byte(strings.Replace(string(systemConfiguration), "log_level: error", "log_level: debug", 1))
+	require.NoError(t, os.WriteFile(systemConfigurationFilePath, systemConfiguration, 0o600))
+	require.NoError(t, os.WriteFile(userConfigurationPath, userConfiguration, 0o600))
+
+	application := NewApplication()
+	command := &cobra.Command{Use: "version"}
+	require.NoError(t, application.initializeConfiguration(command))
+	require.Equal(t, systemConfigurationFilePath, application.ConfigFileUsed())
+}
+
+func TestConfigurationInitializationSystemFlagWritesSystemFile(t *testing.T) {
+	originalSystemConfigurationPath := systemConfigurationFilePath
+	systemConfigurationFilePath = filepath.Join(t.TempDir(), "etc", "gix", "config.yml")
+	t.Cleanup(func() {
+		systemConfigurationFilePath = originalSystemConfigurationPath
+	})
+
+	application := NewApplication()
+	executionError := application.ExecuteWithOptions(ExecutionOptions{
+		Arguments:      []string{"init", "--system"},
+		Context:        context.Background(),
+		StandardInput:  strings.NewReader(""),
+		StandardOutput: io.Discard,
+		StandardError:  io.Discard,
+		ExitOnVersion:  false,
+	})
+
+	require.NoError(t, executionError)
+	require.FileExists(t, systemConfigurationFilePath)
+	configurationContent, readError := os.ReadFile(systemConfigurationFilePath)
+	require.NoError(t, readError)
+	require.Contains(t, string(configurationContent), `credential: "${LLM_PROXY_SECRET_KEY}"`)
+}
+
 func TestRootCommandToggleHelpFormatting(t *testing.T) {
 	application := NewApplication()
 	usage := application.rootCommand.PersistentFlags().FlagUsages()
@@ -269,8 +417,9 @@ func TestRootCommandToggleHelpFormatting(t *testing.T) {
 	require.NoError(t, findError)
 	initUsage := initCommand.Flags().FlagUsages()
 
-	require.Contains(t, initUsage, "--local <yes|NO>")
-	require.Contains(t, initUsage, "--user <yes|NO>")
+	require.Contains(t, initUsage, "--system <yes|NO>")
+	require.NotContains(t, initUsage, "--local")
+	require.NotContains(t, initUsage, "--user")
 	require.Contains(t, initUsage, "--force <yes|NO>")
 	require.NotContains(t, initUsage, "__toggle_true__")
 	require.NotContains(t, initUsage, "toggle[")
@@ -504,26 +653,64 @@ func TestWorkflowCommandUsageIncludesConfigurationPlaceholder(t *testing.T) {
 	require.Contains(t, workflowCommand.Example, "gix workflow")
 }
 
-func TestRepoReleaseConfigurationUsesEmbeddedDefaults(t *testing.T) {
+func TestRepoReleaseConfigurationUsesConfigFileValues(t *testing.T) {
 	application := NewApplication()
+	configurationPath := filepath.Join(t.TempDir(), "config.yml")
+	configurationContent := `common:
+  log_level: error
+  log_format: console
+  assume_yes: false
+  require_clean: false
+llm:
+  openai:
+    priority: 2
+    model: gpt-4.1
+    base_url: https://api.openai.com/v1
+    credential: openai-secret
+  llm_proxy:
+    priority: 1
+    provider: meta
+    model: muse-spark-1.1
+    base_url: https://llm-proxy.example
+    credential: proxy-secret
+operations:
+  - command: ["release"]
+    with:
+      roots: ["./configured"]
+      remote: upstream
+`
+	require.NoError(t, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
+	application.configurationFilePath = configurationPath
 
-	command := &cobra.Command{Use: "test-command"}
+	command := &cobra.Command{Use: "release"}
 	flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Enabled: true})
 
 	require.NoError(t, application.initializeConfiguration(command))
 
 	configuration := application.repoReleaseConfiguration()
-	require.Equal(t, []string{"."}, configuration.RepositoryRoots)
-	require.Equal(t, "origin", configuration.RemoteName)
+	require.Equal(t, []string{"./configured"}, configuration.RepositoryRoots)
+	require.Equal(t, "upstream", configuration.RemoteName)
 }
 
-func TestInitializeConfigurationMergesEmbeddedRepoReleaseDefaults(t *testing.T) {
+func TestInitializeConfigurationRejectsMissingRequiredOperation(t *testing.T) {
 	temporaryDirectory := t.TempDir()
-	configurationPath := filepath.Join(temporaryDirectory, "config.yaml")
+	configurationPath := filepath.Join(temporaryDirectory, "config.yml")
 
 	configurationContent := `common:
   log_level: info
   log_format: console
+llm:
+  openai:
+    priority: 2
+    model: gpt-4.1
+    base_url: https://api.openai.com/v1
+    credential: openai-secret
+  llm_proxy:
+    priority: 1
+    provider: meta
+    model: muse-spark-1.1
+    base_url: https://llm-proxy.example
+    credential: proxy-secret
 operations:
   - command: ["folder", "rename"]
     with:
@@ -535,16 +722,104 @@ operations:
 	application := NewApplication()
 	application.configurationFilePath = configurationPath
 
-	command := &cobra.Command{Use: "test-command"}
+	command := &cobra.Command{Use: "release"}
 	flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Enabled: true})
 
-	require.NoError(t, application.initializeConfiguration(command))
+	initializationError := application.initializeConfiguration(command)
+	require.Error(t, initializationError)
+	require.Contains(t, initializationError.Error(), repoReleaseOperationNameConstant)
+}
 
-	options, lookupError := application.operationConfigurations.Lookup(repoReleaseOperationNameConstant)
-	require.NoError(t, lookupError)
-	require.NotNil(t, options)
+func TestInitializeConfigurationRejectsObsoleteOperationField(t *testing.T) {
+	configurationPath := filepath.Join(t.TempDir(), "config.yml")
+	configurationContent := `common:
+  log_level: error
+  log_format: console
+llm:
+  openai:
+    priority: 2
+    model: gpt-4.1
+    base_url: https://api.openai.com/v1
+    credential: openai-secret
+  llm_proxy:
+    priority: 1
+    provider: meta
+    model: muse-spark-1.1
+    base_url: https://llm-proxy.example
+    credential: proxy-secret
+operations:
+  - command: ["message", "commit"]
+    with:
+      roots:
+        - .
+      api_key_env: OPENAI_API_KEY
+`
+	require.NoError(t, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
 
-	releaseConfiguration := application.repoReleaseConfiguration()
-	require.Equal(t, []string{"."}, releaseConfiguration.RepositoryRoots)
-	require.Equal(t, "origin", releaseConfiguration.RemoteName)
+	application := NewApplication()
+	application.configurationFilePath = configurationPath
+
+	command := &cobra.Command{Use: versionCommandUseNameConstant}
+	initializationError := application.initializeConfiguration(command)
+
+	require.Error(t, initializationError)
+	require.Contains(t, initializationError.Error(), commitMessageOperationNameConstant)
+	require.Contains(t, initializationError.Error(), "api_key_env")
+}
+
+func TestResolveConfigurationFileRequiresCanonicalExtension(t *testing.T) {
+	for _, extension := range []string{".yaml", ".YML"} {
+		t.Run(extension, func(t *testing.T) {
+			configurationPath := filepath.Join(t.TempDir(), "config"+extension)
+			require.NoError(t, os.WriteFile(configurationPath, []byte("common: {}\n"), 0o600))
+
+			application := NewApplication()
+			application.configurationFilePath = configurationPath
+
+			_, resolutionError := application.resolveConfigurationFile(nil)
+			require.EqualError(t, resolutionError, "configuration file must use .yml: "+configurationPath)
+		})
+	}
+}
+
+func TestInitializeConfigurationRejectsObsoleteWorkflowLLMField(t *testing.T) {
+	configurationPath := filepath.Join(t.TempDir(), "config.yml")
+	configurationContent := `common:
+  log_level: error
+  log_format: console
+llm:
+  openai:
+    priority: 2
+    model: gpt-4.1
+    base_url: https://api.openai.com/v1
+    credential: openai-secret
+  llm_proxy:
+    priority: 1
+    provider: meta
+    model: muse-spark-1.1
+    base_url: https://llm-proxy.example
+    credential: proxy-secret
+operations: []
+workflow:
+  - step:
+      command: ["tasks", "apply"]
+      with:
+        llm:
+          transport: openai_compatible
+          llm_proxy:
+            provider: openai
+        tasks:
+          - name: Generate message
+            ensure_clean: false
+`
+	require.NoError(t, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
+
+	application := NewApplication()
+	application.configurationFilePath = configurationPath
+
+	command := &cobra.Command{Use: versionCommandUseNameConstant}
+	initializationError := application.initializeConfiguration(command)
+
+	require.Error(t, initializationError)
+	require.Contains(t, initializationError.Error(), `unsupported llm configuration key "transport"`)
 }

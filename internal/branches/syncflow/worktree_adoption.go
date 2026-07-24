@@ -18,51 +18,49 @@ import (
 )
 
 const (
-	gitWorktreeSubcommandConstant             = "worktree"
-	gitWorktreeListSubcommandConstant         = "list"
-	gitWorktreeRemoveSubcommandConstant       = "remove"
-	gitWorktreePruneSubcommandConstant        = "prune"
-	gitPorcelainFlagConstant                  = "--porcelain"
-	gitPorcelainBranchFlagConstant            = "--branch"
-	gitSwitchDetachFlagConstant               = "--detach"
-	gitStatusSubcommand                       = "status"
-	gitAddSubcommand                          = "add"
-	gitCommitSubcommand                       = "commit"
-	gitPushSubcommand                         = "push"
-	gitRevListSubcommand                      = "rev-list"
-	gitAddAllFlag                             = "--all"
-	gitCommitMessageFlag                      = "-m"
-	gitPushSetUpstreamFlag                    = "--set-upstream"
-	gitRevListCountFlag                       = "--count"
-	gitBranchReferencePrefix                  = "refs/heads/"
-	gitStatusBranchHeaderPrefix               = "## "
-	gitStatusAheadMarker                      = "ahead "
-	gitBranchAlreadyUsedByWorktreeIndicator   = "already used by worktree"
-	worktreeListFailureTemplate               = "failed to list worktrees before switching to %q: %w"
-	worktreeStatusFailureTemplate             = "failed to inspect worktree %s: %w"
-	worktreeLockedFailureTemplate             = "target branch %q is checked out in locked worktree %s"
-	worktreeStageFailureTemplate              = "failed to stage sibling worktree changes at %s: %w"
-	worktreeCommitFailureTemplate             = "failed to commit sibling worktree changes at %s: %w"
-	worktreePushFailureTemplate               = "failed to push adopted worktree branch %q from %s: %w"
-	worktreePushInspectionFailureTemplate     = "failed to inspect push requirement for branch %q against %q from %s: %w"
-	worktreeRemoteInspectionFailureTemplate   = "failed to inspect remote branch %q from %s: %w"
-	worktreeKindInspectionFailureTemplate     = "failed to inspect worktree kind at %s: %w"
-	worktreeRemoveFailureTemplate             = "failed to remove sibling worktree %s: %w"
-	worktreeDetachFailureTemplate             = "failed to detach sibling main worktree %s: %w"
-	worktreePruneFailureTemplate              = "failed to prune worktrees after removing %s: %w"
-	worktreeStalePruneFailureTemplate         = "failed to prune stale worktree metadata for branch %q at %s: %w"
-	worktreeMessageClientConfigurationFailure = "commit message generation requires model configuration"
-	worktreeMessageAPIKeyFailureTemplate      = "environment variable %s must be set to generate a commit message"
-	worktreeMessageClientFailureTemplate      = "failed to initialize commit message client: %w"
-	worktreeMessageGenerationFailureTemplate  = "failed to generate commit message for sibling worktree %s: %w"
-	worktreeAdoptionChangeMissing             = "worktree adoption change function not configured"
-	worktreeAdoptDetectedMessage              = "adopting sibling worktree"
-	worktreeAdoptCommitMessage                = "committed sibling worktree changes"
-	worktreeAdoptPushMessage                  = "pushed sibling worktree branch"
-	worktreeAdoptRemoveMessage                = "removed sibling worktree"
-	worktreeAdoptDetachMessage                = "detached sibling main worktree"
-	worktreeAdoptPruneMessage                 = "pruned worktree metadata"
-	worktreeAdoptPruneStaleMessage            = "pruned stale worktree metadata"
+	gitWorktreeSubcommandConstant            = "worktree"
+	gitWorktreeListSubcommandConstant        = "list"
+	gitWorktreeRemoveSubcommandConstant      = "remove"
+	gitWorktreePruneSubcommandConstant       = "prune"
+	gitPorcelainFlagConstant                 = "--porcelain"
+	gitPorcelainBranchFlagConstant           = "--branch"
+	gitSwitchDetachFlagConstant              = "--detach"
+	gitStatusSubcommand                      = "status"
+	gitAddSubcommand                         = "add"
+	gitCommitSubcommand                      = "commit"
+	gitPushSubcommand                        = "push"
+	gitRevListSubcommand                     = "rev-list"
+	gitAddAllFlag                            = "--all"
+	gitCommitMessageFlag                     = "-m"
+	gitPushSetUpstreamFlag                   = "--set-upstream"
+	gitRevListCountFlag                      = "--count"
+	gitBranchReferencePrefix                 = "refs/heads/"
+	gitStatusBranchHeaderPrefix              = "## "
+	gitStatusAheadMarker                     = "ahead "
+	gitBranchAlreadyUsedByWorktreeIndicator  = "already used by worktree"
+	worktreeListFailureTemplate              = "failed to list worktrees before switching to %q: %w"
+	worktreeStatusFailureTemplate            = "failed to inspect worktree %s: %w"
+	worktreeLockedFailureTemplate            = "target branch %q is checked out in locked worktree %s"
+	worktreeStageFailureTemplate             = "failed to stage sibling worktree changes at %s: %w"
+	worktreeCommitFailureTemplate            = "failed to commit sibling worktree changes at %s: %w"
+	worktreePushFailureTemplate              = "failed to push adopted worktree branch %q from %s: %w"
+	worktreePushInspectionFailureTemplate    = "failed to inspect push requirement for branch %q against %q from %s: %w"
+	worktreeRemoteInspectionFailureTemplate  = "failed to inspect remote branch %q from %s: %w"
+	worktreeKindInspectionFailureTemplate    = "failed to inspect worktree kind at %s: %w"
+	worktreeRemoveFailureTemplate            = "failed to remove sibling worktree %s: %w"
+	worktreeDetachFailureTemplate            = "failed to detach sibling main worktree %s: %w"
+	worktreePruneFailureTemplate             = "failed to prune worktrees after removing %s: %w"
+	worktreeStalePruneFailureTemplate        = "failed to prune stale worktree metadata for branch %q at %s: %w"
+	worktreeMessageClientFailureTemplate     = "failed to initialize commit message client: %w"
+	worktreeMessageGenerationFailureTemplate = "failed to generate commit message for sibling worktree %s: %w"
+	worktreeAdoptionChangeMissing            = "worktree adoption change function not configured"
+	worktreeAdoptDetectedMessage             = "adopting sibling worktree"
+	worktreeAdoptCommitMessage               = "committed sibling worktree changes"
+	worktreeAdoptPushMessage                 = "pushed sibling worktree branch"
+	worktreeAdoptRemoveMessage               = "removed sibling worktree"
+	worktreeAdoptDetachMessage               = "detached sibling main worktree"
+	worktreeAdoptPruneMessage                = "pruned worktree metadata"
+	worktreeAdoptPruneStaleMessage           = "pruned stale worktree metadata"
 )
 
 type worktreeAdoptionOptions struct {
@@ -138,15 +136,12 @@ func isBranchAlreadyUsedByWorktreeError(err error) bool {
 }
 
 type worktreeAdoptionCommitMessageOptions struct {
-	Transport      string
-	Provider       string
-	APIKeyEnv      string
-	BaseURL        string
-	Model          string
-	MaxTokens      int
-	Temperature    float64
-	TimeoutSeconds int
-	Client         llm.ChatClient
+	LLMProxy           llmclient.LLMProxySelection
+	MaxTokens          int
+	Temperature        float64
+	TimeoutSeconds     int
+	ConnectionProfiles llmclient.ConnectionProfiles
+	Client             llm.ChatClient
 }
 
 type listedWorktree struct {
@@ -164,14 +159,11 @@ type worktreeStatus struct {
 func worktreeAdoptionCommitMessageOptionsFromConfiguration(configuration CommitMessageConfiguration) worktreeAdoptionCommitMessageOptions {
 	sanitized := configuration.Sanitize()
 	return worktreeAdoptionCommitMessageOptions{
-		Transport:      sanitized.Transport,
-		Provider:       sanitized.Provider,
-		APIKeyEnv:      sanitized.APIKeyEnv,
-		BaseURL:        sanitized.BaseURL,
-		Model:          sanitized.Model,
-		MaxTokens:      sanitized.MaxTokens,
-		Temperature:    sanitized.Temperature,
-		TimeoutSeconds: sanitized.TimeoutSeconds,
+		LLMProxy:           sanitized.LLMProxy,
+		MaxTokens:          sanitized.MaxTokens,
+		Temperature:        sanitized.Temperature,
+		TimeoutSeconds:     sanitized.TimeoutSeconds,
+		ConnectionProfiles: sanitized.ConnectionProfiles,
 	}
 }
 
@@ -506,42 +498,17 @@ func resolveCommitMessageClient(options worktreeAdoptionCommitMessageOptions) (l
 	if options.Client != nil {
 		return options.Client, nil
 	}
-	transport, transportErr := llmclient.NewTransport(options.Transport)
-	if transportErr != nil {
-		return nil, transportErr
-	}
-	transportName := string(transport)
-	providerName := strings.TrimSpace(options.Provider)
-	if providerErr := llmclient.ValidateProviderForTransport(transport, providerName); providerErr != nil {
-		return nil, providerErr
-	}
-	apiKeyEnv := strings.TrimSpace(options.APIKeyEnv)
-	model := strings.TrimSpace(options.Model)
-	if model == "" {
-		return nil, errors.New(worktreeMessageClientConfigurationFailure)
-	}
-	if apiKeyEnv == "" {
-		apiKeyEnv = llmclient.DefaultAPIKeyEnvironmentForTransportName(transportName)
-	}
-	apiKey := strings.TrimSpace(os.Getenv(apiKeyEnv))
-	if apiKey == "" {
-		return nil, fmt.Errorf(worktreeMessageAPIKeyFailureTemplate, apiKeyEnv)
-	}
-	baseURL := strings.TrimSpace(options.BaseURL)
-	if baseURL == "" {
-		baseURL = llmclient.DefaultBaseURLForTransportName(transportName)
-	}
 	timeout := worktreeAdoptionMessageTimeout(options)
-	client, clientErr := llmclient.NewFactory(llmclient.Config{
-		Transport:           transport,
-		Provider:            providerName,
-		BaseURL:             baseURL,
-		APIKey:              apiKey,
-		Model:               model,
-		MaxCompletionTokens: options.MaxTokens,
-		Temperature:         options.Temperature,
-		RequestTimeout:      timeout,
-	})
+	client, clientErr := llmclient.NewPrioritizedFactory(
+		options.ConnectionProfiles,
+		options.LLMProxy,
+		llmclient.RuntimeConfig{
+			MaxCompletionTokens: options.MaxTokens,
+			Temperature:         options.Temperature,
+			RequestTimeout:      timeout,
+		},
+		nil,
+	)
 	if clientErr != nil {
 		return nil, fmt.Errorf(worktreeMessageClientFailureTemplate, clientErr)
 	}

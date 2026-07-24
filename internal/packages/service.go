@@ -12,22 +12,20 @@ import (
 )
 
 const (
-	packageServiceMissingErrorMessageConstant    = "package version service must be provided"
-	tokenResolverMissingErrorMessageConstant     = "token resolver must be provided"
-	ownerOptionMissingErrorMessageConstant       = "owner option must be provided"
-	packageOptionMissingErrorMessageConstant     = "package option must be provided"
-	ownerTypeOptionMissingErrorMessageConstant   = "owner type option must be provided"
-	tokenSourceOptionMissingErrorMessageConstant = "token source reference must be provided"
-	purgeServiceStartMessageConstant             = "Executing repo-packages-purge operation"
-	purgeServiceSummaryMessageConstant           = "repo-packages-purge operation completed"
-	ownerLogFieldNameConstant                    = "owner"
-	packageLogFieldNameConstant                  = "package"
-	ownerTypeLogFieldNameConstant                = "owner_type"
-	deletedVersionsLogFieldNameConstant          = "deleted_versions"
-	untaggedVersionsLogFieldNameConstant         = "untagged_versions"
-	totalVersionsLogFieldNameConstant            = "total_versions"
-	tokenResolutionErrorTemplateConstant         = "unable to resolve authentication token: %w"
-	purgeExecutionErrorTemplateConstant          = "unable to purge package versions: %w"
+	packageServiceMissingErrorMessageConstant   = "package version service must be provided"
+	ownerOptionMissingErrorMessageConstant      = "owner option must be provided"
+	packageOptionMissingErrorMessageConstant    = "package option must be provided"
+	ownerTypeOptionMissingErrorMessageConstant  = "owner type option must be provided"
+	credentialOptionMissingErrorMessageConstant = "packages credential must be provided"
+	purgeServiceStartMessageConstant            = "Executing repo-packages-purge operation"
+	purgeServiceSummaryMessageConstant          = "repo-packages-purge operation completed"
+	ownerLogFieldNameConstant                   = "owner"
+	packageLogFieldNameConstant                 = "package"
+	ownerTypeLogFieldNameConstant               = "owner_type"
+	deletedVersionsLogFieldNameConstant         = "deleted_versions"
+	untaggedVersionsLogFieldNameConstant        = "untagged_versions"
+	totalVersionsLogFieldNameConstant           = "total_versions"
+	purgeExecutionErrorTemplateConstant         = "unable to purge package versions: %w"
 )
 
 // PackageVersionAPI describes the GHCR operations used by the purge service.
@@ -40,7 +38,7 @@ type PurgeOptions struct {
 	Owner       string
 	PackageName string
 	OwnerType   ghcr.OwnerType
-	TokenSource TokenSourceConfiguration
+	Credential  string
 }
 
 // PurgeExecutor defines the behavior required by the command layer.
@@ -52,16 +50,12 @@ type PurgeExecutor interface {
 type PurgeService struct {
 	logger         *zap.Logger
 	packageService PackageVersionAPI
-	tokenResolver  TokenResolver
 }
 
 // NewPurgeService constructs a purge service with required collaborators.
-func NewPurgeService(logger *zap.Logger, packageService PackageVersionAPI, tokenResolver TokenResolver) (*PurgeService, error) {
+func NewPurgeService(logger *zap.Logger, packageService PackageVersionAPI) (*PurgeService, error) {
 	if packageService == nil {
 		return nil, errors.New(packageServiceMissingErrorMessageConstant)
-	}
-	if tokenResolver == nil {
-		return nil, errors.New(tokenResolverMissingErrorMessageConstant)
 	}
 
 	resolvedLogger := logger
@@ -72,7 +66,6 @@ func NewPurgeService(logger *zap.Logger, packageService PackageVersionAPI, token
 	return &PurgeService{
 		logger:         resolvedLogger,
 		packageService: packageService,
-		tokenResolver:  tokenResolver,
 	}, nil
 }
 
@@ -92,9 +85,9 @@ func (service *PurgeService) Execute(executionContext context.Context, options P
 		return ghcr.PurgeResult{}, errors.New(ownerTypeOptionMissingErrorMessageConstant)
 	}
 
-	trimmedTokenSource := strings.TrimSpace(options.TokenSource.Reference)
-	if len(trimmedTokenSource) == 0 {
-		return ghcr.PurgeResult{}, errors.New(tokenSourceOptionMissingErrorMessageConstant)
+	trimmedCredential := strings.TrimSpace(options.Credential)
+	if len(trimmedCredential) == 0 {
+		return ghcr.PurgeResult{}, errors.New(credentialOptionMissingErrorMessageConstant)
 	}
 
 	service.logger.Info(
@@ -104,16 +97,11 @@ func (service *PurgeService) Execute(executionContext context.Context, options P
 		zap.String(ownerTypeLogFieldNameConstant, string(options.OwnerType)),
 	)
 
-	resolvedToken, tokenResolutionError := service.tokenResolver.ResolveToken(executionContext, options.TokenSource)
-	if tokenResolutionError != nil {
-		return ghcr.PurgeResult{}, fmt.Errorf(tokenResolutionErrorTemplateConstant, tokenResolutionError)
-	}
-
 	purgeRequest := ghcr.PurgeRequest{
 		Owner:       trimmedOwner,
 		PackageName: trimmedPackageName,
 		OwnerType:   options.OwnerType,
-		Token:       resolvedToken,
+		Token:       trimmedCredential,
 	}
 
 	purgeResult, purgeError := service.packageService.PurgeUntaggedVersions(executionContext, purgeRequest)

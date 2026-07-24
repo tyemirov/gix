@@ -166,7 +166,7 @@ func (executor *ShellExecutor) Execute(executionContext context.Context, command
 	}
 
 	var preparationError error
-	command, preparationError = executor.prepareCommand(command)
+	command, preparationError = executor.prepareCommand(executionContext, command)
 	if preparationError != nil {
 		return ExecutionResult{}, preparationError
 	}
@@ -235,7 +235,7 @@ func (executor *ShellExecutor) ExecuteCurl(executionContext context.Context, det
 	return executor.Execute(executionContext, ShellCommand{Name: CommandCurl, Details: details})
 }
 
-func (executor *ShellExecutor) prepareCommand(command ShellCommand) (ShellCommand, error) {
+func (executor *ShellExecutor) prepareCommand(executionContext context.Context, command ShellCommand) (ShellCommand, error) {
 	if command.Name != CommandGitHub {
 		return command, nil
 	}
@@ -245,7 +245,7 @@ func (executor *ShellExecutor) prepareCommand(command ShellCommand) (ShellComman
 		requirement = githubauth.TokenRequired
 	}
 
-	token, tokenAvailable := githubauth.ResolveToken(command.Details.EnvironmentVariables)
+	token, tokenAvailable := githubauth.ResolveToken(executionContext, command.Details.EnvironmentVariables)
 	if !tokenAvailable {
 		if requirement == githubauth.TokenRequired {
 			missingError := githubauth.NewMissingTokenError(strings.Join(command.Details.Arguments, " "), true)

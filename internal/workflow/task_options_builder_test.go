@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/tyemirov/gix/internal/llmclient"
 )
 
 func TestTasksApplyDefinitionOptionsSerializesTaskDefinition(t *testing.T) {
@@ -104,11 +106,10 @@ func TestTasksApplyDefinitionOptionsSerializesLLMConfiguration(t *testing.T) {
 			},
 		},
 		LLM: &TaskLLMDefinition{
-			Transport:           "llm_proxy",
-			Provider:            "deepseek",
-			Model:               "gpt-test",
-			BaseURL:             "https://example.com",
-			APIKeyEnv:           "LLM_TOKEN",
+			LLMProxy: llmclient.LLMProxySelection{
+				Provider: "deepseek",
+				Model:    "gpt-test",
+			},
 			TimeoutSeconds:      30,
 			MaxCompletionTokens: 512,
 			Temperature:         &temperature,
@@ -118,11 +119,10 @@ func TestTasksApplyDefinitionOptionsSerializesLLMConfiguration(t *testing.T) {
 	options := definition.Options()
 	llmOptions, ok := options[optionTaskLLMKeyConstant].(map[string]any)
 	require.True(t, ok)
-	require.Equal(t, "llm_proxy", llmOptions[optionTaskLLMTransportKeyConstant])
-	require.Equal(t, "deepseek", llmOptions[optionTaskLLMProviderKeyConstant])
-	require.Equal(t, "gpt-test", llmOptions[optionTaskLLMModelKeyConstant])
-	require.Equal(t, "https://example.com", llmOptions[optionTaskLLMBaseURLKeyConstant])
-	require.Equal(t, "LLM_TOKEN", llmOptions[optionTaskLLMAPIKeyEnvKeyConstant])
+	proxyOptions, ok := llmOptions[optionTaskLLMProxyKeyConstant].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "deepseek", proxyOptions[optionTaskLLMProviderKeyConstant])
+	require.Equal(t, "gpt-test", proxyOptions[optionTaskLLMModelKeyConstant])
 	require.Equal(t, 30, llmOptions[optionTaskLLMTimeoutKeyConstant])
 	require.Equal(t, 512, llmOptions[optionTaskLLMMaxTokensKeyConstant])
 	require.Equal(t, temperature, llmOptions[optionTaskLLMTemperatureKeyConstant])

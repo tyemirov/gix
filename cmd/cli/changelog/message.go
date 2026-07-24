@@ -14,7 +14,6 @@ import (
 	rootutils "github.com/tyemirov/gix/internal/utils/roots"
 	"github.com/tyemirov/gix/internal/workflow"
 	"github.com/tyemirov/gix/pkg/taskrunner"
-	"github.com/tyemirov/utils/llm"
 )
 
 const (
@@ -33,16 +32,10 @@ const (
 	maxTokensFlagUsage             = "Override the maximum completion tokens"
 	temperatureFlagName            = "temperature"
 	temperatureFlagUsage           = "Override the sampling temperature (0-2)"
-	transportFlagName              = "transport"
-	transportFlagUsage             = "Override the LLM transport (openai_compatible|llm_proxy)"
 	providerFlagName               = "provider"
-	providerFlagUsage              = "Override the LLM Proxy upstream provider"
+	providerFlagUsage              = "Override the LLM provider"
 	modelFlagName                  = "model"
 	modelFlagUsage                 = "Override the model identifier"
-	baseURLFlagName                = "base-url"
-	baseURLFlagUsage               = "Override the LLM base URL"
-	apiKeyEnvFlagName              = "api-key-env"
-	apiKeyEnvFlagUsage             = "Environment variable providing the LLM API key"
 	timeoutFlagName                = "timeout-seconds"
 	timeoutFlagUsage               = "Override the LLM request timeout in seconds"
 
@@ -56,8 +49,8 @@ const (
 	taskOptionChangelogClient      = "client"
 )
 
-// ClientFactory builds chat clients from configuration.
-type ClientFactory func(config llmclient.Config) (llm.ChatClient, error)
+// ClientFactory builds one connection client from configuration.
+type ClientFactory = llmclient.ClientFactory
 
 // MessageCommandBuilder assembles the changelog message command.
 type MessageCommandBuilder struct {
@@ -88,11 +81,8 @@ func (builder *MessageCommandBuilder) Build() (*cobra.Command, error) {
 	command.Flags().String(sinceDateFlagName, "", sinceDateFlagUsage)
 	command.Flags().Int(maxTokensFlagName, 0, maxTokensFlagUsage)
 	command.Flags().Float64(temperatureFlagName, 0, temperatureFlagUsage)
-	command.Flags().String(transportFlagName, "", transportFlagUsage)
 	command.Flags().String(providerFlagName, "", providerFlagUsage)
 	command.Flags().String(modelFlagName, "", modelFlagUsage)
-	command.Flags().String(baseURLFlagName, "", baseURLFlagUsage)
-	command.Flags().String(apiKeyEnvFlagName, "", apiKeyEnvFlagUsage)
 	command.Flags().Int(timeoutFlagName, 0, timeoutFlagUsage)
 
 	command.Aliases = append(command.Aliases, messageCommandAlias)
@@ -161,66 +151,24 @@ func (builder *MessageCommandBuilder) run(command *cobra.Command, arguments []st
 		return temperatureError
 	}
 
-	transportName := configuration.Transport
-	transportChanged := false
-	if command != nil {
-		if flagValue, flagError := command.Flags().GetString(transportFlagName); flagError == nil && command.Flags().Changed(transportFlagName) {
-			transportName = strings.TrimSpace(flagValue)
-			transportChanged = true
-		}
-	}
-	transport, transportError := llmclient.NewTransport(transportName)
-	if transportError != nil {
-		return transportError
-	}
-	transportName = string(transport)
-
-	providerName := configuration.Provider
+	proxySelection := configuration.LLMProxy
+	providerChanged := false
 	if command != nil {
 		if flagValue, flagError := command.Flags().GetString(providerFlagName); flagError == nil && command.Flags().Changed(providerFlagName) {
-			providerName = strings.TrimSpace(flagValue)
+			proxySelection.Provider = strings.TrimSpace(flagValue)
+			providerChanged = true
 		}
 	}
-	if providerError := llmclient.ValidateProviderForTransport(transport, providerName); providerError != nil {
-		return providerError
-	}
 
-	modelIdentifier := configuration.Model
+	modelChanged := false
 	if command != nil {
 		if flagValue, flagError := command.Flags().GetString(modelFlagName); flagError == nil && command.Flags().Changed(modelFlagName) {
-			modelIdentifier = strings.TrimSpace(flagValue)
+			proxySelection.Model = strings.TrimSpace(flagValue)
+			modelChanged = true
 		}
 	}
-	if modelIdentifier == "" {
-		return errors.New("model identifier must be provided via configuration or --model")
-	}
-
-	baseURL := configuration.BaseURL
-	baseURLChanged := false
-	if command != nil {
-		if flagValue, flagError := command.Flags().GetString(baseURLFlagName); flagError == nil && command.Flags().Changed(baseURLFlagName) {
-			baseURL = strings.TrimSpace(flagValue)
-			baseURLChanged = true
-		}
-	}
-	if baseURL == "" || transportChanged && !baseURLChanged {
-		baseURL = llmclient.DefaultBaseURLForTransportName(transportName)
-	}
-
-	apiKeyEnv := configuration.APIKeyEnv
-	apiKeyEnvChanged := false
-	if command != nil {
-		if flagValue, flagError := command.Flags().GetString(apiKeyEnvFlagName); flagError == nil && command.Flags().Changed(apiKeyEnvFlagName) {
-			apiKeyEnv = strings.TrimSpace(flagValue)
-			apiKeyEnvChanged = true
-		}
-	}
-	if apiKeyEnv == "" || transportChanged && !apiKeyEnvChanged {
-		apiKeyEnv = llmclient.DefaultAPIKeyEnvironmentForTransportName(transportName)
-	}
-	apiKey, apiKeyPresent := lookupEnvironmentValue(apiKeyEnv)
-	if !apiKeyPresent || apiKey == "" {
-		return fmt.Errorf("environment variable %s must be set with an API key", apiKeyEnv)
+	if providerChanged && !modelChanged {
+		proxySelection.Model = ""
 	}
 
 	timeoutDuration := time.Duration(configuration.TimeoutSeconds) * time.Second
@@ -256,23 +204,16 @@ func (builder *MessageCommandBuilder) run(command *cobra.Command, arguments []st
 	taskDependencies := dependencyResult.Workflow
 	taskDependencies.DisableWorkflowLogging = true
 
-	clientFactory := builder.ClientFactory
-	if clientFactory == nil {
-		clientFactory = func(config llmclient.Config) (llm.ChatClient, error) {
-			return llmclient.NewFactory(config)
-		}
-	}
-
-	client, clientError := clientFactory(llmclient.Config{
-		Transport:           transport,
-		Provider:            providerName,
-		BaseURL:             baseURL,
-		APIKey:              apiKey,
-		Model:               modelIdentifier,
-		MaxCompletionTokens: configuration.MaxTokens,
-		Temperature:         configuration.Temperature,
-		RequestTimeout:      timeoutDuration,
-	})
+	client, clientError := llmclient.NewPrioritizedFactory(
+		configuration.ConnectionProfiles,
+		proxySelection,
+		llmclient.RuntimeConfig{
+			MaxCompletionTokens: configuration.MaxTokens,
+			Temperature:         configuration.Temperature,
+			RequestTimeout:      timeoutDuration,
+		},
+		builder.ClientFactory,
+	)
 	if clientError != nil {
 		return clientError
 	}

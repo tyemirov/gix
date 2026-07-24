@@ -190,11 +190,11 @@ func NewService(dependencies ServiceDependencies) (*Service, error) {
 	return service, nil
 }
 
-func (service *Service) ensureGitHubTokenAvailable(options MigrationOptions) error {
+func (service *Service) ensureGitHubTokenAvailable(executionContext context.Context, options MigrationOptions) error {
 	if len(strings.TrimSpace(options.RepositoryIdentifier)) == 0 {
 		return nil
 	}
-	if _, available := githubauth.ResolveToken(nil); available {
+	if _, available := githubauth.ResolveToken(executionContext, nil); available {
 		return nil
 	}
 	return DefaultBranchUpdateError{
@@ -228,7 +228,7 @@ func (service *Service) Execute(executionContext context.Context, options Migrat
 		}
 	}
 
-	if tokenError := service.ensureGitHubTokenAvailable(options); tokenError != nil {
+	if tokenError := service.ensureGitHubTokenAvailable(executionContext, options); tokenError != nil {
 		return MigrationResult{}, tokenError
 	}
 

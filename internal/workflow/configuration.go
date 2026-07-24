@@ -33,10 +33,10 @@ type workflowStepWrapper struct {
 
 // StepConfiguration associates a command path with declarative options.
 type StepConfiguration struct {
-	Name    string         `yaml:"name" json:"name"`
-	After   []string       `yaml:"after" json:"after"`
-	Command []string       `yaml:"command" json:"command"`
-	Options map[string]any `yaml:"with" json:"with"`
+	Name    string         `yaml:"name" json:"name" mapstructure:"name"`
+	After   []string       `yaml:"after" json:"after" mapstructure:"after"`
+	Command []string       `yaml:"command" json:"command" mapstructure:"command"`
+	Options map[string]any `yaml:"with" json:"with" mapstructure:"with"`
 }
 
 // LoadConfiguration reads the workflow definition from disk and performs basic validation.

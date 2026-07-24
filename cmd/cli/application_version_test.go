@@ -49,6 +49,7 @@ func (capture *stdoutCapture) Stop(t *testing.T) string {
 
 func TestApplicationVersionFlagPrintsVersionAndExits(t *testing.T) {
 	application := NewApplication()
+	configureApplicationWithTestConfig(t, application)
 	application.versionResolver = func(context.Context) string {
 		return "v2.0.0"
 	}
@@ -84,6 +85,7 @@ func TestApplicationVersionFlagPrintsVersionAndExits(t *testing.T) {
 
 func TestApplicationVersionCommandPrintsVersion(t *testing.T) {
 	application := NewApplication()
+	configureApplicationWithTestConfig(t, application)
 	application.versionResolver = func(context.Context) string {
 		return "v2.0.0"
 	}

@@ -157,30 +157,58 @@ func createSyncWorktreeAdoptionFixture(testInstance *testing.T) syncWorktreeAdop
 func writeSyncWorktreeAdoptionConfiguration(testInstance *testing.T, baseURL string) string {
 	testInstance.Helper()
 
-	configurationPath := filepath.Join(testInstance.TempDir(), "config.yaml")
+	configurationPath := filepath.Join(testInstance.TempDir(), "config.yml")
+	llmConfiguration := `llm:
+  openai:
+    priority: 1
+    model: gpt-4.1
+    base_url: https://api.openai.com/v1
+    credential: integration-openai-key
+  llm_proxy:
+    priority: 2
+    provider: meta
+    model: muse-spark-1.1
+    base_url: "https://llm-proxy.example"
+    credential: integration-proxy-key
+`
 	messageConfiguration := ""
 	if strings.TrimSpace(baseURL) != "" {
-		messageConfiguration = fmt.Sprintf(`
+		llmConfiguration = fmt.Sprintf(`llm:
+  openai:
+    priority: 1
+    model: mock-model
+    base_url: %q
+    credential: test-key
+  llm_proxy:
+    priority: 2
+    provider: meta
+    model: muse-spark-1.1
+    base_url: "https://llm-proxy.example"
+    credential: test-proxy-key
+  max_completion_tokens: 64
+  temperature: 0
+  timeout_seconds: 5
+`, baseURL)
+		messageConfiguration = `
   - command: ["message", "commit"]
     with:
-      api_key_env: %s
-      base_url: %q
-      model: mock-model
       diff_source: staged
       max_completion_tokens: 64
       temperature: 0
       timeout_seconds: 5
-`, syncWorktreeAdoptionAPIKeyVariable, baseURL)
+`
 	}
 	configurationContent := fmt.Sprintf(`common:
   log_level: error
   log_format: console
-operations:
+github:
+  credential: test-github-key
+%soperations:
   - command: ["sync"]
     with:
       remote: origin
       require_clean: true
-%s`, messageConfiguration)
+%s`, llmConfiguration, messageConfiguration)
 	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
 	return configurationPath
 }

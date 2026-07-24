@@ -14,8 +14,8 @@ gix makes branch-targeted Git synchronization mechanical: explicit branch target
 ## Quick Start
 
 1. Install the CLI: `go install github.com/tyemirov/gix@latest` (Go 1.25+).
-2. Create user-level defaults: `gix init --user`.
-3. To use MPR LLM Proxy for generated commit messages and changelog text, set `llm.transport: llm_proxy`, set `llm.provider` to the proxy upstream provider when needed, and export `LLM_PROXY_SECRET`.
+2. Create the canonical user configuration: `gix init`.
+3. Either replace the generated credential placeholders with literal values in `$HOME/.gix/config.yml`, or export `GH_TOKEN`, `GITHUB_PACKAGES_TOKEN`, and `LLM_PROXY_SECRET_KEY` before launching gix. Gix interpolates only its inherited process environment and never loads `.env` files.
 4. Attach or verify a workspace: `gix sync https://github.com/OWNER/REPO.git`.
 5. Synchronize `master`: a clean tree restores it from `origin/master`; a dirty tree commits to and pushes `master`.
 6. With dirty work ready to commit, start a PR branch: `gix sync feature/my-change`; use the same command later to resume it.
@@ -109,16 +109,31 @@ gix message commit --roots .
 gix message changelog --since-tag v1.2.0 --version v1.3.0
 ```
 
-Use the reusable LLM client (`github.com/tyemirov/utils/llm`) to summarise staged changes or recent history. `gix sync` uses the same configured client for automatic dirty-work commit messages and strict-sync merge resolution. Its configured `timeout_seconds` bounds the complete AI merge-resolution operation; gix reports the active resolution phase and leaves a rejected, cancelled, or timed-out merge intact for manual recovery before any push. The embedded default transport is `openai_compatible` with `OPENAI_API_KEY`; configure the top-level LLM default when using MPR LLM Proxy:
+Use the reusable LLM client (`github.com/tyemirov/utils/llm`) to summarise staged changes or recent history. `gix sync` uses the same configured client for automatic dirty-work commit messages and strict-sync merge resolution. Its configured `timeout_seconds` bounds the complete AI merge-resolution operation; gix reports the active resolution phase and leaves a rejected, cancelled, or timed-out merge intact for manual recovery before any push.
+
+The generated configuration defaults to Meta Muse through MPR LLM Proxy and declares both available connections:
 
 ```yaml
 llm:
-  transport: llm_proxy
-  provider: deepseek
-  model: <model-id-accepted-by-proxy>
+  openai:
+    priority: 2
+    model: gpt-4.1
+    base_url: "https://api.openai.com/v1"
+    credential: "${OPENAI_API_KEY}"
+  llm_proxy:
+    priority: 1
+    provider: meta
+    model: muse-spark-1.1
+    base_url: "https://llm-proxy-api.mprlab.com"
+    credential: "${LLM_PROXY_SECRET_KEY}"
+  max_completion_tokens: 1200
+  temperature: 0
+  timeout_seconds: 60
 ```
 
-`transport: llm_proxy` selects `LLM_PROXY_SECRET` and `https://llm-proxy-api.mprlab.com` automatically. `provider` is the upstream provider name passed to LLM Proxy, not a local API-key selector; gix still uses only `LLM_PROXY_SECRET` for proxy authentication. Add `api_key_env`, `base_url`, or `model` under `llm` only when you need to override the transport defaults. Per-operation LLM fields remain available for granular overrides.
+Each connection owns its routing data. Direct OpenAI owns its `model`; `llm_proxy` owns the upstream `provider` and `model`. Both connections require a positive, unique `priority`, and the lower number is attempted first. If that request fails, gix tries the next connection and returns the first successful response.
+
+`llm_proxy.provider` is required. `llm_proxy.model` is optional and uses the selected provider's server-side default when omitted; `openai.model` defaults to `gpt-4.1` when omitted. A connection whose interpolated `credential` is empty is excluded, and at least one connection must have a credential. `--provider` and `--model` override the llm-proxy upstream for one invocation; they do not change connection priority. Endpoints and credentials are configuration-only and have no CLI or late environment-variable-name override.
 
 ## Automate sequences with workflows
 
@@ -447,7 +462,7 @@ Schema highlights:
   - `mode: replace` rewrites matching substrings using `replacements: [{ from, to }]` (templated). File paths accept glob patterns, including recursive `**/*.ext`, so you can update many files with one entry.
 - Actions: `{ type, options }` where `type` is one of:
  - `repo.remote.update`, `repo.remote.convert-protocol`, `repo.folder.rename`, `branch.default`, `repo.release.tag`, `audit.report`, `repo.history.purge`, `repo.files.replace`, `repo.namespace.rewrite`
-- LLM: optional `{ transport, provider, model, base_url, api_key_env, timeout_seconds, max_completion_tokens, temperature }` block. `transport` selects `openai_compatible` or `llm_proxy`; `provider` is passed to LLM Proxy as the upstream provider. When present, commit/changelog actions reuse the configured client instead of requiring a programmatic injector.
+- LLM: optional `{ llm_proxy: { provider, model }, timeout_seconds, max_completion_tokens, temperature }` block. When the block is present, `llm_proxy.provider` is required and `llm_proxy.model` is optional. The nested selection overrides only the configured llm-proxy upstream; connection endpoints, credentials, and priority cannot be declared inside workflow tasks.
 - Commit: `{ message }` (templated). Defaults to `Apply task <name>` when empty.
 - Pull request: `{ title, body, base, draft }` (templated; optional).
 - Safeguards: `{ hard_stop: {...}, soft_skip: {...} }` blocks that control whether a violation aborts the repository (`hard_stop`) or just skips the current task/action (`soft_skip`). Legacy flat maps are treated as `hard_stop`.
@@ -507,7 +522,7 @@ Safeguards gate tasks (and are also used internally by some actions). Supported 
 - `--roots <path>` — target one or more directories; nested repositories are ignored automatically.
 - `` — print the proposed actions without mutating anything.
 - `--yes` (`-y`) — accept confirmations when you are ready to apply the plan.
-- `--config path/to/config.yaml` — load persisted defaults for flags such as roots, owners, or log level.
+- `--config path/to/config.yml` — load one explicit canonical configuration instead of performing system/user discovery.
 - `--log-level`, `--log-format` — control Zap logging output (structured JSON or console).
 
 Additional shared flags:
@@ -526,9 +541,9 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
 
  - Prints the current release. Also available as `gix --version`.
 
-- `gix init [--local | --user] [--force yes]`
+- `gix init [--system] [--force]`
 
- - Writes an embedded default config to `./config.yaml` by default, or to `$HOME/.gix/config.yaml` with `--user`. Use `--force yes` to replace an existing generated config.
+ - Writes the canonical configuration to `$HOME/.gix/config.yml`, or to `/etc/gix/config.yml` with `--system`. Use `--force` to replace an existing generated config.
 
 - `gix --web [--bind <host>] [--port <port>] [--roots <dir>...]`
 
@@ -570,9 +585,9 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
  - Creates and pushes an annotated tag for each repository root.
 - `gix release retag --map <tag=ref> [--map <tag=ref>...] [--message-template <text>] [--remote <name>] [--roots <dir>...] [-y]` (alias `fix`)
  - Reassigns existing release tags to provided commits and force-pushes updates.
-- `gix message changelog [--version <v>] [--release-date YYYY-MM-DD] [--since-tag <ref>] [--since-date <ts>] [--max-tokens <N>] [--temperature <0-2>] [--transport openai_compatible|llm_proxy] [--provider <proxy-provider>] [--model <id>] [--base-url <url>] [--api-key-env <NAME>] [--timeout-seconds <N>] [--roots <dir>...]` (aliases `section`)
+- `gix message changelog [--version <v>] [--release-date YYYY-MM-DD] [--since-tag <ref>] [--since-date <ts>] [--max-tokens <N>] [--temperature <0-2>] [--provider <provider>] [--model <id>] [--timeout-seconds <N>] [--roots <dir>...]` (aliases `section`)
  - Generates a changelog section from git history using the configured LLM.
-- `gix message commit [--diff-source staged|worktree] [--max-tokens <N>] [--temperature <0-2>] [--transport openai_compatible|llm_proxy] [--provider <proxy-provider>] [--model <id>] [--base-url <url>] [--api-key-env <NAME>] [--timeout-seconds <N>] [--roots <dir>...]` (alias `msg`)
+- `gix message commit [--diff-source staged|worktree] [--max-tokens <N>] [--temperature <0-2>] [--provider <provider>] [--model <id>] [--timeout-seconds <N>] [--roots <dir>...]` (alias `msg`)
  - Drafts Conventional Commit subjects and optional bullets using the configured LLM.
 - `gix default <target-branch> [--roots <dir>...] [-y]`
  - Promotes the default branch across repositories.
@@ -580,14 +595,19 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
  - Synchronizes the current workspace through the Gix flow. An explicit branch is the dirty-commit target; explicit `master` sync commits to, merges, and pushes `master` directly. Existing non-base PR branches sync against their current PR base branch. A dirty missing explicit branch is created at the current `HEAD`; a non-`master` current branch is published and PR-backed first, then the child PR targets that parent branch. Clean or `--stash` creation of a missing branch is rejected because it has no child review delta. Dirty work is clustered, LLM-described, committed, and pushed by default, except known-merged branches reject auto-commit and require a stashed handoff before new review work is created. Plain `gix sync` on dirty current `master` keeps the generated PR rescue flow. Sync never rebases or force-pushes. PR body text is generated from the branch diff unless `--body` or `sync.pull_request.body` is set; PR title defaults to the branch unless `--title` or `sync.pull_request.title` is set. `--stash` temporarily shelves dirty work on existing branches, `--commit` explicitly selects the auto-commit policy, and `--require-clean` requires a clean worktree only when no dirty-work policy is selected.
 ## Configuration essentials
 
-- `gix init` or `gix init --local` writes an embeddable starter `./config.yaml` for the current workspace.
-- `gix init --user` writes user-level defaults to `$HOME/.gix/config.yaml`.
-- Add `--force yes` when you intentionally want to replace an existing generated config.
-- Configuration precedence is: CLI flags → environment variables prefixed with `GIX_` → local config → user config.
+- On every launch, gix uses an explicit `--config <path>.yml` when supplied; otherwise it checks `/etc/gix/config.yml` and then `$HOME/.gix/config.yml`.
+- If neither discovered file exists, gix offers to create `$HOME/.gix/config.yml`. `--yes` accepts that prompt non-interactively.
+- `gix init` writes `$HOME/.gix/config.yml`; `gix init --system` writes `/etc/gix/config.yml`. Add `--force` only when you intentionally want to replace an existing generated config.
+- Working-directory config files, `.yaml` aliases, `GIX_*` overrides, embedded runtime defaults, and layered configuration merging are not supported.
+- `${NAME}` placeholders in YAML values are expanded only from the process environment inherited when gix starts. Substituted text remains literal scalar content, including quotes, backslashes, newlines, colons, and hash characters. Gix never discovers or loads `.env` files; users of dotenv tooling must load those values into the process environment before launching gix.
+- Literal values in `config.yml`, including literal credentials, are used as written.
+- `github.credential` supplies the concrete token injected into GitHub CLI calls. The `packages delete` operation similarly owns its concrete `base_url` and `credential`; neither integration performs a later environment lookup.
+- The `openai` and `llm_proxy` connections store their own routing fields, positive unique `priority`, concrete `base_url`, and interpolated `credential` values in `config.yml`. Lower priority numbers run first; failed requests continue to the next credentialed connection.
+- A connection with an empty interpolated credential is inactive. At least one connection credential is required.
 - The config controls shared behavior such as `log_level`, `log_format`, `assume_yes`, and `require_clean`.
-- The top-level `llm` block controls generated commit-message, changelog, sync, and web LLM clients globally. `llm.transport: llm_proxy` is the global switch for MPR LLM Proxy; gix derives `LLM_PROXY_SECRET` and the proxy base URL from that transport, while `llm.provider` selects the proxy upstream provider when needed.
-- Operation defaults can set recurring values for commands, including `roots`, `remote`, sync pull request `title`/`body`, per-command LLM overrides, release remotes, audit options, and workflow defaults.
-- User config is best for personal defaults such as `roots`, logging, confirmation behavior, and LLM transport/provider settings; local config is best for repository- or workspace-specific defaults that should travel with the checkout.
+- The top-level `llm` block controls generated commit-message, changelog, sync, workflow-task, and web LLM clients globally. `openai.model` belongs to the direct connection; `llm_proxy.provider` and `llm_proxy.model` belong to the proxy connection.
+- Operation defaults can set recurring values for commands, including `roots`, `remote`, sync pull request `title`/`body`, nested `llm_proxy` provider/model overrides, release remotes, audit options, and workflow defaults.
+- `gix workflow` without a positional configuration executes the already-decoded top-level `workflow` block from the selected `config.yml`; it does not reopen that file through a second configuration path.
 
 ## Need more depth?
 
