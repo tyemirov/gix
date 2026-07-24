@@ -2,7 +2,7 @@
 
 ## Overview
 
-gix is a Go 1.25 command-line application built with Cobra and Viper. The binary exposed by `main.go` delegates all setup to `cmd/cli`, which wires logging, configuration, and command registration before executing user-facing operations. Domain logic lives in `internal` packages, each focused on a cohesive maintenance capability. Shared libraries that may be reused by external programs are published under `pkg/`.
+gix is a Go 1.25 command-line application built with Cobra and a strict YAML configuration loader. The binary exposed by `main.go` delegates all setup to `cmd/cli`, which wires logging, configuration, and command registration before executing user-facing operations. Domain logic lives in `internal` packages, each focused on a cohesive maintenance capability. Shared libraries that may be reused by external programs are published under `pkg/`.
 
 ```
 .
@@ -56,7 +56,7 @@ The Cobra application (split across `cmd/cli/application_bootstrap.go`, `cmd/cli
 - `cmd/cli/repos/release` contains the `release` tagging workflow.
 - `cmd/cli/changelog`, `cmd/cli/commit`, and `cmd/cli/workflow` expose focused entrypoints for changelog generation, AI-assisted commit messaging, and workflow execution.
 - `cmd/cli/default_configuration.go` houses the embedded default YAML used by `gix init`.
-- `cmd/cli/workflow/presets` embeds reusable workflows (for example, license distribution and namespace rewrite) so both the `workflow` command and legacy CLI wrappers can reuse identical task graphs.
+- `cmd/cli/workflow/presets` embeds reusable workflows (for example, license distribution and namespace rewrite) so direct commands and the `workflow` command share identical task graphs.
 
 All commands accept shared flags for log level, log format, previews, repository roots, and confirmation prompts. Validation occurs in Cobra `PreRunE` functions, aligning with the confident-programming rules in `.mprlab/POLICY.md`.
 
@@ -77,6 +77,7 @@ Each feature area resides in `internal/<domain>` and exposes structs with method
   - `shared`: Shared interfaces (Git executor, GitHub resolver, repository manager).
 - `internal/packages`: GitHub Packages purge workflow including GHCR API clients.
 - `internal/releases`: Annotated tag creation and push orchestration used by `release`.
+- `internal/web`: Embedded local browser UI, repository explorer, typed audit API, and queued remediation boundary.
 - `internal/workflow`: YAML/JSON workflow runner, step registry, and execution environment.
 - `internal/execshell`, `internal/gitrepo`, `internal/githubcli`: Adapters for running Git commands, interacting with repositories, and resolving metadata through the GitHub CLI.
 - `internal/utils`: Logging factories, command flag helpers, filesystem path utilities, and repository root deduplication.
@@ -105,6 +106,14 @@ When neither discovered file exists, gix offers to create `$HOME/.gix/config.yml
 The loader parses the selected file once, then expands `${NAME}` placeholders in YAML value scalars from the process environment inherited when gix starts. Substituted text remains literal scalar content even when it contains YAML-significant quotes, backslashes, newlines, colons, or hash characters. The loader never searches for or parses `.env` files; literal configuration values pass through unchanged. The top-level `llm` block defines complete `openai` and `llm_proxy` connection profiles shared by message, changelog, sync, workflow-task, and web helpers. Each profile owns its routing fields, endpoint, credential, and positive unique priority. Lower priority numbers run first, request failures continue to the next credentialed connection, and the first successful response wins. An empty interpolated credential disables that connection, but at least one connection must remain active. Operation-specific selections can override `llm_proxy.provider` and `llm_proxy.model`; endpoints, credentials, and connection priority stay in the top-level profiles. Logging relies on Uber's Zap; format is configurable (structured JSON or console) through a flag or configuration.
 
 The `workflow` command is special-cased: without a positional configuration, it executes the typed top-level `workflow` block produced by that single application-config decode rather than reopening the selected file. It uses a YAML formatter that emits machine-friendly step summaries (one per repository) and prints a final end-of-run summary line. Non-workflow commands continue to use the existing human-readable console logging format.
+
+## Local Web Workspace
+
+`gix --web` is an explicitly local browser surface. `cmd/cli` validates the bind/port flags, assembles the repository catalog, and injects the typed audit collaborators; `internal/web` owns the embedded HTTP server, static UI, and JSON boundary. The default bind is `127.0.0.1:8080`. Supplying a non-loopback bind deliberately makes the same mutating surface reachable over the network, so deployments must keep it inside a trusted boundary.
+
+The web server exposes the repository catalog and folder browser along with `POST /api/audit/inspect` and `POST /api/audit/apply`. Inspection accepts explicit roots and returns typed rows, including explicit origin-remote status; the browser never reconstructs audit state from command stdout. The repository tree presents selectable top-level repositories and folders, while the typed audit workspace is independently scoped to the roots the operator selects.
+
+Audit remediations are represented as typed queued changes rather than argv text. Canonical-remote updates, protocol conversion, sync, rename, changelog, and commit actions reuse owned application/workflow primitives. The web-only `delete_folder` action requires an absolute path, an explicit `confirm_delete` value, and cannot target a filesystem root. Queue conflicts are deterministic: a repeated kind/path replaces its earlier item, deletion is exclusive for a path, successful changes leave the queue, and skipped or failed changes remain visible for operator review. After apply, the browser re-inspects the last audited roots so the table reflects the operation’s real scope. The user-facing details are maintained in [docs/web-audit-workspace.md](docs/web-audit-workspace.md).
 
 ## Workflow configuration example
 
