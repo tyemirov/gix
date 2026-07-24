@@ -666,8 +666,18 @@ func (application *Application) workflowCommandConfiguration() workflowcmd.Comma
 		configuration.RequireClean = application.configuration.Common.RequireClean
 	}
 	configuration.ConnectionProfiles = application.configuration.LLM.connectionProfiles()
+	configuredWorkflow := application.configuredWorkflow()
+	configuration.ConfiguredWorkflow = &configuredWorkflow
 
 	return configuration
+}
+
+func (application *Application) configuredWorkflow() workflowpkg.Configuration {
+	steps := make([]workflowpkg.StepConfiguration, 0, len(application.configuration.Workflow))
+	for _, wrappedStep := range application.configuration.Workflow {
+		steps = append(steps, wrappedStep.Step)
+	}
+	return workflowpkg.Configuration{Steps: steps}
 }
 
 func (application *Application) changelogMessageConfiguration() changelogcmd.MessageConfiguration {
@@ -937,11 +947,7 @@ func (application *Application) validateWorkflowConfigurationSchema() error {
 	if len(application.configuration.Workflow) == 0 {
 		return nil
 	}
-	steps := make([]workflowpkg.StepConfiguration, 0, len(application.configuration.Workflow))
-	for _, wrappedStep := range application.configuration.Workflow {
-		steps = append(steps, wrappedStep.Step)
-	}
-	if _, buildError := workflowpkg.BuildOperations(workflowpkg.Configuration{Steps: steps}); buildError != nil {
+	if _, buildError := workflowpkg.BuildOperations(application.configuredWorkflow()); buildError != nil {
 		return fmt.Errorf("invalid workflow configuration: %w", buildError)
 	}
 	return nil

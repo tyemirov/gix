@@ -56,6 +56,7 @@ func TestApplicationCommonDefaultsApplied(t *testing.T) {
 	workflowConfiguration := application.workflowCommandConfiguration()
 	require.True(t, workflowConfiguration.AssumeYes)
 	require.True(t, workflowConfiguration.RequireClean)
+	require.NotNil(t, workflowConfiguration.ConfiguredWorkflow)
 }
 
 func TestApplicationOperationOverridesTakePriority(t *testing.T) {

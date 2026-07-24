@@ -56,6 +56,34 @@ func TestConfigurationLoaderPreservesLiteralCredential(t *testing.T) {
 	require.Equal(t, "literal-secret", loadedConfiguration.LLM.Credential)
 }
 
+func TestConfigurationLoaderPreservesEnvironmentScalarCharacters(t *testing.T) {
+	configurationPath := filepath.Join(t.TempDir(), "config.yml")
+	require.NoError(t, os.WriteFile(configurationPath, []byte(
+		"common:\n  log_level: error\nllm:\n  credential: \"${CONFIG_TEST_CREDENTIAL}\"\n",
+	), 0o600))
+	credential := "quoted\" value\\with\\slashes\nsecond line: # literal ${NOT_RECURSIVE}"
+	t.Setenv("CONFIG_TEST_CREDENTIAL", credential)
+
+	var loadedConfiguration configurationFixture
+	_, loadError := utils.NewConfigurationLoader().LoadConfiguration(configurationPath, &loadedConfiguration)
+
+	require.NoError(t, loadError)
+	require.Equal(t, credential, loadedConfiguration.LLM.Credential)
+}
+
+func TestConfigurationLoaderIgnoresPlaceholdersInComments(t *testing.T) {
+	configurationPath := filepath.Join(t.TempDir(), "config.yml")
+	require.NoError(t, os.WriteFile(configurationPath, []byte(
+		"common:\n  log_level: error # ${CONFIG_TEST_COMMENT_ONLY}\nllm:\n  credential: literal-secret\n",
+	), 0o600))
+
+	var loadedConfiguration configurationFixture
+	_, loadError := utils.NewConfigurationLoader().LoadConfiguration(configurationPath, &loadedConfiguration)
+
+	require.NoError(t, loadError)
+	require.Equal(t, "error", loadedConfiguration.Common.LogLevel)
+}
+
 func TestConfigurationLoaderAllowsMissingCredentialPlaceholder(t *testing.T) {
 	configurationPath := filepath.Join(t.TempDir(), "config.yml")
 	require.NoError(t, os.WriteFile(configurationPath, []byte(

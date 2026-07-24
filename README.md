@@ -599,7 +599,7 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
 - If neither discovered file exists, gix offers to create `$HOME/.gix/config.yml`. `--yes` accepts that prompt non-interactively.
 - `gix init` writes `$HOME/.gix/config.yml`; `gix init --system` writes `/etc/gix/config.yml`. Add `--force` only when you intentionally want to replace an existing generated config.
 - Working-directory config files, `.yaml` aliases, `GIX_*` overrides, embedded runtime defaults, and layered configuration merging are not supported.
-- `${NAME}` placeholders are expanded only from the process environment inherited when gix starts. Gix never discovers or loads `.env` files; users of dotenv tooling must load those values into the process environment before launching gix.
+- `${NAME}` placeholders in YAML values are expanded only from the process environment inherited when gix starts. Substituted text remains literal scalar content, including quotes, backslashes, newlines, colons, and hash characters. Gix never discovers or loads `.env` files; users of dotenv tooling must load those values into the process environment before launching gix.
 - Literal values in `config.yml`, including literal credentials, are used as written.
 - `github.credential` supplies the concrete token injected into GitHub CLI calls. The `packages delete` operation similarly owns its concrete `base_url` and `credential`; neither integration performs a later environment lookup.
 - The `openai` and `llm_proxy` connections store their own routing fields, positive unique `priority`, concrete `base_url`, and interpolated `credential` values in `config.yml`. Lower priority numbers run first; failed requests continue to the next credentialed connection.
@@ -607,6 +607,7 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
 - The config controls shared behavior such as `log_level`, `log_format`, `assume_yes`, and `require_clean`.
 - The top-level `llm` block controls generated commit-message, changelog, sync, workflow-task, and web LLM clients globally. `openai.model` belongs to the direct connection; `llm_proxy.provider` and `llm_proxy.model` belong to the proxy connection.
 - Operation defaults can set recurring values for commands, including `roots`, `remote`, sync pull request `title`/`body`, nested `llm_proxy` provider/model overrides, release remotes, audit options, and workflow defaults.
+- `gix workflow` without a positional configuration executes the already-decoded top-level `workflow` block from the selected `config.yml`; it does not reopen that file through a second configuration path.
 
 ## Need more depth?
 

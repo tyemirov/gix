@@ -64,6 +64,7 @@ const (
 	workflowIntegrationConfigFlagCaseName      = "config_flag_without_positional"
 	workflowIntegrationRepositoryConfigCase    = "repository_root_configuration"
 	workflowIntegrationHelpCaseName            = "workflow_rejects_config_without_steps"
+	workflowIntegrationAuditPathVariable       = "GIX_WORKFLOW_AUDIT_PATH"
 )
 
 func TestWorkflowRunIntegration(testInstance *testing.T) {
@@ -144,7 +145,13 @@ func TestWorkflowRunIntegration(testInstance *testing.T) {
 			}
 
 			auditPath := filepath.Join(tempDirectory, workflowIntegrationAuditFileName)
-			workflowConfig := buildWorkflowConfiguration(auditPath)
+			configuredAuditPath := auditPath
+			commandEnvironment := map[string]string{}
+			if testCase.name == workflowIntegrationConfigFlagCaseName {
+				configuredAuditPath = "${" + workflowIntegrationAuditPathVariable + "}"
+				commandEnvironment[workflowIntegrationAuditPathVariable] = auditPath
+			}
+			workflowConfig := buildWorkflowConfiguration(configuredAuditPath)
 			require.NoError(subtest, os.WriteFile(configPath, []byte(workflowConfig), 0o644))
 
 			if testCase.useRepositoryRootConfig {
@@ -188,7 +195,10 @@ func TestWorkflowRunIntegration(testInstance *testing.T) {
 				workflowIntegrationYesFlag,
 			)
 
-			commandOptions := integrationCommandOptions{PathVariable: extendedPath}
+			commandOptions := integrationCommandOptions{
+				PathVariable:         extendedPath,
+				EnvironmentOverrides: commandEnvironment,
+			}
 			rawOutput := runIntegrationCommand(subtest, repositoryRoot, commandOptions, workflowIntegrationTimeout, commandArguments)
 			filteredOutput := filterStructuredOutput(rawOutput)
 

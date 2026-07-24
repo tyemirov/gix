@@ -23,9 +23,6 @@ const (
 var (
 	configurationPlaceholderPattern     = regexp.MustCompile(`\$\{([^}]+)\}`)
 	configurationPlaceholderNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-	optionalCredentialLinePattern       = regexp.MustCompile(
-		`^\s*` + optionalCredentialConfigurationKeyConstant + `:\s*(?:"\$\{([A-Za-z_][A-Za-z0-9_]*)\}"|'\$\{([A-Za-z_][A-Za-z0-9_]*)\}'|\$\{([A-Za-z_][A-Za-z0-9_]*)\})\s*(?:#.*)?$`,
-	)
 )
 
 // ConfigurationLoader loads one strict YAML configuration file.
@@ -53,13 +50,18 @@ func (loader *ConfigurationLoader) LoadConfiguration(configurationFilePath strin
 		return LoadedConfiguration{}, fmt.Errorf(configurationReadErrorTemplateConstant, trimmedPath, readError)
 	}
 
-	expandedConfiguration, expansionError := expandConfigurationPlaceholders(string(configurationData), processEnvironment())
+	var configurationDocument yaml.Node
+	if parseError := yaml.Unmarshal(configurationData, &configurationDocument); parseError != nil {
+		return LoadedConfiguration{}, fmt.Errorf(configurationParseErrorTemplateConstant, trimmedPath, parseError)
+	}
+
+	expansionError := expandConfigurationPlaceholders(&configurationDocument, processEnvironment())
 	if expansionError != nil {
 		return LoadedConfiguration{}, expansionError
 	}
 
 	rawConfiguration := map[string]any{}
-	if parseError := yaml.Unmarshal([]byte(expandedConfiguration), &rawConfiguration); parseError != nil {
+	if parseError := configurationDocument.Decode(&rawConfiguration); parseError != nil {
 		return LoadedConfiguration{}, fmt.Errorf(configurationParseErrorTemplateConstant, trimmedPath, parseError)
 	}
 	decoder, decoderError := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
@@ -87,11 +89,48 @@ func processEnvironment() map[string]string {
 	return environment
 }
 
-func expandConfigurationPlaceholders(configurationContent string, environment map[string]string) (string, error) {
+func expandConfigurationPlaceholders(configurationDocument *yaml.Node, environment map[string]string) error {
 	missingPlaceholders := map[string]struct{}{}
-	var expandedConfiguration strings.Builder
-	for _, configurationLine := range strings.SplitAfter(configurationContent, "\n") {
-		expandedLine := configurationPlaceholderPattern.ReplaceAllStringFunc(configurationLine, func(placeholder string) string {
+	expandConfigurationNode(configurationDocument, environment, missingPlaceholders, "")
+	if len(missingPlaceholders) == 0 {
+		return nil
+	}
+
+	missingNames := make([]string, 0, len(missingPlaceholders))
+	for placeholderName := range missingPlaceholders {
+		missingNames = append(missingNames, placeholderName)
+	}
+	sort.Strings(missingNames)
+	return fmt.Errorf(configurationPlaceholderErrorTemplate, strings.Join(missingNames, ","))
+}
+
+func expandConfigurationNode(
+	configurationNode *yaml.Node,
+	environment map[string]string,
+	missingPlaceholders map[string]struct{},
+	optionalPlaceholderName string,
+) {
+	if configurationNode == nil {
+		return
+	}
+
+	switch configurationNode.Kind {
+	case yaml.DocumentNode, yaml.SequenceNode:
+		for _, childNode := range configurationNode.Content {
+			expandConfigurationNode(childNode, environment, missingPlaceholders, "")
+		}
+	case yaml.MappingNode:
+		for childIndex := 0; childIndex+1 < len(configurationNode.Content); childIndex += 2 {
+			keyNode := configurationNode.Content[childIndex]
+			valueNode := configurationNode.Content[childIndex+1]
+			optionalCredentialName := ""
+			if keyNode.Kind == yaml.ScalarNode && keyNode.Value == optionalCredentialConfigurationKeyConstant {
+				optionalCredentialName = exactPlaceholderName(valueNode)
+			}
+			expandConfigurationNode(valueNode, environment, missingPlaceholders, optionalCredentialName)
+		}
+	case yaml.ScalarNode:
+		configurationNode.Value = configurationPlaceholderPattern.ReplaceAllStringFunc(configurationNode.Value, func(placeholder string) string {
 			matches := configurationPlaceholderPattern.FindStringSubmatch(placeholder)
 			placeholderName := matches[1]
 			if !configurationPlaceholderNamePattern.MatchString(placeholderName) {
@@ -101,30 +140,25 @@ func expandConfigurationPlaceholders(configurationContent string, environment ma
 			if placeholderValue, exists := environment[placeholderName]; exists {
 				return placeholderValue
 			}
-			if optionalCredentialPlaceholder(configurationLine, placeholderName) {
+			if placeholderName == optionalPlaceholderName {
 				return ""
 			}
 			missingPlaceholders[placeholderName] = struct{}{}
 			return placeholder
 		})
-		expandedConfiguration.WriteString(expandedLine)
 	}
-	if len(missingPlaceholders) == 0 {
-		return expandedConfiguration.String(), nil
-	}
-
-	missingNames := make([]string, 0, len(missingPlaceholders))
-	for placeholderName := range missingPlaceholders {
-		missingNames = append(missingNames, placeholderName)
-	}
-	sort.Strings(missingNames)
-	return "", fmt.Errorf(configurationPlaceholderErrorTemplate, strings.Join(missingNames, ","))
 }
 
-func optionalCredentialPlaceholder(configurationLine string, placeholderName string) bool {
-	lineMatches := optionalCredentialLinePattern.FindStringSubmatch(strings.TrimRight(configurationLine, "\r\n"))
-	if len(lineMatches) == 0 {
-		return false
+func exactPlaceholderName(configurationNode *yaml.Node) string {
+	if configurationNode == nil || configurationNode.Kind != yaml.ScalarNode {
+		return ""
 	}
-	return lineMatches[1] == placeholderName || lineMatches[2] == placeholderName || lineMatches[3] == placeholderName
+	matches := configurationPlaceholderPattern.FindStringSubmatch(configurationNode.Value)
+	if len(matches) != 2 || matches[0] != configurationNode.Value {
+		return ""
+	}
+	if !configurationPlaceholderNamePattern.MatchString(matches[1]) {
+		return ""
+	}
+	return matches[1]
 }
