@@ -2,7 +2,7 @@
 
 Resolved issues archived from `.mprlab/ISSUES.md` during backlog cleanup.
 
-Each issue is formatted as `- [x] [GX-<number>]`.
+Each issue retains the canonical identifier it had when archived. Older `GX-<number>` entries predate the current section-aware identifier scheme.
 
 ## Features (110–199)
 
@@ -43,3 +43,79 @@ Each issue is formatted as `- [x] [GX-<number>]`.
 ## Maintenance (422–499)
 
 - [x] [GX-423] Cleanup docs and backlog. (Reviewed README/ARCHITECTURE for accuracy, updated workflow summary notes, and archived completed issues.)
+
+## 2026-07-24 Backlog and Documentation Audit
+
+The entries below were moved from the active tracker after verification. Their durable operator and architecture contracts are maintained in [README.md](../README.md), [ARCHITECTURE.md](../ARCHITECTURE.md), [the web audit workspace guide](../docs/web-audit-workspace.md), and [CHANGELOG.md](../CHANGELOG.md); implementation-only regressions remain covered by the repository test suite.
+
+### BugFixes
+
+- [x] [B001] Make LLM Proxy transport explicit; the default connection no longer requires an LLM Proxy credential.
+- [x] [B002] Support chained pull requests by resolving and syncing each pull request’s actual base branch.
+- [x] [B003] Hand off a merged pull-request branch to its base branch instead of reporting a missing open pull request twice.
+- [x] [B004] Restore tracked ignored generated paths so a completed sync leaves the worktree clean.
+- [x] [B005] Exclude tracked files under ignored parents from dirty-sync staging.
+- [x] [B006] Exclude ignored generated paths from dirty auto-commit staging.
+- [x] [B007] Restore linked-worktree adoption to strict sync.
+- [x] [B008] Replace the blanket `.gitignore` with explicit project ignore rules.
+- [x] [B009] Adopt a sibling worktree when the requested branch is already checked out there.
+- [x] [B010] Permit safe fast-forward refreshes while preserving tracked local edits.
+- [x] [B011] Emit per-repository discovery progress before workflow work begins.
+- [x] [B012] Make `gix prs delete --yes` report its per-repository outcome.
+- [x] [B013] Apply workflow file replacement globs consistently, including `**/` patterns.
+- [x] [B014] Treat already-absent local PR branches as no-ops rather than failures.
+- [x] [B015] Add canonical user and system configuration initialization.
+- [x] [B016] Push local-ahead work branches during sync.
+- [x] [B017] Keep dirty explicit `gix sync master` on the master commit-and-push path.
+- [x] [B018] Open review for an existing remote branch with real unreviewed changes.
+- [x] [B019] Preserve merged-branch handoff and linked-worktree safety during sync.
+- [x] [B021] Create a missing explicit dirty-sync branch at the current checkout before committing clusters.
+- [x] [B022] Reject incomplete AI merge resolutions before any commit or push.
+- [x] [B023] Make release preparation self-contained and fail closed on missing or invalid artifacts.
+- [x] [B024] Preserve the syncflow builder’s canonical `gix sync --help` contract.
+- [x] [B025] Create missing explicit branches as a stacked pull-request chain from the current branch.
+- [x] [B026] Preserve distinct Pages `source_commit` and release `release_commit` identities and verify each at its owning boundary.
+- [x] [B027] Publish dirty remote-backed branches that lack an open pull request.
+- [x] [B028] Commit dirty explicit sync work to the named target branch.
+- [x] [B029] Stage NUL-delimited Git status paths as literal filenames.
+- [x] [B030] Prune stale linked-worktree metadata before adoption.
+- [x] [B031] Make AI merge resolution visible, deadline-bounded, and safe to hand off.
+
+### Improvements
+
+- [x] [I001] Report workflow summaries with per-step outcomes and readable duration.
+- [x] [I002] Add dependency-upgrade workflow steps to `configs/account-rename.yaml`.
+- [x] [I003] Add the Go-version update step to `configs/account-rename.yaml`.
+- [x] [I004] Embed and render BSL, MIT, and proprietary license templates through the license preset.
+- [x] [I005] Use one strict interpolated `config.yml` runtime contract.
+- [x] [I006] Model LLM routing as provider-owned ordered connection profiles.
+- [x] [I007] Keep dotenv loading outside gix and use only inherited process environment values.
+- [x] [I008] Make terminal audit tables the default and provide strict CSV and HTML exports.
+
+### Maintenance
+
+- [x] [M009] Remove the obsolete formatting failure report: the referenced legacy file is absent from the current repository and the complete CI gate is clean.
+- [x] [M010] Consolidate MPR Lab governance under `.mprlab/`.
+- [x] [M011] Document user configuration initialization and its control surface.
+- [x] [M012] Add the global provider-owned LLM configuration contract.
+- [x] [M013] Keep user configuration under `$HOME/.gix/config.yml` only.
+
+### Features
+
+- [x] [F001] Add the `command run` workflow step for arbitrary repository commands.
+- [x] [F002] Add the local `gix --web` browser interface and JSON API.
+- [x] [F003] Eliminate duplicate CLI error logging.
+- [x] [F004] Add typed web audit inspection with operator-selected roots.
+- [x] [F005] Add a review-before-apply typed web audit remediation queue.
+- [x] [F006] Expose explicit origin-remote status in CLI and web audit contracts.
+- [x] [F007] Add the confirmation-gated web-only queued folder-deletion action.
+- [x] [F008] Add queued web audit sync and protocol-conversion actions.
+
+### Planning
+
+- [x] [P001] Add the repository-tree explorer to the web interface.
+- [x] [P002] Rename the branch-change command from `cd` to `sync`.
+- [x] [P003] Implement the current `gix sync` contract and remove the former `cd` implementation.
+- [x] [P004] Generate explanatory pull-request descriptions for `gix sync`.
+- [x] [P005] Unify workflow implementation paths behind shared typed builders and services.
+- [x] [P006] Advance generated branch names when a prior dirty-sync branch name is occupied.

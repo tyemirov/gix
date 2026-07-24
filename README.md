@@ -31,6 +31,8 @@ make deploy
 
 `make release` runs CI and prepares the cross-platform binaries, checksums, documentation Pages archive, changelog commit, annotated tag, and release manifest entirely from local state under `.git/mprlab-release`. It performs no remote write. `make publish` pushes the exact prepared Git refs and GitHub Release assets through canonical `origin` without rebuilding. `make deploy` activates the published documentation archive at `gix.mprlab.com` only when the downloaded manifest matches that locally prepared release; the CLI itself has no runtime rollout.
 
+The release manifest intentionally records two revisions: `source_commit` identifies the source used to build the documentation archive, while `release_commit` identifies the release/changelog commit and annotated tag. Pages deployment verifies the public archive marker against `source_commit` and the published tag against `release_commit`; those identities are not interchangeable.
+
 These maintainer targets use the repository-owned helpers under `scripts/release`. They require Bash 4+, Python 3.10+, GNU `timeout`, `rsync`, `tar`, `shasum`, `curl`, and an authenticated GitHub CLI in addition to the normal Go and Git prerequisites.
 
 ## The sync flow
@@ -49,6 +51,8 @@ An explicit branch target is binding. With dirty work, sync carries the pending 
 When an explicit branch does not exist, sync requires dirty work that will become the new branch's commits and creates the branch at the current branch's `HEAD`. If the current branch is not `master`, sync first publishes its committed `HEAD`: an existing open pull request is preserved, while a missing pull request is opened against its recorded review base, recursively ensuring the existing stack, or against the configured base when no parent is recorded. Only after that parent pull request exists does sync create the child branch, cluster changed paths by top-level area, and commit each cluster with a Conventional Commit message from the configured `github.com/tyemirov/utils/llm` client. The child is aligned with `origin/<parent-branch>`, pushed, and opened as a pull request against the parent branch, producing a real review stack instead of duplicating the parent changes against `master`.
 
 Clean or `--stash` creation of a missing branch is rejected before child branch creation or pull-request publication because no committed child delta would exist against its parent. The selected parent is recorded in local `branch.<child>.gix-review-base` Git config before child creation, so a retry after push or pull-request failure keeps the same review base and deeper stacks retain every recorded link. An existing remote-backed branch with no pull request remains publishable review work: sync first rejects merged branch state, then saves any dirty work and opens the missing pull request through the same base-delta path used for clean branches. Once the child pull request merges, its actual merged base drives the normal handoff; if merged ancestor heads were also deleted, sync follows their merged pull requests to the first surviving remote base. Uncommitted work on a known-merged branch is rejected before commit; rerun with `--stash` to carry that work through the merged handoff, then create its new review branch from the surviving base. `--stash` remains available when syncing an existing branch, `--commit` explicitly selects the default dirty auto-commit policy for scripts that already pass it, and `--require-clean` opts back into failing when the worktree is dirty. Explicit `--title` and `--body` values apply to the requested child; an automatically opened parent uses its own default title and diff-generated body.
+
+When the target branch is held by a linked worktree, sync first prunes stale worktree registration and preserves any sibling changes that need to survive before retrying the switch. It does not discard dirty sibling work as a shortcut to changing branches.
 
 Merge conflicts use the configured LLM only when its complete-file response preserves every byte-exact non-conflicting region from Git's marker-bearing worktree file. Marker-free modify/delete or rename/delete conflicts accept only an exact preservation of the local stage, including its deletion. Truncated, incomplete, marker-bearing, structurally invalid, or deletion responses that would discard non-conflicting regions stop before merge commit or push and leave the conflict inspectable. The PR branch is "ours"; its remote review base is "theirs".
 
@@ -107,6 +111,14 @@ gix audit --roots ~/Development --all --format csv > audit.csv
 gix audit --roots ~/Development --all --format html > audit.html
 ```
 
+### Use the local audit workspace
+
+```shell
+gix --web --roots ~/Development
+```
+
+`gix --web` starts a local browser workspace on `127.0.0.1:8080` by default. It includes a repository explorer and a typed audit table for operator-selected roots; it does not parse terminal output to construct audit results. Remediation actions are queued for review and editing before they run, then the workspace re-inspects the exact audited scope. The web-only folder-deletion action requires an explicit confirmation in that queue. Keep the default loopback bind for local use; a non-loopback `--bind` exposes a mutating local tool to the network. See [the web audit workspace guide](docs/web-audit-workspace.md) for the action, queue, and safety contract.
+
 ### Draft commit messages and changelog entries
 
 ```shell
@@ -152,7 +164,7 @@ Workflows reuse repository discovery, confirmation prompts, and logging so you c
 
 ### Workflow output
 
-`gix workflow` emits YAML step summaries (one per repository) and prints a final summary line at the end of the run. The summary includes event counters, per-step outcomes (`STEP_<STEP>_<OUTCOME>`), WARN/ERROR counts, and a human duration. Other commands keep the existing human-readable console logs.
+`gix workflow` emits an initial discovery summary for each repository, then YAML step summaries and a final summary line at the end of the run. The summary includes event counters, per-step outcomes (`STEP_<STEP>_<OUTCOME>`), WARN/ERROR counts, and a human duration. Other commands keep the existing human-readable console logs.
 
 ### Embedded workflows
 
@@ -175,7 +187,7 @@ Workflows can now compose individual git/file operations as standalone steps:
 - `git stage-commit` — run `git add` for templated paths and immediately commit with a templated message (optionally `allow_empty`).
 - `git push` — push a templated branch to a templated remote with remote validation (useful when you truly need a push without a PR).
 - `pull-request open` — push (warning when no remote) and open a PR in one step, using templated title/body/base/head values.
-- `pull-request create` — open a PR without touching remotes (legacy behavior).
+- `pull-request create` — open a PR without touching remotes.
 - Every workflow automatically exposes `.Environment.workflow_run_id` (UTC `YYYYMMDDHHMMSS`) so you can build unique branch names like `automation/{{ .Repository.Name }}-{{ index .Environment "workflow_run_id" }}` without passing extra variables.
 
 Combine these steps to build fully custom git flows without relying on one monolithic `tasks apply`. See `configs/gitignore.yaml` for a concrete example that splits branch creation, file editing, staging, commit, push, and PR creation into discrete workflow steps.
@@ -471,7 +483,7 @@ Schema highlights:
 - LLM: optional `{ llm_proxy: { provider, model }, timeout_seconds, max_completion_tokens, temperature }` block. When the block is present, `llm_proxy.provider` is required and `llm_proxy.model` is optional. The nested selection overrides only the configured llm-proxy upstream; connection endpoints, credentials, and priority cannot be declared inside workflow tasks.
 - Commit: `{ message }` (templated). Defaults to `Apply task <name>` when empty.
 - Pull request: `{ title, body, base, draft }` (templated; optional).
-- Safeguards: `{ hard_stop: {...}, soft_skip: {...} }` blocks that control whether a violation aborts the repository (`hard_stop`) or just skips the current task/action (`soft_skip`). Legacy flat maps are treated as `hard_stop`.
+- Safeguards: `{ hard_stop: {...}, soft_skip: {...} }` blocks that control whether a violation aborts the repository (`hard_stop`) or just skips the current task/action (`soft_skip`).
 - Steps: optional ordered list (`branch.prepare`, `files.apply`, `git.stage`, `git.commit`, `git.push`, `pull-request.create`, `actions`) that restricts which internal actions run. When omitted, file-backed tasks run the entire branch/commit/push pipeline by default.
 - Execution steps are now explicit actions: `git.branch.prepare` (creates the work branch), `files.apply`, `git.stage`, `git.commit`, `git.push`, and `pull-request.create`. Each action evaluates its own safeguards so workflows fail fast with actionable errors (for example, dirty worktrees or missing remotes).
 
@@ -556,7 +568,7 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
  - Starts a local HTTP server on `127.0.0.1:8080` by default and serves the embedded browser UI plus JSON API for running gix commands in-process.
  - Use `--bind` and `--port` to expose the UI on a different interface or port, for example `gix --web --bind 0.0.0.0 --port 8081`.
  - Use `--roots` to pre-scope the initial left-pane repository catalog, for example `gix --web --roots ~/Development/fleet`.
- - The UI exposes the command catalog, accepts one argument per line, and captures stdout/stderr for each run.
+ - The UI exposes the command catalog, accepts one argument per line, and captures stdout/stderr for each run. Its audit workspace uses typed inspection rows and a review-before-apply remediation queue; [the web audit workspace guide](docs/web-audit-workspace.md) defines its actions and deletion confirmation.
 
 - `gix audit [--roots <dir>...] [--all] [--format <table|csv|html>] [-y]` (alias `a`)
 
@@ -618,6 +630,7 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
 ## Need more depth?
 
 - Detailed architecture, package layout, and command wiring: [ARCHITECTURE.md](ARCHITECTURE.md)
+- Local browser audit workspace, queued remediation, and safety contract: [docs/web-audit-workspace.md](docs/web-audit-workspace.md)
 - Historical roadmap and design notes: [docs/cli_design.md](docs/cli_design.md)
 - Recent changes: [CHANGELOG.md](CHANGELOG.md)
 

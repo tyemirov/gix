@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Documentation
+- Archived resolved backlog records and refreshed the current documentation for strict configuration, release source-versus-release commit identities, and the local web audit workspace.
+
 ### Features ✨
 - _No changes._
 
