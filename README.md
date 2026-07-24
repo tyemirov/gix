@@ -94,13 +94,18 @@ gix packages delete --roots ~/Development/containers --yes
 
 Remove untagged GitHub Container Registry versions in one sweep.
 
-### Generate audit CSVs for reporting
+### Inspect repositories or export an audit report
 
 ```shell
-gix audit --roots ~/Development --all > audit.csv
+gix audit --roots ~/Development --all
 ```
 
-Capture metadata (default branches, owners, remotes, protocol mismatches) for every repository in scope.
+The default terminal table captures default branches, owners, remotes, protocol mismatches, and worktree state for every repository in scope. Export a machine-readable report when needed:
+
+```shell
+gix audit --roots ~/Development --all --format csv > audit.csv
+gix audit --roots ~/Development --all --format html > audit.html
+```
 
 ### Draft commit messages and changelog entries
 
@@ -272,6 +277,7 @@ workflow:
    command: ["audit", "report"]
    with:
     output: ./reports/audit.csv
+    format: csv
 ```
 
 - `name` is optional; if omitted a stable name is generated (e.g., `convert-protocol-1`).
@@ -312,7 +318,7 @@ Other commands keep the existing human-readable console logs and suppress workfl
  - with: `targets: [{ remote_name, source_branch, target_branch, push_to_remote, delete_source_branch }]`
  - Defaults: `remote_name: origin`, `target_branch: master`, `push_to_remote: true`, `delete_source_branch: false`; `source_branch` auto-detected from remote/local if omitted.
 - `audit report`
- - with: `output: <path>` (optional). When provided, writes a CSV file; otherwise prints to stdout.
+ - with: `output: <path>` (optional), `format: <table|csv|html>` (optional; defaults to `csv`).
 - `tasks apply`
  - with: `tasks: [...]` (see below) for fine-grained file changes, commits, PRs, and built-in actions.
 - `command run`
@@ -552,9 +558,9 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
  - Use `--roots` to pre-scope the initial left-pane repository catalog, for example `gix --web --roots ~/Development/fleet`.
  - The UI exposes the command catalog, accepts one argument per line, and captures stdout/stderr for each run.
 
-- `gix audit [--roots <dir>...] [--all] [-y]` (alias `a`)
+- `gix audit [--roots <dir>...] [--all] [--format <table|csv|html>] [-y]` (alias `a`)
 
- - Flags: `--roots` (repeatable), `--all` to include non-git folders in output.
+ - Flags: `--roots` (repeatable), `--all` to include non-git folders in output, `--format` to select `table` (default), `csv`, or `html`.
 
 - `gix workflow <configuration> [--roots <dir>...] [--require-clean] [-y]` (alias `w`)
 
