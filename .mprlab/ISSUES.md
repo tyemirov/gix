@@ -692,6 +692,10 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - `make lint`
   - `make ci`
   - `git diff --check`
+  Review Follow-up (2026-07-24):
+  - Escaped literal table-cell delimiters and switched table layout to terminal display-cell widths, keeping Unicode repository and file names aligned.
+  - Added a public CLI regression for a repository name containing both wide Unicode characters and a table delimiter.
+  - Re-ran `make format`, `make test`, `make lint`, and `make ci`.
 
 
 ## Maintenance

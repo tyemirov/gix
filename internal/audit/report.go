@@ -6,7 +6,8 @@ import (
 	"html"
 	"io"
 	"strings"
-	"unicode/utf8"
+
+	"github.com/mattn/go-runewidth"
 )
 
 const (
@@ -15,6 +16,14 @@ const (
 	auditHTMLDocumentTitleSuffixConstant   = "</title>\n<style>body{font-family:system-ui,sans-serif;margin:2rem}table{border-collapse:collapse}th,td{border:1px solid #999;padding:.4rem;text-align:left;vertical-align:top;white-space:pre-wrap}th{background:#f3f3f3}</style>\n</head>\n<body>\n<h1>"
 	auditHTMLDocumentHeadingSuffixConstant = "</h1>\n<table>\n<thead>\n<tr>"
 	auditHTMLDocumentCloseConstant         = "\n</tbody>\n</table>\n</body>\n</html>\n"
+)
+
+var auditTableValueReplacer = strings.NewReplacer(
+	"\r\n", "\\n",
+	"\n", "\\n",
+	"\r", "\\r",
+	"\t", "\\t",
+	"|", "\\|",
 )
 
 // WriteReport serializes repository inspections in the requested report format.
@@ -152,7 +161,7 @@ func auditReportDisplayHeaders() []string {
 func normalizeTableRecord(record []string) []string {
 	normalized := make([]string, len(record))
 	for valueIndex := range record {
-		normalized[valueIndex] = strings.NewReplacer("\r\n", "\\n", "\n", "\\n", "\r", "\\r", "\t", "\\t").Replace(record[valueIndex])
+		normalized[valueIndex] = auditTableValueReplacer.Replace(record[valueIndex])
 	}
 	return normalized
 }
@@ -160,17 +169,21 @@ func normalizeTableRecord(record []string) []string {
 func auditTableColumnWidths(header []string, rows [][]string) []int {
 	widths := make([]int, len(header))
 	for columnIndex := range header {
-		widths[columnIndex] = utf8.RuneCountInString(header[columnIndex])
+		widths[columnIndex] = auditTableDisplayWidth(header[columnIndex])
 	}
 	for rowIndex := range rows {
 		for columnIndex := range rows[rowIndex] {
-			width := utf8.RuneCountInString(rows[rowIndex][columnIndex])
+			width := auditTableDisplayWidth(rows[rowIndex][columnIndex])
 			if width > widths[columnIndex] {
 				widths[columnIndex] = width
 			}
 		}
 	}
 	return widths
+}
+
+func auditTableDisplayWidth(value string) int {
+	return runewidth.StringWidth(value)
 }
 
 func auditTableBorder(widths []int) string {
@@ -189,7 +202,7 @@ func writeAuditTableRow(writer io.Writer, values []string, widths []int) error {
 	for valueIndex := range values {
 		line.WriteByte(' ')
 		line.WriteString(values[valueIndex])
-		line.WriteString(strings.Repeat(" ", widths[valueIndex]-utf8.RuneCountInString(values[valueIndex])+1))
+		line.WriteString(strings.Repeat(" ", widths[valueIndex]-auditTableDisplayWidth(values[valueIndex])+1))
 		line.WriteByte('|')
 	}
 	_, writeError := fmt.Fprintln(writer, line.String())

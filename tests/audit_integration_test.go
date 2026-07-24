@@ -13,37 +13,41 @@ import (
 )
 
 const (
-	auditIntegrationTimeout                    = 10 * time.Second
-	auditIntegrationLogLevelFlag               = "--log-level"
-	auditIntegrationErrorLevel                 = "error"
-	auditIntegrationDebugLevel                 = "debug"
-	auditIntegrationRunSubcommand              = "run"
-	auditIntegrationModulePathConstant         = "."
-	auditIntegrationAuditCommandName           = "audit"
-	auditIntegrationRootFlag                   = "--roots"
-	auditIntegrationIncludeAllFlag             = "--all"
-	auditIntegrationFormatFlag                 = "--format"
-	auditIntegrationGitExecutable              = "git"
-	auditIntegrationInitFlag                   = "init"
-	auditIntegrationInitialBranchFlag          = "--initial-branch=main"
-	auditIntegrationRemoteSubcommand           = "remote"
-	auditIntegrationAddSubcommand              = "add"
-	auditIntegrationOriginRemoteName           = "origin"
-	auditIntegrationOriginURL                  = "git@github.com:origin/example.git"
-	auditIntegrationStubExecutableName         = "gh"
-	auditIntegrationStubScript                 = "#!/bin/sh\nif [ \"$1\" = \"repo\" ] && [ \"$2\" = \"view\" ]; then\n  cat <<'EOF'\n{\"nameWithOwner\":\"canonical/example\",\"defaultBranchRef\":{\"name\":\"main\"},\"description\":\"\"}\nEOF\n  exit 0\nfi\nexit 0\n"
-	auditIntegrationRepositoryPrefixConstant   = "audit-integration-repository-"
-	auditIntegrationHomeShortcutPrefixConstant = "~/"
-	auditIntegrationCSVHeaderConstant          = "folder_name,final_github_repo,origin_remote_status,name_matches,remote_default_branch,local_branch,in_sync,remote_protocol,origin_matches_canonical,worktree_dirty,dirty_files\n"
-	auditIntegrationCSVRowTemplate             = "%[1]s,canonical/example,configured,no,main,,n/a,ssh,no,no,\n"
-	auditIntegrationCSVTemplate                = auditIntegrationCSVHeaderConstant + auditIntegrationCSVRowTemplate
-	auditIntegrationTableCaseNameConstant      = "audit_table_default"
-	auditIntegrationCSVCaseNameConstant        = "audit_csv_export"
-	auditIntegrationHTMLCaseNameConstant       = "audit_html_export"
-	auditIntegrationDebugCaseNameConstant      = "audit_debug"
-	auditIntegrationTildeCaseNameConstant      = "audit_tilde"
-	auditIntegrationIncludeAllCaseNameConstant = "audit_include_all"
-	auditIntegrationSubtestNameTemplate        = "%d_%s"
+	auditIntegrationTimeout                       = 10 * time.Second
+	auditIntegrationLogLevelFlag                  = "--log-level"
+	auditIntegrationErrorLevel                    = "error"
+	auditIntegrationDebugLevel                    = "debug"
+	auditIntegrationRunSubcommand                 = "run"
+	auditIntegrationModulePathConstant            = "."
+	auditIntegrationAuditCommandName              = "audit"
+	auditIntegrationRootFlag                      = "--roots"
+	auditIntegrationIncludeAllFlag                = "--all"
+	auditIntegrationFormatFlag                    = "--format"
+	auditIntegrationGitExecutable                 = "git"
+	auditIntegrationInitFlag                      = "init"
+	auditIntegrationInitialBranchFlag             = "--initial-branch=main"
+	auditIntegrationRemoteSubcommand              = "remote"
+	auditIntegrationAddSubcommand                 = "add"
+	auditIntegrationOriginRemoteName              = "origin"
+	auditIntegrationOriginURL                     = "git@github.com:origin/example.git"
+	auditIntegrationStubExecutableName            = "gh"
+	auditIntegrationStubScript                    = "#!/bin/sh\nif [ \"$1\" = \"repo\" ] && [ \"$2\" = \"view\" ]; then\n  cat <<'EOF'\n{\"nameWithOwner\":\"canonical/example\",\"defaultBranchRef\":{\"name\":\"main\"},\"description\":\"\"}\nEOF\n  exit 0\nfi\nexit 0\n"
+	auditIntegrationRepositoryPrefixConstant      = "audit-integration-repository-"
+	auditIntegrationHomeShortcutPrefixConstant    = "~/"
+	auditIntegrationCSVHeaderConstant             = "folder_name,final_github_repo,origin_remote_status,name_matches,remote_default_branch,local_branch,in_sync,remote_protocol,origin_matches_canonical,worktree_dirty,dirty_files\n"
+	auditIntegrationCSVRowTemplate                = "%[1]s,canonical/example,configured,no,main,,n/a,ssh,no,no,\n"
+	auditIntegrationCSVTemplate                   = auditIntegrationCSVHeaderConstant + auditIntegrationCSVRowTemplate
+	auditIntegrationTableCaseNameConstant         = "audit_table_default"
+	auditIntegrationCSVCaseNameConstant           = "audit_csv_export"
+	auditIntegrationHTMLCaseNameConstant          = "audit_html_export"
+	auditIntegrationTableEscapingCaseNameConstant = "audit_table_escapes_delimiters_and_aligns_wide_characters"
+	auditIntegrationDebugCaseNameConstant         = "audit_debug"
+	auditIntegrationTildeCaseNameConstant         = "audit_tilde"
+	auditIntegrationIncludeAllCaseNameConstant    = "audit_include_all"
+	auditIntegrationSubtestNameTemplate           = "%d_%s"
+	auditIntegrationTableFormattingFolderName     = "界界|a"
+	auditIntegrationEscapedTableFolderName        = "界界\\|a"
+	auditIntegrationTableFirstBorder              = "+---------+"
 )
 
 func TestAuditRunCommandIntegration(testInstance *testing.T) {
@@ -109,6 +113,16 @@ func TestAuditRunCommandIntegration(testInstance *testing.T) {
 	nestedNonGitFolderPath := filepath.Join(nonGitFolderPath, nestedNonGitFolderName)
 	require.NoError(testInstance, os.MkdirAll(nestedNonGitFolderPath, 0o755))
 
+	tableFormattingRoot := filepath.Join(tempDirectory, "table-formatting-root")
+	require.NoError(testInstance, os.Mkdir(tableFormattingRoot, 0o755))
+	tableFormattingRepositoryPath := filepath.Join(tableFormattingRoot, auditIntegrationTableFormattingFolderName)
+	tableFormattingInitCommand := exec.Command(auditIntegrationGitExecutable, auditIntegrationInitFlag, auditIntegrationInitialBranchFlag, tableFormattingRepositoryPath)
+	tableFormattingInitCommand.Env = buildGitCommandEnvironment(nil)
+	require.NoError(testInstance, tableFormattingInitCommand.Run())
+	tableFormattingRemoteCommand := exec.Command(auditIntegrationGitExecutable, "-C", tableFormattingRepositoryPath, auditIntegrationRemoteSubcommand, auditIntegrationAddSubcommand, auditIntegrationOriginRemoteName, auditIntegrationOriginURL)
+	tableFormattingRemoteCommand.Env = buildGitCommandEnvironment(nil)
+	require.NoError(testInstance, tableFormattingRemoteCommand.Run())
+
 	buildArguments := func(logLevel string, root string) []string {
 		return []string{
 			auditIntegrationRunSubcommand,
@@ -132,10 +146,12 @@ func TestAuditRunCommandIntegration(testInstance *testing.T) {
 	tildeRootArguments := buildArguments(auditIntegrationErrorLevel, tildeRootArgument)
 	includeAllArguments := append(buildArguments(auditIntegrationErrorLevel, includeAllRoot), auditIntegrationIncludeAllFlag)
 	includeAllRepositoryFolderName := filepath.Base(includeAllRepositoryPath)
+	tableFormattingArguments := buildArguments(auditIntegrationErrorLevel, tableFormattingRoot)
 
 	testCases := []struct {
 		name                string
 		arguments           []string
+		expectedPrefix      string
 		expectedOutput      string
 		expectedFragments   []string
 		unexpectedFragments []string
@@ -168,6 +184,15 @@ func TestAuditRunCommandIntegration(testInstance *testing.T) {
 				"<td>canonical/example</td>",
 			},
 			unexpectedFragments: []string{auditIntegrationCSVHeaderConstant},
+		},
+		{
+			name:           auditIntegrationTableEscapingCaseNameConstant,
+			arguments:      tableFormattingArguments,
+			expectedPrefix: auditIntegrationTableFirstBorder,
+			expectedFragments: []string{
+				auditIntegrationEscapedTableFolderName,
+			},
+			unexpectedFragments: []string{auditIntegrationTableFormattingFolderName, auditIntegrationCSVHeaderConstant},
 		},
 		{
 			name:      auditIntegrationDebugCaseNameConstant,
@@ -208,6 +233,9 @@ func TestAuditRunCommandIntegration(testInstance *testing.T) {
 			filteredOutput := filterStructuredOutput(subtestOutput)
 			if len(testCase.expectedOutput) > 0 {
 				require.Equal(subtest, testCase.expectedOutput, filteredOutput)
+			}
+			if len(testCase.expectedPrefix) > 0 {
+				require.True(subtest, strings.HasPrefix(filteredOutput, testCase.expectedPrefix))
 			}
 			for _, fragment := range testCase.expectedFragments {
 				require.Contains(subtest, filteredOutput, fragment)
