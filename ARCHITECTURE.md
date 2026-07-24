@@ -42,7 +42,7 @@ Declarative repository tasks are layered across dedicated modules inside `intern
 - `task_execute.go` applies the plan: it evaluates safeguards, guards against dirty worktrees (respecting per-task overrides), manages branch checkout/push lifecycles, executes task actions, and emits structured events only (no `fmt.Fprintf` calls).
 - `task_operation.go` stitches the lifecycle together so the workflow executor can run the parsed tasks across every discovered repository.
 
-This separation keeps parsing/templating logic pure, isolates Git/GitHub side effects, and guarantees that every user-facing log flows through `shared.StructuredReporter`, which now also records per-stage durations for telemetry and CLI summaries. Audit-mode consumers (for example `gix audit`) set `Dependencies.DisableWorkflowLogging` so the executor instantiates reporters that write to `io.Discard`, preserving raw CSV output for integration tests.
+This separation keeps parsing/templating logic pure, isolates Git/GitHub side effects, and guarantees that every user-facing log flows through `shared.StructuredReporter`, which now also records per-stage durations for telemetry and CLI summaries. Audit-mode consumers (for example `gix audit`) set `Dependencies.DisableWorkflowLogging` so the executor instantiates reporters that write to `io.Discard`, preserving the selected raw audit report output for integration tests.
 
 ### Workflow Runtime Variables
 
@@ -64,7 +64,7 @@ All commands accept shared flags for log level, log format, previews, repository
 
 Each feature area resides in `internal/<domain>` and exposes structs with methods instead of package-level functions. The primary packages are:
 
-- `internal/audit`: Repository discovery, metadata reconciliation, CSV export, and CLI integration (`internal/audit/cli`).
+- `internal/audit`: Repository discovery, metadata reconciliation, terminal-table reporting, CSV/HTML export, and CLI integration (`internal/audit/cli`).
 - `internal/branches`: Branch maintenance commands (`sync`, `refresh`, default promotion) and supporting adapters.
 - `internal/changelog`, `internal/commitmsg`: Generators that transform Git history and staged changes into formatted text.
 - `internal/repos`: Subpackages for repository workflows:
@@ -222,6 +222,7 @@ workflow:
       command: ["audit", "report"]
       with:
         output: ./reports/audit-latest.csv
+        format: csv
 ```
 
 ## Reusable Packages
