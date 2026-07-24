@@ -6,6 +6,7 @@
 - _No changes._
 
 ### Improvements ⚙️
+- Made `gix audit` terminal-readable by default with a table and added strict `--format csv` and `--format html` exports.
 - Replaced layered implicit configuration with one strict `config.yml`: explicit path, system file, then user file, with interactive user-file creation when none exists.
 - Removed dotenv discovery and the Viper configuration layer; placeholders now resolve only from the inherited process environment, while literal configuration values pass through unchanged.
 - Replaced top-level LLM provider/model selection with complete `openai` and `llm_proxy` profiles: each owns its routing fields, endpoint, interpolated credential, and positive unique priority.
@@ -31,6 +32,7 @@
 - Kept the syncflow builder description as the canonical text shown by `gix sync --help`.
 
 ### Testing 🧪
+- Added public CLI coverage for default table output, explicit CSV and HTML exports, and rejected audit report formats.
 - Added black-box coverage for configuration discovery, initialization prompts, process-only interpolation, ignored sibling `.env` files, literal credentials, missing placeholders, strict operation schemas, and LLM profile routing.
 - Added public CLI coverage for LLM connection priority, successful OpenAI-to-llm-proxy failover, stop-after-success behavior, obsolete schema rejection, and profile validation.
 - Added public CLI regressions for lossy and timed-out AI merge resolution, including phase output, heartbeat, timeout, no merge-resolution commit or push, and the manual recovery handoff.
@@ -45,6 +47,7 @@
 - Added black-box release coverage for clean-checkout helpers, failed or missing platform outputs, replaced published manifests, and missing integrity prerequisites.
 
 ### Docs 📚
+- Documented the audit table default and CSV/HTML export commands in the CLI, architecture, and site guides.
 - Documented the canonical `config.yml` discovery and interpolation contract plus the exact Meta Muse-first and OpenAI-first priority settings.
 - Documented strict-sync AI merge-resolution deadlines, progress, and manual recovery behavior.
 - Documented explicit branch targets as binding dirty-commit destinations and distinguished explicit `master` from plain current-branch rescue.
