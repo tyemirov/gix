@@ -65,12 +65,14 @@ func TestActionOptionBuildersSerializeWorkflowContracts(testingInstance *testing
 				Debug:      true,
 				Depth:      audit.InspectionDepthMinimal,
 				OutputPath: "audit.csv",
+				Format:     audit.ReportFormatCSV,
 			}.Options(),
 			expected: map[string]any{
 				actionOptionIncludeAllKeyConstant: true,
 				actionOptionDebugKeyConstant:      true,
 				actionOptionDepthKeyConstant:      string(audit.InspectionDepthMinimal),
 				optionOutputPathKeyConstant:       "audit.csv",
+				optionFormatKeyConstant:           string(audit.ReportFormatCSV),
 			},
 		},
 	}

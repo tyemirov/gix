@@ -301,6 +301,7 @@ func TestServiceRunBehaviors(testInstance *testing.T) {
 
 	for testCaseIndex, testCase := range testCases {
 		testInstance.Run(fmt.Sprintf("%d_%s", testCaseIndex, testCase.name), func(testInstance *testing.T) {
+			testCase.options.ReportFormat = audit.ReportFormatCSV
 			outputBuffer := &bytes.Buffer{}
 			errorBuffer := &bytes.Buffer{}
 
@@ -361,6 +362,7 @@ func TestServiceRunNormalizesRepositoryPaths(testInstance *testing.T) {
 		Roots:           []string{currentDirectoryRelativePathConstant},
 		InspectionDepth: audit.InspectionDepthMinimal,
 		DebugOutput:     true,
+		ReportFormat:    audit.ReportFormatCSV,
 	}
 
 	runError := service.Run(context.Background(), options)
@@ -424,6 +426,7 @@ func TestServiceRunIncludesAllFolders(testInstance *testing.T) {
 		Roots:             []string{rootDirectory},
 		InspectionDepth:   audit.InspectionDepthMinimal,
 		IncludeAllFolders: true,
+		ReportFormat:      audit.ReportFormatCSV,
 	}
 
 	runError := service.Run(context.Background(), options)
@@ -471,6 +474,7 @@ func TestServiceRunUsesRelativeFolderNames(testInstance *testing.T) {
 	options := audit.CommandOptions{
 		Roots:           []string{rootDirectory},
 		InspectionDepth: audit.InspectionDepthMinimal,
+		ReportFormat:    audit.ReportFormatCSV,
 	}
 
 	runError := service.Run(context.Background(), options)

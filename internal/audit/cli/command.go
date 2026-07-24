@@ -22,6 +22,8 @@ const (
 	flagRootDescriptionConstant      = "Repository roots to scan (repeatable; nested paths ignored)"
 	flagIncludeAllNameConstant       = "all"
 	flagIncludeAllDescription        = "Include directories without Git repositories in the audit output"
+	flagFormatNameConstant           = "format"
+	flagFormatDescriptionConstant    = "Audit report format: table, csv, or html"
 	taskNameGenerateAuditReport      = "Generate audit report"
 	missingRootsErrorMessageConstant = "no repository roots provided; specify --roots or configure defaults"
 )
@@ -30,6 +32,7 @@ type commandOptions struct {
 	debugOutput       bool
 	includeAllFolders bool
 	repositoryRoots   []string
+	reportFormat      audit.ReportFormat
 }
 
 // LoggerProvider yields a zap logger for command execution.
@@ -59,6 +62,7 @@ func (builder *CommandBuilder) Build() (*cobra.Command, error) {
 
 	command.Flags().StringSlice(flagRootNameConstant, nil, flagRootDescriptionConstant)
 	flagutils.AddToggleFlag(command.Flags(), nil, flagIncludeAllNameConstant, "", false, flagIncludeAllDescription)
+	command.Flags().String(flagFormatNameConstant, string(audit.DefaultReportFormat()), flagFormatDescriptionConstant)
 
 	return command, nil
 }
@@ -99,11 +103,12 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 
 	taskRunner := resolveTaskRunner(builder.TaskRunnerFactory, dependencyResult.Workflow)
 
-	actionOptions := map[string]any{
-		"include_all": options.includeAllFolders,
-		"debug":       options.debugOutput,
-		"depth":       string(audit.InspectionDepthFull),
-	}
+	actionOptions := workflow.AuditReportActionOptions{
+		IncludeAll: options.includeAllFolders,
+		Debug:      options.debugOutput,
+		Depth:      audit.InspectionDepthFull,
+		Format:     options.reportFormat,
+	}.Options()
 
 	taskDefinition := workflow.TaskDefinition{
 		Name:        taskNameGenerateAuditReport,
@@ -149,6 +154,19 @@ func (builder *CommandBuilder) parseOptions(command *cobra.Command) (commandOpti
 		}
 	}
 
+	reportFormat := audit.DefaultReportFormat()
+	if command != nil {
+		formatValue, formatError := command.Flags().GetString(flagFormatNameConstant)
+		if formatError != nil {
+			return commandOptions{}, formatError
+		}
+		parsedFormat, parseFormatError := audit.ParseReportFormat(formatValue)
+		if parseFormatError != nil {
+			return commandOptions{}, parseFormatError
+		}
+		reportFormat = parsedFormat
+	}
+
 	if len(repositoryRoots) == 0 {
 		if command != nil {
 			_ = command.Help()
@@ -160,6 +178,7 @@ func (builder *CommandBuilder) parseOptions(command *cobra.Command) (commandOpti
 		repositoryRoots:   repositoryRoots,
 		includeAllFolders: includeAll,
 		debugOutput:       debugMode,
+		reportFormat:      reportFormat,
 	}, nil
 }
 

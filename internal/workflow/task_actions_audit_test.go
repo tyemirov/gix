@@ -97,6 +97,7 @@ func TestHandleAuditReportActionUsesUpdatedRepositoryPaths(testInstance *testing
 	parameters := map[string]any{
 		"output": outputPath,
 		"depth":  string(audit.InspectionDepthMinimal),
+		"format": string(audit.ReportFormatCSV),
 	}
 
 	executionError := handleAuditReportAction(executionContext, environment, repository, parameters)
@@ -132,6 +133,7 @@ func TestHandleAuditReportActionFallsBackToStateRoots(testInstance *testing.T) {
 	parameters := map[string]any{
 		"output": outputPath,
 		"depth":  string(audit.InspectionDepthMinimal),
+		"format": string(audit.ReportFormatCSV),
 	}
 
 	executionError := handleAuditReportAction(executionContext, environment, &RepositoryState{}, parameters)

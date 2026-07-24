@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/tyemirov/gix/internal/audit"
 	"github.com/tyemirov/gix/internal/workflow"
 )
 
@@ -46,7 +47,7 @@ func TestAuditReportOperationCreatesNestedOutput(testInstance *testing.T) {
 				configuredOutputPath = auditReportWhitespacePaddingConstant + configuredOutputPath + auditReportWhitespacePaddingConstant
 			}
 
-			operation := &workflow.AuditReportOperation{OutputPath: configuredOutputPath, WriteToFile: true}
+			operation := &workflow.AuditReportOperation{OutputPath: configuredOutputPath, WriteToFile: true, Format: audit.ReportFormatCSV}
 			operationEnvironment := &workflow.Environment{Output: &bytes.Buffer{}}
 			operationState := &workflow.State{}
 

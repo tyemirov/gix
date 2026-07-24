@@ -2,7 +2,6 @@ package workflow
 
 import (
 	"context"
-	"encoding/csv"
 	"fmt"
 	"io"
 	"os"
@@ -17,23 +16,13 @@ const (
 	auditReportDestinationStdoutConstant  = "stdout"
 	auditCurrentDirectorySentinelConstant = "."
 	auditDirectoryPermissionsConstant     = 0o755
-	auditCSVHeaderFinalRepositoryConstant = "final_github_repo"
-	auditCSVHeaderFolderNameConstant      = "folder_name"
-	auditCSVHeaderRemoteStatusConstant    = "origin_remote_status"
-	auditCSVHeaderNameMatchesConstant     = "name_matches"
-	auditCSVHeaderRemoteDefaultConstant   = "remote_default_branch"
-	auditCSVHeaderLocalBranchConstant     = "local_branch"
-	auditCSVHeaderInSyncConstant          = "in_sync"
-	auditCSVHeaderRemoteProtocolConstant  = "remote_protocol"
-	auditCSVHeaderOriginCanonicalConstant = "origin_matches_canonical"
-	auditCSVHeaderWorktreeDirtyConstant   = "worktree_dirty"
-	auditCSVHeaderDirtyFilesConstant      = "dirty_files"
 )
 
-// AuditReportOperation emits an audit CSV summarizing repository state.
+// AuditReportOperation emits an audit report summarizing repository state.
 type AuditReportOperation struct {
 	OutputPath  string
 	WriteToFile bool
+	Format      audit.ReportFormat
 }
 
 // Name identifies the workflow command handled by this operation.
@@ -86,36 +75,13 @@ func (operation *AuditReportOperation) Execute(executionContext context.Context,
 		}()
 	}
 
-	csvWriter := csv.NewWriter(writer)
-	header := []string{
-		auditCSVHeaderFolderNameConstant,
-		auditCSVHeaderFinalRepositoryConstant,
-		auditCSVHeaderRemoteStatusConstant,
-		auditCSVHeaderNameMatchesConstant,
-		auditCSVHeaderRemoteDefaultConstant,
-		auditCSVHeaderLocalBranchConstant,
-		auditCSVHeaderInSyncConstant,
-		auditCSVHeaderRemoteProtocolConstant,
-		auditCSVHeaderOriginCanonicalConstant,
-		auditCSVHeaderWorktreeDirtyConstant,
-		auditCSVHeaderDirtyFilesConstant,
-	}
-
-	if writeError := csvWriter.Write(header); writeError != nil {
-		return writeError
-	}
-
+	inspections := make([]audit.RepositoryInspection, 0, len(state.Repositories))
 	for repositoryIndex := range state.Repositories {
 		repository := state.Repositories[repositoryIndex]
-		row := buildAuditReportRow(repository.Inspection)
-		if writeError := csvWriter.Write(row); writeError != nil {
-			return writeError
-		}
+		inspections = append(inspections, repository.Inspection)
 	}
-
-	csvWriter.Flush()
-	if flushError := csvWriter.Error(); flushError != nil {
-		return flushError
+	if writeError := audit.WriteReport(writer, operation.Format, inspections); writeError != nil {
+		return writeError
 	}
 
 	if operation.WriteToFile && environment.Output != nil {
@@ -123,65 +89,4 @@ func (operation *AuditReportOperation) Execute(executionContext context.Context,
 	}
 
 	return nil
-}
-
-func buildAuditReportRow(inspection audit.RepositoryInspection) []string {
-	finalRepository := strings.TrimSpace(inspection.CanonicalOwnerRepo)
-	if len(finalRepository) == 0 {
-		finalRepository = inspection.OriginOwnerRepo
-	}
-
-	nameMatches := audit.TernaryValueNotApplicable
-	if inspection.IsGitRepository {
-		nameMatches = audit.TernaryValueNo
-		if len(inspection.DesiredFolderName) > 0 && inspection.DesiredFolderName == inspection.FolderName {
-			nameMatches = audit.TernaryValueYes
-		}
-	}
-
-	remoteDefaultBranch := inspection.RemoteDefaultBranch
-	localBranch := inspection.LocalBranch
-	inSync := inspection.InSyncStatus
-	originRemoteStatus := inspection.OriginRemoteStatus
-	remoteProtocol := string(inspection.RemoteProtocol)
-	originMatches := string(inspection.OriginMatchesCanonical)
-
-	var worktreeDirty audit.TernaryValue
-	dirtyFiles := ""
-
-	if !inspection.IsGitRepository {
-		finalRepository = string(audit.TernaryValueNotApplicable)
-		originRemoteStatus = audit.OriginRemoteStatusNotApplicable
-		remoteDefaultBranch = string(audit.TernaryValueNotApplicable)
-		localBranch = string(audit.TernaryValueNotApplicable)
-		inSync = audit.TernaryValueNotApplicable
-		remoteProtocol = string(audit.TernaryValueNotApplicable)
-		originMatches = string(audit.TernaryValueNotApplicable)
-		worktreeDirty = audit.TernaryValueNotApplicable
-	} else {
-		if originRemoteStatus == audit.OriginRemoteStatusMissing {
-			finalRepository = string(audit.TernaryValueNotApplicable)
-			remoteProtocol = string(audit.TernaryValueNotApplicable)
-		}
-		if len(inspection.WorktreeDirtyFiles) > 0 {
-			worktreeDirty = audit.TernaryValueYes
-			dirtyFiles = strings.Join(inspection.WorktreeDirtyFiles, "; ")
-		} else {
-			worktreeDirty = audit.TernaryValueNo
-		}
-	}
-
-	return []string{
-		inspection.FolderName,
-		finalRepository,
-		string(originRemoteStatus),
-		string(nameMatches),
-		remoteDefaultBranch,
-		localBranch,
-		string(inSync),
-		remoteProtocol,
-		originMatches,
-		string(worktreeDirty),
-		dirtyFiles,
-	}
 }
