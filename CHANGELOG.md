@@ -58,6 +58,24 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented validated AI conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.1.10] - 2026-07-24
+
+- Merge pull request #391 from tyemirov/gix/escape-table-delimiters-and-align-wide-unicode-in
+- test: verify audit table handles delimiters and wide characters
+- fix(audit): improve table column alignment for wide Unicode characters
+- chore(deps): add uax29 v2.2.0 and go-runewidth v0.0.27 to go.sum
+- chore(deps): add go-runewidth and uax29 to go.mod dependencies
+- chore: update changelog for audit-table delimiter escaping and alignment fixes
+- docs(issues): add audit table review follow-up and regression details
+- Merge pull request #390 from tyemirov/tyemirov/improvement/I008-audit-table-output
+- test: expand audit integration tests for table, csv, and html formats
+- feat(audit): add --format flag and support HTML/table/CSV audit report output
+- docs: clarify audit output formats and update usage examples for CSV export
+- docs(audit): document --format option for report output in README
+- feat(audit): default to terminal table, add CSV/HTML export, update docs
+- docs: update architecture to clarify audit output options and package roles
+- docs(ISSUES): record audit terminal output and forge provider milestone issues
+
 ## [v1.1.9] - 2026-07-24
 
 - Merge pull request #389 from tyemirov/improvement/I005-strict-config-contract
