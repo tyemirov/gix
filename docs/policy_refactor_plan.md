@@ -1,5 +1,7 @@
 # GX-402 Refactor Roadmap (Policy Compliance)
 
+> **Historical record — not an active implementation plan.** This proposal predates the repository's current `.mprlab` governance and issue scheme. Active policy work must follow [`.mprlab/ISSUES.md`](../.mprlab/ISSUES.md), [`.mprlab/POLICY.md`](../.mprlab/POLICY.md), and the current architecture documentation.
+
 ## 1. Gaps against `.mprlab/POLICY.md`
 
 - **Domain types missing** – repository paths, owner/repo slugs, remote URLs, and branch names flow through the system as raw `string` values (`internal/repos/rename/executor.go`, `internal/repos/remotes/executor.go`, `internal/workflow/task_runner.go`). Smart constructors and invariants are absent, so illegal states remain representable.
@@ -43,7 +45,7 @@
 ## 3. Sequencing & Risk Mitigation
 
 - **Incremental rollout**: start with domain types and a single slice of functionality (e.g., remote updates) to prove the pattern, then propagate across other executors.
-- **Backward compatibility**: maintain current CLI output initially by adapting reporters; once tests assert on structured errors, gradually migrate user messaging.
+- **Forward-only migration**: move callers to the current CLI and error contract in one bounded change; tests must cover the current public behavior without retaining aliases or compatibility paths.
 - **Testing first**: create regression tests around existing behavior before refactors to prevent accidental behavior regression (especially around rename skips and history purge safeguards).
 - **Communication**: track progress in `CHANGELOG.md` and consider opening follow-up issues per phase to manage scope.
 

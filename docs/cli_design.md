@@ -1,4 +1,6 @@
-# Git Maintenance CLI Transition Design
+# Historical Git Maintenance CLI Transition Design
+
+> **Historical record — not a current contract.** This document records the pre-release Bash-to-Go transition and earlier design choices. It may describe commands, configuration, and dependencies that no longer exist. Use [README.md](../README.md) for the current operator contract, [ARCHITECTURE.md](../ARCHITECTURE.md) for the current design, and [`.mprlab/ISSUES.md`](../.mprlab/ISSUES.md) for active work.
 
 ## 1. Purpose and Scope
 This document inventories the existing Bash automation in this repository and captures the design decisions required to migrate those capabilities into a Go-based command-line interface (CLI). It covers:

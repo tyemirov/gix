@@ -1,5 +1,7 @@
 # GX-412 — POLICY.md Refactor Plan
 
+> **Historical record — not an active implementation plan.** The GX-412/GX-413 identifiers predate the current section-aware issue format. Use [`.mprlab/ISSUES.md`](../.mprlab/ISSUES.md) for active maintenance work and [`.mprlab/POLICY.md`](../.mprlab/POLICY.md) for the binding policy.
+
 We audited the repo against the confident-programming rules in `.mprlab/POLICY.md` plus the workflow/CLI expectations in `.mprlab/AGENTS.*.md`. The following areas need structured refactors before we can claim full compliance.
 
 Each topic below now maps to an open maintenance issue so progress can be tracked in `.mprlab/ISSUES.md`.
