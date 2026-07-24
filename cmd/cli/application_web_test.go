@@ -17,6 +17,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/tyemirov/gix/internal/githubauth"
 	"github.com/tyemirov/gix/internal/llmclient"
 	"github.com/tyemirov/gix/internal/repos/shared"
 	"github.com/tyemirov/gix/internal/web"
@@ -63,6 +64,9 @@ func TestExecuteWithOptionsLaunchesWebRunnerWithDefaultPort(t *testing.T) {
 		require.NotNil(t, options.InspectAudit)
 		require.NotNil(t, options.ApplyAuditChanges)
 		require.NotNil(t, executionContext)
+		resolvedToken, tokenAvailable := githubauth.ResolveToken(executionContext, nil)
+		require.True(t, tokenAvailable)
+		require.Equal(t, "test-github-key", resolvedToken)
 		return nil
 	}
 

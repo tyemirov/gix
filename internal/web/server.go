@@ -117,7 +117,16 @@ func (server *Server) ListenAndServeContext(executionContext context.Context) er
 	if listenError != nil {
 		return listenError
 	}
+	return server.serveContext(executionContext, listener)
+}
 
+func (server *Server) serveContext(executionContext context.Context, listener net.Listener) error {
+	if executionContext == nil {
+		executionContext = context.Background()
+	}
+	server.httpServer.BaseContext = func(net.Listener) context.Context {
+		return executionContext
+	}
 	serverErrorChannel := make(chan error, 1)
 	go func() {
 		serveError := server.Serve(listener)
