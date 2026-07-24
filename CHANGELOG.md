@@ -53,6 +53,15 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented validated AI conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.1.9] - 2026-07-24
+
+- Merge pull request #389 from tyemirov/improvement/I005-strict-config-contract
+- fix(migrate): validate GitHub auth before mutations
+- fix(web): preserve launch context for requests
+- fix(config): preserve decoded configuration through workflows
+- docs: record strict configuration contract
+- feat(config): enforce provider-owned runtime configuration
+
 ## [v1.1.8] - 2026-07-20
 
 - Merge pull request #388 from tyemirov/bugfix/B031-ai-merge-resolution-handoff
