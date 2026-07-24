@@ -72,7 +72,7 @@ The table below maps current script switches to Cobra equivalents and documents 
 
 | Script behavior | Cobra command | Flags & arguments | `gh` usage strategy |
 | --- | --- | --- | --- |
-| Remove untagged GHCR packages | `gix repo-packages-purge` | `--package` (optional override), ``, `--page-size` (default 100). The command resolves the owner, owner type, and default package name from each repository's origin remote and requires a token with GitHub Packages scopes. Configurable via Viper with env prefix `GIX`. | Prefer direct HTTP using `go-github` REST client authenticated with token. If we reuse `gh`, we would invoke `gh api` with `--method`. The design chooses native HTTP to avoid shelling out where OAuth token is already provided. |
+| Remove untagged GHCR packages | `gix packages delete` | `--package` optionally overrides the package name. The command resolves owner metadata from each repository and reads its GitHub API endpoint and interpolated credential from the `packages delete` operation in `config.yml`. | Use the native GHCR HTTP client with the concrete credential decoded at configuration load time. |
 
 ### 3.2 Shared command behavior
 - All `repo` subcommands support `--debug` to raise Zap logging level to `Debug`.
@@ -141,12 +141,15 @@ Notes:
 - Provide `--debug` to switch to `zap.NewDevelopment` or dynamic level change.
 - All domain services receive a structured logger via dependency injection; no package-level globals.
 
-### 5.2 Configuration precedence (Viper)
-- Viper initialized with prefix `GIX`.
-- Precedence: **command-line flags > environment variables > config file > defaults**.
-- Config file search order: explicit `--config`, `./config.yaml`, `$HOME/.gix/config.yaml`.
-- Flags bind to Viper keys so environment/config seamlessly fill defaults.
-- Sensitive values (tokens) read from env/flag only; we will not persist secrets to disk by default.
+### 5.2 Configuration contract
+- Decode exactly one `config.yml` using the canonical schema.
+- Config file search order: explicit `--config`, `/etc/gix/config.yml`, `$HOME/.gix/config.yml`.
+- Offer to create the user file when neither discovered file exists.
+- Expand `${NAME}` only inside the selected file and only from the inherited process environment. Never discover or parse `.env` files; preserve literal configuration values unchanged.
+- Keep complete `openai` and `llm_proxy` profiles under the top-level `llm` block. Each owns a positive unique priority, endpoint, credential, and its routing fields: `openai.model` or `llm_proxy.provider` plus `llm_proxy.model`.
+- Attempt credentialed profiles in ascending priority order, continue after request failure, and return the first successful response. Require at least one active credential.
+- Flags may override `llm_proxy.provider` and `llm_proxy.model` for one invocation but may not replace endpoints, credentials, or connection priorities.
+- Pass GitHub and GHCR credentials as concrete decoded values; runtime clients do not resolve environment-variable names.
 
 ### 5.3 Error handling and UX
 - Consistent error formatting via `fmt.Errorf` with `%w` for wrapping; Cobra `SilenceUsage` set after validation passes to avoid noisy usage output on runtime errors.
