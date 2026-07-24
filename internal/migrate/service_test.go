@@ -3,6 +3,8 @@ package migrate
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -101,10 +103,11 @@ func makeCommandFailedError(message string) error {
 
 const testGitHubTokenValue = "test-token"
 
-func TestServiceExecuteContinuesWhenPagesLookupFails(testInstance *testing.T) {
-	testInstance.Setenv(githubauth.EnvGitHubCLIToken, testGitHubTokenValue)
-	testInstance.Setenv(githubauth.EnvGitHubToken, testGitHubTokenValue)
+func testGitHubContext() context.Context {
+	return githubauth.WithCredential(context.Background(), testGitHubTokenValue)
+}
 
+func TestServiceExecuteContinuesWhenPagesLookupFails(testInstance *testing.T) {
 	repositoryExecutor := stubGitCommandExecutor{}
 	repositoryManager, managerError := gitrepo.NewRepositoryManager(repositoryExecutor)
 	require.NoError(testInstance, managerError)
@@ -135,7 +138,7 @@ func TestServiceExecuteContinuesWhenPagesLookupFails(testInstance *testing.T) {
 		DeleteSourceBranch:   false,
 	}
 
-	result, executionError := service.Execute(context.Background(), options)
+	result, executionError := service.Execute(testGitHubContext(), options)
 	require.NoError(testInstance, executionError)
 	require.False(testInstance, result.PagesConfigurationUpdated)
 	require.True(testInstance, result.DefaultBranchUpdated)
@@ -145,9 +148,6 @@ func TestServiceExecuteContinuesWhenPagesLookupFails(testInstance *testing.T) {
 }
 
 func TestServiceExecuteWarnsWhenRetargetFails(testInstance *testing.T) {
-	testInstance.Setenv(githubauth.EnvGitHubCLIToken, testGitHubTokenValue)
-	testInstance.Setenv(githubauth.EnvGitHubToken, testGitHubTokenValue)
-
 	repositoryExecutor := stubGitCommandExecutor{}
 	repositoryManager, managerError := gitrepo.NewRepositoryManager(repositoryExecutor)
 	require.NoError(testInstance, managerError)
@@ -178,15 +178,12 @@ func TestServiceExecuteWarnsWhenRetargetFails(testInstance *testing.T) {
 		DeleteSourceBranch:   false,
 	}
 
-	result, executionError := service.Execute(context.Background(), options)
+	result, executionError := service.Execute(testGitHubContext(), options)
 	require.NoError(testInstance, executionError)
 	require.Contains(testInstance, strings.Join(result.Warnings, " "), "PR-RETARGET-SKIP")
 }
 
 func TestServiceExecuteWarnsWhenBranchProtectionFails(testInstance *testing.T) {
-	testInstance.Setenv(githubauth.EnvGitHubCLIToken, testGitHubTokenValue)
-	testInstance.Setenv(githubauth.EnvGitHubToken, testGitHubTokenValue)
-
 	repositoryExecutor := stubGitCommandExecutor{}
 	repositoryManager, managerError := gitrepo.NewRepositoryManager(repositoryExecutor)
 	require.NoError(testInstance, managerError)
@@ -214,16 +211,13 @@ func TestServiceExecuteWarnsWhenBranchProtectionFails(testInstance *testing.T) {
 		DeleteSourceBranch:   false,
 	}
 
-	result, executionError := service.Execute(context.Background(), options)
+	result, executionError := service.Execute(testGitHubContext(), options)
 	require.NoError(testInstance, executionError)
 	require.Contains(testInstance, strings.Join(result.Warnings, " "), "PROTECTION-SKIP")
 	require.False(testInstance, result.SafetyStatus.SafeToDelete)
 }
 
 func TestServiceExecuteReturnsActionableDefaultBranchError(testInstance *testing.T) {
-	testInstance.Setenv(githubauth.EnvGitHubCLIToken, testGitHubTokenValue)
-	testInstance.Setenv(githubauth.EnvGitHubToken, testGitHubTokenValue)
-
 	repositoryExecutor := stubGitCommandExecutor{}
 	repositoryManager, managerError := gitrepo.NewRepositoryManager(repositoryExecutor)
 	require.NoError(testInstance, managerError)
@@ -266,7 +260,7 @@ func TestServiceExecuteReturnsActionableDefaultBranchError(testInstance *testing
 		DeleteSourceBranch:   false,
 	}
 
-	_, executionError := service.Execute(context.Background(), options)
+	_, executionError := service.Execute(testGitHubContext(), options)
 	require.Error(testInstance, executionError)
 
 	var updateError DefaultBranchUpdateError
@@ -286,9 +280,6 @@ func TestServiceExecuteReturnsActionableDefaultBranchError(testInstance *testing
 }
 
 func TestServiceExecuteSkipsDefaultBranchWhenRepositoryMissing(testInstance *testing.T) {
-	testInstance.Setenv(githubauth.EnvGitHubCLIToken, testGitHubTokenValue)
-	testInstance.Setenv(githubauth.EnvGitHubToken, testGitHubTokenValue)
-
 	repositoryExecutor := stubGitCommandExecutor{}
 	repositoryManager, managerError := gitrepo.NewRepositoryManager(repositoryExecutor)
 	require.NoError(testInstance, managerError)
@@ -327,7 +318,7 @@ func TestServiceExecuteSkipsDefaultBranchWhenRepositoryMissing(testInstance *tes
 		DeleteSourceBranch:   false,
 	}
 
-	result, executionError := service.Execute(context.Background(), options)
+	result, executionError := service.Execute(testGitHubContext(), options)
 
 	require.NoError(testInstance, executionError)
 	require.False(testInstance, result.DefaultBranchUpdated)
@@ -388,14 +379,21 @@ func TestServiceExecuteFailsWhenGitHubTokenMissing(testInstance *testing.T) {
 	})
 	require.NoError(testInstance, serviceError)
 
+	repositoryPath := testInstance.TempDir()
+	workflowsDirectory := filepath.Join(repositoryPath, ".github", "workflows")
+	require.NoError(testInstance, os.MkdirAll(workflowsDirectory, 0o755))
+	workflowPath := filepath.Join(workflowsDirectory, "ci.yml")
+	originalWorkflow := "on:\n  push:\n    branches:\n      - main\n"
+	require.NoError(testInstance, os.WriteFile(workflowPath, []byte(originalWorkflow), 0o644))
+
 	options := MigrationOptions{
-		RepositoryPath:       testInstance.TempDir(),
+		RepositoryPath:       repositoryPath,
 		RepositoryRemoteName: "origin",
 		RepositoryIdentifier: "owner/example",
 		WorkflowsDirectory:   ".github/workflows",
 		SourceBranch:         BranchMain,
 		TargetBranch:         BranchMaster,
-		PushUpdates:          false,
+		PushUpdates:          true,
 		DeleteSourceBranch:   false,
 	}
 
@@ -413,4 +411,8 @@ func TestServiceExecuteFailsWhenGitHubTokenMissing(testInstance *testing.T) {
 	require.Contains(testInstance, errorMessage, "DEFAULT-BRANCH-UPDATE")
 	require.Contains(testInstance, errorMessage, "missing GitHub authentication token")
 	require.False(testInstance, githubOperations.defaultBranchSet)
+
+	workflowContent, readError := os.ReadFile(workflowPath)
+	require.NoError(testInstance, readError)
+	require.Equal(testInstance, originalWorkflow, string(workflowContent))
 }

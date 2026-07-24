@@ -190,6 +190,22 @@ func NewService(dependencies ServiceDependencies) (*Service, error) {
 	return service, nil
 }
 
+func (service *Service) ensureGitHubTokenAvailable(executionContext context.Context, options MigrationOptions) error {
+	if len(strings.TrimSpace(options.RepositoryIdentifier)) == 0 {
+		return nil
+	}
+	if _, available := githubauth.ResolveToken(executionContext, nil); available {
+		return nil
+	}
+	return DefaultBranchUpdateError{
+		RepositoryPath:       options.RepositoryPath,
+		RepositoryIdentifier: options.RepositoryIdentifier,
+		SourceBranch:         options.SourceBranch,
+		TargetBranch:         options.TargetBranch,
+		Cause:                githubauth.NewMissingTokenError("default-branch", true),
+	}
+}
+
 // Execute performs the migration workflow.
 func (service *Service) Execute(executionContext context.Context, options MigrationOptions) (MigrationResult, error) {
 	if validationError := service.validateOptions(options); validationError != nil {
@@ -210,6 +226,10 @@ func (service *Service) Execute(executionContext context.Context, options Migrat
 		if !cleanWorktree {
 			return MigrationResult{}, errCleanWorktreeRequired
 		}
+	}
+
+	if tokenError := service.ensureGitHubTokenAvailable(executionContext, options); tokenError != nil {
+		return MigrationResult{}, tokenError
 	}
 
 	workflowOutcome, rewriteError := service.workflowRewriter.Rewrite(executionContext, WorkflowRewriteConfig{
