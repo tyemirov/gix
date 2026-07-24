@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/tyemirov/gix/internal/audit"
 	"github.com/tyemirov/gix/internal/repos/shared"
 )
 
@@ -289,8 +290,20 @@ func buildAuditReportOperation(options map[string]any) (Operation, error) {
 	if outputError != nil {
 		return nil, outputError
 	}
+	formatValue, formatExists, formatError := reader.stringValue(optionFormatKeyConstant)
+	if formatError != nil {
+		return nil, formatError
+	}
+	reportFormat := audit.ReportFormatCSV
+	if formatExists {
+		parsedFormat, parseFormatError := audit.ParseReportFormat(formatValue)
+		if parseFormatError != nil {
+			return nil, parseFormatError
+		}
+		reportFormat = parsedFormat
+	}
 
-	return &AuditReportOperation{OutputPath: strings.TrimSpace(outputPath), WriteToFile: outputExists && len(strings.TrimSpace(outputPath)) > 0}, nil
+	return &AuditReportOperation{OutputPath: strings.TrimSpace(outputPath), WriteToFile: outputExists && len(strings.TrimSpace(outputPath)) > 0, Format: reportFormat}, nil
 }
 
 func parseProtocolValue(raw string) (shared.RemoteProtocol, error) {

@@ -21,7 +21,7 @@ The following tables document each script. "Inputs" include both positional argu
 | External dependencies | `git`, `gh`, `jq`, `find`, `readlink`/`realpath`, `mv`, `sed`, `awk`, standard GNU coreutils. Requires authenticated `gh` session. |
 | Network/API usage | `gh api` to resolve repository canonical metadata; `gh repo view` to determine default branch; optional `git fetch` for sync detection; `git remote set-url` for updates. |
 | Side effects | File-system renames of repository directories; remote URL changes; Git fetches; optional prompts; stdout/stderr logging. With ``, operations are read-only. |
-| Outputs | When the dedicated audit command runs, it emits CSV (header + one line per repo) to stdout. Operational modes emit plan/action messages (`PLAN-OK`, `UPDATE-REMOTE-DONE`, etc.) to stdout and error messages to stderr. Debug logging when `--debug` is set. |
+| Outputs | The dedicated audit command emits a terminal table by default. `--format csv` emits a header plus one line per repository, and `--format html` emits a standalone HTML report. Operational modes emit plan/action messages (`PLAN-OK`, `UPDATE-REMOTE-DONE`, etc.) to stdout and error messages to stderr. Debug logging when `--debug` is set. |
 
 ### 2.2 `delete_merged_branches.sh`
 | Aspect | Details |
@@ -166,7 +166,7 @@ Integration tests live in `tests/integration` and execute the compiled CLI binar
 
 | Feature area | Scenario | Git / GitHub setup | Expected assertions |
 | --- | --- | --- | --- |
-| Repo audit | Canonical rename detection | Local repo with simulated redirect via mocked `gh api` response | CSV output includes canonical name mismatch and `origin_matches_canonical=no`. |
+| Repo audit | Canonical rename detection | Local repo with simulated redirect via mocked `gh api` response | Default table and explicit CSV/HTML exports include the canonical name mismatch and `origin_matches_canonical=no`. |
 | Repo audit | Protocol conversion | Repo using HTTPS remote | Command logs `PLAN-CONVERT` without modifying remote. |
 | Repo rename |  and execute | Case-only rename on case-insensitive filesystem simulation |  prints `PLAN-CASE-ONLY`; execute performs two-step rename. |
 | Remote update | Redirected repository | `origin` pointing to old owner; mocked `gh api` returns new owner | Remote URL updated; message `UPDATE-REMOTE-DONE`. |

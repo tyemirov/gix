@@ -22,6 +22,7 @@ const (
 	auditIntegrationAuditCommandName           = "audit"
 	auditIntegrationRootFlag                   = "--roots"
 	auditIntegrationIncludeAllFlag             = "--all"
+	auditIntegrationFormatFlag                 = "--format"
 	auditIntegrationGitExecutable              = "git"
 	auditIntegrationInitFlag                   = "init"
 	auditIntegrationInitialBranchFlag          = "--initial-branch=main"
@@ -36,7 +37,9 @@ const (
 	auditIntegrationCSVHeaderConstant          = "folder_name,final_github_repo,origin_remote_status,name_matches,remote_default_branch,local_branch,in_sync,remote_protocol,origin_matches_canonical,worktree_dirty,dirty_files\n"
 	auditIntegrationCSVRowTemplate             = "%[1]s,canonical/example,configured,no,main,,n/a,ssh,no,no,\n"
 	auditIntegrationCSVTemplate                = auditIntegrationCSVHeaderConstant + auditIntegrationCSVRowTemplate
-	auditIntegrationCSVCaseNameConstant        = "audit_csv"
+	auditIntegrationTableCaseNameConstant      = "audit_table_default"
+	auditIntegrationCSVCaseNameConstant        = "audit_csv_export"
+	auditIntegrationHTMLCaseNameConstant       = "audit_html_export"
 	auditIntegrationDebugCaseNameConstant      = "audit_debug"
 	auditIntegrationTildeCaseNameConstant      = "audit_tilde"
 	auditIntegrationIncludeAllCaseNameConstant = "audit_include_all"
@@ -117,8 +120,14 @@ func TestAuditRunCommandIntegration(testInstance *testing.T) {
 			root,
 		}
 	}
+	withFormat := func(arguments []string, reportFormat string) []string {
+		formattedArguments := append([]string{}, arguments...)
+		return append(formattedArguments, auditIntegrationFormatFlag, reportFormat)
+	}
 
 	rootFlagArguments := buildArguments(auditIntegrationErrorLevel, repositoryPath)
+	csvArguments := withFormat(rootFlagArguments, "csv")
+	htmlArguments := withFormat(rootFlagArguments, "html")
 	debugLogLevelArguments := buildArguments(auditIntegrationDebugLevel, repositoryPath)
 	tildeRootArguments := buildArguments(auditIntegrationErrorLevel, tildeRootArgument)
 	includeAllArguments := append(buildArguments(auditIntegrationErrorLevel, includeAllRoot), auditIntegrationIncludeAllFlag)
@@ -132,9 +141,33 @@ func TestAuditRunCommandIntegration(testInstance *testing.T) {
 		unexpectedFragments []string
 	}{
 		{
+			name:      auditIntegrationTableCaseNameConstant,
+			arguments: rootFlagArguments,
+			expectedFragments: []string{
+				"| Folder ",
+				"| Final Repository ",
+				repositoryFolderName,
+				"canonical/example",
+			},
+			unexpectedFragments: []string{auditIntegrationCSVHeaderConstant},
+		},
+		{
 			name:           auditIntegrationCSVCaseNameConstant,
-			arguments:      rootFlagArguments,
+			arguments:      csvArguments,
 			expectedOutput: expectedCSVOutput,
+		},
+		{
+			name:      auditIntegrationHTMLCaseNameConstant,
+			arguments: htmlArguments,
+			expectedFragments: []string{
+				"<!doctype html>",
+				"<title>gix audit report</title>",
+				"<table>",
+				"<th>Folder</th>",
+				"<td>" + repositoryFolderName + "</td>",
+				"<td>canonical/example</td>",
+			},
+			unexpectedFragments: []string{auditIntegrationCSVHeaderConstant},
 		},
 		{
 			name:      auditIntegrationDebugCaseNameConstant,
@@ -142,24 +175,29 @@ func TestAuditRunCommandIntegration(testInstance *testing.T) {
 			expectedFragments: []string{
 				fmt.Sprintf("DEBUG: discovered 1 candidate repos under: %s", repositoryPath),
 				fmt.Sprintf("DEBUG: checking %s", repositoryPath),
-				auditIntegrationCSVHeaderConstant,
-				fmt.Sprintf(auditIntegrationCSVRowTemplate, repositoryFolderName),
+				"| Folder ",
+				repositoryFolderName,
 			},
+			unexpectedFragments: []string{auditIntegrationCSVHeaderConstant},
 		},
 		{
-			name:           auditIntegrationTildeCaseNameConstant,
-			arguments:      tildeRootArguments,
-			expectedOutput: expectedCSVOutput,
+			name:      auditIntegrationTildeCaseNameConstant,
+			arguments: tildeRootArguments,
+			expectedFragments: []string{
+				"| Folder ",
+				repositoryFolderName,
+			},
+			unexpectedFragments: []string{auditIntegrationCSVHeaderConstant},
 		},
 		{
 			name:      auditIntegrationIncludeAllCaseNameConstant,
 			arguments: includeAllArguments,
-			expectedOutput: fmt.Sprintf(
-				"folder_name,final_github_repo,origin_remote_status,name_matches,remote_default_branch,local_branch,in_sync,remote_protocol,origin_matches_canonical,worktree_dirty,dirty_files\n%[1]s,canonical/example,configured,no,main,,n/a,ssh,no,no,\n%[2]s,n/a,n/a,n/a,n/a,n/a,n/a,n/a,n/a,n/a,\n",
+			expectedFragments: []string{
+				"| Folder ",
 				includeAllRepositoryFolderName,
 				nonGitFolderName,
-			),
-			unexpectedFragments: []string{nestedNonGitFolderName},
+			},
+			unexpectedFragments: []string{auditIntegrationCSVHeaderConstant, nestedNonGitFolderName},
 		},
 	}
 
@@ -179,4 +217,14 @@ func TestAuditRunCommandIntegration(testInstance *testing.T) {
 			}
 		})
 	}
+
+	invalidFormatOutput, invalidFormatError := runFailingIntegrationCommand(
+		testInstance,
+		repositoryRoot,
+		integrationCommandOptions{PathVariable: extendedPath},
+		auditIntegrationTimeout,
+		withFormat(rootFlagArguments, "json"),
+	)
+	require.Error(testInstance, invalidFormatError)
+	require.Contains(testInstance, filterStructuredOutput(invalidFormatOutput), "unsupported audit report format \"json\"")
 }

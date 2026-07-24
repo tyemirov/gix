@@ -2,7 +2,6 @@ package audit
 
 import (
 	"context"
-	"encoding/csv"
 	"errors"
 	"fmt"
 	"io"
@@ -53,7 +52,7 @@ func (service *Service) Run(executionContext context.Context, options CommandOpt
 		return inspectionError
 	}
 
-	return service.writeAuditReport(inspections)
+	return WriteReport(service.outputWriter, options.ReportFormat, inspections)
 }
 
 // DiscoverInspections collects repository inspections for the provided roots.
@@ -129,36 +128,6 @@ func (service *Service) DiscoverInspections(executionContext context.Context, ro
 	}
 
 	return inspections, nil
-}
-
-func (service *Service) writeAuditReport(inspections []RepositoryInspection) error {
-	csvWriter := csv.NewWriter(service.outputWriter)
-	header := []string{
-		csvHeaderFolderName,
-		csvHeaderFinalRepository,
-		csvHeaderOriginRemoteStatus,
-		csvHeaderNameMatches,
-		csvHeaderRemoteDefault,
-		csvHeaderLocalBranch,
-		csvHeaderInSync,
-		csvHeaderRemoteProtocol,
-		csvHeaderOriginCanonical,
-		csvHeaderWorktreeDirty,
-		csvHeaderDirtyFiles,
-	}
-	if writeError := csvWriter.Write(header); writeError != nil {
-		return writeError
-	}
-
-	for inspectionIndex := range inspections {
-		record := inspectionReportRow(inspections[inspectionIndex])
-		if writeError := csvWriter.Write(record.CSVRecord()); writeError != nil {
-			return writeError
-		}
-	}
-
-	csvWriter.Flush()
-	return csvWriter.Error()
 }
 
 func deduplicatePaths(paths []string) []string {

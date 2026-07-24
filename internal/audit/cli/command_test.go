@@ -19,6 +19,7 @@ import (
 const (
 	rootFlagArgumentConstant       = "--" + flagutils.DefaultRootFlagName
 	includeAllFlagArgumentConstant = "--all"
+	formatFlagArgumentConstant     = "--format"
 )
 
 var boundRootFlagValues []*flagutils.RootFlagValues
@@ -59,6 +60,7 @@ func TestCommandBuildsAuditTaskFromConfiguration(t *testing.T) {
 	require.Equal(t, "audit.report", action.Type)
 	require.Equal(t, false, action.Options["include_all"])
 	require.Equal(t, false, action.Options["debug"])
+	require.Equal(t, "table", action.Options["format"])
 }
 
 func TestCommandFlagsOverrideConfiguration(t *testing.T) {
@@ -91,6 +93,7 @@ func TestCommandFlagsOverrideConfiguration(t *testing.T) {
 	command.SetArgs([]string{
 		rootFlagArgumentConstant, flagRoot,
 		includeAllFlagArgumentConstant,
+		formatFlagArgumentConstant, "csv",
 	})
 
 	executionError := command.Execute()
@@ -100,6 +103,30 @@ func TestCommandFlagsOverrideConfiguration(t *testing.T) {
 	action := runner.definitions[0].Actions[0]
 	require.Equal(t, "audit.report", action.Type)
 	require.Equal(t, true, action.Options["include_all"])
+	require.Equal(t, "csv", action.Options["format"])
+}
+
+func TestCommandRejectsUnsupportedReportFormat(t *testing.T) {
+	t.Helper()
+
+	root := "/tmp/audit-root"
+	builder := cli.CommandBuilder{
+		LoggerProvider: func() *zap.Logger { return zap.NewNop() },
+		ConfigurationProvider: func() audit.CommandConfiguration {
+			return audit.CommandConfiguration{Roots: []string{root}}
+		},
+	}
+
+	command, buildError := builder.Build()
+	require.NoError(t, buildError)
+	bindRootAndExecutionFlags(command)
+
+	command.SetContext(context.Background())
+	command.SetArgs([]string{formatFlagArgumentConstant, "json"})
+
+	executionError := command.Execute()
+	require.Error(t, executionError)
+	require.Contains(t, executionError.Error(), "unsupported audit report format \"json\"")
 }
 
 func TestCommandDisplaysHelpWhenRootsMissing(t *testing.T) {

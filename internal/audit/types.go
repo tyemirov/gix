@@ -1,6 +1,10 @@
 package audit
 
-import "github.com/tyemirov/gix/internal/repos/shared"
+import (
+	"fmt"
+
+	"github.com/tyemirov/gix/internal/repos/shared"
+)
 
 // RemoteProtocolType enumerates supported git remote protocols.
 type RemoteProtocolType = shared.RemoteProtocol
@@ -42,12 +46,46 @@ const (
 	InspectionDepthMinimal InspectionDepth = "minimal"
 )
 
+// ReportFormat identifies the serialization used for an audit report.
+type ReportFormat string
+
+// Supported audit report formats.
+const (
+	ReportFormatTable ReportFormat = "table"
+	ReportFormatCSV   ReportFormat = "csv"
+	ReportFormatHTML  ReportFormat = "html"
+)
+
+// DefaultReportFormat returns the terminal-oriented audit report format.
+func DefaultReportFormat() ReportFormat {
+	return ReportFormatTable
+}
+
+// ParseReportFormat validates one exact audit report format value.
+func ParseReportFormat(value string) (ReportFormat, error) {
+	reportFormat := ReportFormat(value)
+	switch reportFormat {
+	case ReportFormatTable, ReportFormatCSV, ReportFormatHTML:
+		return reportFormat, nil
+	default:
+		return "", fmt.Errorf("unsupported audit report format %q; expected table, csv, or html", value)
+	}
+}
+
+func normalizeReportFormat(reportFormat ReportFormat) (ReportFormat, error) {
+	if reportFormat == "" {
+		return DefaultReportFormat(), nil
+	}
+	return ParseReportFormat(string(reportFormat))
+}
+
 // CommandOptions captures the configurable parameters for the audit command.
 type CommandOptions struct {
 	Roots             []string
 	DebugOutput       bool
 	InspectionDepth   InspectionDepth
 	IncludeAllFolders bool
+	ReportFormat      ReportFormat
 }
 
 // RepositoryInspection captures gathered repository state.

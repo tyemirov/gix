@@ -158,13 +158,19 @@ type AuditReportActionOptions struct {
 	Debug      bool
 	Depth      audit.InspectionDepth
 	OutputPath string
+	Format     audit.ReportFormat
 }
 
 // Options returns workflow action options for audit report generation.
 func (options AuditReportActionOptions) Options() map[string]any {
+	reportFormat := options.Format
+	if reportFormat == "" {
+		reportFormat = audit.ReportFormatCSV
+	}
 	serialized := compactStringOptions(map[string]string{
 		actionOptionDepthKeyConstant: string(options.Depth),
 		optionOutputPathKeyConstant:  options.OutputPath,
+		optionFormatKeyConstant:      string(reportFormat),
 	})
 	serialized[actionOptionIncludeAllKeyConstant] = options.IncludeAll
 	serialized[actionOptionDebugKeyConstant] = options.Debug

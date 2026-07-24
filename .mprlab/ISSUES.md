@@ -669,6 +669,30 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - `make lint`
   - `make ci`
 
+- [x] [I008] (P1) Make direct audit reports terminal-readable with explicit export formats.
+  Requested on 2026-07-24.
+  Goal:
+  Make `gix audit` readable in an interactive terminal while retaining exact, intentional CSV and HTML exports.
+  Requirements:
+  - Render a complete table by default for direct `gix audit` invocations.
+  - Accept only `--format table`, `--format csv`, and `--format html`; reject every other format at the CLI boundary.
+  - Preserve every audit field consistently across table, CSV, and HTML representations.
+  - Keep workflow audit-report output machine-oriented and explicitly defaulted to CSV.
+  Validation:
+  - Add black-box CLI coverage for default table output, CSV export, HTML export, and invalid formats.
+  - Run `make format`, `make test`, `make lint`, and `make ci`.
+  Resolution:
+  - Added one canonical renderer for terminal tables, CSV, and standalone HTML reports, including escaped HTML cells and complete audit columns in every format.
+  - Added strict `--format table|csv|html` parsing to direct `gix audit`; unsupported values fail before audit work begins.
+  - Kept workflow audit reports explicitly CSV by default while allowing an intentional workflow format selection.
+  - Updated README, architecture, CLI design, site copy, and changelog examples to distinguish terminal inspection from exports.
+  Validation Result:
+  - `make format`
+  - `make test`
+  - `make lint`
+  - `make ci`
+  - `git diff --check`
+
 
 ## Maintenance
 
@@ -1446,3 +1470,120 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Capped the semantic branch component at 56 characters and trims at word boundaries when possible.
   - Kept collision handling as a last resort: an already-occupied semantic branch advances to the next numeric suffix before the normal commit, push, and pull-request flow continues.
   - `make test`, `make lint`, and `make ci` passed locally.
+
+## Features
+
+- [ ] [F010] (P1) Make GitHub and GitLab first-class forge providers in one `gix` repository fleet.
+  Requested on 2026-07-24.
+  Goal:
+  A single `gix` configuration and invocation must operate correctly over a root containing both GitHub and GitLab repositories. Provider selection must come from the parsed origin host, so a GitHub repository uses the GitHub adapter and a GitLab repository uses the GitLab adapter without changing roots, commands, or credentials by hand.
+  Required outcome:
+  - Support public `github.com` and `gitlab.com` as explicit provider kinds in the current configuration contract.
+  - Preserve the complete GitLab project path, including nested groups such as `group/subgroup/project`; never reduce GitLab identity to a fixed two-segment GitHub-style `owner/repository` pair.
+  - Make Git-only operations host-neutral and make forge-aware operations select the configured provider for each repository independently.
+  - Treat pull requests and merge requests as one canonical `review request` concept in generic code and operator-facing generic workflows. The GitHub adapter maps that concept to a pull request; the GitLab adapter maps it to a merge request.
+  - Report unsupported or unconfigured remotes explicitly. An audit or workflow must not silently skip a GitLab repository because it is not GitHub.
+  Scope boundary:
+  - This feature covers the generic fleet-management path: discovery, audit, remote canonicalization/protocol conversion, repository metadata/default-branch lookup, `sync`, workflow execution, review-request operations, the local web audit workspace, and the matching CLI/configuration/docs contracts.
+  - GitHub-only product integrations, including GHCR package cleanup and GitHub Pages or GitHub Release publishing, remain explicitly GitHub-scoped until a separately specified GitLab-equivalent feature exists. They must fail before mutation for a GitLab repository with a capability-specific error; they must not be presented as generic provider support.
+  - Public-host support is the delivery target. The provider registry and identity model must keep host as first-class data so a later issue can add a configured self-hosted forge without another GitHub-shaped redesign.
+  Current evidence:
+  - `internal/repos/shared/types.go` defines canonical Git, SSH, and HTTPS URL prefixes with `github.com` embedded in each constant.
+  - `internal/audit/helpers.go` recognizes only GitHub URL forms and `internal/audit/service.go` rejects a non-GitHub origin. The discovery loop currently treats an inspection error as skippable, which can make a GitLab repository disappear from an otherwise mixed audit.
+  - `cmd/cli/application_config.go`, `cmd/cli/application_bootstrap.go`, and `cmd/cli/default_config.yml` expose only `github.credential` and wire that credential directly into the GitHub client context.
+  - `internal/workflow/executor.go` assumes GitHub metadata is available before it can build repository state, even when an operation is Git-only.
+  - `internal/branches/syncflow` calls the GitHub CLI client directly for pull-request discovery and creation, resolves shorthand targets to `github.com`, and normalizes only GitHub remote URL forms.
+  - `internal/repos/remotes`, `internal/migrate`, `internal/ghcr`, release scripts, and several web/API labels encode GitHub-only names or URLs. Each call site needs an explicit classification as generic, provider-capable, or GitHub-only rather than an implicit GitHub default.
+  Canonical configuration contract:
+  - Replace the top-level `github` block with one required `forges` collection. Normal application startup accepts only this new schema.
+  - Each entry has exactly `kind`, `host`, and `credential`. `kind` is the closed enum `github` or `gitlab`; `host` is a lower-case DNS host without scheme, path, port, userinfo, or trailing slash; `credential` is a non-empty literal or a `${ENVIRONMENT_VARIABLE}` reference resolved from the inherited process environment.
+  - The same host may appear once only. A configured host has one provider kind, one credential source, and one adapter. Conflicting duplicate host entries are a configuration error.
+  - The generated default configuration must use this exact shape:
+
+    ```yaml
+    forges:
+      - kind: github
+        host: github.com
+        credential: "${GH_TOKEN}"
+      - kind: gitlab
+        host: gitlab.com
+        credential: "${GITLAB_TOKEN}"
+    ```
+
+  - Credentials remain user-owned process environment inputs. Do not add dotenv loading, guessed token names, cross-provider token reuse, or a credential fallback chain.
+  Canonical repository identity contract:
+  - Introduce a provider-neutral immutable identity owned by a new `internal/forge` package. It contains the remote name, normalized transport, normalized host, forge kind, and full slash-separated project path.
+  - Parse these forms through one URL parser: SCP-style SSH (`git@host:path.git`), SSH URL (`ssh://git@host/path.git`), and HTTPS (`https://host/path.git`). Strip only the terminal `.git` suffix, normalize the host to lower case, and preserve every project-path segment for provider resolution.
+  - The generic identity must not contain `Owner`, `Repository`, `GitHubRepository`, or a hard-coded GitHub URL prefix. GitHub-specific adapters may derive a two-segment owner/repository value only after the generic parser has selected the GitHub provider.
+  - Reject malformed URLs, empty project paths, and paths that do not satisfy the selected provider's shape with a precise repository-scoped error. An unconfigured but otherwise valid host is reported as `unsupported`/`unconfigured`, never reinterpreted as GitHub.
+  - Replace audit/API/CSV fields that expose GitHub-specific identity names with `origin_host`, `origin_provider`, `origin_project_path`, `canonical_project_path`, and `final_project_path`. Remove old GitHub-specific field names from the current public contract rather than emitting aliases or duplicate columns.
+  Provider abstraction and capability contract:
+  - Add a `ForgeProvider` interface and a host-indexed registry in `internal/forge`. Generic packages receive the registry and repository identity, never a `githubcli.Client`.
+  - Model only observable shared behavior in the interface: repository metadata/default branch, canonical project identity, review-request list/find/create/update, default-branch update, branch-protection inspection/update where the operation requires it, and provider capability discovery.
+  - Define typed `RepositoryMetadata`, `ReviewRequest`, `ReviewRequestQuery`, and provider errors in the generic forge package. A review request has provider-neutral head/base refs, title, body, state, web URL, and provider-native ID; no generic package refers to `PullRequest` or `MergeRequest`.
+  - Keep the existing GitHub CLI implementation behind a GitHub adapter during the migration, but make every invocation host-aware and make its input/output conform to the generic types.
+  - Implement a GitLab REST v4 adapter behind the same interface. It must URL-encode the entire nested project path for project endpoints, use the configured GitLab credential only, and map open/merged/closed merge-request state, target branch, source branch, title, body, and web URL to the generic review-request model.
+  - Define explicit capability constants. Generic operations declare their required capabilities before any repository mutation; the executor preflights the selected provider and reports an unsupported capability with provider, host, repository path, and operation name. It must not attempt a GitHub call as a fallback.
+  Operation classification and canonical terminology:
+  - Classify `files`, folder rename, Git fetch/push, local branch inspection, and transport-only remote conversion as Git-only. They run for both providers and do not require a forge credential.
+  - Classify audit canonicalization/default-branch lookup, `sync`, default-branch management, review-request cleanup, and workflow review-request actions as provider-capable. They resolve the registry per repository and require the capability declared by that operation.
+  - Replace the current generic `prs` command/action/config vocabulary with canonical `review-requests` and `review-request` names. Remove the old `prs` and `pull_request` public configuration/action names rather than retaining aliases. GitHub-facing text may use "pull request" only inside the GitHub adapter; GitLab-facing text uses "merge request"; generic summaries use "review request".
+  - Update `sync` generated branch/review metadata, title/body options, and workflow action builders to use generic review-request types. GitHub must continue creating or updating a PR; GitLab must create or update the corresponding MR against the same semantic base branch.
+  - Classify `packages delete`, GHCR calls, GitHub Pages artifact publication, and GitHub Release object publishing as `github` capabilities. Expose the boundary in help and errors instead of silently treating them as available on GitLab.
+  Forward-only migration boundary:
+  - Deliver one explicit, bounded `gix config migrate-forges --config <path>` migration path that runs before normal application configuration bootstrap. It reads only the old top-level `github.credential`, writes the new `forges` document atomically, validates the resulting current schema, and preserves an operator-visible backup of the pre-migration file.
+  - Normal startup after this feature decodes only `forges`; a legacy `github` block is a schema error that names the migration command. Do not retain a dual reader, aliases, defaults, or runtime compatibility code.
+  - Change all checked-in examples, generated configuration, README, architecture notes, command help, web copy, and tests in the same change. The migration command is the sole temporary bridge and is removed in the release after the documented migration window; it is not a permanent fallback parser.
+  Detailed technical plan:
+  1. Establish a failing mixed-provider contract before refactoring.
+     - Add black-box fixtures for a root with a GitHub repository, a GitLab repository, a GitLab nested-group repository, and an unsupported-host repository. Use local Git repositories and controlled provider doubles; do not use live credentials or network calls in tests.
+     - Capture the current GitHub-only audit skip, URL parsing failure, workflow client dependency, and sync PR-only behavior in focused tests so the replacement proves an observable contract rather than only compiling.
+     - Inventory every import of `internal/githubcli`, every literal `github.com`/`api.github.com`, every `PullRequest`/`prs` identifier, and every GitHub-only command. Record its classification and target owner package before moving code.
+  2. Replace configuration and bootstrap ownership.
+     - Replace `ApplicationGitHubConfiguration` with `ApplicationForgeConfiguration` and an ordered `ApplicationForgesConfiguration` collection. Validate exact hosts, kinds, duplicate hosts, credentials, and environment-reference resolution at configuration load time.
+     - Build a `forge.Registry` once in `cmd/cli/application_bootstrap.go`, inject it into audit, workflow, sync, web, migration, and command constructors, and remove the globally injected GitHub credential/context path.
+     - Implement the one-off migration command as a bootstrap exception with its own narrow old-schema reader. Keep normal startup and all regular configuration tests free of legacy field decoding.
+     - Update `cmd/cli/default_config.yml` and configuration validation tests to demonstrate both providers and credential isolation.
+  3. Create the provider-neutral remote and repository identity layer.
+     - Move transport parsing and remote URL rendering out of `internal/repos/shared` GitHub constants into `internal/forge/identity` (or an equivalently owned forge package).
+     - Implement parsing, validation, normalization, equality, and renderer tests for all supported SSH/HTTPS forms, GitHub two-segment projects, GitLab nested projects, malformed paths, and unsupported hosts.
+     - Refactor remote canonicalization and protocol conversion so they change only the selected transport while preserving selected host and complete project path. A GitLab `group/subgroup/project` remote must remain that exact project on both SSH and HTTPS output.
+     - Remove GitHub URL constants from generic shared types after every caller uses the new identity renderer.
+  4. Introduce provider adapters and typed capabilities.
+     - Define the registry, provider interface, generic metadata/review-request types, capability constants, and repository-scoped provider errors in `internal/forge`.
+     - Adapt `internal/githubcli` behind the GitHub provider without changing GitHub's externally observed behavior. Ensure command construction or API calls use the repository's configured GitHub host rather than a global URL assumption.
+     - Add the GitLab REST v4 client and adapter with focused request/response tests, including URL-encoded nested paths and pagination where review-request enumeration requires it.
+     - Centralize credential redaction and ensure logs/errors never include either provider token, HTTP authorization header, or raw environment value.
+  5. Make audit and the web audit contract provider-aware.
+     - Refactor `internal/audit` to parse every configured/recognizable Git remote through forge identity. Basic audit must retain a row for every Git repository, including unconfigured hosts, instead of continuing past an inspection failure.
+     - Resolve canonical identity and remote default branch through the selected provider when that capability is available; retain Git-based default-branch discovery as the explicitly Git-only source when no provider metadata is required.
+     - Replace GitHub-specific inspection fields, CSV headers, JSON fields, browser table columns, filters, row details, and queue payloads with the provider-neutral identity fields.
+     - Make the web queue preflight provider capability before it queues or applies a forge-aware action. Git-only actions remain queueable for either supported provider; GitHub-only actions are visibly unavailable for GitLab.
+  6. Refactor workflow, sync, and review-request flows.
+     - Change workflow operation construction so each operation declares whether it is Git-only or which forge capabilities it needs. The executor must build Git-only repository state without requiring provider metadata.
+     - Replace direct GitHub client calls in `internal/branches/syncflow` with generic review-request lookup/create/update. Preserve branch safety, dirty-worktree behavior, generated-branch collision handling, commit generation, and push ordering while making review-object behavior provider-specific only at the adapter boundary.
+     - Replace GitHub shorthand target resolution with an explicit canonical form for shorthand targets, or reject shorthand where host cannot be determined. An unqualified `owner/repo` must no longer silently mean `github.com`; explicit remote URLs and configured provider-qualified targets are the supported forms.
+     - Rename the public review-request command/action/config keys, update CLI/web help and emitted messages, and remove all legacy aliases from command registration and configuration decoding.
+  7. Apply capability gating to remaining commands and scripts.
+     - Refactor `default`, repository migration, remote metadata resolution, and any workflow action that currently receives `githubcli.Client` so it receives the registry plus required capability set.
+     - Keep GHCR/package cleanup, GitHub Pages deployment scripts, and GitHub Release publication in explicit GitHub-owned packages. Make their command validation reject GitLab targets before any remote/API mutation, with actionable host/provider/capability context.
+     - Review release and documentation scripts for hard-coded GitHub links. Generic repository links must use provider metadata; intentional GitHub release links remain clearly named as such.
+  8. Remove the old contract and document the finished one.
+     - Delete generic GitHub URL constants, generic GitHub client dependencies, `github` configuration fields, `prs`/`pull_request` public vocabulary, and duplicated provider-selection logic once the registry is wired everywhere.
+     - Update README, `docs/cli_design.md`, architecture documentation, sample configuration, error/help snapshots, web labels, and changelog with mixed-fleet examples and the GitHub-only capability boundary.
+     - Add a concise provider support matrix to documentation that distinguishes Git-only, both-provider, GitHub-only, and unsupported-host behavior.
+  Validation matrix:
+  - A compiled `gix audit` against one root containing GitHub, GitLab, nested GitLab, and unsupported-host fixtures emits deterministic rows for all four repositories. GitHub and GitLab rows expose the correct provider, host, project path, transport, and default branch; the unsupported host is an explicit diagnostic row, not absent output.
+  - `gix files add`, `gix files replace`, folder rename, and Git-only remote protocol conversion work across GitHub and GitLab fixtures without requiring either forge credential. Protocol conversion preserves host and the entire GitLab nested project path.
+  - A GitHub review-request fixture verifies the adapter creates/finds/updates a PR; a GitLab REST fixture verifies the adapter creates/finds/updates an MR. The same generic `sync` workflow drives both cases and reports a provider-appropriate URL.
+  - Mixed `sync` runs preflight all affected repositories. Missing GitLab credentials or a missing GitLab capability creates a precise failure for the GitLab target before mutation and never causes an attempted GitHub request or token use.
+  - GitHub-only commands reject a GitLab repository before mutation, name the unavailable capability, and leave the working tree/remotes unchanged.
+  - Configuration tests prove `forges` is the only accepted runtime schema, duplicate hosts and invalid kinds fail, credentials never cross provider boundaries, the migration output validates, and legacy `github` configuration is rejected by normal startup.
+  - Static guard tests or repository checks prove no `github.com`, `api.github.com`, `githubcli`, `PullRequest`, `prs`, or `pull_request` dependency remains in provider-neutral packages. Intentional GitHub adapter/package/release references are allowlisted by package boundary, not by broad text suppression.
+  - Run `make format`, `make test`, `make lint`, `make ci`, and `git diff --check` after each completed slice and before resolution. The final `make ci` must retain the repository's complete coverage gate.
+  Acceptance criteria:
+  - An operator can configure both public forges once, run one command over mixed roots, and receive correct per-repository behavior without moving repositories, swapping config files, or manually selecting a provider.
+  - GitLab nested-group repositories are never truncated, rehomed to GitHub, or silently omitted.
+  - Generic code has one forge-neutral identity and review-request contract; all provider branching is contained in the registry/adapters/capability boundary.
+  - The current public schema and terminology are forward-only. No runtime compatibility aliases or fallback paths for the old GitHub-only configuration or PR vocabulary remain after migration.
+  - GitHub-specific capabilities are explicit and safe, while supported generic operations have equivalent observable behavior on GitHub and GitLab.

@@ -2,7 +2,6 @@ package workflow
 
 import (
 	"context"
-	"encoding/csv"
 	"errors"
 	"fmt"
 	"os"
@@ -355,6 +354,19 @@ func handleAuditReportAction(ctx context.Context, environment *Environment, repo
 		depth = audit.InspectionDepthMinimal
 	}
 
+	formatValue, formatExists, formatError := reader.stringValue(optionFormatKeyConstant)
+	if formatError != nil {
+		return formatError
+	}
+	reportFormat := audit.ReportFormatCSV
+	if formatExists {
+		parsedFormat, parseFormatError := audit.ParseReportFormat(formatValue)
+		if parseFormatError != nil {
+			return parseFormatError
+		}
+		reportFormat = parsedFormat
+	}
+
 	roots := collectAuditRoots(environment.State, repository)
 	if len(roots) == 0 {
 		environment.markAuditReportExecuted()
@@ -375,7 +387,7 @@ func handleAuditReportAction(ctx context.Context, environment *Environment, repo
 			return discoveryError
 		}
 
-		if writeError := writeAuditReportFile(sanitizedOutput, inspections); writeError != nil {
+		if writeError := writeAuditReportFile(sanitizedOutput, reportFormat, inspections); writeError != nil {
 			environment.markAuditReportExecuted()
 			return writeError
 		}
@@ -392,6 +404,7 @@ func handleAuditReportAction(ctx context.Context, environment *Environment, repo
 		DebugOutput:       debugOutput,
 		IncludeAllFolders: includeAll,
 		InspectionDepth:   depth,
+		ReportFormat:      reportFormat,
 	}
 
 	if runError := environment.AuditService.Run(ctx, commandOptions); runError != nil {
@@ -567,7 +580,7 @@ func readHistoryPaths(raw any) ([]string, error) {
 	}
 }
 
-func writeAuditReportFile(destination string, inspections []audit.RepositoryInspection) error {
+func writeAuditReportFile(destination string, reportFormat audit.ReportFormat, inspections []audit.RepositoryInspection) error {
 	if len(strings.TrimSpace(destination)) == 0 {
 		return errors.New("audit report destination missing")
 	}
@@ -583,31 +596,10 @@ func writeAuditReportFile(destination string, inspections []audit.RepositoryInsp
 	if createError != nil {
 		return createError
 	}
-	defer fileHandle.Close()
-
-	writer := csv.NewWriter(fileHandle)
-	header := []string{
-		auditCSVHeaderFolderNameConstant,
-		auditCSVHeaderFinalRepositoryConstant,
-		auditCSVHeaderNameMatchesConstant,
-		auditCSVHeaderRemoteDefaultConstant,
-		auditCSVHeaderLocalBranchConstant,
-		auditCSVHeaderInSyncConstant,
-		auditCSVHeaderRemoteProtocolConstant,
-		auditCSVHeaderOriginCanonicalConstant,
-	}
-
-	if writeError := writer.Write(header); writeError != nil {
+	writeError := audit.WriteReport(fileHandle, reportFormat, inspections)
+	closeError := fileHandle.Close()
+	if writeError != nil {
 		return writeError
 	}
-
-	for inspectionIndex := range inspections {
-		row := buildAuditReportRow(inspections[inspectionIndex])
-		if writeError := writer.Write(row); writeError != nil {
-			return writeError
-		}
-	}
-
-	writer.Flush()
-	return writer.Error()
+	return closeError
 }
