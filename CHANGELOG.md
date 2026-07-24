@@ -61,6 +61,15 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented validated AI conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.1.11] - 2026-07-24
+
+- Merge pull request #392 from tyemirov/tyemirov/maintenance/M001-backlog-docs-audit
+- docs: add web audit workspace doc and update for browser queue/audit modes
+- docs: document web audit workspace usage, workflow, and safety contract
+- docs: archive resolved backlog and refresh documentation for config and web audit
+- docs: document internal/web package and local web workspace architecture
+- chore(mprlab): archive resolved issues and remove completed backlog entries
+
 ## [v1.1.10] - 2026-07-24
 
 - Merge pull request #391 from tyemirov/gix/escape-table-delimiters-and-align-wide-unicode-in
