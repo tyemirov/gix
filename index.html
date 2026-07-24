@@ -127,6 +127,13 @@
                 automation, and CI all produce consistent logs and summaries.
               </p>
             </article>
+            <article class="card">
+              <h3>Local Audit Workspace</h3>
+              <p>
+                Launch a typed browser audit, queue remediation actions for
+                review, and apply only the changes you approve.
+              </p>
+            </article>
           </div>
         </div>
       </section>
@@ -146,7 +153,7 @@
                   Roll out template updates by running workflows across every
                   language pack.
                 </li>
-                <li>Inspect audits in the terminal or export CSV for compliance reviews.</li>
+                <li>Inspect audits in the terminal, export CSV for compliance reviews, or review queued fixes in the local browser workspace.</li>
               </ul>
             </article>
             <article class="card">
@@ -200,6 +207,10 @@
               <li>
                 <code>gix audit --roots ~/Development</code> for a first pass.
               </li>
+              <li>
+                <code>gix --web --roots ~/Development</code> to review typed
+                audit findings and queue changes before applying them.
+              </li>
             </ol>
             <p>
               Config controls reusable defaults for roots, remotes, logging,
@@ -219,6 +230,9 @@
             <a href="../README.md">README — command overview</a>
             <a href="../ARCHITECTURE.md"
               >ARCHITECTURE — internals &amp; design</a
+            >
+            <a href="web-audit-workspace.md"
+              >Web audit workspace — queued remediation</a
             >
             <a href="https://github.com/tyemirov/gix/blob/master/.mprlab/ISSUES.md"
               >ISSUES — roadmap &amp; change log</a
@@ -298,6 +312,14 @@
                 protocols, and more.
               </p>
             </article>
+            <article>
+              <h3>Review Audit Fixes Locally</h3>
+              <p><code>gix --web --roots ~/Fleet</code></p>
+              <p>
+                Inspect typed audit rows, queue fixes, and apply only the
+                reviewed batch from the local browser workspace.
+              </p>
+            </article>
           </div>
         </div>
       </section>
@@ -307,10 +329,10 @@
           <h2>Architecture at a Glance</h2>
           <ul class="timeline">
             <li>
-              <h3>Cobra + Viper CLI</h3>
+              <h3>Cobra + Strict Configuration</h3>
               <p>
                 All commands live under <code>cmd/cli</code> with shared flags,
-                user/local configuration, and logging.
+                one canonical YAML configuration path, and logging.
               </p>
             </li>
             <li>
