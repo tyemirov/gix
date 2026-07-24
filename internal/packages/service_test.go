@@ -2,7 +2,6 @@ package packages_test
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -17,8 +16,7 @@ func TestPurgeServiceValidatesOptions(testingInstance *testing.T) {
 	testingInstance.Parallel()
 
 	packageService := &stubPackageVersionAPI{}
-	tokenResolver := &stubTokenResolver{token: "resolved-token"}
-	service, serviceError := packages.NewPurgeService(zap.NewNop(), packageService, tokenResolver)
+	service, serviceError := packages.NewPurgeService(zap.NewNop(), packageService)
 	require.NoError(testingInstance, serviceError)
 
 	testCases := []struct {
@@ -28,23 +26,23 @@ func TestPurgeServiceValidatesOptions(testingInstance *testing.T) {
 	}{
 		{
 			name:          "missing_owner",
-			options:       packages.PurgeOptions{PackageName: "package", OwnerType: ghcr.UserOwnerType, TokenSource: packages.TokenSourceConfiguration{Reference: "VAR"}},
+			options:       packages.PurgeOptions{PackageName: "package", OwnerType: ghcr.UserOwnerType, Credential: "token"},
 			expectedError: "owner option must be provided",
 		},
 		{
 			name:          "missing_package",
-			options:       packages.PurgeOptions{Owner: "owner", OwnerType: ghcr.UserOwnerType, TokenSource: packages.TokenSourceConfiguration{Reference: "VAR"}},
+			options:       packages.PurgeOptions{Owner: "owner", OwnerType: ghcr.UserOwnerType, Credential: "token"},
 			expectedError: "package option must be provided",
 		},
 		{
 			name:          "missing_owner_type",
-			options:       packages.PurgeOptions{Owner: "owner", PackageName: "package", TokenSource: packages.TokenSourceConfiguration{Reference: "VAR"}},
+			options:       packages.PurgeOptions{Owner: "owner", PackageName: "package", Credential: "token"},
 			expectedError: "owner type option must be provided",
 		},
 		{
-			name:          "missing_token_source_reference",
+			name:          "missing_credential",
 			options:       packages.PurgeOptions{Owner: "owner", PackageName: "package", OwnerType: ghcr.UserOwnerType},
-			expectedError: "token source reference must be provided",
+			expectedError: "packages credential must be provided",
 		},
 	}
 
@@ -61,24 +59,6 @@ func TestPurgeServiceValidatesOptions(testingInstance *testing.T) {
 	}
 }
 
-func TestPurgeServicePropagatesTokenErrors(testingInstance *testing.T) {
-	testingInstance.Parallel()
-
-	packageService := &stubPackageVersionAPI{}
-	tokenResolver := &stubTokenResolver{err: errors.New("resolution failed")}
-	service, serviceError := packages.NewPurgeService(zap.NewNop(), packageService, tokenResolver)
-	require.NoError(testingInstance, serviceError)
-
-	_, executionError := service.Execute(context.Background(), packages.PurgeOptions{
-		Owner:       "owner",
-		PackageName: "package",
-		OwnerType:   ghcr.OrganizationOwnerType,
-		TokenSource: packages.TokenSourceConfiguration{Type: packages.TokenSourceTypeEnvironment, Reference: "VAR"},
-	})
-	require.Error(testingInstance, executionError)
-	require.ErrorContains(testingInstance, executionError, "unable to resolve authentication token")
-}
-
 func TestPurgeServiceInvokesPackageService(testingInstance *testing.T) {
 	testingInstance.Parallel()
 
@@ -88,16 +68,14 @@ func TestPurgeServiceInvokesPackageService(testingInstance *testing.T) {
 	packageService := &stubPackageVersionAPI{
 		result: ghcr.PurgeResult{TotalVersions: 10, UntaggedVersions: 3, DeletedVersions: 2},
 	}
-	tokenResolver := &stubTokenResolver{token: "resolved-token"}
-
-	service, serviceError := packages.NewPurgeService(logger, packageService, tokenResolver)
+	service, serviceError := packages.NewPurgeService(logger, packageService)
 	require.NoError(testingInstance, serviceError)
 
 	options := packages.PurgeOptions{
 		Owner:       "owner",
 		PackageName: "package",
 		OwnerType:   ghcr.OrganizationOwnerType,
-		TokenSource: packages.TokenSourceConfiguration{Type: packages.TokenSourceTypeEnvironment, Reference: "ENV"},
+		Credential:  "configured-token",
 	}
 
 	result, executionError := service.Execute(context.Background(), options)
@@ -107,8 +85,7 @@ func TestPurgeServiceInvokesPackageService(testingInstance *testing.T) {
 	require.Equal(testingInstance, options.Owner, packageService.request.Owner)
 	require.Equal(testingInstance, options.PackageName, packageService.request.PackageName)
 	require.Equal(testingInstance, options.OwnerType, packageService.request.OwnerType)
-	require.Equal(testingInstance, tokenResolver.token, packageService.request.Token)
-	require.Equal(testingInstance, options.TokenSource, tokenResolver.source)
+	require.Equal(testingInstance, options.Credential, packageService.request.Token)
 
 	infoLogs := observedLogs.FilterLevelExact(zap.InfoLevel)
 	require.GreaterOrEqual(testingInstance, infoLogs.Len(), 2)
@@ -128,18 +105,4 @@ func (service *stubPackageVersionAPI) PurgeUntaggedVersions(executionContext con
 		return ghcr.PurgeResult{}, service.err
 	}
 	return service.result, nil
-}
-
-type stubTokenResolver struct {
-	token  string
-	err    error
-	source packages.TokenSourceConfiguration
-}
-
-func (resolver *stubTokenResolver) ResolveToken(resolutionContext context.Context, source packages.TokenSourceConfiguration) (string, error) {
-	resolver.source = source
-	if resolver.err != nil {
-		return "", resolver.err
-	}
-	return resolver.token, nil
 }

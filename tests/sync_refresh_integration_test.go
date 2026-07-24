@@ -145,11 +145,28 @@ func TestSyncExplicitMasterCommitsDirtyMasterWorktreeAndMergesRemote(testInstanc
 	}))
 	testInstance.Cleanup(llmServer.Close)
 
-	configurationPath := filepath.Join(testInstance.TempDir(), "config.yaml")
+	configurationPath := filepath.Join(testInstance.TempDir(), "config.yml")
 	configurationContent := fmt.Sprintf(`common:
   log_level: error
   log_format: console
   require_clean: false
+github:
+  credential: test-github-key
+llm:
+  openai:
+    priority: 1
+    model: mock-model
+    base_url: %q
+    credential: test-key
+  llm_proxy:
+    priority: 2
+    provider: meta
+    model: muse-spark-1.1
+    base_url: "https://llm-proxy.example"
+    credential: test-proxy-key
+  max_completion_tokens: 64
+  temperature: 0
+  timeout_seconds: 5
 operations:
   - command: ["sync"]
     with:
@@ -158,14 +175,11 @@ operations:
         - .
   - command: ["message", "commit"]
     with:
-      api_key_env: %s
-      base_url: %q
-      model: mock-model
       diff_source: staged
       max_completion_tokens: 64
       temperature: 0
       timeout_seconds: 5
-`, syncRefreshIntegrationAPIKeyVariable, llmServer.URL)
+`, llmServer.URL)
 	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
 
 	binaryPath := buildIntegrationBinary(testInstance, repositoryRoot)
@@ -259,25 +273,39 @@ func TestSyncExplicitMasterCommitsDirtyMasterWorktreeToMaster(testInstance *test
 	}))
 	testInstance.Cleanup(llmServer.Close)
 
-	configurationPath := filepath.Join(testInstance.TempDir(), "config.yaml")
+	configurationPath := filepath.Join(testInstance.TempDir(), "config.yml")
 	configurationContent := fmt.Sprintf(`common:
   log_level: error
   log_format: console
   require_clean: false
+github:
+  credential: test-github-key
+llm:
+  openai:
+    priority: 1
+    model: mock-model
+    base_url: %q
+    credential: test-key
+  llm_proxy:
+    priority: 2
+    provider: meta
+    model: muse-spark-1.1
+    base_url: "https://llm-proxy.example"
+    credential: test-proxy-key
+  max_completion_tokens: 64
+  temperature: 0
+  timeout_seconds: 5
 operations:
   - command: ["sync"]
     with:
       remote: origin
   - command: ["message", "commit"]
     with:
-      api_key_env: %s
-      base_url: %q
-      model: mock-model
       diff_source: staged
       max_completion_tokens: 64
       temperature: 0
       timeout_seconds: 5
-`, syncRefreshIntegrationAPIKeyVariable, llmServer.URL)
+`, llmServer.URL)
 	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
 
 	gitLogPath := filepath.Join(testInstance.TempDir(), "git.log")
@@ -460,25 +488,39 @@ func TestSyncExplicitNewBranchCreatesStackedPullRequestsAndCommitsDirtyWorkInClu
 	}))
 	testInstance.Cleanup(llmServer.Close)
 
-	configurationPath := filepath.Join(testInstance.TempDir(), "config.yaml")
+	configurationPath := filepath.Join(testInstance.TempDir(), "config.yml")
 	configurationContent := fmt.Sprintf(`common:
   log_level: error
   log_format: console
   require_clean: false
+github:
+  credential: test-github-key
+llm:
+  openai:
+    priority: 1
+    model: mock-model
+    base_url: %q
+    credential: test-key
+  llm_proxy:
+    priority: 2
+    provider: meta
+    model: muse-spark-1.1
+    base_url: "https://llm-proxy.example"
+    credential: test-proxy-key
+  max_completion_tokens: 64
+  temperature: 0
+  timeout_seconds: 5
 operations:
   - command: ["sync"]
     with:
       remote: origin
   - command: ["message", "commit"]
     with:
-      api_key_env: %s
-      base_url: %q
-      model: mock-model
       diff_source: staged
       max_completion_tokens: 64
       temperature: 0
       timeout_seconds: 5
-`, syncRefreshIntegrationAPIKeyVariable, llmServer.URL)
+`, llmServer.URL)
 	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
 
 	githubLogPath := filepath.Join(testInstance.TempDir(), "gh.log")
@@ -782,25 +824,39 @@ func TestSyncExplicitMasterFromDirtyFeatureBranchCommitsToMaster(testInstance *t
 	}))
 	testInstance.Cleanup(llmServer.Close)
 
-	configurationPath := filepath.Join(testInstance.TempDir(), "config.yaml")
+	configurationPath := filepath.Join(testInstance.TempDir(), "config.yml")
 	configurationContent := fmt.Sprintf(`common:
   log_level: error
   log_format: console
   require_clean: false
+github:
+  credential: test-github-key
+llm:
+  openai:
+    priority: 1
+    model: mock-model
+    base_url: %q
+    credential: test-key
+  llm_proxy:
+    priority: 2
+    provider: meta
+    model: muse-spark-1.1
+    base_url: "https://llm-proxy.example"
+    credential: test-proxy-key
+  max_completion_tokens: 64
+  temperature: 0
+  timeout_seconds: 5
 operations:
   - command: ["sync"]
     with:
       remote: origin
   - command: ["message", "commit"]
     with:
-      api_key_env: %s
-      base_url: %q
-      model: mock-model
       diff_source: staged
       max_completion_tokens: 64
       temperature: 0
       timeout_seconds: 5
-`, syncRefreshIntegrationAPIKeyVariable, llmServer.URL)
+`, llmServer.URL)
 	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
 
 	gitLogPath := filepath.Join(testInstance.TempDir(), "git.log")
@@ -920,25 +976,39 @@ func TestSyncRejectsTruncatedLongFileMergeResolutionBeforeCommitOrPush(testInsta
 	}))
 	testInstance.Cleanup(llmServer.Close)
 
-	configurationPath := filepath.Join(testInstance.TempDir(), "config.yaml")
+	configurationPath := filepath.Join(testInstance.TempDir(), "config.yml")
 	configurationContent := fmt.Sprintf(`common:
   log_level: error
   log_format: console
   require_clean: false
+github:
+  credential: test-github-key
+llm:
+  openai:
+    priority: 1
+    model: mock-model
+    base_url: %q
+    credential: test-key
+  llm_proxy:
+    priority: 2
+    provider: meta
+    model: muse-spark-1.1
+    base_url: "https://llm-proxy.example"
+    credential: test-proxy-key
+  max_completion_tokens: 64
+  temperature: 0
+  timeout_seconds: 5
 operations:
   - command: ["sync"]
     with:
       remote: origin
   - command: ["message", "commit"]
     with:
-      api_key_env: %s
-      base_url: %q
-      model: mock-model
       diff_source: staged
       max_completion_tokens: 64
       temperature: 0
       timeout_seconds: 5
-`, syncRefreshIntegrationAPIKeyVariable, llmServer.URL)
+`, llmServer.URL)
 	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
 
 	gitLogPath := filepath.Join(testInstance.TempDir(), "git.log")
@@ -1061,25 +1131,39 @@ func TestSyncTimesOutAIMergeResolutionWithVisibleRecoveryHandoff(testInstance *t
 		close(releaseResolution)
 	})
 
-	configurationPath := filepath.Join(testInstance.TempDir(), "config.yaml")
+	configurationPath := filepath.Join(testInstance.TempDir(), "config.yml")
 	configurationContent := fmt.Sprintf(`common:
   log_level: error
   log_format: console
   require_clean: false
+github:
+  credential: test-github-key
+llm:
+  openai:
+    priority: 1
+    model: mock-model
+    base_url: %q
+    credential: test-key
+  llm_proxy:
+    priority: 2
+    provider: meta
+    model: muse-spark-1.1
+    base_url: "https://llm-proxy.example"
+    credential: test-proxy-key
+  max_completion_tokens: 64
+  temperature: 0
+  timeout_seconds: 2
 operations:
   - command: ["sync"]
     with:
       remote: origin
   - command: ["message", "commit"]
     with:
-      api_key_env: %s
-      base_url: %q
-      model: mock-model
       diff_source: staged
       max_completion_tokens: 64
       temperature: 0
       timeout_seconds: 2
-`, syncRefreshIntegrationAPIKeyVariable, llmServer.URL)
+`, llmServer.URL)
 	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
 
 	gitLogPath := filepath.Join(testInstance.TempDir(), "git.log")
@@ -1204,25 +1288,39 @@ func TestSyncRejectsTruncatedMarkerFreeModifyDeleteResolutionBeforeCommitOrPush(
 	}))
 	testInstance.Cleanup(llmServer.Close)
 
-	configurationPath := filepath.Join(testInstance.TempDir(), "config.yaml")
+	configurationPath := filepath.Join(testInstance.TempDir(), "config.yml")
 	configurationContent := fmt.Sprintf(`common:
   log_level: error
   log_format: console
   require_clean: false
+github:
+  credential: test-github-key
+llm:
+  openai:
+    priority: 1
+    model: mock-model
+    base_url: %q
+    credential: test-key
+  llm_proxy:
+    priority: 2
+    provider: meta
+    model: muse-spark-1.1
+    base_url: "https://llm-proxy.example"
+    credential: test-proxy-key
+  max_completion_tokens: 64
+  temperature: 0
+  timeout_seconds: 5
 operations:
   - command: ["sync"]
     with:
       remote: origin
   - command: ["message", "commit"]
     with:
-      api_key_env: %s
-      base_url: %q
-      model: mock-model
       diff_source: staged
       max_completion_tokens: 64
       temperature: 0
       timeout_seconds: 5
-`, syncRefreshIntegrationAPIKeyVariable, llmServer.URL)
+`, llmServer.URL)
 	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
 
 	gitLogPath := filepath.Join(testInstance.TempDir(), "git.log")
@@ -1365,25 +1463,39 @@ func TestSyncFiltersTrackedIgnoredDirtyPathsBeforeStaging(testInstance *testing.
 	}))
 	testInstance.Cleanup(llmServer.Close)
 
-	configurationPath := filepath.Join(testInstance.TempDir(), "config.yaml")
+	configurationPath := filepath.Join(testInstance.TempDir(), "config.yml")
 	configurationContent := fmt.Sprintf(`common:
   log_level: error
   log_format: console
   require_clean: false
+github:
+  credential: test-github-key
+llm:
+  openai:
+    priority: 1
+    model: mock-model
+    base_url: %q
+    credential: test-key
+  llm_proxy:
+    priority: 2
+    provider: meta
+    model: muse-spark-1.1
+    base_url: "https://llm-proxy.example"
+    credential: test-proxy-key
+  max_completion_tokens: 64
+  temperature: 0
+  timeout_seconds: 5
 operations:
   - command: ["sync"]
     with:
       remote: origin
   - command: ["message", "commit"]
     with:
-      api_key_env: %s
-      base_url: %q
-      model: mock-model
       diff_source: staged
       max_completion_tokens: 64
       temperature: 0
       timeout_seconds: 5
-`, syncRefreshIntegrationAPIKeyVariable, llmServer.URL)
+`, llmServer.URL)
 	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
 
 	commandArguments := []string{

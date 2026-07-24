@@ -19,16 +19,13 @@ import (
 
 func TestMessageCommandValidatesSinceInputs(t *testing.T) {
 	tempDir := t.TempDir()
-	apiKeyEnv := "TEST_LLM_KEY"
-	t.Setenv(apiKeyEnv, "token")
 
 	builder := MessageCommandBuilder{
 		GitExecutor: &fakeGitExecutor{},
 		ConfigurationProvider: func() MessageConfiguration {
 			return MessageConfiguration{
-				Roots:     []string{tempDir},
-				APIKeyEnv: apiKeyEnv,
-				Model:     "mock-model",
+				Roots:              []string{tempDir},
+				ConnectionProfiles: testConnectionProfiles(),
 			}.Sanitize()
 		},
 		ClientFactory: func(config llmclient.Config) (llm.ChatClient, error) {
@@ -99,9 +96,6 @@ func TestMessageCommandOutputsChangelogOnce(t *testing.T) {
 	tempDir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(tempDir, ".git"), 0o755))
 
-	apiKeyEnv := "TEST_LLM_MESSAGE_KEY"
-	t.Setenv(apiKeyEnv, "mock-api-key")
-
 	executor := &fakeGitExecutor{
 		responses: map[string]string{
 			"rev-parse --is-inside-work-tree": "true\n",
@@ -125,11 +119,10 @@ func TestMessageCommandOutputsChangelogOnce(t *testing.T) {
 		Discoverer:  mockDiscoverer{roots: []string{tempDir}},
 		ConfigurationProvider: func() MessageConfiguration {
 			return MessageConfiguration{
-				Roots:          []string{tempDir},
-				APIKeyEnv:      apiKeyEnv,
-				Model:          "mock-model",
-				Version:        "v1.0.0",
-				SinceReference: "",
+				Roots:              []string{tempDir},
+				Version:            "v1.0.0",
+				SinceReference:     "",
+				ConnectionProfiles: testConnectionProfiles(),
 			}.Sanitize()
 		},
 		ClientFactory: func(config llmclient.Config) (llm.ChatClient, error) {
@@ -157,4 +150,23 @@ func TestMessageCommandOutputsChangelogOnce(t *testing.T) {
 	require.NotContains(t, out, "TASK_APPLY", "workflow logs should be suppressed for changelog command")
 	require.Equal(t, 1, client.calls, "chat client should be invoked exactly once")
 	require.Equal(t, llmclient.TransportOpenAICompatible, client.config.Transport)
+	require.Equal(t, llmclient.ProviderOpenAI, client.config.Provider)
+}
+
+func testConnectionProfiles() llmclient.ConnectionProfiles {
+	return llmclient.ConnectionProfiles{
+		OpenAI: llmclient.OpenAIConnectionProfile{
+			Priority:   1,
+			BaseURL:    "https://api.openai.com/v1",
+			Credential: "mock-api-key",
+			Model:      "mock-model",
+		},
+		LLMProxy: llmclient.LLMProxyConnectionProfile{
+			Priority:   2,
+			BaseURL:    "https://llm-proxy.example",
+			Credential: "",
+			Provider:   "meta",
+			Model:      "muse-spark-1.1",
+		},
+	}
 }

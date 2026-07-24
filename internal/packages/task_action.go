@@ -38,9 +38,9 @@ func handlePackagesPurgeAction(ctx context.Context, environment *workflow.Enviro
 		return errors.New("packages purge action received invalid metadata resolver")
 	}
 
-	tokenSource, ok := parameters["token_source"].(TokenSourceConfiguration)
-	if !ok {
-		return errors.New("packages purge action requires token source configuration")
+	credential, ok := parameters["credential"].(string)
+	if !ok || strings.TrimSpace(credential) == "" {
+		return errors.New("packages purge action requires credential")
 	}
 
 	packageOverride, _ := parameters["package_override"].(string)
@@ -59,7 +59,7 @@ func handlePackagesPurgeAction(ctx context.Context, environment *workflow.Enviro
 		Owner:       metadata.Owner,
 		PackageName: packageName,
 		OwnerType:   metadata.OwnerType,
-		TokenSource: tokenSource,
+		Credential:  credential,
 	}
 
 	_, executionError := service.Execute(ctx, options)

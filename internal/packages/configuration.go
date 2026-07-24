@@ -6,10 +6,6 @@ import (
 
 var packagesConfigurationRepositoryPathSanitizer = pathutils.NewRepositoryPathSanitizerWithConfiguration(nil, pathutils.RepositoryPathSanitizerConfiguration{PruneNestedPaths: true})
 
-const (
-	defaultTokenSourceValueConstant = "env:GITHUB_PACKAGES_TOKEN"
-)
-
 // Configuration aggregates settings for packages commands.
 type Configuration struct {
 	Purge PurgeConfiguration `mapstructure:"purge"`
@@ -19,6 +15,8 @@ type Configuration struct {
 type PurgeConfiguration struct {
 	PackageName     string   `mapstructure:"package"`
 	RepositoryRoots []string `mapstructure:"roots"`
+	BaseURL         string   `mapstructure:"base_url"`
+	Credential      string   `mapstructure:"credential"`
 }
 
 // DefaultConfiguration supplies baseline values for packages configuration.

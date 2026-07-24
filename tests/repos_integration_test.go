@@ -65,9 +65,8 @@ const (
 	reposIntegrationProtocolUsageSnippet        = "gix remote update-protocol [flags]"
 	reposIntegrationProtocolMissingFlagsMessage = "specify both --from and --to"
 	reposIntegrationConfigFlagName              = "--config"
-	reposIntegrationConfigFileName              = "config.yaml"
-	reposIntegrationConfigTemplate              = "common:\n  log_level: error\noperations:\n  - command: [\"remote\", \"update-to-canonical\"]\n    with:\n      roots:\n        - %s\n      assume_yes: true\n  - command: [\"remote\", \"update-protocol\"]\n    with:\n      roots:\n        - %s\n      assume_yes: true\n      from: https\n      to: ssh\nworkflow: []\n"
-	reposIntegrationConfigSearchEnvName         = "GIX_CONFIG_SEARCH_PATH"
+	reposIntegrationConfigFileName              = "config.yml"
+	reposIntegrationConfigTemplate              = "common:\n  log_level: error\n  log_format: console\ngithub:\n  credential: \"${GH_TOKEN}\"\nllm:\n  openai:\n    priority: 1\n    model: gpt-4.1\n    base_url: https://api.openai.com/v1\n    credential: integration-openai-key\n  llm_proxy:\n    priority: 2\n    provider: meta\n    model: muse-spark-1.1\n    base_url: https://llm-proxy.example\n    credential: integration-proxy-key\noperations:\n  - command: [\"remote\", \"update-to-canonical\"]\n    with:\n      roots:\n        - %s\n      assume_yes: true\n  - command: [\"remote\", \"update-protocol\"]\n    with:\n      roots:\n        - %s\n      assume_yes: true\n      from: https\n      to: ssh\nworkflow: []\n"
 	reposIntegrationHomeSymbolConstant          = "~"
 	reposIntegrationHomeRootPatternConstant     = "gix-home-root-*"
 	reposIntegrationOwnerDirectoryName          = "canonical"
@@ -109,6 +108,7 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				reposIntegrationErrorLevel,
 				reposIntegrationFolderNamespaceCommand,
 				reposIntegrationRenameActionCommand,
+				reposIntegrationYesFlag,
 			},
 			expectedOutput: func(repositoryPath string) string {
 				return "REPO_FOLDER_RENAME"
@@ -134,6 +134,7 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				reposIntegrationErrorLevel,
 				reposIntegrationFolderNamespaceCommand,
 				reposIntegrationRenameActionCommand,
+				reposIntegrationYesFlag,
 				reposIntegrationOwnerFlag,
 			},
 			expectedOutput: func(repositoryPath string) string {
@@ -553,12 +554,7 @@ func TestReposProtocolCommandDisplaysHelpWhenProtocolsMissing(testInstance *test
 	for testCaseIndex, testCase := range testCases {
 		subtestName := fmt.Sprintf(reposIntegrationSubtestNameTemplate, testCaseIndex, testCase.name)
 		testInstance.Run(subtestName, func(subtest *testing.T) {
-			overrideDirectory := subtest.TempDir()
-			commandOptions := integrationCommandOptions{
-				EnvironmentOverrides: map[string]string{
-					reposIntegrationConfigSearchEnvName: overrideDirectory,
-				},
-			}
+			commandOptions := integrationCommandOptions{}
 			outputText, _ := runFailingIntegrationCommand(subtest, repositoryRoot, commandOptions, reposIntegrationTimeout, testCase.arguments)
 			filteredOutput := filterStructuredOutput(outputText)
 			for _, expectedSnippet := range testCase.expectedSnippets {

@@ -160,6 +160,7 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 	}
 
 	workflow.ApplyDefaults(nodes, workflow.OperationDefaults{RequireClean: requireCleanDefault})
+	workflow.ApplyLLMConnectionProfiles(nodes, commandConfiguration.ConnectionProfiles)
 	runtimeRequirements := deriveRuntimeRequirements(nodes)
 
 	dependencyOptions := taskrunner.DependenciesOptions{Command: command}

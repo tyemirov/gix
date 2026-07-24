@@ -26,6 +26,7 @@ import (
 
 func TestExecuteWithOptionsVersionFlagWritesToProvidedOutput(t *testing.T) {
 	application := NewApplication()
+	configureApplicationWithTestConfig(t, application)
 	application.versionResolver = func(context.Context) string {
 		return "v9.9.9"
 	}
@@ -53,6 +54,7 @@ func TestExecuteWithOptionsVersionFlagWritesToProvidedOutput(t *testing.T) {
 
 func TestExecuteWithOptionsLaunchesWebRunnerWithDefaultPort(t *testing.T) {
 	application := NewApplication()
+	configureApplicationWithTestConfig(t, application)
 
 	capturedAddress := ""
 	application.webRunner = func(executionContext context.Context, options web.ServerOptions) error {
@@ -79,6 +81,7 @@ func TestExecuteWithOptionsLaunchesWebRunnerWithDefaultPort(t *testing.T) {
 
 func TestExecuteWithOptionsLaunchesWebRunnerWithExplicitPort(t *testing.T) {
 	application := NewApplication()
+	configureApplicationWithTestConfig(t, application)
 
 	capturedAddress := ""
 	application.webRunner = func(_ context.Context, options web.ServerOptions) error {
@@ -98,6 +101,7 @@ func TestExecuteWithOptionsLaunchesWebRunnerWithExplicitPort(t *testing.T) {
 
 func TestExecuteWithOptionsRejectsLegacyWebPositionalPort(t *testing.T) {
 	application := NewApplication()
+	configureApplicationWithTestConfig(t, application)
 
 	executionError := application.ExecuteWithOptions(ExecutionOptions{
 		Arguments:     []string{"--web", "18080"},
@@ -110,6 +114,7 @@ func TestExecuteWithOptionsRejectsLegacyWebPositionalPort(t *testing.T) {
 
 func TestExecuteWithOptionsLaunchesWebRunnerWithBindAndPortFlags(t *testing.T) {
 	application := NewApplication()
+	configureApplicationWithTestConfig(t, application)
 
 	capturedAddress := ""
 	application.webRunner = func(_ context.Context, options web.ServerOptions) error {
@@ -155,6 +160,7 @@ func TestExecuteWithOptionsLaunchesWebRunnerWithExplicitRoots(t *testing.T) {
 	capturedCatalog := web.RepositoryCatalog{}
 	withWorkingDirectory(t, rootPath, func() {
 		application := NewApplication()
+		configureApplicationWithTestConfig(t, application)
 		application.webRunner = func(_ context.Context, options web.ServerOptions) error {
 			capturedCatalog = options.Repositories
 			return nil
@@ -190,6 +196,7 @@ func TestExecuteWithOptionsLaunchesWebRunnerWithRelativeExplicitRoots(t *testing
 	capturedCatalog := web.RepositoryCatalog{}
 	withWorkingDirectory(t, nestedWorkingDirectory, func() {
 		application := NewApplication()
+		configureApplicationWithTestConfig(t, application)
 		application.webRunner = func(_ context.Context, options web.ServerOptions) error {
 			capturedCatalog = options.Repositories
 			return nil
@@ -218,6 +225,7 @@ func TestExecuteWithOptionsLaunchesWebRunnerWithRelativeExplicitRoots(t *testing
 
 func TestExecuteWithOptionsRejectsWebNetworkFlagsWithoutWeb(t *testing.T) {
 	application := NewApplication()
+	configureApplicationWithTestConfig(t, application)
 
 	executionError := application.ExecuteWithOptions(ExecutionOptions{
 		Arguments:     []string{"--bind", "0.0.0.0", "--port", "8081"},
@@ -702,13 +710,15 @@ func TestWebAuditChangeExecutorCommitChangesCommitsDirtyWorktree(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(repositoryPath, "README.md"), []byte("updated\n"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(repositoryPath, "notes.txt"), []byte("draft\n"), 0o644))
 
-	t.Setenv("OPENAI_API_KEY", "test-token")
 	stubClient := &stubWebChatClient{response: "feat: commit pending changes"}
 
 	application := NewApplication()
+	application.configuration.LLM = applicationTestLLMConfiguration()
+	application.configuration.LLM.OpenAI.Credential = "test-token"
+	application.configuration.LLM.LLMProxy.Credential = ""
 	application.llmClientFactory = func(configuration llmclient.Config) (llm.ChatClient, error) {
 		require.Equal(t, llmclient.TransportOpenAICompatible, configuration.Transport)
-		require.Empty(t, configuration.Provider)
+		require.Equal(t, llmclient.ProviderOpenAI, configuration.Provider)
 		require.Equal(t, "https://api.openai.com/v1", configuration.BaseURL)
 		require.Equal(t, "gpt-4.1", configuration.Model)
 		require.Equal(t, "test-token", configuration.APIKey)
@@ -750,16 +760,18 @@ func TestWebAuditChangeExecutorUpdateChangelogInsertsNextVersionSection(t *testi
 		0o644,
 	))
 
-	t.Setenv("OPENAI_API_KEY", "test-token")
 	releaseDate := time.Now().Format("2006-01-02")
 	stubClient := &stubWebChatClient{
 		response: "## [v1.2.4] - " + releaseDate + "\n\n### Features ✨\n- Add pending feature.\n\n### Improvements ⚙️\n- _No changes._\n\n### Bug Fixes 🐛\n- _No changes._\n\n### Testing 🧪\n- _No changes._\n\n### Docs 📚\n- _No changes._",
 	}
 
 	application := NewApplication()
+	application.configuration.LLM = applicationTestLLMConfiguration()
+	application.configuration.LLM.OpenAI.Credential = "test-token"
+	application.configuration.LLM.LLMProxy.Credential = ""
 	application.llmClientFactory = func(configuration llmclient.Config) (llm.ChatClient, error) {
 		require.Equal(t, llmclient.TransportOpenAICompatible, configuration.Transport)
-		require.Empty(t, configuration.Provider)
+		require.Equal(t, llmclient.ProviderOpenAI, configuration.Provider)
 		require.Equal(t, "https://api.openai.com/v1", configuration.BaseURL)
 		require.Equal(t, "gpt-4.1", configuration.Model)
 		require.Equal(t, "test-token", configuration.APIKey)

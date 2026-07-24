@@ -75,7 +75,11 @@ func TestCommandBuildsTaskDefinition(t *testing.T) {
 	builder := packages.CommandBuilder{
 		LoggerProvider: func() *zap.Logger { return zap.NewNop() },
 		ConfigurationProvider: func() packages.Configuration {
-			return packages.Configuration{Purge: packages.PurgeConfiguration{RepositoryRoots: []string{"/src"}}}
+			return packages.Configuration{Purge: packages.PurgeConfiguration{
+				RepositoryRoots: []string{"/src"},
+				BaseURL:         "https://api.github.test",
+				Credential:      "configured-token",
+			}}
 		},
 		ServiceResolver:            resolver,
 		RepositoryMetadataResolver: metadataResolver,
@@ -104,6 +108,7 @@ func TestCommandBuildsTaskDefinition(t *testing.T) {
 	action := runner.definitions[0].Actions[0]
 	require.Equal(t, "repo.packages.purge", action.Type)
 	require.Equal(t, "", action.Options["package_override"])
+	require.Equal(t, "configured-token", action.Options["credential"])
 }
 
 func TestCommandErrorsOnUnexpectedArguments(t *testing.T) {
@@ -122,7 +127,11 @@ func TestCommandHonorsPackageFlag(t *testing.T) {
 	builder := packages.CommandBuilder{
 		LoggerProvider: func() *zap.Logger { return zap.NewNop() },
 		ConfigurationProvider: func() packages.Configuration {
-			return packages.Configuration{Purge: packages.PurgeConfiguration{RepositoryRoots: []string{"/workspace"}}}
+			return packages.Configuration{Purge: packages.PurgeConfiguration{
+				RepositoryRoots: []string{"/workspace"},
+				BaseURL:         "https://api.github.test",
+				Credential:      "configured-token",
+			}}
 		},
 		ServiceResolver:            stubServiceResolver{executor: stubPurgeExecutor{}},
 		RepositoryMetadataResolver: stubMetadataResolver{},

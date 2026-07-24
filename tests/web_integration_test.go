@@ -43,8 +43,9 @@ func TestWebBinaryEmbedsFirstPartyAssetsAndUsesCDNDependencies(testInstance *tes
 	workingDirectory := testInstance.TempDir()
 	listenPort := reserveFreeLoopbackPort(testInstance)
 	baseURL := fmt.Sprintf("http://%s:%d", webIntegrationListenHostConstant, listenPort)
+	configurationPath := writeCanonicalIntegrationConfiguration(testInstance)
 
-	command := exec.Command(binaryPath, "--web", fmt.Sprintf(webIntegrationPortArgumentTemplateConstant, listenPort))
+	command := exec.Command(binaryPath, "--config", configurationPath, "--web", fmt.Sprintf(webIntegrationPortArgumentTemplateConstant, listenPort))
 	command.Dir = workingDirectory
 	command.Env = buildCommandEnvironment(integrationCommandOptions{})
 
@@ -88,9 +89,11 @@ func TestWebBinaryHonorsExplicitBindAndPortFlags(testInstance *testing.T) {
 	workingDirectory := testInstance.TempDir()
 	listenPort := reserveFreeLoopbackPort(testInstance)
 	baseURL := fmt.Sprintf("http://%s:%d", webIntegrationListenHostConstant, listenPort)
+	configurationPath := writeCanonicalIntegrationConfiguration(testInstance)
 
 	command := exec.Command(
 		binaryPath,
+		"--config", configurationPath,
 		"--web",
 		fmt.Sprintf(webIntegrationBindArgumentTemplateConstant, webIntegrationWildcardHostConstant),
 		fmt.Sprintf(webIntegrationPortArgumentTemplateConstant, listenPort),
@@ -119,9 +122,11 @@ func TestWebBinaryScopesInitialRepositoryCatalogToExplicitRoots(testInstance *te
 	createGitRepository(testInstance, gitRepositoryOptions{Path: filepath.Join(testInstance.TempDir(), "ignored", "skip")})
 	listenPort := reserveFreeLoopbackPort(testInstance)
 	baseURL := fmt.Sprintf("http://%s:%d", webIntegrationListenHostConstant, listenPort)
+	configurationPath := writeCanonicalIntegrationConfiguration(testInstance)
 
 	command := exec.Command(
 		binaryPath,
+		"--config", configurationPath,
 		"--web",
 		fmt.Sprintf(webIntegrationPortArgumentTemplateConstant, listenPort),
 		"--roots", launchRoot,
@@ -157,9 +162,11 @@ func TestWebBinaryResolvesRelativeExplicitRootsWithoutUsingCurrentRepositoryCont
 	require.NoError(testInstance, os.MkdirAll(workingDirectory, 0o755))
 	listenPort := reserveFreeLoopbackPort(testInstance)
 	baseURL := fmt.Sprintf("http://%s:%d", webIntegrationListenHostConstant, listenPort)
+	configurationPath := writeCanonicalIntegrationConfiguration(testInstance)
 
 	command := exec.Command(
 		binaryPath,
+		"--config", configurationPath,
 		"--web",
 		fmt.Sprintf(webIntegrationPortArgumentTemplateConstant, listenPort),
 		"--roots", "../..",

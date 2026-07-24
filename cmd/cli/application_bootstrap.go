@@ -1,12 +1,14 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 
@@ -22,6 +24,7 @@ import (
 	"github.com/tyemirov/gix/internal/audit"
 	"github.com/tyemirov/gix/internal/branches"
 	syncflowcmd "github.com/tyemirov/gix/internal/branches/syncflow"
+	"github.com/tyemirov/gix/internal/githubauth"
 	"github.com/tyemirov/gix/internal/llmclient"
 	"github.com/tyemirov/gix/internal/migrate"
 	"github.com/tyemirov/gix/internal/packages"
@@ -29,6 +32,7 @@ import (
 	"github.com/tyemirov/gix/internal/utils"
 	flagutils "github.com/tyemirov/gix/internal/utils/flags"
 	"github.com/tyemirov/gix/internal/version"
+	workflowpkg "github.com/tyemirov/gix/internal/workflow"
 	"github.com/tyemirov/utils/llm"
 )
 
@@ -57,6 +61,8 @@ var commandOperationRequirements = map[string][]string{
 
 var requiredOperationConfigurationNames = collectRequiredOperationConfigurationNames()
 
+var systemConfigurationFilePath = "/etc/gix/config.yml"
+
 type loggerOutputsFactory interface {
 	CreateLoggerOutputs(utils.LogLevel, utils.LogFormat) (utils.LoggerOutputs, error)
 }
@@ -76,7 +82,6 @@ type Application struct {
 	commandContextAccessor            utils.CommandContextAccessor
 	operationConfigurations           OperationConfigurations
 	configuredOperationConfigurations OperationConfigurations
-	embeddedOperationConfigurations   OperationConfigurations
 	rootFlagValues                    *flagutils.RootFlagValues
 	configurationInitializationForced bool
 	versionFlag                       bool
@@ -87,7 +92,7 @@ type Application struct {
 	versionExitEnabled                bool
 	exitFunction                      func(int)
 	webRunner                         webRunner
-	llmClientFactory                  func(llmclient.Config) (llm.ChatClient, error)
+	llmClientFactory                  llmclient.ClientFactory
 }
 
 // NewApplication assembles a fully wired CLI application instance.
@@ -106,16 +111,7 @@ func NewApplication() *Application {
 		return llmclient.NewFactory(configuration)
 	}
 
-	application.configurationLoader = utils.NewConfigurationLoader(
-		configurationNameConstant,
-		configurationTypeConstant,
-		environmentPrefixConstant,
-		application.resolveConfigurationSearchPaths(),
-	)
-
-	embeddedConfigurationData, embeddedConfigurationType := EmbeddedDefaultConfiguration()
-	application.configurationLoader.SetEmbeddedConfiguration(embeddedConfigurationData, embeddedConfigurationType)
-	application.embeddedOperationConfigurations = loadEmbeddedOperationConfigurations()
+	application.configurationLoader = utils.NewConfigurationLoader()
 
 	cobraCommand := &cobra.Command{
 		Use:           applicationNameConstant,
@@ -124,6 +120,9 @@ func NewApplication() *Application {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(command *cobra.Command, arguments []string) error {
+			if command != nil && command.Name() == configurationInitializationFlagNameConstant {
+				return nil
+			}
 			if initializationError := application.initializeConfiguration(command); initializationError != nil {
 				return initializationError
 			}
@@ -220,18 +219,10 @@ func (application *Application) configurationInitializationCommand() *cobra.Comm
 	flagutils.AddToggleFlag(
 		command.Flags(),
 		nil,
-		configurationInitializationLocalFlagNameConstant,
+		configurationInitializationSystemFlagNameConstant,
 		"",
 		false,
-		configurationInitializationLocalFlagUsageConstant,
-	)
-	flagutils.AddToggleFlag(
-		command.Flags(),
-		nil,
-		configurationInitializationUserFlagNameConstant,
-		"",
-		false,
-		configurationInitializationUserFlagUsageConstant,
+		configurationInitializationSystemFlagUsageConstant,
 	)
 	flagutils.AddToggleFlag(
 		command.Flags(),
@@ -287,66 +278,23 @@ func normalizeWebArguments(arguments []string) []string {
 	return normalizedArguments
 }
 
-func (application *Application) resolveConfigurationSearchPaths() []string {
-	overrideValue := strings.TrimSpace(os.Getenv(configurationSearchPathEnvironmentVariableConstant))
-	if len(overrideValue) == 0 {
-		defaultSearchPaths := []string{defaultConfigurationSearchPathConstant}
-		userConfigurationDirectoryPaths := application.resolveUserConfigurationDirectoryPaths()
-		if len(userConfigurationDirectoryPaths) > 0 {
-			defaultSearchPaths = append(defaultSearchPaths, userConfigurationDirectoryPaths...)
-		}
-
-		return defaultSearchPaths
-	}
-
-	overridePaths := strings.FieldsFunc(overrideValue, func(candidate rune) bool {
-		return candidate == os.PathListSeparator
-	})
-
-	cleanedPaths := make([]string, 0, len(overridePaths))
-	for _, pathCandidate := range overridePaths {
-		trimmedCandidate := strings.TrimSpace(pathCandidate)
-		if len(trimmedCandidate) == 0 {
-			continue
-		}
-		cleanedPaths = append(cleanedPaths, trimmedCandidate)
-	}
-
-	if len(cleanedPaths) == 0 {
-		return []string{defaultConfigurationSearchPathConstant}
-	}
-
-	return cleanedPaths
-}
-
-func (application *Application) resolveUserConfigurationDirectoryPaths() []string {
-	userHomeDirectoryPath, userHomeDirectoryError := os.UserHomeDir()
-	if userHomeDirectoryError != nil {
-		return nil
-	}
-
-	trimmedUserHomeDirectoryPath := strings.TrimSpace(userHomeDirectoryPath)
-	if len(trimmedUserHomeDirectoryPath) == 0 {
-		return nil
-	}
-
-	return []string{filepath.Join(trimmedUserHomeDirectoryPath, userConfigurationDirectoryNameConstant)}
-}
-
 func (application *Application) initializeConfiguration(command *cobra.Command) error {
-	defaultValues := map[string]any{
-		commonLogLevelConfigKeyConstant:     string(utils.LogLevelError),
-		commonLogFormatConfigKeyConstant:    string(utils.LogFormatStructured),
-		commonAssumeYesConfigKeyConstant:    false,
-		commonRequireCleanConfigKeyConstant: false,
+	configurationFilePath, pathError := application.resolveConfigurationFile(command)
+	if pathError != nil {
+		return pathError
 	}
+	application.configurationFilePath = configurationFilePath
 
-	loadedConfiguration, loadError := application.configurationLoader.LoadConfiguration(application.configurationFilePath, defaultValues, &application.configuration)
+	application.configuration = ApplicationConfiguration{}
+	loadedConfiguration, loadError := application.configurationLoader.LoadConfiguration(application.configurationFilePath, &application.configuration)
 	if loadError != nil {
 		return fmt.Errorf(configurationLoadErrorTemplateConstant, loadError)
 	}
 
 	application.configurationMetadata = loadedConfiguration
+	if llmConfigurationError := application.configuration.LLM.validateConnections(); llmConfigurationError != nil {
+		return fmt.Errorf("invalid llm configuration: %w", llmConfigurationError)
+	}
 	operationConfigurations, configurationBuildError := newOperationConfigurations(application.configuration.Operations)
 	if configurationBuildError != nil {
 		return configurationBuildError
@@ -354,10 +302,15 @@ func (application *Application) initializeConfiguration(command *cobra.Command) 
 	application.configuredOperationConfigurations = operationConfigurations.Clone()
 	application.operationConfigurations = operationConfigurations
 
+	if schemaError := application.validateOperationConfigurationSchemas(); schemaError != nil {
+		return schemaError
+	}
+	if workflowSchemaError := application.validateWorkflowConfigurationSchema(); workflowSchemaError != nil {
+		return workflowSchemaError
+	}
 	if validationError := application.validateOperationConfigurations(command); validationError != nil {
 		return validationError
 	}
-	application.operationConfigurations = application.operationConfigurations.MergeDefaults(application.embeddedOperationConfigurations)
 
 	if application.persistentFlagChanged(command, logLevelFlagNameConstant) {
 		application.configuration.Common.LogLevel = application.logLevelFlagValue
@@ -395,6 +348,7 @@ func (application *Application) initializeConfiguration(command *cobra.Command) 
 		executionFlags := application.collectExecutionFlags(command)
 		updatedContext = application.commandContextAccessor.WithExecutionFlags(updatedContext, executionFlags)
 		updatedContext = application.commandContextAccessor.WithLogLevel(updatedContext, application.configuration.Common.LogLevel)
+		updatedContext = githubauth.WithCredential(updatedContext, application.configuration.GitHub.Credential)
 
 		updatedContext = application.commandContextAccessor.WithBranchContext(updatedContext, utils.BranchContext{RequireClean: true})
 
@@ -405,6 +359,85 @@ func (application *Application) initializeConfiguration(command *cobra.Command) 
 	}
 
 	return nil
+}
+
+func (application *Application) resolveConfigurationFile(command *cobra.Command) (string, error) {
+	explicitPath := strings.TrimSpace(application.configurationFilePath)
+	if explicitPath != "" {
+		if filepath.Ext(explicitPath) != "."+configurationTypeConstant {
+			return "", fmt.Errorf(configurationExtensionErrorTemplateConstant, explicitPath)
+		}
+		if _, statError := os.Stat(explicitPath); statError != nil {
+			return "", fmt.Errorf(configurationLoadErrorTemplateConstant, statError)
+		}
+		return explicitPath, nil
+	}
+
+	if _, statError := os.Stat(systemConfigurationFilePath); statError == nil {
+		return systemConfigurationFilePath, nil
+	} else if !errors.Is(statError, os.ErrNotExist) {
+		return "", fmt.Errorf(configurationLoadErrorTemplateConstant, statError)
+	}
+
+	userConfigurationPath, userPathError := application.userConfigurationFilePath()
+	if userPathError != nil {
+		return "", userPathError
+	}
+	if _, statError := os.Stat(userConfigurationPath); statError == nil {
+		return userConfigurationPath, nil
+	} else if !errors.Is(statError, os.ErrNotExist) {
+		return "", fmt.Errorf(configurationLoadErrorTemplateConstant, statError)
+	}
+
+	accepted, promptError := application.offerUserConfigurationCreation(command, userConfigurationPath)
+	if promptError != nil {
+		return "", promptError
+	}
+	if !accepted {
+		return "", errors.New(configurationMissingDeclinedErrorConstant)
+	}
+	configurationContent, _ := EmbeddedDefaultConfiguration()
+	initializationPlan := configurationInitializationPlan{
+		DirectoryPath: filepath.Dir(userConfigurationPath),
+		FilePath:      userConfigurationPath,
+	}
+	if writeError := application.writeConfigurationFile(initializationPlan, configurationContent); writeError != nil {
+		return "", writeError
+	}
+	return userConfigurationPath, nil
+}
+
+func (application *Application) userConfigurationFilePath() (string, error) {
+	userHomeDirectoryPath, userHomeDirectoryError := os.UserHomeDir()
+	if userHomeDirectoryError != nil {
+		return "", fmt.Errorf(configurationInitializationHomeDirectoryErrorTemplateConstant, userHomeDirectoryError)
+	}
+	trimmedHomeDirectoryPath := strings.TrimSpace(userHomeDirectoryPath)
+	if trimmedHomeDirectoryPath == "" {
+		return "", fmt.Errorf(
+			configurationInitializationHomeDirectoryErrorTemplateConstant,
+			errors.New(configurationInitializationHomeDirectoryEmptyErrorConstant),
+		)
+	}
+	return filepath.Join(trimmedHomeDirectoryPath, userConfigurationDirectoryNameConstant, configurationFileNameConstant), nil
+}
+
+func (application *Application) offerUserConfigurationCreation(command *cobra.Command, configurationFilePath string) (bool, error) {
+	if command == nil {
+		return false, errors.New(configurationMissingDeclinedErrorConstant)
+	}
+	if assumeYes, changed, flagError := flagutils.BoolFlag(command, flagutils.AssumeYesFlagName); flagError == nil && changed && assumeYes {
+		return true, nil
+	}
+	if _, writeError := fmt.Fprintf(command.OutOrStdout(), configurationMissingPromptTemplateConstant, configurationFilePath); writeError != nil {
+		return false, writeError
+	}
+	response, readError := bufio.NewReader(command.InOrStdin()).ReadString('\n')
+	if readError != nil && !errors.Is(readError, io.EOF) {
+		return false, readError
+	}
+	normalizedResponse := strings.ToLower(strings.TrimSpace(response))
+	return normalizedResponse == "y" || normalizedResponse == "yes", nil
 }
 
 // InitializeForCommand prepares application state for the provided command name without executing command logic.
@@ -500,14 +533,11 @@ func (application *Application) branchSyncConfiguration() syncflowcmd.CommandCon
 	configuration := syncflowcmd.DefaultCommandConfiguration()
 	messageConfiguration := application.commitMessageConfiguration()
 	configuration.CommitMessage = syncflowcmd.CommitMessageConfiguration{
-		Transport:      messageConfiguration.Transport,
-		Provider:       messageConfiguration.Provider,
-		APIKeyEnv:      messageConfiguration.APIKeyEnv,
-		BaseURL:        messageConfiguration.BaseURL,
-		Model:          messageConfiguration.Model,
-		MaxTokens:      messageConfiguration.MaxTokens,
-		Temperature:    messageConfiguration.Temperature,
-		TimeoutSeconds: messageConfiguration.TimeoutSeconds,
+		LLMProxy:           messageConfiguration.LLMProxy,
+		MaxTokens:          messageConfiguration.MaxTokens,
+		Temperature:        messageConfiguration.Temperature,
+		TimeoutSeconds:     messageConfiguration.TimeoutSeconds,
+		ConnectionProfiles: messageConfiguration.ConnectionProfiles,
 	}
 	application.decodeBranchSyncOperationConfiguration(branchSyncOperationNameConstant, &configuration)
 
@@ -635,27 +665,26 @@ func (application *Application) workflowCommandConfiguration() workflowcmd.Comma
 	if !optionsExist || !optionExists(options, requireCleanOptionKeyConstant) {
 		configuration.RequireClean = application.configuration.Common.RequireClean
 	}
+	configuration.ConnectionProfiles = application.configuration.LLM.connectionProfiles()
 
 	return configuration
 }
 
 func (application *Application) changelogMessageConfiguration() changelogcmd.MessageConfiguration {
 	configuration := changelogcmd.DefaultMessageConfiguration()
-	application.decodeChangelogMessageOperationConfigurationIfPresent(application.embeddedOperationConfigurations, changelogMessageConfigurationKeyConstant, &configuration)
-	application.decodeChangelogMessageOperationConfigurationIfPresent(application.embeddedOperationConfigurations, changelogMessageOperationNameConstant, &configuration)
 	application.applyGlobalLLMDefaultsToChangelogMessageConfiguration(&configuration)
 	application.decodeChangelogMessageOperationConfigurationIfPresent(application.configuredOperationConfigurations, changelogMessageConfigurationKeyConstant, &configuration)
 	application.decodeChangelogMessageOperationConfigurationIfPresent(application.configuredOperationConfigurations, changelogMessageOperationNameConstant, &configuration)
+	configuration.ConnectionProfiles = application.configuration.LLM.connectionProfiles()
 	return configuration.Sanitize()
 }
 
 func (application *Application) commitMessageConfiguration() commitcmd.MessageConfiguration {
 	configuration := commitcmd.DefaultMessageConfiguration()
-	application.decodeCommitMessageOperationConfigurationIfPresent(application.embeddedOperationConfigurations, commitMessageConfigurationKeyConstant, &configuration)
-	application.decodeCommitMessageOperationConfigurationIfPresent(application.embeddedOperationConfigurations, commitMessageOperationNameConstant, &configuration)
 	application.applyGlobalLLMDefaultsToCommitMessageConfiguration(&configuration)
 	application.decodeCommitMessageOperationConfigurationIfPresent(application.configuredOperationConfigurations, commitMessageConfigurationKeyConstant, &configuration)
 	application.decodeCommitMessageOperationConfigurationIfPresent(application.configuredOperationConfigurations, commitMessageOperationNameConstant, &configuration)
+	configuration.ConnectionProfiles = application.configuration.LLM.connectionProfiles()
 	return configuration.Sanitize()
 }
 
@@ -711,7 +740,7 @@ func (application *Application) decodeBranchSyncOperationConfiguration(operation
 	if !exists {
 		return
 	}
-	resetBranchSyncCommitMessageTransportDependentDefaults(options, target)
+	resetBranchSyncCommitMessageProviderDefault(options, target)
 }
 
 func (application *Application) decodeCommitMessageOperationConfigurationIfPresent(configurations OperationConfigurations, operationName string, target *commitcmd.MessageConfiguration) {
@@ -719,7 +748,7 @@ func (application *Application) decodeCommitMessageOperationConfigurationIfPrese
 	if !exists {
 		return
 	}
-	resetCommitMessageTransportDependentDefaults(options, target)
+	resetCommitMessageProviderDefault(options, target)
 }
 
 func (application *Application) decodeChangelogMessageOperationConfigurationIfPresent(configurations OperationConfigurations, operationName string, target *changelogcmd.MessageConfiguration) {
@@ -727,7 +756,7 @@ func (application *Application) decodeChangelogMessageOperationConfigurationIfPr
 	if !exists {
 		return
 	}
-	resetChangelogMessageTransportDependentDefaults(options, target)
+	resetChangelogMessageProviderDefault(options, target)
 }
 
 func (application *Application) applyGlobalLLMDefaultsToCommitMessageConfiguration(target *commitcmd.MessageConfiguration) {
@@ -735,23 +764,6 @@ func (application *Application) applyGlobalLLMDefaultsToCommitMessageConfigurati
 		return
 	}
 	configuration := application.configuration.LLM
-	if transport := strings.TrimSpace(configuration.Transport); transport != "" {
-		target.Transport = transport
-		target.APIKeyEnv = ""
-		target.BaseURL = ""
-	}
-	if provider := strings.TrimSpace(configuration.Provider); provider != "" {
-		target.Provider = provider
-	}
-	if apiKeyEnv := strings.TrimSpace(configuration.APIKeyEnv); apiKeyEnv != "" {
-		target.APIKeyEnv = apiKeyEnv
-	}
-	if baseURL := strings.TrimSpace(configuration.BaseURL); baseURL != "" {
-		target.BaseURL = baseURL
-	}
-	if model := strings.TrimSpace(configuration.Model); model != "" {
-		target.Model = model
-	}
 	if configuration.MaxCompletionTokens > 0 {
 		target.MaxTokens = configuration.MaxCompletionTokens
 	}
@@ -768,23 +780,6 @@ func (application *Application) applyGlobalLLMDefaultsToChangelogMessageConfigur
 		return
 	}
 	configuration := application.configuration.LLM
-	if transport := strings.TrimSpace(configuration.Transport); transport != "" {
-		target.Transport = transport
-		target.APIKeyEnv = ""
-		target.BaseURL = ""
-	}
-	if provider := strings.TrimSpace(configuration.Provider); provider != "" {
-		target.Provider = provider
-	}
-	if apiKeyEnv := strings.TrimSpace(configuration.APIKeyEnv); apiKeyEnv != "" {
-		target.APIKeyEnv = apiKeyEnv
-	}
-	if baseURL := strings.TrimSpace(configuration.BaseURL); baseURL != "" {
-		target.BaseURL = baseURL
-	}
-	if model := strings.TrimSpace(configuration.Model); model != "" {
-		target.Model = model
-	}
 	if configuration.MaxCompletionTokens > 0 {
 		target.MaxTokens = configuration.MaxCompletionTokens
 	}
@@ -796,52 +791,46 @@ func (application *Application) applyGlobalLLMDefaultsToChangelogMessageConfigur
 	}
 }
 
-func resetCommitMessageTransportDependentDefaults(options map[string]any, target *commitcmd.MessageConfiguration) {
-	if target == nil || !optionExists(options, llmTransportOptionKeyConstant) {
+func resetCommitMessageProviderDefault(options map[string]any, target *commitcmd.MessageConfiguration) {
+	if target == nil {
 		return
 	}
-	if !optionExists(options, llmAPIKeyEnvOptionKeyConstant) {
-		target.APIKeyEnv = ""
+	proxyOptions, exists := optionMap(options, llmProxyOptionKeyConstant)
+	if !exists || !optionExists(proxyOptions, llmProviderOptionKeyConstant) {
+		return
 	}
-	if !optionExists(options, llmBaseURLOptionKeyConstant) {
-		target.BaseURL = ""
-	}
-	if !optionExists(options, llmProviderOptionKeyConstant) && llmclient.Transport(llmclient.NormalizeTransportName(target.Transport)) != llmclient.TransportLLMProxy {
-		target.Provider = ""
+	if !optionExists(proxyOptions, llmModelOptionKeyConstant) {
+		target.LLMProxy.Model = ""
 	}
 }
 
-func resetChangelogMessageTransportDependentDefaults(options map[string]any, target *changelogcmd.MessageConfiguration) {
-	if target == nil || !optionExists(options, llmTransportOptionKeyConstant) {
+func resetChangelogMessageProviderDefault(options map[string]any, target *changelogcmd.MessageConfiguration) {
+	if target == nil {
 		return
 	}
-	if !optionExists(options, llmAPIKeyEnvOptionKeyConstant) {
-		target.APIKeyEnv = ""
+	proxyOptions, exists := optionMap(options, llmProxyOptionKeyConstant)
+	if !exists || !optionExists(proxyOptions, llmProviderOptionKeyConstant) {
+		return
 	}
-	if !optionExists(options, llmBaseURLOptionKeyConstant) {
-		target.BaseURL = ""
-	}
-	if !optionExists(options, llmProviderOptionKeyConstant) && llmclient.Transport(llmclient.NormalizeTransportName(target.Transport)) != llmclient.TransportLLMProxy {
-		target.Provider = ""
+	if !optionExists(proxyOptions, llmModelOptionKeyConstant) {
+		target.LLMProxy.Model = ""
 	}
 }
 
-func resetBranchSyncCommitMessageTransportDependentDefaults(options map[string]any, target *syncflowcmd.CommandConfiguration) {
+func resetBranchSyncCommitMessageProviderDefault(options map[string]any, target *syncflowcmd.CommandConfiguration) {
 	if target == nil {
 		return
 	}
 	commitMessageOptions, exists := optionMap(options, syncCommitMessageOptionKeyConstant)
-	if !exists || !optionExists(commitMessageOptions, llmTransportOptionKeyConstant) {
+	if !exists {
 		return
 	}
-	if !optionExists(commitMessageOptions, llmAPIKeyEnvOptionKeyConstant) {
-		target.CommitMessage.APIKeyEnv = ""
+	proxyOptions, exists := optionMap(commitMessageOptions, llmProxyOptionKeyConstant)
+	if !exists || !optionExists(proxyOptions, llmProviderOptionKeyConstant) {
+		return
 	}
-	if !optionExists(commitMessageOptions, llmBaseURLOptionKeyConstant) {
-		target.CommitMessage.BaseURL = ""
-	}
-	if !optionExists(commitMessageOptions, llmProviderOptionKeyConstant) && llmclient.Transport(llmclient.NormalizeTransportName(target.CommitMessage.Transport)) != llmclient.TransportLLMProxy {
-		target.CommitMessage.Provider = ""
+	if !optionExists(proxyOptions, llmModelOptionKeyConstant) {
+		target.CommitMessage.LLMProxy.Model = ""
 	}
 }
 
@@ -912,40 +901,87 @@ func (application *Application) validateOperationConfigurations(command *cobra.C
 		if lookupError == nil {
 			continue
 		}
-
-		var missingConfigurationError MissingOperationConfigurationError
-		if errors.As(lookupError, &missingConfigurationError) && command != nil {
-			commandName := strings.TrimSpace(command.Name())
-			if len(commandName) == 0 && command.HasParent() {
-				parentCommand := command.Parent()
-				commandName = strings.TrimSpace(parentCommand.Name())
-			}
-
-			application.logMissingOperationConfiguration(commandName, operationName)
-			continue
-		}
-
 		return lookupError
 	}
 
 	return nil
 }
 
-func (application *Application) logMissingOperationConfiguration(commandName string, operationName string) {
-	if application.logger == nil {
-		return
+func (application *Application) validateOperationConfigurationSchemas() error {
+	operationNames := make([]string, 0, len(application.operationConfigurations.entries))
+	for operationName := range application.operationConfigurations.entries {
+		operationNames = append(operationNames, operationName)
+	}
+	sort.Strings(operationNames)
+
+	for _, operationName := range operationNames {
+		target, supported := operationConfigurationSchemaTarget(operationName)
+		if !supported {
+			return InvalidOperationConfigurationError{
+				OperationName: operationName,
+				Cause:         fmt.Errorf(unsupportedOperationConfigurationTemplateConstant, operationName),
+			}
+		}
+		if decodeError := application.operationConfigurations.decode(operationName, target); decodeError != nil {
+			return InvalidOperationConfigurationError{
+				OperationName: operationName,
+				Cause:         decodeError,
+			}
+		}
 	}
 
-	normalizedCommandName := strings.TrimSpace(commandName)
-	if len(normalizedCommandName) == 0 {
-		normalizedCommandName = unknownCommandNamePlaceholderConstant
-	}
+	return nil
+}
 
-	application.logger.Info(
-		missingOperationConfigurationSkippedMessageConstant,
-		zap.String(logFieldCommandNameConstant, normalizedCommandName),
-		zap.String(operationNameLogFieldConstant, operationName),
-	)
+func (application *Application) validateWorkflowConfigurationSchema() error {
+	if len(application.configuration.Workflow) == 0 {
+		return nil
+	}
+	steps := make([]workflowpkg.StepConfiguration, 0, len(application.configuration.Workflow))
+	for _, wrappedStep := range application.configuration.Workflow {
+		steps = append(steps, wrappedStep.Step)
+	}
+	if _, buildError := workflowpkg.BuildOperations(workflowpkg.Configuration{Steps: steps}); buildError != nil {
+		return fmt.Errorf("invalid workflow configuration: %w", buildError)
+	}
+	return nil
+}
+
+func operationConfigurationSchemaTarget(operationName string) (any, bool) {
+	switch operationName {
+	case auditOperationNameConstant:
+		return &audit.CommandConfiguration{}, true
+	case packagesPurgeOperationNameConstant:
+		return &packages.PurgeConfiguration{}, true
+	case branchCleanupOperationNameConstant:
+		return &branches.CommandConfiguration{}, true
+	case reposRenameOperationNameConstant:
+		return &repos.RenameConfiguration{}, true
+	case reposRemotesOperationNameConstant:
+		return &repos.RemotesConfiguration{}, true
+	case reposProtocolOperationNameConstant:
+		return &repos.ProtocolConfiguration{}, true
+	case repoReleaseOperationNameConstant:
+		return &releasecmd.CommandConfiguration{}, true
+	case repoHistoryOperationNameConstant:
+		return &repos.RemoveConfiguration{}, true
+	case repoFilesReplaceOperationNameConstant:
+		return &repos.ReplaceConfiguration{}, true
+	case repoFilesAddOperationNameConstant:
+		return &repos.AddConfiguration{}, true
+	case workflowCommandOperationNameConstant:
+		return &workflowcmd.CommandConfiguration{}, true
+	case defaultOperationNameConstant:
+		return &migrate.CommandConfiguration{}, true
+	case branchSyncOperationNameConstant:
+		return &syncflowcmd.CommandConfiguration{}, true
+	case commitMessageOperationNameConstant:
+		return &commitcmd.MessageConfiguration{}, true
+	case changelogMessageOperationNameConstant:
+		return &changelogcmd.MessageConfiguration{}, true
+	default:
+		return nil, false
+	}
 }
 
 func (application *Application) operationsRequiredForCommand(command *cobra.Command) []string {
@@ -1010,23 +1046,12 @@ func (application *Application) runConfigurationInitializationCommand(command *c
 }
 
 func (application *Application) configurationInitializationScopeForCommand(command *cobra.Command) (string, error) {
-	localEnabled, localChanged, localFlagError := flagutils.BoolFlag(command, configurationInitializationLocalFlagNameConstant)
-	if localFlagError != nil {
-		return "", localFlagError
+	systemEnabled, systemChanged, systemFlagError := flagutils.BoolFlag(command, configurationInitializationSystemFlagNameConstant)
+	if systemFlagError != nil {
+		return "", systemFlagError
 	}
-	userEnabled, userChanged, userFlagError := flagutils.BoolFlag(command, configurationInitializationUserFlagNameConstant)
-	if userFlagError != nil {
-		return "", userFlagError
-	}
-
-	if localChanged && localEnabled && userChanged && userEnabled {
-		return "", errors.New(configurationInitializationScopeConflictErrorConstant)
-	}
-	if userChanged && userEnabled {
-		return configurationInitializationScopeUserConstant, nil
-	}
-	if localChanged && localEnabled {
-		return configurationInitializationScopeLocalConstant, nil
+	if systemChanged && systemEnabled {
+		return configurationInitializationScopeSystemConstant, nil
 	}
 
 	return configurationInitializationDefaultScopeConstant, nil
@@ -1035,43 +1060,19 @@ func (application *Application) configurationInitializationScopeForCommand(comma
 func (application *Application) resolveConfigurationInitializationPlan(initializationScope string) (configurationInitializationPlan, error) {
 	normalizedScope := strings.ToLower(strings.TrimSpace(initializationScope))
 	switch normalizedScope {
-	case "", configurationInitializationScopeLocalConstant:
-		workingDirectoryPath, workingDirectoryError := os.Getwd()
-		if workingDirectoryError != nil {
-			return configurationInitializationPlan{}, fmt.Errorf(configurationInitializationWorkingDirectoryErrorTemplateConstant, workingDirectoryError)
-		}
-
-		trimmedWorkingDirectoryPath := strings.TrimSpace(workingDirectoryPath)
-		if len(trimmedWorkingDirectoryPath) == 0 {
-			return configurationInitializationPlan{}, fmt.Errorf(
-				configurationInitializationWorkingDirectoryErrorTemplateConstant,
-				errors.New(configurationInitializationWorkingDirectoryEmptyErrorConstant),
-			)
-		}
-
+	case configurationInitializationScopeSystemConstant:
 		return configurationInitializationPlan{
-			DirectoryPath: trimmedWorkingDirectoryPath,
-			FilePath:      filepath.Join(trimmedWorkingDirectoryPath, configurationFileNameConstant),
+			DirectoryPath: filepath.Dir(systemConfigurationFilePath),
+			FilePath:      systemConfigurationFilePath,
 		}, nil
-	case configurationInitializationScopeUserConstant:
-		userHomeDirectoryPath, userHomeDirectoryError := os.UserHomeDir()
-		if userHomeDirectoryError != nil {
-			return configurationInitializationPlan{}, fmt.Errorf(configurationInitializationHomeDirectoryErrorTemplateConstant, userHomeDirectoryError)
+	case "", configurationInitializationScopeUserConstant:
+		userConfigurationPath, userPathError := application.userConfigurationFilePath()
+		if userPathError != nil {
+			return configurationInitializationPlan{}, userPathError
 		}
-
-		trimmedHomeDirectoryPath := strings.TrimSpace(userHomeDirectoryPath)
-		if len(trimmedHomeDirectoryPath) == 0 {
-			return configurationInitializationPlan{}, fmt.Errorf(
-				configurationInitializationHomeDirectoryErrorTemplateConstant,
-				errors.New(configurationInitializationHomeDirectoryEmptyErrorConstant),
-			)
-		}
-
-		configurationDirectoryPath := filepath.Join(trimmedHomeDirectoryPath, userConfigurationDirectoryNameConstant)
-
 		return configurationInitializationPlan{
-			DirectoryPath: configurationDirectoryPath,
-			FilePath:      filepath.Join(configurationDirectoryPath, configurationFileNameConstant),
+			DirectoryPath: filepath.Dir(userConfigurationPath),
+			FilePath:      userConfigurationPath,
 		}, nil
 	default:
 		trimmedScope := strings.TrimSpace(initializationScope)

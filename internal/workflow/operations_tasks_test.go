@@ -19,6 +19,7 @@ import (
 	"github.com/tyemirov/gix/internal/execshell"
 	"github.com/tyemirov/gix/internal/githubcli"
 	"github.com/tyemirov/gix/internal/gitrepo"
+	"github.com/tyemirov/gix/internal/llmclient"
 	"github.com/tyemirov/gix/internal/repos/filesystem"
 	"github.com/tyemirov/gix/internal/repos/shared"
 	"github.com/tyemirov/utils/llm"
@@ -242,8 +243,10 @@ func TestPlanFileChangesReplaceModeMatchesDocsRootFilesForDoubleStar(testContext
 func TestBuildTaskOperationInjectsLLMConfiguration(t *testing.T) {
 	options := map[string]any{
 		optionTaskLLMKeyConstant: map[string]any{
-			optionTaskLLMModelKeyConstant:     "gpt-test",
-			optionTaskLLMAPIKeyEnvKeyConstant: "WORKFLOW_TEST_KEY",
+			optionTaskLLMProxyKeyConstant: map[string]any{
+				optionTaskLLMProviderKeyConstant: llmclient.ProviderOpenAI,
+				optionTaskLLMModelKeyConstant:    "gpt-test",
+			},
 		},
 		optionTasksKeyConstant: []any{
 			map[string]any{

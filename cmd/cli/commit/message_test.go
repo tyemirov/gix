@@ -17,8 +17,6 @@ import (
 
 func TestMessageCommandGeneratesCommitMessage(t *testing.T) {
 	tempDir := t.TempDir()
-	apiKeyEnv := "TEST_LLM_KEY"
-	t.Setenv(apiKeyEnv, "test-api-key")
 
 	executor := &fakeGitExecutor{
 		responses: map[string]string{
@@ -35,10 +33,9 @@ func TestMessageCommandGeneratesCommitMessage(t *testing.T) {
 		GitExecutor: executor,
 		ConfigurationProvider: func() MessageConfiguration {
 			return MessageConfiguration{
-				Roots:      []string{tempDir},
-				APIKeyEnv:  apiKeyEnv,
-				Model:      "mock-model",
-				DiffSource: "staged",
+				Roots:              []string{tempDir},
+				DiffSource:         "staged",
+				ConnectionProfiles: testConnectionProfiles(),
 			}.Sanitize()
 		},
 		ClientFactory: func(config llmclient.Config) (llm.ChatClient, error) {
@@ -73,37 +70,33 @@ func TestMessageCommandGeneratesCommitMessage(t *testing.T) {
 	require.Equal(t, 0, action.Options[taskOptionCommitMaxTokens])
 	require.NotNil(t, action.Options[taskOptionCommitClient])
 	require.Equal(t, llmclient.TransportOpenAICompatible, client.config.Transport)
+	require.Equal(t, llmclient.ProviderOpenAI, client.config.Provider)
 	require.Equal(t, "mock-model", client.config.Model)
 	require.Equal(t, "test-api-key", client.config.APIKey)
 	require.Nil(t, client.request)
 }
 
-func TestMessageConfigurationSanitizeDefaultsLLMProxyTransport(t *testing.T) {
+func TestMessageConfigurationSanitizePreservesLLMProxySelection(t *testing.T) {
 	configuration := MessageConfiguration{
-		Transport: string(llmclient.TransportLLMProxy),
-		Provider:  "deepseek",
-		Model:     "gpt-4.1",
+		LLMProxy: llmclient.LLMProxySelection{
+			Provider: " deepseek ",
+			Model:    " model ",
+		},
 	}.Sanitize()
 
-	require.Equal(t, string(llmclient.TransportLLMProxy), configuration.Transport)
-	require.Equal(t, "deepseek", configuration.Provider)
-	require.Equal(t, llmclient.DefaultLLMProxyAPIKeyEnvironment, configuration.APIKeyEnv)
-	require.Equal(t, llmclient.DefaultLLMProxyBaseURL, configuration.BaseURL)
+	require.Equal(t, "deepseek", configuration.LLMProxy.Provider)
+	require.Equal(t, "model", configuration.LLMProxy.Model)
 }
 
 func TestMessageCommandValidatesDiffSource(t *testing.T) {
 	tempDir := t.TempDir()
-	apiKeyEnv := "TEST_LLM_KEY"
-	t.Setenv(apiKeyEnv, "token")
-
 	builder := MessageCommandBuilder{
 		GitExecutor: &fakeGitExecutor{},
 		ConfigurationProvider: func() MessageConfiguration {
 			return MessageConfiguration{
-				Roots:      []string{tempDir},
-				APIKeyEnv:  apiKeyEnv,
-				Model:      "model",
-				DiffSource: "invalid",
+				Roots:              []string{tempDir},
+				DiffSource:         "invalid",
+				ConnectionProfiles: testConnectionProfiles(),
 			}.Sanitize()
 		},
 		ClientFactory: func(config llmclient.Config) (llm.ChatClient, error) {
@@ -119,6 +112,24 @@ func TestMessageCommandValidatesDiffSource(t *testing.T) {
 	err = command.Execute()
 	require.Error(t, err)
 	require.True(t, strings.Contains(err.Error(), "unsupported diff source"))
+}
+
+func testConnectionProfiles() llmclient.ConnectionProfiles {
+	return llmclient.ConnectionProfiles{
+		OpenAI: llmclient.OpenAIConnectionProfile{
+			Priority:   1,
+			BaseURL:    "https://api.openai.com/v1",
+			Credential: "test-api-key",
+			Model:      "mock-model",
+		},
+		LLMProxy: llmclient.LLMProxyConnectionProfile{
+			Priority:   2,
+			BaseURL:    "https://llm-proxy.example",
+			Credential: "",
+			Provider:   "meta",
+			Model:      "muse-spark-1.1",
+		},
+	}
 }
 
 type fakeGitExecutor struct {

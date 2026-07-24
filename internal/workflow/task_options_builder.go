@@ -2,6 +2,8 @@ package workflow
 
 import (
 	"strings"
+
+	"github.com/tyemirov/gix/internal/llmclient"
 )
 
 // TasksApplyDefinition describes serialized options for the tasks.apply operation.
@@ -12,11 +14,7 @@ type TasksApplyDefinition struct {
 
 // TaskLLMDefinition configures optional LLM client parameters for tasks.apply presets.
 type TaskLLMDefinition struct {
-	Transport           string
-	Provider            string
-	Model               string
-	BaseURL             string
-	APIKeyEnv           string
+	LLMProxy            llmclient.LLMProxySelection
 	TimeoutSeconds      int
 	MaxCompletionTokens int
 	Temperature         *float64
@@ -35,11 +33,10 @@ func (definition TasksApplyDefinition) Options() map[string]any {
 
 func (definition TaskLLMDefinition) encode() map[string]any {
 	options := map[string]any{
-		optionTaskLLMTransportKeyConstant: strings.TrimSpace(definition.Transport),
-		optionTaskLLMProviderKeyConstant:  strings.TrimSpace(definition.Provider),
-		optionTaskLLMModelKeyConstant:     strings.TrimSpace(definition.Model),
-		optionTaskLLMBaseURLKeyConstant:   strings.TrimSpace(definition.BaseURL),
-		optionTaskLLMAPIKeyEnvKeyConstant: strings.TrimSpace(definition.APIKeyEnv),
+		optionTaskLLMProxyKeyConstant: map[string]any{
+			optionTaskLLMProviderKeyConstant: strings.TrimSpace(definition.LLMProxy.Provider),
+			optionTaskLLMModelKeyConstant:    strings.TrimSpace(definition.LLMProxy.Model),
+		},
 	}
 	if definition.TimeoutSeconds > 0 {
 		options[optionTaskLLMTimeoutKeyConstant] = definition.TimeoutSeconds

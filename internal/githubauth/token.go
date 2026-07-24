@@ -1,8 +1,8 @@
 package githubauth
 
 import (
+	"context"
 	"errors"
-	"os"
 	"strings"
 )
 
@@ -19,21 +19,30 @@ var tokenPreference = []string{
 	EnvGitHubAPIToken,
 }
 
-const tokenMissingMessage = "missing GitHub authentication token; set GH_TOKEN, GITHUB_TOKEN, or GITHUB_API_TOKEN"
+const tokenMissingMessage = "missing GitHub authentication token; configure github.credential in config.yml"
 
-// ResolveToken returns the first non-empty GitHub authentication token observed
-// in the provided environment map or the process environment.
-func ResolveToken(environment map[string]string) (string, bool) {
+type credentialContextKey struct{}
+
+// WithCredential attaches the concrete config-resolved GitHub credential to an execution context.
+func WithCredential(parentContext context.Context, credential string) context.Context {
+	if parentContext == nil {
+		parentContext = context.Background()
+	}
+	return context.WithValue(parentContext, credentialContextKey{}, strings.TrimSpace(credential))
+}
+
+// ResolveToken returns the first concrete GitHub token supplied by the command or configuration context.
+func ResolveToken(executionContext context.Context, environment map[string]string) (string, bool) {
 	for _, key := range tokenPreference {
 		if value, ok := lookup(environment, key); ok {
 			return value, true
 		}
 	}
-	for _, key := range tokenPreference {
-		if value, ok := os.LookupEnv(key); ok {
-			value = strings.TrimSpace(value)
-			if len(value) > 0 {
-				return value, true
+	if executionContext != nil {
+		if credential, available := executionContext.Value(credentialContextKey{}).(string); available {
+			credential = strings.TrimSpace(credential)
+			if credential != "" {
+				return credential, true
 			}
 		}
 	}

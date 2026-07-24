@@ -21,9 +21,8 @@ const (
 	packagesIntegrationPackageConstant                  = "tooling"
 	packagesIntegrationTokenEnvNameConstant             = "GITHUB_PACKAGES_TOKEN"
 	packagesIntegrationTokenValueConstant               = "packages-token-value"
-	packagesIntegrationBaseURLEnvironmentNameConstant   = "GIX_REPO_PACKAGES_PURGE_BASE_URL"
-	packagesIntegrationConfigFileNameConstant           = "config.yaml"
-	packagesIntegrationConfigTemplateConstant           = "common:\n  log_level: error\noperations:\n  - command: [\"packages\", \"delete\"]\n    with:\n%s      assume_yes: true\n      roots:\n        - %s\nworkflow: []\n"
+	packagesIntegrationConfigFileNameConstant           = "config.yml"
+	packagesIntegrationConfigTemplateConstant           = "common:\n  log_level: error\n  log_format: console\ngithub:\n  credential: \"${GH_TOKEN}\"\nllm:\n  openai:\n    priority: 1\n    model: gpt-4.1\n    base_url: https://api.openai.com/v1\n    credential: integration-openai-key\n  llm_proxy:\n    priority: 2\n    provider: meta\n    model: muse-spark-1.1\n    base_url: https://llm-proxy.example\n    credential: integration-proxy-key\noperations:\n  - command: [\"packages\", \"delete\"]\n    with:\n      base_url: %q\n      credential: \"${GITHUB_PACKAGES_TOKEN}\"\n%s      roots:\n        - %s\nworkflow: []\n"
 	packagesIntegrationPackageLineTemplateConstant      = "      package: %s\n"
 	packagesIntegrationSubtestNameTemplateConstant      = "%d_%s"
 	packagesIntegrationRunSubcommandConstant            = "run"
@@ -218,6 +217,7 @@ func TestPackagesCommandIntegration(testInstance *testing.T) {
 
 			configContent := fmt.Sprintf(
 				packagesIntegrationConfigTemplateConstant,
+				server.URL,
 				packageBlock,
 				repositoryRoot,
 			)
@@ -226,7 +226,6 @@ func TestPackagesCommandIntegration(testInstance *testing.T) {
 			require.NoError(subtest, writeError)
 
 			subtest.Setenv(packagesIntegrationTokenEnvNameConstant, packagesIntegrationTokenValueConstant)
-			subtest.Setenv(packagesIntegrationBaseURLEnvironmentNameConstant, server.URL)
 
 			arguments := []string{
 				packagesIntegrationRunSubcommandConstant,

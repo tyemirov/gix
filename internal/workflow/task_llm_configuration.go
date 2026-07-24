@@ -3,7 +3,7 @@ package workflow
 import (
 	"errors"
 	"fmt"
-	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,23 +15,30 @@ import (
 
 const (
 	optionTaskLLMKeyConstant            = "llm"
-	optionTaskLLMTransportKeyConstant   = "transport"
+	optionTaskLLMProxyKeyConstant       = "llm_proxy"
 	optionTaskLLMProviderKeyConstant    = "provider"
 	optionTaskLLMModelKeyConstant       = "model"
-	optionTaskLLMBaseURLKeyConstant     = "base_url"
-	optionTaskLLMAPIKeyEnvKeyConstant   = "api_key_env"
 	optionTaskLLMTimeoutKeyConstant     = "timeout_seconds"
 	optionTaskLLMMaxTokensKeyConstant   = "max_completion_tokens"
 	optionTaskLLMTemperatureKeyConstant = "temperature"
 )
 
+var supportedTaskLLMConfigurationKeys = map[string]struct{}{
+	optionTaskLLMProxyKeyConstant:       {},
+	optionTaskLLMTimeoutKeyConstant:     {},
+	optionTaskLLMMaxTokensKeyConstant:   {},
+	optionTaskLLMTemperatureKeyConstant: {},
+}
+
+var supportedTaskLLMProxyConfigurationKeys = map[string]struct{}{
+	optionTaskLLMProviderKeyConstant: {},
+	optionTaskLLMModelKeyConstant:    {},
+}
+
 // TaskLLMClientConfiguration describes the client parameters for workflow task actions.
 type TaskLLMClientConfiguration struct {
-	transport           llmclient.Transport
-	provider            string
-	baseURL             string
-	model               string
-	apiKeyEnv           string
+	llmProxy            llmclient.LLMProxySelection
+	connectionProfiles  llmclient.ConnectionProfiles
 	maxCompletionTokens int
 	temperature         float64
 	hasTemperature      bool
@@ -50,46 +57,36 @@ func buildTaskLLMConfiguration(reader optionReader) (*TaskLLMClientConfiguration
 	if !exists {
 		return nil, nil
 	}
+	if keyError := validateTaskLLMConfigurationKeys(rawConfiguration); keyError != nil {
+		return nil, keyError
+	}
 
 	configReader := newOptionReader(rawConfiguration)
-
-	transportName, _, transportErr := configReader.stringValue(optionTaskLLMTransportKeyConstant)
-	if transportErr != nil {
-		return nil, transportErr
+	rawProxyConfiguration, proxyExists, proxyConfigurationError := configReader.mapValue(optionTaskLLMProxyKeyConstant)
+	if proxyConfigurationError != nil {
+		return nil, proxyConfigurationError
 	}
-	transport, transportCreationErr := llmclient.NewTransport(transportName)
-	if transportCreationErr != nil {
-		return nil, transportCreationErr
+	if !proxyExists {
+		_, providerError := llmclient.NormalizeProvider("")
+		return nil, providerError
 	}
+	if proxyKeyError := validateTaskLLMProxyConfigurationKeys(rawProxyConfiguration); proxyKeyError != nil {
+		return nil, proxyKeyError
+	}
+	proxyReader := newOptionReader(rawProxyConfiguration)
 
-	providerName, _, providerErr := configReader.stringValue(optionTaskLLMProviderKeyConstant)
+	providerName, _, providerErr := proxyReader.stringValue(optionTaskLLMProviderKeyConstant)
 	if providerErr != nil {
 		return nil, providerErr
 	}
-	providerName = strings.TrimSpace(providerName)
-	if providerValidationErr := llmclient.ValidateProviderForTransport(transport, providerName); providerValidationErr != nil {
-		return nil, providerValidationErr
+	providerName, providerNormalizationError := llmclient.NormalizeProvider(providerName)
+	if providerNormalizationError != nil {
+		return nil, providerNormalizationError
 	}
 
-	model, modelExists, modelErr := configReader.stringValue(optionTaskLLMModelKeyConstant)
+	model, _, modelErr := proxyReader.stringValue(optionTaskLLMModelKeyConstant)
 	if modelErr != nil {
 		return nil, modelErr
-	}
-	if !modelExists || model == "" {
-		return nil, errors.New("llm configuration requires model")
-	}
-
-	baseURL, _, baseURLErr := configReader.stringValue(optionTaskLLMBaseURLKeyConstant)
-	if baseURLErr != nil {
-		return nil, baseURLErr
-	}
-
-	apiKeyEnv, apiKeyExists, apiKeyErr := configReader.stringValue(optionTaskLLMAPIKeyEnvKeyConstant)
-	if apiKeyErr != nil {
-		return nil, apiKeyErr
-	}
-	if !apiKeyExists || apiKeyEnv == "" {
-		apiKeyEnv = llmclient.DefaultAPIKeyEnvironmentForTransportName(string(transport))
 	}
 
 	timeout, timeoutErr := parseOptionalDurationSeconds(rawConfiguration[optionTaskLLMTimeoutKeyConstant])
@@ -108,16 +105,36 @@ func buildTaskLLMConfiguration(reader optionReader) (*TaskLLMClientConfiguration
 	}
 
 	return &TaskLLMClientConfiguration{
-		transport:           transport,
-		provider:            providerName,
-		baseURL:             resolvedTaskLLMBaseURL(transport, baseURL),
-		model:               model,
-		apiKeyEnv:           strings.TrimSpace(apiKeyEnv),
+		llmProxy:            llmclient.LLMProxySelection{Provider: providerName, Model: model},
 		maxCompletionTokens: maxTokens,
 		temperature:         temperature,
 		hasTemperature:      hasTemperature,
 		timeout:             timeout,
 	}, nil
+}
+
+func validateTaskLLMProxyConfigurationKeys(rawConfiguration map[string]any) error {
+	return validateTaskLLMKeys(rawConfiguration, supportedTaskLLMProxyConfigurationKeys)
+}
+
+func validateTaskLLMConfigurationKeys(rawConfiguration map[string]any) error {
+	return validateTaskLLMKeys(rawConfiguration, supportedTaskLLMConfigurationKeys)
+}
+
+func validateTaskLLMKeys(rawConfiguration map[string]any, supportedKeys map[string]struct{}) error {
+	unsupportedKeys := make([]string, 0)
+	for rawKey := range rawConfiguration {
+		normalizedKey := strings.ToLower(strings.TrimSpace(rawKey))
+		if _, supported := supportedKeys[normalizedKey]; supported {
+			continue
+		}
+		unsupportedKeys = append(unsupportedKeys, normalizedKey)
+	}
+	if len(unsupportedKeys) == 0 {
+		return nil
+	}
+	sort.Strings(unsupportedKeys)
+	return fmt.Errorf("unsupported llm configuration key %q", unsupportedKeys[0])
 }
 
 // Client returns a cached LLM client configured from the workflow options.
@@ -127,28 +144,22 @@ func (configuration *TaskLLMClientConfiguration) Client() (llm.ChatClient, error
 	}
 
 	configuration.clientOnce.Do(func() {
-		apiKey := strings.TrimSpace(os.Getenv(configuration.apiKeyEnv))
-		if apiKey == "" {
-			configuration.clientErr = fmt.Errorf("llm api key env %s is empty", configuration.apiKeyEnv)
-			return
-		}
-
-		clientConfiguration := llmclient.Config{
-			Transport:      configuration.transport,
-			Provider:       configuration.provider,
-			BaseURL:        configuration.baseURL,
-			APIKey:         apiKey,
-			Model:          configuration.model,
+		runtimeConfiguration := llmclient.RuntimeConfig{
 			RequestTimeout: configuration.timeout,
 		}
 		if configuration.maxCompletionTokens > 0 {
-			clientConfiguration.MaxCompletionTokens = configuration.maxCompletionTokens
+			runtimeConfiguration.MaxCompletionTokens = configuration.maxCompletionTokens
 		}
 		if configuration.hasTemperature {
-			clientConfiguration.Temperature = configuration.temperature
+			runtimeConfiguration.Temperature = configuration.temperature
 		}
 
-		client, clientErr := llmclient.NewFactory(clientConfiguration)
+		client, clientErr := llmclient.NewPrioritizedFactory(
+			configuration.connectionProfiles,
+			configuration.llmProxy,
+			runtimeConfiguration,
+			nil,
+		)
 		if clientErr != nil {
 			configuration.clientErr = clientErr
 			return
@@ -159,12 +170,11 @@ func (configuration *TaskLLMClientConfiguration) Client() (llm.ChatClient, error
 	return configuration.client, configuration.clientErr
 }
 
-func resolvedTaskLLMBaseURL(transport llmclient.Transport, baseURL string) string {
-	trimmedBaseURL := strings.TrimSpace(baseURL)
-	if trimmedBaseURL == "" {
-		return llmclient.DefaultBaseURLForTransportName(string(transport))
+func (configuration *TaskLLMClientConfiguration) setConnectionProfiles(profiles llmclient.ConnectionProfiles) {
+	if configuration == nil {
+		return
 	}
-	return trimmedBaseURL
+	configuration.connectionProfiles = profiles
 }
 
 func parseOptionalDurationSeconds(raw any) (time.Duration, error) {

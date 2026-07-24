@@ -14,6 +14,7 @@ import (
 	"github.com/tyemirov/gix/internal/audit"
 	"github.com/tyemirov/gix/internal/githubcli"
 	"github.com/tyemirov/gix/internal/gitrepo"
+	"github.com/tyemirov/gix/internal/llmclient"
 	"github.com/tyemirov/gix/internal/repos/prompt"
 	"github.com/tyemirov/gix/internal/repos/shared"
 )
@@ -341,5 +342,19 @@ func ApplyDefaults(nodes []*OperationNode, defaults OperationDefaults) {
 			continue
 		}
 		renameOperation.ApplyRequireCleanDefault(defaults.RequireClean)
+	}
+}
+
+// ApplyLLMConnectionProfiles injects config.yml connections into task operations.
+func ApplyLLMConnectionProfiles(nodes []*OperationNode, profiles llmclient.ConnectionProfiles) {
+	for nodeIndex := range nodes {
+		if nodes[nodeIndex] == nil || nodes[nodeIndex].Operation == nil {
+			continue
+		}
+		taskOperation, isTaskOperation := nodes[nodeIndex].Operation.(*TaskOperation)
+		if !isTaskOperation || taskOperation.llmConfiguration == nil {
+			continue
+		}
+		taskOperation.llmConfiguration.setConnectionProfiles(profiles)
 	}
 }

@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"github.com/tyemirov/gix/internal/llmclient"
 	pathutils "github.com/tyemirov/gix/internal/utils/path"
 )
 
@@ -8,11 +9,12 @@ var workflowConfigurationRepositoryPathSanitizer = pathutils.NewRepositoryPathSa
 
 // CommandConfiguration captures configuration values for workflow.
 type CommandConfiguration struct {
-	Roots           []string          `mapstructure:"roots"`
-	AssumeYes       bool              `mapstructure:"assume_yes"`
-	RequireClean    bool              `mapstructure:"require_clean"`
-	WorkflowWorkers int               `mapstructure:"workflow_workers"`
-	Variables       map[string]string `mapstructure:"variables"`
+	Roots              []string                     `mapstructure:"roots"`
+	AssumeYes          bool                         `mapstructure:"assume_yes"`
+	RequireClean       bool                         `mapstructure:"require_clean"`
+	WorkflowWorkers    int                          `mapstructure:"workflow_workers"`
+	Variables          map[string]string            `mapstructure:"variables"`
+	ConnectionProfiles llmclient.ConnectionProfiles `mapstructure:"-"`
 }
 
 // DefaultCommandConfiguration provides default workflow command settings for workflow.

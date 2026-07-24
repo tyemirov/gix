@@ -115,8 +115,9 @@
               <h3>LLM Helpers</h3>
               <p>
                 Optional integrations assist with commit messages or changelog
-                summaries while keeping human approvals in the loop. Set
-                <code>llm.transport: llm_proxy</code> once to use MPR LLM Proxy.
+                summaries while keeping human approvals in the loop. Configure
+                ordered <code>llm.openai</code> and
+                <code>llm.llm_proxy</code> connection profiles.
               </p>
             </article>
             <article class="card">
@@ -168,8 +169,8 @@
               <ul>
                 <li>
                   Bootstrap personal defaults with
-                  <code>gix init --user</code> or workspace defaults with
-                  <code>gix init</code>.
+                  <code>gix init</code> or system defaults with
+                  <code>gix init --system</code>.
                 </li>
                 <li>
                   Refresh dozens of example repos nightly to keep mergable
@@ -193,8 +194,8 @@
             <ol class="list-steps">
               <li><code>go install github.com/tyemirov/gix@latest</code></li>
               <li>
-                <code>gix init --user</code> to create
-                <code>~/.gix/config.yaml</code>.
+                <code>gix init</code> to create
+                <code>~/.gix/config.yml</code>.
               </li>
               <li>
                 <code>gix audit --roots ~/Development</code> for a first pass.
@@ -202,14 +203,15 @@
             </ol>
             <p>
               Config controls reusable defaults for roots, remotes, logging,
-              confirmation prompts, clean-worktree policy, LLM transport/provider
-              settings, and workflow operations. Use
-              <code>llm.transport: llm_proxy</code> to route generated messages
-              through MPR LLM Proxy; gix derives the proxy secret environment
-              variable and base URL from that transport, and
-              <code>llm.provider</code> selects the proxy upstream provider. Use
-              <code>gix init</code> when a workspace needs its own
-              <code>./config.yaml</code>.
+              confirmation prompts, clean-worktree policy, LLM provider/model
+              settings, and workflow operations. The generated file gives
+              <code>llm.llm_proxy</code> priority 1, selects Meta Muse inside
+              that profile, and references
+              <code>${LLM_PROXY_SECRET_KEY}</code>. The direct
+              <code>llm.openai</code> profile has priority 2 and interpolates
+              <code>${OPENAI_API_KEY}</code>, so it is attempted after a proxy
+              request failure. Placeholders resolve only from the process
+              environment; gix does not load dotenv files.
             </p>
           </div>
           <div class="docs-links">

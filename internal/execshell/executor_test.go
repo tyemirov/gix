@@ -200,9 +200,6 @@ func TestShellExecutorHumanReadableLogging(testInstance *testing.T) {
 
 	for _, testCase := range testCases {
 		testInstance.Run(testCase.name, func(testInstance *testing.T) {
-			testInstance.Setenv(githubauth.EnvGitHubCLIToken, "test-token")
-			testInstance.Setenv(githubauth.EnvGitHubToken, "test-token")
-			testInstance.Setenv(githubauth.EnvGitHubAPIToken, "test-token")
 			observerCore, observedLogs := observer.New(zap.InfoLevel)
 			logger := zap.New(observerCore)
 
@@ -278,11 +275,7 @@ func TestCommandFailedErrorOmitsBlankStderrLines(testInstance *testing.T) {
 	)
 }
 
-func TestShellExecutorInjectsGitHubTokenFromEnvironment(testInstance *testing.T) {
-	testInstance.Setenv(githubauth.EnvGitHubCLIToken, "")
-	testInstance.Setenv(githubauth.EnvGitHubToken, "")
-	testInstance.Setenv(githubauth.EnvGitHubAPIToken, "api-token")
-
+func TestShellExecutorInjectsGitHubTokenFromConfigurationContext(testInstance *testing.T) {
 	observerCore, _ := observer.New(zap.DebugLevel)
 	logger := zap.New(observerCore)
 
@@ -293,13 +286,14 @@ func TestShellExecutorInjectsGitHubTokenFromEnvironment(testInstance *testing.T)
 	shellExecutor, creationError := execshell.NewShellExecutor(logger, recordingRunner, false)
 	require.NoError(testInstance, creationError)
 
-	_, executionError := shellExecutor.ExecuteGitHubCLI(context.Background(), execshell.CommandDetails{Arguments: []string{"status"}})
+	executionContext := githubauth.WithCredential(context.Background(), "config-token")
+	_, executionError := shellExecutor.ExecuteGitHubCLI(executionContext, execshell.CommandDetails{Arguments: []string{"status"}})
 	require.NoError(testInstance, executionError)
 
 	require.Len(testInstance, recordingRunner.recordedCommands, 1)
 	environment := recordingRunner.recordedCommands[0].Details.EnvironmentVariables
-	require.Equal(testInstance, "api-token", environment[githubauth.EnvGitHubCLIToken])
-	require.Equal(testInstance, "api-token", environment[githubauth.EnvGitHubToken])
+	require.Equal(testInstance, "config-token", environment[githubauth.EnvGitHubCLIToken])
+	require.Equal(testInstance, "config-token", environment[githubauth.EnvGitHubToken])
 }
 
 func TestShellExecutorPreservesExplicitGitHubToken(testInstance *testing.T) {
@@ -330,9 +324,6 @@ func TestShellExecutorPreservesExplicitGitHubToken(testInstance *testing.T) {
 }
 
 func TestShellExecutorFailsWithoutTokenForCriticalGitHubCommand(testInstance *testing.T) {
-	testInstance.Setenv(githubauth.EnvGitHubCLIToken, "")
-	testInstance.Setenv(githubauth.EnvGitHubToken, "")
-	testInstance.Setenv(githubauth.EnvGitHubAPIToken, "")
 	observerCore, _ := observer.New(zap.DebugLevel)
 	logger := zap.New(observerCore)
 
@@ -351,9 +342,6 @@ func TestShellExecutorFailsWithoutTokenForCriticalGitHubCommand(testInstance *te
 }
 
 func TestShellExecutorWarnsButRunsWithoutTokenForOptionalGitHubCommand(testInstance *testing.T) {
-	testInstance.Setenv(githubauth.EnvGitHubCLIToken, "")
-	testInstance.Setenv(githubauth.EnvGitHubToken, "")
-	testInstance.Setenv(githubauth.EnvGitHubAPIToken, "")
 	observerCore, logs := observer.New(zap.DebugLevel)
 	logger := zap.New(observerCore)
 
@@ -415,9 +403,6 @@ func TestShellExecutorHumanReadableLoggingForGitHubRepoView(testInstance *testin
 
 	for _, testCase := range testCases {
 		testInstance.Run(testCase.name, func(testInstance *testing.T) {
-			testInstance.Setenv(githubauth.EnvGitHubCLIToken, "test-token")
-			testInstance.Setenv(githubauth.EnvGitHubToken, "test-token")
-			testInstance.Setenv(githubauth.EnvGitHubAPIToken, "test-token")
 			observerCore, observedLogs := observer.New(zap.InfoLevel)
 			logger := zap.New(observerCore)
 
@@ -437,7 +422,8 @@ func TestShellExecutorHumanReadableLoggingForGitHubRepoView(testInstance *testin
 				},
 			}
 
-			_, _ = shellExecutor.ExecuteGitHubCLI(context.Background(), commandDetails)
+			executionContext := githubauth.WithCredential(context.Background(), "test-token")
+			_, _ = shellExecutor.ExecuteGitHubCLI(executionContext, commandDetails)
 
 			capturedLogs := observedLogs.All()
 			require.Len(testInstance, capturedLogs, len(testCase.expectedMessages))
@@ -469,7 +455,8 @@ func TestShellExecutorWrappersSetCommandNames(testInstance *testing.T) {
 		{
 			name: testGitHubWrapperCaseNameConstant,
 			invoke: func(executor *execshell.ShellExecutor) error {
-				_, executionError := executor.ExecuteGitHubCLI(context.Background(), execshell.CommandDetails{})
+				executionContext := githubauth.WithCredential(context.Background(), "test-token")
+				_, executionError := executor.ExecuteGitHubCLI(executionContext, execshell.CommandDetails{})
 				return executionError
 			},
 			expectedCommand: execshell.CommandGitHub,
@@ -486,11 +473,6 @@ func TestShellExecutorWrappersSetCommandNames(testInstance *testing.T) {
 
 	for _, testCase := range testCases {
 		testInstance.Run(testCase.name, func(testInstance *testing.T) {
-			if testCase.expectedCommand == execshell.CommandGitHub {
-				testInstance.Setenv(githubauth.EnvGitHubCLIToken, "test-token")
-				testInstance.Setenv(githubauth.EnvGitHubToken, "test-token")
-				testInstance.Setenv(githubauth.EnvGitHubAPIToken, "test-token")
-			}
 			recordingRunner := &recordingCommandRunner{
 				executionResult: execshell.ExecutionResult{ExitCode: 1},
 			}

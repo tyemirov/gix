@@ -16,7 +16,7 @@ const (
 	documentationFileNameConstant       = "ARCHITECTURE.md"
 	yamlFenceStartConstant              = "```yaml"
 	yamlFenceEndConstant                = "```"
-	configHeaderMarkerConstant          = "# config.yaml"
+	configHeaderMarkerConstant          = "# config.yml"
 	architectureSnippetTestNameConstant = "architecture_workflow_configuration"
 	architectureSnippetTemporaryPattern = "architecture-config-*.yaml"
 	expectedOperationCount              = 8

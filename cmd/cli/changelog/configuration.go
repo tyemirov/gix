@@ -7,40 +7,25 @@ import (
 	rootutils "github.com/tyemirov/gix/internal/utils/roots"
 )
 
-const (
-	defaultTransport         = string(llmclient.DefaultTransport)
-	defaultAPIKeyEnvironment = llmclient.DefaultAPIKeyEnvironment
-	defaultBaseURL           = llmclient.DefaultBaseURL
-	defaultModel             = llmclient.DefaultModel
-)
-
 // MessageConfiguration captures configuration values for changelog generation.
 type MessageConfiguration struct {
-	Roots          []string `mapstructure:"roots"`
-	Transport      string   `mapstructure:"transport"`
-	Provider       string   `mapstructure:"provider"`
-	APIKeyEnv      string   `mapstructure:"api_key_env"`
-	BaseURL        string   `mapstructure:"base_url"`
-	Model          string   `mapstructure:"model"`
-	MaxTokens      int      `mapstructure:"max_completion_tokens"`
-	Temperature    float64  `mapstructure:"temperature"`
-	TimeoutSeconds int      `mapstructure:"timeout_seconds"`
-	Version        string   `mapstructure:"version"`
-	ReleaseDate    string   `mapstructure:"release_date"`
-	SinceReference string   `mapstructure:"since_reference"`
-	SinceDate      string   `mapstructure:"since_date"`
+	Roots              []string                     `mapstructure:"roots"`
+	LLMProxy           llmclient.LLMProxySelection  `mapstructure:"llm_proxy"`
+	MaxTokens          int                          `mapstructure:"max_completion_tokens"`
+	Temperature        float64                      `mapstructure:"temperature"`
+	TimeoutSeconds     int                          `mapstructure:"timeout_seconds"`
+	Version            string                       `mapstructure:"version"`
+	ReleaseDate        string                       `mapstructure:"release_date"`
+	SinceReference     string                       `mapstructure:"since_reference"`
+	SinceDate          string                       `mapstructure:"since_date"`
+	ConnectionProfiles llmclient.ConnectionProfiles `mapstructure:"-"`
 }
 
 // DefaultMessageConfiguration provides baseline configuration.
 func DefaultMessageConfiguration() MessageConfiguration {
 	return MessageConfiguration{
-		Transport:      defaultTransport,
-		APIKeyEnv:      defaultAPIKeyEnvironment,
-		BaseURL:        defaultBaseURL,
-		Model:          defaultModel,
-		MaxTokens:      0,
-		Temperature:    0,
-		TimeoutSeconds: 60,
+		MaxTokens:   0,
+		Temperature: 0,
 	}
 }
 
@@ -49,34 +34,11 @@ func (configuration MessageConfiguration) Sanitize() MessageConfiguration {
 	sanitized := configuration
 	sanitized.Roots = rootutils.SanitizeConfigured(configuration.Roots)
 
-	transport := llmclient.NormalizeTransportName(configuration.Transport)
-	sanitized.Transport = transport
-	sanitized.Provider = strings.TrimSpace(configuration.Provider)
-
-	apiKeyEnv := strings.TrimSpace(configuration.APIKeyEnv)
-	if apiKeyEnv == "" {
-		apiKeyEnv = llmclient.DefaultAPIKeyEnvironmentForTransportName(transport)
-	}
-	sanitized.APIKeyEnv = apiKeyEnv
-
-	baseURL := strings.TrimSpace(configuration.BaseURL)
-	if baseURL == "" {
-		baseURL = llmclient.DefaultBaseURLForTransportName(transport)
-	}
-	sanitized.BaseURL = baseURL
-
-	model := strings.TrimSpace(configuration.Model)
-	if model == "" {
-		model = defaultModel
-	}
-	sanitized.Model = model
+	sanitized.LLMProxy.Provider = strings.TrimSpace(configuration.LLMProxy.Provider)
+	sanitized.LLMProxy.Model = strings.TrimSpace(configuration.LLMProxy.Model)
 
 	if configuration.MaxTokens < 0 {
 		sanitized.MaxTokens = 0
-	}
-
-	if configuration.TimeoutSeconds <= 0 {
-		sanitized.TimeoutSeconds = 60
 	}
 
 	if configuration.Temperature < 0 {

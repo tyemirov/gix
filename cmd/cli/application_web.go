@@ -998,14 +998,11 @@ func (application *Application) applyWebAuditUpdateChangelog(
 func (application *Application) webCommitMessageClient() (llm.ChatClient, commitcmd.MessageConfiguration, error) {
 	configuration := application.commitMessageConfiguration()
 	client, clientError := application.newWebLLMClient(
-		configuration.Transport,
-		configuration.Provider,
-		configuration.BaseURL,
-		configuration.APIKeyEnv,
-		configuration.Model,
+		configuration.LLMProxy,
 		configuration.MaxTokens,
 		configuration.Temperature,
 		configuration.TimeoutSeconds,
+		configuration.ConnectionProfiles,
 	)
 	return client, configuration, clientError
 }
@@ -1013,74 +1010,36 @@ func (application *Application) webCommitMessageClient() (llm.ChatClient, commit
 func (application *Application) webChangelogMessageClient() (llm.ChatClient, changelogcmd.MessageConfiguration, error) {
 	configuration := application.changelogMessageConfiguration()
 	client, clientError := application.newWebLLMClient(
-		configuration.Transport,
-		configuration.Provider,
-		configuration.BaseURL,
-		configuration.APIKeyEnv,
-		configuration.Model,
+		configuration.LLMProxy,
 		configuration.MaxTokens,
 		configuration.Temperature,
 		configuration.TimeoutSeconds,
+		configuration.ConnectionProfiles,
 	)
 	return client, configuration, clientError
 }
 
 func (application *Application) newWebLLMClient(
-	transportName string,
-	providerName string,
-	baseURL string,
-	apiKeyEnv string,
-	modelIdentifier string,
+	proxySelection llmclient.LLMProxySelection,
 	maxTokens int,
 	temperature float64,
 	timeoutSeconds int,
+	connectionProfiles llmclient.ConnectionProfiles,
 ) (llm.ChatClient, error) {
-	transport, transportError := llmclient.NewTransport(transportName)
-	if transportError != nil {
-		return nil, transportError
-	}
-	normalizedTransportName := string(transport)
-	trimmedProviderName := strings.TrimSpace(providerName)
-	if providerError := llmclient.ValidateProviderForTransport(transport, trimmedProviderName); providerError != nil {
-		return nil, providerError
-	}
-
-	trimmedAPIKeyEnv := strings.TrimSpace(apiKeyEnv)
-	if trimmedAPIKeyEnv == "" {
-		trimmedAPIKeyEnv = llmclient.DefaultAPIKeyEnvironmentForTransportName(normalizedTransportName)
-	}
-
-	apiKeyValue := strings.TrimSpace(os.Getenv(trimmedAPIKeyEnv))
-	if apiKeyValue == "" {
-		return nil, fmt.Errorf("environment variable %s must be set with an API key", trimmedAPIKeyEnv)
-	}
-
-	clientFactory := application.llmClientFactory
-	if clientFactory == nil {
-		clientFactory = func(configuration llmclient.Config) (llm.ChatClient, error) {
-			return llmclient.NewFactory(configuration)
-		}
-	}
-
-	trimmedBaseURL := strings.TrimSpace(baseURL)
-	if trimmedBaseURL == "" {
-		trimmedBaseURL = llmclient.DefaultBaseURLForTransportName(normalizedTransportName)
-	}
-
-	clientConfiguration := llmclient.Config{
-		Transport:           transport,
-		Provider:            trimmedProviderName,
-		BaseURL:             trimmedBaseURL,
-		APIKey:              apiKeyValue,
-		Model:               strings.TrimSpace(modelIdentifier),
+	runtimeConfiguration := llmclient.RuntimeConfig{
 		MaxCompletionTokens: maxTokens,
 		RequestTimeout:      time.Duration(timeoutSeconds) * time.Second,
 	}
 	if temperature > 0 {
-		clientConfiguration.Temperature = temperature
+		runtimeConfiguration.Temperature = temperature
 	}
 
-	return clientFactory(clientConfiguration)
+	return llmclient.NewPrioritizedFactory(
+		connectionProfiles,
+		proxySelection,
+		runtimeConfiguration,
+		application.llmClientFactory,
+	)
 }
 
 func webOptionalTemperature(temperature float64) *float64 {

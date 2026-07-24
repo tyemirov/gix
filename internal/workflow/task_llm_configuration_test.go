@@ -4,13 +4,16 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/tyemirov/gix/internal/llmclient"
 )
 
-func TestTaskLLMClientConfigurationClientUsesEnvironment(t *testing.T) {
+func TestTaskLLMClientConfigurationClientUsesProviderConnection(t *testing.T) {
 	configurationReader := newOptionReader(map[string]any{
 		optionTaskLLMKeyConstant: map[string]any{
-			optionTaskLLMModelKeyConstant:     "gpt-test",
-			optionTaskLLMAPIKeyEnvKeyConstant: "WORKFLOW_TEST_KEY",
+			optionTaskLLMProxyKeyConstant: map[string]any{
+				optionTaskLLMProviderKeyConstant: llmclient.ProviderOpenAI,
+				optionTaskLLMModelKeyConstant:    "gpt-test",
+			},
 			optionTaskLLMTimeoutKeyConstant:   12,
 			optionTaskLLMMaxTokensKeyConstant: 800,
 		},
@@ -20,7 +23,20 @@ func TestTaskLLMClientConfigurationClientUsesEnvironment(t *testing.T) {
 	require.NoError(t, buildErr)
 	require.NotNil(t, configuration)
 
-	t.Setenv("WORKFLOW_TEST_KEY", "token")
+	configuration.setConnectionProfiles(llmclient.ConnectionProfiles{
+		OpenAI: llmclient.OpenAIConnectionProfile{
+			Priority:   1,
+			BaseURL:    "https://api.openai.com/v1",
+			Credential: "token",
+			Model:      "gpt-test",
+		},
+		LLMProxy: llmclient.LLMProxyConnectionProfile{
+			Priority: 2,
+			BaseURL:  "https://llm-proxy.example",
+			Provider: "meta",
+			Model:    "muse-spark-1.1",
+		},
+	})
 
 	client, clientErr := configuration.Client()
 	require.NoError(t, clientErr)
@@ -31,11 +47,13 @@ func TestTaskLLMClientConfigurationClientUsesEnvironment(t *testing.T) {
 	require.Same(t, client, cached)
 }
 
-func TestTaskLLMClientConfigurationClientFailsWithoutEnvironment(t *testing.T) {
+func TestTaskLLMClientConfigurationClientFailsWithoutInjectedCredential(t *testing.T) {
 	configurationReader := newOptionReader(map[string]any{
 		optionTaskLLMKeyConstant: map[string]any{
-			optionTaskLLMModelKeyConstant:     "gpt-test",
-			optionTaskLLMAPIKeyEnvKeyConstant: "WORKFLOW_TEST_KEY",
+			optionTaskLLMProxyKeyConstant: map[string]any{
+				optionTaskLLMProviderKeyConstant: llmclient.ProviderOpenAI,
+				optionTaskLLMModelKeyConstant:    "gpt-test",
+			},
 		},
 	})
 
@@ -48,20 +66,33 @@ func TestTaskLLMClientConfigurationClientFailsWithoutEnvironment(t *testing.T) {
 	require.Error(t, clientErr)
 }
 
-func TestTaskLLMClientConfigurationDefaultsToOpenAIEnvironment(t *testing.T) {
-	t.Setenv("OPENAI_API_KEY", "token")
-
+func TestTaskLLMClientConfigurationRequiresProvider(t *testing.T) {
 	configurationReader := newOptionReader(map[string]any{
 		optionTaskLLMKeyConstant: map[string]any{
-			optionTaskLLMModelKeyConstant: "gpt-test",
+			optionTaskLLMProxyKeyConstant: map[string]any{
+				optionTaskLLMModelKeyConstant: "gpt-test",
+			},
 		},
 	})
 
 	configuration, buildErr := buildTaskLLMConfiguration(configurationReader)
-	require.NoError(t, buildErr)
-	require.NotNil(t, configuration)
+	require.Nil(t, configuration)
+	require.EqualError(t, buildErr, "llm llm_proxy provider is required")
+}
 
-	client, clientErr := configuration.Client()
-	require.NoError(t, clientErr)
-	require.NotNil(t, client)
+func TestTaskLLMClientConfigurationRejectsObsoleteCredentialFields(t *testing.T) {
+	configurationReader := newOptionReader(map[string]any{
+		optionTaskLLMKeyConstant: map[string]any{
+			optionTaskLLMProxyKeyConstant: map[string]any{
+				optionTaskLLMProviderKeyConstant: llmclient.ProviderOpenAI,
+				optionTaskLLMModelKeyConstant:    "gpt-test",
+			},
+			"api_key_env": "OPENAI_API_KEY",
+		},
+	})
+
+	configuration, buildErr := buildTaskLLMConfiguration(configurationReader)
+
+	require.Nil(t, configuration)
+	require.EqualError(t, buildErr, "unsupported llm configuration key \"api_key_env\"")
 }

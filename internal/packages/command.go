@@ -2,7 +2,6 @@ package packages
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -25,7 +24,8 @@ const (
 	commandExecutionErrorTemplateConstant               = "repo-packages-purge failed: %w"
 	packageFlagNameConstant                             = "package"
 	packageFlagDescriptionConstant                      = "Container package name in GHCR"
-	tokenSourceParseErrorTemplateConstant               = "invalid token source: %w"
+	baseURLConfigurationMissingErrorMessageConstant     = "packages delete configuration requires base_url"
+	credentialConfigurationMissingErrorMessageConstant  = "packages delete configuration requires credential"
 	workingDirectoryResolutionErrorTemplateConstant     = "unable to determine working directory: %w"
 	workingDirectoryEmptyErrorMessageConstant           = "working directory not provided"
 	gitExecutorResolutionErrorTemplateConstant          = "unable to resolve git executor: %w"
@@ -57,9 +57,6 @@ type CommandBuilder struct {
 	ConfigurationProvider      ConfigurationProvider
 	ServiceResolver            PurgeServiceResolver
 	HTTPClient                 ghcr.HTTPClient
-	EnvironmentLookup          EnvironmentLookup
-	FileReader                 FileReader
-	TokenResolver              TokenResolver
 	GitExecutor                shared.GitExecutor
 	RepositoryManager          shared.GitRepositoryManager
 	GitHubResolver             shared.GitHubMetadataResolver
@@ -74,7 +71,8 @@ type WorkingDirectoryResolver func() (string, error)
 
 type commandExecutionOptions struct {
 	PackageNameOverride string
-	TokenSource         TokenSourceConfiguration
+	BaseURL             string
+	Credential          string
 	RepositoryRoots     []string
 }
 
@@ -105,7 +103,7 @@ func (builder *CommandBuilder) runPurge(command *cobra.Command, arguments []stri
 		return optionsError
 	}
 
-	purgeService, serviceError := builder.resolvePurgeService(logger)
+	purgeService, serviceError := builder.resolvePurgeService(logger, executionOptions.BaseURL)
 	if serviceError != nil {
 		return serviceError
 	}
@@ -144,7 +142,7 @@ func (builder *CommandBuilder) runPurge(command *cobra.Command, arguments []stri
 	actionOptions := map[string]any{
 		"service":           purgeService,
 		"metadata_resolver": repositoryMetadataResolver,
-		"token_source":      executionOptions.TokenSource,
+		"credential":        executionOptions.Credential,
 		"package_override":  executionOptions.PackageNameOverride,
 	}
 
@@ -170,10 +168,13 @@ func (builder *CommandBuilder) parseCommandOptions(command *cobra.Command, argum
 		return commandExecutionOptions{}, packageFlagError
 	}
 	packageValue := selectOptionalStringValue(packageFlagValue, configuration.Purge.PackageName)
-
-	parsedTokenSource, tokenParseError := ParseTokenSource(defaultTokenSourceValueConstant)
-	if tokenParseError != nil {
-		return commandExecutionOptions{}, fmt.Errorf(tokenSourceParseErrorTemplateConstant, tokenParseError)
+	baseURL := strings.TrimSpace(configuration.Purge.BaseURL)
+	if baseURL == "" {
+		return commandExecutionOptions{}, errors.New(baseURLConfigurationMissingErrorMessageConstant)
+	}
+	credential := strings.TrimSpace(configuration.Purge.Credential)
+	if credential == "" {
+		return commandExecutionOptions{}, errors.New(credentialConfigurationMissingErrorMessageConstant)
 	}
 
 	repositoryRoots, rootsError := rootutils.Resolve(command, arguments, configuration.Purge.RepositoryRoots)
@@ -183,7 +184,8 @@ func (builder *CommandBuilder) parseCommandOptions(command *cobra.Command, argum
 
 	executionOptions := commandExecutionOptions{
 		PackageNameOverride: packageValue,
-		TokenSource:         parsedTokenSource,
+		BaseURL:             baseURL,
+		Credential:          credential,
 		RepositoryRoots:     repositoryRoots,
 	}
 
@@ -212,16 +214,16 @@ func (builder *CommandBuilder) resolveConfiguration() Configuration {
 	return configuration.Sanitize()
 }
 
-func (builder *CommandBuilder) resolvePurgeService(logger *zap.Logger) (PurgeExecutor, error) {
+func (builder *CommandBuilder) resolvePurgeService(logger *zap.Logger, baseURL string) (PurgeExecutor, error) {
 	if builder.ServiceResolver != nil {
 		return builder.ServiceResolver.Resolve(logger)
 	}
 
 	defaultResolver := &DefaultPurgeServiceResolver{
-		HTTPClient:        builder.HTTPClient,
-		EnvironmentLookup: builder.EnvironmentLookup,
-		FileReader:        builder.FileReader,
-		TokenResolver:     builder.TokenResolver,
+		HTTPClient: builder.HTTPClient,
+		ServiceConfiguration: ghcr.ServiceConfiguration{
+			BaseURL: strings.TrimSpace(baseURL),
+		},
 	}
 
 	return defaultResolver.Resolve(logger)

@@ -372,15 +372,13 @@ func TestServiceExecuteSkipsRemoteOperationsWhenIdentifierMissing(testInstance *
 }
 
 func TestServiceExecuteFailsWhenGitHubTokenMissing(testInstance *testing.T) {
-	testInstance.Setenv(githubauth.EnvGitHubCLIToken, "")
-	testInstance.Setenv(githubauth.EnvGitHubToken, "")
-	testInstance.Setenv(githubauth.EnvGitHubAPIToken, "")
-
 	repositoryExecutor := stubGitCommandExecutor{}
 	repositoryManager, managerError := gitrepo.NewRepositoryManager(repositoryExecutor)
 	require.NoError(testInstance, managerError)
 
-	githubOperations := &recordingGitHubOperations{}
+	githubOperations := &recordingGitHubOperations{
+		defaultBranchError: githubauth.NewMissingTokenError("default-branch", true),
+	}
 
 	service, serviceError := NewService(ServiceDependencies{
 		Logger:            zap.NewNop(),
