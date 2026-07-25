@@ -104,7 +104,7 @@ Remove untagged GitHub Container Registry versions in one sweep.
 gix audit --roots ~/Development --all
 ```
 
-The default terminal table captures default branches, owners, remotes, protocol mismatches, and worktree state for every repository in scope. It reads the active terminal width: a horizontal grid is used when it fits, while narrower terminals use a field/value table so no audit column disappears. Constrained cells use a Unicode-aware `…` instead of wrapping the table. When a terminal-size query is unavailable, `COLUMNS` supplies the table width for captured output. CSV and HTML retain every full value for automation or review:
+The default terminal table captures default branches, owners, remotes, protocol mismatches, and worktree state for every repository in scope. It reads the active terminal width: a horizontal grid is used when it fits, while narrower terminals use a field/value table so no audit column disappears. Constrained cells use a Unicode-aware `…` instead of wrapping the table. When a terminal-size query is unavailable, `COLUMNS` supplies the table width for captured output. The same responsive renderer is used by table-format `audit report` workflow steps that write to stdout. CSV and HTML retain every full value for automation or review:
 
 ```shell
 gix audit --roots ~/Development --all --format csv > audit.csv
