@@ -64,7 +64,7 @@ All commands accept shared flags for log level, log format, previews, repository
 
 Each feature area resides in `internal/<domain>` and exposes structs with methods instead of package-level functions. The primary packages are:
 
-- `internal/audit`: Repository discovery, metadata reconciliation, terminal-table reporting, CSV/HTML export, and CLI integration (`internal/audit/cli`).
+- `internal/audit`: Repository discovery, metadata reconciliation, terminal-width-responsive table reporting (with Unicode-aware truncation and a field/value layout when a grid cannot fit), CSV/HTML full-value export, and CLI integration (`internal/audit/cli`).
 - `internal/branches`: Branch maintenance commands (`sync`, `refresh`, default promotion) and supporting adapters.
 - `internal/changelog`, `internal/commitmsg`: Generators that transform Git history and staged changes into formatted text.
 - `internal/repos`: Subpackages for repository workflows:
