@@ -21,6 +21,7 @@
 - Updated the LLM Proxy Go client from v0.2.21 to v0.2.46, moved Gix's configured proxy work budget to the current per-request timeout header, and raised the Go module floor to 1.25.12 with the dependency graph required by that client.
 
 ### Bug Fixes 🐛
+- Rejected fractional workflow LLM `timeout_seconds` before they can be truncated into shorter or invalid LLM Proxy request budgets.
 - Made `gix audit` fit its terminal table to the active width, using bounded field/value rows on narrow terminals and Unicode-aware ellipses for constrained cells.
 - Escaped literal delimiters in terminal audit-table cells and aligned Unicode names by their terminal display width.
 - Made strict-sync AI merge resolution visible and bounded: gix now reports conflict, resolution, validation, and recovery phases; applies `timeout_seconds` to the complete operation; and gives an exact manual handoff without pushing when a result is rejected, cancelled, or timed out.
