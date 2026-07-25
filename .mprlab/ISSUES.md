@@ -59,6 +59,19 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Resolution:
   The flushing writer now exposes its underlying output for terminal-width detection, while retaining its flushing behavior. The workflow audit integration scenario verifies ellipsis and display-width bounds at 40 columns. README operator guidance now states that stdout workflow audit tables use the responsive renderer. `make ci` passed on 2026-07-24.
 
+- [x] [B034] (P2) {M015} Reject fractional LLM Proxy request timeouts before conversion.
+  Found on 2026-07-25 during review of the LLM Proxy client upgrade.
+  Observation:
+  Workflow LLM configuration accepts floating-point `timeout_seconds`, while the v0.2.46 request contract accepts only positive whole seconds. Converting the duration with integer division silently shortens values such as 1.9 seconds and turns sub-second values into zero, which the client rejects only when a request is built.
+  Requirements:
+  - Reject fractional `timeout_seconds` at the workflow configuration boundary with a contextual error.
+  - Keep omitted or zero timeout values on the established default-timeout path.
+  - Add regression coverage for sub-second and larger fractional values.
+  Validation:
+  - Run `make format`, `make test`, `make lint`, `make ci`, and `git diff --check`.
+  Resolution:
+  Workflow LLM configuration now rejects fractional `timeout_seconds` before constructing a client, while omitted and zero values retain the default-timeout path. Regression coverage verifies both sub-second and larger fractional values. `make format`, `make test`, `make lint`, and `make ci` passed on 2026-07-25.
+
 ## Maintenance
 
 - [ ] [M001R] (P2) Backlog hygiene and archive.
