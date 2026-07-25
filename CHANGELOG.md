@@ -68,6 +68,18 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented validated AI conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.1.13] - 2026-07-25
+
+- Merge pull request #394 from tyemirov/maintenance/M015-update-llm-proxy-client
+- fix(workflow): reject fractional values for timeout_seconds option
+- fix(llm): reject fractional workflow LLM timeout_seconds values
+- docs(issues): record fix for fractional LLM Proxy request timeout rejection
+- fix(llmclient): pass request timeout seconds in proxy Chat requests
+- chore(deps): update Go module dependencies in go.sum
+- chore(deps): update dependency versions in go.mod
+- chore: update LLM Proxy Go client to v0.2.46 and Go module floor to 1.25.12
+- docs(issues): document LLM Proxy Go client update to v0.2.46 and Go 1.25.12
+
 ## [v1.1.12] - 2026-07-24
 
 - Merge pull request #393 from tyemirov/tyemirov/bugfix/B032-audit-terminal-width
