@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"os"
+	"strconv"
 	"strings"
 
 	"github.com/mattn/go-runewidth"
+	"golang.org/x/term"
 )
 
 const (
@@ -16,6 +19,10 @@ const (
 	auditHTMLDocumentTitleSuffixConstant   = "</title>\n<style>body{font-family:system-ui,sans-serif;margin:2rem}table{border-collapse:collapse}th,td{border:1px solid #999;padding:.4rem;text-align:left;vertical-align:top;white-space:pre-wrap}th{background:#f3f3f3}</style>\n</head>\n<body>\n<h1>"
 	auditHTMLDocumentHeadingSuffixConstant = "</h1>\n<table>\n<thead>\n<tr>"
 	auditHTMLDocumentCloseConstant         = "\n</tbody>\n</table>\n</body>\n</html>\n"
+	auditTableColumnsEnvironmentConstant   = "COLUMNS"
+	auditTableEllipsisConstant             = "…"
+	auditTableMinimumCellWidthConstant     = 12
+	auditTableNoRowsMessageConstant        = "No repositories found."
 )
 
 var auditTableValueReplacer = strings.NewReplacer(
@@ -25,6 +32,10 @@ var auditTableValueReplacer = strings.NewReplacer(
 	"\t", "\\t",
 	"|", "\\|",
 )
+
+type auditTableWriterUnwrapper interface {
+	Unwrap() io.Writer
+}
 
 // WriteReport serializes repository inspections in the requested report format.
 func WriteReport(writer io.Writer, reportFormat ReportFormat, inspections []RepositoryInspection) error {
@@ -80,6 +91,21 @@ func writeTableReport(writer io.Writer, rows []AuditReportRow) error {
 	}
 
 	widths := auditTableColumnWidths(header, values)
+	terminalWidth := auditTableTerminalWidth(writer)
+	if terminalWidth == 0 || auditTableRenderedWidth(widths) <= terminalWidth {
+		return writeAuditTable(writer, header, values, widths)
+	}
+
+	minimumWidths := auditTableMinimumColumnWidths(header)
+	if auditTableRenderedWidth(minimumWidths) <= terminalWidth {
+		fittedWidths := auditTableFitColumnWidths(minimumWidths, widths, terminalWidth)
+		return writeAuditTable(writer, header, values, fittedWidths)
+	}
+
+	return writeAuditTableFields(writer, header, values, terminalWidth)
+}
+
+func writeAuditTable(writer io.Writer, header []string, values [][]string, widths []int) error {
 	border := auditTableBorder(widths)
 	if _, writeError := fmt.Fprintln(writer, border); writeError != nil {
 		return writeError
@@ -97,6 +123,65 @@ func writeTableReport(writer io.Writer, rows []AuditReportRow) error {
 	}
 	_, writeError := fmt.Fprintln(writer, border)
 	return writeError
+}
+
+func writeAuditTableFields(writer io.Writer, header []string, values [][]string, terminalWidth int) error {
+	if len(values) == 0 {
+		return writeAuditTableMessage(writer, auditTableNoRowsMessageConstant, terminalWidth)
+	}
+
+	labelWidth := auditTableLargestWidth(header)
+	valueWidth := terminalWidth - auditTableRenderedWidth([]int{labelWidth, 0})
+	if valueWidth < 1 {
+		return writeStackedAuditTableFields(writer, header, values, terminalWidth)
+	}
+
+	widths := []int{labelWidth, valueWidth}
+	border := auditTableBorder(widths)
+	if _, writeError := fmt.Fprintln(writer, border); writeError != nil {
+		return writeError
+	}
+	for rowIndex := range values {
+		for columnIndex := range header {
+			if writeError := writeAuditTableRow(writer, []string{header[columnIndex], values[rowIndex][columnIndex]}, widths); writeError != nil {
+				return writeError
+			}
+		}
+		if _, writeError := fmt.Fprintln(writer, border); writeError != nil {
+			return writeError
+		}
+	}
+	return nil
+}
+
+func writeStackedAuditTableFields(writer io.Writer, header []string, values [][]string, terminalWidth int) error {
+	if len(values) == 0 {
+		return writeAuditTableMessage(writer, auditTableNoRowsMessageConstant, terminalWidth)
+	}
+
+	for rowIndex := range values {
+		for columnIndex := range header {
+			fieldValue := fmt.Sprintf("%s: %s", header[columnIndex], values[rowIndex][columnIndex])
+			if writeError := writeAuditTableMessage(writer, fieldValue, terminalWidth); writeError != nil {
+				return writeError
+			}
+		}
+		if rowIndex < len(values)-1 {
+			if _, writeError := fmt.Fprintln(writer, strings.Repeat("-", terminalWidth)); writeError != nil {
+				return writeError
+			}
+		}
+	}
+	return nil
+}
+
+func writeAuditTableMessage(writer io.Writer, message string, terminalWidth int) error {
+	for _, line := range strings.Split(runewidth.Wrap(message, terminalWidth), "\n") {
+		if _, writeError := fmt.Fprintln(writer, auditTableTruncate(line, terminalWidth)); writeError != nil {
+			return writeError
+		}
+	}
+	return nil
 }
 
 func writeHTMLReport(writer io.Writer, rows []AuditReportRow) error {
@@ -182,8 +267,83 @@ func auditTableColumnWidths(header []string, rows [][]string) []int {
 	return widths
 }
 
+func auditTableMinimumColumnWidths(header []string) []int {
+	widths := make([]int, len(header))
+	for columnIndex := range header {
+		widths[columnIndex] = auditTableDisplayWidth(header[columnIndex])
+		if widths[columnIndex] < auditTableMinimumCellWidthConstant {
+			widths[columnIndex] = auditTableMinimumCellWidthConstant
+		}
+	}
+	return widths
+}
+
+func auditTableFitColumnWidths(minimumWidths []int, naturalWidths []int, terminalWidth int) []int {
+	widths := append([]int{}, minimumWidths...)
+	remainingWidth := terminalWidth - auditTableRenderedWidth(widths)
+	for remainingWidth > 0 {
+		expanded := false
+		for columnIndex := range widths {
+			if widths[columnIndex] >= naturalWidths[columnIndex] {
+				continue
+			}
+			widths[columnIndex]++
+			remainingWidth--
+			expanded = true
+			if remainingWidth == 0 {
+				break
+			}
+		}
+		if !expanded {
+			break
+		}
+	}
+	return widths
+}
+
+func auditTableLargestWidth(values []string) int {
+	largestWidth := 0
+	for valueIndex := range values {
+		valueWidth := auditTableDisplayWidth(values[valueIndex])
+		if valueWidth > largestWidth {
+			largestWidth = valueWidth
+		}
+	}
+	return largestWidth
+}
+
 func auditTableDisplayWidth(value string) int {
 	return runewidth.StringWidth(value)
+}
+
+func auditTableRenderedWidth(widths []int) int {
+	width := 1
+	for widthIndex := range widths {
+		width += widths[widthIndex] + 3
+	}
+	return width
+}
+
+func auditTableTerminalWidth(writer io.Writer) int {
+	if wrappedWriter, isWrapped := writer.(auditTableWriterUnwrapper); isWrapped {
+		writer = wrappedWriter.Unwrap()
+	}
+
+	outputFile, isFile := writer.(*os.File)
+	if !isFile || outputFile.Fd() != os.Stdout.Fd() {
+		return 0
+	}
+
+	terminalWidth, _, terminalError := term.GetSize(int(outputFile.Fd()))
+	if terminalError == nil && terminalWidth > 0 {
+		return terminalWidth
+	}
+
+	columnsWidth, columnsError := strconv.Atoi(strings.TrimSpace(os.Getenv(auditTableColumnsEnvironmentConstant)))
+	if columnsError != nil || columnsWidth < 1 {
+		return 0
+	}
+	return columnsWidth
 }
 
 func auditTableBorder(widths []int) string {
@@ -200,11 +360,19 @@ func writeAuditTableRow(writer io.Writer, values []string, widths []int) error {
 	var line strings.Builder
 	line.WriteByte('|')
 	for valueIndex := range values {
+		value := auditTableTruncate(values[valueIndex], widths[valueIndex])
 		line.WriteByte(' ')
-		line.WriteString(values[valueIndex])
-		line.WriteString(strings.Repeat(" ", widths[valueIndex]-auditTableDisplayWidth(values[valueIndex])+1))
+		line.WriteString(value)
+		line.WriteString(strings.Repeat(" ", widths[valueIndex]-auditTableDisplayWidth(value)+1))
 		line.WriteByte('|')
 	}
 	_, writeError := fmt.Fprintln(writer, line.String())
 	return writeError
+}
+
+func auditTableTruncate(value string, width int) string {
+	if auditTableDisplayWidth(value) <= width {
+		return value
+	}
+	return runewidth.Truncate(value, width, auditTableEllipsisConstant)
 }

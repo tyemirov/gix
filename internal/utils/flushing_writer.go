@@ -44,3 +44,8 @@ func (flushingWriter *FlushingWriter) Write(data []byte) (int, error) {
 
 	return bytesWritten, nil
 }
+
+// Unwrap returns the writer whose output is flushed by this wrapper.
+func (flushingWriter *FlushingWriter) Unwrap() io.Writer {
+	return flushingWriter.writer
+}

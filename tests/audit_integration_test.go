@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mattn/go-runewidth"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,6 +21,7 @@ const (
 	auditIntegrationRunSubcommand                 = "run"
 	auditIntegrationModulePathConstant            = "."
 	auditIntegrationAuditCommandName              = "audit"
+	auditIntegrationWorkflowCommandName           = "workflow"
 	auditIntegrationRootFlag                      = "--roots"
 	auditIntegrationIncludeAllFlag                = "--all"
 	auditIntegrationFormatFlag                    = "--format"
@@ -41,6 +43,7 @@ const (
 	auditIntegrationCSVCaseNameConstant           = "audit_csv_export"
 	auditIntegrationHTMLCaseNameConstant          = "audit_html_export"
 	auditIntegrationTableEscapingCaseNameConstant = "audit_table_escapes_delimiters_and_aligns_wide_characters"
+	auditIntegrationWorkflowTableCaseNameConstant = "workflow_audit_table_respects_terminal_width"
 	auditIntegrationDebugCaseNameConstant         = "audit_debug"
 	auditIntegrationTildeCaseNameConstant         = "audit_tilde"
 	auditIntegrationIncludeAllCaseNameConstant    = "audit_include_all"
@@ -48,6 +51,13 @@ const (
 	auditIntegrationTableFormattingFolderName     = "界界|a"
 	auditIntegrationEscapedTableFolderName        = "界界\\|a"
 	auditIntegrationTableFirstBorder              = "+---------+"
+	auditIntegrationColumnsEnvironmentVariable    = "COLUMNS"
+	auditIntegrationDisabledColumnsWidth          = "0"
+	auditIntegrationNarrowTerminalWidth           = 40
+	auditIntegrationWideTerminalWidth             = 190
+	auditIntegrationTableEllipsis                 = "…"
+	auditIntegrationWorkflowFileName              = "audit-workflow.yaml"
+	auditIntegrationWorkflowConfiguration         = "workflow:\n  - step:\n      command: ['audit', 'report']\n      with:\n        format: table\n"
 )
 
 func TestAuditRunCommandIntegration(testInstance *testing.T) {
@@ -228,7 +238,12 @@ func TestAuditRunCommandIntegration(testInstance *testing.T) {
 
 	for testCaseIndex, testCase := range testCases {
 		testInstance.Run(fmt.Sprintf(auditIntegrationSubtestNameTemplate, testCaseIndex, testCase.name), func(subtest *testing.T) {
-			commandOptions := integrationCommandOptions{PathVariable: extendedPath}
+			commandOptions := integrationCommandOptions{
+				PathVariable: extendedPath,
+				EnvironmentOverrides: map[string]string{
+					auditIntegrationColumnsEnvironmentVariable: auditIntegrationDisabledColumnsWidth,
+				},
+			}
 			subtestOutput := runIntegrationCommand(subtest, repositoryRoot, commandOptions, auditIntegrationTimeout, testCase.arguments)
 			filteredOutput := filterStructuredOutput(subtestOutput)
 			if len(testCase.expectedOutput) > 0 {
@@ -246,6 +261,94 @@ func TestAuditRunCommandIntegration(testInstance *testing.T) {
 		})
 	}
 
+	testInstance.Run("audit_table_respects_terminal_width", func(subtest *testing.T) {
+		constrainedOutput := runIntegrationCommand(
+			subtest,
+			repositoryRoot,
+			integrationCommandOptions{
+				PathVariable: extendedPath,
+				EnvironmentOverrides: map[string]string{
+					auditIntegrationColumnsEnvironmentVariable: fmt.Sprint(auditIntegrationNarrowTerminalWidth),
+				},
+			},
+			auditIntegrationTimeout,
+			rootFlagArguments,
+		)
+		constrainedTable := filterStructuredOutput(constrainedOutput)
+		require.Contains(subtest, constrainedTable, auditIntegrationTableEllipsis)
+		for _, header := range []string{
+			"Folder",
+			"Final Repository",
+			"Origin",
+			"Name Matches",
+			"Remote Default",
+			"Local Branch",
+			"In Sync",
+			"Protocol",
+			"Origin Canonical",
+			"Worktree Dirty",
+			"Dirty Files",
+		} {
+			require.Contains(subtest, constrainedTable, header)
+		}
+		requireAuditTableFitsTerminal(subtest, constrainedTable, auditIntegrationNarrowTerminalWidth)
+	})
+
+	testInstance.Run("audit_table_truncates_horizontal_layout_to_terminal_width", func(subtest *testing.T) {
+		constrainedOutput := runIntegrationCommand(
+			subtest,
+			repositoryRoot,
+			integrationCommandOptions{
+				PathVariable: extendedPath,
+				EnvironmentOverrides: map[string]string{
+					auditIntegrationColumnsEnvironmentVariable: fmt.Sprint(auditIntegrationWideTerminalWidth),
+				},
+			},
+			auditIntegrationTimeout,
+			rootFlagArguments,
+		)
+		constrainedTable := filterStructuredOutput(constrainedOutput)
+		constrainedLines := strings.Split(strings.TrimSpace(constrainedTable), "\n")
+		require.GreaterOrEqual(subtest, len(constrainedLines), 3)
+		require.Contains(subtest, constrainedLines[1], "Folder")
+		require.Contains(subtest, constrainedLines[1], "Final Repository")
+		require.Contains(subtest, constrainedLines[1], "Dirty Files")
+		require.Contains(subtest, constrainedTable, auditIntegrationTableEllipsis)
+		requireAuditTableFitsTerminal(subtest, constrainedTable, auditIntegrationWideTerminalWidth)
+	})
+
+	testInstance.Run(auditIntegrationWorkflowTableCaseNameConstant, func(subtest *testing.T) {
+		workflowPath := filepath.Join(tempDirectory, auditIntegrationWorkflowFileName)
+		require.NoError(subtest, os.WriteFile(workflowPath, []byte(auditIntegrationWorkflowConfiguration), 0o644))
+
+		workflowArguments := []string{
+			auditIntegrationRunSubcommand,
+			auditIntegrationModulePathConstant,
+			auditIntegrationLogLevelFlag,
+			auditIntegrationErrorLevel,
+			auditIntegrationWorkflowCommandName,
+			workflowPath,
+			auditIntegrationRootFlag,
+			repositoryPath,
+		}
+		workflowOutput := runIntegrationCommand(
+			subtest,
+			repositoryRoot,
+			integrationCommandOptions{
+				PathVariable: extendedPath,
+				EnvironmentOverrides: map[string]string{
+					auditIntegrationColumnsEnvironmentVariable: fmt.Sprint(auditIntegrationNarrowTerminalWidth),
+				},
+			},
+			auditIntegrationTimeout,
+			workflowArguments,
+		)
+		workflowTable := auditTableOutput(filterStructuredOutput(workflowOutput))
+		require.NotEmpty(subtest, workflowTable)
+		require.Contains(subtest, workflowTable, auditIntegrationTableEllipsis)
+		requireAuditTableFitsTerminal(subtest, workflowTable, auditIntegrationNarrowTerminalWidth)
+	})
+
 	invalidFormatOutput, invalidFormatError := runFailingIntegrationCommand(
 		testInstance,
 		repositoryRoot,
@@ -255,4 +358,27 @@ func TestAuditRunCommandIntegration(testInstance *testing.T) {
 	)
 	require.Error(testInstance, invalidFormatError)
 	require.Contains(testInstance, filterStructuredOutput(invalidFormatOutput), "unsupported audit report format \"json\"")
+}
+
+func requireAuditTableFitsTerminal(testInstance *testing.T, table string, terminalWidth int) {
+	testInstance.Helper()
+	for _, line := range strings.Split(strings.TrimSpace(table), "\n") {
+		require.LessOrEqualf(
+			testInstance,
+			runewidth.StringWidth(line),
+			terminalWidth,
+			"audit table line exceeds terminal width: %q",
+			line,
+		)
+	}
+}
+
+func auditTableOutput(output string) string {
+	tableLines := []string{}
+	for _, line := range strings.Split(output, "\n") {
+		if strings.HasPrefix(line, "+") || strings.HasPrefix(line, "|") {
+			tableLines = append(tableLines, line)
+		}
+	}
+	return strings.Join(tableLines, "\n")
 }

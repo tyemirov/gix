@@ -24,6 +24,41 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Validation:
   From the `gix/publish-seo-resource-hub-45-resource-pages-sitemap-and` branch, running `gh pr view` without extra flags returns the expected PR details instead of `no pull requests found`. The GitHub web UI shows an open or intentionally closed/merged PR that clearly references this branch as the head, with the correct base branch. The developer who reported the issue can follow the documented steps to reproduce the prior failure state and confirm it is explained and resolved or no longer reproducible.
 
+- [x] [B032] (P1) Fit the terminal audit report to the active terminal width.
+  Reported on 2026-07-24.
+  Observation:
+  The default `gix audit` table takes every cell's natural display width. Long repository paths and remote values therefore make its rows wider than the terminal, causing wrapped, unreadable output.
+  Requirements:
+  - Resolve the active terminal width at the table-output boundary; leave the exact CSV and HTML export contracts unchanged.
+  - Keep every audit field available when a horizontal grid cannot fit by rendering a bounded field/value table instead of silently dropping columns.
+  - Truncate constrained table cells with a visible ellipsis and preserve Unicode display-width alignment.
+  Deliverables:
+  - A responsive terminal audit renderer that never emits a table line wider than the active terminal width.
+  - Public CLI regression coverage for a constrained terminal width and unchanged CSV/HTML output.
+  - Updated operator documentation describing the responsive table behavior and full-fidelity export formats.
+  Validation:
+  - A compiled `gix audit` run with a constrained terminal width keeps every rendered table line within that width and exposes each audit field label.
+  - Existing table, CSV, HTML, delimiter-escaping, and wide-Unicode CLI contracts remain covered.
+  - Run `make format`, `make test`, `make lint`, `make ci`, and `git diff --check`.
+  Resolution:
+  The table renderer now reads stdout's terminal size, uses `COLUMNS` when captured output has no size query, keeps a bounded horizontal grid where practical, and switches to a field/value layout below that threshold. CSV and HTML remain full-value exports. Public CLI coverage verifies compact and truncated horizontal layouts with display-width bounds and Unicode ellipses. `make format`, `make lint`, `make test`, and `make ci` passed on 2026-07-24.
+
+- [x] [B033] (P1) Preserve audit table width handling in workflows.
+  Reported on 2026-07-24.
+  Observation:
+  `gix workflow` wraps stdout so progress is flushed immediately. A table-format `audit report` step received that wrapper instead of stdout, causing terminal-width detection to stop before it could use the terminal size or `COLUMNS`; workflow tables could therefore exceed the available width.
+  Requirements:
+  - Preserve the stdout identity required by terminal-width detection through the workflow output wrapper.
+  - Keep CSV and HTML output contracts unchanged.
+  Deliverables:
+  - Table-format workflow audit output that respects the active terminal width and `COLUMNS` when terminal-size inspection is unavailable.
+  - Public CLI regression coverage for the wrapped workflow path.
+  Validation:
+  - A `gix workflow` audit report with `COLUMNS=40` renders every table line within 40 display columns.
+  - Run `make ci` and `git diff --check`.
+  Resolution:
+  The flushing writer now exposes its underlying output for terminal-width detection, while retaining its flushing behavior. The workflow audit integration scenario verifies ellipsis and display-width bounds at 40 columns. README operator guidance now states that stdout workflow audit tables use the responsive renderer. `make ci` passed on 2026-07-24.
+
 ## Maintenance
 
 - [ ] [M001R] (P2) Backlog hygiene and archive.

@@ -18,6 +18,7 @@
 - Removed runtime `GIX_*`, `api_key_env`, LLM `base_url`, working-directory config, `.yaml`, and embedded-default fallbacks from the configuration contract.
 
 ### Bug Fixes 🐛
+- Made `gix audit` fit its terminal table to the active width, using bounded field/value rows on narrow terminals and Unicode-aware ellipses for constrained cells.
 - Escaped literal delimiters in terminal audit-table cells and aligned Unicode names by their terminal display width.
 - Made strict-sync AI merge resolution visible and bounded: gix now reports conflict, resolution, validation, and recovery phases; applies `timeout_seconds` to the complete operation; and gives an exact manual handoff without pushing when a result is rejected, cancelled, or timed out.
 - Pruned stale linked-worktree metadata before `gix sync` retries branch adoption, so a missing temporary worktree no longer causes a `chdir` failure.
@@ -36,6 +37,7 @@
 - Kept the syncflow builder description as the canonical text shown by `gix sync --help`.
 
 ### Testing 🧪
+- Added public CLI coverage for compact and truncated horizontal audit tables at constrained terminal widths.
 - Added a public CLI regression for audit-table delimiter escaping and wide-character alignment.
 - Added public CLI coverage for default table output, explicit CSV and HTML exports, and rejected audit report formats.
 - Added black-box coverage for configuration discovery, initialization prompts, process-only interpolation, ignored sibling `.env` files, literal credentials, missing placeholders, strict operation schemas, and LLM profile routing.
@@ -52,6 +54,7 @@
 - Added black-box release coverage for clean-checkout helpers, failed or missing platform outputs, replaced published manifests, and missing integrity prerequisites.
 
 ### Docs 📚
+- Documented responsive audit-table behavior, the `COLUMNS` capture-width contract, and the full-value CSV/HTML export boundary.
 - Documented the audit table default and CSV/HTML export commands in the CLI, architecture, and site guides.
 - Documented the canonical `config.yml` discovery and interpolation contract plus the exact Meta Muse-first and OpenAI-first priority settings.
 - Documented strict-sync AI merge-resolution deadlines, progress, and manual recovery behavior.
