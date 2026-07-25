@@ -214,6 +214,19 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Add public workflow coverage showing a flat safeguards map fails before mutation and the structured form retains its existing hard-stop and soft-skip behavior.
   - Run `make test`, `make lint`, `make ci`, and `git diff --check`.
 
+- [x] [M015] (P1) Update the LLM Proxy Go client to the latest release.
+  Requested on 2026-07-25.
+  Goal:
+  Move the direct `github.com/tyemirov/llm-proxy/pkg/llmproxyclient` dependency from v0.2.21 to the current published v0.2.46 contract.
+  Requirements:
+  - Update the direct module requirement and its checksums without retaining obsolete client behavior.
+  - Adapt the Gix LLM Proxy transport only if the current client API requires it.
+  - Preserve the observable v2 request path, provider routing, model selection, token limit, response handling, and connection failover contracts.
+  Validation:
+  - Run `make format`, `make test`, `make lint`, `make ci`, and `git diff --check`.
+  Resolution:
+  Updated the client to v0.2.46 and raised the Go module floor to 1.25.12 with the dependency graph selected by the current client. Gix now puts its configured proxy work budget on each v2 messages request while retaining the caller-owned HTTP timeout. The HTTP-boundary regression verifies the canonical timeout header alongside provider, model, and token routing. `make format`, `make test`, `make lint`, `make ci`, `go mod verify`, `go mod tidy -diff`, and `git diff --check` passed on 2026-07-25; the fast and black-box suites also passed with `GOTOOLCHAIN=go1.25.12`.
+
 ## Features
 
 - [ ] [F010] (P1) Make GitHub and GitLab first-class forge providers in one `gix` repository fleet.
