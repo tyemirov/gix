@@ -3,6 +3,7 @@ package workflow
 import (
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -188,6 +189,9 @@ func parseOptionalDurationSeconds(raw any) (time.Duration, error) {
 	}
 	if seconds < 0 {
 		return 0, fmt.Errorf("%s must be non-negative", optionTaskLLMTimeoutKeyConstant)
+	}
+	if math.Mod(seconds, 1) != 0 {
+		return 0, fmt.Errorf("%s must be a whole number of seconds", optionTaskLLMTimeoutKeyConstant)
 	}
 	return time.Duration(seconds * float64(time.Second)), nil
 }

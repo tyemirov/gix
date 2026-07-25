@@ -47,6 +47,34 @@ func TestTaskLLMClientConfigurationClientUsesProviderConnection(t *testing.T) {
 	require.Same(t, client, cached)
 }
 
+func TestTaskLLMClientConfigurationRejectsFractionalTimeoutSeconds(t *testing.T) {
+	testCases := []struct {
+		name           string
+		timeoutSeconds any
+	}{
+		{name: "sub-second", timeoutSeconds: 0.5},
+		{name: "larger fractional value", timeoutSeconds: 1.9},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			configurationReader := newOptionReader(map[string]any{
+				optionTaskLLMKeyConstant: map[string]any{
+					optionTaskLLMProxyKeyConstant: map[string]any{
+						optionTaskLLMProviderKeyConstant: llmclient.ProviderOpenAI,
+					},
+					optionTaskLLMTimeoutKeyConstant: testCase.timeoutSeconds,
+				},
+			})
+
+			configuration, buildErr := buildTaskLLMConfiguration(configurationReader)
+
+			require.Nil(t, configuration)
+			require.EqualError(t, buildErr, "timeout_seconds must be a whole number of seconds")
+		})
+	}
+}
+
 func TestTaskLLMClientConfigurationClientFailsWithoutInjectedCredential(t *testing.T) {
 	configurationReader := newOptionReader(map[string]any{
 		optionTaskLLMKeyConstant: map[string]any{

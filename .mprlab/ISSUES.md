@@ -59,6 +59,19 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Resolution:
   The flushing writer now exposes its underlying output for terminal-width detection, while retaining its flushing behavior. The workflow audit integration scenario verifies ellipsis and display-width bounds at 40 columns. README operator guidance now states that stdout workflow audit tables use the responsive renderer. `make ci` passed on 2026-07-24.
 
+- [x] [B034] (P2) {M015} Reject fractional LLM Proxy request timeouts before conversion.
+  Found on 2026-07-25 during review of the LLM Proxy client upgrade.
+  Observation:
+  Workflow LLM configuration accepts floating-point `timeout_seconds`, while the v0.2.46 request contract accepts only positive whole seconds. Converting the duration with integer division silently shortens values such as 1.9 seconds and turns sub-second values into zero, which the client rejects only when a request is built.
+  Requirements:
+  - Reject fractional `timeout_seconds` at the workflow configuration boundary with a contextual error.
+  - Keep omitted or zero timeout values on the established default-timeout path.
+  - Add regression coverage for sub-second and larger fractional values.
+  Validation:
+  - Run `make format`, `make test`, `make lint`, `make ci`, and `git diff --check`.
+  Resolution:
+  Workflow LLM configuration now rejects fractional `timeout_seconds` before constructing a client, while omitted and zero values retain the default-timeout path. Regression coverage verifies both sub-second and larger fractional values. `make format`, `make test`, `make lint`, and `make ci` passed on 2026-07-25.
+
 ## Maintenance
 
 - [ ] [M001R] (P2) Backlog hygiene and archive.
@@ -213,6 +226,19 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Validation:
   - Add public workflow coverage showing a flat safeguards map fails before mutation and the structured form retains its existing hard-stop and soft-skip behavior.
   - Run `make test`, `make lint`, `make ci`, and `git diff --check`.
+
+- [x] [M015] (P1) Update the LLM Proxy Go client to the latest release.
+  Requested on 2026-07-25.
+  Goal:
+  Move the direct `github.com/tyemirov/llm-proxy/pkg/llmproxyclient` dependency from v0.2.21 to the current published v0.2.46 contract.
+  Requirements:
+  - Update the direct module requirement and its checksums without retaining obsolete client behavior.
+  - Adapt the Gix LLM Proxy transport only if the current client API requires it.
+  - Preserve the observable v2 request path, provider routing, model selection, token limit, response handling, and connection failover contracts.
+  Validation:
+  - Run `make format`, `make test`, `make lint`, `make ci`, and `git diff --check`.
+  Resolution:
+  Updated the client to v0.2.46 and raised the Go module floor to 1.25.12 with the dependency graph selected by the current client. Gix now puts its configured proxy work budget on each v2 messages request while retaining the caller-owned HTTP timeout. The HTTP-boundary regression verifies the canonical timeout header alongside provider, model, and token routing. `make format`, `make test`, `make lint`, `make ci`, `go mod verify`, `go mod tidy -diff`, and `git diff --check` passed on 2026-07-25; the fast and black-box suites also passed with `GOTOOLCHAIN=go1.25.12`.
 
 ## Features
 
