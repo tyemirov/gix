@@ -33,6 +33,10 @@ var auditTableValueReplacer = strings.NewReplacer(
 	"|", "\\|",
 )
 
+type auditTableWriterUnwrapper interface {
+	Unwrap() io.Writer
+}
+
 // WriteReport serializes repository inspections in the requested report format.
 func WriteReport(writer io.Writer, reportFormat ReportFormat, inspections []RepositoryInspection) error {
 	normalizedFormat, formatError := normalizeReportFormat(reportFormat)
@@ -321,6 +325,10 @@ func auditTableRenderedWidth(widths []int) int {
 }
 
 func auditTableTerminalWidth(writer io.Writer) int {
+	if wrappedWriter, isWrapped := writer.(auditTableWriterUnwrapper); isWrapped {
+		writer = wrappedWriter.Unwrap()
+	}
+
 	outputFile, isFile := writer.(*os.File)
 	if !isFile || outputFile.Fd() != os.Stdout.Fd() {
 		return 0
