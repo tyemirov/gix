@@ -99,8 +99,9 @@ type Config struct {
 type ClientFactory func(Config) (llm.ChatClient, error)
 
 type proxyChatClient struct {
-	client llmproxyclient.Client
-	model  string
+	client                llmproxyclient.Client
+	model                 string
+	requestTimeoutSeconds int
 }
 
 type prioritizedClientCandidate struct {
@@ -355,7 +356,6 @@ func newProxyChatClient(configuration Config) (llm.ChatClient, error) {
 		BaseURL:  strings.TrimSpace(configuration.BaseURL),
 		Secret:   configuration.APIKey,
 		Provider: strings.TrimSpace(configuration.Provider),
-		Timeout:  timeout,
 	})
 	if configurationError != nil {
 		return nil, fmt.Errorf("initialize llm proxy client: %w", configurationError)
@@ -369,8 +369,9 @@ func newProxyChatClient(configuration Config) (llm.ChatClient, error) {
 		return nil, fmt.Errorf("initialize llm proxy client: %w", clientError)
 	}
 	return proxyChatClient{
-		client: client,
-		model:  strings.TrimSpace(configuration.Model),
+		client:                client,
+		model:                 strings.TrimSpace(configuration.Model),
+		requestTimeoutSeconds: int(timeout / time.Second),
 	}, nil
 }
 
@@ -394,10 +395,11 @@ func (client proxyChatClient) Chat(ctx context.Context, request llm.ChatRequest)
 	}
 	maxTokens := request.MaxTokens
 	proxyRequest, requestError := llmproxyclient.NewMessagesRequest(llmproxyclient.MessagesRequestInput{
-		Messages:  messages,
-		Model:     model,
-		WebSearch: false,
-		MaxTokens: positiveIntPointer(maxTokens),
+		Messages:              messages,
+		Model:                 model,
+		WebSearch:             false,
+		MaxTokens:             positiveIntPointer(maxTokens),
+		RequestTimeoutSeconds: &client.requestTimeoutSeconds,
 	})
 	if requestError != nil {
 		return "", fmt.Errorf("build llm proxy request: %w", requestError)

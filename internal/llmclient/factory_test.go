@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/tyemirov/llm-proxy/pkg/llmproxycontract"
 	"github.com/tyemirov/utils/llm"
 )
 
@@ -51,6 +52,7 @@ func TestNewFactoryUsesLLMProxyV2ForInternalRouteAndProvider(t *testing.T) {
 		require.Equal(t, "test-secret", request.URL.Query().Get("key"))
 		require.Equal(t, "meta", request.URL.Query().Get("provider"))
 		require.Equal(t, "text/plain", request.Header.Get("Accept"))
+		require.Equal(t, "1", request.Header.Get(llmproxycontract.HeaderRequestTimeoutSeconds))
 		require.NoError(t, json.NewDecoder(request.Body).Decode(&capturedBody))
 		_, _ = responseWriter.Write([]byte("  docs: sync dirty work\n"))
 	}))
