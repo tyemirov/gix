@@ -43,6 +43,22 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Resolution:
   The table renderer now reads stdout's terminal size, uses `COLUMNS` when captured output has no size query, keeps a bounded horizontal grid where practical, and switches to a field/value layout below that threshold. CSV and HTML remain full-value exports. Public CLI coverage verifies compact and truncated horizontal layouts with display-width bounds and Unicode ellipses. `make format`, `make lint`, `make test`, and `make ci` passed on 2026-07-24.
 
+- [x] [B033] (P1) Preserve audit table width handling in workflows.
+  Reported on 2026-07-24.
+  Observation:
+  `gix workflow` wraps stdout so progress is flushed immediately. A table-format `audit report` step received that wrapper instead of stdout, causing terminal-width detection to stop before it could use the terminal size or `COLUMNS`; workflow tables could therefore exceed the available width.
+  Requirements:
+  - Preserve the stdout identity required by terminal-width detection through the workflow output wrapper.
+  - Keep CSV and HTML output contracts unchanged.
+  Deliverables:
+  - Table-format workflow audit output that respects the active terminal width and `COLUMNS` when terminal-size inspection is unavailable.
+  - Public CLI regression coverage for the wrapped workflow path.
+  Validation:
+  - A `gix workflow` audit report with `COLUMNS=40` renders every table line within 40 display columns.
+  - Run `make ci` and `git diff --check`.
+  Resolution:
+  The flushing writer now exposes its underlying output for terminal-width detection, while retaining its flushing behavior. The workflow audit integration scenario verifies ellipsis and display-width bounds at 40 columns. README operator guidance now states that stdout workflow audit tables use the responsive renderer. `make ci` passed on 2026-07-24.
+
 ## Maintenance
 
 - [ ] [M001R] (P2) Backlog hygiene and archive.
