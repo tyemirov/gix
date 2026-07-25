@@ -64,6 +64,23 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented validated AI conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.1.12] - 2026-07-24
+
+- Merge pull request #393 from tyemirov/tyemirov/bugfix/B032-audit-terminal-width
+- test: verify audit workflow output respects terminal width constraints
+- fix(audit): unwrap FlushingWriter to detect terminal width for reports
+- docs: clarify table rendering in audit report workflow steps
+- docs(issues): document fix for audit table width in workflow outputs
+- test: add integration tests for audit table terminal width handling
+- feat(audit): add terminal width detection and responsive table layout
+- chore(deps): add golang.org/x/term v0.38.0 to go.sum
+- chore(deps): add golang.org/x/term v0.38.0 to go.mod
+- docs: update audit feature description for clarity in index.html
+- docs: expand audit table output description in README
+- docs: update changelog for responsive audit tables and test coverage
+- docs: clarify terminal table and export features in audit package
+- docs(issues): document constraint for fitting audit report to terminal width
+
 ## [v1.1.11] - 2026-07-24
 
 - Merge pull request #392 from tyemirov/tyemirov/maintenance/M001-backlog-docs-audit
