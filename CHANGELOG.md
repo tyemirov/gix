@@ -17,6 +17,9 @@
 - Moved GitHub CLI and GHCR credentials into the same load-time interpolation contract, eliminating their late environment reads and package-service URL override.
 - Removed runtime `GIX_*`, `api_key_env`, LLM `base_url`, working-directory config, `.yaml`, and embedded-default fallbacks from the configuration contract.
 
+### Maintenance 🔧
+- Updated the LLM Proxy Go client from v0.2.21 to v0.2.46, moved Gix's configured proxy work budget to the current per-request timeout header, and raised the Go module floor to 1.25.12 with the dependency graph required by that client.
+
 ### Bug Fixes 🐛
 - Made `gix audit` fit its terminal table to the active width, using bounded field/value rows on narrow terminals and Unicode-aware ellipses for constrained cells.
 - Escaped literal delimiters in terminal audit-table cells and aligned Unicode names by their terminal display width.
