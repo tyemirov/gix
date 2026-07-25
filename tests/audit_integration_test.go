@@ -21,6 +21,7 @@ const (
 	auditIntegrationRunSubcommand                 = "run"
 	auditIntegrationModulePathConstant            = "."
 	auditIntegrationAuditCommandName              = "audit"
+	auditIntegrationWorkflowCommandName           = "workflow"
 	auditIntegrationRootFlag                      = "--roots"
 	auditIntegrationIncludeAllFlag                = "--all"
 	auditIntegrationFormatFlag                    = "--format"
@@ -42,6 +43,7 @@ const (
 	auditIntegrationCSVCaseNameConstant           = "audit_csv_export"
 	auditIntegrationHTMLCaseNameConstant          = "audit_html_export"
 	auditIntegrationTableEscapingCaseNameConstant = "audit_table_escapes_delimiters_and_aligns_wide_characters"
+	auditIntegrationWorkflowTableCaseNameConstant = "workflow_audit_table_respects_terminal_width"
 	auditIntegrationDebugCaseNameConstant         = "audit_debug"
 	auditIntegrationTildeCaseNameConstant         = "audit_tilde"
 	auditIntegrationIncludeAllCaseNameConstant    = "audit_include_all"
@@ -54,6 +56,8 @@ const (
 	auditIntegrationNarrowTerminalWidth           = 40
 	auditIntegrationWideTerminalWidth             = 190
 	auditIntegrationTableEllipsis                 = "…"
+	auditIntegrationWorkflowFileName              = "audit-workflow.yaml"
+	auditIntegrationWorkflowConfiguration         = "workflow:\n  - step:\n      command: ['audit', 'report']\n      with:\n        format: table\n"
 )
 
 func TestAuditRunCommandIntegration(testInstance *testing.T) {
@@ -313,6 +317,38 @@ func TestAuditRunCommandIntegration(testInstance *testing.T) {
 		requireAuditTableFitsTerminal(subtest, constrainedTable, auditIntegrationWideTerminalWidth)
 	})
 
+	testInstance.Run(auditIntegrationWorkflowTableCaseNameConstant, func(subtest *testing.T) {
+		workflowPath := filepath.Join(tempDirectory, auditIntegrationWorkflowFileName)
+		require.NoError(subtest, os.WriteFile(workflowPath, []byte(auditIntegrationWorkflowConfiguration), 0o644))
+
+		workflowArguments := []string{
+			auditIntegrationRunSubcommand,
+			auditIntegrationModulePathConstant,
+			auditIntegrationLogLevelFlag,
+			auditIntegrationErrorLevel,
+			auditIntegrationWorkflowCommandName,
+			workflowPath,
+			auditIntegrationRootFlag,
+			repositoryPath,
+		}
+		workflowOutput := runIntegrationCommand(
+			subtest,
+			repositoryRoot,
+			integrationCommandOptions{
+				PathVariable: extendedPath,
+				EnvironmentOverrides: map[string]string{
+					auditIntegrationColumnsEnvironmentVariable: fmt.Sprint(auditIntegrationNarrowTerminalWidth),
+				},
+			},
+			auditIntegrationTimeout,
+			workflowArguments,
+		)
+		workflowTable := auditTableOutput(filterStructuredOutput(workflowOutput))
+		require.NotEmpty(subtest, workflowTable)
+		require.Contains(subtest, workflowTable, auditIntegrationTableEllipsis)
+		requireAuditTableFitsTerminal(subtest, workflowTable, auditIntegrationNarrowTerminalWidth)
+	})
+
 	invalidFormatOutput, invalidFormatError := runFailingIntegrationCommand(
 		testInstance,
 		repositoryRoot,
@@ -335,4 +371,14 @@ func requireAuditTableFitsTerminal(testInstance *testing.T, table string, termin
 			line,
 		)
 	}
+}
+
+func auditTableOutput(output string) string {
+	tableLines := []string{}
+	for _, line := range strings.Split(output, "\n") {
+		if strings.HasPrefix(line, "+") || strings.HasPrefix(line, "|") {
+			tableLines = append(tableLines, line)
+		}
+	}
+	return strings.Join(tableLines, "\n")
 }
