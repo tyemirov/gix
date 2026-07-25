@@ -24,6 +24,25 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Validation:
   From the `gix/publish-seo-resource-hub-45-resource-pages-sitemap-and` branch, running `gh pr view` without extra flags returns the expected PR details instead of `no pull requests found`. The GitHub web UI shows an open or intentionally closed/merged PR that clearly references this branch as the head, with the correct base branch. The developer who reported the issue can follow the documented steps to reproduce the prior failure state and confirm it is explained and resolved or no longer reproducible.
 
+- [x] [B032] (P1) Fit the terminal audit report to the active terminal width.
+  Reported on 2026-07-24.
+  Observation:
+  The default `gix audit` table takes every cell's natural display width. Long repository paths and remote values therefore make its rows wider than the terminal, causing wrapped, unreadable output.
+  Requirements:
+  - Resolve the active terminal width at the table-output boundary; leave the exact CSV and HTML export contracts unchanged.
+  - Keep every audit field available when a horizontal grid cannot fit by rendering a bounded field/value table instead of silently dropping columns.
+  - Truncate constrained table cells with a visible ellipsis and preserve Unicode display-width alignment.
+  Deliverables:
+  - A responsive terminal audit renderer that never emits a table line wider than the active terminal width.
+  - Public CLI regression coverage for a constrained terminal width and unchanged CSV/HTML output.
+  - Updated operator documentation describing the responsive table behavior and full-fidelity export formats.
+  Validation:
+  - A compiled `gix audit` run with a constrained terminal width keeps every rendered table line within that width and exposes each audit field label.
+  - Existing table, CSV, HTML, delimiter-escaping, and wide-Unicode CLI contracts remain covered.
+  - Run `make format`, `make test`, `make lint`, `make ci`, and `git diff --check`.
+  Resolution:
+  The table renderer now reads stdout's terminal size, uses `COLUMNS` when captured output has no size query, keeps a bounded horizontal grid where practical, and switches to a field/value layout below that threshold. CSV and HTML remain full-value exports. Public CLI coverage verifies compact and truncated horizontal layouts with display-width bounds and Unicode ellipses. `make format`, `make lint`, `make test`, and `make ci` passed on 2026-07-24.
+
 ## Maintenance
 
 - [ ] [M001R] (P2) Backlog hygiene and archive.
