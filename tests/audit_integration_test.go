@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mattn/go-runewidth"
 	"github.com/stretchr/testify/require"
 )
 
@@ -48,6 +49,11 @@ const (
 	auditIntegrationTableFormattingFolderName     = "界界|a"
 	auditIntegrationEscapedTableFolderName        = "界界\\|a"
 	auditIntegrationTableFirstBorder              = "+---------+"
+	auditIntegrationColumnsEnvironmentVariable    = "COLUMNS"
+	auditIntegrationDisabledColumnsWidth          = "0"
+	auditIntegrationNarrowTerminalWidth           = 40
+	auditIntegrationWideTerminalWidth             = 190
+	auditIntegrationTableEllipsis                 = "…"
 )
 
 func TestAuditRunCommandIntegration(testInstance *testing.T) {
@@ -228,7 +234,12 @@ func TestAuditRunCommandIntegration(testInstance *testing.T) {
 
 	for testCaseIndex, testCase := range testCases {
 		testInstance.Run(fmt.Sprintf(auditIntegrationSubtestNameTemplate, testCaseIndex, testCase.name), func(subtest *testing.T) {
-			commandOptions := integrationCommandOptions{PathVariable: extendedPath}
+			commandOptions := integrationCommandOptions{
+				PathVariable: extendedPath,
+				EnvironmentOverrides: map[string]string{
+					auditIntegrationColumnsEnvironmentVariable: auditIntegrationDisabledColumnsWidth,
+				},
+			}
 			subtestOutput := runIntegrationCommand(subtest, repositoryRoot, commandOptions, auditIntegrationTimeout, testCase.arguments)
 			filteredOutput := filterStructuredOutput(subtestOutput)
 			if len(testCase.expectedOutput) > 0 {
@@ -246,6 +257,62 @@ func TestAuditRunCommandIntegration(testInstance *testing.T) {
 		})
 	}
 
+	testInstance.Run("audit_table_respects_terminal_width", func(subtest *testing.T) {
+		constrainedOutput := runIntegrationCommand(
+			subtest,
+			repositoryRoot,
+			integrationCommandOptions{
+				PathVariable: extendedPath,
+				EnvironmentOverrides: map[string]string{
+					auditIntegrationColumnsEnvironmentVariable: fmt.Sprint(auditIntegrationNarrowTerminalWidth),
+				},
+			},
+			auditIntegrationTimeout,
+			rootFlagArguments,
+		)
+		constrainedTable := filterStructuredOutput(constrainedOutput)
+		require.Contains(subtest, constrainedTable, auditIntegrationTableEllipsis)
+		for _, header := range []string{
+			"Folder",
+			"Final Repository",
+			"Origin",
+			"Name Matches",
+			"Remote Default",
+			"Local Branch",
+			"In Sync",
+			"Protocol",
+			"Origin Canonical",
+			"Worktree Dirty",
+			"Dirty Files",
+		} {
+			require.Contains(subtest, constrainedTable, header)
+		}
+		requireAuditTableFitsTerminal(subtest, constrainedTable, auditIntegrationNarrowTerminalWidth)
+	})
+
+	testInstance.Run("audit_table_truncates_horizontal_layout_to_terminal_width", func(subtest *testing.T) {
+		constrainedOutput := runIntegrationCommand(
+			subtest,
+			repositoryRoot,
+			integrationCommandOptions{
+				PathVariable: extendedPath,
+				EnvironmentOverrides: map[string]string{
+					auditIntegrationColumnsEnvironmentVariable: fmt.Sprint(auditIntegrationWideTerminalWidth),
+				},
+			},
+			auditIntegrationTimeout,
+			rootFlagArguments,
+		)
+		constrainedTable := filterStructuredOutput(constrainedOutput)
+		constrainedLines := strings.Split(strings.TrimSpace(constrainedTable), "\n")
+		require.GreaterOrEqual(subtest, len(constrainedLines), 3)
+		require.Contains(subtest, constrainedLines[1], "Folder")
+		require.Contains(subtest, constrainedLines[1], "Final Repository")
+		require.Contains(subtest, constrainedLines[1], "Dirty Files")
+		require.Contains(subtest, constrainedTable, auditIntegrationTableEllipsis)
+		requireAuditTableFitsTerminal(subtest, constrainedTable, auditIntegrationWideTerminalWidth)
+	})
+
 	invalidFormatOutput, invalidFormatError := runFailingIntegrationCommand(
 		testInstance,
 		repositoryRoot,
@@ -255,4 +322,17 @@ func TestAuditRunCommandIntegration(testInstance *testing.T) {
 	)
 	require.Error(testInstance, invalidFormatError)
 	require.Contains(testInstance, filterStructuredOutput(invalidFormatOutput), "unsupported audit report format \"json\"")
+}
+
+func requireAuditTableFitsTerminal(testInstance *testing.T, table string, terminalWidth int) {
+	testInstance.Helper()
+	for _, line := range strings.Split(strings.TrimSpace(table), "\n") {
+		require.LessOrEqualf(
+			testInstance,
+			runewidth.StringWidth(line),
+			terminalWidth,
+			"audit table line exceeds terminal width: %q",
+			line,
+		)
+	}
 }
