@@ -278,6 +278,77 @@ func TestSyncDirtyExistingRemoteBranchWithoutPullRequestCommitsAndCreatesPullReq
 	require.Contains(testInstance, githubLog, "pr create --repo owner/project --base master --head "+branchName+" --title "+branchName+" --body "+pullRequestBody)
 }
 
+func TestSyncDirtyEmptyLocalBranchCommitsTrackedExampleEnvMatchedByIgnoreRule(testInstance *testing.T) {
+	repositoryRoot := integrationRepositoryRoot(testInstance)
+	branchName := "bugfix/llm-env-inventory"
+	workspacePath := syncHomeWorkspace(testInstance)
+	remotePath := filepath.Join(workspacePath, "remote.git")
+	repositoryPath := filepath.Join(workspacePath, "project")
+	createSyncGitHubBackedRepository(testInstance, remotePath, repositoryPath)
+
+	exampleEnvRelativePath := filepath.Join("configs", ".env.hecateapi.example")
+	exampleEnvPath := filepath.Join(repositoryPath, exampleEnvRelativePath)
+	require.NoError(testInstance, os.MkdirAll(filepath.Dir(exampleEnvPath), 0o755))
+	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, ".gitignore"), []byte("configs/.env.*\n"), 0o644))
+	require.NoError(testInstance, os.WriteFile(exampleEnvPath, []byte("LLM_MODEL=goofy-old-model\n"), 0o644))
+	runGit(testInstance, repositoryPath, "add", ".gitignore")
+	runGit(testInstance, repositoryPath, "add", "-f", exampleEnvRelativePath)
+	runGit(testInstance, repositoryPath, "commit", "-m", "document LLM environment")
+	runGit(testInstance, repositoryPath, "push", "-u", "origin", "master")
+
+	runGit(testInstance, repositoryPath, "switch", "-c", branchName)
+	expectedExampleEnv := "LLM_MODEL=goofy-current-model\n"
+	require.NoError(testInstance, os.WriteFile(exampleEnvPath, []byte(expectedExampleEnv), 0o644))
+	require.Equal(
+		testInstance,
+		filepath.ToSlash(exampleEnvRelativePath),
+		strings.TrimSpace(runGit(testInstance, repositoryPath, "ls-files", "--cached", "--ignored", "--exclude-standard", "--", exampleEnvRelativePath)),
+	)
+
+	llmServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/chat/completions" {
+			http.NotFound(responseWriter, request)
+			return
+		}
+		responseWriter.Header().Set("Content-Type", "application/json")
+		_, _ = responseWriter.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"fix: update Hecate LLM environment inventory"}}]}`))
+	}))
+	testInstance.Cleanup(llmServer.Close)
+
+	configurationPath := writeDirtySyncMergedBranchConfiguration(testInstance, llmServer.URL)
+	githubLogPath := filepath.Join(testInstance.TempDir(), "gh.log")
+	pathVariable := buildSyncMergedBranchExecutablePath(testInstance)
+	pullRequestBody := "Update the Hecate LLM environment inventory."
+
+	output, runError := runIntegrationCommandWithInput(
+		testInstance,
+		repositoryRoot,
+		integrationCommandOptions{
+			PathVariable: pathVariable,
+			EnvironmentOverrides: map[string]string{
+				syncMergedBranchAPIKeyVariable:    "test-key",
+				syncMergedBranchGitHubLogVariable: githubLogPath,
+				syncMergedBranchNameVariable:      branchName,
+				syncMergedBranchMergedVariable:    "false",
+			},
+		},
+		syncMergedBranchIntegrationTimeout,
+		"",
+		[]string{"run", ".", "--config", configurationPath, "--log-level", "error", "sync", "--body", pullRequestBody, "--roots", repositoryPath},
+	)
+	require.NoError(testInstance, runError, output)
+
+	require.Contains(testInstance, output, fmt.Sprintf("SYNCED: %s (%s)", repositoryPath, branchName))
+	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
+	require.Equal(testInstance, "1", strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-list", "--count", "origin/master.."+branchName)))
+	require.Equal(testInstance, "fix: update Hecate LLM environment inventory", strings.TrimSpace(runGit(testInstance, repositoryPath, "log", "-1", "--format=%s")))
+	require.Equal(testInstance, expectedExampleEnv, readTextFile(testInstance, exampleEnvPath))
+	require.Equal(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", branchName)), strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "origin/"+branchName)))
+
+	githubLog := readTextFile(testInstance, githubLogPath)
+	require.Contains(testInstance, githubLog, "pr create --repo owner/project --base master --head "+branchName+" --title "+branchName+" --body "+pullRequestBody)
+}
+
 func TestSyncDirtyExistingRemoteBranchStagesDeletedPathContainingSpaces(testInstance *testing.T) {
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	branchName := "gix/update-dockerignore-to-include-owned-configs-workflows"
@@ -344,8 +415,8 @@ func TestSyncDirtyExistingRemoteBranchStagesDeletedPathContainingSpaces(testInst
 	require.Contains(testInstance, runGit(testInstance, repositoryPath, "show", "--format=", "--name-status", "HEAD"), "D\t"+filepath.ToSlash(logoRelativePath))
 
 	gitLog := readTextFile(testInstance, gitLogPath)
-	require.Contains(testInstance, gitLog, "add --all -- "+filepath.ToSlash(logoRelativePath))
-	require.NotContains(testInstance, gitLog, `add --all -- "`+filepath.ToSlash(logoRelativePath)+`"`)
+	require.Contains(testInstance, gitLog, "add --force --all -- "+filepath.ToSlash(logoRelativePath))
+	require.NotContains(testInstance, gitLog, `add --force --all -- "`+filepath.ToSlash(logoRelativePath)+`"`)
 }
 
 func createSyncMergedBranchFixture(testInstance *testing.T, branchName string) syncMergedBranchFixture {

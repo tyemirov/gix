@@ -212,10 +212,10 @@ operations:
 	invocationLogContents, readError := os.ReadFile(gitInvocationLog)
 	require.NoError(testInstance, readError)
 	invocationLog := string(invocationLogContents)
-	require.Contains(testInstance, invocationLog, "check-ignore --stdin")
+	require.NotContains(testInstance, invocationLog, "check-ignore --stdin")
 	require.NotContains(testInstance, invocationLog, "switch -c "+expectedGeneratedBranchName)
 	require.NotContains(testInstance, invocationLog, "stash push --include-untracked")
-	require.Contains(testInstance, invocationLog, "add --all -- README.md")
+	require.Contains(testInstance, invocationLog, "add --force --all -- README.md")
 	require.Contains(testInstance, invocationLog, "add --all -- python/llm_proxy_client.egg-info/PKG-INFO python/llm_proxy_client.egg-info/SOURCES.txt")
 	require.NotContains(testInstance, invocationLog, "add --all -- python/llm_proxy_client/__pycache__")
 	require.NotContains(testInstance, invocationLog, "add --all -- python/tests/__pycache__")
@@ -1381,7 +1381,7 @@ operations:
 	}
 }
 
-func TestSyncFiltersTrackedIgnoredDirtyPathsBeforeStaging(testInstance *testing.T) {
+func TestSyncCommitsTrackedDirtyPathsEvenWhenMatchedByIgnoreRules(testInstance *testing.T) {
 	testInstance.Helper()
 
 	repositoryRoot := integrationRepositoryRoot(testInstance)
@@ -1459,7 +1459,7 @@ func TestSyncFiltersTrackedIgnoredDirtyPathsBeforeStaging(testInstance *testing.
 			return
 		}
 		responseWriter.Header().Set("Content-Type", "application/json")
-		_, _ = responseWriter.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"docs: sync tracked dirty work"}}]}`))
+		_, _ = responseWriter.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"fix: sync all tracked dirty work"}}]}`))
 	}))
 	testInstance.Cleanup(llmServer.Close)
 
@@ -1529,31 +1529,30 @@ operations:
 	invocationLogContents, readError := os.ReadFile(gitInvocationLog)
 	require.NoError(testInstance, readError)
 	invocationLog := string(invocationLogContents)
-	require.Contains(testInstance, invocationLog, "check-ignore --stdin")
-	require.Contains(testInstance, invocationLog, "ls-files --cached --ignored --exclude-standard -- python/llm_proxy_client.egg-info/PKG-INFO python/llm_proxy_client.egg-info/SOURCES.txt python/llm_proxy_client/__pycache__/client.cpython-313.pyc python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc")
-	require.Contains(testInstance, invocationLog, "restore --staged --worktree -- python/llm_proxy_client/__pycache__/client.cpython-313.pyc python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc")
+	require.NotContains(testInstance, invocationLog, "check-ignore --stdin")
+	require.NotContains(testInstance, invocationLog, "ls-files --cached --ignored --exclude-standard")
+	require.NotContains(testInstance, invocationLog, "restore --staged --worktree")
 	require.NotContains(testInstance, invocationLog, "switch -c gix/")
-	require.Contains(testInstance, invocationLog, "add --all -- python/llm_proxy_client.egg-info/PKG-INFO python/llm_proxy_client.egg-info/SOURCES.txt")
-	require.NotContains(testInstance, invocationLog, "add --all -- python/llm_proxy_client/__pycache__")
-	require.NotContains(testInstance, invocationLog, "add --all -- python/tests/__pycache__")
-	require.Contains(testInstance, invocationLog, "commit -m docs: sync tracked dirty work")
+	require.Contains(testInstance, invocationLog, "add --force --all -- python/llm_proxy_client.egg-info/PKG-INFO python/llm_proxy_client.egg-info/SOURCES.txt python/llm_proxy_client/__pycache__/client.cpython-313.pyc python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc")
+	require.Contains(testInstance, invocationLog, "commit -m fix: sync all tracked dirty work")
 	require.Contains(testInstance, invocationLog, "push origin master")
 
 	require.Equal(testInstance, "master", strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
 	require.Equal(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "master")), strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "origin/master")))
-	require.Equal(testInstance, "docs: sync tracked dirty work", strings.TrimSpace(runGit(testInstance, repositoryPath, "log", "-1", "--pretty=%s")))
+	require.Equal(testInstance, "fix: sync all tracked dirty work", strings.TrimSpace(runGit(testInstance, repositoryPath, "log", "-1", "--pretty=%s")))
 	nameStatusOutput := strings.TrimSpace(runGit(testInstance, repositoryPath, "show", "--name-status", "--pretty=format:", "HEAD"))
 	require.ElementsMatch(testInstance, []string{
 		"D\tpython/llm_proxy_client.egg-info/PKG-INFO",
 		"D\tpython/llm_proxy_client.egg-info/SOURCES.txt",
+		"M\tpython/llm_proxy_client/__pycache__/client.cpython-313.pyc",
+		"D\tpython/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc",
 	}, strings.Split(nameStatusOutput, "\n"))
 
 	statusOutput := runGit(testInstance, repositoryPath, "status", "--porcelain")
 	require.Empty(testInstance, strings.TrimSpace(statusOutput))
 	clientCacheContents, clientCacheReadError := os.ReadFile(clientCacheFile)
 	require.NoError(testInstance, clientCacheReadError)
-	require.Equal(testInstance, "client cache before\n", string(clientCacheContents))
-	testCacheContents, testCacheReadError := os.ReadFile(testCacheFile)
-	require.NoError(testInstance, testCacheReadError)
-	require.Equal(testInstance, "test cache before\n", string(testCacheContents))
+	require.Equal(testInstance, "client cache after\n", string(clientCacheContents))
+	_, testCacheStatError := os.Stat(testCacheFile)
+	require.ErrorIs(testInstance, testCacheStatError, os.ErrNotExist)
 }
