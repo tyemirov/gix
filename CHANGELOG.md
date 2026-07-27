@@ -73,6 +73,16 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented validated AI conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.1.14] - 2026-07-27
+
+- Merge pull request #396 from tyemirov/bugfix/B036-preserve-tracked-dirty-sync-work
+- test: ensure sync commits tracked dirty files matched by ignore rules
+- refactor(syncflow): remove ignored path checks during strict sync
+- docs: clarify tracked files vs .gitignore behavior in sync workflow
+- docs(changelog): add notes for dirty tracked .gitignore files and test coverage
+- docs(issues): record fix for preserving dirty tracked ignored files in sync
+- fix(sync): restore directory permissions to remove adopted sibling worktrees
+
 ## [v1.1.13] - 2026-07-25
 
 - Merge pull request #394 from tyemirov/maintenance/M015-update-llm-proxy-client
