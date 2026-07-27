@@ -48,12 +48,12 @@ const (
 	gitMergeFastForwardOnlyFlagConstant          = "--ff-only"
 	gitResetSubcommandConstant                   = "reset"
 	gitResetHardFlagConstant                     = "--hard"
-	gitRestoreSubcommandConstant                 = "restore"
 	gitPushSubcommandConstant                    = "push"
 	gitPushSetUpstreamFlagConstant               = "-u"
 	gitRevListSubcommandConstant                 = "rev-list"
 	gitRevListCountFlagConstant                  = "--count"
 	gitAddSubcommandConstant                     = "add"
+	gitAddForceFlagConstant                      = "--force"
 	gitAddAllFlagConstant                        = "--all"
 	gitCommitSubcommandConstant                  = "commit"
 	gitCommitMessageFlagConstant                 = "-m"
@@ -471,11 +471,7 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 	if statusErr != nil {
 		return statusErr
 	}
-	filteredStatus, filteredStatusErr := filterIgnoredSyncStatusEntries(ctx, environment.GitExecutor, repository.Path, statusEntries)
-	if filteredStatusErr != nil {
-		return filteredStatusErr
-	}
-	statusEntries = filteredStatus.StageableEntries
+	statusEntries = filterIgnoredUntrackedSyncStatusEntries(statusEntries)
 	trackedStatus, untrackedStatus := worktree.SplitStatusEntries(statusEntries, nil)
 	dirty := len(trackedStatus) > 0 || len(untrackedStatus) > 0
 
@@ -485,9 +481,6 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 
 	if fetchErr := executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitFetchSubcommandConstant, gitFetchPruneFlagConstant, remoteName}); fetchErr != nil {
 		return fmt.Errorf(gitFetchFailureTemplateConstant, fetchErr)
-	}
-	if restoreErr := restoreIgnoredSyncStatusEntries(ctx, environment.GitExecutor, repository.Path, filteredStatus.IgnoredTrackedEntries); restoreErr != nil {
-		return restoreErr
 	}
 	if dirty && syncStatusEntriesHaveConflicts(statusEntries) {
 		return errors.New(strictSyncConflictWorktreeMessage)

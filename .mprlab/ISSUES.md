@@ -72,6 +72,36 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Resolution:
   Workflow LLM configuration now rejects fractional `timeout_seconds` before constructing a client, while omitted and zero values retain the default-timeout path. Regression coverage verifies both sub-second and larger fractional values. `make format`, `make test`, `make lint`, and `make ci` passed on 2026-07-25.
 
+- [x] [B035] (P1) Remove adopted sibling worktrees with read-only generated caches.
+  Found on 2026-07-27 while `gix sync tyemirov/B096-sqlite-execution-engine` adopted a linked B096 worktree.
+  Observation:
+  Git can deregister a linked worktree and then fail to delete it when an ignored generated directory, such as Go's read-only module cache, lacks owner write permission. The partial removal leaves an orphaned directory and blocks the requested sync.
+  Requirements:
+  - Before Gix removes its validated non-main sibling worktree, restore owner write and execute permission on directories under that exact worktree only.
+  - Do not follow symlinks, alter file permissions, use `sudo`, or widen cleanup beyond the worktree Gix already selected for adoption.
+  - Preserve contextual failure errors if the filesystem still prevents removal.
+  Validation:
+  - Add public CLI coverage that adopts a sibling worktree containing a read-only ignored cache and verifies complete removal and successful switch.
+  - Run `make format`, `make test`, `make lint`, `make ci`, and `git diff --check`.
+  Resolution:
+  Gix now prepares the validated non-main sibling worktree with a non-symlink directory walk that adds only owner write and execute bits before `git worktree remove`; files and symlink targets remain untouched. The public CLI regression creates a read-only ignored Go-style cache, confirms full sibling removal, and confirms the requested branch becomes active. `make format`, `make test`, `make lint`, `make ci`, and `git diff --check` passed on 2026-07-27.
+
+- [x] [B036] (P0) Preserve dirty tracked files that match ignore rules during sync.
+  Reported on 2026-07-27 after plain `gix sync` removed a valid edit to tracked `configs/.env.hecateapi.example` before rejecting an empty local branch.
+  Observation:
+  Sync classifies tracked paths that also match `.gitignore` as disposable generated files and runs `git restore --staged --worktree` on them before branch and pull-request validation. A tracked file remains repository-owned regardless of a matching ignore rule, so this path can destroy uncommitted user work even when sync ultimately fails.
+  Requirements:
+  - Treat every tracked modification, deletion, rename, and staged change reported by Git as authoritative dirty work, regardless of `.gitignore`.
+  - Never restore or otherwise discard dirty tracked paths as part of sync.
+  - Keep genuinely ignored untracked files outside the dirty-work commit flow through Git's canonical status behavior.
+  - Remove the obsolete tracked-ignore filtering and restore contract instead of retaining a compatibility path.
+  Validation:
+  - Add public CLI coverage for a local branch with no commits beyond `origin/master`, no pull request, and a dirty tracked example-env file matched by `.gitignore`; plain `gix sync` must commit, push, and open the pull request without changing the file contents.
+  - Preserve coverage that genuinely ignored untracked files are not staged.
+  - Run `make format`, `make test`, `make lint`, `make ci`, and `git diff --check`.
+  Resolution:
+  Sync now derives tracked and untracked path sets directly from Git's status entries. Exact tracked paths use force staging so matching ignore rules cannot block their modifications, deletions, renames, or staged additions; untracked paths retain normal ignore-respecting staging. The cached-ignore inspection and tracked-path restore code were removed. Public CLI coverage reproduces the reported empty local branch with dirty `configs/.env.hecateapi.example`, verifies its contents are committed and pushed into a new pull request, and retains ignored-untracked exclusion coverage. `make format`, `make test`, `make lint`, and `make ci` passed on 2026-07-27.
+
 ## Maintenance
 
 - [ ] [M001R] (P2) Backlog hygiene and archive.

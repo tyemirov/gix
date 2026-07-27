@@ -112,26 +112,24 @@ func (executor *statefulBranchCaptureExecutor) ExecuteGitHubCLI(context.Context,
 }
 
 type strictSyncGitExecutor struct {
-	commands           []execshell.CommandDetails
-	statusOutput       string
-	diffStatOutput     string
-	diffOutput         string
-	revListOutput      string
-	revListOutputs     map[string]string
-	missingReferences  map[string]bool
-	ignoredPaths       map[string]bool
-	cachedIgnoredPaths map[string]bool
-	commandErrors      map[string]error
-	mergeError         error
-	unmergedPaths      string
-	conflictStages     map[string]string
-	showOutputs        map[string]string
-	conflictsResolved  bool
-	configValues       map[string]string
-	blockedBranch      string
-	blockedWorktree    string
-	worktreeRemoved    bool
-	currentBranch      string
+	commands          []execshell.CommandDetails
+	statusOutput      string
+	diffStatOutput    string
+	diffOutput        string
+	revListOutput     string
+	revListOutputs    map[string]string
+	missingReferences map[string]bool
+	commandErrors     map[string]error
+	mergeError        error
+	unmergedPaths     string
+	conflictStages    map[string]string
+	showOutputs       map[string]string
+	conflictsResolved bool
+	configValues      map[string]string
+	blockedBranch     string
+	blockedWorktree   string
+	worktreeRemoved   bool
+	currentBranch     string
 }
 
 const (
@@ -180,44 +178,10 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 			return execshell.ExecutionResult{StandardOutput: testStatusCommandOutput(details.Arguments, "M  README.md\n")}, nil
 		}
 		return execshell.ExecutionResult{StandardOutput: testStatusCommandOutput(details.Arguments, executor.statusOutput)}, nil
-	case "check-ignore":
-		ignored := make([]string, 0)
-		for _, candidatePath := range strings.Split(string(details.StandardInput), "\n") {
-			trimmedPath := strings.TrimSpace(candidatePath)
-			if trimmedPath == "" {
-				continue
-			}
-			if executor.ignoredPaths[trimmedPath] {
-				ignored = append(ignored, trimmedPath)
-			}
-		}
-		if len(ignored) == 0 {
-			return execshell.ExecutionResult{}, commandFailedErrorWithExitCode("", 1)
-		}
-		return execshell.ExecutionResult{StandardOutput: strings.Join(ignored, "\n") + "\n"}, nil
 	case "ls-files":
 		if commandHasArgument(details.Arguments, gitLsFilesUnmergedFlagConstant) {
 			path := details.Arguments[len(details.Arguments)-1]
 			return execshell.ExecutionResult{StandardOutput: executor.conflictStages[path]}, nil
-		}
-		if commandHasArgument(details.Arguments, "--cached") && commandHasArgument(details.Arguments, "--ignored") {
-			ignored := make([]string, 0)
-			for argumentIndex := range details.Arguments {
-				if details.Arguments[argumentIndex] != gitPathspecSeparatorConstant {
-					continue
-				}
-				for pathIndex := argumentIndex + 1; pathIndex < len(details.Arguments); pathIndex++ {
-					candidatePath := details.Arguments[pathIndex]
-					if executor.cachedIgnoredPaths[candidatePath] {
-						ignored = append(ignored, candidatePath)
-					}
-				}
-				break
-			}
-			if len(ignored) == 0 {
-				return execshell.ExecutionResult{}, nil
-			}
-			return execshell.ExecutionResult{StandardOutput: strings.Join(ignored, "\n") + "\n"}, nil
 		}
 	case "diff":
 		if commandHasArgument(details.Arguments, gitDiffNameOnlyFlagConstant) && commandHasArgument(details.Arguments, gitDiffFilterUnmergedFlagConstant) {
@@ -702,7 +666,7 @@ func TestHandleBranchSyncActionStrictPRBranchAutoCommitsDirtySameBranch(t *testi
 
 	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "reset")
-	require.Contains(t, recordedGitCommands(gitExecutor.commands), "add --all -- README.md")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "add --force --all -- README.md")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "commit -m feat: sync dirty work")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "merge --no-edit origin/feature/foo")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "merge --no-edit origin/master")
@@ -711,238 +675,22 @@ func TestHandleBranchSyncActionStrictPRBranchAutoCommitsDirtySameBranch(t *testi
 	require.Len(t, chatClient.requests, 1)
 }
 
-func TestHandleBranchSyncActionStrictPRBranchFiltersIgnoredDirtyPathsBeforeStaging(t *testing.T) {
-	testCases := []struct {
-		name               string
-		statusEntries      []string
-		ignoredPaths       map[string]bool
-		cachedIgnoredPaths map[string]bool
-		commitMessage      string
-		expectedCommands   []string
-		rejectedCommands   []string
-	}{
-		{
-			name: "untracked ignored entries mixed with generated metadata",
-			statusEntries: []string{
-				"?? python/llm_proxy_client.egg-info/PKG-INFO",
-				"?? python/llm_proxy_client.egg-info/SOURCES.txt",
-				"!! python/llm_proxy_client/__pycache__/client.cpython-313.pyc",
-				"!! python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc",
-			},
-			ignoredPaths: map[string]bool{
-				"python/llm_proxy_client/__pycache__/client.cpython-313.pyc":        true,
-				"python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc": true,
-			},
-			commitMessage: "fix: sync generated client metadata",
-			expectedCommands: []string{
-				"check-ignore --stdin",
-				"add --all -- python/llm_proxy_client.egg-info/PKG-INFO python/llm_proxy_client.egg-info/SOURCES.txt",
-			},
-			rejectedCommands: []string{
-				"add --all -- python/llm_proxy_client/__pycache__",
-				"add --all -- python/tests/__pycache__",
-			},
-		},
-		{
-			name: "cached ignored tracked modifications mixed with scripts",
-			statusEntries: []string{
-				" M python/llm_proxy_client/__pycache__/client.cpython-313.pyc",
-				" M python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc",
-				" M scripts/deploy.sh",
-			},
-			cachedIgnoredPaths: map[string]bool{
-				"python/llm_proxy_client/__pycache__/client.cpython-313.pyc":        true,
-				"python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc": true,
-			},
-			commitMessage: "fix: sync release scripts",
-			expectedCommands: []string{
-				"check-ignore --stdin",
-				"ls-files --cached --ignored --exclude-standard -- python/llm_proxy_client/__pycache__/client.cpython-313.pyc python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc scripts/deploy.sh",
-				"restore --staged --worktree -- python/llm_proxy_client/__pycache__/client.cpython-313.pyc python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc",
-				"add --all -- scripts/deploy.sh",
-			},
-			rejectedCommands: []string{
-				"add --all -- python/llm_proxy_client/__pycache__",
-				"add --all -- python/tests/__pycache__",
-			},
-		},
-		{
-			name: "cached ignored deletion mixed with source update",
-			statusEntries: []string{
-				" D python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc",
-				" M python/llm_proxy_client/client.py",
-			},
-			cachedIgnoredPaths: map[string]bool{
-				"python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc": true,
-			},
-			commitMessage: "fix: sync python client",
-			expectedCommands: []string{
-				"check-ignore --stdin",
-				"ls-files --cached --ignored --exclude-standard -- python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc python/llm_proxy_client/client.py",
-				"restore --staged --worktree -- python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc",
-				"add --all -- python/llm_proxy_client/client.py",
-			},
-			rejectedCommands: []string{
-				"add --all -- python/tests/__pycache__",
-			},
-		},
-		{
-			name: "mixed check-ignore and cached ignored entries",
-			statusEntries: []string{
-				" M python/llm_proxy_client/__pycache__/client.cpython-313.pyc",
-				"!! python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc",
-				" M scripts/release.sh",
-			},
-			ignoredPaths: map[string]bool{
-				"python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc": true,
-			},
-			cachedIgnoredPaths: map[string]bool{
-				"python/llm_proxy_client/__pycache__/client.cpython-313.pyc": true,
-			},
-			commitMessage: "fix: sync release script",
-			expectedCommands: []string{
-				"check-ignore --stdin",
-				"restore --staged --worktree -- python/llm_proxy_client/__pycache__/client.cpython-313.pyc",
-				"add --all -- scripts/release.sh",
-			},
-			rejectedCommands: []string{
-				"add --all -- python/llm_proxy_client/__pycache__",
-				"add --all -- python/tests/__pycache__",
-			},
-		},
-	}
-
-	for _, testCase := range testCases {
-		testCase := testCase
-		t.Run(testCase.name, func(t *testing.T) {
-			gitExecutor := &strictSyncGitExecutor{
-				statusOutput:       strings.Join(testCase.statusEntries, "\n") + "\n",
-				revListOutput:      "1\n",
-				ignoredPaths:       testCase.ignoredPaths,
-				cachedIgnoredPaths: testCase.cachedIgnoredPaths,
-			}
-			gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
-			require.NoError(t, managerError)
-			githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":7,"title":"Feature","headRefName":"feature/foo","baseRefName":"master"}]`}
-			githubClient, githubClientError := githubcli.NewClient(githubExecutor)
-			require.NoError(t, githubClientError)
-			chatClient := &strictSyncChatClient{response: testCase.commitMessage}
-			environment := &workflow.Environment{
-				GitExecutor:       gitExecutor,
-				RepositoryManager: gitManager,
-				GitHubClient:      githubClient,
-				Logger:            zap.NewNop(),
-				Output:            io.Discard,
-				Errors:            io.Discard,
-				Reporter:          &recordingReporter{},
-			}
-			repository := &workflow.RepositoryState{
-				Path: "/tmp/project",
-				Inspection: audit.RepositoryInspection{
-					LocalBranch:    "feature/foo",
-					FinalOwnerRepo: "owner/project",
-				},
-			}
-			parameters := map[string]any{
-				taskOptionBranchName:         "feature/foo",
-				taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
-				taskOptionRequirePullRequest: true,
-				taskOptionBaseBranch:         "master",
-				taskOptionRequireClean:       false,
-				taskOptionWorktreeCommitMessage: worktreeAdoptionCommitMessageOptions{
-					Client: chatClient,
-				},
-			}
-
-			require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
-			recordedCommands := recordedGitCommands(gitExecutor.commands)
-			for _, expectedCommand := range testCase.expectedCommands {
-				require.Contains(t, recordedCommands, expectedCommand)
-			}
-			for _, rejectedCommand := range testCase.rejectedCommands {
-				require.NotContains(t, recordedCommands, rejectedCommand)
-			}
-			require.Contains(t, recordedCommands, "commit -m "+testCase.commitMessage)
-			require.Contains(t, recordedCommands, "push origin feature/foo")
-			require.Len(t, chatClient.requests, 1)
-		})
-	}
-}
-
-func TestHandleBranchSyncActionStrictPRBranchRestoresTrackedIgnoredOnlyStatus(t *testing.T) {
+func TestHandleBranchSyncActionStrictPRBranchStagesTrackedPathsMatchedByIgnoreRules(t *testing.T) {
+	const commitMessage = "fix: update environment inventory"
 	gitExecutor := &strictSyncGitExecutor{
 		statusOutput: strings.Join([]string{
-			" M python/llm_proxy_client/__pycache__/client.cpython-313.pyc",
-			" D python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc",
+			" M configs/.env.hecateapi.example",
+			" M configs/runtime.yml",
+			"!! configs/.env.local",
 		}, "\n") + "\n",
-		cachedIgnoredPaths: map[string]bool{
-			"python/llm_proxy_client/__pycache__/client.cpython-313.pyc":        true,
-			"python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc": true,
-		},
-	}
-	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
-	require.NoError(t, managerError)
-	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":8,"title":"Generated","headRefName":"gix/sync-dirty-work","baseRefName":"master"}]`}
-	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
-	require.NoError(t, githubClientError)
-	chatClient := &strictSyncChatClient{}
-	environment := &workflow.Environment{
-		GitExecutor:       gitExecutor,
-		RepositoryManager: gitManager,
-		GitHubClient:      githubClient,
-		Logger:            zap.NewNop(),
-		Output:            io.Discard,
-		Errors:            io.Discard,
-		Reporter:          &recordingReporter{},
-	}
-	repository := &workflow.RepositoryState{
-		Path: "/tmp/project",
-		Inspection: audit.RepositoryInspection{
-			LocalBranch:    "master",
-			FinalOwnerRepo: "owner/project",
-		},
-	}
-	parameters := map[string]any{
-		taskOptionBranchName:         "master",
-		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
-		taskOptionRequirePullRequest: true,
-		taskOptionBaseBranch:         "master",
-		taskOptionRequireClean:       false,
-		taskOptionWorktreeCommitMessage: worktreeAdoptionCommitMessageOptions{
-			Client: chatClient,
-		},
-	}
-
-	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
-	recordedCommands := recordedGitCommands(gitExecutor.commands)
-	require.Contains(t, recordedCommands, "check-ignore --stdin")
-	require.Contains(t, recordedCommands, "ls-files --cached --ignored --exclude-standard -- python/llm_proxy_client/__pycache__/client.cpython-313.pyc python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc")
-	require.Contains(t, recordedCommands, "restore --staged --worktree -- python/llm_proxy_client/__pycache__/client.cpython-313.pyc python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc")
-	require.Contains(t, recordedCommands, "switch master")
-	require.Contains(t, recordedCommands, "reset --hard origin/master")
-	require.NotContains(t, recordedCommands, "switch -c gix/sync-dirty-work")
-	require.NotContains(t, recordedCommands, "add --all")
-	require.NotContains(t, recordedCommands, "commit -m")
-	require.Len(t, chatClient.requests, 0)
-}
-
-func TestHandleBranchSyncActionStrictPRBranchRestoresStagedTrackedIgnoredOnlyStatusWithRequireClean(t *testing.T) {
-	gitExecutor := &strictSyncGitExecutor{
-		statusOutput: strings.Join([]string{
-			"M  python/llm_proxy_client/__pycache__/client.cpython-313.pyc",
-			"D  python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc",
-		}, "\n") + "\n",
-		cachedIgnoredPaths: map[string]bool{
-			"python/llm_proxy_client/__pycache__/client.cpython-313.pyc":        true,
-			"python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc": true,
-		},
+		revListOutput: "1\n",
 	}
 	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
 	require.NoError(t, managerError)
 	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":7,"title":"Feature","headRefName":"feature/foo","baseRefName":"master"}]`}
 	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
 	require.NoError(t, githubClientError)
-	chatClient := &strictSyncChatClient{}
+	chatClient := &strictSyncChatClient{response: commitMessage}
 	environment := &workflow.Environment{
 		GitExecutor:       gitExecutor,
 		RepositoryManager: gitManager,
@@ -964,63 +712,6 @@ func TestHandleBranchSyncActionStrictPRBranchRestoresStagedTrackedIgnoredOnlySta
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
 		taskOptionBaseBranch:         "master",
-		taskOptionRequireClean:       true,
-		taskOptionWorktreeCommitMessage: worktreeAdoptionCommitMessageOptions{
-			Client: chatClient,
-		},
-	}
-
-	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
-	recordedCommands := recordedGitCommands(gitExecutor.commands)
-	require.Contains(t, recordedCommands, "restore --staged --worktree -- python/llm_proxy_client/__pycache__/client.cpython-313.pyc python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc")
-	require.Contains(t, recordedCommands, "switch feature/foo")
-	require.Contains(t, recordedCommands, "reset --hard origin/feature/foo")
-	require.Contains(t, recordedCommands, "merge --no-edit origin/master")
-	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, "fetch --prune origin"), recordedGitCommandIndex(gitExecutor.commands, "restore --staged --worktree -- python/llm_proxy_client/__pycache__/client.cpython-313.pyc python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc"))
-	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, "restore --staged --worktree -- python/llm_proxy_client/__pycache__/client.cpython-313.pyc python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc"), recordedGitCommandIndex(gitExecutor.commands, "switch feature/foo"))
-	require.NotContains(t, recordedCommands, "add --all")
-	require.NotContains(t, recordedCommands, "commit -m")
-	require.Len(t, chatClient.requests, 0)
-}
-
-func TestHandleBranchSyncActionStrictPRBranchRestoresTrackedIgnoredStatusBeforeStashingDirtyWork(t *testing.T) {
-	gitExecutor := &strictSyncGitExecutor{
-		statusOutput: strings.Join([]string{
-			" M python/llm_proxy_client/__pycache__/client.cpython-313.pyc",
-			" M README.md",
-		}, "\n") + "\n",
-		cachedIgnoredPaths: map[string]bool{
-			"python/llm_proxy_client/__pycache__/client.cpython-313.pyc": true,
-		},
-	}
-	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
-	require.NoError(t, managerError)
-	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":7,"title":"Feature","headRefName":"feature/foo","baseRefName":"master"}]`}
-	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
-	require.NoError(t, githubClientError)
-	chatClient := &strictSyncChatClient{}
-	environment := &workflow.Environment{
-		GitExecutor:       gitExecutor,
-		RepositoryManager: gitManager,
-		GitHubClient:      githubClient,
-		Logger:            zap.NewNop(),
-		Output:            io.Discard,
-		Errors:            io.Discard,
-		Reporter:          &recordingReporter{},
-	}
-	repository := &workflow.RepositoryState{
-		Path: "/tmp/project",
-		Inspection: audit.RepositoryInspection{
-			LocalBranch:    "feature/foo",
-			FinalOwnerRepo: "owner/project",
-		},
-	}
-	parameters := map[string]any{
-		taskOptionBranchName:         "feature/foo",
-		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
-		taskOptionRequirePullRequest: true,
-		taskOptionBaseBranch:         "master",
-		taskOptionStashChanges:       true,
 		taskOptionRequireClean:       false,
 		taskOptionWorktreeCommitMessage: worktreeAdoptionCommitMessageOptions{
 			Client: chatClient,
@@ -1029,108 +720,13 @@ func TestHandleBranchSyncActionStrictPRBranchRestoresTrackedIgnoredStatusBeforeS
 
 	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	recordedCommands := recordedGitCommands(gitExecutor.commands)
-	restoreCommand := "restore --staged --worktree -- python/llm_proxy_client/__pycache__/client.cpython-313.pyc"
-	stashPushCommand := "stash push --include-untracked"
-	require.Contains(t, recordedCommands, restoreCommand)
-	require.Contains(t, recordedCommands, stashPushCommand)
-	require.Contains(t, recordedCommands, "stash pop")
-	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, "fetch --prune origin"), recordedGitCommandIndex(gitExecutor.commands, restoreCommand))
-	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, restoreCommand), recordedGitCommandIndex(gitExecutor.commands, stashPushCommand))
-	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, stashPushCommand), recordedGitCommandIndex(gitExecutor.commands, "switch feature/foo"))
-	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, "switch feature/foo"), recordedGitCommandIndex(gitExecutor.commands, "stash pop"))
-	require.NotContains(t, recordedCommands, "add --all")
-	require.NotContains(t, recordedCommands, "commit -m")
-	require.Len(t, chatClient.requests, 0)
-}
-
-func TestHandleBranchSyncActionStrictPRBranchDoesNotRestoreTrackedIgnoredStatusWhenFetchFails(t *testing.T) {
-	gitExecutor := &strictSyncGitExecutor{
-		statusOutput: " M python/llm_proxy_client/__pycache__/client.cpython-313.pyc\n",
-		cachedIgnoredPaths: map[string]bool{
-			"python/llm_proxy_client/__pycache__/client.cpython-313.pyc": true,
-		},
-		commandErrors: map[string]error{
-			"fetch --prune origin": commandFailedError("fatal: fetch failed"),
-		},
-	}
-	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
-	require.NoError(t, managerError)
-	environment := &workflow.Environment{
-		GitExecutor:       gitExecutor,
-		RepositoryManager: gitManager,
-		Logger:            zap.NewNop(),
-		Output:            io.Discard,
-		Errors:            io.Discard,
-		Reporter:          &recordingReporter{},
-	}
-	repository := &workflow.RepositoryState{
-		Path: "/tmp/project",
-		Inspection: audit.RepositoryInspection{
-			LocalBranch: "master",
-		},
-	}
-	parameters := map[string]any{
-		taskOptionBranchName:         "master",
-		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
-		taskOptionRequirePullRequest: true,
-		taskOptionBaseBranch:         "master",
-		taskOptionRequireClean:       false,
-	}
-
-	syncError := handleBranchSyncAction(context.Background(), environment, repository, parameters)
-	require.Error(t, syncError)
-	require.Contains(t, syncError.Error(), "failed to fetch updates")
-	recordedCommands := recordedGitCommands(gitExecutor.commands)
-	require.Contains(t, recordedCommands, "fetch --prune origin")
+	require.Contains(t, recordedCommands, "add --force --all -- configs/.env.hecateapi.example configs/runtime.yml")
+	require.Contains(t, recordedCommands, "commit -m "+commitMessage)
+	require.Contains(t, recordedCommands, "push origin feature/foo")
+	require.NotContains(t, recordedCommands, "check-ignore --stdin")
 	require.NotContains(t, recordedCommands, "restore --staged --worktree")
-	require.NotContains(t, recordedCommands, "reset --hard origin/master")
-}
-
-func TestHandleBranchSyncActionStrictPRBranchStopsWhenTrackedIgnoredRestoreFails(t *testing.T) {
-	restoreCommand := "restore --staged --worktree -- python/llm_proxy_client/__pycache__/client.cpython-313.pyc"
-	gitExecutor := &strictSyncGitExecutor{
-		statusOutput: " M python/llm_proxy_client/__pycache__/client.cpython-313.pyc\n",
-		cachedIgnoredPaths: map[string]bool{
-			"python/llm_proxy_client/__pycache__/client.cpython-313.pyc": true,
-		},
-		commandErrors: map[string]error{
-			restoreCommand: commandFailedError("fatal: restore failed"),
-		},
-	}
-	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
-	require.NoError(t, managerError)
-	environment := &workflow.Environment{
-		GitExecutor:       gitExecutor,
-		RepositoryManager: gitManager,
-		Logger:            zap.NewNop(),
-		Output:            io.Discard,
-		Errors:            io.Discard,
-		Reporter:          &recordingReporter{},
-	}
-	repository := &workflow.RepositoryState{
-		Path: "/tmp/project",
-		Inspection: audit.RepositoryInspection{
-			LocalBranch: "master",
-		},
-	}
-	parameters := map[string]any{
-		taskOptionBranchName:         "master",
-		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
-		taskOptionRequirePullRequest: true,
-		taskOptionBaseBranch:         "master",
-		taskOptionRequireClean:       false,
-	}
-
-	syncError := handleBranchSyncAction(context.Background(), environment, repository, parameters)
-	require.Error(t, syncError)
-	require.Contains(t, syncError.Error(), "failed to restore ignored dirty sync paths")
-	recordedCommands := recordedGitCommands(gitExecutor.commands)
-	require.Contains(t, recordedCommands, restoreCommand)
-	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, "fetch --prune origin"), recordedGitCommandIndex(gitExecutor.commands, restoreCommand))
-	require.NotContains(t, recordedCommands, "switch master")
-	require.NotContains(t, recordedCommands, "reset --hard origin/master")
-	require.NotContains(t, recordedCommands, "add --all")
-	require.NotContains(t, recordedCommands, "commit -m")
+	require.NotContains(t, recordedCommands, "add --all -- configs/.env.local")
+	require.Len(t, chatClient.requests, 1)
 }
 
 func TestHandleBranchSyncActionStrictPRBranchTreatsIgnoredOnlyStatusAsClean(t *testing.T) {
@@ -1139,10 +735,6 @@ func TestHandleBranchSyncActionStrictPRBranchTreatsIgnoredOnlyStatusAsClean(t *t
 			"!! python/llm_proxy_client/__pycache__/client.cpython-313.pyc",
 			"!! python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc",
 		}, "\n") + "\n",
-		ignoredPaths: map[string]bool{
-			"python/llm_proxy_client/__pycache__/client.cpython-313.pyc":        true,
-			"python/tests/__pycache__/test_client.cpython-313-pytest-9.0.3.pyc": true,
-		},
 	}
 	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
 	require.NoError(t, managerError)
@@ -1179,7 +771,7 @@ func TestHandleBranchSyncActionStrictPRBranchTreatsIgnoredOnlyStatusAsClean(t *t
 
 	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	recordedCommands := recordedGitCommands(gitExecutor.commands)
-	require.Contains(t, recordedCommands, "check-ignore --stdin")
+	require.NotContains(t, recordedCommands, "check-ignore --stdin")
 	require.Contains(t, recordedCommands, "switch master")
 	require.Contains(t, recordedCommands, "reset --hard origin/master")
 	require.NotContains(t, recordedCommands, "switch -c gix/sync-dirty-work")
@@ -1189,9 +781,11 @@ func TestHandleBranchSyncActionStrictPRBranchTreatsIgnoredOnlyStatusAsClean(t *t
 }
 
 func TestHandleBranchSyncActionStrictPRBranchAdoptsDirtySiblingWorktree(t *testing.T) {
+	blockedWorktree := filepath.Join(t.TempDir(), "project-feature")
+	require.NoError(t, os.MkdirAll(blockedWorktree, 0o755))
 	gitExecutor := &strictSyncGitExecutor{
 		blockedBranch:   "feature/foo",
-		blockedWorktree: "/tmp/project-feature",
+		blockedWorktree: blockedWorktree,
 	}
 	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
 	require.NoError(t, managerError)
@@ -1233,11 +827,12 @@ func TestHandleBranchSyncActionStrictPRBranchAdoptsDirtySiblingWorktree(t *testi
 	require.Contains(t, recordedCommands, "add --all")
 	require.Contains(t, recordedCommands, "commit -m fix: adopt sibling worktree")
 	require.Contains(t, recordedCommands, "push --set-upstream origin feature/foo")
-	require.Contains(t, recordedCommands, "worktree remove /tmp/project-feature")
+	worktreeRemoveCommand := "worktree remove " + blockedWorktree
+	require.Contains(t, recordedCommands, worktreeRemoveCommand)
 	require.Contains(t, recordedCommands, "worktree prune")
 	require.Contains(t, recordedCommands, "merge --no-edit origin/master")
 	require.Contains(t, recordedCommands, "push origin feature/foo")
-	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, "worktree remove /tmp/project-feature"), recordedGitCommandLastIndex(gitExecutor.commands, "switch feature/foo"))
+	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, worktreeRemoveCommand), recordedGitCommandLastIndex(gitExecutor.commands, "switch feature/foo"))
 	require.GreaterOrEqual(t, recordedGitCommandCount(gitExecutor.commands, "fetch --prune origin"), 2)
 	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, "worktree prune"), recordedGitCommandLastIndex(gitExecutor.commands, "fetch --prune origin"))
 	require.Less(t, recordedGitCommandLastIndex(gitExecutor.commands, "fetch --prune origin"), recordedGitCommandLastIndex(gitExecutor.commands, "switch feature/foo"))
@@ -1552,7 +1147,7 @@ func TestHandleBranchSyncActionStrictPRBranchCommitFlagUsesDirtySyncCommitWithRe
 	}
 
 	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
-	require.Contains(t, recordedGitCommands(gitExecutor.commands), "add --all -- README.md")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "add --force --all -- README.md")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "commit -m fix: describe dirty sync")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "merge --no-edit origin/feature/foo")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "merge --no-edit origin/master")
@@ -1608,7 +1203,7 @@ func TestHandleBranchSyncActionStrictPRBranchCreatesMissingRemoteBranchAndPullRe
 	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "switch -c feature/foo")
 	require.NotContains(t, recordedGitCommands(gitExecutor.commands), "switch -c feature/foo origin/master")
-	require.Contains(t, recordedGitCommands(gitExecutor.commands), "add --all -- README.md")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "add --force --all -- README.md")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "commit -m docs: update readme")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "merge --no-edit origin/master")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "push -u origin feature/foo")
@@ -1830,7 +1425,7 @@ func TestHandleBranchSyncActionStrictPRBranchCreatesGeneratedBranchFromCurrentDi
 	require.NotEqual(t, -1, recordedGitCommandIndex(gitExecutor.commands, "switch -c "+generatedBranchName))
 	require.Equal(t, -1, recordedGitCommandIndex(gitExecutor.commands, "switch -c "+generatedBranchName+" origin/master"))
 	require.NotContains(t, recordedGitCommands(gitExecutor.commands), "stash push --include-untracked")
-	require.Contains(t, recordedGitCommands(gitExecutor.commands), "add --all -- README.md")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "add --force --all -- README.md")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "commit -m docs: update readme")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "merge --no-edit origin/master")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "push -u origin "+generatedBranchName)
@@ -2054,7 +1649,7 @@ func TestHandleBranchSyncActionStrictPRBranchCreatesGeneratedBranchFromCurrentDi
 	recordedCommands := recordedGitCommands(gitExecutor.commands)
 	require.NotContains(t, recordedCommands, "rev-list --count origin/master..master")
 	require.Contains(t, recordedCommands, "switch -c "+generatedBranchName)
-	require.Contains(t, recordedCommands, "add --all -- README.md")
+	require.Contains(t, recordedCommands, "add --force --all -- README.md")
 	require.Contains(t, recordedCommands, "commit -m docs: update readme")
 	require.Contains(t, recordedCommands, "merge --no-edit origin/master")
 	require.Contains(t, recordedCommands, "push -u origin "+generatedBranchName)
