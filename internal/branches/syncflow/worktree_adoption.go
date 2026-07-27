@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -61,6 +62,13 @@ const (
 	worktreeAdoptDetachMessage               = "detached sibling main worktree"
 	worktreeAdoptPruneMessage                = "pruned worktree metadata"
 	worktreeAdoptPruneStaleMessage           = "pruned stale worktree metadata"
+)
+
+const (
+	worktreeDirectoryOwnerWriteExecute         = 0o300
+	worktreeRemovalPreparationFailureTemplate  = "failed to prepare sibling worktree %s for removal: %w"
+	worktreeDirectoryInspectionFailureTemplate = "failed to inspect sibling worktree directory %s before removal: %w"
+	worktreeDirectoryPermissionFailureTemplate = "failed to restore owner write and execute permission on sibling worktree directory %s: %w"
 )
 
 type worktreeAdoptionOptions struct {
@@ -361,6 +369,10 @@ func (service worktreeAdoptionService) adoptSiblingWorktree(ctx context.Context,
 		return nil
 	}
 
+	if preparationErr := prepareSiblingWorktreeForRemoval(worktree.Path); preparationErr != nil {
+		return fmt.Errorf(worktreeRemovalPreparationFailureTemplate, worktree.Path, preparationErr)
+	}
+
 	if removeErr := executeGit(ctx, service.environment.GitExecutor, service.repository.Path, []string{gitWorktreeSubcommandConstant, gitWorktreeRemoveSubcommandConstant, worktree.Path}); removeErr != nil {
 		return fmt.Errorf(worktreeRemoveFailureTemplate, worktree.Path, removeErr)
 	}
@@ -384,6 +396,33 @@ func (service worktreeAdoptionService) adoptSiblingWorktree(ctx context.Context,
 	)
 
 	return nil
+}
+
+func prepareSiblingWorktreeForRemoval(worktreePath string) error {
+	return filepath.WalkDir(worktreePath, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return fmt.Errorf(worktreeDirectoryInspectionFailureTemplate, path, walkErr)
+		}
+		// WalkDir does not follow symlinks; leave them untouched so preparation
+		// cannot change permissions outside the sibling worktree.
+		if entry.Type()&os.ModeSymlink != 0 || !entry.IsDir() {
+			return nil
+		}
+
+		directoryInfo, infoErr := entry.Info()
+		if infoErr != nil {
+			return fmt.Errorf(worktreeDirectoryInspectionFailureTemplate, path, infoErr)
+		}
+		currentPermissions := directoryInfo.Mode().Perm()
+		desiredPermissions := currentPermissions | worktreeDirectoryOwnerWriteExecute
+		if desiredPermissions == currentPermissions {
+			return nil
+		}
+		if chmodErr := os.Chmod(path, desiredPermissions); chmodErr != nil {
+			return fmt.Errorf(worktreeDirectoryPermissionFailureTemplate, path, chmodErr)
+		}
+		return nil
+	})
 }
 
 func isMainWorktreePath(worktreePath string) (bool, error) {

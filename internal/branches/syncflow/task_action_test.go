@@ -1189,9 +1189,11 @@ func TestHandleBranchSyncActionStrictPRBranchTreatsIgnoredOnlyStatusAsClean(t *t
 }
 
 func TestHandleBranchSyncActionStrictPRBranchAdoptsDirtySiblingWorktree(t *testing.T) {
+	blockedWorktree := filepath.Join(t.TempDir(), "project-feature")
+	require.NoError(t, os.MkdirAll(blockedWorktree, 0o755))
 	gitExecutor := &strictSyncGitExecutor{
 		blockedBranch:   "feature/foo",
-		blockedWorktree: "/tmp/project-feature",
+		blockedWorktree: blockedWorktree,
 	}
 	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
 	require.NoError(t, managerError)
@@ -1233,11 +1235,12 @@ func TestHandleBranchSyncActionStrictPRBranchAdoptsDirtySiblingWorktree(t *testi
 	require.Contains(t, recordedCommands, "add --all")
 	require.Contains(t, recordedCommands, "commit -m fix: adopt sibling worktree")
 	require.Contains(t, recordedCommands, "push --set-upstream origin feature/foo")
-	require.Contains(t, recordedCommands, "worktree remove /tmp/project-feature")
+	worktreeRemoveCommand := "worktree remove " + blockedWorktree
+	require.Contains(t, recordedCommands, worktreeRemoveCommand)
 	require.Contains(t, recordedCommands, "worktree prune")
 	require.Contains(t, recordedCommands, "merge --no-edit origin/master")
 	require.Contains(t, recordedCommands, "push origin feature/foo")
-	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, "worktree remove /tmp/project-feature"), recordedGitCommandLastIndex(gitExecutor.commands, "switch feature/foo"))
+	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, worktreeRemoveCommand), recordedGitCommandLastIndex(gitExecutor.commands, "switch feature/foo"))
 	require.GreaterOrEqual(t, recordedGitCommandCount(gitExecutor.commands, "fetch --prune origin"), 2)
 	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, "worktree prune"), recordedGitCommandLastIndex(gitExecutor.commands, "fetch --prune origin"))
 	require.Less(t, recordedGitCommandLastIndex(gitExecutor.commands, "fetch --prune origin"), recordedGitCommandLastIndex(gitExecutor.commands, "switch feature/foo"))

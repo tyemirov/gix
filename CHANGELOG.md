@@ -21,6 +21,7 @@
 - Updated the LLM Proxy Go client from v0.2.21 to v0.2.46, moved Gix's configured proxy work budget to the current per-request timeout header, and raised the Go module floor to 1.25.12 with the dependency graph required by that client.
 
 ### Bug Fixes 🐛
+- Made linked-worktree adoption restore owner write and execute permission on its directories before removal, preventing read-only ignored caches such as Go's module cache from leaving orphaned worktrees.
 - Rejected fractional workflow LLM `timeout_seconds` before they can be truncated into shorter or invalid LLM Proxy request budgets.
 - Made `gix audit` fit its terminal table to the active width, using bounded field/value rows on narrow terminals and Unicode-aware ellipses for constrained cells.
 - Escaped literal delimiters in terminal audit-table cells and aligned Unicode names by their terminal display width.
@@ -41,6 +42,7 @@
 - Kept the syncflow builder description as the canonical text shown by `gix sync --help`.
 
 ### Testing 🧪
+- Added public CLI coverage for adopting a sibling worktree containing a read-only ignored cache.
 - Added public CLI coverage for compact and truncated horizontal audit tables at constrained terminal widths.
 - Added a public CLI regression for audit-table delimiter escaping and wide-character alignment.
 - Added public CLI coverage for default table output, explicit CSV and HTML exports, and rejected audit report formats.

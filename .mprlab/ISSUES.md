@@ -72,6 +72,20 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Resolution:
   Workflow LLM configuration now rejects fractional `timeout_seconds` before constructing a client, while omitted and zero values retain the default-timeout path. Regression coverage verifies both sub-second and larger fractional values. `make format`, `make test`, `make lint`, and `make ci` passed on 2026-07-25.
 
+- [x] [B035] (P1) Remove adopted sibling worktrees with read-only generated caches.
+  Found on 2026-07-27 while `gix sync tyemirov/B096-sqlite-execution-engine` adopted a linked B096 worktree.
+  Observation:
+  Git can deregister a linked worktree and then fail to delete it when an ignored generated directory, such as Go's read-only module cache, lacks owner write permission. The partial removal leaves an orphaned directory and blocks the requested sync.
+  Requirements:
+  - Before Gix removes its validated non-main sibling worktree, restore owner write and execute permission on directories under that exact worktree only.
+  - Do not follow symlinks, alter file permissions, use `sudo`, or widen cleanup beyond the worktree Gix already selected for adoption.
+  - Preserve contextual failure errors if the filesystem still prevents removal.
+  Validation:
+  - Add public CLI coverage that adopts a sibling worktree containing a read-only ignored cache and verifies complete removal and successful switch.
+  - Run `make format`, `make test`, `make lint`, `make ci`, and `git diff --check`.
+  Resolution:
+  Gix now prepares the validated non-main sibling worktree with a non-symlink directory walk that adds only owner write and execute bits before `git worktree remove`; files and symlink targets remain untouched. The public CLI regression creates a read-only ignored Go-style cache, confirms full sibling removal, and confirms the requested branch becomes active. `make format`, `make test`, `make lint`, `make ci`, and `git diff --check` passed on 2026-07-27.
+
 ## Maintenance
 
 - [ ] [M001R] (P2) Backlog hygiene and archive.

@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -115,6 +116,65 @@ func TestSyncExplicitMasterPrunesStaleLinkedWorktreeBeforeSwitch(testInstance *t
 	require.Contains(testInstance, output, fmt.Sprintf("SYNCED: %s (master)", repositoryPath))
 	require.Equal(testInstance, "master", strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
 	require.NotContains(testInstance, runGit(testInstance, repositoryPath, "worktree", "list", "--porcelain"), "worktree "+canonicalSiblingPath)
+}
+
+func TestSyncAdoptsSiblingWorktreeWithReadOnlyIgnoredCache(testInstance *testing.T) {
+	if runtime.GOOS == "windows" {
+		testInstance.Skip("read-only directory removal requires Unix permission semantics")
+	}
+
+	repositoryRoot := integrationRepositoryRoot(testInstance)
+	workspacePath := syncHomeWorkspace(testInstance)
+	remotePath := filepath.Join(workspacePath, "remote.git")
+	repositoryPath := filepath.Join(workspacePath, "project")
+	siblingPath := filepath.Join(workspacePath, "project-read-only-cache")
+	branchName := "feature/read-only-cache"
+	createSyncGitHubBackedRepository(testInstance, remotePath, repositoryPath)
+
+	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "README.md"), []byte("initial\n"), 0o644))
+	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, ".gitignore"), []byte(".cache/\n"), 0o644))
+	runGit(testInstance, repositoryPath, "add", "README.md", ".gitignore")
+	runGit(testInstance, repositoryPath, "commit", "-m", "initial commit")
+	runGit(testInstance, repositoryPath, "push", "-u", "origin", "master")
+
+	runGit(testInstance, repositoryPath, "switch", "-c", branchName)
+	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "feature.txt"), []byte("feature work\n"), 0o644))
+	runGit(testInstance, repositoryPath, "add", "feature.txt")
+	runGit(testInstance, repositoryPath, "commit", "-m", "feature work")
+	runGit(testInstance, repositoryPath, "push", "-u", "origin", branchName)
+	runGit(testInstance, repositoryPath, "switch", "master")
+	runGit(testInstance, repositoryPath, "worktree", "add", siblingPath, branchName)
+
+	cacheDirectory := filepath.Join(siblingPath, ".cache", "go", "pkg", "mod", "read-only-module")
+	require.NoError(testInstance, os.MkdirAll(cacheDirectory, 0o755))
+	require.NoError(testInstance, os.WriteFile(filepath.Join(cacheDirectory, "cached-file"), []byte("cache\n"), 0o444))
+	testInstance.Cleanup(func() {
+		_ = os.Chmod(cacheDirectory, 0o755)
+	})
+	require.NoError(testInstance, os.Chmod(cacheDirectory, 0o555))
+	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, siblingPath, "status", "--porcelain")))
+
+	configurationPath := writeSyncMergedBranchConfiguration(testInstance)
+	githubLogPath := filepath.Join(testInstance.TempDir(), "gh.log")
+	pathVariable := buildSyncMergedBranchExecutablePath(testInstance)
+	output := runIntegrationCommand(
+		testInstance,
+		repositoryRoot,
+		integrationCommandOptions{
+			PathVariable: pathVariable,
+			EnvironmentOverrides: map[string]string{
+				syncMergedBranchGitHubLogVariable: githubLogPath,
+				syncMergedBranchMergedVariable:    "false",
+				syncMergedBranchNameVariable:      branchName,
+			},
+		},
+		syncWorktreeAdoptionTimeout,
+		[]string{"run", ".", "--config", configurationPath, "--log-level", "error", "sync", branchName, "--body", "Adopt the read-only cache worktree.", "--roots", repositoryPath},
+	)
+	require.Contains(testInstance, output, fmt.Sprintf("SYNCED: %s (%s)", repositoryPath, branchName))
+	require.NoDirExists(testInstance, siblingPath)
+	require.NotContains(testInstance, runGit(testInstance, repositoryPath, "worktree", "list", "--porcelain"), "worktree "+siblingPath)
+	require.Equal(testInstance, branchName, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
 }
 
 func createSyncWorktreeAdoptionFixture(testInstance *testing.T) syncWorktreeAdoptionFixture {
