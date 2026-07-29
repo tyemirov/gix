@@ -8,6 +8,7 @@ const (
 	EventCodeMergeConflict            = "MERGE_CONFLICT"
 	EventCodeAIMergeResolution        = "AI_MERGE_RESOLUTION"
 	EventCodeAIMergeValidation        = "AI_MERGE_VALIDATION"
+	EventCodeAIMergeRollback          = "AI_MERGE_ROLLBACK"
 	EventCodeAIMergeHandoff           = "AI_MERGE_HANDOFF"
 	EventCodeNamespacePlan            = "NAMESPACE_PLAN"
 	EventCodeNamespaceApply           = "NAMESPACE_APPLY"

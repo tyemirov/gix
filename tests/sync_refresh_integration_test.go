@@ -956,23 +956,19 @@ func TestSyncRejectsTruncatedLongFileMergeResolutionBeforeCommitOrPush(testInsta
 	localContent := strings.Replace(baseContent, "- [ ] [B000] base conflict entry", "- [-] [B000] local conflict entry", 1)
 	require.NoError(testInstance, os.WriteFile(conflictedFilePath, []byte(localContent), 0o644))
 	truncatedResolution := "# ISSUES\n\n- [x] [B000] combined conflict entry\n"
-	responses := []string{
-		"docs: update issue tracker entry",
-		truncatedResolution,
-	}
 	var responseIndex atomic.Int64
 	llmServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 		if request.URL.Path != "/chat/completions" {
 			http.NotFound(responseWriter, request)
 			return
 		}
-		currentResponseIndex := int(responseIndex.Add(1) - 1)
-		if currentResponseIndex >= len(responses) {
-			http.Error(responseWriter, "unexpected LLM request", http.StatusBadRequest)
-			return
+		currentResponseIndex := responseIndex.Add(1) - 1
+		response := semanticMergeResponse(truncatedResolution)
+		if currentResponseIndex == 0 {
+			response = "docs: update issue tracker entry"
 		}
 		responseWriter.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprintf(responseWriter, `{"choices":[{"message":{"role":"assistant","content":%q}}]}`, responses[currentResponseIndex])
+		_, _ = fmt.Fprintf(responseWriter, `{"choices":[{"message":{"role":"assistant","content":%q}}]}`, response)
 	}))
 	testInstance.Cleanup(llmServer.Close)
 
@@ -1046,24 +1042,24 @@ operations:
 	require.Contains(testInstance, output, "MERGE_CONFLICT")
 	require.Contains(testInstance, output, "AI_MERGE_RESOLUTION")
 	require.Contains(testInstance, output, "AI_MERGE_VALIDATION")
-	require.Contains(testInstance, output, "AI_MERGE_HANDOFF")
-	require.Contains(testInstance, output, "does not preserve non-conflicting content")
-	require.Contains(testInstance, output, "git merge --abort")
-	require.Equal(testInstance, int64(len(responses)), responseIndex.Load())
+	require.Contains(testInstance, output, "AI_MERGE_ROLLBACK")
+	require.Contains(testInstance, output, "does not preserve OURS replacement intent")
+	require.Contains(testInstance, output, "all semantic attempts exhausted")
+	require.Contains(testInstance, output, "failed merge was aborted")
+	require.NotContains(testInstance, output, "AI_MERGE_HANDOFF")
+	require.Equal(testInstance, int64(1+mergeConflictResolutionAttemptCountForTest), responseIndex.Load())
 
 	require.Equal(testInstance, "master", strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
-	require.Equal(testInstance, conflictedFileName, strings.TrimSpace(runGit(testInstance, repositoryPath, "diff", "--name-only", "--diff-filter=U")))
+	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
 	headWithParents := strings.Fields(runGit(testInstance, repositoryPath, "rev-list", "--parents", "-n", "1", "HEAD"))
 	require.Len(testInstance, headWithParents, 2)
 	require.Equal(testInstance, baseCommit, headWithParents[1])
 
-	conflictState := readTextFile(testInstance, conflictedFilePath)
-	require.Contains(testInstance, conflictState, "<<<<<<< HEAD")
-	require.Contains(testInstance, conflictState, stableTailLine)
-	require.NotEqual(testInstance, truncatedResolution, conflictState)
+	require.Equal(testInstance, localContent, readTextFile(testInstance, conflictedFilePath))
 
 	gitLog := readTextFile(testInstance, gitLogPath)
 	require.Contains(testInstance, gitLog, "merge --no-edit origin/master")
+	require.Contains(testInstance, gitLog, "merge --abort")
 	require.NotContains(testInstance, gitLog, "commit --no-edit")
 	require.NotContains(testInstance, gitLog, "push origin master")
 	if githubLogBytes, githubLogReadError := os.ReadFile(githubLogPath); githubLogReadError == nil {
@@ -1073,7 +1069,7 @@ operations:
 	}
 }
 
-func TestSyncTimesOutAIMergeResolutionWithVisibleRecoveryHandoff(testInstance *testing.T) {
+func TestSyncExhaustsSemanticTimeoutAttemptsBeforeRollback(testInstance *testing.T) {
 	testInstance.Helper()
 
 	const (
@@ -1120,7 +1116,10 @@ func TestSyncTimesOutAIMergeResolutionWithVisibleRecoveryHandoff(testInstance *t
 			_, _ = fmt.Fprint(responseWriter, `{"choices":[{"message":{"role":"assistant","content":"docs: update local issue"}}]}`)
 			return
 		}
-		resolutionStarted <- time.Now()
+		select {
+		case resolutionStarted <- time.Now():
+		default:
+		}
 		select {
 		case <-request.Context().Done():
 		case <-releaseResolution:
@@ -1149,7 +1148,7 @@ llm:
     provider: meta
     model: muse-spark-1.1
     base_url: "https://llm-proxy.example"
-    credential: test-proxy-key
+    credential: ""
   max_completion_tokens: 64
   temperature: 0
   timeout_seconds: 2
@@ -1200,32 +1199,32 @@ operations:
 	require.Error(testInstance, runError)
 	require.Contains(testInstance, output, "MERGE_CONFLICT")
 	require.Contains(testInstance, output, "AI_MERGE_RESOLUTION")
-	require.Contains(testInstance, output, "deadline 2s")
-	require.Contains(testInstance, output, "still resolving "+conflictedFileName+" with AI")
-	require.Contains(testInstance, output, "AI_MERGE_HANDOFF")
+	require.Contains(testInstance, output, "attempt deadline 2s")
+	require.Contains(testInstance, output, "still resolving "+conflictedFileName+" conflict region 1/1 semantic candidate attempt")
+	require.Contains(testInstance, output, "AI_MERGE_ROLLBACK")
 	require.Contains(testInstance, output, "AI merge resolution timed out after 2s")
-	require.Contains(testInstance, output, "git merge --abort")
-	require.Equal(testInstance, int64(2), responseIndex.Load())
+	require.Contains(testInstance, output, "all semantic attempts exhausted")
+	require.Contains(testInstance, output, "failed merge was aborted")
+	require.NotContains(testInstance, output, "AI_MERGE_HANDOFF")
+	require.Equal(testInstance, int64(1+mergeConflictResolutionAttemptCountForTest), responseIndex.Load())
 
 	select {
-	case startedAt := <-resolutionStarted:
-		require.Less(testInstance, time.Since(startedAt), 5*time.Second, output)
+	case <-resolutionStarted:
 	default:
 		testInstance.Fatal("expected the merge-resolution request to start")
 	}
 
 	require.Equal(testInstance, "master", strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
-	require.Equal(testInstance, conflictedFileName, strings.TrimSpace(runGit(testInstance, repositoryPath, "diff", "--name-only", "--diff-filter=U")))
+	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
 	headWithParents := strings.Fields(runGit(testInstance, repositoryPath, "rev-list", "--parents", "-n", "1", "HEAD"))
 	require.Len(testInstance, headWithParents, 2)
 	require.Equal(testInstance, baseCommit, headWithParents[1])
 
-	conflictState := readTextFile(testInstance, conflictedFilePath)
-	require.Contains(testInstance, conflictState, "<<<<<<< HEAD")
-	require.Contains(testInstance, conflictState, stableTailLine)
+	require.Equal(testInstance, localContent, readTextFile(testInstance, conflictedFilePath))
 
 	gitLog := readTextFile(testInstance, gitLogPath)
 	require.Contains(testInstance, gitLog, "merge --no-edit origin/master")
+	require.Contains(testInstance, gitLog, "merge --abort")
 	require.NotContains(testInstance, gitLog, "commit --no-edit")
 	require.NotContains(testInstance, gitLog, "push origin master")
 	if githubLogBytes, githubLogReadError := os.ReadFile(githubLogPath); githubLogReadError == nil {
@@ -1235,7 +1234,7 @@ operations:
 	}
 }
 
-func TestSyncRejectsTruncatedMarkerFreeModifyDeleteResolutionBeforeCommitOrPush(testInstance *testing.T) {
+func TestSyncResolvesMarkerFreeModifyDeleteDeterministicallyWithoutLLM(testInstance *testing.T) {
 	testInstance.Helper()
 
 	const (
@@ -1267,24 +1266,18 @@ func TestSyncRejectsTruncatedMarkerFreeModifyDeleteResolutionBeforeCommitOrPush(
 	runGit(testInstance, upstreamPath, "push", "origin", "master")
 
 	require.NoError(testInstance, os.Remove(conflictedFilePath))
-	truncatedResolution := "remote heading\n"
-	responses := []string{
-		"docs: delete obsolete notes",
-		truncatedResolution,
-	}
 	var responseIndex atomic.Int64
 	llmServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 		if request.URL.Path != "/chat/completions" {
 			http.NotFound(responseWriter, request)
 			return
 		}
-		currentResponseIndex := int(responseIndex.Add(1) - 1)
-		if currentResponseIndex >= len(responses) {
+		if responseIndex.Add(1) != 1 {
 			http.Error(responseWriter, "unexpected LLM request", http.StatusBadRequest)
 			return
 		}
 		responseWriter.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprintf(responseWriter, `{"choices":[{"message":{"role":"assistant","content":%q}}]}`, responses[currentResponseIndex])
+		_, _ = fmt.Fprint(responseWriter, `{"choices":[{"message":{"role":"assistant","content":"docs: delete obsolete notes"}}]}`)
 	}))
 	testInstance.Cleanup(llmServer.Close)
 
@@ -1354,26 +1347,27 @@ operations:
 			repositoryPath,
 		},
 	)
-	require.Error(testInstance, runError)
-	require.Contains(testInstance, output, "does not preserve non-conflicting content")
-	require.Equal(testInstance, int64(len(responses)), responseIndex.Load())
+	require.NoError(testInstance, runError, output)
+	require.Contains(testInstance, output, "resolved marker-free conflict for "+conflictedFileName+" deterministically using current-stage deletion preservation")
+	require.Contains(testInstance, output, "merge conflict resolution completed")
+	require.NotContains(testInstance, output, "AI_MERGE_ROLLBACK")
+	require.NotContains(testInstance, output, "AI_MERGE_HANDOFF")
+	require.Equal(testInstance, int64(1), responseIndex.Load())
 
 	require.Equal(testInstance, "master", strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
-	require.Equal(testInstance, conflictedFileName, strings.TrimSpace(runGit(testInstance, repositoryPath, "diff", "--name-only", "--diff-filter=U")))
+	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
 	headWithParents := strings.Fields(runGit(testInstance, repositoryPath, "rev-list", "--parents", "-n", "1", "HEAD"))
-	require.Len(testInstance, headWithParents, 2)
-	require.Equal(testInstance, baseCommit, headWithParents[1])
+	require.Len(testInstance, headWithParents, 3)
+	runGit(testInstance, repositoryPath, "merge-base", "--is-ancestor", baseCommit, "HEAD")
 
-	conflictState := readTextFile(testInstance, conflictedFilePath)
-	require.Equal(testInstance, remoteContent, conflictState)
-	require.NotContains(testInstance, conflictState, "<<<<<<<")
-	require.Contains(testInstance, conflictState, stableTailLine)
-	require.NotEqual(testInstance, truncatedResolution, conflictState)
+	_, conflictStateError := os.Stat(conflictedFilePath)
+	require.True(testInstance, os.IsNotExist(conflictStateError))
 
 	gitLog := readTextFile(testInstance, gitLogPath)
 	require.Contains(testInstance, gitLog, "merge --no-edit origin/master")
-	require.NotContains(testInstance, gitLog, "commit --no-edit")
-	require.NotContains(testInstance, gitLog, "push origin master")
+	require.Contains(testInstance, gitLog, "commit --no-edit")
+	require.Contains(testInstance, gitLog, "push origin master")
+	require.NotContains(testInstance, gitLog, "merge --abort")
 	if githubLogBytes, githubLogReadError := os.ReadFile(githubLogPath); githubLogReadError == nil {
 		require.NotContains(testInstance, string(githubLogBytes), "pr create")
 	} else {

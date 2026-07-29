@@ -21,6 +21,8 @@
 - Updated the LLM Proxy Go client from v0.2.21 to v0.2.46, moved Gix's configured proxy work budget to the current per-request timeout header, and raised the Go module floor to 1.25.12 with the dependency graph required by that client.
 
 ### Bug Fixes 🐛
+- Replaced strict-sync's one-shot full-file AI merge path with a fidelity-first diff3 ladder: exact local reconstruction, authoritative no-choice/current-stage decisions, lossless issue/changelog and token candidates, and mandatory semantic LLM audit for every two-sided marker-bearing region.
+- Deferred strict-sync rollback until every deterministic and bounded semantic strategy is exhausted, while retaining immediate final recovery for caller cancellation or unrecoverable Git/filesystem failure and manual handoff only for a failed abort.
 - Required existing license-rollout drafts to match the inspected base, canonical one-commit history, exact changed paths, and rendered license blobs before apply can skip them.
 - Pinned every license-rollout clone to the exact default-branch commit whose root license blobs passed planning, preventing a later branch advance from changing the mutation base.
 - Preserved dirty tracked files whose paths also match `.gitignore`; sync now stages exact tracked paths instead of restoring and discarding their pending contents before branch validation.
@@ -28,7 +30,7 @@
 - Rejected fractional workflow LLM `timeout_seconds` before they can be truncated into shorter or invalid LLM Proxy request budgets.
 - Made `gix audit` fit its terminal table to the active width, using bounded field/value rows on narrow terminals and Unicode-aware ellipses for constrained cells.
 - Escaped literal delimiters in terminal audit-table cells and aligned Unicode names by their terminal display width.
-- Made strict-sync AI merge resolution visible and bounded: gix now reports conflict, resolution, validation, and recovery phases; applies `timeout_seconds` to the complete operation; and gives an exact manual handoff without pushing when a result is rejected, cancelled, or timed out.
+- Made strict-sync semantic resolution visible and bounded: every candidate and audit reports its region, strategy, attempt, validation result, and provider-order deadline before final recovery can run.
 - Pruned stale linked-worktree metadata before `gix sync` retries branch adoption, so a missing temporary worktree no longer causes a `chdir` failure.
 - Switched worktree inspection to NUL-delimited porcelain status so `gix sync` passes literal filenames containing spaces to Git instead of treating display quotes as path bytes.
 - Rejected explicit dirty base-branch sync before commit generation when the required remote base ref does not exist, preventing stranded local commits.
@@ -40,11 +42,14 @@
 - Rejected dirty auto-commit on known-merged branches before work could be stranded and directed the work through the stashed handoff path.
 - Rejected clean or stashed missing branches before child creation or pull-request publication because a correctly stacked child would have no review delta.
 - Fixed `gix sync <new-branch>` to create a missing target on top of the current branch before clustering dirty work, preventing checkout-overwrite failures and lost branch ancestry.
-- Rejected incomplete AI merge-conflict output before it can truncate a file, create a merge commit, push, or open a pull request, including marker-free modify/delete conflicts.
+- Rejected incomplete semantic merge candidates before they can truncate a file, create a merge commit, push, or open a pull request.
 - Made repository release targets self-contained, fail closed when any expected platform artifact is missing, anchor Pages deployment to the locally prepared release manifest, and publish consistently through canonical `origin`.
 - Kept the syncflow builder description as the canonical text shown by `gix sync --help`.
 
 ### Testing 🧪
+- Added public CLI coverage for large additive `.mprlab/ISSUES.md` and `CHANGELOG.md` conflicts, proving one region-scoped semantic audit per file, omission of large untouched tails from model requests, exact local/incoming entry preservation, merge commit creation, push, and a clean final worktree.
+- Added public CLI coverage proving a one-sided semantic candidate is rejected, repaired from exact replacement-intent feedback, explicitly audited, and committed without rollback.
+- Added public CLI coverage for a clean pull-request branch whose remote review base exhausts every semantic attempt, proving the target commit and contents are restored with no `MERGE_HEAD`, dirty status, push, or manual handoff.
 - Added licensing regressions for matching existing drafts plus wrong bases, noncanonical histories, unrelated or modified files, and rollout heads that move during validation.
 - Added a Git-backed licensing regression that advances a default branch after planning and proves the sparse clone and subsequent workflow fetch remain on the inspected commit.
 - Added public CLI and HTTP-boundary coverage for mandatory positive retention, complete pre-delete pagination, mixed tagged/untagged version ordering, malformed snapshots, and partial delete failures.
@@ -55,7 +60,7 @@
 - Added public CLI coverage for default table output, explicit CSV and HTML exports, and rejected audit report formats.
 - Added black-box coverage for configuration discovery, initialization prompts, process-only interpolation, ignored sibling `.env` files, literal credentials, missing placeholders, strict operation schemas, and LLM profile routing.
 - Added public CLI coverage for LLM connection priority, successful OpenAI-to-llm-proxy failover, stop-after-success behavior, obsolete schema rejection, and profile validation.
-- Added public CLI regressions for lossy and timed-out AI merge resolution, including phase output, heartbeat, timeout, no merge-resolution commit or push, and the manual recovery handoff.
+- Added public CLI regressions proving lossy and timed-out semantic candidates exhaust every bounded attempt before rollback, with phase output, heartbeat, no merge commit, and no push.
 - Added public CLI coverage for explicit `gix sync master` from a missing, Git-prunable linked worktree.
 - Added a public plain-`gix sync` regression proving deletion of `legacy/managing-director/IMD Logo.png` is committed and pushed with the literal path argument.
 - Added a black-box regression proving an explicit dirty `master` sync with no `origin/master` leaves local history and pending files unchanged without calling the LLM.
@@ -63,10 +68,12 @@
 - Added public CLI regressions for dirty unreviewed remote branches and dirty merged remote branches without stack metadata.
 - Added a public CLI regression proving a three-level parent stack remains intact, parent push/PR creation precedes child creation, clustered commits stay linear, a failed child PR creation retries against the persisted parent, and merged stacks hand off normally.
 - Added a black-box dirty-sync regression that verifies two top-level change clusters become two linear commits above the original branch before push and pull-request creation.
-- Added CLI regressions for isolated explicit-master rescue, local-only generated-name collisions, marker-bearing and marker-free merge-resolution truncation, and the assembled sync help output.
+- Added CLI regressions for isolated explicit-master rescue, local-only generated-name collisions, marker-bearing candidate rejection, deterministic marker-free deletion, and the assembled sync help output.
 - Added black-box release coverage for clean-checkout helpers, failed or missing platform outputs, replaced published manifests, and missing integrity prerequisites.
 
 ### Docs 📚
+- Documented the diff3 fidelity ladder, deterministic lossless candidate construction, mandatory semantic LLM review for two-sided content, replacement-intent validation, and bounded repair.
+- Documented rollback as final recovery after strategy exhaustion, cancellation, or unrecoverable local failure, with manual recovery reserved for a failed Git abort.
 - Documented the fail-closed validation contract for existing deterministic license-rollout drafts.
 - Documented the immutable inspected-commit boundary between license-rollout planning and mutation.
 - Documented the required `--keep 3` GHCR retention workflow and its tagged-version deletion scope.
@@ -74,12 +81,12 @@
 - Documented responsive audit-table behavior, the `COLUMNS` capture-width contract, and the full-value CSV/HTML export boundary.
 - Documented the audit table default and CSV/HTML export commands in the CLI, architecture, and site guides.
 - Documented the canonical `config.yml` discovery and interpolation contract plus the exact Meta Muse-first and OpenAI-first priority settings.
-- Documented strict-sync AI merge-resolution deadlines, progress, and manual recovery behavior.
+- Documented per-provider semantic-attempt budgets, progress, validation feedback, final rollback, and rollback-failure handoff behavior.
 - Documented explicit branch targets as binding dirty-commit destinations and distinguished explicit `master` from plain current-branch rescue.
 - Documented that unreviewed remote-backed branches accept dirty commits before the missing pull request is opened, while merged branches reject auto-commit.
 - Documented the canonical `master <- parent PR <- child PR` sync chain and the no-delta rejection for clean missing branches.
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
-- Documented validated AI conflict resolution and the repository-owned release workflow prerequisites.
+- Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
 ## [v1.1.14] - 2026-07-27
 
