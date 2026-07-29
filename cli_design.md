@@ -47,16 +47,16 @@ The following tables document each script. "Inputs" include both positional argu
 | Side effects | Alters Git history (creates/fast-forwards `master`, rebases branches, force-pushes); edits workflow files and commits/pushes changes; updates GitHub Pages default branch; retargets PRs; flips default branch via API; deletes `main` when safe. |
 | Outputs | Logs progress with `▶` prefix on stdout; warnings/errors to stderr; aborts with `ERROR:` prefix. |
 
-### 2.4 `remove_github_packages.sh`
+### 2.4 `gix packages delete`
 | Aspect | Details |
 | --- | --- |
-| Primary purpose | Delete untagged container image versions from GitHub Container Registry (GHCR) for a given owner/package. |
-| Inputs & flags | Configuration provided via environment variables or in-script defaults: `GITHUB_OWNER`, `PACKAGE_NAME`, `OWNER_TYPE` (`user` or `org`), `GITHUB_PACKAGES_TOKEN` (exported as `TOKEN`). |
-| Environment variables | As above; requires GitHub Personal Access Token with `read:packages`, `write:packages`, `delete:packages`. |
-| External dependencies | `curl`, `jq`. |
-| Network/API usage | GitHub REST API `GET` on package versions endpoint; `DELETE` for untagged versions. |
-| Side effects | Deletes GHCR image versions and increments local counter for reporting. |
-| Outputs | Logs deletions and final summary to stdout. API errors surface to stderr via `curl` exit behavior. |
+| Primary purpose | Preserve an explicit number of newest container image versions and delete every older version from GitHub Container Registry (GHCR) for a given owner/package. |
+| Inputs & flags | Required positive `--keep <count>`; optional `--package <name>` override; repository roots, API endpoint, and concrete credential come from the `packages delete` operation. |
+| Environment variables | Configuration placeholders may interpolate a GitHub token already present in the process environment. The resolved token requires package read and delete access. |
+| External dependencies | Git for repository discovery and GitHub metadata resolution. GHCR requests use the native HTTP client. |
+| Network/API usage | GitHub REST API `GET` on every package versions page, followed by `DELETE` for versions older than the retained set. |
+| Side effects | Deletes tagged and untagged GHCR image versions outside the retained set. |
+| Outputs | Logs retention progress and final total, retained, and deleted counts. API errors stop the affected repository with a non-zero result. |
 
 ## 3. Command Equivalence Plan
 The CLI (released as **`gix`**) uses Cobra for command/flag parsing. The root binary lives at `cmd/cli/main.go` and exposes the following hierarchy:
@@ -67,14 +67,14 @@ The CLI (released as **`gix`**) uses Cobra for command/flag parsing. The root bi
 - `gix repo-protocol-convert`
 - `gix repo-prs-purge`
 - `gix default <target-branch>`
-- `gix repo-packages-purge`
+- `gix packages delete --keep <count>`
 
 ### 3.1 Flag and Behavior Mapping
 The table below maps current script switches to Cobra equivalents and documents planned `gh` interactions.
 
 | Script behavior | Cobra command | Flags & arguments | `gh` usage strategy |
 | --- | --- | --- | --- |
-| Remove untagged GHCR packages | `gix packages delete` | `--package` optionally overrides the package name. The command resolves owner metadata from each repository and reads its GitHub API endpoint and interpolated credential from the `packages delete` operation in `config.yml`. | Use the native GHCR HTTP client with the concrete credential decoded at configuration load time. |
+| Retain newest GHCR versions | `gix packages delete` | Required positive `--keep` selects the newest version count; `--package` optionally overrides the package name. The command resolves owner metadata from each repository and reads its GitHub API endpoint and interpolated credential from the `packages delete` operation in `config.yml`. | Snapshot and validate all version pages through the native GHCR HTTP client, order versions by `created_at` and version ID, then delete every older tagged or untagged version. |
 
 ### 3.2 Shared command behavior
 - All `repo` subcommands support `--debug` to raise Zap logging level to `Debug`.
@@ -128,7 +128,7 @@ tests/
   integration/
     repo_audit_test.go   # Black-box CLI runs using fixture repos
     branchflip_test.go   # End-to-end branch migration tests
-    packages_test.go     # GHCR purge tests (mock server)
+    packages_test.go     # GHCR retention tests (mock server)
 ```
 
 Notes:
@@ -175,8 +175,8 @@ Integration tests live in `tests/integration` and execute the compiled CLI binar
 | Branch cleanup | Closed PR branch removal | Temp repo with local+remote branches; stubbed `gh pr list` output | Command deletes matching branches, leaves others. |
 | Branch flip | Workflow rewrite & Pages update | Fixture repo with workflows referencing `main`, GitHub Pages in legacy mode (mocked) | Workflows retargeted; API call made to update Pages; default branch switched; safety gates respected. |
 | Branch flip | Safety gate triggered | Repo with open PR targeting `main` (mocked) | Command exits gracefully, logs skip for main deletion. |
-| Packages purge |  | Mock GHCR API server returning tagged/untagged versions | Untagged IDs listed; no DELETE requests issued. |
-| Packages purge | Deletion | Same as above with `=false` | DELETE invoked for untagged IDs only; summary count matches. |
+| Packages retention | Missing or non-positive `--keep` | Mock GHCR API server | Command fails before any list or delete request. |
+| Packages retention | `--keep 3` with five mixed tagged/untagged versions | Mock GHCR API server returning complete version metadata | Three newest IDs are preserved and both older IDs are deleted regardless of tags. |
 
 Integration harness responsibilities:
 - Use temporary directories and `git init` to avoid mutating real repositories.
@@ -192,7 +192,7 @@ Integration harness responsibilities:
 Before implementation starts, please review and confirm:
 1. Module path `github.com/tyemirov/gix` and directory layout meet expectations.
 2. Command hierarchy and flag mapping provide the right developer experience.
-3. Continued reliance on `gh` via subprocess (except GHCR purge, which uses native HTTP) is acceptable.
+3. Continued reliance on `gh` via subprocess (except GHCR retention, which uses native HTTP) is acceptable.
 4. Logging (Zap), configuration precedence (Viper), and testing strategies align with requirements.
 5. Integration scenarios capture the necessary coverage; suggest additions if specific edge cases are missing.
 
