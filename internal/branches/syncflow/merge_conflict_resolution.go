@@ -26,6 +26,8 @@ const (
 	gitRmForceFlagConstant                      = "-f"
 	gitCommitNoEditFlagConstant                 = "--no-edit"
 	gitMergeAbortFlagConstant                   = "--abort"
+	gitRevParseQuietFlagConstant                = "--quiet"
+	gitMergeHeadReferenceConstant               = "MERGE_HEAD"
 	mergeConflictResolutionMaxTokens            = 8192
 	mergeConflictResolutionFailureTemplate      = "failed to resolve merge conflicts with AI: %w"
 	mergeConflictResolutionInspectFailure       = "inspect unmerged files: %w"
@@ -43,6 +45,7 @@ const (
 	mergeConflictResolutionPathTemplate         = "invalid conflicted path %q"
 	mergeConflictResolutionTimeoutTemplate      = "AI merge resolution timed out after %s"
 	mergeConflictResolutionCanceledMessage      = "AI merge resolution was canceled"
+	mergeConflictResolutionStateInspectTemplate = "inspect operation-owned merge state: %w"
 	mergeConflictResolutionRollbackTemplate     = "AI merge resolution stopped after: %s. The failed merge was aborted; branch %s was restored to its pre-merge state and gix did not push."
 	mergeConflictResolutionRollbackFailure      = "automatic merge rollback failed: %w"
 	mergeConflictResolutionHandoffTemplate      = "AI merge resolution stopped after: %s. Automatic merge rollback also failed: %s. gix did not push. Inspect git status before manual recovery."
@@ -107,7 +110,16 @@ func resolveMergeConflictOrError(ctx context.Context, environment *workflow.Envi
 		TargetBranch:    targetBranch,
 	})
 	if resolveErr != nil {
-		if conflictObserved {
+		rollbackRequired := conflictObserved
+		if !rollbackRequired {
+			var mergeStateErr error
+			rollbackRequired, mergeStateErr = service.operationOwnedMergeInProgress(ctx)
+			if mergeStateErr != nil {
+				service.reportMergeConflictHandoff(resolveErr, mergeStateErr, sourceReference, targetBranch)
+				resolveErr = errors.Join(resolveErr, mergeStateErr)
+			}
+		}
+		if rollbackRequired {
 			rollbackErr := service.rollbackFailedMerge(ctx, resolveErr, sourceReference, targetBranch)
 			if rollbackErr != nil {
 				resolveErr = errors.Join(resolveErr, rollbackErr)
@@ -119,6 +131,24 @@ func resolveMergeConflictOrError(ctx context.Context, environment *workflow.Envi
 		return fmt.Errorf("%s: %w", conflictMessage, mergeErr)
 	}
 	return nil
+}
+
+func (service mergeConflictResolutionService) operationOwnedMergeInProgress(ctx context.Context) (bool, error) {
+	inspectionContext, cancelInspection := context.WithTimeout(context.WithoutCancel(ctx), mergeConflictResolutionRollbackTimeout)
+	defer cancelInspection()
+
+	_, inspectionErr := service.executor.ExecuteGit(inspectionContext, execshell.CommandDetails{
+		Arguments:        []string{gitRevParseSubcommandConstant, gitVerifyFlagConstant, gitRevParseQuietFlagConstant, gitMergeHeadReferenceConstant},
+		WorkingDirectory: service.repositoryPath,
+	})
+	if inspectionErr == nil {
+		return true, nil
+	}
+	var commandFailure execshell.CommandFailedError
+	if errors.As(inspectionErr, &commandFailure) && commandFailure.Result.ExitCode == 1 {
+		return false, nil
+	}
+	return false, fmt.Errorf(mergeConflictResolutionStateInspectTemplate, inspectionErr)
 }
 
 func (service mergeConflictResolutionService) Resolve(ctx context.Context, options mergeConflictResolutionOptions) (bool, error) {

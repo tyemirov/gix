@@ -118,6 +118,8 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make format`, `make test`, `make lint`, `make ci`, and `git diff --check`.
   Resolution:
   Strict sync now aborts every merge whose observed conflicts cannot be resolved automatically. The abort runs inside a 30-second cleanup context detached from the canceled resolution context, then reports `AI_MERGE_ROLLBACK`; an abort failure retains both errors and reports `AI_MERGE_HANDOFF`. Public CLI coverage reproduces a clean pushed PR branch conflicting with its pushed review base and proves that a lossy response leaves the exact target commit and contents, no `MERGE_HEAD`, an empty status, and no push. Existing lossy, timeout, and modify/delete scenarios now prove the same rollback boundary, while focused tests cover cancellation-independent cleanup and rollback failure. `make format`, `make test`, `make lint`, `make ci`, and `git diff --check` passed on 2026-07-28.
+  Review follow-up:
+  The compiled CLI now converts Ctrl-C into caller-context cancellation. When cancellation prevents the first conflict query from observing paths, strict sync inspects the operation-owned `MERGE_HEAD` through the detached cleanup context and still aborts the merge. Public CLI coverage interrupts immediately after Git creates the conflicted index and proves exact branch/content restoration, no `MERGE_HEAD`, clean status, no LLM request, and no push.
 - [x] [B039] (P1) Pin license rollout clones to their inspected commits.
   Reported on 2026-07-28 during review of F011.
   Observation:

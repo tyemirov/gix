@@ -22,6 +22,7 @@
 
 ### Bug Fixes 🐛
 - Made rejected, timed-out, or canceled strict-sync merge resolution abort the operation-owned merge before returning, restoring the exact pre-merge branch/worktree state and reserving manual handoff for a failed Git rollback.
+- Converted CLI Ctrl-C into context cancellation and detached `MERGE_HEAD` inspection, so cancellation before conflict discovery still aborts the operation-owned merge.
 - Required existing license-rollout drafts to match the inspected base, canonical one-commit history, exact changed paths, and rendered license blobs before apply can skip them.
 - Pinned every license-rollout clone to the exact default-branch commit whose root license blobs passed planning, preventing a later branch advance from changing the mutation base.
 - Preserved dirty tracked files whose paths also match `.gitignore`; sync now stages exact tracked paths instead of restoring and discarding their pending contents before branch validation.
@@ -47,6 +48,7 @@
 
 ### Testing 🧪
 - Added public CLI coverage for a clean pull-request branch whose remote review base conflicts and receives a lossy AI resolution, proving the target commit and contents are restored with no `MERGE_HEAD`, dirty status, push, or manual handoff.
+- Added a compiled-CLI SIGINT regression that interrupts immediately after Git creates conflicts and verifies exact rollback before conflict inspection or LLM dispatch.
 - Added licensing regressions for matching existing drafts plus wrong bases, noncanonical histories, unrelated or modified files, and rollout heads that move during validation.
 - Added a Git-backed licensing regression that advances a default branch after planning and proves the sparse clone and subsequent workflow fetch remain on the inspected commit.
 - Added public CLI and HTTP-boundary coverage for mandatory positive retention, complete pre-delete pagination, mixed tagged/untagged version ordering, malformed snapshots, and partial delete failures.
