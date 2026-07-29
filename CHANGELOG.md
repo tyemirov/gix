@@ -21,6 +21,9 @@
 - Updated the LLM Proxy Go client from v0.2.21 to v0.2.46, moved Gix's configured proxy work budget to the current per-request timeout header, and raised the Go module floor to 1.25.12 with the dependency graph required by that client.
 
 ### Bug Fixes 🐛
+- Rejected operator-owned unmerged indexes before strict-sync snapshot mutation, including stash-apply conflicts that have no merge or sequencer marker.
+- Derived strict-sync Git publication from porcelain ref statuses, so an up-to-date push remains rollback-capable while an actual ref update, pull-request creation, or unprovable successful response enters the handoff boundary.
+- Limited rollback to journaled transaction-owned refs and adopted worktrees, using compare-and-swap ref restoration so unrelated concurrent branch advances survive.
 - Replaced the revert-only strict-sync guard with one exact per-worktree operation preflight for merge, revert, cherry-pick, rebase, apply-mailbox, bisect, and sequencer state; ordinary marker-like refs remain valid, while malformed administrative state fails closed before fetch or mutation.
 - Made rejected, timed-out, or canceled strict-sync merge resolution abort the operation-owned merge before returning, restoring the exact pre-merge branch/worktree state and reserving manual handoff for a failed Git rollback.
 - Converted CLI Ctrl-C into context cancellation and detached `MERGE_HEAD` inspection, so cancellation before conflict discovery still aborts the operation-owned merge.
@@ -52,6 +55,7 @@
 - Kept the syncflow builder description as the canonical text shown by `gix sync --help`.
 
 ### Testing 🧪
+- Extended the three declarative strict-sync integration tables with operator-owned stash-apply conflicts, rollback after an up-to-date push, and preservation of a concurrent unrelated sibling commit.
 - Added three declarative compiled-CLI integration tables covering operator-owned Git-operation preflight, pre-publication rollback versus post-publication handoff, and successful clean, dirty-commit, indexed-stash, and semantic stash-conflict finalization.
 - Added public compiled-CLI coverage for resolved but unfinished reverts in both the caller and an adoptable sibling worktree, proving sync performs no fetch, switch, index mutation, LLM request, commit, or push and preserves the exact transactions.
 - Added compiled-CLI coverage proving an ordinary branch named `REVERT_HEAD` does not impersonate sequencer state, plus focused preflight coverage for active, absent, unreadable, invalid, and non-canonical `REVERT_HEAD` files.
@@ -83,6 +87,7 @@
 - Added black-box release coverage for clean-checkout helpers, failed or missing platform outputs, replaced published manifests, and missing integrity prerequisites.
 
 ### Docs 📚
+- Documented unmerged-index preflight, actual-update publication, and transaction-owned compare-and-swap rollback semantics.
 - Documented exact per-worktree Git-operation ownership, the immutable strict-sync plan, complete local-state snapshots, the push publication boundary, and indexed stash finalization before success.
 - Documented the diff3 fidelity ladder, deterministic lossless candidate construction, mandatory semantic LLM review for two-sided content, replacement-intent validation, and bounded repair.
 - Documented rollback as final recovery after strategy exhaustion, cancellation, or unrecoverable local failure, with manual recovery reserved for a failed Git abort.
