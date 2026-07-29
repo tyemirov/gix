@@ -8,11 +8,11 @@ var packagesConfigurationRepositoryPathSanitizer = pathutils.NewRepositoryPathSa
 
 // Configuration aggregates settings for packages commands.
 type Configuration struct {
-	Purge PurgeConfiguration `mapstructure:"purge"`
+	Delete DeleteConfiguration `mapstructure:"delete"`
 }
 
-// PurgeConfiguration stores options for purging container versions.
-type PurgeConfiguration struct {
+// DeleteConfiguration stores options for deleting versions outside retention.
+type DeleteConfiguration struct {
 	PackageName     string   `mapstructure:"package"`
 	RepositoryRoots []string `mapstructure:"roots"`
 	BaseURL         string   `mapstructure:"base_url"`
@@ -22,19 +22,19 @@ type PurgeConfiguration struct {
 // DefaultConfiguration supplies baseline values for packages configuration.
 func DefaultConfiguration() Configuration {
 	return Configuration{
-		Purge: PurgeConfiguration{},
+		Delete: DeleteConfiguration{},
 	}
 }
 
 // Sanitize trims configured values and removes empty entries.
 func (configuration Configuration) Sanitize() Configuration {
 	sanitized := configuration
-	sanitized.Purge = configuration.Purge.Sanitize()
+	sanitized.Delete = configuration.Delete.Sanitize()
 	return sanitized
 }
 
-// Sanitize trims purge configuration values and removes empty entries.
-func (configuration PurgeConfiguration) Sanitize() PurgeConfiguration {
+// Sanitize trims delete configuration values and removes empty entries.
+func (configuration DeleteConfiguration) Sanitize() DeleteConfiguration {
 	sanitized := configuration
 	sanitized.RepositoryRoots = packagesConfigurationRepositoryPathSanitizer.Sanitize(configuration.RepositoryRoots)
 	return sanitized

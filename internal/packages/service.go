@@ -17,43 +17,44 @@ const (
 	packageOptionMissingErrorMessageConstant    = "package option must be provided"
 	ownerTypeOptionMissingErrorMessageConstant  = "owner type option must be provided"
 	credentialOptionMissingErrorMessageConstant = "packages credential must be provided"
-	purgeServiceStartMessageConstant            = "Executing repo-packages-purge operation"
-	purgeServiceSummaryMessageConstant          = "repo-packages-purge operation completed"
+	retentionServiceStartMessageConstant        = "Executing package retention operation"
+	retentionServiceSummaryMessageConstant      = "Package retention operation completed"
 	ownerLogFieldNameConstant                   = "owner"
 	packageLogFieldNameConstant                 = "package"
 	ownerTypeLogFieldNameConstant               = "owner_type"
 	deletedVersionsLogFieldNameConstant         = "deleted_versions"
-	untaggedVersionsLogFieldNameConstant        = "untagged_versions"
+	retainedVersionsLogFieldNameConstant        = "retained_versions"
 	totalVersionsLogFieldNameConstant           = "total_versions"
-	purgeExecutionErrorTemplateConstant         = "unable to purge package versions: %w"
+	retentionExecutionErrorTemplateConstant     = "unable to apply package retention: %w"
 )
 
-// PackageVersionAPI describes the GHCR operations used by the purge service.
+// PackageVersionAPI describes the GHCR operations used by the retention service.
 type PackageVersionAPI interface {
-	PurgeUntaggedVersions(executionContext context.Context, request ghcr.PurgeRequest) (ghcr.PurgeResult, error)
+	ApplyRetention(executionContext context.Context, request ghcr.RetentionRequest) (ghcr.RetentionResult, error)
 }
 
-// PurgeOptions represents validated inputs for package purging.
-type PurgeOptions struct {
+// RetentionOptions represents validated inputs for package retention.
+type RetentionOptions struct {
 	Owner       string
 	PackageName string
 	OwnerType   ghcr.OwnerType
 	Credential  string
+	Keep        ghcr.KeepCount
 }
 
-// PurgeExecutor defines the behavior required by the command layer.
-type PurgeExecutor interface {
-	Execute(executionContext context.Context, options PurgeOptions) (ghcr.PurgeResult, error)
+// RetentionExecutor defines the behavior required by the command layer.
+type RetentionExecutor interface {
+	Execute(executionContext context.Context, options RetentionOptions) (ghcr.RetentionResult, error)
 }
 
-// PurgeService orchestrates configuration validation, token resolution, and API invocation.
-type PurgeService struct {
+// RetentionService orchestrates validation and API invocation.
+type RetentionService struct {
 	logger         *zap.Logger
 	packageService PackageVersionAPI
 }
 
-// NewPurgeService constructs a purge service with required collaborators.
-func NewPurgeService(logger *zap.Logger, packageService PackageVersionAPI) (*PurgeService, error) {
+// NewRetentionService constructs a retention service with required collaborators.
+func NewRetentionService(logger *zap.Logger, packageService PackageVersionAPI) (*RetentionService, error) {
 	if packageService == nil {
 		return nil, errors.New(packageServiceMissingErrorMessageConstant)
 	}
@@ -63,58 +64,68 @@ func NewPurgeService(logger *zap.Logger, packageService PackageVersionAPI) (*Pur
 		resolvedLogger = zap.NewNop()
 	}
 
-	return &PurgeService{
+	return &RetentionService{
 		logger:         resolvedLogger,
 		packageService: packageService,
 	}, nil
 }
 
-// Execute performs the purge workflow for the provided options.
-func (service *PurgeService) Execute(executionContext context.Context, options PurgeOptions) (ghcr.PurgeResult, error) {
+// Execute performs the retention workflow for the provided options.
+func (service *RetentionService) Execute(executionContext context.Context, options RetentionOptions) (ghcr.RetentionResult, error) {
 	trimmedOwner := strings.TrimSpace(options.Owner)
 	if len(trimmedOwner) == 0 {
-		return ghcr.PurgeResult{}, errors.New(ownerOptionMissingErrorMessageConstant)
+		return ghcr.RetentionResult{}, errors.New(ownerOptionMissingErrorMessageConstant)
 	}
 
 	trimmedPackageName := strings.TrimSpace(options.PackageName)
 	if len(trimmedPackageName) == 0 {
-		return ghcr.PurgeResult{}, errors.New(packageOptionMissingErrorMessageConstant)
+		return ghcr.RetentionResult{}, errors.New(packageOptionMissingErrorMessageConstant)
 	}
 
 	if len(strings.TrimSpace(string(options.OwnerType))) == 0 {
-		return ghcr.PurgeResult{}, errors.New(ownerTypeOptionMissingErrorMessageConstant)
+		return ghcr.RetentionResult{}, errors.New(ownerTypeOptionMissingErrorMessageConstant)
+	}
+	ownerType, ownerTypeError := ghcr.ParseOwnerType(string(options.OwnerType))
+	if ownerTypeError != nil {
+		return ghcr.RetentionResult{}, ownerTypeError
 	}
 
 	trimmedCredential := strings.TrimSpace(options.Credential)
 	if len(trimmedCredential) == 0 {
-		return ghcr.PurgeResult{}, errors.New(credentialOptionMissingErrorMessageConstant)
+		return ghcr.RetentionResult{}, errors.New(credentialOptionMissingErrorMessageConstant)
+	}
+
+	keepCount, keepCountError := ghcr.NewKeepCount(options.Keep.Value())
+	if keepCountError != nil {
+		return ghcr.RetentionResult{}, keepCountError
 	}
 
 	service.logger.Info(
-		purgeServiceStartMessageConstant,
+		retentionServiceStartMessageConstant,
 		zap.String(ownerLogFieldNameConstant, trimmedOwner),
 		zap.String(packageLogFieldNameConstant, trimmedPackageName),
-		zap.String(ownerTypeLogFieldNameConstant, string(options.OwnerType)),
+		zap.String(ownerTypeLogFieldNameConstant, string(ownerType)),
 	)
 
-	purgeRequest := ghcr.PurgeRequest{
+	retentionRequest := ghcr.RetentionRequest{
 		Owner:       trimmedOwner,
 		PackageName: trimmedPackageName,
-		OwnerType:   options.OwnerType,
+		OwnerType:   ownerType,
 		Token:       trimmedCredential,
+		Keep:        keepCount,
 	}
 
-	purgeResult, purgeError := service.packageService.PurgeUntaggedVersions(executionContext, purgeRequest)
-	if purgeError != nil {
-		return ghcr.PurgeResult{}, fmt.Errorf(purgeExecutionErrorTemplateConstant, purgeError)
+	retentionResult, retentionError := service.packageService.ApplyRetention(executionContext, retentionRequest)
+	if retentionError != nil {
+		return retentionResult, fmt.Errorf(retentionExecutionErrorTemplateConstant, retentionError)
 	}
 
 	service.logger.Info(
-		purgeServiceSummaryMessageConstant,
-		zap.Int(totalVersionsLogFieldNameConstant, purgeResult.TotalVersions),
-		zap.Int(untaggedVersionsLogFieldNameConstant, purgeResult.UntaggedVersions),
-		zap.Int(deletedVersionsLogFieldNameConstant, purgeResult.DeletedVersions),
+		retentionServiceSummaryMessageConstant,
+		zap.Int(totalVersionsLogFieldNameConstant, retentionResult.TotalVersions),
+		zap.Int(retainedVersionsLogFieldNameConstant, retentionResult.RetainedVersions),
+		zap.Int(deletedVersionsLogFieldNameConstant, retentionResult.DeletedVersions),
 	)
 
-	return purgeResult, nil
+	return retentionResult, nil
 }

@@ -31,7 +31,7 @@ type RepositoryMetadata struct {
 	DefaultPackageName string
 }
 
-// RepositoryMetadataResolver resolves repository metadata used by the purge command.
+// RepositoryMetadataResolver resolves repository metadata used by package retention.
 type RepositoryMetadataResolver interface {
 	ResolveMetadata(executionContext context.Context, repositoryPath string) (RepositoryMetadata, error)
 }

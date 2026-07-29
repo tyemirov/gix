@@ -30,18 +30,18 @@ func (runner *recordingTaskRunner) Run(ctx context.Context, roots []string, defi
 }
 
 type stubServiceResolver struct {
-	executor packages.PurgeExecutor
+	executor packages.RetentionExecutor
 	err      error
 }
 
-func (resolver stubServiceResolver) Resolve(*zap.Logger) (packages.PurgeExecutor, error) {
+func (resolver stubServiceResolver) Resolve(*zap.Logger) (packages.RetentionExecutor, error) {
 	return resolver.executor, resolver.err
 }
 
-type stubPurgeExecutor struct{}
+type stubRetentionExecutor struct{}
 
-func (stubPurgeExecutor) Execute(context.Context, packages.PurgeOptions) (ghcr.PurgeResult, error) {
-	return ghcr.PurgeResult{}, nil
+func (stubRetentionExecutor) Execute(context.Context, packages.RetentionOptions) (ghcr.RetentionResult, error) {
+	return ghcr.RetentionResult{}, nil
 }
 
 type stubMetadataResolver struct{}
@@ -68,14 +68,14 @@ func (stubGitExecutor) ExecuteGitHubCLI(context.Context, execshell.CommandDetail
 
 func TestCommandBuildsTaskDefinition(t *testing.T) {
 	runner := &recordingTaskRunner{}
-	service := stubPurgeExecutor{}
+	service := stubRetentionExecutor{}
 	resolver := stubServiceResolver{executor: service}
 	metadataResolver := stubMetadataResolver{}
 
 	builder := packages.CommandBuilder{
 		LoggerProvider: func() *zap.Logger { return zap.NewNop() },
 		ConfigurationProvider: func() packages.Configuration {
-			return packages.Configuration{Purge: packages.PurgeConfiguration{
+			return packages.Configuration{Delete: packages.DeleteConfiguration{
 				RepositoryRoots: []string{"/src"},
 				BaseURL:         "https://api.github.test",
 				Credential:      "configured-token",
@@ -98,6 +98,7 @@ func TestCommandBuildsTaskDefinition(t *testing.T) {
 	command.SetOut(io.Discard)
 	command.SetErr(io.Discard)
 	command.SetContext(context.Background())
+	require.NoError(t, command.Flags().Set("keep", "3"))
 
 	err = command.Execute()
 	require.NoError(t, err)
@@ -106,9 +107,10 @@ func TestCommandBuildsTaskDefinition(t *testing.T) {
 	require.Len(t, runner.definitions, 1)
 	require.Len(t, runner.definitions[0].Actions, 1)
 	action := runner.definitions[0].Actions[0]
-	require.Equal(t, "repo.packages.purge", action.Type)
+	require.Equal(t, "repo.packages.retention", action.Type)
 	require.Equal(t, "", action.Options["package_override"])
 	require.Equal(t, "configured-token", action.Options["credential"])
+	require.Equal(t, 3, action.Options["keep_count"].(ghcr.KeepCount).Value())
 }
 
 func TestCommandErrorsOnUnexpectedArguments(t *testing.T) {
@@ -127,13 +129,13 @@ func TestCommandHonorsPackageFlag(t *testing.T) {
 	builder := packages.CommandBuilder{
 		LoggerProvider: func() *zap.Logger { return zap.NewNop() },
 		ConfigurationProvider: func() packages.Configuration {
-			return packages.Configuration{Purge: packages.PurgeConfiguration{
+			return packages.Configuration{Delete: packages.DeleteConfiguration{
 				RepositoryRoots: []string{"/workspace"},
 				BaseURL:         "https://api.github.test",
 				Credential:      "configured-token",
 			}}
 		},
-		ServiceResolver:            stubServiceResolver{executor: stubPurgeExecutor{}},
+		ServiceResolver:            stubServiceResolver{executor: stubRetentionExecutor{}},
 		RepositoryMetadataResolver: stubMetadataResolver{},
 		RepositoryDiscoverer:       stubDiscoverer{},
 		GitExecutor:                stubGitExecutor{},
@@ -147,6 +149,7 @@ func TestCommandHonorsPackageFlag(t *testing.T) {
 	require.NoError(t, err)
 	flagutils.BindRootFlags(command, flagutils.RootFlagValues{}, flagutils.RootFlagDefinition{Name: flagutils.DefaultRootFlagName, Usage: flagutils.DefaultRootFlagUsage, Enabled: true})
 	require.NoError(t, command.Flags().Set("package", "custom"))
+	require.NoError(t, command.Flags().Set("keep", "3"))
 	command.SetOut(io.Discard)
 	command.SetErr(io.Discard)
 

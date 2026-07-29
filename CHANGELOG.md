@@ -6,7 +6,7 @@
 - Archived resolved backlog records and refreshed the current documentation for strict configuration, release source-versus-release commit identities, and the local web audit workspace.
 
 ### Features ✨
-- _No changes._
+- Added explicit GHCR retention to `gix packages delete --keep <count>`, preserving the newest requested versions and deleting every older tagged or untagged version.
 
 ### Improvements ⚙️
 - Made `gix audit` terminal-readable by default with a table and added strict `--format csv` and `--format html` exports.
@@ -43,6 +43,7 @@
 - Kept the syncflow builder description as the canonical text shown by `gix sync --help`.
 
 ### Testing 🧪
+- Added public CLI and HTTP-boundary coverage for mandatory positive retention, complete pre-delete pagination, mixed tagged/untagged version ordering, malformed snapshots, and partial delete failures.
 - Added public CLI regressions for a dirty tracked example-env file on an otherwise empty local branch, tracked ignored modifications and deletions, and ignored-untracked exclusion.
 - Added public CLI coverage for adopting a sibling worktree containing a read-only ignored cache.
 - Added public CLI coverage for compact and truncated horizontal audit tables at constrained terminal widths.
@@ -62,6 +63,7 @@
 - Added black-box release coverage for clean-checkout helpers, failed or missing platform outputs, replaced published manifests, and missing integrity prerequisites.
 
 ### Docs 📚
+- Documented the required `--keep 3` GHCR retention workflow and its tagged-version deletion scope.
 - Documented that tracked status remains authoritative even when `.gitignore` matches the path and that ignore rules continue to govern only untracked staging.
 - Documented responsive audit-table behavior, the `COLUMNS` capture-width contract, and the full-value CSV/HTML export boundary.
 - Documented the audit table default and CSV/HTML export commands in the CLI, architecture, and site guides.
