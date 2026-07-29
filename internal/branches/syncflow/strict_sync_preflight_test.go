@@ -23,6 +23,8 @@ type strictSyncPreflightExecutor struct {
 	gitPathErr         error
 	verificationOutput string
 	verificationErr    error
+	unmergedOutput     string
+	unmergedErr        error
 }
 
 func (executor *strictSyncPreflightExecutor) ExecuteGit(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
@@ -38,9 +40,24 @@ func (executor *strictSyncPreflightExecutor) ExecuteGit(_ context.Context, detai
 		return execshell.ExecutionResult{StandardOutput: filepath.Join(details.WorkingDirectory, ".git", administrativeName) + "\n"}, nil
 	case strings.HasPrefix(command, "rev-parse --verify --quiet --end-of-options "):
 		return execshell.ExecutionResult{StandardOutput: executor.verificationOutput}, executor.verificationErr
+	case command == "diff --name-only --diff-filter=U":
+		return execshell.ExecutionResult{StandardOutput: executor.unmergedOutput}, executor.unmergedErr
 	default:
 		return execshell.ExecutionResult{}, fmt.Errorf("unexpected Git command: %s", command)
 	}
+}
+
+func TestStrictSyncUnmergedIndexPreflight(testInstance *testing.T) {
+	repositoryPath := testInstance.TempDir()
+	executor := &strictSyncPreflightExecutor{unmergedOutput: "README.md\n"}
+
+	preflightErr := ensureWorktreeHasNoOperatorOwnedUnmergedIndex(context.Background(), executor, repositoryPath)
+
+	require.Error(testInstance, preflightErr)
+	require.Contains(testInstance, preflightErr.Error(), "operator-owned Git unmerged index")
+	require.Contains(testInstance, preflightErr.Error(), strictSyncUnmergedIndexGuidance)
+	require.Equal(testInstance, []string{"diff", "--name-only", "--diff-filter=U"}, executor.commands[0].Arguments)
+	require.Equal(testInstance, repositoryPath, executor.commands[0].WorkingDirectory)
 }
 
 func (executor *strictSyncPreflightExecutor) ExecuteGitHubCLI(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {

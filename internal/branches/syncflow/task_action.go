@@ -1164,13 +1164,17 @@ func createPullRequest(ctx context.Context, environment *workflow.Environment, o
 	if environment.GitHubClient == nil {
 		return errors.New(strictSyncMissingGitHubClientMessage)
 	}
-	return environment.GitHubClient.CreatePullRequest(ctx, githubcli.PullRequestCreateOptions{
+	if createErr := environment.GitHubClient.CreatePullRequest(ctx, githubcli.PullRequestCreateOptions{
 		Repository: options.RepositoryIdentifier,
 		Title:      options.Title,
 		Body:       options.Body,
 		Base:       options.BaseBranch,
 		Head:       options.BranchName,
-	})
+	}); createErr != nil {
+		return createErr
+	}
+	markStrictSyncPublished(ctx)
+	return nil
 }
 
 func strictSyncRepositoryIdentifier(repository *workflow.RepositoryState) string {

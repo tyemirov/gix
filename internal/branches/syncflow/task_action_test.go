@@ -125,12 +125,14 @@ type strictSyncGitExecutor struct {
 	conflictStages    map[string]string
 	showOutputs       map[string]string
 	conflictsResolved bool
+	mergeAttempted    bool
 	configValues      map[string]string
 	blockedBranch     string
 	blockedWorktree   string
 	worktreeRemoved   bool
 	currentBranch     string
 	stashCommits      []string
+	pushOutput        string
 }
 
 const (
@@ -187,7 +189,7 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 		}
 	case "diff":
 		if commandHasArgument(details.Arguments, gitDiffNameOnlyFlagConstant) && commandHasArgument(details.Arguments, gitDiffFilterUnmergedFlagConstant) {
-			if executor.conflictsResolved {
+			if executor.conflictsResolved || !executor.mergeAttempted {
 				return execshell.ExecutionResult{}, nil
 			}
 			return execshell.ExecutionResult{StandardOutput: executor.unmergedPaths}, nil
@@ -236,7 +238,20 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 			output = "0\n"
 		}
 		return execshell.ExecutionResult{StandardOutput: output}, nil
+	case "for-each-ref":
+		currentBranch := executor.currentBranch
+		if currentBranch == "" {
+			currentBranch = defaultSyncBaseBranch
+		}
+		return execshell.ExecutionResult{StandardOutput: fmt.Sprintf("refs/heads/%s %s\n", currentBranch, strictSyncGitTestCommit)}, nil
+	case "push":
+		output := executor.pushOutput
+		if output == "" {
+			output = " \trefs/heads/feature/foo:refs/heads/feature/foo\t0000000..1111111\n"
+		}
+		return execshell.ExecutionResult{StandardOutput: output}, nil
 	case "merge":
+		executor.mergeAttempted = true
 		if executor.mergeError != nil {
 			return execshell.ExecutionResult{}, executor.mergeError
 		}
@@ -1948,14 +1963,14 @@ func TestHandleBranchSyncActionStrictPRBranchStopsBeforePushOnMergeConflict(t *t
 func recordedGitCommands(commands []execshell.CommandDetails) string {
 	lines := make([]string, 0, len(commands))
 	for _, command := range commands {
-		lines = append(lines, strings.Join(command.Arguments, " "))
+		lines = append(lines, strings.Join(normalizedRecordedGitArguments(command.Arguments), " "))
 	}
 	return strings.Join(lines, "\n")
 }
 
 func recordedGitCommandIndex(commands []execshell.CommandDetails, target string) int {
 	for commandIndex := range commands {
-		if strings.Join(commands[commandIndex].Arguments, " ") == target {
+		if strings.Join(normalizedRecordedGitArguments(commands[commandIndex].Arguments), " ") == target {
 			return commandIndex
 		}
 	}
@@ -1964,7 +1979,7 @@ func recordedGitCommandIndex(commands []execshell.CommandDetails, target string)
 
 func recordedGitCommandLastIndex(commands []execshell.CommandDetails, target string) int {
 	for commandIndex := len(commands) - 1; commandIndex >= 0; commandIndex-- {
-		if strings.Join(commands[commandIndex].Arguments, " ") == target {
+		if strings.Join(normalizedRecordedGitArguments(commands[commandIndex].Arguments), " ") == target {
 			return commandIndex
 		}
 	}
@@ -1974,11 +1989,25 @@ func recordedGitCommandLastIndex(commands []execshell.CommandDetails, target str
 func recordedGitCommandCount(commands []execshell.CommandDetails, target string) int {
 	count := 0
 	for commandIndex := range commands {
-		if strings.Join(commands[commandIndex].Arguments, " ") == target {
+		if strings.Join(normalizedRecordedGitArguments(commands[commandIndex].Arguments), " ") == target {
 			count++
 		}
 	}
 	return count
+}
+
+func normalizedRecordedGitArguments(arguments []string) []string {
+	if len(arguments) == 0 || arguments[0] != gitPushSubcommand {
+		return arguments
+	}
+	normalized := make([]string, 0, len(arguments))
+	for argumentIndex := range arguments {
+		if arguments[argumentIndex] == gitPorcelainFlagConstant {
+			continue
+		}
+		normalized = append(normalized, arguments[argumentIndex])
+	}
+	return normalized
 }
 
 func commandHasArgument(arguments []string, target string) bool {
@@ -1988,6 +2017,74 @@ func commandHasArgument(arguments []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func TestStrictSyncPushUpdatedRemote(testInstance *testing.T) {
+	testCases := []struct {
+		Name            string
+		Output          string
+		ExpectedUpdated bool
+		ExpectedError   string
+	}{
+		{
+			Name:            "FastForward",
+			Output:          "To origin\n \trefs/heads/feature:refs/heads/feature\t1111111..2222222\nDone\n",
+			ExpectedUpdated: true,
+		},
+		{
+			Name:            "NewBranch",
+			Output:          "*\trefs/heads/feature:refs/heads/feature\t[new branch]\n",
+			ExpectedUpdated: true,
+		},
+		{
+			Name:   "UpToDate",
+			Output: "=\trefs/heads/feature:refs/heads/feature\t[up to date]\n",
+		},
+		{
+			Name:          "MissingStatus",
+			Output:        "Everything up-to-date\n",
+			ExpectedError: strictSyncPushStatusMissingMessage,
+		},
+		{
+			Name:          "UnknownStatus",
+			Output:        "?\trefs/heads/feature:refs/heads/feature\tunknown\n",
+			ExpectedError: "unknown porcelain status",
+		},
+	}
+
+	for testCaseIndex := range testCases {
+		testCase := testCases[testCaseIndex]
+		testInstance.Run(testCase.Name, func(testInstance *testing.T) {
+			updated, parseErr := strictSyncPushUpdatedRemote(testCase.Output)
+			require.Equal(testInstance, testCase.ExpectedUpdated, updated)
+			if testCase.ExpectedError == "" {
+				require.NoError(testInstance, parseErr)
+			} else {
+				require.ErrorContains(testInstance, parseErr, testCase.ExpectedError)
+			}
+		})
+	}
+}
+
+func TestCreatePullRequestMarksStrictSyncPublished(testInstance *testing.T) {
+	githubExecutor := &strictSyncGitHubExecutor{}
+	githubClient, githubClientErr := githubcli.NewClient(githubExecutor)
+	require.NoError(testInstance, githubClientErr)
+	transaction := &strictSyncTransaction{}
+	ctx := withStrictSyncTransaction(context.Background(), transaction)
+	environment := &workflow.Environment{GitHubClient: githubClient}
+
+	createErr := createPullRequest(ctx, environment, strictPullRequestCreateOptions{
+		RepositoryIdentifier: "owner/repository",
+		BaseBranch:           defaultSyncBaseBranch,
+		BranchName:           "feature/review",
+		Title:                "Review",
+		Body:                 "Body",
+	})
+
+	require.NoError(testInstance, createErr)
+	require.True(testInstance, transaction.published)
+	require.Len(testInstance, githubExecutor.commands, 1)
 }
 
 func TestHandleBranchSyncActionConfiguresTrackingRemoteWhenMissing(t *testing.T) {

@@ -603,14 +603,38 @@ func pushSiblingBranch(ctx context.Context, executor shared.GitExecutor, worktre
 }
 
 func executeGit(ctx context.Context, executor shared.GitExecutor, workingDirectory string, arguments []string) error {
-	_, executionErr := executor.ExecuteGit(ctx, execshell.CommandDetails{
-		Arguments:        arguments,
+	mutationJournal, journalErr := prepareStrictSyncGitMutation(ctx, executor, workingDirectory, arguments)
+	if journalErr != nil {
+		return journalErr
+	}
+
+	executionArguments := arguments
+	transaction, strictSync := strictSyncTransactionFromContext(ctx)
+	strictSyncPush := strictSync && !transaction.restoring && len(arguments) > 0 && arguments[0] == gitPushSubcommand
+	if strictSyncPush && !strictSyncArgumentsContain(arguments, gitPorcelainFlagConstant) {
+		executionArguments = append(append([]string(nil), arguments...), gitPorcelainFlagConstant)
+	}
+	result, executionErr := executor.ExecuteGit(ctx, execshell.CommandDetails{
+		Arguments:        executionArguments,
 		WorkingDirectory: workingDirectory,
 	})
-	if executionErr == nil && len(arguments) > 0 && arguments[0] == gitPushSubcommand {
-		markStrictSyncPublished(ctx)
+	if executionErr != nil {
+		return executionErr
 	}
-	return executionErr
+	if mutationErr := completeStrictSyncGitMutation(ctx, executor, mutationJournal); mutationErr != nil {
+		return mutationErr
+	}
+	if strictSyncPush {
+		published, publicationErr := strictSyncPushUpdatedRemote(result.StandardOutput)
+		if publicationErr != nil {
+			markStrictSyncPublished(ctx)
+			return publicationErr
+		}
+		if published {
+			markStrictSyncPublished(ctx)
+		}
+	}
+	return nil
 }
 
 func sameFilesystemPath(firstPath string, secondPath string) bool {

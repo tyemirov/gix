@@ -31,6 +31,7 @@ const (
 	strictSyncOperationReadFailureTemplate  = "read %s: %w"
 	strictSyncOperationValidationTemplate   = "validate %s: %w"
 	strictSyncOperationNonCanonicalTemplate = "%s does not contain canonical commit identifiers"
+	strictSyncUnmergedIndexGuidance         = "resolve or restore it explicitly"
 )
 
 type strictSyncPlan struct {
@@ -111,6 +112,9 @@ func buildStrictSyncPlan(ctx context.Context, executor shared.GitExecutor, repos
 		if operationErr := ensureWorktreeHasNoOperatorOwnedGitOperation(ctx, executor, worktree.Path); operationErr != nil {
 			return strictSyncPlan{}, operationErr
 		}
+		if unmergedErr := ensureWorktreeHasNoOperatorOwnedUnmergedIndex(ctx, executor, worktree.Path); unmergedErr != nil {
+			return strictSyncPlan{}, unmergedErr
+		}
 	}
 
 	touchedWorktrees := []listedWorktree{startingWorktree}
@@ -159,6 +163,20 @@ func ensureWorktreeHasNoOperatorOwnedGitOperation(ctx context.Context, executor 
 		return fmt.Errorf(strictSyncOperationInProgressTemplate, operationKind, repositoryPath, guidance)
 	}
 	return nil
+}
+
+func ensureWorktreeHasNoOperatorOwnedUnmergedIndex(ctx context.Context, executor shared.GitExecutor, repositoryPath string) error {
+	result, inspectionErr := executor.ExecuteGit(ctx, execshell.CommandDetails{
+		Arguments:        []string{gitDiffSubcommandConstant, gitDiffNameOnlyFlagConstant, gitDiffFilterUnmergedFlagConstant},
+		WorkingDirectory: repositoryPath,
+	})
+	if inspectionErr != nil {
+		return fmt.Errorf(strictSyncOperationInspectionFailure, repositoryPath, inspectionErr)
+	}
+	if strings.TrimSpace(result.StandardOutput) == "" {
+		return nil
+	}
+	return fmt.Errorf(strictSyncOperationInProgressTemplate, "unmerged index", repositoryPath, strictSyncUnmergedIndexGuidance)
 }
 
 func inspectStrictSyncGitOperation(ctx context.Context, executor shared.GitExecutor, repositoryPath string, descriptor strictSyncGitOperationDescriptor) (bool, error) {
