@@ -25,6 +25,7 @@ const (
 	gitRmSubcommandConstant                     = "rm"
 	gitRmForceFlagConstant                      = "-f"
 	gitCommitNoEditFlagConstant                 = "--no-edit"
+	gitMergeAbortFlagConstant                   = "--abort"
 	mergeConflictResolutionMaxTokens            = 8192
 	mergeConflictResolutionFailureTemplate      = "failed to resolve merge conflicts with AI: %w"
 	mergeConflictResolutionInspectFailure       = "inspect unmerged files: %w"
@@ -42,12 +43,15 @@ const (
 	mergeConflictResolutionPathTemplate         = "invalid conflicted path %q"
 	mergeConflictResolutionTimeoutTemplate      = "AI merge resolution timed out after %s"
 	mergeConflictResolutionCanceledMessage      = "AI merge resolution was canceled"
-	mergeConflictResolutionHandoffTemplate      = "AI merge resolution stopped after: %s. gix did not push. Inspect git status, then resolve and commit the merge, or run git merge --abort."
+	mergeConflictResolutionRollbackTemplate     = "AI merge resolution stopped after: %s. The failed merge was aborted; branch %s was restored to its pre-merge state and gix did not push."
+	mergeConflictResolutionRollbackFailure      = "automatic merge rollback failed: %w"
+	mergeConflictResolutionHandoffTemplate      = "AI merge resolution stopped after: %s. Automatic merge rollback also failed: %s. gix did not push. Inspect git status before manual recovery."
 	mergeConflictResolutionDeleteDirective      = "GIX_MERGE_RESOLUTION_DELETE_FILE"
 	mergeConflictResolutionSystemPrompt         = "You are an expert merge engineer resolving Git conflicts. Return only the complete final file contents. If the correct resolution is to delete this path, return exactly " + mergeConflictResolutionDeleteDirective + ". Preserve every intentional local OURS change while integrating compatible remote THEIRS changes. Do not drop local changes to make the merge easier. Remove conflict markers. Do not include explanations, markdown fences, or quotes."
 	mergeConflictResolutionUserPrompt           = "Repository: %s\nPath: %s\nTarget branch: %s\nMerged reference: %s\n\nBASE common ancestor:\n%s\n\nOURS current branch with local work that must be preserved:\n%s\n\nTHEIRS incoming branch to integrate:\n%s\n\nReturn only the resolved final contents for this path, or " + mergeConflictResolutionDeleteDirective + " if the path should be deleted."
 	mergeConflictResolutionAbsentStage          = "(file absent in this stage)"
 	mergeConflictResolutionProgressMaximum      = 10 * time.Second
+	mergeConflictResolutionRollbackTimeout      = 30 * time.Second
 )
 
 var errMergeConflictResolutionDeadline = errors.New("AI merge resolution deadline exceeded")
@@ -104,7 +108,10 @@ func resolveMergeConflictOrError(ctx context.Context, environment *workflow.Envi
 	})
 	if resolveErr != nil {
 		if conflictObserved {
-			service.reportMergeConflictHandoff(resolveErr, sourceReference, targetBranch)
+			rollbackErr := service.rollbackFailedMerge(ctx, resolveErr, sourceReference, targetBranch)
+			if rollbackErr != nil {
+				resolveErr = errors.Join(resolveErr, rollbackErr)
+			}
 		}
 		return fmt.Errorf("%s: %w", conflictMessage, errors.Join(fmt.Errorf(mergeConflictResolutionFailureTemplate, resolveErr), mergeErr))
 	}
@@ -208,16 +215,45 @@ func (service mergeConflictResolutionService) reportConflictDetected(paths []str
 	)
 }
 
-func (service mergeConflictResolutionService) reportMergeConflictHandoff(resolutionErr error, sourceReference string, targetBranch string) {
+func (service mergeConflictResolutionService) rollbackFailedMerge(ctx context.Context, resolutionErr error, sourceReference string, targetBranch string) error {
+	rollbackContext, cancelRollback := context.WithTimeout(context.WithoutCancel(ctx), mergeConflictResolutionRollbackTimeout)
+	defer cancelRollback()
+
+	if abortErr := executeGit(rollbackContext, service.executor, service.repositoryPath, []string{gitMergeSubcommandConstant, gitMergeAbortFlagConstant}); abortErr != nil {
+		rollbackErr := fmt.Errorf(mergeConflictResolutionRollbackFailure, abortErr)
+		service.reportMergeConflictHandoff(resolutionErr, rollbackErr, sourceReference, targetBranch)
+		return rollbackErr
+	}
+	service.reportMergeConflictRollback(resolutionErr, sourceReference, targetBranch)
+	return nil
+}
+
+func (service mergeConflictResolutionService) reportMergeConflictRollback(resolutionErr error, sourceReference string, targetBranch string) {
 	reason := strings.ReplaceAll(strings.TrimSpace(resolutionErr.Error()), "\n", "; ")
 	service.report(
 		shared.EventLevelError,
-		shared.EventCodeAIMergeHandoff,
-		fmt.Sprintf(mergeConflictResolutionHandoffTemplate, reason),
+		shared.EventCodeAIMergeRollback,
+		fmt.Sprintf(mergeConflictResolutionRollbackTemplate, reason, strings.TrimSpace(targetBranch)),
 		map[string]string{
 			"source_reference": strings.TrimSpace(sourceReference),
 			"target_branch":    strings.TrimSpace(targetBranch),
 			"reason":           reason,
+		},
+	)
+}
+
+func (service mergeConflictResolutionService) reportMergeConflictHandoff(resolutionErr error, rollbackErr error, sourceReference string, targetBranch string) {
+	reason := strings.ReplaceAll(strings.TrimSpace(resolutionErr.Error()), "\n", "; ")
+	rollbackReason := strings.ReplaceAll(strings.TrimSpace(rollbackErr.Error()), "\n", "; ")
+	service.report(
+		shared.EventLevelError,
+		shared.EventCodeAIMergeHandoff,
+		fmt.Sprintf(mergeConflictResolutionHandoffTemplate, reason, rollbackReason),
+		map[string]string{
+			"source_reference": strings.TrimSpace(sourceReference),
+			"target_branch":    strings.TrimSpace(targetBranch),
+			"reason":           reason,
+			"rollback_reason":  rollbackReason,
 		},
 	)
 }
@@ -346,7 +382,7 @@ func (service mergeConflictResolutionService) resolveConflictFile(ctx context.Co
 	service.report(
 		shared.EventLevelInfo,
 		shared.EventCodeAIMergeResolution,
-		fmt.Sprintf("resolving %s with AI (deadline %s; Ctrl-C leaves the merge intact)", conflictFile.Path, timeout),
+		fmt.Sprintf("resolving %s with AI (deadline %s; failure or cancellation rolls back the merge)", conflictFile.Path, timeout),
 		map[string]string{
 			"path":      conflictFile.Path,
 			"timeout":   timeout.String(),
