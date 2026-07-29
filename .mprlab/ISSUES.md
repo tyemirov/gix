@@ -102,6 +102,23 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Resolution:
   Sync now derives tracked and untracked path sets directly from Git's status entries. Exact tracked paths use force staging so matching ignore rules cannot block their modifications, deletions, renames, or staged additions; untracked paths retain normal ignore-respecting staging. The cached-ignore inspection and tracked-path restore code were removed. Public CLI coverage reproduces the reported empty local branch with dirty `configs/.env.hecateapi.example`, verifies its contents are committed and pushed into a new pull request, and retains ignored-untracked exclusion coverage. `make format`, `make test`, `make lint`, and `make ci` passed on 2026-07-27.
 
+- [x] [B038] (P0) Roll back rejected sync merges before returning control.
+  Reported on 2026-07-28 after a clean `gix sync tyemirov/bugfix/B184-catalog-tile-final-font-fit` attempted to merge its open pull request base, rejected a lossy AI resolution, and left the PoodleScanner worktree with two unmerged paths and the base branch changes staged.
+  Observation:
+  Strict sync intentionally leaves a merge active when automatic conflict resolution is rejected, canceled, or times out. A command that began from a clean, remote-backed branch can therefore fail while transferring its operation-owned in-progress Git transaction and a dirty index to the operator.
+  Requirements:
+  - Treat a merge started by strict sync as operation-owned until it is committed or rolled back.
+  - When automatic resolution fails after observing merge conflicts, run the canonical Git merge abort with a bounded cleanup context that remains usable after cancellation.
+  - On successful rollback, leave the selected branch at its exact pre-merge commit, restore the pre-merge worktree state, report the rollback truthfully, and never push.
+  - If rollback itself fails, preserve the exact failure and emit a manual handoff that distinguishes the resolution failure from the rollback failure.
+  - Keep the strict lossy-resolution rejection and PR-base synchronization contracts; do not add a compatibility path or silently accept model output.
+  Validation:
+  - Add public CLI coverage for a clean remote-backed pull-request branch whose remote review base conflicts and whose AI resolution is lossy; the command must fail with a rollback event, retain the target commit and contents, have no `MERGE_HEAD` or dirty status, and perform no push.
+  - Cover rollback under a canceled caller context and rollback-failure handoff through focused guardrail tests.
+  - Run `make format`, `make test`, `make lint`, `make ci`, and `git diff --check`.
+  Resolution:
+  Strict sync now aborts every merge whose observed conflicts cannot be resolved automatically. The abort runs inside a 30-second cleanup context detached from the canceled resolution context, then reports `AI_MERGE_ROLLBACK`; an abort failure retains both errors and reports `AI_MERGE_HANDOFF`. Public CLI coverage reproduces a clean pushed PR branch conflicting with its pushed review base and proves that a lossy response leaves the exact target commit and contents, no `MERGE_HEAD`, an empty status, and no push. Existing lossy, timeout, and modify/delete scenarios now prove the same rollback boundary, while focused tests cover cancellation-independent cleanup and rollback failure. `make format`, `make test`, `make lint`, `make ci`, and `git diff --check` passed on 2026-07-28.
+
 ## Maintenance
 
 - [ ] [M001R] (P2) Backlog hygiene and archive.
