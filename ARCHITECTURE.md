@@ -57,6 +57,7 @@ The Cobra application (split across `cmd/cli/application_bootstrap.go`, `cmd/cli
 - `cmd/cli/changelog`, `cmd/cli/commit`, and `cmd/cli/workflow` expose focused entrypoints for changelog generation, AI-assisted commit messaging, and workflow execution.
 - `cmd/cli/default_configuration.go` houses the embedded default YAML used by `gix init`.
 - `cmd/cli/workflow/presets` embeds reusable workflows (for example, license distribution and namespace rewrite) so direct commands and the `workflow` command share identical task graphs.
+- `internal/licenses` owns the canonical embedded license bundles. The reviewed fleet boundary lives in `configs/licensing/fleet.json`, while `scripts/licensing/license_rollout.py` verifies live GitHub drift and operates only on isolated sparse clones before `configs/license-rollout.yaml` creates draft pull requests.
 
 All commands accept shared flags for log level, log format, previews, repository roots, and confirmation prompts. Validation occurs in Cobra `PreRunE` functions, aligning with the confident-programming rules in `.mprlab/POLICY.md`.
 
