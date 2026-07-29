@@ -8,7 +8,9 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
+	"time"
 
 	"go.uber.org/zap"
 )
@@ -30,10 +32,10 @@ const (
 	unexpectedStatusCodeWithBodyTemplateConstant = "unexpected status code %d for %s %s: %s"
 	responseDecodeErrorTemplateConstant          = "unable to decode package versions: %w"
 	deletionFailureTemplateConstant              = "failed to delete version %d: %s"
-	purgeStartMessageConstant                    = "Starting GHCR untagged version purge"
-	purgePageMessageConstant                     = "Fetched GHCR package versions page"
-	purgeDeleteMessageConstant                   = "Deleting untagged GHCR package version"
-	purgeCompleteMessageConstant                 = "Completed GHCR untagged version purge"
+	retentionStartMessageConstant                = "Starting GHCR package version retention"
+	retentionPageMessageConstant                 = "Fetched GHCR package versions page"
+	retentionDeleteMessageConstant               = "Deleting GHCR package version outside retention"
+	retentionCompleteMessageConstant             = "Completed GHCR package version retention"
 	ownerLogFieldNameConstant                    = "owner"
 	packageLogFieldNameConstant                  = "package"
 	ownerTypeLogFieldNameConstant                = "owner_type"
@@ -41,12 +43,14 @@ const (
 	pageSizeLogFieldNameConstant                 = "page_size"
 	versionIdentifierLogFieldNameConstant        = "version_id"
 	totalVersionsLogFieldNameConstant            = "total_versions"
-	untaggedVersionsLogFieldNameConstant         = "untagged_versions"
+	retainedVersionsLogFieldNameConstant         = "retained_versions"
 	deletedVersionsLogFieldNameConstant          = "deleted_versions"
 	tokenMissingErrorMessageConstant             = "authentication token must be provided"
 	ownerMissingErrorMessageConstant             = "owner must be provided"
 	packageMissingErrorMessageConstant           = "package name must be provided"
-	ownerTypeMissingErrorMessageConstant         = "owner type must be provided"
+	versionIdentifierInvalidErrorConstant        = "package version id must be greater than zero"
+	versionCreatedAtMissingTemplateConstant      = "package version %d must include created_at"
+	versionIdentifierDuplicateTemplateConstant   = "package version id %d appears more than once"
 )
 
 var deleteSuccessStatusCodes = map[int]struct{}{
@@ -65,18 +69,19 @@ type ServiceConfiguration struct {
 	PageSize int
 }
 
-// PurgeRequest captures the information required to delete untagged versions.
-type PurgeRequest struct {
+// RetentionRequest captures the information required to apply package retention.
+type RetentionRequest struct {
 	Owner       string
 	PackageName string
 	OwnerType   OwnerType
 	Token       string
+	Keep        KeepCount
 }
 
-// PurgeResult contains summary statistics from a purge operation.
-type PurgeResult struct {
+// RetentionResult contains summary statistics from a retention operation.
+type RetentionResult struct {
 	TotalVersions    int
-	UntaggedVersions int
+	RetainedVersions int
 	DeletedVersions  int
 }
 
@@ -118,94 +123,116 @@ func NewPackageVersionService(logger *zap.Logger, httpClient HTTPClient, configu
 	}, nil
 }
 
-// PurgeUntaggedVersions removes untagged container versions and returns summary counts.
-func (service *PackageVersionService) PurgeUntaggedVersions(executionContext context.Context, request PurgeRequest) (PurgeResult, error) {
+// ApplyRetention preserves the newest requested package versions and deletes the rest.
+func (service *PackageVersionService) ApplyRetention(executionContext context.Context, request RetentionRequest) (RetentionResult, error) {
 	trimmedToken := strings.TrimSpace(request.Token)
 	if len(trimmedToken) == 0 {
-		return PurgeResult{}, errors.New(tokenMissingErrorMessageConstant)
+		return RetentionResult{}, errors.New(tokenMissingErrorMessageConstant)
 	}
 	trimmedOwner := strings.TrimSpace(request.Owner)
 	if len(trimmedOwner) == 0 {
-		return PurgeResult{}, errors.New(ownerMissingErrorMessageConstant)
+		return RetentionResult{}, errors.New(ownerMissingErrorMessageConstant)
 	}
 	trimmedPackageName := strings.TrimSpace(request.PackageName)
 	if len(trimmedPackageName) == 0 {
-		return PurgeResult{}, errors.New(packageMissingErrorMessageConstant)
+		return RetentionResult{}, errors.New(packageMissingErrorMessageConstant)
 	}
-	if len(strings.TrimSpace(string(request.OwnerType))) == 0 {
-		return PurgeResult{}, errors.New(ownerTypeMissingErrorMessageConstant)
+	ownerType, ownerTypeError := ParseOwnerType(string(request.OwnerType))
+	if ownerTypeError != nil {
+		return RetentionResult{}, ownerTypeError
+	}
+	keepCount, keepCountError := NewKeepCount(request.Keep.Value())
+	if keepCountError != nil {
+		return RetentionResult{}, keepCountError
 	}
 
 	request.Token = trimmedToken
 	request.Owner = trimmedOwner
 	request.PackageName = trimmedPackageName
+	request.OwnerType = ownerType
+	request.Keep = keepCount
 
 	service.logger.Info(
-		purgeStartMessageConstant,
+		retentionStartMessageConstant,
 		zap.String(ownerLogFieldNameConstant, trimmedOwner),
 		zap.String(packageLogFieldNameConstant, trimmedPackageName),
 		zap.String(ownerTypeLogFieldNameConstant, string(request.OwnerType)),
 		zap.Int(pageSizeLogFieldNameConstant, service.pageSize),
 	)
 
-	result := PurgeResult{}
-	pageNumber := 1
-	for {
-		versions, fetchError := service.fetchPage(executionContext, request, pageNumber)
-		if fetchError != nil {
-			return result, fetchError
-		}
+	versions, fetchError := service.fetchAllVersions(executionContext, request)
+	if fetchError != nil {
+		return RetentionResult{}, fetchError
+	}
+	if validationError := validatePackageVersions(versions); validationError != nil {
+		return RetentionResult{}, validationError
+	}
 
-		versionCount := len(versions)
-		if versionCount == 0 {
-			break
+	sort.Slice(versions, func(leftIndex int, rightIndex int) bool {
+		leftVersion := versions[leftIndex]
+		rightVersion := versions[rightIndex]
+		if leftVersion.CreatedAt.Equal(rightVersion.CreatedAt) {
+			return leftVersion.ID > rightVersion.ID
 		}
+		return leftVersion.CreatedAt.After(rightVersion.CreatedAt)
+	})
 
-		service.logger.Debug(
-			purgePageMessageConstant,
-			zap.String(ownerLogFieldNameConstant, trimmedOwner),
-			zap.String(packageLogFieldNameConstant, trimmedPackageName),
-			zap.Int(pageLogFieldNameConstant, pageNumber),
-			zap.Int(totalVersionsLogFieldNameConstant, versionCount),
+	retainedVersions := min(keepCount.Value(), len(versions))
+	result := RetentionResult{
+		TotalVersions:    len(versions),
+		RetainedVersions: retainedVersions,
+	}
+
+	for versionIndex := len(versions) - 1; versionIndex >= retainedVersions; versionIndex-- {
+		version := versions[versionIndex]
+		service.logger.Info(
+			retentionDeleteMessageConstant,
+			zap.Int64(versionIdentifierLogFieldNameConstant, version.ID),
 		)
 
-		result.TotalVersions += versionCount
-
-		for versionIndex := range versions {
-			version := versions[versionIndex]
-			if version.HasTags() {
-				continue
-			}
-
-			result.UntaggedVersions++
-			service.logger.Info(
-				purgeDeleteMessageConstant,
-				zap.Int64(versionIdentifierLogFieldNameConstant, version.ID),
-			)
-
-			deleteError := service.deleteVersion(executionContext, request, version.ID)
-			if deleteError != nil {
-				return result, deleteError
-			}
-			result.DeletedVersions++
+		deleteError := service.deleteVersion(executionContext, request, version.ID)
+		if deleteError != nil {
+			return result, deleteError
 		}
-
-		pageNumber++
+		result.DeletedVersions++
 	}
 
 	service.logger.Info(
-		purgeCompleteMessageConstant,
+		retentionCompleteMessageConstant,
 		zap.String(ownerLogFieldNameConstant, trimmedOwner),
 		zap.String(packageLogFieldNameConstant, trimmedPackageName),
 		zap.Int(totalVersionsLogFieldNameConstant, result.TotalVersions),
-		zap.Int(untaggedVersionsLogFieldNameConstant, result.UntaggedVersions),
+		zap.Int(retainedVersionsLogFieldNameConstant, result.RetainedVersions),
 		zap.Int(deletedVersionsLogFieldNameConstant, result.DeletedVersions),
 	)
 
 	return result, nil
 }
 
-func (service *PackageVersionService) fetchPage(executionContext context.Context, request PurgeRequest, pageNumber int) ([]packageVersion, error) {
+func (service *PackageVersionService) fetchAllVersions(executionContext context.Context, request RetentionRequest) ([]packageVersion, error) {
+	allVersions := make([]packageVersion, 0)
+	for pageNumber := 1; ; pageNumber++ {
+		versions, fetchError := service.fetchPage(executionContext, request, pageNumber)
+		if fetchError != nil {
+			return nil, fetchError
+		}
+
+		versionCount := len(versions)
+		service.logger.Debug(
+			retentionPageMessageConstant,
+			zap.String(ownerLogFieldNameConstant, request.Owner),
+			zap.String(packageLogFieldNameConstant, request.PackageName),
+			zap.Int(pageLogFieldNameConstant, pageNumber),
+			zap.Int(totalVersionsLogFieldNameConstant, versionCount),
+		)
+		if versionCount == 0 {
+			return allVersions, nil
+		}
+		allVersions = append(allVersions, versions...)
+	}
+}
+
+func (service *PackageVersionService) fetchPage(executionContext context.Context, request RetentionRequest, pageNumber int) ([]packageVersion, error) {
 	versionsURL, urlBuildError := service.buildVersionsURL(request.OwnerType, request.Owner, request.PackageName, pageNumber)
 	if urlBuildError != nil {
 		return nil, urlBuildError
@@ -245,7 +272,7 @@ func (service *PackageVersionService) fetchPage(executionContext context.Context
 	return versions, nil
 }
 
-func (service *PackageVersionService) deleteVersion(executionContext context.Context, request PurgeRequest, versionID int64) error {
+func (service *PackageVersionService) deleteVersion(executionContext context.Context, request RetentionRequest, versionID int64) error {
 	deleteURL, urlBuildError := service.buildVersionURL(request.OwnerType, request.Owner, request.PackageName, versionID)
 	if urlBuildError != nil {
 		return urlBuildError
@@ -331,18 +358,25 @@ func (service *PackageVersionService) buildVersionURL(ownerType OwnerType, owner
 }
 
 type packageVersion struct {
-	ID       int64                  `json:"id"`
-	Metadata packageVersionMetadata `json:"metadata"`
+	ID        int64     `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
-type packageVersionMetadata struct {
-	Container packageVersionContainerMetadata `json:"container"`
-}
+func validatePackageVersions(versions []packageVersion) error {
+	identifiers := make(map[int64]struct{}, len(versions))
+	for versionIndex := range versions {
+		version := versions[versionIndex]
+		if version.ID <= 0 {
+			return errors.New(versionIdentifierInvalidErrorConstant)
+		}
+		if version.CreatedAt.IsZero() {
+			return fmt.Errorf(versionCreatedAtMissingTemplateConstant, version.ID)
+		}
+		if _, duplicate := identifiers[version.ID]; duplicate {
+			return fmt.Errorf(versionIdentifierDuplicateTemplateConstant, version.ID)
+		}
+		identifiers[version.ID] = struct{}{}
+	}
 
-type packageVersionContainerMetadata struct {
-	Tags []string `json:"tags"`
-}
-
-func (version packageVersion) HasTags() bool {
-	return len(version.Metadata.Container.Tags) > 0
+	return nil
 }

@@ -600,7 +600,7 @@ func TestApplicationHierarchicalCommandsLoadExpectedOperations(t *testing.T) {
 
 	repoPackagesCommand, _, packagesError := rootCommand.Find([]string{"packages", "delete"})
 	require.NoError(t, packagesError)
-	require.Equal(t, []string{packagesPurgeOperationNameConstant}, application.operationsRequiredForCommand(repoPackagesCommand))
+	require.Equal(t, []string{packagesDeleteOperationNameConstant}, application.operationsRequiredForCommand(repoPackagesCommand))
 
 	branchDefaultCommand, _, branchDefaultError := rootCommand.Find([]string{defaultCommandNameConstant})
 	require.NoError(t, branchDefaultError)

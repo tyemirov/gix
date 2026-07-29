@@ -95,10 +95,10 @@ Delete local and remote branches whose pull requests are already closed.
 ### Clear out stale GHCR images
 
 ```shell
-gix packages delete --roots ~/Development/containers --yes
+gix packages delete --keep 3 --roots ~/Development/containers --yes
 ```
 
-Remove untagged GitHub Container Registry versions in one sweep.
+Keep the three newest GitHub Container Registry versions for each discovered package and delete every older version, whether tagged or untagged.
 
 ### Inspect repositories or export an audit report
 
@@ -600,8 +600,8 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
  - Converts remote protocols in bulk.
 - `gix prs delete [--limit <N>] [--remote <name>] [--roots <dir>...] [-y]` (alias `purge`)
  - Deletes branches whose pull requests are closed. Flags: `--limit`, `--remote`.
-- `gix packages delete [--package <name>] [--roots <dir>...] [-y]` (alias `prune`)
- - Removes untagged GHCR versions. Flag: `--package` for the container name.
+- `gix packages delete --keep <count> [--package <name>] [--roots <dir>...] [-y]` (alias `prune`)
+ - Preserves the newest positive `--keep` count by `created_at` and deletes every older tagged or untagged GHCR version. Equal timestamps are ordered by version ID, newest first. Flag: `--package` optionally overrides the container name.
 - `gix files replace --find <string> [--replace <string>] [--pattern <glob>...] [--command "<shell>"] [--require-clean] [--branch <name>] [--require-path <rel>...] [--roots <dir>...] [-y]` (alias `sub`)
  - Performs text substitutions across matched files with optional safeguards.
 - `gix files add --template <path> [--content <text>] [--mode overwrite|skip-if-exists|append-if-missing] [--branch <template>] [--remote <name>] [--commit-message <text>] [--roots <dir>...] [-y]` (alias `seed`)
@@ -632,7 +632,7 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
 - Working-directory config files, `.yaml` aliases, `GIX_*` overrides, embedded runtime defaults, and layered configuration merging are not supported.
 - `${NAME}` placeholders in YAML values are expanded only from the process environment inherited when gix starts. Substituted text remains literal scalar content, including quotes, backslashes, newlines, colons, and hash characters. Gix never discovers or loads `.env` files; users of dotenv tooling must load those values into the process environment before launching gix.
 - Literal values in `config.yml`, including literal credentials, are used as written.
-- `github.credential` supplies the concrete token injected into GitHub CLI calls. The `packages delete` operation similarly owns its concrete `base_url` and `credential`; neither integration performs a later environment lookup.
+- `github.credential` supplies the concrete token injected into GitHub CLI calls. The `packages delete` operation similarly owns its concrete `base_url` and `credential`; neither integration performs a later environment lookup. Retention is intentionally invocation-owned: every `packages delete` call must provide a positive `--keep` value.
 - The `openai` and `llm_proxy` connections store their own routing fields, positive unique `priority`, concrete `base_url`, and interpolated `credential` values in `config.yml`. Lower priority numbers run first; failed requests continue to the next credentialed connection.
 - A connection with an empty interpolated credential is inactive. At least one connection credential is required.
 - The config controls shared behavior such as `log_level`, `log_format`, `assume_yes`, and `require_clean`.

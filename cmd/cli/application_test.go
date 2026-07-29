@@ -595,7 +595,7 @@ func TestCanonicalConfigurationTemplateProvidesCompleteCommandConfigurations(tes
 			assertion: func(assertionTarget testing.TB, options map[string]any) {
 				assertionTarget.Helper()
 
-				var configuration packages.PurgeConfiguration
+				var configuration packages.DeleteConfiguration
 				decodeOperationOptions(assertionTarget, options, &configuration)
 				sanitized := configuration.Sanitize()
 

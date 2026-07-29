@@ -409,3 +409,22 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make format`, `make test`, `make lint`, `make ci`, and `git diff --check`.
   Resolution:
   Gix now owns exact PolyForm Noncommercial 1.0.0 and current MPR Lab proprietary bundles, a forward-only `license_template` contract, the frozen 103-repository inventory, six explicit legal holds, isolated sparse-clone execution, deterministic draft-PR recovery checks, and the single `make license-rollout-apply` mutation boundary. The live read-only plan verified 97 eligible repositories and six holds; the remote preflight found no existing draft PRs or orphan rollout branches. An isolated rehearsal rendered the official PolyForm file byte-for-byte and committed the complete three-file bundle without pushing. `make format`, `make test`, `make lint`, `make ci`, `make license-rollout-plan`, and `git diff --check` passed on 2026-07-28. No target repository branch or pull request was created.
+
+- [x] [F012] (P1) Retain an explicit number of recent GHCR package versions.
+  Requested on 2026-07-28.
+  Goal:
+  Make `gix packages delete --keep 3` retain the three newest GitHub Container Registry package versions for each repository in scope and delete every older version.
+  Requirements:
+  - Require an explicit positive `--keep <count>` value before listing or deleting package versions.
+  - Define newest by GitHub's `created_at` package-version timestamp, using the version identifier as a deterministic tie-breaker.
+  - Snapshot and validate every paginated package version before the first delete so deletion cannot shift later pages or partially apply after malformed list data.
+  - Apply retention to both tagged and untagged versions; remove the obsolete untagged-only purge contract instead of retaining a second mode.
+  - Preserve repository discovery, GitHub owner resolution, optional `--package` override, configured API endpoint, and configured credential ownership.
+  Deliverables:
+  - Public CLI coverage proving `--keep` is mandatory and positive, and that tagged and untagged versions older than the retained set are deleted.
+  - GHCR HTTP-boundary coverage for pagination, timestamp ordering, deterministic ties, no-op retention, and malformed version data.
+  - Updated current configuration, command help, README, architecture, and changelog contracts.
+  Validation:
+  - Run `make format`, `make test`, `make lint`, `make ci`, and `git diff --check`.
+  Resolution:
+  `gix packages delete` now requires a positive invocation-owned `--keep` count, snapshots and validates all GHCR version pages, orders versions by `created_at` and descending version ID, preserves the newest requested count, and deletes all older tagged or untagged versions oldest-first. Public CLI and HTTP-boundary coverage verifies `--keep 3`, invalid counts, pagination, deterministic ties, no-op retention, malformed snapshots, and partial failures. README, architecture, current configuration, command help, and changelog contracts now describe the retention scope. `make format`, `make lint`, `make test`, `make ci`, and `git diff --check` passed on 2026-07-28.

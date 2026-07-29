@@ -53,9 +53,9 @@ func TestConfigurationSanitizeExpandsHomeDirectories(testInstance *testing.T) {
 
 	for _, testCase := range testCases {
 		testInstance.Run(testCase.name, func(subTest *testing.T) {
-			configuration := packages.Configuration{Purge: packages.PurgeConfiguration{RepositoryRoots: testCase.roots}}
+			configuration := packages.Configuration{Delete: packages.DeleteConfiguration{RepositoryRoots: testCase.roots}}
 			sanitized := configuration.Sanitize()
-			require.Equal(subTest, testCase.expectedResult, sanitized.Purge.RepositoryRoots)
+			require.Equal(subTest, testCase.expectedResult, sanitized.Delete.RepositoryRoots)
 		})
 	}
 }
