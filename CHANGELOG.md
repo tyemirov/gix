@@ -21,12 +21,13 @@
 - Updated the LLM Proxy Go client from v0.2.21 to v0.2.46, moved Gix's configured proxy work budget to the current per-request timeout header, and raised the Go module floor to 1.25.12 with the dependency graph required by that client.
 
 ### Bug Fixes 🐛
+- Made rejected, timed-out, or canceled strict-sync merge resolution abort the operation-owned merge before returning, restoring the exact pre-merge branch/worktree state and reserving manual handoff for a failed Git rollback.
 - Preserved dirty tracked files whose paths also match `.gitignore`; sync now stages exact tracked paths instead of restoring and discarding their pending contents before branch validation.
 - Made linked-worktree adoption restore owner write and execute permission on its directories before removal, preventing read-only ignored caches such as Go's module cache from leaving orphaned worktrees.
 - Rejected fractional workflow LLM `timeout_seconds` before they can be truncated into shorter or invalid LLM Proxy request budgets.
 - Made `gix audit` fit its terminal table to the active width, using bounded field/value rows on narrow terminals and Unicode-aware ellipses for constrained cells.
 - Escaped literal delimiters in terminal audit-table cells and aligned Unicode names by their terminal display width.
-- Made strict-sync AI merge resolution visible and bounded: gix now reports conflict, resolution, validation, and recovery phases; applies `timeout_seconds` to the complete operation; and gives an exact manual handoff without pushing when a result is rejected, cancelled, or timed out.
+- Made strict-sync AI merge resolution visible and bounded: gix now reports conflict, resolution, validation, and rollback phases; applies `timeout_seconds` to the complete operation; and returns without pushing when a result is rejected, cancelled, or timed out.
 - Pruned stale linked-worktree metadata before `gix sync` retries branch adoption, so a missing temporary worktree no longer causes a `chdir` failure.
 - Switched worktree inspection to NUL-delimited porcelain status so `gix sync` passes literal filenames containing spaces to Git instead of treating display quotes as path bytes.
 - Rejected explicit dirty base-branch sync before commit generation when the required remote base ref does not exist, preventing stranded local commits.
@@ -43,6 +44,7 @@
 - Kept the syncflow builder description as the canonical text shown by `gix sync --help`.
 
 ### Testing 🧪
+- Added public CLI coverage for a clean pull-request branch whose remote review base conflicts and receives a lossy AI resolution, proving the target commit and contents are restored with no `MERGE_HEAD`, dirty status, push, or manual handoff.
 - Added public CLI and HTTP-boundary coverage for mandatory positive retention, complete pre-delete pagination, mixed tagged/untagged version ordering, malformed snapshots, and partial delete failures.
 - Added public CLI regressions for a dirty tracked example-env file on an otherwise empty local branch, tracked ignored modifications and deletions, and ignored-untracked exclusion.
 - Added public CLI coverage for adopting a sibling worktree containing a read-only ignored cache.
@@ -51,7 +53,7 @@
 - Added public CLI coverage for default table output, explicit CSV and HTML exports, and rejected audit report formats.
 - Added black-box coverage for configuration discovery, initialization prompts, process-only interpolation, ignored sibling `.env` files, literal credentials, missing placeholders, strict operation schemas, and LLM profile routing.
 - Added public CLI coverage for LLM connection priority, successful OpenAI-to-llm-proxy failover, stop-after-success behavior, obsolete schema rejection, and profile validation.
-- Added public CLI regressions for lossy and timed-out AI merge resolution, including phase output, heartbeat, timeout, no merge-resolution commit or push, and the manual recovery handoff.
+- Added public CLI regressions for lossy and timed-out AI merge resolution, including phase output, heartbeat, timeout, no merge-resolution commit or push, and automatic rollback.
 - Added public CLI coverage for explicit `gix sync master` from a missing, Git-prunable linked worktree.
 - Added a public plain-`gix sync` regression proving deletion of `legacy/managing-director/IMD Logo.png` is committed and pushed with the literal path argument.
 - Added a black-box regression proving an explicit dirty `master` sync with no `origin/master` leaves local history and pending files unchanged without calling the LLM.
@@ -63,12 +65,13 @@
 - Added black-box release coverage for clean-checkout helpers, failed or missing platform outputs, replaced published manifests, and missing integrity prerequisites.
 
 ### Docs 📚
+- Documented automatic rollback for rejected, canceled, and timed-out strict-sync merge resolution, with manual recovery reserved for a failed Git abort.
 - Documented the required `--keep 3` GHCR retention workflow and its tagged-version deletion scope.
 - Documented that tracked status remains authoritative even when `.gitignore` matches the path and that ignore rules continue to govern only untracked staging.
 - Documented responsive audit-table behavior, the `COLUMNS` capture-width contract, and the full-value CSV/HTML export boundary.
 - Documented the audit table default and CSV/HTML export commands in the CLI, architecture, and site guides.
 - Documented the canonical `config.yml` discovery and interpolation contract plus the exact Meta Muse-first and OpenAI-first priority settings.
-- Documented strict-sync AI merge-resolution deadlines, progress, and manual recovery behavior.
+- Documented strict-sync AI merge-resolution deadlines, progress, automatic rollback, and rollback-failure handoff behavior.
 - Documented explicit branch targets as binding dirty-commit destinations and distinguished explicit `master` from plain current-branch rescue.
 - Documented that unreviewed remote-backed branches accept dirty commits before the missing pull request is opened, while merged branches reject auto-commit.
 - Documented the canonical `master <- parent PR <- child PR` sync chain and the no-delta rejection for clean missing branches.
