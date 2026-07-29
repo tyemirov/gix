@@ -554,6 +554,28 @@ func resolveCommitMessageClient(options worktreeAdoptionCommitMessageOptions) (l
 	return client, nil
 }
 
+func resolveMergeConflictResolutionClient(options worktreeAdoptionCommitMessageOptions) (llm.ChatClient, error) {
+	if options.Client != nil {
+		return options.Client, nil
+	}
+	timeout := worktreeAdoptionMessageTimeout(options)
+	client, clientErr := llmclient.NewPrioritizedFactory(
+		options.ConnectionProfiles,
+		options.LLMProxy,
+		llmclient.RuntimeConfig{
+			MaxCompletionTokens: options.MaxTokens,
+			Temperature:         options.Temperature,
+			RequestTimeout:      timeout,
+			RetryAttempts:       1,
+		},
+		nil,
+	)
+	if clientErr != nil {
+		return nil, fmt.Errorf(worktreeMessageClientFailureTemplate, clientErr)
+	}
+	return client, nil
+}
+
 func worktreeAdoptionMessageTimeout(options worktreeAdoptionCommitMessageOptions) time.Duration {
 	timeoutSeconds := options.TimeoutSeconds
 	if timeoutSeconds <= 0 {
