@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import dataclasses
+import hashlib
 import json
 import pathlib
 import shutil
@@ -13,12 +14,14 @@ import subprocess
 import sys
 import tempfile
 from collections.abc import Iterable, Mapping, Sequence
+from urllib.parse import quote
 
 
 REPOSITORY_ROOT = pathlib.Path(__file__).resolve().parents[2]
 DEFAULT_MANIFEST_PATH = REPOSITORY_ROOT / "configs" / "licensing" / "fleet.json"
 DEFAULT_WORKFLOW_PATH = REPOSITORY_ROOT / "configs" / "license-rollout.yaml"
 DEFAULT_GIX_PATH = REPOSITORY_ROOT / "bin" / "gix"
+LICENSE_TEMPLATE_ROOT = REPOSITORY_ROOT / "internal" / "licenses" / "templates"
 
 OWNERS = ("MarcoPoloResearchLab", "tyemirov")
 PROFILE_OWNERS = {
@@ -36,6 +39,15 @@ PROFILE_VARIABLES = {
         "license_contact": "legal@mprlab.com",
         "license_year": "2026",
     },
+}
+PROFILE_HOLDER_PLACEHOLDERS = {
+    "mprlab-proprietary": "{{COMPANY}}",
+    "polyform-noncommercial": "{{LICENSOR}}",
+}
+EXPECTED_LICENSE_TEMPLATE_FILES = {
+    "COMMERCIAL_LICENSE.md": "COMMERCIAL_LICENSE.md",
+    "LICENSE": "LICENSE.md",
+    "NOTICE": "NOTICE.md",
 }
 ALLOWED_LICENSE_HOLDERS = frozenset(
     ("Marco Polo Research Lab LLC", "Vadym Temirov")
@@ -70,6 +82,20 @@ DEFAULT_PARALLELISM = 8
 DEFAULT_WORKFLOW_WORKERS = 4
 INDIVIDUAL_COMMAND_TIMEOUT_SECONDS = 30
 WORKFLOW_TIMEOUT_SECONDS = 350
+PULL_REQUEST_JSON_FIELDS = ",".join(
+    (
+        "baseRefName",
+        "baseRefOid",
+        "changedFiles",
+        "headRefName",
+        "headRefOid",
+        "isCrossRepository",
+        "isDraft",
+        "number",
+        "state",
+        "url",
+    )
+)
 
 
 class RolloutError(RuntimeError):
@@ -107,6 +133,7 @@ class Manifest:
 class LiveRepository:
     repository: str
     default_branch: str
+    commit_sha: str
     visibility: str
     license_files: Mapping[str, str]
 
@@ -274,9 +301,27 @@ class GitHubInspector:
             )
 
         license_files: Mapping[str, str]
+        commit_sha = ""
         if default_branch == "":
             license_files = {}
         else:
+            raw_commit = self.runner.run_json(
+                [
+                    "gh",
+                    "api",
+                    "--method",
+                    "GET",
+                    (
+                        f"repos/{repository}/commits/"
+                        f"{quote(default_branch, safe='')}"
+                    ),
+                ]
+            )
+            if not isinstance(raw_commit, dict):
+                raise RolloutError(
+                    f"{repository}: default-branch commit was not an object"
+                )
+            commit_sha = require_commit_sha(raw_commit, repository)
             raw_contents = self.runner.run_json(
                 [
                     "gh",
@@ -285,24 +330,15 @@ class GitHubInspector:
                     "GET",
                     f"repos/{repository}/contents",
                     "-f",
-                    f"ref={default_branch}",
+                    f"ref={commit_sha}",
                 ]
             )
-            if not isinstance(raw_contents, list):
-                raise RolloutError(f"{repository}: root contents were not a list")
-            discovered_files: dict[str, str] = {}
-            for entry in raw_contents:
-                if not isinstance(entry, dict) or entry.get("type") == "dir":
-                    continue
-                name = require_string(entry, "name")
-                if not is_license_contract_file(name):
-                    continue
-                discovered_files[name] = require_string(entry, "sha")
-            license_files = dict(sorted(discovered_files.items()))
+            license_files = parse_license_files(repository, raw_contents)
 
         return LiveRepository(
             repository=repository,
             default_branch=default_branch,
+            commit_sha=commit_sha,
             visibility=visibility,
             license_files=license_files,
         )
@@ -313,6 +349,35 @@ def require_string(values: Mapping[str, object], key: str) -> str:
     if not isinstance(value, str):
         raise RolloutError(f"{key} must be a string")
     return value.strip()
+
+
+def require_commit_sha(values: Mapping[str, object], repository: str) -> str:
+    commit_sha = require_string(values, "sha")
+    if len(commit_sha) != 40 or any(
+        character not in "0123456789abcdef" for character in commit_sha
+    ):
+        raise RolloutError(
+            f"{repository}: default-branch commit SHA must be 40 lowercase "
+            "hexadecimal characters"
+        )
+    return commit_sha
+
+
+def parse_license_files(
+    repository: str,
+    raw_contents: object,
+) -> Mapping[str, str]:
+    if not isinstance(raw_contents, list):
+        raise RolloutError(f"{repository}: root contents were not a list")
+    discovered_files: dict[str, str] = {}
+    for entry in raw_contents:
+        if not isinstance(entry, dict) or entry.get("type") == "dir":
+            continue
+        name = require_string(entry, "name")
+        if not is_license_contract_file(name):
+            continue
+        discovered_files[name] = require_string(entry, "sha")
+    return dict(sorted(discovered_files.items()))
 
 
 def is_license_contract_file(name: str) -> bool:
@@ -509,9 +574,74 @@ def automation_branch(record: RepositoryRecord) -> str:
     return f"{AUTOMATION_BRANCH_PREFIX}{record.profile}"
 
 
+def expected_license_blobs(record: RepositoryRecord) -> Mapping[str, str]:
+    profile_variables = PROFILE_VARIABLES.get(record.profile)
+    holder_placeholder = PROFILE_HOLDER_PLACEHOLDERS.get(record.profile)
+    if profile_variables is None or holder_placeholder is None:
+        raise RolloutError(
+            f"{record.repository}: unsupported rollout profile {record.profile}"
+        )
+    template_name = profile_variables["license_template"]
+    replacements = {
+        "{{CONTACT}}": profile_variables["license_contact"],
+        "{{YEAR}}": profile_variables["license_year"],
+        holder_placeholder: record.license_holder,
+    }
+    blobs: dict[str, str] = {}
+    for output_path, template_file_name in (
+        EXPECTED_LICENSE_TEMPLATE_FILES.items()
+    ):
+        template_path = (
+            LICENSE_TEMPLATE_ROOT / template_name / template_file_name
+        )
+        try:
+            content = template_path.read_text(encoding="utf-8")
+        except OSError as error:
+            raise RolloutError(
+                f"{record.repository}: could not read expected license template "
+                f"{template_path}: {error}"
+            ) from error
+        for placeholder, value in replacements.items():
+            content = content.replace(placeholder, value)
+        if "{{" in content or "}}" in content:
+            raise RolloutError(
+                f"{record.repository}: expected license template "
+                f"{template_path} contains an unresolved placeholder"
+            )
+        blobs[output_path] = git_blob_sha(content)
+    return dict(sorted(blobs.items()))
+
+
+def git_blob_sha(content: str) -> str:
+    content_bytes = content.encode("utf-8")
+    header = f"blob {len(content_bytes)}\0".encode("ascii")
+    return hashlib.sha1(
+        header + content_bytes,
+        usedforsecurity=False,
+    ).hexdigest()
+
+
+def expected_changed_paths(
+    record: RepositoryRecord,
+    expected_blobs: Mapping[str, str],
+) -> frozenset[str]:
+    expected_paths = {
+        path
+        for path, expected_sha in expected_blobs.items()
+        if record.license_files.get(path) != expected_sha
+    }
+    expected_paths.update(
+        path
+        for path in record.license_files
+        if path not in expected_blobs
+    )
+    return frozenset(expected_paths)
+
+
 def inspect_pull_request_state(
     runner: CommandRunner,
     record: RepositoryRecord,
+    inspected: LiveRepository,
 ) -> PullRequestState:
     branch = automation_branch(record)
     raw_pull_requests = runner.run_json(
@@ -526,7 +656,7 @@ def inspect_pull_request_state(
             "--head",
             branch,
             "--json",
-            "number,url,headRefName,isDraft",
+            PULL_REQUEST_JSON_FIELDS,
         ]
     )
     if not isinstance(raw_pull_requests, list):
@@ -547,6 +677,17 @@ def inspect_pull_request_state(
             raise RolloutError(
                 f"{record.repository}: rollout pull request for {branch} is not a draft"
             )
+        validate_existing_pull_request(
+            runner,
+            record,
+            inspected,
+            pull_request,
+        )
+        confirm_pull_request_unchanged(
+            runner,
+            record,
+            pull_request,
+        )
         return PullRequestState(
             record=record,
             existing_url=require_string(pull_request, "url"),
@@ -578,16 +719,344 @@ def inspect_pull_request_state(
     return PullRequestState(record=record, existing_url="")
 
 
+def validate_existing_pull_request(
+    runner: CommandRunner,
+    record: RepositoryRecord,
+    inspected: LiveRepository,
+    pull_request: Mapping[str, object],
+) -> None:
+    branch = automation_branch(record)
+    url = require_string(pull_request, "url")
+    if pull_request.get("state") != "OPEN":
+        raise RolloutError(
+            f"{record.repository}: rollout pull request {url} is not open"
+        )
+    if pull_request.get("isCrossRepository") is not False:
+        raise RolloutError(
+            f"{record.repository}: rollout pull request {url} uses a fork head"
+        )
+    head_branch = require_string(pull_request, "headRefName")
+    if head_branch != branch:
+        raise RolloutError(
+            f"{record.repository}: rollout pull request {url} head branch changed "
+            f"(expected {branch}; found {head_branch})"
+        )
+    base_branch = require_string(pull_request, "baseRefName")
+    if base_branch != record.default_branch:
+        raise RolloutError(
+            f"{record.repository}: rollout pull request {url} base branch changed "
+            f"(expected {record.default_branch}; found {base_branch})"
+        )
+    base_commit = require_string(pull_request, "baseRefOid")
+    if base_commit != inspected.commit_sha:
+        raise RolloutError(
+            f"{record.repository}: rollout pull request {url} base commit changed "
+            f"(expected {inspected.commit_sha}; found {base_commit})"
+        )
+    head_commit = require_pull_request_commit_sha(
+        pull_request,
+        "headRefOid",
+        record.repository,
+    )
+    changed_file_count = pull_request.get("changedFiles")
+    if (
+        isinstance(changed_file_count, bool)
+        or not isinstance(changed_file_count, int)
+        or changed_file_count < 1
+    ):
+        raise RolloutError(
+            f"{record.repository}: rollout pull request {url} changedFiles "
+            "must be a positive integer"
+        )
+
+    raw_comparison = runner.run_json(
+        [
+            "gh",
+            "api",
+            "--method",
+            "GET",
+            (
+                f"repos/{record.repository}/compare/"
+                f"{inspected.commit_sha}...{head_commit}"
+            ),
+        ]
+    )
+    if not isinstance(raw_comparison, dict):
+        raise RolloutError(
+            f"{record.repository}: rollout pull request {url} comparison "
+            "was not an object"
+        )
+    validate_pull_request_history(
+        record,
+        inspected,
+        head_commit,
+        url,
+        raw_comparison,
+    )
+
+    expected_blobs = expected_license_blobs(record)
+    validate_pull_request_changed_files(
+        record,
+        url,
+        changed_file_count,
+        raw_comparison,
+        expected_blobs,
+    )
+    raw_head_contents = runner.run_json(
+        [
+            "gh",
+            "api",
+            "--method",
+            "GET",
+            f"repos/{record.repository}/contents",
+            "-f",
+            f"ref={head_commit}",
+        ]
+    )
+    head_license_files = parse_license_files(
+        record.repository,
+        raw_head_contents,
+    )
+    if dict(head_license_files) != dict(expected_blobs):
+        raise_rollout_diff_error(
+            record,
+            url,
+            (
+                "head license files differ "
+                f"(expected {describe_license_files(expected_blobs)}; "
+                f"found {describe_license_files(head_license_files)})"
+            ),
+        )
+
+
+def confirm_pull_request_unchanged(
+    runner: CommandRunner,
+    record: RepositoryRecord,
+    inspected_pull_request: Mapping[str, object],
+) -> None:
+    pull_request_number = inspected_pull_request.get("number")
+    if (
+        isinstance(pull_request_number, bool)
+        or not isinstance(pull_request_number, int)
+        or pull_request_number < 1
+    ):
+        raise RolloutError(
+            f"{record.repository}: rollout pull request number must be "
+            "a positive integer"
+        )
+    raw_pull_request = runner.run_json(
+        [
+            "gh",
+            "pr",
+            "view",
+            str(pull_request_number),
+            "--repo",
+            record.repository,
+            "--json",
+            PULL_REQUEST_JSON_FIELDS,
+        ]
+    )
+    if not isinstance(raw_pull_request, dict):
+        raise RolloutError(
+            f"{record.repository}: validated pull-request query did not "
+            "return an object"
+        )
+    fields = PULL_REQUEST_JSON_FIELDS.split(",")
+    changed_fields = [
+        field
+        for field in fields
+        if raw_pull_request.get(field) != inspected_pull_request.get(field)
+    ]
+    if changed_fields:
+        url = require_string(inspected_pull_request, "url")
+        raise RolloutError(
+            f"{record.repository}: rollout pull request {url} changed during "
+            f"validation ({', '.join(changed_fields)})"
+        )
+
+
+def require_pull_request_commit_sha(
+    values: Mapping[str, object],
+    key: str,
+    repository: str,
+) -> str:
+    commit_sha = require_string(values, key)
+    if len(commit_sha) != 40 or any(
+        character not in "0123456789abcdef" for character in commit_sha
+    ):
+        raise RolloutError(
+            f"{repository}: rollout pull request {key} must be 40 lowercase "
+            "hexadecimal characters"
+        )
+    return commit_sha
+
+
+def validate_pull_request_history(
+    record: RepositoryRecord,
+    inspected: LiveRepository,
+    head_commit: str,
+    url: str,
+    comparison: Mapping[str, object],
+) -> None:
+    if (
+        comparison.get("status") != "ahead"
+        or comparison.get("ahead_by") != 1
+        or comparison.get("behind_by") != 0
+        or comparison.get("total_commits") != 1
+    ):
+        raise RolloutError(
+            f"{record.repository}: rollout pull request {url} head is not "
+            "exactly one reviewed commit ahead of the inspected base"
+        )
+    for key in ("base_commit", "merge_base_commit"):
+        commit = comparison.get(key)
+        if (
+            not isinstance(commit, dict)
+            or commit.get("sha") != inspected.commit_sha
+        ):
+            raise RolloutError(
+                f"{record.repository}: rollout pull request {url} {key} "
+                "does not match the inspected base"
+            )
+    commits = comparison.get("commits")
+    if not isinstance(commits, list) or len(commits) != 1:
+        raise RolloutError(
+            f"{record.repository}: rollout pull request {url} comparison "
+            "must contain exactly one commit"
+        )
+    commit = commits[0]
+    if not isinstance(commit, dict) or commit.get("sha") != head_commit:
+        raise RolloutError(
+            f"{record.repository}: rollout pull request {url} comparison "
+            "head does not match the pull request head"
+        )
+    parents = commit.get("parents")
+    if (
+        not isinstance(parents, list)
+        or len(parents) != 1
+        or not isinstance(parents[0], dict)
+        or parents[0].get("sha") != inspected.commit_sha
+    ):
+        raise RolloutError(
+            f"{record.repository}: rollout pull request {url} head parent "
+            "does not match the inspected base"
+        )
+    commit_details = commit.get("commit")
+    expected_message = f"chore: apply {record.profile} license"
+    if not isinstance(commit_details, dict):
+        raise RolloutError(
+            f"{record.repository}: rollout pull request {url} commit "
+            "metadata was not an object"
+        )
+    message = require_string(commit_details, "message").splitlines()[0]
+    if message != expected_message:
+        raise RolloutError(
+            f"{record.repository}: rollout pull request {url} commit message "
+            f"changed (expected {expected_message}; found {message})"
+        )
+
+
+def validate_pull_request_changed_files(
+    record: RepositoryRecord,
+    url: str,
+    changed_file_count: int,
+    comparison: Mapping[str, object],
+    expected_blobs: Mapping[str, str],
+) -> None:
+    raw_files = comparison.get("files")
+    if (
+        not isinstance(raw_files, list)
+        or len(raw_files) != changed_file_count
+    ):
+        raise_rollout_diff_error(
+            record,
+            url,
+            (
+                "comparison file count differs "
+                f"(expected {changed_file_count}; "
+                "found "
+                f"{len(raw_files) if isinstance(raw_files, list) else 'invalid'})"
+            ),
+        )
+    actual_paths: set[str] = set()
+    for raw_file in raw_files:
+        if not isinstance(raw_file, dict):
+            raise_rollout_diff_error(
+                record,
+                url,
+                "comparison file entry was not an object",
+            )
+        filename = require_string(raw_file, "filename")
+        status = require_string(raw_file, "status")
+        actual_paths.add(filename)
+        previous_filename = raw_file.get("previous_filename")
+        if previous_filename is not None:
+            if (
+                not isinstance(previous_filename, str)
+                or previous_filename.strip() == ""
+            ):
+                raise_rollout_diff_error(
+                    record,
+                    url,
+                    f"{filename} previous_filename was not a non-empty string",
+                )
+            actual_paths.add(previous_filename.strip())
+        if filename in expected_blobs and status != "removed":
+            file_sha = require_pull_request_commit_sha(
+                raw_file,
+                "sha",
+                record.repository,
+            )
+            if file_sha != expected_blobs[filename]:
+                raise_rollout_diff_error(
+                    record,
+                    url,
+                    (
+                        f"{filename} blob changed "
+                        f"(expected {expected_blobs[filename]}; "
+                        f"found {file_sha})"
+                    ),
+                )
+    expected_paths = expected_changed_paths(record, expected_blobs)
+    if actual_paths != set(expected_paths):
+        raise_rollout_diff_error(
+            record,
+            url,
+            (
+                "changed paths differ "
+                f"(expected {', '.join(sorted(expected_paths)) or 'none'}; "
+                f"found {', '.join(sorted(actual_paths)) or 'none'})"
+            ),
+        )
+
+
+def raise_rollout_diff_error(
+    record: RepositoryRecord,
+    url: str,
+    detail: str,
+) -> None:
+    raise RolloutError(
+        f"{record.repository}: rollout pull request {url} diff does not match "
+        f"the reviewed license rollout: {detail}"
+    )
+
+
 def inspect_apply_states(
     runner: CommandRunner,
     records: Iterable[RepositoryRecord],
+    live_inventory: Mapping[str, LiveRepository],
 ) -> tuple[PullRequestState, ...]:
     states: list[PullRequestState] = []
     with concurrent.futures.ThreadPoolExecutor(
         max_workers=DEFAULT_PARALLELISM
     ) as executor:
         futures = {
-            executor.submit(inspect_pull_request_state, runner, record): record
+            executor.submit(
+                inspect_pull_request_state,
+                runner,
+                record,
+                live_inventory[record.repository],
+            ): record
             for record in records
         }
         for future in concurrent.futures.as_completed(futures):
@@ -598,6 +1067,7 @@ def inspect_apply_states(
 def prepare_sparse_clone(
     runner: CommandRunner,
     record: RepositoryRecord,
+    inspected: LiveRepository,
     temporary_root: pathlib.Path,
 ) -> pathlib.Path:
     destination = temporary_root / record.repository.replace("/", "--")
@@ -620,6 +1090,18 @@ def prepare_sparse_clone(
             "git",
             "-C",
             destination,
+            "fetch",
+            "--depth=1",
+            "--filter=blob:none",
+            "origin",
+            inspected.commit_sha,
+        ]
+    )
+    runner.run(
+        [
+            "git",
+            "-C",
+            destination,
             "sparse-checkout",
             "set",
             "--no-cone",
@@ -627,7 +1109,25 @@ def prepare_sparse_clone(
         ]
     )
     runner.run(
-        ["git", "-C", destination, "checkout", record.default_branch]
+        [
+            "git",
+            "-C",
+            destination,
+            "checkout",
+            "-B",
+            record.default_branch,
+            inspected.commit_sha,
+        ]
+    )
+    runner.run(
+        [
+            "git",
+            "-C",
+            destination,
+            "branch",
+            "--unset-upstream",
+            record.default_branch,
+        ]
     )
     return destination
 
@@ -635,6 +1135,7 @@ def prepare_sparse_clone(
 def prepare_sparse_clones(
     runner: CommandRunner,
     records: Iterable[RepositoryRecord],
+    live_inventory: Mapping[str, LiveRepository],
     temporary_root: pathlib.Path,
 ) -> Mapping[str, pathlib.Path]:
     clone_paths: dict[str, pathlib.Path] = {}
@@ -646,6 +1147,7 @@ def prepare_sparse_clones(
                 prepare_sparse_clone,
                 runner,
                 record,
+                live_inventory[record.repository],
                 temporary_root,
             ): record
             for record in records
@@ -699,8 +1201,9 @@ def run_gix_workflow(
 def verify_created_pull_requests(
     runner: CommandRunner,
     records: Iterable[RepositoryRecord],
+    live_inventory: Mapping[str, LiveRepository],
 ) -> tuple[str, ...]:
-    states = inspect_apply_states(runner, records)
+    states = inspect_apply_states(runner, records, live_inventory)
     missing = [
         state.record.repository for state in states if state.existing_url == ""
     ]
@@ -727,7 +1230,11 @@ def apply_plan(
     if workflow_workers < 1:
         raise RolloutError("workflow workers must be positive")
 
-    states = inspect_apply_states(runner, plan.apply_records)
+    states = inspect_apply_states(
+        runner,
+        plan.apply_records,
+        plan.live_inventory,
+    )
     existing_states = tuple(state for state in states if state.existing_url)
     pending_records = tuple(
         state.record for state in states if state.existing_url == ""
@@ -745,7 +1252,12 @@ def apply_plan(
         tempfile.mkdtemp(prefix="gix-license-rollout-")
     ).resolve()
     try:
-        clone_paths = prepare_sparse_clones(runner, pending_records, temporary_root)
+        clone_paths = prepare_sparse_clones(
+            runner,
+            pending_records,
+            plan.live_inventory,
+            temporary_root,
+        )
         rollout_groups = sorted(
             {
                 (record.profile, record.license_holder)
@@ -769,7 +1281,11 @@ def apply_plan(
                 clone_paths=clone_paths,
                 workflow_workers=workflow_workers,
             )
-        created_urls = verify_created_pull_requests(runner, pending_records)
+        created_urls = verify_created_pull_requests(
+            runner,
+            pending_records,
+            plan.live_inventory,
+        )
     except Exception:
         print(
             f"Rollout workspace preserved for inspection: {temporary_root}",
