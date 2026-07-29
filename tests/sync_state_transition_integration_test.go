@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -52,6 +53,7 @@ func TestSyncOperatorOwnedPreflightTable(testInstance *testing.T) {
 		Operation        string
 		Administrative   syncGitOperationFixture
 		UseSibling       bool
+		UnmergedIndex    bool
 		ExpectedGuidance string
 	}{
 		{
@@ -111,6 +113,12 @@ func TestSyncOperatorOwnedPreflightTable(testInstance *testing.T) {
 			},
 			ExpectedGuidance: "finish or abort",
 		},
+		{
+			Name:             "stash_apply_conflict_in_caller",
+			Operation:        "unmerged index",
+			UnmergedIndex:    true,
+			ExpectedGuidance: "resolve or restore it explicitly",
+		},
 	}
 
 	for testCaseIndex := range testCases {
@@ -126,10 +134,17 @@ func TestSyncOperatorOwnedPreflightTable(testInstance *testing.T) {
 				operationPath = siblingPath
 			}
 
-			createSyncAdministrativeState(testInstance, operationPath, testCase.Administrative)
+			if testCase.UnmergedIndex {
+				createSyncUnmergedStashState(testInstance, operationPath)
+			} else {
+				createSyncAdministrativeState(testInstance, operationPath, testCase.Administrative)
+			}
 			repositoryBefore := captureSyncState(testInstance, repositoryPath)
 			operationBefore := captureSyncState(testInstance, operationPath)
-			administrativeBefore := captureSyncAdministrativeState(testInstance, operationPath, testCase.Administrative.Path)
+			var administrativeBefore []string
+			if testCase.Administrative.Path != "" {
+				administrativeBefore = captureSyncAdministrativeState(testInstance, operationPath, testCase.Administrative.Path)
+			}
 			remoteBefore := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "refs/remotes/origin/master"))
 
 			gitLogPath := filepath.Join(testInstance.TempDir(), "git.log")
@@ -170,7 +185,9 @@ func TestSyncOperatorOwnedPreflightTable(testInstance *testing.T) {
 
 			require.Equal(testInstance, repositoryBefore, captureSyncState(testInstance, repositoryPath))
 			require.Equal(testInstance, operationBefore, captureSyncState(testInstance, operationPath))
-			require.Equal(testInstance, administrativeBefore, captureSyncAdministrativeState(testInstance, operationPath, testCase.Administrative.Path))
+			if testCase.Administrative.Path != "" {
+				require.Equal(testInstance, administrativeBefore, captureSyncAdministrativeState(testInstance, operationPath, testCase.Administrative.Path))
+			}
 			require.Equal(testInstance, remoteBefore, strings.TrimSpace(runGit(testInstance, remotePath, "rev-parse", "refs/heads/master")))
 		})
 	}
@@ -189,6 +206,8 @@ func TestSyncFailureRollbackTable(testInstance *testing.T) {
 		StashConflict     bool
 		PublishedFailure  bool
 		NewTarget         bool
+		NoopPushFailure   bool
+		UnrelatedAdvance  bool
 		ExpectedOutput    string
 	}{
 		{
@@ -200,6 +219,13 @@ func TestSyncFailureRollbackTable(testInstance *testing.T) {
 			Name:              "second_cluster_commit_failure",
 			FailureMatch:      "commit -m",
 			FailureOccurrence: "2",
+			ExpectedOutput:    "simulated git failure",
+		},
+		{
+			Name:              "failure_preserves_unrelated_sibling_advance",
+			FailureMatch:      "commit -m",
+			FailureOccurrence: "2",
+			UnrelatedAdvance:  true,
 			ExpectedOutput:    "simulated git failure",
 		},
 		{
@@ -222,6 +248,11 @@ func TestSyncFailureRollbackTable(testInstance *testing.T) {
 			PublishedFailure: true,
 			ExpectedOutput:   "simulated message failure",
 		},
+		{
+			Name:            "failure_after_noop_push_rolls_back",
+			NoopPushFailure: true,
+			ExpectedOutput:  "simulated pull request creation failure",
+		},
 	}
 
 	for testCaseIndex := range testCases {
@@ -230,10 +261,21 @@ func TestSyncFailureRollbackTable(testInstance *testing.T) {
 			remotePath, repositoryPath := createSyncStateTransitionRepository(testInstance)
 			targetBranch := "master"
 			snapshotPaths := []string{repositoryPath}
+			unrelatedWorktreePath := ""
+			unrelatedBranch := ""
+			unrelatedHeadBefore := ""
 			if testCase.NewTarget {
 				targetBranch = "feature/pre-publication-failure"
 			}
-			if testCase.UseSibling {
+			if testCase.NoopPushFailure {
+				targetBranch = syncStateTransitionBranchName
+				runGit(testInstance, repositoryPath, "switch", "-c", targetBranch)
+				require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "feature.txt"), []byte("published feature\n"), 0o644))
+				runGit(testInstance, repositoryPath, "add", "feature.txt")
+				runGit(testInstance, repositoryPath, "commit", "-m", "publish feature")
+				runGit(testInstance, repositoryPath, "push", "-u", "origin", targetBranch)
+				runGit(testInstance, repositoryPath, "switch", "master")
+			} else if testCase.UseSibling {
 				targetBranch = syncStateTransitionBranchName
 				runGit(testInstance, repositoryPath, "switch", "-c", targetBranch)
 				require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "feature.txt"), []byte("published feature\n"), 0o644))
@@ -261,6 +303,14 @@ func TestSyncFailureRollbackTable(testInstance *testing.T) {
 				require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "README.md"), []byte("initial\nfeature dirty\n"), 0o644))
 			} else {
 				createSyncDirtyClusters(testInstance, repositoryPath)
+			}
+			if testCase.UnrelatedAdvance {
+				unrelatedBranch = "feature/operator-owned"
+				runGit(testInstance, repositoryPath, "branch", unrelatedBranch)
+				unrelatedWorktreePath = filepath.Join(filepath.Dir(repositoryPath), "operator-sibling")
+				runGit(testInstance, repositoryPath, "worktree", "add", unrelatedWorktreePath, unrelatedBranch)
+				require.NoError(testInstance, os.WriteFile(filepath.Join(unrelatedWorktreePath, "operator.txt"), []byte("operator concurrent work\n"), 0o644))
+				unrelatedHeadBefore = strings.TrimSpace(runGit(testInstance, unrelatedWorktreePath, "rev-parse", "HEAD"))
 			}
 
 			snapshotsBefore := make(map[string]syncStateSnapshot, len(snapshotPaths))
@@ -301,6 +351,12 @@ func TestSyncFailureRollbackTable(testInstance *testing.T) {
 				syncMergedBranchNameVariable:        targetBranch,
 				syncMergedBranchMergedVariable:      "false",
 			}
+			if testCase.NoopPushFailure {
+				environment[syncMergedBranchFailPullRequestHeadVariable] = targetBranch
+			}
+			if testCase.UnrelatedAdvance {
+				environment[syncMergedBranchConcurrentWorktreeVariable] = unrelatedWorktreePath
+			}
 			if testCase.FailureMatch != "" {
 				environment[syncMergedBranchFailGitMatchVariable] = testCase.FailureMatch
 				environment[syncMergedBranchFailGitOccurrenceVariable] = testCase.FailureOccurrence
@@ -332,7 +388,24 @@ func TestSyncFailureRollbackTable(testInstance *testing.T) {
 			} else {
 				for snapshotPathIndex := range snapshotPaths {
 					snapshotPath := snapshotPaths[snapshotPathIndex]
-					require.Equal(testInstance, snapshotsBefore[snapshotPath], captureSyncState(testInstance, snapshotPath))
+					expectedSnapshot := snapshotsBefore[snapshotPath]
+					actualSnapshot := captureSyncState(testInstance, snapshotPath)
+					if testCase.UnrelatedAdvance {
+						unrelatedHeadAfter := strings.TrimSpace(runGit(testInstance, unrelatedWorktreePath, "rev-parse", "HEAD"))
+						expectedSnapshot.Heads = strings.Replace(
+							expectedSnapshot.Heads,
+							unrelatedHeadBefore+" refs/heads/"+unrelatedBranch,
+							unrelatedHeadAfter+" refs/heads/"+unrelatedBranch,
+							1,
+						)
+						expectedSnapshot.Worktrees = strings.Replace(
+							expectedSnapshot.Worktrees,
+							"worktree "+unrelatedWorktreePath+"\nHEAD "+unrelatedHeadBefore+"\nbranch refs/heads/"+unrelatedBranch,
+							"worktree "+unrelatedWorktreePath+"\nHEAD "+unrelatedHeadAfter+"\nbranch refs/heads/"+unrelatedBranch,
+							1,
+						)
+					}
+					require.Equal(testInstance, expectedSnapshot, actualSnapshot)
 				}
 			}
 			if !testCase.PublishedFailure {
@@ -341,6 +414,11 @@ func TestSyncFailureRollbackTable(testInstance *testing.T) {
 				} else {
 					require.Equal(testInstance, remoteBefore, strings.TrimSpace(runGit(testInstance, remotePath, "rev-parse", remoteReference)))
 				}
+			}
+			if testCase.UnrelatedAdvance {
+				require.NotEqual(testInstance, unrelatedHeadBefore, strings.TrimSpace(runGit(testInstance, unrelatedWorktreePath, "rev-parse", "HEAD")))
+				require.Equal(testInstance, "operator: concurrent unrelated work", strings.TrimSpace(runGit(testInstance, unrelatedWorktreePath, "log", "-1", "--format=%s")))
+				require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, unrelatedWorktreePath, "status", "--porcelain")))
 			}
 		})
 	}
@@ -523,6 +601,22 @@ func createSyncAdministrativeState(testInstance *testing.T, repositoryPath strin
 	}
 	require.NoError(testInstance, os.MkdirAll(filepath.Dir(administrativePath), 0o700))
 	require.NoError(testInstance, os.WriteFile(administrativePath, []byte(contents), 0o600))
+}
+
+func createSyncUnmergedStashState(testInstance *testing.T, repositoryPath string) {
+	testInstance.Helper()
+	readmePath := filepath.Join(repositoryPath, "README.md")
+	require.NoError(testInstance, os.WriteFile(readmePath, []byte("operator stash contents\n"), 0o644))
+	runGit(testInstance, repositoryPath, "stash", "push", "--include-untracked", "-m", "operator-conflict")
+	require.NoError(testInstance, os.WriteFile(readmePath, []byte("committed conflicting contents\n"), 0o644))
+	runGit(testInstance, repositoryPath, "add", "README.md")
+	runGit(testInstance, repositoryPath, "commit", "-m", "create conflicting head")
+
+	applyCommand := exec.Command("git", "-C", repositoryPath, "stash", "apply", "--index", "stash@{0}")
+	applyCommand.Env = buildGitCommandEnvironment(nil)
+	applyOutput, applyErr := applyCommand.CombinedOutput()
+	require.Error(testInstance, applyErr, string(applyOutput))
+	require.Contains(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")), "UU README.md")
 }
 
 func captureSyncState(testInstance *testing.T, repositoryPath string) syncStateSnapshot {
