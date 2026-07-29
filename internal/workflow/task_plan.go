@@ -259,7 +259,7 @@ func (planner taskPlanner) planFileChanges(environment *Environment, repository 
 			continue
 		}
 
-		content, contentError := planner.renderTemplate(fileDefinition.ContentTemplate, "")
+		content, contentError := renderTemplateContent(fileDefinition.ContentTemplate, "", planner.templateData)
 		if contentError != nil {
 			return nil, contentError
 		}

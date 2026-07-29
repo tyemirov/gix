@@ -1,17 +1,17 @@
-SPDX-License-Identifier: LicenseRef-MPRL-Proprietary
+# Marco Polo Research Lab Proprietary License
 
-Proprietary License
+SPDX-License-Identifier: LicenseRef-MPRL-Proprietary
 
 Copyright (c) {{YEAR}} {{COMPANY}}
 All rights reserved.
 
 This software and associated documentation files (the "Software") are the
-confidential and proprietary information of {{COMPANY}}. Unauthorized copying,
-distribution, modification, or use of the Software, in whole or in part, is
-strictly prohibited without prior written permission from {{COMPANY}}.
+confidential and proprietary information of {{COMPANY}}.
 
-No license is granted to the public. Use is restricted to customers and
-partners under written agreements with {{COMPANY}}.
+No license is granted to the public. Any access, copying, distribution,
+modification, publication, performance, display, or use of the Software, in
+whole or in part, requires prior written permission from {{COMPANY}} or a
+separate written agreement signed by {{COMPANY}}.
 
 The Software is provided "AS IS", without warranty of any kind, express or
 implied, including but not limited to the warranties of merchantability,

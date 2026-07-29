@@ -985,6 +985,31 @@ func TestTaskPlannerExecutionStepsRestrictActions(t *testing.T) {
 	require.Equal(t, "files.apply", plan.workflowSteps[0].Name())
 }
 
+func TestTaskPlannerPreservesTemplatedFileContentBoundary(t *testing.T) {
+	repository := NewRepositoryState(audit.RepositoryInspection{
+		Path:                "/repositories/sample",
+		FinalOwnerRepo:      "octocat/sample",
+		RemoteDefaultBranch: "main",
+	})
+	fileSystem := newFakeFileSystem(nil)
+	environment := &Environment{FileSystem: fileSystem}
+	taskDefinition := TaskDefinition{
+		Name: "Write exact file",
+		Files: []TaskFileDefinition{{
+			PathTemplate:    "LICENSE",
+			ContentTemplate: "# Exact text\n",
+			Mode:            TaskFileModeOverwrite,
+			Permissions:     defaultTaskFilePermissions,
+		}},
+	}
+
+	planner := newTaskPlanner(taskDefinition, buildTaskTemplateData(repository, taskDefinition, nil))
+	plan, planError := planner.BuildPlan(environment, repository)
+
+	require.NoError(t, planError)
+	require.Equal(t, []byte("# Exact text\n"), plan.fileChanges[0].content)
+}
+
 func TestTaskPlannerExecutionStepsRequirePullRequestConfig(t *testing.T) {
 	repository := NewRepositoryState(audit.RepositoryInspection{
 		Path:                "/repositories/sample",
