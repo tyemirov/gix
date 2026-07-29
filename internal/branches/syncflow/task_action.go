@@ -307,9 +307,10 @@ func handleBranchSyncAction(ctx context.Context, environment *workflow.Environme
 	}
 	var result Result
 	changeError := newWorktreeAdoptionService(environment, repository).Change(ctx, worktreeAdoptionChangeOptions{
-		BranchName:     resolvedBranchName,
-		RemoteName:     remoteName,
-		CommitMessages: commitMessageOptions,
+		BranchName:          resolvedBranchName,
+		RemoteName:          remoteName,
+		CommitMessages:      commitMessageOptions,
+		PublishBeforeChange: true,
 		Change: func() error {
 			var serviceChangeErr error
 			result, serviceChangeErr = service.Change(ctx, changeOptions)
@@ -446,6 +447,12 @@ type strictSyncOptions struct {
 	ResolutionSource string
 }
 
+type strictSyncCompletion struct {
+	BranchName string
+	Created    bool
+	Stashed    bool
+}
+
 func handleStrictSyncAction(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, options strictSyncOptions) (err error) {
 	if environment == nil || repository == nil {
 		return nil
@@ -467,30 +474,33 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 		remoteName = defaultRemoteNameConstant
 	}
 
-	if preflightErr := ensureNoOperatorOwnedRevert(ctx, environment.GitExecutor, repository.Path); preflightErr != nil {
-		return preflightErr
+	plan, planErr := buildStrictSyncPlan(ctx, environment.GitExecutor, repository.Path, branchName)
+	if planErr != nil {
+		return planErr
 	}
 
-	transaction, transactionErr := beginStrictSyncTransaction(ctx, environment, repository, branchName)
+	transaction, transactionErr := beginStrictSyncTransaction(ctx, environment, repository, plan)
 	if transactionErr != nil {
 		return transactionErr
 	}
-	stashPushed := false
+	ctx = withStrictSyncTransaction(ctx, transaction)
+	var invocationStash *strictSyncStash
 	defer func() {
+		if err == nil {
+			return
+		}
 		cleanupContext, cancelCleanup := context.WithTimeout(context.WithoutCancel(ctx), mergeConflictResolutionRollbackTimeout)
 		defer cancelCleanup()
-
-		if err != nil {
-			if _, rollbackErr := transaction.rollback(cleanupContext); rollbackErr != nil {
-				transaction.reportHandoff(rollbackErr)
-				err = errors.Join(err, rollbackErr)
-				return
+		if transaction.published {
+			transaction.reportPublishedHandoff(err)
+			if finalizeErr := transaction.finalizeSnapshots(cleanupContext); finalizeErr != nil {
+				err = errors.Join(err, finalizeErr)
 			}
+			return
 		}
-		if stashPushed {
-			if restoreErr := restoreStashedChanges(cleanupContext, environment.GitExecutor, repository.Path, 1); restoreErr != nil {
-				err = errors.Join(err, restoreErr)
-			}
+		if _, rollbackErr := transaction.rollback(cleanupContext); rollbackErr != nil {
+			transaction.reportHandoff(rollbackErr)
+			err = errors.Join(err, rollbackErr)
 		}
 	}()
 
@@ -546,10 +556,12 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 	}
 
 	if dirty && options.StashChanges {
-		if stashErr := stashAllChanges(ctx, environment.GitExecutor, repository.Path); stashErr != nil {
+		stash, stashErr := pushStrictSyncStash(ctx, environment.GitExecutor, repository.Path, strictSyncInvocationStashMessage)
+		if stashErr != nil {
 			return stashErr
 		}
-		stashPushed = true
+		transaction.ownStash(stash)
+		invocationStash = &stash
 		dirty = false
 	}
 
@@ -579,24 +591,35 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 		}
 		branchStartPoint := strictSyncDirtyBranchStartCurrentCheckout
 		currentBranch := strings.TrimSpace(repository.Inspection.LocalBranch)
-		isolateFromCurrentBranch := branchName == baseBranch && currentBranch != "" && currentBranch != baseBranch
-		if isolateFromCurrentBranch {
+		targetLocalExists, targetLocalExistsErr := localBranchExists(ctx, environment.GitExecutor, repository.Path, commitBranchName)
+		if targetLocalExistsErr != nil {
+			return targetLocalExistsErr
+		}
+		targetRemoteExists, targetRemoteExistsErr := remoteReferenceExists(ctx, environment.GitExecutor, repository.Path, fmt.Sprintf("%s/%s", remoteName, commitBranchName))
+		if targetRemoteExistsErr != nil {
+			return targetRemoteExistsErr
+		}
+		switchFromDifferentBranch := currentBranch != "" && currentBranch != commitBranchName && (targetLocalExists || targetRemoteExists)
+		var isolationStash *strictSyncStash
+		if branchName == baseBranch && currentBranch != baseBranch {
 			branchStartPoint = strictSyncDirtyBranchStartRemoteBase
-			if stashErr := stashAllChanges(ctx, environment.GitExecutor, repository.Path); stashErr != nil {
+		}
+		if switchFromDifferentBranch {
+			stash, stashErr := pushStrictSyncStash(ctx, environment.GitExecutor, repository.Path, strictSyncInvocationStashMessage)
+			if stashErr != nil {
 				return stashErr
 			}
+			transaction.ownStash(stash)
+			isolationStash = &stash
 		}
 		if prepareErr := prepareStrictSyncBranchForDirtyWork(ctx, environment, repository, remoteName, reviewBaseBranch, commitBranchName, branchStartPoint, options.CommitMessages); prepareErr != nil {
 			if stackPlan != nil && stackPlan.RecordReviewBase {
 				prepareErr = errors.Join(prepareErr, removeStrictSyncStackReviewBaseWhenChildMissing(ctx, environment.GitExecutor, repository.Path, *stackPlan))
 			}
-			if isolateFromCurrentBranch {
-				return errors.Join(prepareErr, restoreStashedChanges(ctx, environment.GitExecutor, repository.Path, 1))
-			}
 			return prepareErr
 		}
-		if isolateFromCurrentBranch {
-			if restoreErr := restoreStashedChanges(ctx, environment.GitExecutor, repository.Path, 1); restoreErr != nil {
+		if isolationStash != nil {
+			if restoreErr := restoreOwnedStrictSyncStash(ctx, environment, repository, transaction, *isolationStash, commitBranchName, options.CommitMessages); restoreErr != nil {
 				return restoreErr
 			}
 		}
@@ -613,8 +636,10 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 			if pushErr := executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitPushSubcommandConstant, remoteName, branchName}); pushErr != nil {
 				return pushErr
 			}
-			reportStrictSync(repository, environment, branchName, options.ResolutionSource, false, stashPushed)
-			return nil
+			return completeStrictSync(ctx, environment, repository, transaction, invocationStash, options, strictSyncCompletion{
+				BranchName: branchName,
+				Stashed:    invocationStash != nil,
+			})
 		}
 	}
 
@@ -622,8 +647,10 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 		if syncErr := syncBaseBranch(ctx, environment, repository, remoteName, baseBranch, options.CommitMessages); syncErr != nil {
 			return syncErr
 		}
-		reportStrictSync(repository, environment, branchName, options.ResolutionSource, false, stashPushed)
-		return nil
+		return completeStrictSync(ctx, environment, repository, transaction, invocationStash, options, strictSyncCompletion{
+			BranchName: branchName,
+			Stashed:    invocationStash != nil,
+		})
 	}
 
 	pullRequestSyncResult, syncErr := syncPullRequestBranch(ctx, environment, repository, strictPullRequestBranchOptions{
@@ -642,7 +669,42 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 	if strings.TrimSpace(pullRequestSyncResult.SyncedBranch) != "" {
 		reportBranchName = pullRequestSyncResult.SyncedBranch
 	}
-	reportStrictSync(repository, environment, reportBranchName, options.ResolutionSource, pullRequestSyncResult.Created, stashPushed)
+	return completeStrictSync(ctx, environment, repository, transaction, invocationStash, options, strictSyncCompletion{
+		BranchName: reportBranchName,
+		Created:    pullRequestSyncResult.Created,
+		Stashed:    invocationStash != nil,
+	})
+}
+
+func completeStrictSync(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, transaction *strictSyncTransaction, invocationStash *strictSyncStash, options strictSyncOptions, completion strictSyncCompletion) error {
+	if invocationStash != nil {
+		if restoreErr := restoreOwnedStrictSyncStash(ctx, environment, repository, transaction, *invocationStash, completion.BranchName, options.CommitMessages); restoreErr != nil {
+			return restoreErr
+		}
+	}
+	if finalizeErr := transaction.finalize(ctx); finalizeErr != nil {
+		return finalizeErr
+	}
+	reportStrictSync(repository, environment, completion.BranchName, options.ResolutionSource, completion.Created, completion.Stashed)
+	return nil
+}
+
+func restoreOwnedStrictSyncStash(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, transaction *strictSyncTransaction, stash strictSyncStash, targetBranch string, commitMessages worktreeAdoptionCommitMessageOptions) error {
+	service := mergeConflictResolutionService{
+		executor:       environment.GitExecutor,
+		repositoryPath: stash.Path,
+		commitMessages: commitMessages,
+		reporter: func(level shared.EventLevel, code string, message string, details map[string]string) {
+			environment.ReportRepositoryEvent(repository, level, code, message, details)
+		},
+	}
+	if restoreErr := restoreStrictSyncStash(ctx, environment.GitExecutor, stash, service, mergeConflictResolutionOptions{
+		SourceReference: stash.CommitID,
+		TargetBranch:    targetBranch,
+	}); restoreErr != nil {
+		return restoreErr
+	}
+	transaction.releaseStash(stash)
 	return nil
 }
 
@@ -1174,13 +1236,6 @@ func commitCount(ctx context.Context, executor shared.GitExecutor, repositoryPat
 		return 0, scanErr
 	}
 	return count, nil
-}
-
-func stashAllChanges(ctx context.Context, executor shared.GitExecutor, repositoryPath string) error {
-	if err := executeGit(ctx, executor, repositoryPath, []string{gitStashSubcommandConstant, gitStashPushSubcommandConstant, gitStashIncludeUntrackedFlagConstant}); err != nil {
-		return fmt.Errorf(stashTrackedChangesFailureTemplateConstant, err)
-	}
-	return nil
 }
 
 func reportStrictSync(repository *workflow.RepositoryState, environment *workflow.Environment, branchName string, source string, created bool, stashed bool) {

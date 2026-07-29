@@ -72,15 +72,17 @@ const (
 )
 
 type worktreeAdoptionOptions struct {
-	BranchName     string
-	RemoteName     string
-	CommitMessages worktreeAdoptionCommitMessageOptions
+	BranchName          string
+	RemoteName          string
+	CommitMessages      worktreeAdoptionCommitMessageOptions
+	PublishBeforeChange bool
 }
 
 type worktreeAdoptionChangeOptions struct {
 	BranchName                 string
 	RemoteName                 string
 	CommitMessages             worktreeAdoptionCommitMessageOptions
+	PublishBeforeChange        bool
 	RefetchRemoteAfterAdoption bool
 	Change                     func() error
 }
@@ -119,9 +121,10 @@ func (service worktreeAdoptionService) Change(ctx context.Context, options workt
 	}
 
 	adoptionErr := service.adoptExistingBranchWorktree(ctx, worktreeAdoptionOptions{
-		BranchName:     options.BranchName,
-		RemoteName:     remoteName,
-		CommitMessages: options.CommitMessages,
+		BranchName:          options.BranchName,
+		RemoteName:          remoteName,
+		CommitMessages:      options.CommitMessages,
+		PublishBeforeChange: options.PublishBeforeChange,
 	})
 	if adoptionErr != nil {
 		return adoptionErr
@@ -295,6 +298,9 @@ func (service worktreeAdoptionService) adoptSiblingWorktree(ctx context.Context,
 	if remoteName == "" {
 		remoteName = defaultRemoteNameConstant
 	}
+	if protectErr := protectStrictSyncWorktree(ctx, worktree); protectErr != nil {
+		return protectErr
+	}
 
 	service.environment.ReportRepositoryEvent(
 		service.repository,
@@ -325,13 +331,15 @@ func (service worktreeAdoptionService) adoptSiblingWorktree(ctx context.Context,
 			worktreeAdoptCommitMessage,
 			map[string]string{"branch": branchName, "worktree": worktree.Path},
 		)
-		if pushErr := pushSiblingBranch(ctx, service.environment.GitExecutor, worktree.Path, remoteName, branchName); pushErr != nil {
-			return pushErr
+		if options.PublishBeforeChange {
+			if pushErr := pushSiblingBranch(ctx, service.environment.GitExecutor, worktree.Path, remoteName, branchName); pushErr != nil {
+				return pushErr
+			}
+			pushed = true
 		}
-		pushed = true
 	}
 
-	if !status.Dirty {
+	if !status.Dirty && options.PublishBeforeChange {
 		needsPush, needsPushErr := cleanSiblingBranchNeedsPush(ctx, service.environment.GitExecutor, worktree.Path, remoteName, branchName, status)
 		if needsPushErr != nil {
 			return needsPushErr
@@ -599,6 +607,9 @@ func executeGit(ctx context.Context, executor shared.GitExecutor, workingDirecto
 		Arguments:        arguments,
 		WorkingDirectory: workingDirectory,
 	})
+	if executionErr == nil && len(arguments) > 0 && arguments[0] == gitPushSubcommand {
+		markStrictSyncPublished(ctx)
+	}
 	return executionErr
 }
 

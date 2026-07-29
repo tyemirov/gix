@@ -130,11 +130,13 @@ type strictSyncGitExecutor struct {
 	blockedWorktree   string
 	worktreeRemoved   bool
 	currentBranch     string
+	stashCommits      []string
 }
 
 const (
 	strictSyncGitAbbrevRefFlag = "--abbrev-ref"
 	strictSyncGitHeadReference = "HEAD"
+	strictSyncGitTestCommit    = "0123456789abcdef0123456789abcdef01234567"
 )
 
 func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
@@ -210,8 +212,14 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 			}
 			return execshell.ExecutionResult{StandardOutput: currentBranch + "\n"}, nil
 		}
-		if strings.Join(details.Arguments, " ") == "rev-parse --verify --quiet REVERT_HEAD" {
-			return execshell.ExecutionResult{}, commandFailedErrorWithExitCode("", 1)
+		if len(details.Arguments) > 2 && details.Arguments[1] == gitPathFlagConstant {
+			return execshell.ExecutionResult{StandardOutput: filepath.Join(details.WorkingDirectory, ".git", details.Arguments[2]) + "\n"}, nil
+		}
+		if strings.Join(details.Arguments, " ") == "rev-parse --verify refs/stash" {
+			if len(executor.stashCommits) == 0 {
+				return execshell.ExecutionResult{}, commandFailedErrorWithExitCode("", 1)
+			}
+			return execshell.ExecutionResult{StandardOutput: executor.stashCommits[0] + "\n"}, nil
 		}
 		if len(details.Arguments) > 2 && details.Arguments[1] == "--verify" && executor.missingReferences[details.Arguments[2]] {
 			return execshell.ExecutionResult{}, commandFailedError("fatal: Needed a single revision")
@@ -256,14 +264,30 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 			if currentBranch == "" {
 				currentBranch = defaultSyncBaseBranch
 			}
-			output := fmt.Sprintf("worktree %s\nbranch refs/heads/%s\n", details.WorkingDirectory, currentBranch)
+			output := fmt.Sprintf("worktree %s\nHEAD %s\nbranch refs/heads/%s\n", details.WorkingDirectory, strictSyncGitTestCommit, currentBranch)
 			if executor.blockedWorktree != "" {
-				output += fmt.Sprintf("\nworktree %s\nbranch refs/heads/%s\n", executor.blockedWorktree, executor.blockedBranch)
+				output += fmt.Sprintf("\nworktree %s\nHEAD %s\nbranch refs/heads/%s\n", executor.blockedWorktree, strictSyncGitTestCommit, executor.blockedBranch)
 			}
 			return execshell.ExecutionResult{StandardOutput: output}, nil
 		}
 		if len(details.Arguments) > 2 && details.Arguments[1] == gitWorktreeRemoveSubcommandConstant {
 			executor.worktreeRemoved = true
+		}
+	case "stash":
+		if len(details.Arguments) > 1 && details.Arguments[1] == gitStashPushSubcommandConstant {
+			stashCommit := fmt.Sprintf("%040x", len(executor.stashCommits)+1)
+			executor.stashCommits = append([]string{stashCommit}, executor.stashCommits...)
+			return execshell.ExecutionResult{}, nil
+		}
+		if len(details.Arguments) > 1 && details.Arguments[1] == gitStashListSubcommandConstant {
+			return execshell.ExecutionResult{StandardOutput: strings.Join(executor.stashCommits, "\n") + "\n"}, nil
+		}
+		if len(details.Arguments) > 2 && details.Arguments[1] == gitStashDropSubcommandConstant {
+			var stashIndex int
+			if _, scanErr := fmt.Sscanf(details.Arguments[2], "stash@{%d}", &stashIndex); scanErr == nil && stashIndex >= 0 && stashIndex < len(executor.stashCommits) {
+				executor.stashCommits = append(executor.stashCommits[:stashIndex], executor.stashCommits[stashIndex+1:]...)
+			}
+			return execshell.ExecutionResult{}, nil
 		}
 	}
 	return execshell.ExecutionResult{}, nil
@@ -837,7 +861,7 @@ func TestHandleBranchSyncActionStrictPRBranchAdoptsDirtySiblingWorktree(t *testi
 	require.Contains(t, recordedCommands, "status --porcelain --branch")
 	require.Contains(t, recordedCommands, "add --all")
 	require.Contains(t, recordedCommands, "commit -m fix: adopt sibling worktree")
-	require.Contains(t, recordedCommands, "push --set-upstream origin feature/foo")
+	require.NotContains(t, recordedCommands, "push --set-upstream origin feature/foo")
 	worktreeRemoveCommand := "worktree remove " + blockedWorktree
 	require.Contains(t, recordedCommands, worktreeRemoveCommand)
 	require.Contains(t, recordedCommands, "worktree prune")
@@ -1435,7 +1459,7 @@ func TestHandleBranchSyncActionStrictPRBranchCreatesGeneratedBranchFromCurrentDi
 	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	require.NotEqual(t, -1, recordedGitCommandIndex(gitExecutor.commands, "switch -c "+generatedBranchName))
 	require.Equal(t, -1, recordedGitCommandIndex(gitExecutor.commands, "switch -c "+generatedBranchName+" origin/master"))
-	require.NotContains(t, recordedGitCommands(gitExecutor.commands), "stash push --include-untracked")
+	require.NotContains(t, recordedGitCommands(gitExecutor.commands), strictSyncInvocationStashMessage)
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "add --force --all -- README.md")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "commit -m docs: update readme")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "merge --no-edit origin/master")
@@ -1798,7 +1822,8 @@ func TestHandleBranchSyncActionStrictPRBranchCommitsDirtyWorkToExplicitMaster(t 
 	recordedCommands := recordedGitCommands(gitExecutor.commands)
 	require.Contains(t, recordedCommands, "stash push --include-untracked")
 	require.Contains(t, recordedCommands, "switch master")
-	require.Contains(t, recordedCommands, "stash pop")
+	require.Contains(t, recordedCommands, "stash apply --index")
+	require.Contains(t, recordedCommands, "stash drop")
 	require.Contains(t, recordedCommands, "commit -m docs: preserve dirty work on explicit master")
 	require.Contains(t, recordedCommands, "merge --no-edit origin/master")
 	require.Contains(t, recordedCommands, "push origin master")
