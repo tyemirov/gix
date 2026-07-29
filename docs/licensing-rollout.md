@@ -95,7 +95,9 @@ make license-rollout-plan
 ```
 
 The plan fails closed if the source-repository set, default branch, visibility,
-or any reviewed root license-file blob differs from the snapshot.
+or any reviewed root license-file blob differs from the snapshot. It resolves
+each default branch to one immutable commit and reads the root license-file
+blobs from that revision.
 
 After reviewing this plan and the license terms, create the 97 draft pull
 requests:
@@ -108,17 +110,32 @@ The apply command builds the current Gix source, repeats the complete read-only
 drift check, and checks for existing rollout branches and pull requests before
 mutation. It then:
 
-1. creates isolated sparse clones in a dedicated temporary directory;
+1. creates isolated sparse clones in a dedicated temporary directory and
+   resets each local default branch to the exact commit inspected by the plan;
 2. groups eligible repositories by the reviewed license profile;
 3. applies `configs/license-rollout.yaml`;
 4. pushes deterministic `automation/license/<profile>` branches;
 5. opens draft pull requests without merging them; and
 6. removes the temporary clones after every expected pull request is verified.
 
-An already-open rollout pull request is reported and skipped. A rollout branch
-without an open pull request stops the entire apply before new clones or remote
-changes are made. If execution fails after mutation begins, the isolated
-workspace is preserved and printed for inspection.
+An already-open rollout pull request is reported and skipped only after apply
+proves that it remains a draft from the deterministic same-repository branch,
+targets the reviewed default branch at the exact inspected commit, contains one
+canonical rollout commit, changes exactly the expected license paths and blobs,
+and leaves only the rendered `LICENSE`, `NOTICE`, and
+`COMMERCIAL_LICENSE.md` bundle at the root. Apply re-reads the pull-request
+snapshot after those checks and stops if the base, head, draft state, or
+changed-file count moved during validation or the pull request closed.
+
+A rollout branch without an open pull request, or an open draft that fails any
+validation, stops the entire apply before new clones or remote changes are
+made. Newly created drafts pass the same checks before they count as prepared.
+If execution fails after mutation begins, the isolated workspace is preserved
+and printed for inspection.
+
+The pinned local default branch has no moving upstream. A later fetch performed
+by the workflow therefore cannot fast-forward it beyond the inspected commit
+before the license mutation starts.
 
 The manifest is intentionally not refreshed during plan or apply. Any drift or
 new repository requires a new reviewed inventory change before another rollout.
