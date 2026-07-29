@@ -24,6 +24,9 @@ const (
 	syncMergedBranchGitHubLogVariable           = "GIX_SYNC_TEST_GH_LOG"
 	syncMergedBranchOperationLogVariable        = "GIX_SYNC_TEST_OPERATION_LOG"
 	syncMergedBranchFailPullRequestHeadVariable = "GIX_SYNC_TEST_FAIL_PR_HEAD"
+	syncMergedBranchFailGitMatchVariable        = "GIX_SYNC_TEST_FAIL_GIT_MATCH"
+	syncMergedBranchFailGitOccurrenceVariable   = "GIX_SYNC_TEST_FAIL_GIT_OCCURRENCE"
+	syncMergedBranchFailGitStateVariable        = "GIX_SYNC_TEST_FAIL_GIT_STATE"
 	syncMergedBranchNameVariable                = "GIX_SYNC_TEST_BRANCH"
 	syncMergedBranchMergedVariable              = "GIX_SYNC_TEST_MERGED"
 	syncMergedBranchAPIKeyVariable              = "GIX_SYNC_TEST_LLM_KEY"
@@ -677,6 +680,22 @@ if [ -n "$GIX_SYNC_TEST_GIT_LOG" ]; then
 fi
 if [ -n "$GIX_SYNC_TEST_OPERATION_LOG" ]; then
   printf 'git %%s\n' "$*" >>"$GIX_SYNC_TEST_OPERATION_LOG"
+fi
+if [ -n "$GIX_SYNC_TEST_FAIL_GIT_MATCH" ]; then
+  case "$*" in
+    *"$GIX_SYNC_TEST_FAIL_GIT_MATCH"*)
+      failure_count=0
+      if [ -f "$GIX_SYNC_TEST_FAIL_GIT_STATE" ]; then
+        failure_count="$(cat "$GIX_SYNC_TEST_FAIL_GIT_STATE")"
+      fi
+      failure_count=$((failure_count + 1))
+      printf '%%s\n' "$failure_count" >"$GIX_SYNC_TEST_FAIL_GIT_STATE"
+      if [ "$failure_count" -eq "$GIX_SYNC_TEST_FAIL_GIT_OCCURRENCE" ]; then
+        printf 'simulated git failure for %%s\n' "$*" >&2
+        exit 97
+      fi
+      ;;
+  esac
 fi
 if [ "$1" = "remote" ] && [ "$2" = "get-url" ] && [ "$3" = "origin" ]; then
   printf '%%s\n' %q
