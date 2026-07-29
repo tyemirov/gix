@@ -56,7 +56,7 @@ Clean or `--stash` creation of a missing branch is rejected before child branch 
 
 When the target branch is held by a linked worktree, sync first prunes stale worktree registration and preserves any sibling changes that need to survive before retrying the switch. It does not discard dirty sibling work as a shortcut to changing branches.
 
-Merge conflicts use the configured LLM only when its complete-file response preserves every byte-exact non-conflicting region from Git's marker-bearing worktree file. Marker-free modify/delete or rename/delete conflicts accept only an exact preservation of the local stage, including its deletion. Truncated, incomplete, marker-bearing, structurally invalid, or deletion responses that would discard non-conflicting regions stop before merge commit or push and leave the conflict inspectable. The PR branch is "ours"; its remote review base is "theirs".
+Merge conflicts use the configured LLM only when its complete-file response preserves every byte-exact non-conflicting region from Git's marker-bearing worktree file. Marker-free modify/delete or rename/delete conflicts accept only an exact preservation of the local stage, including its deletion. Truncated, incomplete, marker-bearing, structurally invalid, or deletion responses that would discard non-conflicting regions stop before merge commit or push. Gix then aborts the operation-owned merge with a bounded cleanup context, even when the resolution context was canceled, restoring the branch and worktree to their pre-merge state. If Git cannot abort the merge, Gix reports both the resolution and rollback failures for manual recovery. The PR branch is "ours"; its remote review base is "theirs".
 
 ## Other maintenance workflows
 
@@ -128,7 +128,7 @@ gix message commit --roots .
 gix message changelog --since-tag v1.2.0 --version v1.3.0
 ```
 
-Use the reusable LLM client (`github.com/tyemirov/utils/llm`) to summarise staged changes or recent history. `gix sync` uses the same configured client for automatic dirty-work commit messages and strict-sync merge resolution. Its configured `timeout_seconds` bounds the complete AI merge-resolution operation; gix reports the active resolution phase and leaves a rejected, cancelled, or timed-out merge intact for manual recovery before any push.
+Use the reusable LLM client (`github.com/tyemirov/utils/llm`) to summarise staged changes or recent history. `gix sync` uses the same configured client for automatic dirty-work commit messages and strict-sync merge resolution. Its configured `timeout_seconds` bounds the complete AI merge-resolution operation; gix reports the active resolution phase and aborts a rejected, cancelled, or timed-out merge before returning without a push. Only a failed Git rollback leaves a manual recovery handoff.
 
 The generated configuration defaults to Meta Muse through MPR LLM Proxy and declares both available connections:
 
