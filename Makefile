@@ -14,8 +14,11 @@ PAGES_VERSION ?=
 PAGES_DEPLOY_ARGS ?=
 STATICCHECK_MODULE := honnef.co/go/tools/cmd/staticcheck@master
 INEFFASSIGN_MODULE := github.com/gordonklaus/ineffassign@latest
+LICENSE_ROLLOUT_SCRIPT := scripts/licensing/license_rollout.py
+LICENSE_ROLLOUT_MANIFEST := configs/licensing/fleet.json
+LICENSE_ROLLOUT_WORKFLOW := configs/license-rollout.yaml
 
-.PHONY: format check-format lint test test-unit test-integration test-fast test-slow build release release-artifacts pages-artifact publish-release publish deploy pages-deploy ci
+.PHONY: format check-format lint test test-unit test-integration test-fast test-slow test-licensing build license-rollout-plan license-rollout-apply release release-artifacts pages-artifact publish-release publish deploy pages-deploy ci
 
 format:
 	gofmt -w $(GO_SOURCES)
@@ -35,6 +38,10 @@ lint:
 
 test-fast:
 	go test $(FAST_TEST_PACKAGES)
+	$(MAKE) test-licensing
+
+test-licensing:
+	python3 -m unittest discover -s scripts/licensing -p 'test_*.py'
 
 test-slow:
 	go test ./tests
@@ -48,6 +55,12 @@ test: test-fast test-slow
 build:
 	mkdir -p bin
 	go build -o bin/gix .
+
+license-rollout-plan:
+	timeout -k 350s -s SIGKILL 350s python3 "$(LICENSE_ROLLOUT_SCRIPT)" plan --manifest "$(LICENSE_ROLLOUT_MANIFEST)"
+
+license-rollout-apply: build
+	timeout -k 350s -s SIGKILL 350s python3 "$(LICENSE_ROLLOUT_SCRIPT)" apply --manifest "$(LICENSE_ROLLOUT_MANIFEST)" --workflow "$(LICENSE_ROLLOUT_WORKFLOW)" --gix bin/gix
 
 release:
 	@RELEASE_HELPER="$(RELEASE_HELPER)" RELEASE_ARTIFACT_TARGETS="$(RELEASE_ARTIFACT_TARGETS)" "$(RELEASE_TOOL_DIR)/prepare_release.sh" $(RELEASE_ARGS)
