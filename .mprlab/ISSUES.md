@@ -235,6 +235,23 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Resolution:
   Strict sync now builds one exact per-worktree operation plan, rejects operator-owned merge, revert, cherry-pick, rebase, apply-mailbox, bisect, and sequencer state before fetch, and ignores ordinary marker-like refs. Its local transaction snapshots branch refs, commits, index state, tracked and untracked contents, stashes, and adoptable worktree topology; sibling publication is deferred to the normal target push. Pre-push failure restores the complete snapshot, while post-push failure preserves forward recovery state and reports `SYNC_SWITCH_HANDOFF`. Invocation-owned stashes restore with `--index`, use the bounded semantic conflict engine when necessary, and complete before `SYNCED`. Three declarative compiled-CLI tables cover operator preflight, rollback/publication boundaries, and successful finalization. `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check` passed on 2026-07-29.
 
+- [x] [B045] (P0) Close strict-sync transaction ownership gaps.
+  Reported on 2026-07-29 during review of B044.
+  Observation:
+  Three edges still violate the ownership boundary. A pre-existing unmerged index without an administrative marker reaches snapshot acquisition, where a failed stash can trigger destructive cleanup without an owned backup. An up-to-date push is treated as publication even though it performs no remote write. Rollback also rewinds or deletes every local branch and recreates every starting worktree instead of limiting restoration to state this invocation mutated.
+  Requirements:
+  - Reject an unmerged index in every valid registered worktree before fetch or snapshot mutation, including conflicts left by `git stash apply` without an active merge or sequencer marker.
+  - Parse Git's porcelain push result and mark Git publication only for an actual remote ref creation, update, or deletion; keep an up-to-date push rollback-capable, retain successful pull-request creation as publication, and fail closed when a successful response cannot prove its outcome.
+  - Journal only branch refs and worktrees mutated by the invocation, advance the expected ref value after each successful mutation, and restore owned refs with compare-and-swap.
+  - Preserve unrelated local branch creation or advancement and unrelated worktree topology during rollback; reject an unexpected outside change to an owned ref instead of overwriting it.
+  - Make failed snapshot acquisition non-destructive unless an exact transaction backup was successfully acquired.
+  Validation:
+  - Extend the declarative operator-preflight table with an exact-state stash-apply conflict.
+  - Extend the declarative failure table with a no-op push followed by pull-request failure and with a concurrent commit in an unrelated sibling worktree.
+  - Run `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check`.
+  Resolution:
+  Strict sync now rejects every pre-existing unmerged index before snapshot acquisition and defensively repeats that check at snapshot and adoption boundaries. A snapshot is registered for rollback only after its exact backup exists; an earlier failure finalizes prior temporary snapshots without resetting unowned state. Every strict-sync push requests porcelain status, and only an actual ref creation, update, or deletion marks Git publication; an up-to-date push remains rollback-capable, successful pull-request creation remains a publication event, and an unprovable successful push fails closed under handoff. Local recovery journals only refs and worktrees the invocation mutates, advances each expected ref after successful Git commands, validates ownership before destructive cleanup, and compare-and-swaps only owned refs back to their starting values. The declarative tables now prove exact preservation of a stash-apply conflict, rollback after a no-op push, and survival of a concurrent unrelated sibling commit. `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check` passed on 2026-07-29.
+
 ## Maintenance
 
 - [ ] [M001R] (P2) Backlog hygiene and archive.
