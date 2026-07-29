@@ -102,6 +102,35 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Resolution:
   Sync now derives tracked and untracked path sets directly from Git's status entries. Exact tracked paths use force staging so matching ignore rules cannot block their modifications, deletions, renames, or staged additions; untracked paths retain normal ignore-respecting staging. The cached-ignore inspection and tracked-path restore code were removed. Public CLI coverage reproduces the reported empty local branch with dirty `configs/.env.hecateapi.example`, verifies its contents are committed and pushed into a new pull request, and retains ignored-untracked exclusion coverage. `make format`, `make test`, `make lint`, and `make ci` passed on 2026-07-27.
 
+- [x] [B039] (P1) Pin license rollout clones to their inspected commits.
+  Reported on 2026-07-28 during review of F011.
+  Observation:
+  The read-only plan verified license blobs through a repository default branch name, while apply later cloned that moving branch tip. A branch advance between those operations could therefore change the files used as the mutation base after planning had passed.
+  Requirements:
+  - Resolve one immutable commit for every non-empty default branch and inspect license blobs through that commit.
+  - Reset each sparse clone to the corresponding inspected commit before any workflow mutation.
+  - Prevent the workflow's initial fetch from fast-forwarding the pinned local default branch.
+  - Fail closed when the inspected commit cannot be fetched.
+  Validation:
+  - Advance a Git-backed default branch after inspection and prove clone preparation plus the workflow-equivalent fetch/pull sequence leaves `HEAD` and `LICENSE` at the inspected commit.
+  - Run `make format`, `make test`, `make lint`, `make ci`, and `git diff --check`.
+  Resolution:
+  Live inventory now carries the exact default-branch commit used for root license-blob inspection. Apply fetches that SHA, resets the sparse clone to it, and removes the local default branch's moving upstream before Gix runs. Focused licensing coverage passes with a real branch-advance regression.
+
+- [x] [B040] (P2) Validate existing license rollout pull requests before skipping them.
+  Reported on 2026-07-28 during review of F011.
+  Observation:
+  Apply treated any open draft on the deterministic rollout branch as completed without proving its base, head history, or changed files. A stale or manually modified draft could therefore bypass cloning and be counted as a successful reviewed rollout.
+  Requirements:
+  - Require the draft to use the reviewed base branch and exact inspected base commit, the deterministic same-repository head branch, and one canonical rollout commit.
+  - Compare the complete changed-file set and resulting root license blobs with the bundle rendered from the reviewed profile, rejecting aliases and unrelated changes.
+  - Re-read the pull request after validation and fail closed if its open/draft state, base, head, or changed-file count moved during inspection.
+  Validation:
+  - Accept a matching draft and reject wrong base names or commits, noncanonical history, extra or modified files, and a head revision that moves during validation.
+  - Run `make format`, `make test`, `make lint`, `make ci`, `make license-rollout-plan`, and `git diff --check`.
+  Resolution:
+  Existing and newly created rollout pull requests now pass the same immutable base, single-commit history, exact changed-path/blob, canonical root-bundle, and final snapshot validation before their URLs count as prepared. Focused licensing coverage exercises every rejection boundary. `make format`, `make test`, `make lint`, `make ci`, `make license-rollout-plan`, and `git diff --check` passed on 2026-07-28; the live plan reverified 103 repositories, 97 eligible rollouts, and six review holds without mutation.
+
 ## Maintenance
 
 - [ ] [M001R] (P2) Backlog hygiene and archive.
