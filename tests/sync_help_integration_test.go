@@ -32,4 +32,5 @@ func TestSyncHelpDescribesMissingBranchCurrentHeadContract(testInstance *testing
 	require.Contains(testInstance, output, "The selected parent base is retained for retries after child push or pull-request failure.")
 	require.Contains(testInstance, output, "A clean or stashed missing branch is rejected because it would have no child pull request delta.")
 	require.Contains(testInstance, output, "Dirty auto-commit is rejected on a known-merged branch; use --stash to preserve that work through the merged handoff before creating a new review branch.")
+	require.Contains(testInstance, output, "rejection, timeout, or Ctrl-C aborts the operation-owned merge, restores the pre-merge branch state, and stops before push.")
 }

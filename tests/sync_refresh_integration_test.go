@@ -1046,24 +1046,23 @@ operations:
 	require.Contains(testInstance, output, "MERGE_CONFLICT")
 	require.Contains(testInstance, output, "AI_MERGE_RESOLUTION")
 	require.Contains(testInstance, output, "AI_MERGE_VALIDATION")
-	require.Contains(testInstance, output, "AI_MERGE_HANDOFF")
+	require.Contains(testInstance, output, "AI_MERGE_ROLLBACK")
 	require.Contains(testInstance, output, "does not preserve non-conflicting content")
-	require.Contains(testInstance, output, "git merge --abort")
+	require.Contains(testInstance, output, "failed merge was aborted")
+	require.NotContains(testInstance, output, "AI_MERGE_HANDOFF")
 	require.Equal(testInstance, int64(len(responses)), responseIndex.Load())
 
 	require.Equal(testInstance, "master", strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
-	require.Equal(testInstance, conflictedFileName, strings.TrimSpace(runGit(testInstance, repositoryPath, "diff", "--name-only", "--diff-filter=U")))
+	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
 	headWithParents := strings.Fields(runGit(testInstance, repositoryPath, "rev-list", "--parents", "-n", "1", "HEAD"))
 	require.Len(testInstance, headWithParents, 2)
 	require.Equal(testInstance, baseCommit, headWithParents[1])
 
-	conflictState := readTextFile(testInstance, conflictedFilePath)
-	require.Contains(testInstance, conflictState, "<<<<<<< HEAD")
-	require.Contains(testInstance, conflictState, stableTailLine)
-	require.NotEqual(testInstance, truncatedResolution, conflictState)
+	require.Equal(testInstance, localContent, readTextFile(testInstance, conflictedFilePath))
 
 	gitLog := readTextFile(testInstance, gitLogPath)
 	require.Contains(testInstance, gitLog, "merge --no-edit origin/master")
+	require.Contains(testInstance, gitLog, "merge --abort")
 	require.NotContains(testInstance, gitLog, "commit --no-edit")
 	require.NotContains(testInstance, gitLog, "push origin master")
 	if githubLogBytes, githubLogReadError := os.ReadFile(githubLogPath); githubLogReadError == nil {
@@ -1202,9 +1201,10 @@ operations:
 	require.Contains(testInstance, output, "AI_MERGE_RESOLUTION")
 	require.Contains(testInstance, output, "deadline 2s")
 	require.Contains(testInstance, output, "still resolving "+conflictedFileName+" with AI")
-	require.Contains(testInstance, output, "AI_MERGE_HANDOFF")
+	require.Contains(testInstance, output, "AI_MERGE_ROLLBACK")
 	require.Contains(testInstance, output, "AI merge resolution timed out after 2s")
-	require.Contains(testInstance, output, "git merge --abort")
+	require.Contains(testInstance, output, "failed merge was aborted")
+	require.NotContains(testInstance, output, "AI_MERGE_HANDOFF")
 	require.Equal(testInstance, int64(2), responseIndex.Load())
 
 	select {
@@ -1215,17 +1215,16 @@ operations:
 	}
 
 	require.Equal(testInstance, "master", strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
-	require.Equal(testInstance, conflictedFileName, strings.TrimSpace(runGit(testInstance, repositoryPath, "diff", "--name-only", "--diff-filter=U")))
+	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
 	headWithParents := strings.Fields(runGit(testInstance, repositoryPath, "rev-list", "--parents", "-n", "1", "HEAD"))
 	require.Len(testInstance, headWithParents, 2)
 	require.Equal(testInstance, baseCommit, headWithParents[1])
 
-	conflictState := readTextFile(testInstance, conflictedFilePath)
-	require.Contains(testInstance, conflictState, "<<<<<<< HEAD")
-	require.Contains(testInstance, conflictState, stableTailLine)
+	require.Equal(testInstance, localContent, readTextFile(testInstance, conflictedFilePath))
 
 	gitLog := readTextFile(testInstance, gitLogPath)
 	require.Contains(testInstance, gitLog, "merge --no-edit origin/master")
+	require.Contains(testInstance, gitLog, "merge --abort")
 	require.NotContains(testInstance, gitLog, "commit --no-edit")
 	require.NotContains(testInstance, gitLog, "push origin master")
 	if githubLogBytes, githubLogReadError := os.ReadFile(githubLogPath); githubLogReadError == nil {
@@ -1356,22 +1355,22 @@ operations:
 	)
 	require.Error(testInstance, runError)
 	require.Contains(testInstance, output, "does not preserve non-conflicting content")
+	require.Contains(testInstance, output, "AI_MERGE_ROLLBACK")
+	require.Contains(testInstance, output, "failed merge was aborted")
 	require.Equal(testInstance, int64(len(responses)), responseIndex.Load())
 
 	require.Equal(testInstance, "master", strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
-	require.Equal(testInstance, conflictedFileName, strings.TrimSpace(runGit(testInstance, repositoryPath, "diff", "--name-only", "--diff-filter=U")))
+	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
 	headWithParents := strings.Fields(runGit(testInstance, repositoryPath, "rev-list", "--parents", "-n", "1", "HEAD"))
 	require.Len(testInstance, headWithParents, 2)
 	require.Equal(testInstance, baseCommit, headWithParents[1])
 
-	conflictState := readTextFile(testInstance, conflictedFilePath)
-	require.Equal(testInstance, remoteContent, conflictState)
-	require.NotContains(testInstance, conflictState, "<<<<<<<")
-	require.Contains(testInstance, conflictState, stableTailLine)
-	require.NotEqual(testInstance, truncatedResolution, conflictState)
+	_, conflictStateError := os.Stat(conflictedFilePath)
+	require.True(testInstance, os.IsNotExist(conflictStateError))
 
 	gitLog := readTextFile(testInstance, gitLogPath)
 	require.Contains(testInstance, gitLog, "merge --no-edit origin/master")
+	require.Contains(testInstance, gitLog, "merge --abort")
 	require.NotContains(testInstance, gitLog, "commit --no-edit")
 	require.NotContains(testInstance, gitLog, "push origin master")
 	if githubLogBytes, githubLogReadError := os.ReadFile(githubLogPath); githubLogReadError == nil {
