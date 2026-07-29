@@ -75,7 +75,7 @@ Each feature area resides in `internal/<domain>` and exposes structs with method
   - `prompt`: End-user confirmation and message formatting.
   - `protocol`, `remotes`, `rename`: Operations that update remotes, protocols, and directory names.
   - `shared`: Shared interfaces (Git executor, GitHub resolver, repository manager).
-- `internal/packages`: GitHub Packages purge workflow including GHCR API clients.
+- `internal/packages`: GitHub Packages retention workflow including GHCR API clients.
 - `internal/releases`: Annotated tag creation and push orchestration used by `release`.
 - `internal/web`: Embedded local browser UI, repository explorer, typed audit API, and queued remediation boundary.
 - `internal/workflow`: YAML/JSON workflow runner, step registry, and execution environment.
@@ -152,7 +152,8 @@ operations:
       debug: false
 
   - command: ["packages", "delete"]
-    with: &packages_purge_defaults
+    with: &packages_retention_defaults
+      # Retention is explicit at invocation time: gix packages delete --keep 3
       # package: my-image  # Optional override; defaults to the repository name
       base_url: "https://api.github.com"
       credential: "${GITHUB_PACKAGES_TOKEN}"
@@ -233,6 +234,8 @@ workflow:
         output: ./reports/audit-latest.csv
         format: csv
 ```
+
+Package retention is supplied at the command boundary, for example `gix packages delete --keep 3`. Gix first snapshots and validates every package-version page, then preserves the newest requested count by `created_at` and deletes all older tagged or untagged versions.
 
 ## Reusable Packages
 

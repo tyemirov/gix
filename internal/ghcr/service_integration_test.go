@@ -19,8 +19,6 @@ const (
 	integrationOwnerNameConstant    = "integration-owner"
 	integrationPackageNameConstant  = "integration-package"
 	integrationTokenConstant        = "integration-token"
-	untaggedVersionIdentifier       = int64(501)
-	taggedVersionIdentifier         = int64(999)
 	expectedAcceptHeaderName        = "Accept"
 	expectedAuthorizationHeaderName = "Authorization"
 	expectedAcceptHeaderValue       = "application/vnd.github+json"
@@ -29,8 +27,6 @@ const (
 )
 
 func TestPackageVersionServiceIntegration(testingInstance *testing.T) {
-	testingInstance.Parallel()
-
 	recordedDeleteIdentifiers := make([]int64, 0)
 	requestCount := 0
 
@@ -59,18 +55,17 @@ func TestPackageVersionServiceIntegration(testingInstance *testing.T) {
 	})
 	require.NoError(testingInstance, serviceError)
 
-	result, purgeError := service.PurgeUntaggedVersions(context.Background(), ghcr.PurgeRequest{
+	result, retentionError := service.ApplyRetention(context.Background(), ghcr.RetentionRequest{
 		Owner:       integrationOwnerNameConstant,
 		PackageName: integrationPackageNameConstant,
 		OwnerType:   ghcr.OrganizationOwnerType,
 		Token:       integrationTokenConstant,
+		Keep:        mustKeepCount(testingInstance, 3),
 	})
-	require.NoError(testingInstance, purgeError)
-	require.Equal(testingInstance, 2, result.TotalVersions)
-	require.Equal(testingInstance, 1, result.UntaggedVersions)
-	require.Equal(testingInstance, 1, result.DeletedVersions)
-	require.Len(testingInstance, recordedDeleteIdentifiers, 1)
-	require.GreaterOrEqual(testingInstance, requestCount, 2)
+	require.NoError(testingInstance, retentionError)
+	require.Equal(testingInstance, ghcr.RetentionResult{TotalVersions: 5, RetainedVersions: 3, DeletedVersions: 2}, result)
+	require.Equal(testingInstance, []int64{101, 202}, recordedDeleteIdentifiers)
+	require.Equal(testingInstance, 6, requestCount)
 }
 
 func handleIntegrationGet(testingInstance *testing.T, responseWriter http.ResponseWriter, httpRequest *http.Request) {
@@ -78,15 +73,28 @@ func handleIntegrationGet(testingInstance *testing.T, responseWriter http.Respon
 	pageValue := query.Get(pageQueryParameterName)
 	require.NotEmpty(testingInstance, pageValue)
 
+	var payload string
 	switch pageValue {
 	case "1":
-		payload := fmt.Sprintf(`[{"id":%d,"metadata":{"container":{"tags":[]}}},{"id":%d,"metadata":{"container":{"tags":["latest"]}}}]`, untaggedVersionIdentifier, taggedVersionIdentifier)
-		responseWriter.Header().Set("Content-Type", "application/json")
-		_, _ = responseWriter.Write([]byte(payload))
+		payload = `[
+			{"id":505,"created_at":"2026-01-05T00:00:00Z","metadata":{"container":{"tags":["latest","v5"]}}},
+			{"id":404,"created_at":"2026-01-04T00:00:00Z","metadata":{"container":{"tags":[]}}}
+		]`
+	case "2":
+		payload = `[
+			{"id":303,"created_at":"2026-01-03T00:00:00Z","metadata":{"container":{"tags":["v3"]}}},
+			{"id":202,"created_at":"2026-01-02T00:00:00Z","metadata":{"container":{"tags":["v2"]}}}
+		]`
+	case "3":
+		payload = `[{"id":101,"created_at":"2026-01-01T00:00:00Z","metadata":{"container":{"tags":[]}}}]`
+	case "4":
+		payload = `[]`
 	default:
-		responseWriter.Header().Set("Content-Type", "application/json")
-		_, _ = responseWriter.Write([]byte("[]"))
+		testingInstance.Fatalf("unexpected page %s", pageValue)
 	}
+
+	responseWriter.Header().Set("Content-Type", "application/json")
+	_, _ = responseWriter.Write([]byte(payload))
 }
 
 func parseVersionIdentifierFromPath(requestPath string) (int64, error) {

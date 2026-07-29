@@ -38,7 +38,7 @@ import (
 
 var commandOperationRequirements = map[string][]string{
 	auditOperationNameConstant:           {auditOperationNameConstant},
-	packagesDeleteCommandPathKeyConstant: {packagesPurgeOperationNameConstant},
+	packagesDeleteCommandPathKeyConstant: {packagesDeleteOperationNameConstant},
 	pullRequestsDeleteCommandPathKeyConstant: {
 		branchCleanupOperationNameConstant,
 	},
@@ -512,7 +512,7 @@ func (application *Application) auditCommandConfiguration() audit.CommandConfigu
 
 func (application *Application) packagesConfiguration() packages.Configuration {
 	configuration := packages.DefaultConfiguration()
-	application.decodeOperationConfiguration(packagesPurgeOperationNameConstant, &configuration.Purge)
+	application.decodeOperationConfiguration(packagesDeleteOperationNameConstant, &configuration.Delete)
 
 	return configuration
 }
@@ -957,8 +957,8 @@ func operationConfigurationSchemaTarget(operationName string) (any, bool) {
 	switch operationName {
 	case auditOperationNameConstant:
 		return &audit.CommandConfiguration{}, true
-	case packagesPurgeOperationNameConstant:
-		return &packages.PurgeConfiguration{}, true
+	case packagesDeleteOperationNameConstant:
+		return &packages.DeleteConfiguration{}, true
 	case branchCleanupOperationNameConstant:
 		return &branches.CommandConfiguration{}, true
 	case reposRenameOperationNameConstant:

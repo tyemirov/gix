@@ -17,13 +17,15 @@ import (
 )
 
 const (
-	packagesPurgeCommandUseConstant                     = "repo-packages-purge"
-	packagesPurgeCommandShortDescriptionConstant        = "Delete untagged GHCR versions"
-	packagesPurgeCommandLongDescriptionConstant         = "repo-packages-purge removes untagged container versions from GitHub Container Registry."
-	unexpectedArgumentsErrorMessageConstant             = "repo-packages-purge does not accept positional arguments"
-	commandExecutionErrorTemplateConstant               = "repo-packages-purge failed: %w"
+	packagesDeleteCommandUseConstant                    = "repo-packages-delete"
+	packagesDeleteCommandShortDescriptionConstant       = "Delete GHCR versions outside retention"
+	packagesDeleteCommandLongDescriptionConstant        = "repo-packages-delete preserves the newest requested GitHub Container Registry versions and deletes all older versions."
+	unexpectedArgumentsErrorMessageConstant             = "repo-packages-delete does not accept positional arguments"
 	packageFlagNameConstant                             = "package"
 	packageFlagDescriptionConstant                      = "Container package name in GHCR"
+	keepFlagNameConstant                                = "keep"
+	keepFlagDescriptionConstant                         = "Number of newest package versions to preserve"
+	keepFlagRequiredErrorMessageConstant                = "packages delete requires --keep with a positive version count"
 	baseURLConfigurationMissingErrorMessageConstant     = "packages delete configuration requires base_url"
 	credentialConfigurationMissingErrorMessageConstant  = "packages delete configuration requires credential"
 	workingDirectoryResolutionErrorTemplateConstant     = "unable to determine working directory: %w"
@@ -36,7 +38,6 @@ const (
 	repositoryRootsLogFieldNameConstant                 = "repository_roots"
 	repositoryPathLogFieldNameConstant                  = "repository_path"
 	repositoryMetadataFailedMessageConstant             = "Failed to resolve repository metadata"
-	repositoryPurgeFailedMessageConstant                = "repo-packages-purge failed for repository"
 	ownerRepoSeparatorConstant                          = "/"
 )
 
@@ -46,16 +47,16 @@ type LoggerProvider func() *zap.Logger
 // ConfigurationProvider returns the current packages configuration.
 type ConfigurationProvider func() Configuration
 
-// PurgeServiceResolver creates purge executors for the command.
-type PurgeServiceResolver interface {
-	Resolve(logger *zap.Logger) (PurgeExecutor, error)
+// RetentionServiceResolver creates retention executors for the command.
+type RetentionServiceResolver interface {
+	Resolve(logger *zap.Logger) (RetentionExecutor, error)
 }
 
-// CommandBuilder assembles the repo-packages-purge command.
+// CommandBuilder assembles the repo-packages-delete command.
 type CommandBuilder struct {
 	LoggerProvider             LoggerProvider
 	ConfigurationProvider      ConfigurationProvider
-	ServiceResolver            PurgeServiceResolver
+	ServiceResolver            RetentionServiceResolver
 	HTTPClient                 ghcr.HTTPClient
 	GitExecutor                shared.GitExecutor
 	RepositoryManager          shared.GitRepositoryManager
@@ -74,23 +75,25 @@ type commandExecutionOptions struct {
 	BaseURL             string
 	Credential          string
 	RepositoryRoots     []string
+	Keep                ghcr.KeepCount
 }
 
-// Build constructs the repo-packages-purge command with purge functionality.
+// Build constructs the repo-packages-delete command with retention functionality.
 func (builder *CommandBuilder) Build() (*cobra.Command, error) {
-	purgeCommand := &cobra.Command{
-		Use:   packagesPurgeCommandUseConstant,
-		Short: packagesPurgeCommandShortDescriptionConstant,
-		Long:  packagesPurgeCommandLongDescriptionConstant,
-		RunE:  builder.runPurge,
+	deleteCommand := &cobra.Command{
+		Use:   packagesDeleteCommandUseConstant,
+		Short: packagesDeleteCommandShortDescriptionConstant,
+		Long:  packagesDeleteCommandLongDescriptionConstant,
+		RunE:  builder.runDelete,
 	}
 
-	purgeCommand.Flags().String(packageFlagNameConstant, "", packageFlagDescriptionConstant)
+	deleteCommand.Flags().String(packageFlagNameConstant, "", packageFlagDescriptionConstant)
+	deleteCommand.Flags().Int(keepFlagNameConstant, 0, keepFlagDescriptionConstant)
 
-	return purgeCommand, nil
+	return deleteCommand, nil
 }
 
-func (builder *CommandBuilder) runPurge(command *cobra.Command, arguments []string) error {
+func (builder *CommandBuilder) runDelete(command *cobra.Command, arguments []string) error {
 	if len(arguments) > 0 {
 		return errors.New(unexpectedArgumentsErrorMessageConstant)
 	}
@@ -103,7 +106,7 @@ func (builder *CommandBuilder) runPurge(command *cobra.Command, arguments []stri
 		return optionsError
 	}
 
-	purgeService, serviceError := builder.resolvePurgeService(logger, executionOptions.BaseURL)
+	retentionService, serviceError := builder.resolveRetentionService(logger, executionOptions.BaseURL)
 	if serviceError != nil {
 		return serviceError
 	}
@@ -140,17 +143,18 @@ func (builder *CommandBuilder) runPurge(command *cobra.Command, arguments []stri
 	taskRunner := resolveTaskRunner(builder.TaskRunnerFactory, dependencyResult.Workflow)
 
 	actionOptions := map[string]any{
-		"service":           purgeService,
+		"service":           retentionService,
 		"metadata_resolver": repositoryMetadataResolver,
 		"credential":        executionOptions.Credential,
 		"package_override":  executionOptions.PackageNameOverride,
+		"keep_count":        executionOptions.Keep,
 	}
 
 	taskDefinition := workflow.TaskDefinition{
-		Name:        "Purge package versions",
+		Name:        "Apply package version retention",
 		EnsureClean: false,
 		Actions: []workflow.TaskActionDefinition{
-			{Type: taskActionPackagesPurge, Options: actionOptions},
+			{Type: taskActionPackagesRetention, Options: actionOptions},
 		},
 	}
 
@@ -167,17 +171,29 @@ func (builder *CommandBuilder) parseCommandOptions(command *cobra.Command, argum
 	if packageFlagError != nil {
 		return commandExecutionOptions{}, packageFlagError
 	}
-	packageValue := selectOptionalStringValue(packageFlagValue, configuration.Purge.PackageName)
-	baseURL := strings.TrimSpace(configuration.Purge.BaseURL)
+	if !command.Flags().Changed(keepFlagNameConstant) {
+		return commandExecutionOptions{}, errors.New(keepFlagRequiredErrorMessageConstant)
+	}
+	keepValue, keepFlagError := command.Flags().GetInt(keepFlagNameConstant)
+	if keepFlagError != nil {
+		return commandExecutionOptions{}, keepFlagError
+	}
+	keepCount, keepCountError := ghcr.NewKeepCount(keepValue)
+	if keepCountError != nil {
+		return commandExecutionOptions{}, keepCountError
+	}
+
+	packageValue := selectOptionalStringValue(packageFlagValue, configuration.Delete.PackageName)
+	baseURL := strings.TrimSpace(configuration.Delete.BaseURL)
 	if baseURL == "" {
 		return commandExecutionOptions{}, errors.New(baseURLConfigurationMissingErrorMessageConstant)
 	}
-	credential := strings.TrimSpace(configuration.Purge.Credential)
+	credential := strings.TrimSpace(configuration.Delete.Credential)
 	if credential == "" {
 		return commandExecutionOptions{}, errors.New(credentialConfigurationMissingErrorMessageConstant)
 	}
 
-	repositoryRoots, rootsError := rootutils.Resolve(command, arguments, configuration.Purge.RepositoryRoots)
+	repositoryRoots, rootsError := rootutils.Resolve(command, arguments, configuration.Delete.RepositoryRoots)
 	if rootsError != nil {
 		return commandExecutionOptions{}, rootsError
 	}
@@ -187,6 +203,7 @@ func (builder *CommandBuilder) parseCommandOptions(command *cobra.Command, argum
 		BaseURL:             baseURL,
 		Credential:          credential,
 		RepositoryRoots:     repositoryRoots,
+		Keep:                keepCount,
 	}
 
 	return executionOptions, nil
@@ -214,12 +231,12 @@ func (builder *CommandBuilder) resolveConfiguration() Configuration {
 	return configuration.Sanitize()
 }
 
-func (builder *CommandBuilder) resolvePurgeService(logger *zap.Logger, baseURL string) (PurgeExecutor, error) {
+func (builder *CommandBuilder) resolveRetentionService(logger *zap.Logger, baseURL string) (RetentionExecutor, error) {
 	if builder.ServiceResolver != nil {
 		return builder.ServiceResolver.Resolve(logger)
 	}
 
-	defaultResolver := &DefaultPurgeServiceResolver{
+	defaultResolver := &DefaultRetentionServiceResolver{
 		HTTPClient: builder.HTTPClient,
 		ServiceConfiguration: ghcr.ServiceConfiguration{
 			BaseURL: strings.TrimSpace(baseURL),

@@ -386,3 +386,22 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Generic code has one forge-neutral identity and review-request contract; all provider branching is contained in the registry/adapters/capability boundary.
   - The current public schema and terminology are forward-only. No runtime compatibility aliases or fallback paths for the old GitHub-only configuration or PR vocabulary remain after migration.
   - GitHub-specific capabilities are explicit and safe, while supported generic operations have equivalent observable behavior on GitHub and GitLab.
+
+- [x] [F012] (P1) Retain an explicit number of recent GHCR package versions.
+  Requested on 2026-07-28.
+  Goal:
+  Make `gix packages delete --keep 3` retain the three newest GitHub Container Registry package versions for each repository in scope and delete every older version.
+  Requirements:
+  - Require an explicit positive `--keep <count>` value before listing or deleting package versions.
+  - Define newest by GitHub's `created_at` package-version timestamp, using the version identifier as a deterministic tie-breaker.
+  - Snapshot and validate every paginated package version before the first delete so deletion cannot shift later pages or partially apply after malformed list data.
+  - Apply retention to both tagged and untagged versions; remove the obsolete untagged-only purge contract instead of retaining a second mode.
+  - Preserve repository discovery, GitHub owner resolution, optional `--package` override, configured API endpoint, and configured credential ownership.
+  Deliverables:
+  - Public CLI coverage proving `--keep` is mandatory and positive, and that tagged and untagged versions older than the retained set are deleted.
+  - GHCR HTTP-boundary coverage for pagination, timestamp ordering, deterministic ties, no-op retention, and malformed version data.
+  - Updated current configuration, command help, README, architecture, and changelog contracts.
+  Validation:
+  - Run `make format`, `make test`, `make lint`, `make ci`, and `git diff --check`.
+  Resolution:
+  `gix packages delete` now requires a positive invocation-owned `--keep` count, snapshots and validates all GHCR version pages, orders versions by `created_at` and descending version ID, preserves the newest requested count, and deletes all older tagged or untagged versions oldest-first. Public CLI and HTTP-boundary coverage verifies `--keep 3`, invalid counts, pagination, deterministic ties, no-op retention, malformed snapshots, and partial failures. README, architecture, current configuration, command help, and changelog contracts now describe the retention scope. `make format`, `make lint`, `make test`, `make ci`, and `git diff --check` passed on 2026-07-28.
