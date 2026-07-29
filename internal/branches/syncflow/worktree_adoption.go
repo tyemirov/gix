@@ -154,6 +154,7 @@ type worktreeAdoptionCommitMessageOptions struct {
 
 type listedWorktree struct {
 	Path       string
+	Commit     string
 	BranchName string
 	Locked     bool
 	Prunable   bool
@@ -273,6 +274,8 @@ func parseListedWorktrees(output string) []listedWorktree {
 		case "worktree":
 			flushCurrent()
 			current.Path = strings.TrimSpace(strings.TrimPrefix(line, "worktree"))
+		case "HEAD":
+			current.Commit = strings.TrimSpace(strings.TrimPrefix(line, "HEAD"))
 		case "branch":
 			referenceName := strings.TrimSpace(strings.TrimPrefix(line, "branch"))
 			current.BranchName = strings.TrimPrefix(referenceName, gitBranchReferencePrefix)
@@ -600,6 +603,12 @@ func executeGit(ctx context.Context, executor shared.GitExecutor, workingDirecto
 }
 
 func sameFilesystemPath(firstPath string, secondPath string) bool {
+	firstInfo, firstInfoErr := os.Stat(strings.TrimSpace(firstPath))
+	secondInfo, secondInfoErr := os.Stat(strings.TrimSpace(secondPath))
+	if firstInfoErr == nil && secondInfoErr == nil {
+		return os.SameFile(firstInfo, secondInfo)
+	}
+
 	normalizedFirst := normalizeFilesystemPath(firstPath)
 	normalizedSecond := normalizeFilesystemPath(secondPath)
 	if normalizedFirst == "" || normalizedSecond == "" {

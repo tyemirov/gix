@@ -5,6 +5,8 @@ const (
 	EventCodeRepoSwitched             = "REPO_SWITCHED"
 	EventCodeRepoDirty                = "REPO_DIRTY"
 	EventCodeWorktreeAdopt            = "WORKTREE_ADOPT"
+	EventCodeSyncSwitchRollback       = "SYNC_SWITCH_ROLLBACK"
+	EventCodeSyncSwitchHandoff        = "SYNC_SWITCH_HANDOFF"
 	EventCodeMergeConflict            = "MERGE_CONFLICT"
 	EventCodeAIMergeResolution        = "AI_MERGE_RESOLUTION"
 	EventCodeAIMergeValidation        = "AI_MERGE_VALIDATION"

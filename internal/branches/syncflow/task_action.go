@@ -467,6 +467,29 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 		remoteName = defaultRemoteNameConstant
 	}
 
+	transaction, transactionErr := beginStrictSyncTransaction(ctx, environment, repository, branchName)
+	if transactionErr != nil {
+		return transactionErr
+	}
+	stashPushed := false
+	defer func() {
+		cleanupContext, cancelCleanup := context.WithTimeout(context.WithoutCancel(ctx), mergeConflictResolutionRollbackTimeout)
+		defer cancelCleanup()
+
+		if err != nil {
+			if _, rollbackErr := transaction.rollback(cleanupContext); rollbackErr != nil {
+				transaction.reportHandoff(rollbackErr)
+				err = errors.Join(err, rollbackErr)
+				return
+			}
+		}
+		if stashPushed {
+			if restoreErr := restoreStashedChanges(cleanupContext, environment.GitExecutor, repository.Path, 1); restoreErr != nil {
+				err = errors.Join(err, restoreErr)
+			}
+		}
+	}()
+
 	statusEntries, statusErr := environment.RepositoryManager.WorktreeStatus(ctx, repository.Path)
 	if statusErr != nil {
 		return statusErr
@@ -518,17 +541,11 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 		reviewBaseBranch = stackPlan.ParentBranch
 	}
 
-	stashPushed := false
 	if dirty && options.StashChanges {
 		if stashErr := stashAllChanges(ctx, environment.GitExecutor, repository.Path); stashErr != nil {
 			return stashErr
 		}
 		stashPushed = true
-		defer func() {
-			if restoreErr := restoreStashedChanges(ctx, environment.GitExecutor, repository.Path, 1); restoreErr != nil {
-				err = errors.Join(err, restoreErr)
-			}
-		}()
 		dirty = false
 	}
 

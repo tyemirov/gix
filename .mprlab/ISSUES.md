@@ -118,6 +118,8 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make format`, `make test`, `make lint`, `make ci`, and `git diff --check`.
   Resolution:
   Strict sync now aborts every merge whose observed conflicts cannot be resolved automatically. The abort runs inside a 30-second cleanup context detached from the canceled resolution context, then reports `AI_MERGE_ROLLBACK`; an abort failure retains both errors and reports `AI_MERGE_HANDOFF`. Public CLI coverage reproduces a clean pushed PR branch conflicting with its pushed review base and proves that a lossy response leaves the exact target commit and contents, no `MERGE_HEAD`, an empty status, and no push. Existing lossy, timeout, and modify/delete scenarios now prove the same rollback boundary, while focused tests cover cancellation-independent cleanup and rollback failure. `make format`, `make test`, `make lint`, `make ci`, and `git diff --check` passed on 2026-07-28.
+  Review follow-up:
+  The compiled CLI now converts Ctrl-C into caller-context cancellation. When cancellation prevents the first conflict query from observing paths, strict sync inspects the operation-owned `MERGE_HEAD` through the detached cleanup context and still aborts the merge. Public CLI coverage interrupts immediately after Git creates the conflicted index and proves exact branch/content restoration, no `MERGE_HEAD`, clean status, no LLM request, and no push.
 - [x] [B039] (P1) Pin license rollout clones to their inspected commits.
   Reported on 2026-07-28 during review of F011.
   Observation:
@@ -176,6 +178,24 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Minimizing LLM calls is not an objective. In many two-sided conflicts, semantic resolution is best delegated to the model. Deterministic reconstruction must protect exact content and provide high-fidelity candidates, while the LLM remains the semantic decision-maker and rollback remains the lowest-priority recovery strategy.
   Resolution:
   Strict sync now reconstructs untouched file bytes locally and directly accepts only identical, unilateral, and marker-free current-stage decisions. Every marker-bearing region changed by both sides enters semantic LLM review. Concurrent insertions and compatible token edits provide lossless local candidates for the auditor; genuinely overlapping regions start with model generation. The model may approve or correct a candidate, but additive and replacement-intent validation prevents either side from disappearing, and exact rejection feedback drives up to four repair/audit attempts with the complete configured provider order available to each attempt. Git's cached-diff check gates the merge commit, and rollback remains final recovery after semantic strategy exhaustion, cancellation, or unrecoverable local failure. Public CLI coverage proves the reported large issue/changelog case performs exactly two region-only audits without exposing either stable file tail, preserves every entry exactly once, pushes the merge commit, and leaves a clean worktree. Repair, exhaustion, timeout, cancellation, marker-free deletion, index validation, and rollback-failure coverage are green. `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check` passed on 2026-07-29.
+
+- [x] [B042] (P0) Restore the starting checkout when an explicit target sync fails.
+  Reported on 2026-07-29 after `gix sync bugfix/B038-rollback-failed-ai-merge` ran from B041, adopted and removed B038's linked worktree, switched the current checkout to B038, and then failed during conflict resolution.
+  Observation:
+  B038 restores the selected target branch to its pre-merge commit, but the wider strict-sync operation still leaves that target active and keeps an adopted sibling worktree removed. A failed command can therefore change both the caller's branch and valid worktree topology even after the operation-owned merge is aborted successfully.
+  Requirements:
+  - Snapshot the starting checkout and every valid registered worktree before strict sync mutates branches or adopts a sibling.
+  - On failure, restore the starting named or detached checkout before reattaching detached main worktrees or recreating removed linked worktrees at their original paths.
+  - Run checkout/worktree cleanup through a bounded context that remains usable after caller cancellation, and restore a user stash only after failure cleanup returns to the starting checkout.
+  - Preserve the original sync error. Emit an explicit rollback event on successful restoration and a distinct manual handoff that retains the cleanup error when restoration itself fails.
+  - Keep successful explicit-target behavior unchanged: the requested branch remains active only after the complete sync succeeds.
+  - Treat filesystem-identical path aliases, including macOS `/var` and `/private/var` spellings, as the same worktree.
+  Validation:
+  - Add public CLI coverage reproducing a source branch in the current checkout, the target branch in a linked sibling, and an exhausted semantic merge on the target. The command must restore the exact source commit and files, recreate the clean target sibling at its original path and commit, leave no `MERGE_HEAD`, and perform no push.
+  - Add a focused filesystem-identity guardrail and preserve every existing strict-sync/worktree-adoption scenario.
+  - Run `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check`.
+  Resolution:
+  Strict sync now snapshots the caller checkout and valid registered worktrees before target switching or sibling adoption. When any later step fails, cancellation-independent bounded cleanup restores the starting named branch or detached commit, then reattaches a detached main worktree or recreates removed linked worktrees at their original paths before restoring a caller stash. The original sync failure remains primary; successful cleanup emits `SYNC_SWITCH_ROLLBACK`, while cleanup failure retains both errors and emits `SYNC_SWITCH_HANDOFF`. Successful explicit-target sync still leaves the target active. Public CLI coverage exhausts semantic resolution after adopting a linked target, then proves the exact source checkout and clean target sibling are restored with no `MERGE_HEAD` or push; a focused guardrail covers filesystem-identical path aliases. The branch was verified against exact `origin/master` commit `b1357e4567b18fd65c5d68e01b72f1303f893176`. `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check` passed on 2026-07-29.
 
 ## Maintenance
 

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -238,8 +239,12 @@ func (application *Application) configurationInitializationCommand() *cobra.Comm
 
 // Execute runs the configured Cobra command hierarchy and ensures logger flushing.
 func (application *Application) Execute() error {
+	executionContext, stopSignalNotifications := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stopSignalNotifications()
+
 	return application.ExecuteWithOptions(ExecutionOptions{
 		Arguments:      os.Args[1:],
+		Context:        executionContext,
 		StandardInput:  os.Stdin,
 		StandardOutput: os.Stdout,
 		StandardError:  os.Stderr,
