@@ -467,6 +467,10 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 		remoteName = defaultRemoteNameConstant
 	}
 
+	if preflightErr := ensureNoOperatorOwnedRevert(ctx, environment.GitExecutor, repository.Path); preflightErr != nil {
+		return preflightErr
+	}
+
 	transaction, transactionErr := beginStrictSyncTransaction(ctx, environment, repository, branchName)
 	if transactionErr != nil {
 		return transactionErr

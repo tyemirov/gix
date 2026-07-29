@@ -210,6 +210,9 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 			}
 			return execshell.ExecutionResult{StandardOutput: currentBranch + "\n"}, nil
 		}
+		if strings.Join(details.Arguments, " ") == "rev-parse --verify --quiet REVERT_HEAD" {
+			return execshell.ExecutionResult{}, commandFailedErrorWithExitCode("", 1)
+		}
 		if len(details.Arguments) > 2 && details.Arguments[1] == "--verify" && executor.missingReferences[details.Arguments[2]] {
 			return execshell.ExecutionResult{}, commandFailedError("fatal: Needed a single revision")
 		}

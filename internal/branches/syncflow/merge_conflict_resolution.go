@@ -28,7 +28,6 @@ const (
 	gitRmForceFlagConstant                      = "-f"
 	gitCommitNoEditFlagConstant                 = "--no-edit"
 	gitMergeAbortFlagConstant                   = "--abort"
-	gitRevParseQuietFlagConstant                = "--quiet"
 	gitMergeHeadReferenceConstant               = "MERGE_HEAD"
 	gitDiffCachedFlagConstant                   = "--cached"
 	gitDiffCheckFlagConstant                    = "--check"

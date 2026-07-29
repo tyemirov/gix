@@ -197,6 +197,23 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Resolution:
   Strict sync now snapshots the caller checkout and valid registered worktrees before target switching or sibling adoption. When any later step fails, cancellation-independent bounded cleanup restores the starting named branch or detached commit, then reattaches a detached main worktree or recreates removed linked worktrees at their original paths before restoring a caller stash. The original sync failure remains primary; successful cleanup emits `SYNC_SWITCH_ROLLBACK`, while cleanup failure retains both errors and emits `SYNC_SWITCH_HANDOFF`. Successful explicit-target sync still leaves the target active. Public CLI coverage exhausts semantic resolution after adopting a linked target, then proves the exact source checkout and clean target sibling are restored with no `MERGE_HEAD` or push; a focused guardrail covers filesystem-identical path aliases. The branch was verified against exact `origin/master` commit `b1357e4567b18fd65c5d68e01b72f1303f893176`. `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check` passed on 2026-07-29.
 
+- [x] [B043] (P0) Reject sync while an operator-owned revert is active.
+  Reported on 2026-07-29 after plain `gix sync` ran on `bugfix/B095-app-owned-deploy-bundle` with a resolved but unfinished `git revert` and failed when it tried to switch to the already-active branch.
+  Observation:
+  Strict sync treats the staged and unstaged revert state as ordinary dirty work, fetches the remote, and then re-enters the selected branch. Git rejects that switch while `REVERT_HEAD` exists. Merely skipping the redundant switch would be unsafe because dirty-sync clustering resets and restages the sequencer-owned index before committing. The revert predates the command and is operator-owned, so Gix must not continue, abort, quit, or repartition it implicitly.
+  Requirements:
+  - Inspect `REVERT_HEAD` at the strict-sync boundary before fetch, branch/worktree mutation, stash, index reset, LLM dispatch, commit, or push.
+  - Reject an active revert with an actionable message naming the explicit `git revert --continue`, `git revert --abort`, and `git revert --quit` choices.
+  - Preserve the exact starting commit, branch, index, worktree, untracked files, and `REVERT_HEAD`; do not reinterpret the pending revert as dirty-sync clusters.
+  - Treat an unexpected revert-state inspection failure as a contextual sync error instead of assuming no revert is active.
+  - Keep operation-owned merge rollback unchanged; do not add automatic ownership transfer or a compatibility path for pre-existing Git transactions.
+  Validation:
+  - Add public compiled-CLI coverage reproducing a resolved but unfinished revert with both staged and unstaged content. Sync must fail before mutation, preserve exact Git state, make no LLM request, and perform no fetch, switch, reset, add, commit, or push.
+  - Add focused guardrails for active, absent, and uninspectable `REVERT_HEAD` state.
+  - Run `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check`.
+  Resolution:
+  Strict sync now inspects `REVERT_HEAD` before it snapshots worktrees, fetches, stashes, switches, resets the index, calls an LLM, commits, or pushes. An active operator-owned revert fails with explicit continue, abort, and quit choices; an unexpected inspection failure also stops sync. Public compiled-CLI coverage reproduces the reported resolved-but-unfinished revert with staged, unstaged, and untracked state and proves exact preservation with no mutating Git or LLM call. Focused coverage verifies active, absent, and uninspectable revert state. `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check` passed on 2026-07-29.
+
 ## Maintenance
 
 - [ ] [M001R] (P2) Backlog hygiene and archive.

@@ -21,6 +21,7 @@
 - Updated the LLM Proxy Go client from v0.2.21 to v0.2.46, moved Gix's configured proxy work budget to the current per-request timeout header, and raised the Go module floor to 1.25.12 with the dependency graph required by that client.
 
 ### Bug Fixes 🐛
+- Made strict sync reject an unfinished operator-owned `git revert` before fetch or mutation, preserving `REVERT_HEAD`, the index, worktree, untracked files, and commit while naming the explicit continue, abort, and quit choices.
 - Made rejected, timed-out, or canceled strict-sync merge resolution abort the operation-owned merge before returning, restoring the exact pre-merge branch/worktree state and reserving manual handoff for a failed Git rollback.
 - Converted CLI Ctrl-C into context cancellation and detached `MERGE_HEAD` inspection, so cancellation before conflict discovery still aborts the operation-owned merge.
 - Made failed explicit-target sync transactional across branch switching and sibling adoption: after target cleanup, Gix restores the caller's starting checkout and recreates or reattaches the captured worktree topology.
@@ -50,6 +51,8 @@
 - Kept the syncflow builder description as the canonical text shown by `gix sync --help`.
 
 ### Testing 🧪
+- Added public compiled-CLI coverage for a resolved but unfinished revert with staged, unstaged, and untracked state, proving sync performs no fetch, switch, index mutation, LLM request, commit, or push and preserves the exact transaction.
+- Added focused strict-sync preflight coverage for active, absent, and uninspectable `REVERT_HEAD` state.
 - Added public CLI coverage for a clean pull-request branch whose remote review base conflicts and receives a lossy AI resolution, proving the target commit and contents are restored with no `MERGE_HEAD`, dirty status, push, or manual handoff.
 - Added a compiled-CLI SIGINT regression that interrupts immediately after Git creates conflicts and verifies exact rollback before conflict inspection or LLM dispatch.
 - Added public CLI coverage for a failed target sync that starts on another branch and adopts a linked target worktree, proving the source checkout and target sibling are both restored without a merge transaction or push.
@@ -78,6 +81,7 @@
 - Added black-box release coverage for clean-checkout helpers, failed or missing platform outputs, replaced published manifests, and missing integrity prerequisites.
 
 ### Docs 📚
+- Documented unfinished reverts as operator-owned transactions that must be continued, aborted, or quit before strict sync begins.
 - Documented strict sync's enclosing checkout/worktree transaction and its rollback-versus-handoff events.
 - Documented the diff3 fidelity ladder, deterministic lossless candidate construction, mandatory semantic LLM review for two-sided content, replacement-intent validation, and bounded repair.
 - Documented rollback as final recovery after strategy exhaustion, cancellation, or unrecoverable local failure, with manual recovery reserved for a failed Git abort.

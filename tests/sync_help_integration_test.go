@@ -32,6 +32,7 @@ func TestSyncHelpDescribesMissingBranchCurrentHeadContract(testInstance *testing
 	require.Contains(testInstance, output, "The selected parent base is retained for retries after child push or pull-request failure.")
 	require.Contains(testInstance, output, "A clean or stashed missing branch is rejected because it would have no child pull request delta.")
 	require.Contains(testInstance, output, "Dirty auto-commit is rejected on a known-merged branch; use --stash to preserve that work through the merged handoff before creating a new review branch.")
+	require.Contains(testInstance, output, "Before fetch or mutation, strict sync rejects an operator-owned revert recorded by REVERT_HEAD and requires the operator to continue, abort, or quit it explicitly.")
 	require.Contains(testInstance, output, "sync reconstructs untouched bytes locally and directly accepts only cases with no two-sided semantic choice: identical sides, a change on only one side, and marker-free current-stage decisions.")
 	require.Contains(testInstance, output, "Every marker-bearing region changed by both sides requires semantic LLM audit.")
 	require.Contains(testInstance, output, "Concurrent insertions and non-overlapping token edits start from lossless locally derived candidates; genuinely overlapping regions use candidate generation plus bounded validation-guided repair.")
