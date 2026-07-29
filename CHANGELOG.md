@@ -22,6 +22,8 @@
 
 ### Bug Fixes 🐛
 - Made rejected, timed-out, or canceled strict-sync merge resolution abort the operation-owned merge before returning, restoring the exact pre-merge branch/worktree state and reserving manual handoff for a failed Git rollback.
+- Required existing license-rollout drafts to match the inspected base, canonical one-commit history, exact changed paths, and rendered license blobs before apply can skip them.
+- Pinned every license-rollout clone to the exact default-branch commit whose root license blobs passed planning, preventing a later branch advance from changing the mutation base.
 - Preserved dirty tracked files whose paths also match `.gitignore`; sync now stages exact tracked paths instead of restoring and discarding their pending contents before branch validation.
 - Made linked-worktree adoption restore owner write and execute permission on its directories before removal, preventing read-only ignored caches such as Go's module cache from leaving orphaned worktrees.
 - Rejected fractional workflow LLM `timeout_seconds` before they can be truncated into shorter or invalid LLM Proxy request budgets.
@@ -45,6 +47,8 @@
 
 ### Testing 🧪
 - Added public CLI coverage for a clean pull-request branch whose remote review base conflicts and receives a lossy AI resolution, proving the target commit and contents are restored with no `MERGE_HEAD`, dirty status, push, or manual handoff.
+- Added licensing regressions for matching existing drafts plus wrong bases, noncanonical histories, unrelated or modified files, and rollout heads that move during validation.
+- Added a Git-backed licensing regression that advances a default branch after planning and proves the sparse clone and subsequent workflow fetch remain on the inspected commit.
 - Added public CLI and HTTP-boundary coverage for mandatory positive retention, complete pre-delete pagination, mixed tagged/untagged version ordering, malformed snapshots, and partial delete failures.
 - Added public CLI regressions for a dirty tracked example-env file on an otherwise empty local branch, tracked ignored modifications and deletions, and ignored-untracked exclusion.
 - Added public CLI coverage for adopting a sibling worktree containing a read-only ignored cache.
@@ -66,6 +70,8 @@
 
 ### Docs 📚
 - Documented automatic rollback for rejected, canceled, and timed-out strict-sync merge resolution, with manual recovery reserved for a failed Git abort.
+- Documented the fail-closed validation contract for existing deterministic license-rollout drafts.
+- Documented the immutable inspected-commit boundary between license-rollout planning and mutation.
 - Documented the required `--keep 3` GHCR retention workflow and its tagged-version deletion scope.
 - Documented that tracked status remains authoritative even when `.gitignore` matches the path and that ignore rules continue to govern only untracked staging.
 - Documented responsive audit-table behavior, the `COLUMNS` capture-width contract, and the full-value CSV/HTML export boundary.

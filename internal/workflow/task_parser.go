@@ -193,7 +193,7 @@ func buildTaskFiles(reader optionReader) ([]TaskFileDefinition, error) {
 			return nil, errors.New("file path must be provided")
 		}
 
-		contentTemplate, _, contentError := fileReader.stringValue(optionTaskFileContentKeyConstant)
+		contentTemplate, _, contentError := fileReader.rawStringValue(optionTaskFileContentKeyConstant)
 		if contentError != nil {
 			return nil, contentError
 		}

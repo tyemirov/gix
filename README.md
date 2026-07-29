@@ -199,7 +199,7 @@ Combine these steps to build fully custom git flows without relying on one monol
 Use runtime variables to parameterize presets or external configs:
 
 ```shell
-gix workflow license --var template=mit --var branch=chore/license --roots ~/Development --yes
+gix workflow license --var license_template=mit --var license_branch=chore/license --roots ~/Development --yes
 gix workflow namespace --var namespace_old=github.com/old/org --var namespace_new=github.com/new/org --roots ~/Research
 ```
 
@@ -214,15 +214,16 @@ Variables appear inside task templates via `{{ index .Environment "key" }}` and 
 
 | Variable | Description |
 | --- | --- |
-| `template` / `license_template` | Embedded template name (`bsl`, `mit`, or `proprietary`). When set, `license_content` is derived. |
+| `license_template` | Embedded template name (`bsl`, `mit`, `polyform-noncommercial`, or `proprietary`). When set, `license_content` is derived. |
 | `license_content` | License text (required when no template is set). |
 | `license_target` | Relative path for the output file (defaults to `LICENSE`). |
-| `license_commercial_target` | Optional BSL commercial license path (defaults to `COMMERCIAL_LICENSE.md`). |
+| `license_commercial_target` | Optional commercial-notice path for templates that include one (defaults to `COMMERCIAL_LICENSE.md`). |
 | `license_mode` | File handling mode (`overwrite`, `skip-if-exists`, or `append-if-missing`). |
-| `license_year` | MIT/Proprietary year override (defaults to the current year). |
+| `license_year` | MIT, PolyForm-notice, or proprietary year override (defaults to the current year). |
 | `license_author` | MIT author override (defaults to the repository owner). |
 | `license_company` | Proprietary company override (defaults to the repository owner). |
-| `license_licensor` | BSL licensor override (defaults to the repository owner). |
+| `license_licensor` | BSL or PolyForm licensor override (defaults to the repository owner). |
+| `license_contact` | Commercial-license contact (defaults to `legal@mprlab.com` for templates that use it). |
 | `license_project_name` | BSL project name override (defaults to the repository name). |
 | `license_change_date` | BSL change date (defaults to `2029-01-01`). |
 | `license_change_license` | BSL change license (defaults to `Apache License 2.0`). |
@@ -244,7 +245,23 @@ Variables appear inside task templates via `{{ index .Environment "key" }}` and 
 | `namespace_push` | Optional boolean (`true`/`false`) controlling whether rewritten branches push. Defaults to `true`. |
 | `namespace_commit_message` | Optional commit message template for the rewrite commit. |
 
-Use the `gix workflow license` preset with `--var template=bsl` / `mit` / `proprietary` (or `license_content`) plus the `license_*` overrides to distribute license content; the old `gix repo-license-apply` wrapper has been removed.
+Use the `gix workflow license` preset with the canonical `license_template`
+variable (`bsl`, `mit`, `polyform-noncommercial`, or `proprietary`) or
+`license_content` plus the `license_*` overrides to distribute license content.
+The old `template` variable and `gix repo-license-apply` wrapper have been
+removed.
+
+The reviewed personal and MPR Lab fleet policy, legal holds, frozen inventory,
+and one-command draft-PR handoff are documented in
+[`docs/licensing-rollout.md`](docs/licensing-rollout.md). Run
+`make license-rollout-plan` for the read-only drift check. After review,
+`make license-rollout-apply` creates the eligible draft pull requests.
+The plan resolves each default branch to one commit, reads its license blobs
+from that revision, and pins apply clones to the same commit even if the
+remote branch advances before the clone starts.
+Apply accepts an already-open deterministic draft only after its base commit,
+single rollout commit, complete changed-file set, and rendered license blobs
+match the reviewed plan and a final pull-request snapshot remains unchanged.
 
 ### Workflow syntax
 
@@ -595,7 +612,7 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
  - Performs text substitutions across matched files with optional safeguards.
 - `gix files add --template <path> [--content <text>] [--mode overwrite|skip-if-exists|append-if-missing] [--branch <template>] [--remote <name>] [--commit-message <text>] [--roots <dir>...] [-y]` (alias `seed`)
  - Seeds or updates files across repositories, creating branches and pushes when configured.
-- `gix workflow license --var template=mit --var license_branch=chore/license --roots <dir>... [-y]`
+- `gix workflow license --var license_template=mit --var license_branch=chore/license --roots <dir>... [-y]`
  - Runs the embedded license preset; see “License preset variables” for supported options.
 - `gix workflow namespace --var namespace_old=... --var namespace_new=... [--roots <dir>...] [-y]`
  - Runs the embedded namespace rewrite preset; see “Namespace preset variables” for supported options.

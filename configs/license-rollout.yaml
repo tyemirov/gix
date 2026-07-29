@@ -1,0 +1,119 @@
+workflow:
+  - step:
+      name: capture-default-branch
+      command: ["tasks", "apply"]
+      with:
+        tasks:
+          - name: "Capture and synchronize the default branch"
+            ensure_clean: true
+            actions:
+              - type: branch.sync
+                options:
+                  branch: "{{ .Repository.DefaultBranch }}"
+                  remote: origin
+                  create_if_missing: false
+                  capture:
+                    name: initial_branch
+                    value: branch
+
+  - step:
+      name: create-license-branch
+      after: ["capture-default-branch"]
+      command: ["tasks", "apply"]
+      with:
+        tasks:
+          - name: "Create the reviewed license branch"
+            ensure_clean: true
+            actions:
+              - type: branch.sync
+                options:
+                  branch: "automation/license/{{ .Environment.license_profile }}"
+                  remote: origin
+                  create_if_missing: true
+
+  - step:
+      name: remove-obsolete-license-aliases
+      after: ["create-license-branch"]
+      command: ["command", "run"]
+      with:
+        command:
+          - git
+          - rm
+          - --ignore-unmatch
+          - --
+          - COMMERCIAL_LICENSE
+          - COMMERCIAL_LICENSE.txt
+          - COPYING
+          - COPYING.md
+          - LICENCE
+          - LICENCE.md
+          - LICENCE.txt
+          - LICENSE.md
+          - LICENSE.txt
+          - MIT-LICENSE
+          - MIT-LICENSE.txt
+          - NOTICE.md
+          - NOTICE.txt
+          - UNLICENSE
+
+  - step:
+      name: apply-license-bundle
+      after: ["remove-obsolete-license-aliases"]
+      command: ["tasks", "apply"]
+      with:
+        tasks:
+          - name: "Distribute license file"
+            steps:
+              - files.apply
+            files:
+              - path: LICENSE
+                content: "{{ .Environment.license_content }}"
+                mode: overwrite
+                permissions: 420
+
+  - step:
+      name: commit-license-bundle
+      after: ["apply-license-bundle"]
+      command: ["git", "stage-commit"]
+      with:
+        paths:
+          - "."
+        commit_message: "chore: apply {{ .Environment.license_profile }} license"
+        safeguards:
+          soft_skip:
+            require_changes: true
+
+  - step:
+      name: open-license-pull-request
+      after: ["commit-license-bundle"]
+      command: ["pull-request", "open"]
+      with:
+        branch: "automation/license/{{ .Environment.license_profile }}"
+        title: "chore({{ .Repository.Name }}): apply {{ .Environment.license_profile }} license"
+        body: |
+          Applies the reviewed `{{ .Environment.license_profile }}` license bundle.
+
+          This pull request is intentionally a draft. Before merge, confirm the
+          repository remains eligible under the frozen F011 inventory and retain
+          any third-party notices required outside the root license aliases.
+        base: "{{ .Repository.DefaultBranch }}"
+        push_remote: origin
+        draft: true
+        safeguards:
+          soft_skip:
+            require_changes: true
+
+  - step:
+      name: restore-initial-branch
+      after: ["open-license-pull-request"]
+      command: ["tasks", "apply"]
+      with:
+        tasks:
+          - name: "Restore the initial branch"
+            ensure_clean: true
+            actions:
+              - type: branch.sync
+                options:
+                  restore:
+                    from: initial_branch
+                    value: branch
