@@ -95,6 +95,46 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.1.15] - 2026-07-29
+
+- Merge pull request #399 from tyemirov/bugfix/B038-rollback-failed-ai-merge
+- Merge branch 'bugfix/B042-rollback-failed-target-switch' into bugfix/B038-rollback-failed-ai-merge
+- fix(sync): restore starting checkout and worktrees on failed target sync
+- Merge pull request #400 from tyemirov/bugfix/B041-semantic-conflict-region-resolution
+- test: add integration test for large semantic merge with region audit
+- feat(syncflow): implement structured semantic merge conflict resolution
+- docs: clarify LLM merge conflict strategies and rollback workflow in README
+- docs(changelog): document fidelity-first semantic merge ladder and region auditing
+- docs: document strict-sync conflict resolution architecture
+- docs(ISSUES): document region-scoped semantic AI merge conflict resolution
+- fix: ensure CLI Ctrl-C triggers cancellation and merge rollback before conflict inspection
+- Merge branch 'master' into bugfix/B038-rollback-failed-ai-merge
+- Merge pull request #398 from tyemirov/feature/F011-license-fleet-rollout
+- feat(licensing): validate rollout pull request history, blobs, and state
+- docs: clarify license rollout plan and apply immutability guarantees
+- docs: clarify rollout plan and apply process in README
+- docs: update changelog with license-rollout validation and pinning updates
+- docs: clarify license rollout workflow and commit-pinning in architecture guide
+- docs(issues): add B039 and B040 for license rollout pinning and PR validation
+- Merge remote-tracking branch 'origin/master' into feature/F011-license-fleet-rollout
+- test: add and update integration tests for AI merge rollback scenarios
+- feat(syncflow): automatically roll back failed AI merge conflicts
+- docs: clarify merge conflict abort and rollback behavior in README
+- docs: document strict-sync merge rollback and clarify changelog entries
+- docs(issues): document rollback of rejected sync merges and strict cleanup requirements
+- Merge pull request #397 from tyemirov/feature/F012-ghcr-retention
+- feat(licensing): add license_rollout.py and initial tests for license automation
+- feat(licenses): add PolyForm Noncommercial and proprietary license templates
+- docs: add detailed licensing rollout plan and correct license CLI option
+- feat(licensing): add rollout workflow and fleet inventory
+- test(cli/workflow): reject legacy "template" variable and add rollout coverage
+- feat: add explicit GHCR retention
+- docs: update license workflow vars and add rollout policy reference
+- chore(makefile): add licensing rollout/test targets and script integration
+- docs(architecture): clarify license bundle fleet workflow and verification
+- docs(issues): document preparation of the canonical license rollout fleet
+- chore: ignore Python cache files and bytecode in .gitignore
+
 ## [v1.1.14] - 2026-07-27
 
 - Merge pull request #396 from tyemirov/bugfix/B036-preserve-tracked-dirty-sync-work
