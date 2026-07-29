@@ -249,7 +249,15 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 		}
 	case "worktree":
 		if len(details.Arguments) > 2 && details.Arguments[1] == gitWorktreeListSubcommandConstant {
-			return execshell.ExecutionResult{StandardOutput: fmt.Sprintf("worktree /tmp/project\nbranch refs/heads/master\n\nworktree %s\nbranch refs/heads/%s\n", executor.blockedWorktree, executor.blockedBranch)}, nil
+			currentBranch := executor.currentBranch
+			if currentBranch == "" {
+				currentBranch = defaultSyncBaseBranch
+			}
+			output := fmt.Sprintf("worktree %s\nbranch refs/heads/%s\n", details.WorkingDirectory, currentBranch)
+			if executor.blockedWorktree != "" {
+				output += fmt.Sprintf("\nworktree %s\nbranch refs/heads/%s\n", executor.blockedWorktree, executor.blockedBranch)
+			}
+			return execshell.ExecutionResult{StandardOutput: output}, nil
 		}
 		if len(details.Arguments) > 2 && details.Arguments[1] == gitWorktreeRemoveSubcommandConstant {
 			executor.worktreeRemoved = true
@@ -1444,9 +1452,28 @@ func TestHandleBranchSyncActionStrictPRBranchCreatesGeneratedBranchFromCurrentDi
 func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedCurrentDirtyMasterMergeConflict(t *testing.T) {
 	generatedBranchName := "gix/support-agentic-model-and-reasoning-effort-settings"
 	pullRequestBody := "## Summary\n- Preserves local settings work and remote issue numbering."
-	resolvedContent := "stable preface\n# ISSUES\n\n- [x] [I010] Configure agentic model and effort from settings.\n- [x] [I003] Add clear search field.\nstable epilogue\n"
+	baseRegion := "# ISSUES\n\n- [x] [I002] Collapse execution card details.\n"
+	oursRegion := "# ISSUES\n\n- [x] [I010] Configure agentic model and effort from settings.\n"
+	theirsRegion := "# ISSUES\n\n- [x] [I003] Add clear search field.\n"
+	resolvedRegion := oursRegion + "- [x] [I003] Add clear search field.\n"
+	resolvedContent := "stable preface\n" + resolvedRegion + "stable epilogue\n"
 	repositoryPath := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(repositoryPath, "README.md"), []byte("stable preface\n<<<<<<< HEAD\nlocal\n=======\nremote\n>>>>>>> origin/master\nstable epilogue\n"), 0o644))
+	require.NoError(
+		t,
+		os.WriteFile(
+			filepath.Join(repositoryPath, "README.md"),
+			[]byte(
+				"stable preface\n<<<<<<< HEAD\n"+
+					oursRegion+
+					"||||||| parent of HEAD\n"+
+					baseRegion+
+					"=======\n"+
+					theirsRegion+
+					">>>>>>> origin/master\nstable epilogue\n",
+			),
+			0o644,
+		),
+	)
 	gitExecutor := &strictSyncGitExecutor{
 		statusOutput:  " M README.md\n",
 		revListOutput: "1\n",
@@ -1456,9 +1483,9 @@ func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedCurrentDirtyMaster
 			"README.md": "100644 aaaaaaa 1\tREADME.md\n100644 bbbbbbb 2\tREADME.md\n100644 ccccccc 3\tREADME.md\n",
 		},
 		showOutputs: map[string]string{
-			":1:README.md": "# ISSUES\n\n- [x] [I002] Collapse execution card details.\n",
-			":2:README.md": "# ISSUES\n\n- [x] [I010] Configure agentic model and effort from settings.\n",
-			":3:README.md": "# ISSUES\n\n- [x] [I003] Add clear search field.\n",
+			":1:README.md": baseRegion,
+			":2:README.md": oursRegion,
+			":3:README.md": theirsRegion,
 		},
 		missingReferences: map[string]bool{
 			"origin/" + generatedBranchName:     true,
@@ -1470,7 +1497,16 @@ func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedCurrentDirtyMaster
 	githubExecutor := &strictSyncGitHubExecutor{}
 	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
 	require.NoError(t, githubClientError)
-	chatClient := &strictSyncChatClient{responses: []string{"fix: support agentic model and reasoning effort settings", "docs: update issue notes", resolvedContent, pullRequestBody}}
+	resolvedRegionResponse := mergeConflictResolutionContentBegin + "\n" +
+		resolvedRegion +
+		"\n" + mergeConflictResolutionContentEnd
+	chatClient := &strictSyncChatClient{responses: []string{
+		"fix: support agentic model and reasoning effort settings",
+		"docs: update issue notes",
+		resolvedRegionResponse,
+		mergeConflictResolutionReviewApproved,
+		pullRequestBody,
+	}}
 	environment := &workflow.Environment{
 		GitExecutor:       gitExecutor,
 		RepositoryManager: gitManager,
@@ -1505,6 +1541,7 @@ func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedCurrentDirtyMaster
 	require.Contains(t, recordedCommands, "show :1:README.md")
 	require.Contains(t, recordedCommands, "show :2:README.md")
 	require.Contains(t, recordedCommands, "show :3:README.md")
+	require.Contains(t, recordedCommands, "checkout --conflict=diff3 -- README.md")
 	require.Contains(t, recordedCommands, "add -- README.md")
 	require.Contains(t, recordedCommands, "commit --no-edit")
 	require.Contains(t, recordedCommands, "push -u origin "+generatedBranchName)
@@ -1514,11 +1551,15 @@ func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedCurrentDirtyMaster
 	resolvedBytes, resolvedReadErr := os.ReadFile(filepath.Join(repositoryPath, "README.md"))
 	require.NoError(t, resolvedReadErr)
 	require.Equal(t, resolvedContent, string(resolvedBytes))
-	require.Len(t, chatClient.requests, 4)
-	require.Contains(t, chatClient.requests[2].Messages[1].Content, "OURS current branch with local work that must be preserved")
+	require.Len(t, chatClient.requests, 5)
+	require.Contains(t, chatClient.requests[2].Messages[1].Content, "OURS current branch region that must be preserved")
 	require.Contains(t, chatClient.requests[2].Messages[1].Content, "Configure agentic model")
-	require.Contains(t, chatClient.requests[2].Messages[1].Content, "THEIRS incoming branch to integrate")
+	require.Contains(t, chatClient.requests[2].Messages[1].Content, "THEIRS incoming branch region to integrate")
 	require.Contains(t, chatClient.requests[2].Messages[1].Content, "Add clear search field")
+	require.NotContains(t, chatClient.requests[2].Messages[1].Content, "stable preface")
+	require.NotContains(t, chatClient.requests[2].Messages[1].Content, "stable epilogue")
+	require.Contains(t, chatClient.requests[3].Messages[0].Content, "semantic fidelity auditor")
+	require.Contains(t, chatClient.requests[3].Messages[1].Content, resolvedRegion)
 	require.Len(t, githubExecutor.commands, 1)
 	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", generatedBranchName, "--title", generatedBranchName, "--body", pullRequestBody}, githubExecutor.commands[0].Arguments)
 }
@@ -1551,7 +1592,7 @@ func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedCurrentDirtyMaster
 	githubExecutor := &strictSyncGitHubExecutor{}
 	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
 	require.NoError(t, githubClientError)
-	chatClient := &strictSyncChatClient{responses: []string{"fix: remove obsolete readme after conflict", "docs: remove obsolete readme", mergeConflictResolutionDeleteDirective, pullRequestBody}}
+	chatClient := &strictSyncChatClient{responses: []string{"fix: remove obsolete readme after conflict", "docs: remove obsolete readme", pullRequestBody}}
 	environment := &workflow.Environment{
 		GitExecutor:       gitExecutor,
 		RepositoryManager: gitManager,
@@ -1592,10 +1633,8 @@ func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedCurrentDirtyMaster
 	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, "rm -f -- README.md"), recordedGitCommandIndex(gitExecutor.commands, "commit --no-edit"))
 	_, readErr := os.Stat(readmePath)
 	require.True(t, os.IsNotExist(readErr))
-	require.Len(t, chatClient.requests, 4)
-	require.Contains(t, chatClient.requests[2].Messages[0].Content, mergeConflictResolutionDeleteDirective)
-	require.Contains(t, chatClient.requests[2].Messages[1].Content, "OURS current branch with local work that must be preserved")
-	require.Contains(t, chatClient.requests[2].Messages[1].Content, mergeConflictResolutionAbsentStage)
+	require.Len(t, chatClient.requests, 3)
+	require.Contains(t, chatClient.requests[2].Messages[1].Content, "Comparison range: origin/master..."+generatedBranchName)
 	require.Len(t, githubExecutor.commands, 1)
 	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", generatedBranchName, "--title", generatedBranchName, "--body", pullRequestBody}, githubExecutor.commands[0].Arguments)
 }

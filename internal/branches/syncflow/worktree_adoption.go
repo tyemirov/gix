@@ -154,6 +154,7 @@ type worktreeAdoptionCommitMessageOptions struct {
 
 type listedWorktree struct {
 	Path       string
+	Commit     string
 	BranchName string
 	Locked     bool
 	Prunable   bool
@@ -273,6 +274,8 @@ func parseListedWorktrees(output string) []listedWorktree {
 		case "worktree":
 			flushCurrent()
 			current.Path = strings.TrimSpace(strings.TrimPrefix(line, "worktree"))
+		case "HEAD":
+			current.Commit = strings.TrimSpace(strings.TrimPrefix(line, "HEAD"))
 		case "branch":
 			referenceName := strings.TrimSpace(strings.TrimPrefix(line, "branch"))
 			current.BranchName = strings.TrimPrefix(referenceName, gitBranchReferencePrefix)
@@ -554,6 +557,28 @@ func resolveCommitMessageClient(options worktreeAdoptionCommitMessageOptions) (l
 	return client, nil
 }
 
+func resolveMergeConflictResolutionClient(options worktreeAdoptionCommitMessageOptions) (llm.ChatClient, error) {
+	if options.Client != nil {
+		return options.Client, nil
+	}
+	timeout := worktreeAdoptionMessageTimeout(options)
+	client, clientErr := llmclient.NewPrioritizedFactory(
+		options.ConnectionProfiles,
+		options.LLMProxy,
+		llmclient.RuntimeConfig{
+			MaxCompletionTokens: options.MaxTokens,
+			Temperature:         options.Temperature,
+			RequestTimeout:      timeout,
+			RetryAttempts:       1,
+		},
+		nil,
+	)
+	if clientErr != nil {
+		return nil, fmt.Errorf(worktreeMessageClientFailureTemplate, clientErr)
+	}
+	return client, nil
+}
+
 func worktreeAdoptionMessageTimeout(options worktreeAdoptionCommitMessageOptions) time.Duration {
 	timeoutSeconds := options.TimeoutSeconds
 	if timeoutSeconds <= 0 {
@@ -578,6 +603,12 @@ func executeGit(ctx context.Context, executor shared.GitExecutor, workingDirecto
 }
 
 func sameFilesystemPath(firstPath string, secondPath string) bool {
+	firstInfo, firstInfoErr := os.Stat(strings.TrimSpace(firstPath))
+	secondInfo, secondInfoErr := os.Stat(strings.TrimSpace(secondPath))
+	if firstInfoErr == nil && secondInfoErr == nil {
+		return os.SameFile(firstInfo, secondInfo)
+	}
+
 	normalizedFirst := normalizeFilesystemPath(firstPath)
 	normalizedSecond := normalizeFilesystemPath(secondPath)
 	if normalizedFirst == "" || normalizedSecond == "" {

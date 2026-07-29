@@ -44,3 +44,12 @@ func TestPrepareSiblingWorktreeForRemovalOnlyChangesDirectoriesInsideWorktree(te
 	require.NoError(testInstance, externalDirectoryInfoErr)
 	require.Equal(testInstance, os.FileMode(0o555), externalDirectoryInfo.Mode().Perm())
 }
+
+func TestSameFilesystemPathRecognizesSymlinkedDirectoryAliases(testInstance *testing.T) {
+	realDirectory := testInstance.TempDir()
+	aliasParent := testInstance.TempDir()
+	aliasPath := filepath.Join(aliasParent, "alias")
+	require.NoError(testInstance, os.Symlink(realDirectory, aliasPath))
+
+	require.True(testInstance, sameFilesystemPath(realDirectory, aliasPath))
+}
