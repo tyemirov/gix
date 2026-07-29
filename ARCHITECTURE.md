@@ -33,6 +33,16 @@ Workflow orchestration (`internal/workflow`) now splits planning, runner orchest
 
 CLI builders run their workflows through `pkg/taskrunner`, which adapts the outcome: commands other than `gix workflow` drop the metrics, while the `workflow` command prints a stage-by-stage summary (duration and operation list) after the reporter writes its structured log. The summary data now also includes per-step outcome counts derived from `WORKFLOW_STEP_SUMMARY` events.
 
+## Strict-Sync Conflict Resolution
+
+`internal/branches/syncflow/merge_conflict_resolution.go` owns the operation-scoped merge transaction after Git reports unmerged paths. Marker-bearing files are first rendered through Git's diff3 conflict form, then parsed into ordered non-conflicting regions and explicit BASE/OURS/THEIRS conflict regions. Non-conflicting bytes remain local throughout resolution.
+
+Resolution is a ranked fidelity ladder. Byte-identical sides and unilateral changes resolve directly because they contain no two-sided semantic choice; marker-free conflicts retain their exact current-stage decision. Every marker-bearing region changed by both sides requires semantic LLM audit. Empty-BASE concurrent insertions start from an exact OURS-then-THEIRS candidate, including for `.mprlab/ISSUES.md` and root `CHANGELOG.md`. `merge_conflict_strategy.go` tokenizes other unresolved regions without normalizing their bytes, derives BASE-to-side edits with a bounded longest-common-subsequence matrix, and combines only non-overlapping edit spans into a candidate. Local strategies construct high-fidelity proposals; they do not make the final semantic decision.
+
+Every two-sided marker-bearing region reaches the model, but untouched file content does not. Each candidate is region-scoped and sentinel-wrapped so transport trimming cannot change boundary whitespace. Local validation requires the non-whitespace replacement intent derived from both BASE-to-OURS and BASE-to-THEIRS edits. A candidate then enters a distinct semantic-auditor request; an approval accepts it, while a corrected candidate must pass local validation and another audit. A genuinely overlapping region without a safe local candidate starts with model generation under the same validation contract. Rejection details feed the next attempt. Each of four bounded attempts gives every credentialed provider one configured request timeout, avoiding transport retries that would consume another provider's budget.
+
+Only after every reconstructed file is staged, Git reports no unmerged paths, and `git diff --cached --check` succeeds does Gix create the merge commit and push. Validation or request failures reach rollback only after the semantic ladder is exhausted. Caller cancellation and unrecoverable Git/filesystem failures enter the same operation-owned final recovery boundary immediately because no further safe candidate can be produced. The abort runs from a bounded cleanup context; manual handoff is reserved for a failed Git abort.
+
 ## Workflow Task Operations
 
 Declarative repository tasks are layered across dedicated modules inside `internal/workflow`:
