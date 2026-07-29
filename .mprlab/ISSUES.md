@@ -386,3 +386,26 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Generic code has one forge-neutral identity and review-request contract; all provider branching is contained in the registry/adapters/capability boundary.
   - The current public schema and terminology are forward-only. No runtime compatibility aliases or fallback paths for the old GitHub-only configuration or PR vocabulary remain after migration.
   - GitHub-specific capabilities are explicit and safe, while supported generic operations have equivalent observable behavior on GitHub and GitLab.
+
+- [x] [F011] (P1) Prepare the canonical personal and MPR Lab license fleet rollout.
+  Requested on 2026-07-28.
+  Goal:
+  Make Gix the single forward-only owner of a reviewed licensing rollout that can create draft pull requests across the `tyemirov` and `MarcoPoloResearchLab` GitHub fleets with one explicit command.
+  Requirements:
+  - License eligible `tyemirov` source repositories under the unmodified PolyForm Noncommercial 1.0.0 text so personal, nonprofit, charitable, educational, public-research, public-health, environmental, and government uses remain permitted while commercial use requires a separate written license.
+  - License eligible `MarcoPoloResearchLab` source repositories under one current proprietary contract owned by Marco Polo Research Lab LLC.
+  - Put commercial-license contact information in a separate notice; do not present that notice as an executed commercial agreement.
+  - Remove obsolete root license aliases in each proposed change so only the canonical `LICENSE`, `NOTICE`, and `COMMERCIAL_LICENSE.md` contract remains.
+  - Exclude forks and fail closed for empty repositories, third-party license notices, or contribution-rights questions.
+  - Freeze the reviewed repository inventory and verify live identity, default branch, visibility, and license blob fingerprints before any mutation.
+  - Use isolated sparse clones rather than existing operator worktrees, create draft pull requests only, restore and clean local automation branches, and never merge changes automatically.
+  - Remove the obsolete `template` workflow-variable alias; `license_template` is the only current template selector.
+  Deliverables:
+  - Embedded `polyform-noncommercial` and current MPR Lab proprietary template bundles.
+  - A canonical reusable rollout workflow, reviewed fleet manifest, read-only plan command, explicit apply command, and operator documentation.
+  - Automated coverage for template fidelity, the forward-only variable contract, manifest validation, drift rejection, and isolated plan behavior.
+  Validation:
+  - Run the read-only rollout plan against the live GitHub fleet and confirm the reviewed apply/hold counts.
+  - Run `make format`, `make test`, `make lint`, `make ci`, and `git diff --check`.
+  Resolution:
+  Gix now owns exact PolyForm Noncommercial 1.0.0 and current MPR Lab proprietary bundles, a forward-only `license_template` contract, the frozen 103-repository inventory, six explicit legal holds, isolated sparse-clone execution, deterministic draft-PR recovery checks, and the single `make license-rollout-apply` mutation boundary. The live read-only plan verified 97 eligible repositories and six holds; the remote preflight found no existing draft PRs or orphan rollout branches. An isolated rehearsal rendered the official PolyForm file byte-for-byte and committed the complete three-file bundle without pushing. `make format`, `make test`, `make lint`, `make ci`, `make license-rollout-plan`, and `git diff --check` passed on 2026-07-28. No target repository branch or pull request was created.
