@@ -61,7 +61,11 @@ func TestSyncRejectedPullRequestBaseResolutionRollsBackCleanBranch(testInstance 
 		}
 		requestCount.Add(1)
 		responseWriter.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprint(responseWriter, `{"choices":[{"message":{"role":"assistant","content":"truncated resolution\n"}}]}`)
+		_, _ = fmt.Fprintf(
+			responseWriter,
+			`{"choices":[{"message":{"role":"assistant","content":%q}}]}`,
+			semanticMergeResponse("truncated resolution\n"),
+		)
 	}))
 	testInstance.Cleanup(llmServer.Close)
 
@@ -136,10 +140,11 @@ operations:
 	)
 	require.Error(testInstance, runError)
 	require.Contains(testInstance, output, "AI_MERGE_ROLLBACK")
-	require.Contains(testInstance, output, "does not preserve non-conflicting content")
+	require.Contains(testInstance, output, "does not preserve OURS replacement intent")
+	require.Contains(testInstance, output, "all semantic attempts exhausted")
 	require.Contains(testInstance, output, "failed merge was aborted")
 	require.NotContains(testInstance, output, "AI_MERGE_HANDOFF")
-	require.Equal(testInstance, int64(1), requestCount.Load())
+	require.Equal(testInstance, int64(mergeConflictResolutionAttemptCountForTest), requestCount.Load())
 
 	require.Equal(testInstance, targetBranchName, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
 	require.Equal(testInstance, targetCommit, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD")))
