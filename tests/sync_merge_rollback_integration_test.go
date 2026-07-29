@@ -14,12 +14,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSyncRejectedPullRequestBaseResolutionRollsBackCleanBranch(testInstance *testing.T) {
+func TestSyncRejectedTargetResolutionRestoresStartingBranchAndSiblingWorktree(testInstance *testing.T) {
 	testInstance.Helper()
 
 	const (
 		baseBranchName   = "feature/review-base"
 		targetBranchName = "feature/review-target"
+		sourceBranchName = "feature/current-work"
 		conflictedPath   = "CHANGELOG.md"
 	)
 
@@ -51,6 +52,16 @@ func TestSyncRejectedPullRequestBaseResolutionRollsBackCleanBranch(testInstance 
 	runGit(testInstance, repositoryPath, "commit", "-m", "update target release note")
 	runGit(testInstance, repositoryPath, "push", "-u", "origin", targetBranchName)
 	targetCommit := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD"))
+
+	runGit(testInstance, repositoryPath, "switch", "-c", sourceBranchName)
+	sourcePath := filepath.Join(repositoryPath, "source.txt")
+	require.NoError(testInstance, os.WriteFile(sourcePath, []byte("current source branch\n"), 0o644))
+	runGit(testInstance, repositoryPath, "add", "source.txt")
+	runGit(testInstance, repositoryPath, "commit", "-m", "preserve current source branch")
+	sourceCommit := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD"))
+
+	siblingPath := filepath.Join(workspacePath, "project-review-target")
+	runGit(testInstance, repositoryPath, "worktree", "add", siblingPath, targetBranchName)
 	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
 
 	var requestCount atomic.Int64
@@ -143,13 +154,21 @@ operations:
 	require.Contains(testInstance, output, "does not preserve OURS replacement intent")
 	require.Contains(testInstance, output, "all semantic attempts exhausted")
 	require.Contains(testInstance, output, "failed merge was aborted")
+	require.Contains(testInstance, output, "SYNC_SWITCH_ROLLBACK")
 	require.NotContains(testInstance, output, "AI_MERGE_HANDOFF")
 	require.Equal(testInstance, int64(mergeConflictResolutionAttemptCountForTest), requestCount.Load())
 
-	require.Equal(testInstance, targetBranchName, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
-	require.Equal(testInstance, targetCommit, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD")))
+	require.Equal(testInstance, sourceBranchName, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
+	require.Equal(testInstance, sourceCommit, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD")))
 	require.Equal(testInstance, targetContent, readTextFile(testInstance, conflictedFilePath))
+	require.Equal(testInstance, "current source branch\n", readTextFile(testInstance, sourcePath))
 	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
+
+	require.DirExists(testInstance, siblingPath)
+	require.Equal(testInstance, targetBranchName, strings.TrimSpace(runGit(testInstance, siblingPath, "branch", "--show-current")))
+	require.Equal(testInstance, targetCommit, strings.TrimSpace(runGit(testInstance, siblingPath, "rev-parse", "HEAD")))
+	require.Equal(testInstance, targetContent, readTextFile(testInstance, filepath.Join(siblingPath, conflictedPath)))
+	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, siblingPath, "status", "--porcelain")))
 
 	mergeHeadCommand := exec.Command("git", "-C", repositoryPath, "rev-parse", "--verify", "MERGE_HEAD")
 	mergeHeadCommand.Env = buildGitCommandEnvironment(nil)
@@ -161,4 +180,6 @@ operations:
 	require.Contains(testInstance, gitLog, "merge --abort")
 	require.NotContains(testInstance, gitLog, "commit --no-edit")
 	require.NotContains(testInstance, gitLog, "push origin "+targetBranchName)
+	require.Contains(testInstance, gitLog, "switch "+sourceBranchName)
+	require.Contains(testInstance, gitLog, "worktree add "+siblingPath+" "+targetBranchName)
 }

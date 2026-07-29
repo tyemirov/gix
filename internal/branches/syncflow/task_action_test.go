@@ -249,7 +249,15 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 		}
 	case "worktree":
 		if len(details.Arguments) > 2 && details.Arguments[1] == gitWorktreeListSubcommandConstant {
-			return execshell.ExecutionResult{StandardOutput: fmt.Sprintf("worktree /tmp/project\nbranch refs/heads/master\n\nworktree %s\nbranch refs/heads/%s\n", executor.blockedWorktree, executor.blockedBranch)}, nil
+			currentBranch := executor.currentBranch
+			if currentBranch == "" {
+				currentBranch = defaultSyncBaseBranch
+			}
+			output := fmt.Sprintf("worktree %s\nbranch refs/heads/%s\n", details.WorkingDirectory, currentBranch)
+			if executor.blockedWorktree != "" {
+				output += fmt.Sprintf("\nworktree %s\nbranch refs/heads/%s\n", executor.blockedWorktree, executor.blockedBranch)
+			}
+			return execshell.ExecutionResult{StandardOutput: output}, nil
 		}
 		if len(details.Arguments) > 2 && details.Arguments[1] == gitWorktreeRemoveSubcommandConstant {
 			executor.worktreeRemoved = true

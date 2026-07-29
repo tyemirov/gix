@@ -21,6 +21,7 @@
 - Updated the LLM Proxy Go client from v0.2.21 to v0.2.46, moved Gix's configured proxy work budget to the current per-request timeout header, and raised the Go module floor to 1.25.12 with the dependency graph required by that client.
 
 ### Bug Fixes 🐛
+- Made failed explicit-target sync transactional across branch switching and sibling adoption: after target cleanup, Gix restores the caller's starting checkout and recreates or reattaches the captured worktree topology.
 - Replaced strict-sync's one-shot full-file AI merge path with a fidelity-first diff3 ladder: exact local reconstruction, authoritative no-choice/current-stage decisions, lossless issue/changelog and token candidates, and mandatory semantic LLM audit for every two-sided marker-bearing region.
 - Deferred strict-sync rollback until every deterministic and bounded semantic strategy is exhausted, while retaining immediate final recovery for caller cancellation or unrecoverable Git/filesystem failure and manual handoff only for a failed abort.
 - Required existing license-rollout drafts to match the inspected base, canonical one-commit history, exact changed paths, and rendered license blobs before apply can skip them.
@@ -47,6 +48,7 @@
 - Kept the syncflow builder description as the canonical text shown by `gix sync --help`.
 
 ### Testing 🧪
+- Added public CLI coverage for a failed target sync that starts on another branch and adopts a linked target worktree, proving the source checkout and target sibling are both restored without a merge transaction or push.
 - Added public CLI coverage for large additive `.mprlab/ISSUES.md` and `CHANGELOG.md` conflicts, proving one region-scoped semantic audit per file, omission of large untouched tails from model requests, exact local/incoming entry preservation, merge commit creation, push, and a clean final worktree.
 - Added public CLI coverage proving a one-sided semantic candidate is rejected, repaired from exact replacement-intent feedback, explicitly audited, and committed without rollback.
 - Added public CLI coverage for a clean pull-request branch whose remote review base exhausts every semantic attempt, proving the target commit and contents are restored with no `MERGE_HEAD`, dirty status, push, or manual handoff.
@@ -72,6 +74,7 @@
 - Added black-box release coverage for clean-checkout helpers, failed or missing platform outputs, replaced published manifests, and missing integrity prerequisites.
 
 ### Docs 📚
+- Documented strict sync's enclosing checkout/worktree transaction and its rollback-versus-handoff events.
 - Documented the diff3 fidelity ladder, deterministic lossless candidate construction, mandatory semantic LLM review for two-sided content, replacement-intent validation, and bounded repair.
 - Documented rollback as final recovery after strategy exhaustion, cancellation, or unrecoverable local failure, with manual recovery reserved for a failed Git abort.
 - Documented the fail-closed validation contract for existing deterministic license-rollout drafts.

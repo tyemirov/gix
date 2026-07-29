@@ -36,4 +36,5 @@ func TestSyncHelpDescribesMissingBranchCurrentHeadContract(testInstance *testing
 	require.Contains(testInstance, output, "Every marker-bearing region changed by both sides requires semantic LLM audit.")
 	require.Contains(testInstance, output, "Concurrent insertions and non-overlapping token edits start from lossless locally derived candidates; genuinely overlapping regions use candidate generation plus bounded validation-guided repair.")
 	require.Contains(testInstance, output, "rollback occurs only after every safe strategy is exhausted, or after cancellation or an unrecoverable local failure, and always stops before push.")
+	require.Contains(testInstance, output, "If strict sync fails after switching checkouts, a bounded cleanup restores the starting checkout and any adopted worktree topology; only a failed cleanup becomes a manual handoff.")
 }
