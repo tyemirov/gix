@@ -214,7 +214,7 @@ operations:
 	invocationLog := string(invocationLogContents)
 	require.NotContains(testInstance, invocationLog, "check-ignore --stdin")
 	require.NotContains(testInstance, invocationLog, "switch -c "+expectedGeneratedBranchName)
-	require.NotContains(testInstance, invocationLog, "stash push --include-untracked")
+	require.NotContains(testInstance, invocationLog, "gix strict-sync invocation stash")
 	require.Contains(testInstance, invocationLog, "add --force --all -- README.md")
 	require.Contains(testInstance, invocationLog, "add --all -- python/llm_proxy_client.egg-info/PKG-INFO python/llm_proxy_client.egg-info/SOURCES.txt")
 	require.NotContains(testInstance, invocationLog, "add --all -- python/llm_proxy_client/__pycache__")
@@ -907,7 +907,8 @@ operations:
 	gitLog := readTextFile(testInstance, gitLogPath)
 	require.Contains(testInstance, gitLog, "stash push --include-untracked")
 	require.Contains(testInstance, gitLog, "switch master")
-	require.Contains(testInstance, gitLog, "stash pop")
+	require.Contains(testInstance, gitLog, "stash apply --index")
+	require.Contains(testInstance, gitLog, "stash drop")
 	require.NotContains(testInstance, gitLog, "switch -c gix/")
 	require.Contains(testInstance, gitLog, "commit -m docs: commit dirty work to explicit master")
 	require.Contains(testInstance, gitLog, "push origin master")
@@ -1050,10 +1051,8 @@ operations:
 	require.Equal(testInstance, int64(1+mergeConflictResolutionAttemptCountForTest), responseIndex.Load())
 
 	require.Equal(testInstance, "master", strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
-	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
-	headWithParents := strings.Fields(runGit(testInstance, repositoryPath, "rev-list", "--parents", "-n", "1", "HEAD"))
-	require.Len(testInstance, headWithParents, 2)
-	require.Equal(testInstance, baseCommit, headWithParents[1])
+	require.Equal(testInstance, "M ISSUES.md", strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
+	require.Equal(testInstance, baseCommit, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD")))
 
 	require.Equal(testInstance, localContent, readTextFile(testInstance, conflictedFilePath))
 
@@ -1215,10 +1214,8 @@ operations:
 	}
 
 	require.Equal(testInstance, "master", strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
-	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
-	headWithParents := strings.Fields(runGit(testInstance, repositoryPath, "rev-list", "--parents", "-n", "1", "HEAD"))
-	require.Len(testInstance, headWithParents, 2)
-	require.Equal(testInstance, baseCommit, headWithParents[1])
+	require.Equal(testInstance, "M ISSUES.md", strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
+	require.Equal(testInstance, baseCommit, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD")))
 
 	require.Equal(testInstance, localContent, readTextFile(testInstance, conflictedFilePath))
 

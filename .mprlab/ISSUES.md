@@ -197,6 +197,61 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Resolution:
   Strict sync now snapshots the caller checkout and valid registered worktrees before target switching or sibling adoption. When any later step fails, cancellation-independent bounded cleanup restores the starting named branch or detached commit, then reattaches a detached main worktree or recreates removed linked worktrees at their original paths before restoring a caller stash. The original sync failure remains primary; successful cleanup emits `SYNC_SWITCH_ROLLBACK`, while cleanup failure retains both errors and emits `SYNC_SWITCH_HANDOFF`. Successful explicit-target sync still leaves the target active. Public CLI coverage exhausts semantic resolution after adopting a linked target, then proves the exact source checkout and clean target sibling are restored with no `MERGE_HEAD` or push; a focused guardrail covers filesystem-identical path aliases. The branch was verified against exact `origin/master` commit `b1357e4567b18fd65c5d68e01b72f1303f893176`. `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check` passed on 2026-07-29.
 
+- [x] [B043] (P0) Reject sync while an operator-owned revert is active.
+  Reported on 2026-07-29 after plain `gix sync` ran on `bugfix/B095-app-owned-deploy-bundle` with a resolved but unfinished `git revert` and failed when it tried to switch to the already-active branch.
+  Observation:
+  Strict sync treats the staged and unstaged revert state as ordinary dirty work, fetches the remote, and then re-enters the selected branch. Git rejects that switch while `REVERT_HEAD` exists. Merely skipping the redundant switch would be unsafe because dirty-sync clustering resets and restages the sequencer-owned index before committing. The revert predates the command and is operator-owned, so Gix must not continue, abort, quit, or repartition it implicitly.
+  Requirements:
+  - Inspect `REVERT_HEAD` at the strict-sync boundary before fetch, branch/worktree mutation, stash, index reset, LLM dispatch, commit, or push.
+  - Reject an active revert with an actionable message naming the explicit `git revert --continue`, `git revert --abort`, and `git revert --quit` choices.
+  - Preserve the exact starting commit, branch, index, worktree, untracked files, and `REVERT_HEAD`; do not reinterpret the pending revert as dirty-sync clusters.
+  - Treat an unexpected revert-state inspection failure as a contextual sync error instead of assuming no revert is active.
+  - Keep operation-owned merge rollback unchanged; do not add automatic ownership transfer or a compatibility path for pre-existing Git transactions.
+  Validation:
+  - Add public compiled-CLI coverage reproducing a resolved but unfinished revert with both staged and unstaged content. Sync must fail before mutation, preserve exact Git state, make no LLM request, and perform no fetch, switch, reset, add, commit, or push.
+  - Add focused guardrails for active, absent, and uninspectable `REVERT_HEAD` state.
+  - Run `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check`.
+  Resolution:
+  Strict sync now inspects `REVERT_HEAD` before it snapshots worktrees, fetches, stashes, switches, resets the index, calls an LLM, commits, or pushes. An active operator-owned revert fails with explicit continue, abort, and quit choices; an unexpected inspection failure also stops sync. Public compiled-CLI coverage reproduces the reported resolved-but-unfinished revert with staged, unstaged, and untracked state and proves exact preservation with no mutating Git or LLM call. Focused coverage verifies active, absent, and uninspectable revert state. `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check` passed on 2026-07-29.
+  Review follow-up:
+  The first preflight resolved the ambiguous revision name `REVERT_HEAD` only in the caller worktree. That falsely rejected an ordinary branch or tag with the same name and missed a per-worktree revert in a sibling that strict sync could adopt, commit, push, and remove. The final preflight lists every valid registered worktree, resolves its exact `REVERT_HEAD` Git path, validates a present file as a canonical commit identifier, and rejects before fetch. Public compiled-CLI regressions prove an active sibling revert remains byte-for-byte unchanged while an ordinary branch named `REVERT_HEAD` does not block sync.
+  `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check` passed for the review follow-up on 2026-07-29.
+
+- [x] [B044] (P0) Make strict sync ownership-aware and transactional.
+  Requested on 2026-07-29.
+  Goal:
+  Replace command-specific strict-sync recovery patches with one durable state transition that distinguishes operator-owned Git operations from gix-owned mutations across the caller and target sibling worktrees.
+  Requirements:
+  - Build one immutable preflight plan before fetch, LLM access, checkout changes, index changes, commits, or pushes.
+  - Inspect exact per-worktree Git administrative paths and reject every pre-existing merge, revert, cherry-pick, rebase, apply-mailbox, bisect, or sequencer operation that strict sync could disturb.
+  - Treat ordinary branches or tags named like Git administrative markers as ordinary refs.
+  - Snapshot the exact caller and target-sibling checkout, commit, index, tracked contents, untracked contents, and stash list before the first gix-owned local mutation.
+  - On a pre-publication failure, restore that snapshot and worktree topology; if restoration itself fails, preserve recovery state and emit an explicit handoff.
+  - Restore and validate an invocation-owned `--stash` before reporting `SYNCED`; resolve safe conflicts through the current bounded semantic conflict engine and retain the stash on any unresolved failure.
+  - Keep remote push and review-request creation as the final publication boundary.
+  - Express acceptance as three declarative compiled-CLI integration tables: operator-owned preflight, failure rollback, and successful finalization.
+  Validation:
+  - Run `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check`.
+  Resolution:
+  Strict sync now builds one exact per-worktree operation plan, rejects operator-owned merge, revert, cherry-pick, rebase, apply-mailbox, bisect, and sequencer state before fetch, and ignores ordinary marker-like refs. Its local transaction snapshots branch refs, commits, index state, tracked and untracked contents, stashes, and adoptable worktree topology; sibling publication is deferred to the normal target push. Pre-push failure restores the complete snapshot, while post-push failure preserves forward recovery state and reports `SYNC_SWITCH_HANDOFF`. Invocation-owned stashes restore with `--index`, use the bounded semantic conflict engine when necessary, and complete before `SYNCED`. Three declarative compiled-CLI tables cover operator preflight, rollback/publication boundaries, and successful finalization. `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check` passed on 2026-07-29.
+
+- [x] [B045] (P0) Close strict-sync transaction ownership gaps.
+  Reported on 2026-07-29 during review of B044.
+  Observation:
+  Three edges still violate the ownership boundary. A pre-existing unmerged index without an administrative marker reaches snapshot acquisition, where a failed stash can trigger destructive cleanup without an owned backup. An up-to-date push is treated as publication even though it performs no remote write. Rollback also rewinds or deletes every local branch and recreates every starting worktree instead of limiting restoration to state this invocation mutated.
+  Requirements:
+  - Reject an unmerged index in every valid registered worktree before fetch or snapshot mutation, including conflicts left by `git stash apply` without an active merge or sequencer marker.
+  - Parse Git's porcelain push result and mark Git publication only for an actual remote ref creation, update, or deletion; keep an up-to-date push rollback-capable, retain successful pull-request creation as publication, and fail closed when a successful response cannot prove its outcome.
+  - Journal only branch refs and worktrees mutated by the invocation, advance the expected ref value after each successful mutation, and restore owned refs with compare-and-swap.
+  - Preserve unrelated local branch creation or advancement and unrelated worktree topology during rollback; reject an unexpected outside change to an owned ref instead of overwriting it.
+  - Make failed snapshot acquisition non-destructive unless an exact transaction backup was successfully acquired.
+  Validation:
+  - Extend the declarative operator-preflight table with an exact-state stash-apply conflict.
+  - Extend the declarative failure table with a no-op push followed by pull-request failure and with a concurrent commit in an unrelated sibling worktree.
+  - Run `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check`.
+  Resolution:
+  Strict sync now rejects every pre-existing unmerged index before snapshot acquisition and defensively repeats that check at snapshot and adoption boundaries. A snapshot is registered for rollback only after its exact backup exists; an earlier failure finalizes prior temporary snapshots without resetting unowned state. Every strict-sync push requests porcelain status, and only an actual ref creation, update, or deletion marks Git publication; an up-to-date push remains rollback-capable, successful pull-request creation remains a publication event, and an unprovable successful push fails closed under handoff. Local recovery journals only refs and worktrees the invocation mutates, advances each expected ref after successful Git commands, validates ownership before destructive cleanup, and compare-and-swaps only owned refs back to their starting values. The declarative tables now prove exact preservation of a stash-apply conflict, rollback after a no-op push, and survival of a concurrent unrelated sibling commit. `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check` passed on 2026-07-29.
+
 ## Maintenance
 
 - [ ] [M001R] (P2) Backlog hygiene and archive.

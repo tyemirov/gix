@@ -24,6 +24,10 @@ const (
 	syncMergedBranchGitHubLogVariable           = "GIX_SYNC_TEST_GH_LOG"
 	syncMergedBranchOperationLogVariable        = "GIX_SYNC_TEST_OPERATION_LOG"
 	syncMergedBranchFailPullRequestHeadVariable = "GIX_SYNC_TEST_FAIL_PR_HEAD"
+	syncMergedBranchFailGitMatchVariable        = "GIX_SYNC_TEST_FAIL_GIT_MATCH"
+	syncMergedBranchFailGitOccurrenceVariable   = "GIX_SYNC_TEST_FAIL_GIT_OCCURRENCE"
+	syncMergedBranchFailGitStateVariable        = "GIX_SYNC_TEST_FAIL_GIT_STATE"
+	syncMergedBranchConcurrentWorktreeVariable  = "GIX_SYNC_TEST_CONCURRENT_WORKTREE"
 	syncMergedBranchNameVariable                = "GIX_SYNC_TEST_BRANCH"
 	syncMergedBranchMergedVariable              = "GIX_SYNC_TEST_MERGED"
 	syncMergedBranchAPIKeyVariable              = "GIX_SYNC_TEST_LLM_KEY"
@@ -672,18 +676,39 @@ func buildSyncMergedBranchExecutablePath(testInstance *testing.T) string {
 	require.NoError(testInstance, lookupError)
 
 	gitStubScript := fmt.Sprintf(`#!/bin/sh
+real_git_path=%q
 if [ -n "$GIX_SYNC_TEST_GIT_LOG" ]; then
   printf '%%s\n' "$*" >>"$GIX_SYNC_TEST_GIT_LOG"
 fi
 if [ -n "$GIX_SYNC_TEST_OPERATION_LOG" ]; then
   printf 'git %%s\n' "$*" >>"$GIX_SYNC_TEST_OPERATION_LOG"
 fi
+if [ -n "$GIX_SYNC_TEST_FAIL_GIT_MATCH" ]; then
+  case "$*" in
+    *"$GIX_SYNC_TEST_FAIL_GIT_MATCH"*)
+      failure_count=0
+      if [ -f "$GIX_SYNC_TEST_FAIL_GIT_STATE" ]; then
+        failure_count="$(cat "$GIX_SYNC_TEST_FAIL_GIT_STATE")"
+      fi
+      failure_count=$((failure_count + 1))
+      printf '%%s\n' "$failure_count" >"$GIX_SYNC_TEST_FAIL_GIT_STATE"
+      if [ "$failure_count" -eq "$GIX_SYNC_TEST_FAIL_GIT_OCCURRENCE" ]; then
+        if [ -n "$GIX_SYNC_TEST_CONCURRENT_WORKTREE" ]; then
+          "$real_git_path" -C "$GIX_SYNC_TEST_CONCURRENT_WORKTREE" add --all
+          "$real_git_path" -C "$GIX_SYNC_TEST_CONCURRENT_WORKTREE" commit -m "operator: concurrent unrelated work"
+        fi
+        printf 'simulated git failure for %%s\n' "$*" >&2
+        exit 97
+      fi
+      ;;
+  esac
+fi
 if [ "$1" = "remote" ] && [ "$2" = "get-url" ] && [ "$3" = "origin" ]; then
   printf '%%s\n' %q
   exit 0
 fi
 exec %q "$@"
-`, syncMergedBranchRemoteURL, realGitPath)
+`, realGitPath, syncMergedBranchRemoteURL, realGitPath)
 	require.NoError(testInstance, os.WriteFile(filepath.Join(stubDirectory, "git"), []byte(gitStubScript), 0o755))
 	require.NoError(testInstance, os.WriteFile(filepath.Join(stubDirectory, "gh"), []byte(syncMergedBranchGitHubStubScript()), 0o755))
 

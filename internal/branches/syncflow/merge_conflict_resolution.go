@@ -28,7 +28,6 @@ const (
 	gitRmForceFlagConstant                      = "-f"
 	gitCommitNoEditFlagConstant                 = "--no-edit"
 	gitMergeAbortFlagConstant                   = "--abort"
-	gitRevParseQuietFlagConstant                = "--quiet"
 	gitMergeHeadReferenceConstant               = "MERGE_HEAD"
 	gitDiffCachedFlagConstant                   = "--cached"
 	gitDiffCheckFlagConstant                    = "--check"
@@ -91,7 +90,15 @@ type mergeConflictResolutionClientProvider func() (llm.ChatClient, error)
 type mergeConflictResolutionOptions struct {
 	SourceReference string
 	TargetBranch    string
+	Completion      mergeConflictCompletion
 }
+
+type mergeConflictCompletion uint8
+
+const (
+	mergeConflictCompletionCommit mergeConflictCompletion = iota
+	mergeConflictCompletionPreserveIndex
+)
 
 type mergeConflictFile struct {
 	Path            string
@@ -241,11 +248,17 @@ func (service mergeConflictResolutionService) Resolve(ctx context.Context, optio
 		return true, service.normalizeResolutionError(ctx, fmt.Errorf(mergeConflictResolutionIndexCheckTemplate, indexCheckErr))
 	}
 
-	service.report(shared.EventLevelInfo, shared.EventCodeAIMergeResolution, "all conflict resolution strategies validated; completing merge commit", map[string]string{
-		"paths": strings.Join(paths, ", "),
-	})
-	if commitErr := executeGit(ctx, service.executor, service.repositoryPath, []string{gitCommitSubcommandConstant, gitCommitNoEditFlagConstant}); commitErr != nil {
-		return true, service.normalizeResolutionError(ctx, fmt.Errorf(mergeConflictResolutionCommitTemplate, commitErr))
+	if options.Completion == mergeConflictCompletionPreserveIndex {
+		service.report(shared.EventLevelInfo, shared.EventCodeAIMergeResolution, "all conflict resolution strategies validated; preserving the restored index", map[string]string{
+			"paths": strings.Join(paths, ", "),
+		})
+	} else {
+		service.report(shared.EventLevelInfo, shared.EventCodeAIMergeResolution, "all conflict resolution strategies validated; completing merge commit", map[string]string{
+			"paths": strings.Join(paths, ", "),
+		})
+		if commitErr := executeGit(ctx, service.executor, service.repositoryPath, []string{gitCommitSubcommandConstant, gitCommitNoEditFlagConstant}); commitErr != nil {
+			return true, service.normalizeResolutionError(ctx, fmt.Errorf(mergeConflictResolutionCommitTemplate, commitErr))
+		}
 	}
 	service.report(shared.EventLevelInfo, shared.EventCodeAIMergeResolution, "merge conflict resolution completed", map[string]string{
 		"paths": strings.Join(paths, ", "),

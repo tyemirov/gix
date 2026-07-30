@@ -21,9 +21,14 @@
 - Updated the LLM Proxy Go client from v0.2.21 to v0.2.46, moved Gix's configured proxy work budget to the current per-request timeout header, and raised the Go module floor to 1.25.12 with the dependency graph required by that client.
 
 ### Bug Fixes 🐛
+- Rejected operator-owned unmerged indexes before strict-sync snapshot mutation, including stash-apply conflicts that have no merge or sequencer marker.
+- Derived strict-sync Git publication from porcelain ref statuses, so an up-to-date push remains rollback-capable while an actual ref update, pull-request creation, or unprovable successful response enters the handoff boundary.
+- Limited rollback to journaled transaction-owned refs and adopted worktrees, using compare-and-swap ref restoration so unrelated concurrent branch advances survive.
+- Replaced the revert-only strict-sync guard with one exact per-worktree operation preflight for merge, revert, cherry-pick, rebase, apply-mailbox, bisect, and sequencer state; ordinary marker-like refs remain valid, while malformed administrative state fails closed before fetch or mutation.
 - Made rejected, timed-out, or canceled strict-sync merge resolution abort the operation-owned merge before returning, restoring the exact pre-merge branch/worktree state and reserving manual handoff for a failed Git rollback.
 - Converted CLI Ctrl-C into context cancellation and detached `MERGE_HEAD` inspection, so cancellation before conflict discovery still aborts the operation-owned merge.
-- Made failed explicit-target sync transactional across branch switching and sibling adoption: after target cleanup, Gix restores the caller's starting checkout and recreates or reattaches the captured worktree topology.
+- Made strict sync transactional across the caller and every sibling it may adopt: transaction-owned snapshots preserve commits, local branch refs, the index, staged and unstaged contents, untracked files, stash ordering, and worktree topology; pre-push failure restores the exact snapshot, while post-push failure preserves forward recovery state under `SYNC_SWITCH_HANDOFF`.
+- Deferred sibling publication to the normal target-branch push and made invocation-owned stashes restore by exact object with `--index`, use bounded semantic conflict resolution when required, and finish before `SYNCED` is reported.
 - Replaced strict-sync's one-shot full-file AI merge path with a fidelity-first diff3 ladder: exact local reconstruction, authoritative no-choice/current-stage decisions, lossless issue/changelog and token candidates, and mandatory semantic LLM audit for every two-sided marker-bearing region.
 - Deferred strict-sync rollback until every deterministic and bounded semantic strategy is exhausted, while retaining immediate final recovery for caller cancellation or unrecoverable Git/filesystem failure and manual handoff only for a failed abort.
 - Required existing license-rollout drafts to match the inspected base, canonical one-commit history, exact changed paths, and rendered license blobs before apply can skip them.
@@ -50,6 +55,10 @@
 - Kept the syncflow builder description as the canonical text shown by `gix sync --help`.
 
 ### Testing 🧪
+- Extended the three declarative strict-sync integration tables with operator-owned stash-apply conflicts, rollback after an up-to-date push, and preservation of a concurrent unrelated sibling commit.
+- Added three declarative compiled-CLI integration tables covering operator-owned Git-operation preflight, pre-publication rollback versus post-publication handoff, and successful clean, dirty-commit, indexed-stash, and semantic stash-conflict finalization.
+- Added public compiled-CLI coverage for resolved but unfinished reverts in both the caller and an adoptable sibling worktree, proving sync performs no fetch, switch, index mutation, LLM request, commit, or push and preserves the exact transactions.
+- Added compiled-CLI coverage proving an ordinary branch named `REVERT_HEAD` does not impersonate sequencer state, plus focused preflight coverage for active, absent, unreadable, invalid, and non-canonical `REVERT_HEAD` files.
 - Added public CLI coverage for a clean pull-request branch whose remote review base conflicts and receives a lossy AI resolution, proving the target commit and contents are restored with no `MERGE_HEAD`, dirty status, push, or manual handoff.
 - Added a compiled-CLI SIGINT regression that interrupts immediately after Git creates conflicts and verifies exact rollback before conflict inspection or LLM dispatch.
 - Added public CLI coverage for a failed target sync that starts on another branch and adopts a linked target worktree, proving the source checkout and target sibling are both restored without a merge transaction or push.
@@ -78,7 +87,8 @@
 - Added black-box release coverage for clean-checkout helpers, failed or missing platform outputs, replaced published manifests, and missing integrity prerequisites.
 
 ### Docs 📚
-- Documented strict sync's enclosing checkout/worktree transaction and its rollback-versus-handoff events.
+- Documented unmerged-index preflight, actual-update publication, and transaction-owned compare-and-swap rollback semantics.
+- Documented exact per-worktree Git-operation ownership, the immutable strict-sync plan, complete local-state snapshots, the push publication boundary, and indexed stash finalization before success.
 - Documented the diff3 fidelity ladder, deterministic lossless candidate construction, mandatory semantic LLM review for two-sided content, replacement-intent validation, and bounded repair.
 - Documented rollback as final recovery after strategy exhaustion, cancellation, or unrecoverable local failure, with manual recovery reserved for a failed Git abort.
 - Documented the fail-closed validation contract for existing deterministic license-rollout drafts.
