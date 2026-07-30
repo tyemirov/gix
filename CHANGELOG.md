@@ -105,6 +105,23 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.1.16] - 2026-07-29
+
+- Merge pull request #402 from tyemirov/bugfix/B043-reject-active-revert-sync
+- test: cover unmerged index and unrelated advances in sync state rollback
+- feat(syncflow): reject and preflight unmerged index state for strict sync
+- docs: update strict sync and transaction details in README
+- feat(syncflow): add strict preflight, publication, and rollback semantics
+- docs: clarify strict sync preflight and transaction publication boundaries
+- docs(issues): document resolution of strict-sync transaction ownership gaps
+- test: cover strict-sync admin state rejection across all worktrees
+- feat(syncflow): detect operator-owned Git ops before strict sync
+- docs: clarify strict sync, stash recovery, and transaction restoration
+- feat(syncflow): add per-worktree Git-operation preflight and transaction snapshots
+- docs: update transaction and preflight logic in architecture overview
+- docs(issues): document ownership-aware transactional strict sync design
+- fix(sync): reject operator-owned reverts before mutation
+
 ## [v1.1.15] - 2026-07-29
 
 - Merge pull request #399 from tyemirov/bugfix/B038-rollback-failed-ai-merge
