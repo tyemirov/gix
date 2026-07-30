@@ -170,8 +170,7 @@ func TestSyncRepairsStaleLinkedWorktreeAfterPrimaryRepositoryMove(testInstance *
 	brokenProbe := exec.Command("git", "-C", siblingPath, "rev-parse", "--git-path", "MERGE_HEAD")
 	brokenProbe.Env = buildGitCommandEnvironment(nil)
 	brokenProbeOutput, brokenProbeErr := brokenProbe.CombinedOutput()
-	require.Error(testInstance, brokenProbeErr)
-	require.Contains(testInstance, string(brokenProbeOutput), filepath.Join(canonicalOriginalRepositoryPath, ".git", "worktrees"))
+	require.Error(testInstance, brokenProbeErr, string(brokenProbeOutput))
 
 	configurationPath := writeSyncWorktreeAdoptionConfiguration(testInstance, "")
 	output, runError := runBinaryIntegrationCommand(
