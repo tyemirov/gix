@@ -22,8 +22,11 @@ const (
 	gitBisectStartPathConstant              = "BISECT_START"
 	gitSequencerPathConstant                = "sequencer"
 	gitPathFlagConstant                     = "--git-path"
+	gitCommonDirectoryFlagConstant          = "--git-common-dir"
 	gitEndOfOptionsFlagConstant             = "--end-of-options"
 	gitCommitPeelSuffixConstant             = "^{commit}"
+	gitDirectoryFileNameConstant            = ".git"
+	gitDirectoryFilePrefixConstant          = "gitdir:"
 	strictSyncOperationInProgressTemplate   = "strict sync cannot run while an operator-owned Git %s is in progress at %q; %s, then retry"
 	strictSyncOperationInspectionFailure    = "inspect operator-owned Git state before strict sync at %q: %w"
 	strictSyncOperationPathMissingTemplate  = "git returned an empty %s path"
@@ -32,6 +35,11 @@ const (
 	strictSyncOperationValidationTemplate   = "validate %s: %w"
 	strictSyncOperationNonCanonicalTemplate = "%s does not contain canonical commit identifiers"
 	strictSyncUnmergedIndexGuidance         = "resolve or restore it explicitly"
+	strictSyncWorktreeRepairFailureTemplate = "repair worktree metadata before strict sync at %q: %w"
+	strictSyncWorktreeLinkFailureTemplate   = "inspect registered worktree metadata at %q for repository %q: %w"
+	strictSyncWorktreeLinkMissingTemplate   = "%s does not contain a canonical gitdir record"
+	strictSyncWorktreeLiveLinkTemplate      = "registered worktree %q belongs to live common repository %q, not %q; remove the conflicting registration explicitly or run sync from its owning repository"
+	strictSyncWorktreeLiveTargetTemplate    = "registered worktree %q cannot be validated while its gitdir target %q still exists; refusing to rewrite live metadata: %w"
 )
 
 type strictSyncPlan struct {
@@ -98,6 +106,22 @@ func buildStrictSyncPlan(ctx context.Context, executor shared.GitExecutor, repos
 	if listErr != nil {
 		return strictSyncPlan{}, fmt.Errorf(strictSyncOperationInspectionFailure, repositoryPath, listErr)
 	}
+	repairPaths, repairPlanErr := strictSyncWorktreeRepairPaths(ctx, executor, repositoryPath, worktrees, true)
+	if repairPlanErr != nil {
+		return strictSyncPlan{}, repairPlanErr
+	}
+	if len(repairPaths) > 0 {
+		if repairErr := repairStrictSyncWorktreeMetadata(ctx, executor, repositoryPath, repairPaths); repairErr != nil {
+			return strictSyncPlan{}, repairErr
+		}
+		worktrees, listErr = listRepositoryWorktrees(ctx, executor, repositoryPath, targetBranch)
+		if listErr != nil {
+			return strictSyncPlan{}, fmt.Errorf(strictSyncOperationInspectionFailure, repositoryPath, listErr)
+		}
+		if _, validationErr := strictSyncWorktreeRepairPaths(ctx, executor, repositoryPath, worktrees, false); validationErr != nil {
+			return strictSyncPlan{}, validationErr
+		}
+	}
 
 	startingWorktree, exists := findListedWorktreeByPath(worktrees, repositoryPath)
 	if !exists {
@@ -133,6 +157,111 @@ func buildStrictSyncPlan(ctx context.Context, executor shared.GitExecutor, repos
 		worktrees:        worktrees,
 		touchedWorktrees: touchedWorktrees,
 	}, nil
+}
+
+func repairStrictSyncWorktreeMetadata(ctx context.Context, executor shared.GitExecutor, repositoryPath string, worktreePaths []string) error {
+	arguments := []string{gitWorktreeSubcommandConstant, gitWorktreeRepairSubcommandConstant}
+	arguments = append(arguments, worktreePaths...)
+	_, repairErr := executor.ExecuteGit(ctx, execshell.CommandDetails{
+		Arguments:        arguments,
+		WorkingDirectory: repositoryPath,
+	})
+	if repairErr != nil {
+		return fmt.Errorf(strictSyncWorktreeRepairFailureTemplate, repositoryPath, repairErr)
+	}
+	return nil
+}
+
+func strictSyncWorktreeRepairPaths(ctx context.Context, executor shared.GitExecutor, repositoryPath string, worktrees []listedWorktree, allowRepair bool) ([]string, error) {
+	callerCommonDirectory, callerCommonErr := resolveStrictSyncCommonDirectory(ctx, executor, repositoryPath)
+	if callerCommonErr != nil {
+		return nil, fmt.Errorf(strictSyncWorktreeLinkFailureTemplate, repositoryPath, repositoryPath, callerCommonErr)
+	}
+
+	repairPaths := make([]string, 0)
+	for worktreeIndex := range worktrees {
+		worktree := worktrees[worktreeIndex]
+		if worktree.Prunable || sameFilesystemPath(worktree.Path, repositoryPath) {
+			continue
+		}
+
+		worktreeCommonDirectory, commonDirectoryErr := resolveStrictSyncCommonDirectory(ctx, executor, worktree.Path)
+		if commonDirectoryErr == nil {
+			if !sameFilesystemPath(worktreeCommonDirectory, callerCommonDirectory) {
+				return nil, fmt.Errorf(
+					strictSyncWorktreeLiveLinkTemplate,
+					worktree.Path,
+					worktreeCommonDirectory,
+					callerCommonDirectory,
+				)
+			}
+			continue
+		}
+		if !allowRepair {
+			return nil, fmt.Errorf(strictSyncWorktreeLinkFailureTemplate, worktree.Path, repositoryPath, commonDirectoryErr)
+		}
+
+		gitDirectoryTarget, targetErr := readStrictSyncGitDirectoryTarget(worktree.Path)
+		if targetErr != nil {
+			return nil, fmt.Errorf(strictSyncWorktreeLinkFailureTemplate, worktree.Path, repositoryPath, errors.Join(commonDirectoryErr, targetErr))
+		}
+		targetInfo, targetInspectionErr := os.Stat(gitDirectoryTarget)
+		if errors.Is(targetInspectionErr, fs.ErrNotExist) {
+			repairPaths = append(repairPaths, worktree.Path)
+			continue
+		}
+		if targetInspectionErr != nil {
+			return nil, fmt.Errorf(strictSyncWorktreeLinkFailureTemplate, worktree.Path, repositoryPath, targetInspectionErr)
+		}
+		if targetInfo.IsDir() {
+			return nil, fmt.Errorf(strictSyncWorktreeLiveTargetTemplate, worktree.Path, gitDirectoryTarget, commonDirectoryErr)
+		}
+		return nil, fmt.Errorf(
+			strictSyncWorktreeLinkFailureTemplate,
+			worktree.Path,
+			repositoryPath,
+			fmt.Errorf("%s has unexpected filesystem kind", gitDirectoryTarget),
+		)
+	}
+	return repairPaths, nil
+}
+
+func resolveStrictSyncCommonDirectory(ctx context.Context, executor shared.GitExecutor, repositoryPath string) (string, error) {
+	result, commonDirectoryErr := executor.ExecuteGit(ctx, execshell.CommandDetails{
+		Arguments:        []string{gitRevParseSubcommandConstant, gitCommonDirectoryFlagConstant},
+		WorkingDirectory: repositoryPath,
+	})
+	if commonDirectoryErr != nil {
+		return "", commonDirectoryErr
+	}
+	commonDirectory := strings.TrimSpace(result.StandardOutput)
+	if commonDirectory == "" {
+		return "", fmt.Errorf(strictSyncOperationPathMissingTemplate, gitCommonDirectoryFlagConstant)
+	}
+	if !filepath.IsAbs(commonDirectory) {
+		commonDirectory = filepath.Join(repositoryPath, commonDirectory)
+	}
+	return filepath.Clean(commonDirectory), nil
+}
+
+func readStrictSyncGitDirectoryTarget(worktreePath string) (string, error) {
+	gitDirectoryFile := filepath.Join(worktreePath, gitDirectoryFileNameConstant)
+	contents, readErr := os.ReadFile(gitDirectoryFile)
+	if readErr != nil {
+		return "", readErr
+	}
+	record := strings.TrimSpace(string(contents))
+	if !strings.HasPrefix(record, gitDirectoryFilePrefixConstant) || strings.Contains(record, "\n") {
+		return "", fmt.Errorf(strictSyncWorktreeLinkMissingTemplate, gitDirectoryFile)
+	}
+	target := strings.TrimSpace(strings.TrimPrefix(record, gitDirectoryFilePrefixConstant))
+	if target == "" {
+		return "", fmt.Errorf(strictSyncWorktreeLinkMissingTemplate, gitDirectoryFile)
+	}
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(worktreePath, target)
+	}
+	return filepath.Clean(target), nil
 }
 
 func ensureWorktreeHasNoOperatorOwnedGitOperation(ctx context.Context, executor shared.GitExecutor, repositoryPath string) error {

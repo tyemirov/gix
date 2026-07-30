@@ -16,23 +16,40 @@ import (
 const strictSyncPreflightTestCommit = "0123456789abcdef0123456789abcdef01234567"
 
 type strictSyncPreflightExecutor struct {
-	commands           []execshell.CommandDetails
-	worktreeOutput     string
-	worktreeErr        error
-	gitPathOutput      string
-	gitPathErr         error
-	verificationOutput string
-	verificationErr    error
-	unmergedOutput     string
-	unmergedErr        error
+	commands                 []execshell.CommandDetails
+	worktreeOutput           string
+	worktreeErr              error
+	worktreeRepairErr        error
+	commonDirectoryResponses map[string][]strictSyncPreflightResponse
+	gitPathOutput            string
+	gitPathErr               error
+	verificationOutput       string
+	verificationErr          error
+	unmergedOutput           string
+	unmergedErr              error
+}
+
+type strictSyncPreflightResponse struct {
+	Output string
+	Error  error
 }
 
 func (executor *strictSyncPreflightExecutor) ExecuteGit(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
 	executor.commands = append(executor.commands, details)
 	command := strings.Join(details.Arguments, " ")
 	switch {
+	case strings.HasPrefix(command, "worktree repair "):
+		return execshell.ExecutionResult{}, executor.worktreeRepairErr
 	case command == "worktree list --porcelain":
 		return execshell.ExecutionResult{StandardOutput: executor.worktreeOutput}, executor.worktreeErr
+	case command == "rev-parse --git-common-dir":
+		responses := executor.commonDirectoryResponses[details.WorkingDirectory]
+		if len(responses) == 0 {
+			return execshell.ExecutionResult{}, fmt.Errorf("unexpected common-directory inspection at %s", details.WorkingDirectory)
+		}
+		response := responses[0]
+		executor.commonDirectoryResponses[details.WorkingDirectory] = responses[1:]
+		return execshell.ExecutionResult{StandardOutput: response.Output}, response.Error
 	case command == "rev-parse --git-path REVERT_HEAD":
 		return execshell.ExecutionResult{StandardOutput: executor.gitPathOutput}, executor.gitPathErr
 	case strings.HasPrefix(command, "rev-parse --git-path "):
@@ -214,6 +231,10 @@ func TestStrictSyncRevertPreflightInspectsEveryRegisteredWorktree(testInstance *
 			siblingPath,
 			strictSyncPreflightTestCommit,
 		),
+		commonDirectoryResponses: map[string][]strictSyncPreflightResponse{
+			repositoryPath: {{Output: filepath.Join(repositoryPath, ".git") + "\n"}},
+			siblingPath:    {{Output: filepath.Join(repositoryPath, ".git") + "\n"}},
+		},
 		gitPathOutput:      ".git/REVERT_HEAD\n",
 		verificationOutput: strictSyncPreflightTestCommit + "\n",
 	}
@@ -230,7 +251,102 @@ func TestStrictSyncRevertPreflightInspectsEveryRegisteredWorktree(testInstance *
 	require.Contains(testInstance, preflightErr.Error(), "operator-owned Git revert is in progress")
 	require.Equal(testInstance, []string{"worktree", "list", "--porcelain"}, executor.commands[0].Arguments)
 	require.Equal(testInstance, repositoryPath, executor.commands[0].WorkingDirectory)
-	require.Greater(testInstance, len(executor.commands), 4)
+	require.Equal(testInstance, []string{"rev-parse", "--git-common-dir"}, executor.commands[1].Arguments)
+	require.Equal(testInstance, repositoryPath, executor.commands[1].WorkingDirectory)
+	require.Equal(testInstance, []string{"rev-parse", "--git-common-dir"}, executor.commands[2].Arguments)
+	require.Equal(testInstance, siblingPath, executor.commands[2].WorkingDirectory)
+	require.Greater(testInstance, len(executor.commands), 6)
 	require.Equal(testInstance, siblingPath, executor.commands[len(executor.commands)-2].WorkingDirectory)
 	require.Equal(testInstance, siblingPath, executor.commands[len(executor.commands)-1].WorkingDirectory)
+}
+
+func TestStrictSyncPreflightRejectsWorktreeRepairFailure(testInstance *testing.T) {
+	repositoryPath := testInstance.TempDir()
+	siblingPath := testInstance.TempDir()
+	missingGitDirectory := filepath.Join(testInstance.TempDir(), "missing", ".git", "worktrees", "sibling")
+	require.NoError(
+		testInstance,
+		os.WriteFile(
+			filepath.Join(siblingPath, ".git"),
+			[]byte("gitdir: "+missingGitDirectory+"\n"),
+			0o600,
+		),
+	)
+	executor := &strictSyncPreflightExecutor{
+		worktreeOutput: fmt.Sprintf(
+			"worktree %s\nHEAD %s\nbranch refs/heads/master\n\nworktree %s\nHEAD %s\nbranch refs/heads/feature/repair\n",
+			repositoryPath,
+			strictSyncPreflightTestCommit,
+			siblingPath,
+			strictSyncPreflightTestCommit,
+		),
+		worktreeRepairErr: execshell.CommandFailedError{
+			Result: execshell.ExecutionResult{
+				ExitCode:      128,
+				StandardError: "fatal: unable to repair linked worktree",
+			},
+		},
+		commonDirectoryResponses: map[string][]strictSyncPreflightResponse{
+			repositoryPath: {{Output: filepath.Join(repositoryPath, ".git") + "\n"}},
+			siblingPath: {{
+				Error: execshell.CommandFailedError{
+					Result: execshell.ExecutionResult{
+						ExitCode:      128,
+						StandardError: "fatal: not a git repository",
+					},
+				},
+			}},
+		},
+	}
+
+	_, preflightErr := buildStrictSyncPlan(
+		context.Background(),
+		executor,
+		repositoryPath,
+		"master",
+	)
+
+	require.Error(testInstance, preflightErr)
+	require.Contains(testInstance, preflightErr.Error(), "repair worktree metadata before strict sync")
+	require.Contains(testInstance, preflightErr.Error(), repositoryPath)
+	require.Contains(testInstance, preflightErr.Error(), "unable to repair linked worktree")
+	require.Len(testInstance, executor.commands, 4)
+	require.Equal(testInstance, []string{"worktree", "repair", siblingPath}, executor.commands[3].Arguments)
+	require.Equal(testInstance, repositoryPath, executor.commands[3].WorkingDirectory)
+}
+
+func TestStrictSyncPreflightRejectsWorktreeOwnedByLiveCommonRepository(testInstance *testing.T) {
+	repositoryPath := testInstance.TempDir()
+	foreignRepositoryPath := testInstance.TempDir()
+	siblingPath := testInstance.TempDir()
+	executor := &strictSyncPreflightExecutor{
+		worktreeOutput: fmt.Sprintf(
+			"worktree %s\nHEAD %s\nbranch refs/heads/master\n\nworktree %s\nHEAD %s\nbranch refs/heads/feature/foreign\n",
+			repositoryPath,
+			strictSyncPreflightTestCommit,
+			siblingPath,
+			strictSyncPreflightTestCommit,
+		),
+		commonDirectoryResponses: map[string][]strictSyncPreflightResponse{
+			repositoryPath: {{Output: filepath.Join(repositoryPath, ".git") + "\n"}},
+			siblingPath:    {{Output: filepath.Join(foreignRepositoryPath, ".git") + "\n"}},
+		},
+	}
+
+	_, preflightErr := buildStrictSyncPlan(
+		context.Background(),
+		executor,
+		repositoryPath,
+		"master",
+	)
+
+	require.Error(testInstance, preflightErr)
+	require.Contains(testInstance, preflightErr.Error(), siblingPath)
+	require.Contains(testInstance, preflightErr.Error(), filepath.Join(foreignRepositoryPath, ".git"))
+	require.Contains(testInstance, preflightErr.Error(), filepath.Join(repositoryPath, ".git"))
+	require.Contains(testInstance, preflightErr.Error(), "remove the conflicting registration explicitly")
+	require.Len(testInstance, executor.commands, 3)
+	require.Equal(testInstance, []string{"worktree", "list", "--porcelain"}, executor.commands[0].Arguments)
+	require.Equal(testInstance, []string{"rev-parse", "--git-common-dir"}, executor.commands[1].Arguments)
+	require.Equal(testInstance, []string{"rev-parse", "--git-common-dir"}, executor.commands[2].Arguments)
 }

@@ -23,6 +23,7 @@ const (
 	gitWorktreeListSubcommandConstant        = "list"
 	gitWorktreeRemoveSubcommandConstant      = "remove"
 	gitWorktreePruneSubcommandConstant       = "prune"
+	gitWorktreeRepairSubcommandConstant      = "repair"
 	gitPorcelainFlagConstant                 = "--porcelain"
 	gitPorcelainBranchFlagConstant           = "--branch"
 	gitSwitchDetachFlagConstant              = "--detach"

@@ -133,6 +133,7 @@ type strictSyncGitExecutor struct {
 	currentBranch     string
 	stashCommits      []string
 	pushOutput        string
+	commonDirectory   string
 }
 
 const (
@@ -207,6 +208,12 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 		}
 		return execshell.ExecutionResult{StandardOutput: output}, nil
 	case "rev-parse":
+		if len(details.Arguments) > 1 && details.Arguments[1] == gitCommonDirectoryFlagConstant {
+			if executor.commonDirectory == "" {
+				executor.commonDirectory = filepath.Join(details.WorkingDirectory, ".git")
+			}
+			return execshell.ExecutionResult{StandardOutput: executor.commonDirectory + "\n"}, nil
+		}
 		if len(details.Arguments) > 2 && details.Arguments[1] == strictSyncGitAbbrevRefFlag && details.Arguments[2] == strictSyncGitHeadReference {
 			currentBranch := executor.currentBranch
 			if currentBranch == "" {
