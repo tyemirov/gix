@@ -32,6 +32,7 @@ const (
 	strictSyncOperationValidationTemplate   = "validate %s: %w"
 	strictSyncOperationNonCanonicalTemplate = "%s does not contain canonical commit identifiers"
 	strictSyncUnmergedIndexGuidance         = "resolve or restore it explicitly"
+	strictSyncWorktreeRepairFailureTemplate = "repair worktree metadata before strict sync at %q: %w"
 )
 
 type strictSyncPlan struct {
@@ -94,6 +95,10 @@ var strictSyncGitOperationDescriptors = [...]strictSyncGitOperationDescriptor{
 }
 
 func buildStrictSyncPlan(ctx context.Context, executor shared.GitExecutor, repositoryPath string, targetBranch string) (strictSyncPlan, error) {
+	if repairErr := repairStrictSyncWorktreeMetadata(ctx, executor, repositoryPath); repairErr != nil {
+		return strictSyncPlan{}, repairErr
+	}
+
 	worktrees, listErr := listRepositoryWorktrees(ctx, executor, repositoryPath, targetBranch)
 	if listErr != nil {
 		return strictSyncPlan{}, fmt.Errorf(strictSyncOperationInspectionFailure, repositoryPath, listErr)
@@ -133,6 +138,17 @@ func buildStrictSyncPlan(ctx context.Context, executor shared.GitExecutor, repos
 		worktrees:        worktrees,
 		touchedWorktrees: touchedWorktrees,
 	}, nil
+}
+
+func repairStrictSyncWorktreeMetadata(ctx context.Context, executor shared.GitExecutor, repositoryPath string) error {
+	_, repairErr := executor.ExecuteGit(ctx, execshell.CommandDetails{
+		Arguments:        []string{gitWorktreeSubcommandConstant, gitWorktreeRepairSubcommandConstant},
+		WorkingDirectory: repositoryPath,
+	})
+	if repairErr != nil {
+		return fmt.Errorf(strictSyncWorktreeRepairFailureTemplate, repositoryPath, repairErr)
+	}
+	return nil
 }
 
 func ensureWorktreeHasNoOperatorOwnedGitOperation(ctx context.Context, executor shared.GitExecutor, repositoryPath string) error {

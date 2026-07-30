@@ -252,6 +252,25 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Resolution:
   Strict sync now rejects every pre-existing unmerged index before snapshot acquisition and defensively repeats that check at snapshot and adoption boundaries. A snapshot is registered for rollback only after its exact backup exists; an earlier failure finalizes prior temporary snapshots without resetting unowned state. Every strict-sync push requests porcelain status, and only an actual ref creation, update, or deletion marks Git publication; an up-to-date push remains rollback-capable, successful pull-request creation remains a publication event, and an unprovable successful push fails closed under handoff. Local recovery journals only refs and worktrees the invocation mutates, advances each expected ref after successful Git commands, validates ownership before destructive cleanup, and compare-and-swaps only owned refs back to their starting values. The declarative tables now prove exact preservation of a stash-apply conflict, rollback after a no-op push, and survival of a concurrent unrelated sibling commit. `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check` passed on 2026-07-29.
 
+- [x] [B046] (P0) Repair stale linked-worktree linkage before strict-sync preflight.
+  Reported on 2026-07-29 after `gix sync` in `/Users/tyemirov/Development/TellTale` failed while resolving `MERGE_HEAD` inside `/Users/tyemirov/Development/story-generator-b007`.
+  Observation:
+  - The linked checkout still exists, but its `.git` file points at the removed `/Users/tyemirov/Development/story-generator` common repository.
+  - The current common repository lists the checkout as registered without Git's `prunable` marker, so B030's missing-directory cleanup does not apply.
+  - Strict preflight treats every non-prunable record as valid and runs `git rev-parse --git-path MERGE_HEAD` inside the broken checkout, making every sync fail before it can inspect the caller.
+  Requirements:
+  - Repair canonical Git worktree metadata before strict sync classifies and inspects registered worktrees.
+  - Distinguish an existing linked checkout with repairable stale linkage from a missing Git-prunable checkout; never prune a live checkout blindly.
+  - Preserve the linked checkout's branch, commit, index, tracked contents, untracked contents, and staged/unstaged distinction.
+  - Re-list and inspect the repaired topology before fetch, stash, checkout, LLM dispatch, commit, push, or pull-request creation.
+  - Fail with worktree and repository context when Git cannot repair or validate the topology.
+  Validation:
+  - Add a public compiled-CLI regression that creates a linked checkout, moves the primary repository, proves the linked checkout's old `.git` pointer fails, and then proves sync repairs the registration and completes without changing the linked checkout's state.
+  - Preserve the existing missing-prunable-worktree regression and every strict-sync worktree preflight scenario.
+  - Run `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check`.
+  Resolution:
+  Strict sync now runs Git's canonical `worktree repair` from the caller before listing or inspecting registered worktrees. Existing linked checkouts whose `.git` files still name a moved primary repository are reconnected and re-listed before exact administrative-path and unmerged-index preflight; missing Git-prunable registrations remain on B030's prune path, and repair failures retain repository context. A public compiled-CLI regression moves the primary repository after creating a dirty linked checkout, proves the old non-prunable link returns the reported `rev-parse --git-path MERGE_HEAD` failure, and then proves sync repairs it while preserving the sibling branch, commit, index, staged and unstaged contents, and untracked files exactly. `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check` passed on 2026-07-29.
+
 ## Maintenance
 
 - [ ] [M001R] (P2) Backlog hygiene and archive.

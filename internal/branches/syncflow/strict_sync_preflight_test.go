@@ -19,6 +19,7 @@ type strictSyncPreflightExecutor struct {
 	commands           []execshell.CommandDetails
 	worktreeOutput     string
 	worktreeErr        error
+	worktreeRepairErr  error
 	gitPathOutput      string
 	gitPathErr         error
 	verificationOutput string
@@ -31,6 +32,8 @@ func (executor *strictSyncPreflightExecutor) ExecuteGit(_ context.Context, detai
 	executor.commands = append(executor.commands, details)
 	command := strings.Join(details.Arguments, " ")
 	switch {
+	case command == "worktree repair":
+		return execshell.ExecutionResult{}, executor.worktreeRepairErr
 	case command == "worktree list --porcelain":
 		return execshell.ExecutionResult{StandardOutput: executor.worktreeOutput}, executor.worktreeErr
 	case command == "rev-parse --git-path REVERT_HEAD":
@@ -228,9 +231,38 @@ func TestStrictSyncRevertPreflightInspectsEveryRegisteredWorktree(testInstance *
 	require.Error(testInstance, preflightErr)
 	require.Contains(testInstance, preflightErr.Error(), siblingPath)
 	require.Contains(testInstance, preflightErr.Error(), "operator-owned Git revert is in progress")
-	require.Equal(testInstance, []string{"worktree", "list", "--porcelain"}, executor.commands[0].Arguments)
+	require.Equal(testInstance, []string{"worktree", "repair"}, executor.commands[0].Arguments)
 	require.Equal(testInstance, repositoryPath, executor.commands[0].WorkingDirectory)
-	require.Greater(testInstance, len(executor.commands), 4)
+	require.Equal(testInstance, []string{"worktree", "list", "--porcelain"}, executor.commands[1].Arguments)
+	require.Equal(testInstance, repositoryPath, executor.commands[1].WorkingDirectory)
+	require.Greater(testInstance, len(executor.commands), 5)
 	require.Equal(testInstance, siblingPath, executor.commands[len(executor.commands)-2].WorkingDirectory)
 	require.Equal(testInstance, siblingPath, executor.commands[len(executor.commands)-1].WorkingDirectory)
+}
+
+func TestStrictSyncPreflightRejectsWorktreeRepairFailure(testInstance *testing.T) {
+	repositoryPath := testInstance.TempDir()
+	executor := &strictSyncPreflightExecutor{
+		worktreeRepairErr: execshell.CommandFailedError{
+			Result: execshell.ExecutionResult{
+				ExitCode:      128,
+				StandardError: "fatal: unable to repair linked worktree",
+			},
+		},
+	}
+
+	_, preflightErr := buildStrictSyncPlan(
+		context.Background(),
+		executor,
+		repositoryPath,
+		"master",
+	)
+
+	require.Error(testInstance, preflightErr)
+	require.Contains(testInstance, preflightErr.Error(), "repair worktree metadata before strict sync")
+	require.Contains(testInstance, preflightErr.Error(), repositoryPath)
+	require.Contains(testInstance, preflightErr.Error(), "unable to repair linked worktree")
+	require.Len(testInstance, executor.commands, 1)
+	require.Equal(testInstance, []string{"worktree", "repair"}, executor.commands[0].Arguments)
+	require.Equal(testInstance, repositoryPath, executor.commands[0].WorkingDirectory)
 }
