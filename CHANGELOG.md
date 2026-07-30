@@ -111,6 +111,18 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.1.17] - 2026-07-29
+
+- Merge pull request #403 from tyemirov/bugfix/B046-repair-stale-worktree-linkage
+- test: simplify error assertion in stale worktree repair test
+- test: add integration test for strict sync worktree ownership enforcement
+- fix(syncflow): validate and repair only missing worktree links during preflight
+- docs: clarify strict sync linked-worktree validation and repair details
+- chore(changelog): update for strict-sync worktree ownership checks and docs
+- docs: update strict sync preflight explanation in ARCHITECTURE.md
+- docs: document strict sync follow-up handling for copied primary repositories
+- fix(syncflow): repair linked-worktree registration before strict-sync preflight
+
 ## [v1.1.16] - 2026-07-29
 
 - Merge pull request #402 from tyemirov/bugfix/B043-reject-active-revert-sync
