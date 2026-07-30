@@ -21,6 +21,7 @@
 - Updated the LLM Proxy Go client from v0.2.21 to v0.2.46, moved Gix's configured proxy work budget to the current per-request timeout header, and raised the Go module floor to 1.25.12 with the dependency graph required by that client.
 
 ### Bug Fixes 🐛
+- Limited strict-sync worktree repair to registered checkouts whose canonical Git target is actually missing, and rejected copied-repository registrations that would otherwise take over a live sibling owned by the original repository.
 - Repaired canonical linked-worktree registration before strict-sync preflight, so an existing checkout whose `.git` file still points at a moved primary repository no longer makes every `gix sync` fail.
 - Rejected operator-owned unmerged indexes before strict-sync snapshot mutation, including stash-apply conflicts that have no merge or sequencer marker.
 - Derived strict-sync Git publication from porcelain ref statuses, so an up-to-date push remains rollback-capable while an actual ref update, pull-request creation, or unprovable successful response enters the handoff boundary.
@@ -56,6 +57,7 @@
 - Kept the syncflow builder description as the canonical text shown by `gix sync --help`.
 
 ### Testing 🧪
+- Added a compiled-CLI regression proving a copied primary repository cannot rewrite a dirty live sibling's valid linkage to the original repository.
 - Added a public compiled-CLI regression that moves a primary repository while retaining a dirty linked checkout, proves the stale non-prunable `.git` pointer fails before sync, and verifies repair preserves the sibling branch, commit, index, staged and unstaged contents, and untracked files exactly.
 - Extended the three declarative strict-sync integration tables with operator-owned stash-apply conflicts, rollback after an up-to-date push, and preservation of a concurrent unrelated sibling commit.
 - Added three declarative compiled-CLI integration tables covering operator-owned Git-operation preflight, pre-publication rollback versus post-publication handoff, and successful clean, dirty-commit, indexed-stash, and semantic stash-conflict finalization.
@@ -89,6 +91,7 @@
 - Added black-box release coverage for clean-checkout helpers, failed or missing platform outputs, replaced published manifests, and missing integrity prerequisites.
 
 ### Docs 📚
+- Documented the ownership probe that distinguishes a repairable missing link from a live worktree owned by another common repository.
 - Documented canonical worktree-link repair as the metadata-only boundary before strict-sync administrative-state preflight.
 - Documented unmerged-index preflight, actual-update publication, and transaction-owned compare-and-swap rollback semantics.
 - Documented exact per-worktree Git-operation ownership, the immutable strict-sync plan, complete local-state snapshots, the push publication boundary, and indexed stash finalization before success.
