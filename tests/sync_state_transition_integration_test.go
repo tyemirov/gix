@@ -434,6 +434,8 @@ func TestSyncConcurrentDirtyClusterOwnershipTable(testInstance *testing.T) {
 		ExpectedBranch       string
 		ExpectedOwnershipGap string
 		ExpectedStagedPaths  []string
+		ExpectedIndexPath    string
+		ExpectedIndexPrefix  string
 	}{
 		{
 			Name:                 "checkout_changes_during_message_generation",
@@ -448,6 +450,15 @@ func TestSyncConcurrentDirtyClusterOwnershipTable(testInstance *testing.T) {
 			ExpectedBranch:       "master",
 			ExpectedOwnershipGap: "index changed",
 			ExpectedStagedPaths:  []string{"docs/contract.md", "pkg/state.go"},
+		},
+		{
+			Name:                 "semantic_index_flags_change_during_message_generation",
+			MutationArguments:    []string{"update-index", "--skip-worktree", "--", "README.md"},
+			ExpectedBranch:       "master",
+			ExpectedOwnershipGap: "index changed",
+			ExpectedStagedPaths:  []string{"docs/contract.md"},
+			ExpectedIndexPath:    "README.md",
+			ExpectedIndexPrefix:  "S ",
 		},
 	}
 
@@ -511,12 +522,84 @@ func TestSyncConcurrentDirtyClusterOwnershipTable(testInstance *testing.T) {
 			)
 			require.Contains(testInstance, runGit(testInstance, repositoryPath, "stash", "list"), "gix strict-sync transaction snapshot")
 			require.Equal(testInstance, remoteBefore, strings.TrimSpace(runGit(testInstance, remotePath, "rev-parse", "refs/heads/master")))
+			if testCase.ExpectedIndexPath != "" {
+				indexEntry := runGit(testInstance, repositoryPath, "ls-files", "-v", "--", testCase.ExpectedIndexPath)
+				require.True(testInstance, strings.HasPrefix(indexEntry, testCase.ExpectedIndexPrefix), indexEntry)
+			}
 
 			gitLog := readTextFile(testInstance, gitLogPath)
 			require.NotContains(testInstance, gitLog, "commit -m")
 			require.NotContains(testInstance, gitLog, "push origin")
+			requireSyncIndexUnlocked(testInstance, repositoryPath)
 		})
 	}
+}
+
+func TestSyncDirtyClusterCommitLocksTheCheckedIndex(testInstance *testing.T) {
+	repositoryRoot := integrationRepositoryRoot(testInstance)
+	binaryPath := buildIntegrationBinary(testInstance, repositoryRoot)
+	remotePath, repositoryPath := createSyncStateTransitionRepository(testInstance)
+	createSyncDirtyClusters(testInstance, repositoryPath)
+
+	captureMarkerPath := filepath.Join(testInstance.TempDir(), "model-returned")
+	stageResultPath := filepath.Join(testInstance.TempDir(), "stage-result")
+	var requestCount atomic.Int64
+	llmServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+		requestIndex := requestCount.Add(1)
+		if requestIndex == 1 {
+			require.NoError(testInstance, os.WriteFile(captureMarkerPath, []byte("ready\n"), 0o600))
+		}
+		responseWriter.Header().Set("Content-Type", "application/json")
+		message := "docs: preserve contract"
+		if requestIndex == 2 {
+			message = "feat: add state"
+		}
+		_, _ = responseWriter.Write([]byte(fmt.Sprintf(`{"choices":[{"message":{"role":"assistant","content":%q}}]}`, message)))
+	}))
+	testInstance.Cleanup(llmServer.Close)
+
+	configurationPath := writeDirtySyncMergedBranchConfiguration(testInstance, llmServer.URL)
+	gitLogPath := filepath.Join(testInstance.TempDir(), "git.log")
+	output, runError := runBinaryIntegrationCommand(
+		testInstance,
+		binaryPath,
+		repositoryPath,
+		map[string]string{
+			pathEnvironmentVariableNameConstant:        buildSyncMergedBranchExecutablePath(testInstance),
+			syncMergedBranchAPIKeyVariable:             "test-key",
+			syncMergedBranchGitLogVariable:             gitLogPath,
+			syncMergedBranchNameVariable:               "master",
+			syncMergedBranchMergedVariable:             "false",
+			syncMergedBranchStageCaptureMarkerVariable: captureMarkerPath,
+			syncMergedBranchStageCapturePathVariable:   "pkg/state.go",
+			syncMergedBranchStageCaptureResultVariable: stageResultPath,
+		},
+		syncStateTransitionTimeout,
+		[]string{"--config", configurationPath, "--log-level", "error", "--roots", repositoryPath, "sync", "master"},
+	)
+
+	require.NoError(testInstance, runError, output)
+	require.Equal(testInstance, int64(2), requestCount.Load())
+	require.Contains(testInstance, output, "SYNCED:")
+	stageResult := readTextFile(testInstance, stageResultPath)
+	require.NotContains(testInstance, stageResult, "exit=0")
+	require.Contains(testInstance, stageResult, "index.lock")
+
+	firstCommit := runGit(testInstance, repositoryPath, "show", "--format=%s", "--name-only", "HEAD~1")
+	require.Contains(testInstance, firstCommit, "docs: preserve contract")
+	require.Contains(testInstance, firstCommit, "docs/contract.md")
+	require.NotContains(testInstance, firstCommit, "pkg/state.go")
+	secondCommit := runGit(testInstance, repositoryPath, "show", "--format=%s", "--name-only", "HEAD")
+	require.Contains(testInstance, secondCommit, "feat: add state")
+	require.Contains(testInstance, secondCommit, "pkg/state.go")
+	require.NotContains(testInstance, secondCommit, "docs/contract.md")
+	require.Equal(
+		testInstance,
+		strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD")),
+		strings.TrimSpace(runGit(testInstance, remotePath, "rev-parse", "refs/heads/master")),
+	)
+	require.Equal(testInstance, 2, strings.Count(readTextFile(testInstance, gitLogPath), "commit -m"))
+	requireSyncIndexUnlocked(testInstance, repositoryPath)
 }
 
 func TestSyncSuccessfulFinalizationTable(testInstance *testing.T) {
@@ -675,6 +758,15 @@ func createSyncDirtyClusters(testInstance *testing.T, repositoryPath string) {
 	runGit(testInstance, repositoryPath, "add", "docs/contract.md")
 	require.NoError(testInstance, os.WriteFile(documentPath, []byte("staged contract\nunstaged clarification\n"), 0o644))
 	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "pkg", "state.go"), []byte("package state\n"), 0o644))
+}
+
+func requireSyncIndexUnlocked(testInstance *testing.T, repositoryPath string) {
+	testInstance.Helper()
+	indexPath := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "--git-path", "index"))
+	if !filepath.IsAbs(indexPath) {
+		indexPath = filepath.Join(repositoryPath, indexPath)
+	}
+	require.NoFileExists(testInstance, filepath.Clean(indexPath)+".lock")
 }
 
 func createSyncAdministrativeState(testInstance *testing.T, repositoryPath string, fixture syncGitOperationFixture) {

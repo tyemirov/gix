@@ -28,6 +28,9 @@ const (
 	syncMergedBranchFailGitOccurrenceVariable   = "GIX_SYNC_TEST_FAIL_GIT_OCCURRENCE"
 	syncMergedBranchFailGitStateVariable        = "GIX_SYNC_TEST_FAIL_GIT_STATE"
 	syncMergedBranchConcurrentWorktreeVariable  = "GIX_SYNC_TEST_CONCURRENT_WORKTREE"
+	syncMergedBranchStageCaptureMarkerVariable  = "GIX_SYNC_TEST_STAGE_CAPTURE_MARKER"
+	syncMergedBranchStageCapturePathVariable    = "GIX_SYNC_TEST_STAGE_CAPTURE_PATH"
+	syncMergedBranchStageCaptureResultVariable  = "GIX_SYNC_TEST_STAGE_CAPTURE_RESULT"
 	syncMergedBranchNameVariable                = "GIX_SYNC_TEST_BRANCH"
 	syncMergedBranchMergedVariable              = "GIX_SYNC_TEST_MERGED"
 	syncMergedBranchAPIKeyVariable              = "GIX_SYNC_TEST_LLM_KEY"
@@ -694,12 +697,37 @@ if [ -n "$GIX_SYNC_TEST_FAIL_GIT_MATCH" ]; then
       printf '%%s\n' "$failure_count" >"$GIX_SYNC_TEST_FAIL_GIT_STATE"
       if [ "$failure_count" -eq "$GIX_SYNC_TEST_FAIL_GIT_OCCURRENCE" ]; then
         if [ -n "$GIX_SYNC_TEST_CONCURRENT_WORKTREE" ]; then
-          "$real_git_path" -C "$GIX_SYNC_TEST_CONCURRENT_WORKTREE" add --all
-          "$real_git_path" -C "$GIX_SYNC_TEST_CONCURRENT_WORKTREE" commit -m "operator: concurrent unrelated work"
+          env -u GIT_INDEX_FILE "$real_git_path" -C "$GIX_SYNC_TEST_CONCURRENT_WORKTREE" add --all
+          env -u GIT_INDEX_FILE "$real_git_path" -C "$GIX_SYNC_TEST_CONCURRENT_WORKTREE" commit -m "operator: concurrent unrelated work"
         fi
         printf 'simulated git failure for %%s\n' "$*" >&2
         exit 97
       fi
+      ;;
+  esac
+fi
+if [ -n "$GIX_SYNC_TEST_STAGE_CAPTURE_PATH" ] &&
+   [ -f "$GIX_SYNC_TEST_STAGE_CAPTURE_MARKER" ] &&
+   [ ! -f "$GIX_SYNC_TEST_STAGE_CAPTURE_RESULT" ] &&
+   [ "$1" = "ls-files" ]; then
+  case " $* " in
+    *" --stage "*)
+      capture_output_path="$GIX_SYNC_TEST_STAGE_CAPTURE_RESULT.capture"
+      stage_output_path="$GIX_SYNC_TEST_STAGE_CAPTURE_RESULT.stage"
+      "$real_git_path" "$@" >"$capture_output_path"
+      capture_status=$?
+      if [ "$capture_status" -ne 0 ]; then
+        cat "$capture_output_path"
+        exit "$capture_status"
+      fi
+      "$real_git_path" add -- "$GIX_SYNC_TEST_STAGE_CAPTURE_PATH" >"$stage_output_path" 2>&1
+      stage_status=$?
+      {
+        printf 'exit=%%s\n' "$stage_status"
+        cat "$stage_output_path"
+      } >"$GIX_SYNC_TEST_STAGE_CAPTURE_RESULT"
+      cat "$capture_output_path"
+      exit 0
       ;;
   esac
 fi
