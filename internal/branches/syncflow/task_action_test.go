@@ -401,6 +401,13 @@ func (executor *strictSyncGitExecutor) ExecuteGitHubCLI(context.Context, execshe
 	return execshell.ExecutionResult{}, nil
 }
 
+func (executor *strictSyncGitExecutor) commitStrictSyncDirtyCluster(ctx context.Context, repositoryPath string, clusterRoot string, message string, expected strictSyncDirtyClusterCheckpoint) error {
+	if ownershipErr := validateStrictSyncDirtyClusterCheckpoint(ctx, executor, repositoryPath, clusterRoot, expected); ownershipErr != nil {
+		return ownershipErr
+	}
+	return executeGit(ctx, executor, repositoryPath, []string{gitCommitSubcommandConstant, gitCommitMessageFlagConstant, message})
+}
+
 type strictSyncGitHubExecutor struct {
 	output   string
 	outputs  []string
