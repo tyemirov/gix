@@ -275,6 +275,24 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Follow-up resolution:
   Strict sync now lists the topology first and resolves each live checkout's common Git directory. A checkout already owned by another live common repository is rejected without mutation. Only a checkout whose canonical `.git` target is missing is passed as an explicit path to `git worktree repair`, after which the topology is re-listed and ownership is revalidated before administrative-state inspection. The original moved-primary regression remains green, and a new compiled-CLI regression copies the primary repository, proves sync fails closed, and verifies both repositories' topology plus the sibling branch, commit, index, staged contents, untracked contents, and `.git` pointer remain exact. `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check` passed on 2026-07-29.
 
+- [x] [B047] (P0) Reject concurrent checkout or index drift during dirty sync commits.
+  Reported on 2026-07-30 after two `gix sync` runs overlapped another writer in the same llm-proxy checkout.
+  Observation:
+  - During `gix sync master`, another writer created and checked out `bugfix/B098-visible-fail-closed-ci` while Gix was generating clustered commit messages. The branch compare-and-swap correctly rejected the outside ref, but rollback repeated the same ownership error and described the result as a generic restoration failure.
+  - During plain sync on `bugfix/B099-retire-legacy-compose-service`, another writer staged `tests/lifecycle_contract_test.go` while Gix was waiting for the README commit message. Gix committed that outside-staged path with README, then treated the now-empty tests cluster as `no changes detected for commit message generation` and rolled back.
+  Requirements:
+  - Treat the selected checkout and exact index as owned state across each slow dirty-cluster commit-message request.
+  - Validate the cluster's exact staged path set before dispatch and validate the exact checkout, HEAD, and index again before commit.
+  - If another writer switches checkout or changes the index, do not commit, push, reset, clean, or restore across that outside state. Preserve the transaction snapshots and emit one `SYNC_SWITCH_HANDOFF` that names the ownership loss and tells the operator to stop the other writer before retrying.
+  - Keep branch-ref compare-and-swap protection and ordinary pre-publication rollback for failures that occur while ownership remains intact.
+  - Do not reinterpret an empty later cluster as success or retain the opaque `no changes detected` outcome for this concurrency case.
+  Validation:
+  - Add public compiled-CLI coverage that changes the checkout during a commit-message request and proves the outside branch, HEAD, index, files, and transaction snapshot remain untouched by cleanup.
+  - Add public compiled-CLI coverage that stages a later cluster during an earlier commit-message request and proves Gix neither sweeps that path into its commit nor rolls back over the outside index.
+  - Run `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check`.
+  Resolution:
+  Dirty-cluster commits now expand and validate the complete staged path set, then checkpoint the active checkout, `HEAD`, and semantic index entries before each LLM request. Gix rechecks that state after the request through a cancellation-independent bounded inspection when needed. Checkout or index drift stops before commit or push, marks local transaction ownership as lost, preserves the current outside state and transaction snapshot, and emits one actionable `SYNC_SWITCH_HANDOFF` instead of attempting rollback. Public compiled-CLI regressions reproduce both reported interleavings from the LLM boundary and prove no commit, push, reset, clean, or rollback follows the outside mutation. `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check` passed on 2026-07-31.
+
 ## Maintenance
 
 - [ ] [M001R] (P2) Backlog hygiene and archive.
