@@ -604,21 +604,27 @@ func pushSiblingBranch(ctx context.Context, executor shared.GitExecutor, worktre
 }
 
 func executeGit(ctx context.Context, executor shared.GitExecutor, workingDirectory string, arguments []string) error {
-	mutationJournal, journalErr := prepareStrictSyncGitMutation(ctx, executor, workingDirectory, arguments)
+	return executeGitDetails(ctx, executor, execshell.CommandDetails{
+		Arguments:        arguments,
+		WorkingDirectory: workingDirectory,
+	})
+}
+
+func executeGitDetails(ctx context.Context, executor shared.GitExecutor, details execshell.CommandDetails) error {
+	mutationJournal, journalErr := prepareStrictSyncGitMutation(ctx, executor, details.WorkingDirectory, details.Arguments)
 	if journalErr != nil {
 		return journalErr
 	}
 
-	executionArguments := arguments
+	executionDetails := details
+	executionArguments := details.Arguments
 	transaction, strictSync := strictSyncTransactionFromContext(ctx)
-	strictSyncPush := strictSync && !transaction.restoring && len(arguments) > 0 && arguments[0] == gitPushSubcommand
-	if strictSyncPush && !strictSyncArgumentsContain(arguments, gitPorcelainFlagConstant) {
-		executionArguments = append(append([]string(nil), arguments...), gitPorcelainFlagConstant)
+	strictSyncPush := strictSync && !transaction.restoring && len(details.Arguments) > 0 && details.Arguments[0] == gitPushSubcommand
+	if strictSyncPush && !strictSyncArgumentsContain(details.Arguments, gitPorcelainFlagConstant) {
+		executionArguments = append(append([]string(nil), details.Arguments...), gitPorcelainFlagConstant)
 	}
-	result, executionErr := executor.ExecuteGit(ctx, execshell.CommandDetails{
-		Arguments:        executionArguments,
-		WorkingDirectory: workingDirectory,
-	})
+	executionDetails.Arguments = executionArguments
+	result, executionErr := executor.ExecuteGit(ctx, executionDetails)
 	if executionErr != nil {
 		return executionErr
 	}

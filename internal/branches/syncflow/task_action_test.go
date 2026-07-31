@@ -134,6 +134,7 @@ type strictSyncGitExecutor struct {
 	stashCommits      []string
 	pushOutput        string
 	commonDirectory   string
+	stagedPaths       []string
 }
 
 const (
@@ -188,12 +189,20 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 			path := details.Arguments[len(details.Arguments)-1]
 			return execshell.ExecutionResult{StandardOutput: executor.conflictStages[path]}, nil
 		}
+		if commandHasArgument(details.Arguments, gitLsFilesStageFlagConstant) {
+			return execshell.ExecutionResult{StandardOutput: strictSyncTestIndexOutput(executor.stagedPaths)}, nil
+		}
 	case "diff":
 		if commandHasArgument(details.Arguments, gitDiffNameOnlyFlagConstant) && commandHasArgument(details.Arguments, gitDiffFilterUnmergedFlagConstant) {
 			if executor.conflictsResolved || !executor.mergeAttempted {
 				return execshell.ExecutionResult{}, nil
 			}
 			return execshell.ExecutionResult{StandardOutput: executor.unmergedPaths}, nil
+		}
+		if commandHasArgument(details.Arguments, gitDiffCachedFlagConstant) &&
+			commandHasArgument(details.Arguments, gitDiffNameOnlyFlagConstant) &&
+			commandHasArgument(details.Arguments, gitNullOutputFlagConstant) {
+			return execshell.ExecutionResult{StandardOutput: strictSyncTestStagedPathOutput(details.Arguments, executor.stagedPaths)}, nil
 		}
 		if commandHasArgument(details.Arguments, "--stat") {
 			output := executor.diffStatOutput
@@ -230,6 +239,9 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 			}
 			return execshell.ExecutionResult{StandardOutput: executor.stashCommits[0] + "\n"}, nil
 		}
+		if strings.Join(details.Arguments, " ") == "rev-parse --verify HEAD" {
+			return execshell.ExecutionResult{StandardOutput: strictSyncGitTestCommit + "\n"}, nil
+		}
 		if len(details.Arguments) > 2 && details.Arguments[1] == "--verify" && executor.missingReferences[details.Arguments[2]] {
 			return execshell.ExecutionResult{}, commandFailedError("fatal: Needed a single revision")
 		}
@@ -265,9 +277,14 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 	case "show":
 		return execshell.ExecutionResult{StandardOutput: executor.showOutputs[strings.Join(details.Arguments[1:], " ")]}, nil
 	case "add":
+		executor.stagedPaths = strictSyncTestAddedPaths(details.Arguments, executor.statusOutput)
 		if len(details.Arguments) > 2 && details.Arguments[1] == gitPathspecSeparatorConstant {
 			executor.conflictsResolved = true
 		}
+	case "commit":
+		executor.stagedPaths = nil
+	case "reset":
+		executor.stagedPaths = nil
 	case "rm":
 		if commandHasArgument(details.Arguments, gitPathspecSeparatorConstant) {
 			executor.conflictsResolved = true
@@ -315,6 +332,63 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 	return execshell.ExecutionResult{}, nil
 }
 
+func strictSyncTestAddedPaths(arguments []string, statusOutput string) []string {
+	for argumentIndex := range arguments {
+		if arguments[argumentIndex] != gitPathspecSeparatorConstant {
+			continue
+		}
+		return append([]string(nil), arguments[argumentIndex+1:]...)
+	}
+	paths := make([]string, 0)
+	for _, statusEntry := range strings.Split(strings.TrimSpace(statusOutput), "\n") {
+		paths = append(paths, syncStatusEntryPaths(statusEntry)...)
+	}
+	return paths
+}
+
+func strictSyncTestStagedPathOutput(arguments []string, stagedPaths []string) string {
+	pathspecs := []string(nil)
+	for argumentIndex := range arguments {
+		if arguments[argumentIndex] != gitPathspecSeparatorConstant {
+			continue
+		}
+		pathspecs = arguments[argumentIndex+1:]
+		break
+	}
+	selectedPaths := make([]string, 0, len(stagedPaths))
+	for pathIndex := range stagedPaths {
+		if len(pathspecs) == 0 || strictSyncTestPathMatchesAnyPathspec(stagedPaths[pathIndex], pathspecs) {
+			selectedPaths = append(selectedPaths, stagedPaths[pathIndex])
+		}
+	}
+	if len(selectedPaths) == 0 {
+		return ""
+	}
+	return strings.Join(selectedPaths, "\x00") + "\x00"
+}
+
+func strictSyncTestPathMatchesAnyPathspec(path string, pathspecs []string) bool {
+	normalizedPath := strings.TrimSuffix(filepath.ToSlash(path), "/")
+	for pathspecIndex := range pathspecs {
+		normalizedPathspec := strings.TrimSuffix(filepath.ToSlash(pathspecs[pathspecIndex]), "/")
+		if normalizedPath == normalizedPathspec || strings.HasPrefix(normalizedPath, normalizedPathspec+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+func strictSyncTestIndexOutput(stagedPaths []string) string {
+	if len(stagedPaths) == 0 {
+		return ""
+	}
+	records := make([]string, 0, len(stagedPaths))
+	for pathIndex := range stagedPaths {
+		records = append(records, fmt.Sprintf("100644 %s 0\t%s", strictSyncGitTestCommit, stagedPaths[pathIndex]))
+	}
+	return strings.Join(records, "\x00") + "\x00"
+}
+
 func testStatusCommandOutput(arguments []string, output string) string {
 	if !commandHasArgument(arguments, "-z") || output == "" {
 		return output
@@ -325,6 +399,13 @@ func testStatusCommandOutput(arguments []string, output string) string {
 
 func (executor *strictSyncGitExecutor) ExecuteGitHubCLI(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
 	return execshell.ExecutionResult{}, nil
+}
+
+func (executor *strictSyncGitExecutor) commitStrictSyncDirtyCluster(ctx context.Context, repositoryPath string, clusterRoot string, message string, expected strictSyncDirtyClusterCheckpoint) error {
+	if ownershipErr := validateStrictSyncDirtyClusterCheckpoint(ctx, executor, repositoryPath, clusterRoot, expected); ownershipErr != nil {
+		return ownershipErr
+	}
+	return executeGit(ctx, executor, repositoryPath, []string{gitCommitSubcommandConstant, gitCommitMessageFlagConstant, message})
 }
 
 type strictSyncGitHubExecutor struct {

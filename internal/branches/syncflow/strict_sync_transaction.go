@@ -37,6 +37,7 @@ const (
 	strictSyncDetachedCommitMissingMessage    = "detached worktree commit is missing"
 	strictSyncRollbackMessage                 = "failed sync restored the starting checkout, local state, and adopted worktree topology; gix did not leave the target branch active"
 	strictSyncHandoffMessage                  = "failed sync could not restore the starting checkout, local state, and adopted worktree topology"
+	strictSyncOwnershipHandoffMessage         = "strict sync detected a concurrent checkout or index change; gix preserved the current state and transaction snapshots for manual recovery; stop the other writer before retrying"
 	strictSyncPublishedHandoffMessage         = "strict sync published remote changes but finalization failed; gix preserved the invocation-owned recovery state and did not report SYNCED"
 	strictSyncReferenceOwnershipTemplate      = "local branch %s changed outside the strict-sync transaction: expected %s, found %s"
 	strictSyncPushStatusMissingMessage        = "successful strict-sync push did not return a porcelain ref status"
@@ -56,6 +57,7 @@ type strictSyncTransaction struct {
 	targetBranch      string
 	published         bool
 	restoring         bool
+	ownershipLoss     error
 }
 
 type strictSyncTransactionContextKey struct{}
@@ -183,6 +185,17 @@ func markStrictSyncPublished(ctx context.Context) {
 		return
 	}
 	transaction.published = true
+}
+
+func markStrictSyncOwnershipLost(ctx context.Context, ownershipErr error) error {
+	transaction, ok := strictSyncTransactionFromContext(ctx)
+	if !ok || ownershipErr == nil {
+		return ownershipErr
+	}
+	if transaction.ownershipLoss == nil {
+		transaction.ownershipLoss = ownershipErr
+	}
+	return ownershipErr
 }
 
 func protectStrictSyncWorktree(ctx context.Context, worktree listedWorktree) error {
@@ -378,6 +391,19 @@ func (transaction *strictSyncTransaction) reportHandoff(rollbackErr error) {
 	)
 }
 
+func (transaction *strictSyncTransaction) reportOwnershipHandoff() {
+	transaction.environment.ReportRepositoryEvent(
+		transaction.repository,
+		shared.EventLevelError,
+		shared.EventCodeSyncSwitchHandoff,
+		strictSyncOwnershipHandoffMessage,
+		map[string]string{
+			"target_branch": transaction.targetBranch,
+			"reason":        strings.TrimSpace(transaction.ownershipLoss.Error()),
+		},
+	)
+}
+
 func (transaction *strictSyncTransaction) reportPublishedHandoff(reason error) {
 	transaction.environment.ReportRepositoryEvent(
 		transaction.repository,
@@ -499,7 +525,8 @@ func prepareStrictSyncGitMutation(ctx context.Context, executor shared.GitExecut
 			transaction.branchMutations[referenceName] = mutation
 		}
 		if currentExists != mutation.ExpectedExists || currentCommit != mutation.ExpectedCommit {
-			return strictSyncGitMutationJournal{}, strictSyncReferenceOwnershipError(referenceName, mutation.ExpectedCommit, mutation.ExpectedExists, currentCommit, currentExists)
+			ownershipErr := strictSyncReferenceOwnershipError(referenceName, mutation.ExpectedCommit, mutation.ExpectedExists, currentCommit, currentExists)
+			return strictSyncGitMutationJournal{}, markStrictSyncOwnershipLost(ctx, ownershipErr)
 		}
 	}
 	return strictSyncGitMutationJournal{transaction: transaction, references: references}, nil
