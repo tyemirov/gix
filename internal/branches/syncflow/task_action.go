@@ -498,6 +498,10 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 			}
 			return
 		}
+		if transaction.ownershipLoss != nil {
+			transaction.reportOwnershipHandoff()
+			return
+		}
 		if _, rollbackErr := transaction.rollback(cleanupContext); rollbackErr != nil {
 			transaction.reportHandoff(rollbackErr)
 			err = errors.Join(err, rollbackErr)
