@@ -292,6 +292,11 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check`.
   Resolution:
   Dirty-cluster commits now expand and validate the complete staged path set, then checkpoint the active checkout, `HEAD`, and semantic index entries before each LLM request. Gix rechecks that state after the request through a cancellation-independent bounded inspection when needed. Checkout or index drift stops before commit or push, marks local transaction ownership as lost, preserves the current outside state and transaction snapshot, and emits one actionable `SYNC_SWITCH_HANDOFF` instead of attempting rollback. Public compiled-CLI regressions reproduce both reported interleavings from the LLM boundary and prove no commit, push, reset, clean, or rollback follows the outside mutation. `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check` passed on 2026-07-31.
+  Review follow-up on 2026-07-31:
+  - The final ownership read still completed before an unlocked `git commit`, leaving a time-of-check/time-of-use window in which a normal Git writer could stage outside work into the commit.
+  - The checkpoint omitted skip-worktree, assume-unchanged, intent-to-add, and resolve-undo state, while cancellation could arrive after the conditional context check and interrupt the ownership read itself.
+  Follow-up resolution:
+  Gix now resolves the exact per-worktree index path, compares every commit-relevant entry and semantic flag, and performs every post-model ownership read through a bounded context detached from caller cancellation. The final read runs while Gix holds the canonical index lock; Gix copies the validated index into that private locked file and commits through `GIT_INDEX_FILE`, so a normal outside writer either mutates before the recheck and triggers handoff or loses the lock and cannot enter the commit. Focused cancellation coverage and public compiled-CLI regressions prove semantic-flag drift is rejected, post-check staging is lock-blocked, cluster commits remain separate, and the index lock is released on both success and handoff.
 
 ## Maintenance
 
