@@ -113,6 +113,22 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.1.18] - 2026-07-31
+
+- Merge pull request #404 from tyemirov/bugfix/B047-protect-dirty-cluster-ownership
+- test: verify index lock handling and semantic state during sync commit
+- feat(syncflow): hold exact index lock and commit private copy for dirty clusters
+- docs: update ownership boundary and index locking details in README
+- docs(changelog): update entries for atomic dirty-cluster commits and new tests
+- docs: clarify dirty sync live index checkpoint and locking sequence
+- docs: add review and resolution for locked commit ownership and index flags
+- test: verify concurrent dirty-cluster mutation handoff in sync transaction
+- feat(syncflow): detect concurrent checkout and index changes during dirty sync
+- docs: clarify dirty-cluster commit-message ownership and concurrency handling
+- fix(syncflow): reject concurrent drift on dirty-cluster commit-message requests
+- docs: document clustered dirty commit checkpoints around LLM requests
+- docs(issues): document concurrent checkout and index drift handling in sync
+
 ## [v1.1.17] - 2026-07-29
 
 - Merge pull request #403 from tyemirov/bugfix/B046-repair-stale-worktree-linkage
