@@ -424,6 +424,101 @@ func TestSyncFailureRollbackTable(testInstance *testing.T) {
 	}
 }
 
+func TestSyncConcurrentDirtyClusterOwnershipTable(testInstance *testing.T) {
+	repositoryRoot := integrationRepositoryRoot(testInstance)
+	binaryPath := buildIntegrationBinary(testInstance, repositoryRoot)
+
+	testCases := []struct {
+		Name                 string
+		MutationArguments    []string
+		ExpectedBranch       string
+		ExpectedOwnershipGap string
+		ExpectedStagedPaths  []string
+	}{
+		{
+			Name:                 "checkout_changes_during_message_generation",
+			MutationArguments:    []string{"switch", "-c", "bugfix/operator-concurrent-checkout"},
+			ExpectedBranch:       "bugfix/operator-concurrent-checkout",
+			ExpectedOwnershipGap: "checkout changed",
+			ExpectedStagedPaths:  []string{"docs/contract.md"},
+		},
+		{
+			Name:                 "index_changes_during_message_generation",
+			MutationArguments:    []string{"add", "--", "pkg/state.go"},
+			ExpectedBranch:       "master",
+			ExpectedOwnershipGap: "index changed",
+			ExpectedStagedPaths:  []string{"docs/contract.md", "pkg/state.go"},
+		},
+	}
+
+	for testCaseIndex := range testCases {
+		testCase := testCases[testCaseIndex]
+		testInstance.Run(testCase.Name, func(testInstance *testing.T) {
+			remotePath, repositoryPath := createSyncStateTransitionRepository(testInstance)
+			createSyncDirtyClusters(testInstance, repositoryPath)
+			startingHead := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD"))
+			remoteBefore := strings.TrimSpace(runGit(testInstance, remotePath, "rev-parse", "refs/heads/master"))
+
+			var requestCount atomic.Int64
+			var mutationFailure atomic.Value
+			llmServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+				requestCount.Add(1)
+				mutationCommand := exec.Command("git", append([]string{"-C", repositoryPath}, testCase.MutationArguments...)...)
+				mutationCommand.Env = buildGitCommandEnvironment(nil)
+				if mutationOutput, mutationErr := mutationCommand.CombinedOutput(); mutationErr != nil {
+					mutationFailure.Store(fmt.Sprintf("%v: %s", mutationErr, strings.TrimSpace(string(mutationOutput))))
+				}
+				responseWriter.Header().Set("Content-Type", "application/json")
+				_, _ = responseWriter.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"fix: preserve dirty cluster ownership"}}]}`))
+			}))
+			testInstance.Cleanup(llmServer.Close)
+
+			configurationPath := writeDirtySyncMergedBranchConfiguration(testInstance, llmServer.URL)
+			gitLogPath := filepath.Join(testInstance.TempDir(), "git.log")
+			output, runError := runBinaryIntegrationCommand(
+				testInstance,
+				binaryPath,
+				repositoryPath,
+				map[string]string{
+					pathEnvironmentVariableNameConstant: buildSyncMergedBranchExecutablePath(testInstance),
+					syncMergedBranchAPIKeyVariable:      "test-key",
+					syncMergedBranchGitLogVariable:      gitLogPath,
+					syncMergedBranchNameVariable:        "master",
+					syncMergedBranchMergedVariable:      "false",
+				},
+				syncStateTransitionTimeout,
+				[]string{"--config", configurationPath, "--log-level", "error", "--roots", repositoryPath, "sync", "master"},
+			)
+
+			require.Error(testInstance, runError, output)
+			require.Equal(testInstance, int64(1), requestCount.Load())
+			if mutationResult := mutationFailure.Load(); mutationResult != nil {
+				testInstance.Fatalf("concurrent mutation failed: %s", mutationResult.(string))
+			}
+			require.Contains(testInstance, output, "changed outside the strict-sync transaction while generating the commit message for dirty cluster \"docs\"")
+			require.Contains(testInstance, output, testCase.ExpectedOwnershipGap)
+			require.Equal(testInstance, 1, strings.Count(output, "SYNC_SWITCH_HANDOFF"))
+			require.NotContains(testInstance, output, "SYNC_SWITCH_ROLLBACK")
+			require.NotContains(testInstance, output, "no changes detected for commit message generation")
+			require.NotContains(testInstance, output, "SYNCED:")
+
+			require.Equal(testInstance, testCase.ExpectedBranch, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
+			require.Equal(testInstance, startingHead, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD")))
+			require.Equal(
+				testInstance,
+				testCase.ExpectedStagedPaths,
+				strings.Fields(strings.TrimSpace(runGit(testInstance, repositoryPath, "diff", "--cached", "--name-only"))),
+			)
+			require.Contains(testInstance, runGit(testInstance, repositoryPath, "stash", "list"), "gix strict-sync transaction snapshot")
+			require.Equal(testInstance, remoteBefore, strings.TrimSpace(runGit(testInstance, remotePath, "rev-parse", "refs/heads/master")))
+
+			gitLog := readTextFile(testInstance, gitLogPath)
+			require.NotContains(testInstance, gitLog, "commit -m")
+			require.NotContains(testInstance, gitLog, "push origin")
+		})
+	}
+}
+
 func TestSyncSuccessfulFinalizationTable(testInstance *testing.T) {
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	binaryPath := buildIntegrationBinary(testInstance, repositoryRoot)
