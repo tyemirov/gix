@@ -21,7 +21,7 @@
 - Updated the LLM Proxy Go client from v0.2.21 to v0.2.46, moved Gix's configured proxy work budget to the current per-request timeout header, and raised the Go module floor to 1.25.12 with the dependency graph required by that client.
 
 ### Bug Fixes 🐛
-- Rejected concurrent checkout or index drift across dirty-cluster commit-message requests before commit, preserving the outside writer's state and transaction snapshots under one actionable handoff instead of sweeping outside-staged paths into a commit or rolling back over them.
+- Made dirty-cluster commits atomic with respect to normal Git index writers by holding the exact per-worktree index lock through a cancellation-independent ownership recheck, comparing semantic flags and intent-to-add state, and committing only from a private copy of the validated index.
 - Limited strict-sync worktree repair to registered checkouts whose canonical Git target is actually missing, and rejected copied-repository registrations that would otherwise take over a live sibling owned by the original repository.
 - Repaired canonical linked-worktree registration before strict-sync preflight, so an existing checkout whose `.git` file still points at a moved primary repository no longer makes every `gix sync` fail.
 - Rejected operator-owned unmerged indexes before strict-sync snapshot mutation, including stash-apply conflicts that have no merge or sequencer marker.
@@ -58,7 +58,7 @@
 - Kept the syncflow builder description as the canonical text shown by `gix sync --help`.
 
 ### Testing 🧪
-- Added compiled-CLI regressions that switch checkout or stage a later cluster from the LLM request boundary, proving strict sync performs no commit, push, reset, clean, or rollback after local transaction ownership is lost.
+- Added compiled-CLI regressions for checkout drift, later-cluster staging, semantic index-flag drift, cancellation during final ownership inspection, and a post-check staging attempt blocked by the real index lock, including exact commit separation and lock cleanup.
 - Added a compiled-CLI regression proving a copied primary repository cannot rewrite a dirty live sibling's valid linkage to the original repository.
 - Added a public compiled-CLI regression that moves a primary repository while retaining a dirty linked checkout, proves the stale non-prunable `.git` pointer fails before sync, and verifies repair preserves the sibling branch, commit, index, staged and unstaged contents, and untracked files exactly.
 - Extended the three declarative strict-sync integration tables with operator-owned stash-apply conflicts, rollback after an up-to-date push, and preservation of a concurrent unrelated sibling commit.
