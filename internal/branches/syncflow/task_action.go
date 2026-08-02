@@ -68,6 +68,8 @@ const (
 	strictSyncEmptyLocalBranchTemplate           = "local branch %q has no commits beyond %s/%s and no merged pull request handoff"
 	strictSyncMissingPullRequestTemplate         = "branch %q does not have an open pull request"
 	strictSyncMissingPullRequestBaseTemplate     = "open pull request for branch %q did not report a base branch"
+	strictSyncMissingPullRequestHeadOIDTemplate  = "merged pull request for branch %q did not report a head commit"
+	strictSyncEmptyReferenceCommitTemplate       = "reference %q did not resolve to a commit"
 	strictSyncMergedPullRequestPromptTemplate    = "Pull request for branch %q into %s is already merged. Sync %s instead? [a/N/y] "
 	strictSyncConflictTemplate                   = "merge from %s/%s into %s stopped with conflicts; resolve them before pushing"
 	strictSyncFastForwardTemplate                = "fast-forward from %s/%s into %s stopped; commit, stash, or clean local changes before syncing"
@@ -530,6 +532,7 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 	stackPlan, stackPlanErr := planStrictSyncStack(ctx, environment, repository, strictSyncStackPlanningOptions{
 		RemoteName:       remoteName,
 		ChildBranch:      branchName,
+		BaseBranch:       baseBranch,
 		ResolutionSource: options.ResolutionSource,
 		Dirty:            dirty,
 		StashChanges:     options.StashChanges,
@@ -661,6 +664,7 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 		BranchName:             branchName,
 		RemoteName:             remoteName,
 		BaseBranch:             reviewBaseBranch,
+		ConfiguredBaseBranch:   baseBranch,
 		DirtyWorktree:          dirty,
 		KnownMergedPullRequest: stackPlan != nil && stackPlan.ChildPullRequestMerged,
 		CommitMessages:         options.CommitMessages,
@@ -716,6 +720,7 @@ type strictPullRequestBranchOptions struct {
 	BranchName             string
 	RemoteName             string
 	BaseBranch             string
+	ConfiguredBaseBranch   string
 	DirtyWorktree          bool
 	KnownMergedPullRequest bool
 	CommitMessages         worktreeAdoptionCommitMessageOptions
@@ -728,8 +733,13 @@ type strictPullRequestBranchResult struct {
 }
 
 type mergedPullRequestSyncResult struct {
-	Merged bool
-	Synced bool
+	SyncedBranch string
+}
+
+type strictSyncBranchTip struct {
+	CommitID            string
+	Exists              bool
+	HasLocalOnlyCommits bool
 }
 
 type strictPullRequestCreateOptions struct {
@@ -796,11 +806,8 @@ func syncPullRequestBranch(ctx context.Context, environment *workflow.Environmen
 			if syncBaseBranchErr != nil {
 				return strictPullRequestBranchResult{}, syncBaseBranchErr
 			}
-			if mergedSyncResult.Synced {
-				return strictPullRequestBranchResult{SyncedBranch: options.BaseBranch}, nil
-			}
-			if mergedSyncResult.Merged {
-				return strictPullRequestBranchResult{}, fmt.Errorf(strictSyncMissingPullRequestTemplate, options.BranchName)
+			if mergedSyncResult.SyncedBranch != "" {
+				return strictPullRequestBranchResult{SyncedBranch: mergedSyncResult.SyncedBranch}, nil
 			}
 			createdPullRequest, createPullRequestErr := syncExistingRemoteBranchWithoutPullRequest(ctx, environment, repository, repositoryIdentifier, options)
 			if createPullRequestErr != nil {
@@ -853,8 +860,8 @@ func syncPullRequestBranch(ctx context.Context, environment *workflow.Environmen
 			if syncBaseBranchErr != nil {
 				return strictPullRequestBranchResult{}, syncBaseBranchErr
 			}
-			if mergedSyncResult.Synced {
-				return strictPullRequestBranchResult{SyncedBranch: options.BaseBranch}, nil
+			if mergedSyncResult.SyncedBranch != "" {
+				return strictPullRequestBranchResult{SyncedBranch: mergedSyncResult.SyncedBranch}, nil
 			}
 			return strictPullRequestBranchResult{}, fmt.Errorf(strictSyncEmptyLocalBranchTemplate, options.BranchName, options.RemoteName, options.BaseBranch)
 		}
@@ -891,67 +898,73 @@ func syncPullRequestBranch(ctx context.Context, environment *workflow.Environmen
 }
 
 func syncKnownMergedPullRequestBranch(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, repositoryIdentifier string, options strictPullRequestBranchOptions) (strictPullRequestBranchResult, error) {
-	syncedBranch, syncErr := syncKnownMergedPullRequestBranchChain(ctx, environment, repository, repositoryIdentifier, options, map[string]struct{}{})
+	configuredBaseBranch := strings.TrimSpace(options.ConfiguredBaseBranch)
+	if configuredBaseBranch == "" {
+		configuredBaseBranch = defaultSyncBaseBranch
+	}
+	if options.BaseBranch == options.BranchName {
+		return strictPullRequestBranchResult{}, fmt.Errorf(strictSyncStackedReviewBaseCycleTemplate, options.BranchName)
+	}
+	syncedBranch, syncErr := resolveMergedPullRequestBaseTarget(ctx, environment, repository, repositoryIdentifier, options.RemoteName, options.BaseBranch, configuredBaseBranch, map[string]struct{}{
+		options.BranchName: {},
+	})
 	if syncErr != nil {
+		return strictPullRequestBranchResult{}, syncErr
+	}
+	syncBaseBranchConfirmed, confirmErr := confirmSyncBaseAfterMergedPullRequest(environment, options.BranchName, syncedBranch)
+	if confirmErr != nil {
+		return strictPullRequestBranchResult{}, confirmErr
+	}
+	if !syncBaseBranchConfirmed {
+		return strictPullRequestBranchResult{}, fmt.Errorf(strictSyncMissingPullRequestTemplate, options.BranchName)
+	}
+	if syncErr := syncBaseBranch(ctx, environment, repository, options.RemoteName, syncedBranch, options.CommitMessages); syncErr != nil {
 		return strictPullRequestBranchResult{}, syncErr
 	}
 	return strictPullRequestBranchResult{SyncedBranch: syncedBranch}, nil
 }
 
-func syncKnownMergedPullRequestBranchChain(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, repositoryIdentifier string, options strictPullRequestBranchOptions, visitedBranches map[string]struct{}) (string, error) {
-	if options.BaseBranch == options.BranchName {
-		return "", fmt.Errorf(strictSyncStackedReviewBaseCycleTemplate, options.BranchName)
+func resolveMergedPullRequestBaseTarget(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, repositoryIdentifier string, remoteName string, branchName string, configuredBaseBranch string, visitedBranches map[string]struct{}) (string, error) {
+	if _, visited := visitedBranches[branchName]; visited {
+		return "", fmt.Errorf(strictSyncStackedReviewBaseCycleTemplate, branchName)
 	}
-	if _, visited := visitedBranches[options.BranchName]; visited {
-		return "", fmt.Errorf(strictSyncStackedReviewBaseCycleTemplate, options.BranchName)
+	visitedBranches[branchName] = struct{}{}
+	if branchName == configuredBaseBranch {
+		return branchName, nil
 	}
-	visitedBranches[options.BranchName] = struct{}{}
 
-	mergedPullRequest, mergedPullRequestErr := pullRequestForBranchWithState(ctx, environment, repositoryIdentifier, options.BaseBranch, options.BranchName, githubcli.PullRequestStateMerged)
+	openPullRequest, openPullRequestErr := openPullRequestForBranch(ctx, environment, repositoryIdentifier, branchName)
+	if openPullRequestErr != nil {
+		return "", openPullRequestErr
+	}
+	if openPullRequest != nil {
+		if _, baseBranchErr := openPullRequestBaseBranch(*openPullRequest, branchName); baseBranchErr != nil {
+			return "", baseBranchErr
+		}
+		return branchName, nil
+	}
+
+	mergedPullRequest, mergedPullRequestErr := mergedPullRequestForCurrentBranchTip(ctx, environment, repository, repositoryIdentifier, remoteName, branchName)
 	if mergedPullRequestErr != nil {
 		return "", mergedPullRequestErr
 	}
-	if mergedPullRequest == nil {
-		return "", fmt.Errorf(strictSyncMissingPullRequestTemplate, options.BranchName)
-	}
-	syncBaseBranchConfirmed, confirmErr := confirmSyncBaseAfterMergedPullRequest(environment, options.BranchName, options.BaseBranch)
-	if confirmErr != nil {
-		return "", confirmErr
-	}
-	if !syncBaseBranchConfirmed {
-		return "", fmt.Errorf(strictSyncMissingPullRequestTemplate, options.BranchName)
+	if mergedPullRequest != nil {
+		mergedBaseBranch, mergedBaseBranchErr := openPullRequestBaseBranch(*mergedPullRequest, branchName)
+		if mergedBaseBranchErr != nil {
+			return "", mergedBaseBranchErr
+		}
+		return resolveMergedPullRequestBaseTarget(ctx, environment, repository, repositoryIdentifier, remoteName, mergedBaseBranch, configuredBaseBranch, visitedBranches)
 	}
 
-	baseReference := fmt.Sprintf("%s/%s", options.RemoteName, options.BaseBranch)
+	baseReference := fmt.Sprintf("%s/%s", remoteName, branchName)
 	remoteBaseExists, remoteBaseExistsErr := remoteReferenceExists(ctx, environment.GitExecutor, repository.Path, baseReference)
 	if remoteBaseExistsErr != nil {
 		return "", remoteBaseExistsErr
 	}
-	if remoteBaseExists {
-		if syncErr := syncBaseBranch(ctx, environment, repository, options.RemoteName, options.BaseBranch, options.CommitMessages); syncErr != nil {
-			return "", syncErr
-		}
-		return options.BaseBranch, nil
-	}
-
-	mergedBasePullRequest, mergedBasePullRequestErr := pullRequestForBranchWithState(ctx, environment, repositoryIdentifier, "", options.BaseBranch, githubcli.PullRequestStateMerged)
-	if mergedBasePullRequestErr != nil {
-		return "", mergedBasePullRequestErr
-	}
-	if mergedBasePullRequest == nil {
+	if !remoteBaseExists {
 		return "", fmt.Errorf("remote base branch %q does not exist", baseReference)
 	}
-	mergedBaseBranch, mergedBaseBranchErr := openPullRequestBaseBranch(*mergedBasePullRequest, options.BaseBranch)
-	if mergedBaseBranchErr != nil {
-		return "", mergedBaseBranchErr
-	}
-	return syncKnownMergedPullRequestBranchChain(ctx, environment, repository, repositoryIdentifier, strictPullRequestBranchOptions{
-		BranchName:             options.BaseBranch,
-		RemoteName:             options.RemoteName,
-		BaseBranch:             mergedBaseBranch,
-		KnownMergedPullRequest: true,
-		CommitMessages:         options.CommitMessages,
-	}, visitedBranches)
+	return branchName, nil
 }
 
 func syncExistingRemoteBranchWithoutPullRequest(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, repositoryIdentifier string, options strictPullRequestBranchOptions) (bool, error) {
@@ -1015,24 +1028,23 @@ func referenceHasCommitsBeyondBase(ctx context.Context, executor shared.GitExecu
 }
 
 func syncBaseBranchAfterMergedPullRequest(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, repositoryIdentifier string, options strictPullRequestBranchOptions) (mergedPullRequestSyncResult, error) {
-	mergedPullRequest, mergedPullRequestErr := branchHasMergedPullRequest(ctx, environment, repositoryIdentifier, options.BaseBranch, options.BranchName)
+	mergedPullRequest, mergedPullRequestErr := mergedPullRequestForCurrentBranchTip(ctx, environment, repository, repositoryIdentifier, options.RemoteName, options.BranchName)
 	if mergedPullRequestErr != nil {
 		return mergedPullRequestSyncResult{}, mergedPullRequestErr
 	}
-	if !mergedPullRequest {
+	if mergedPullRequest == nil {
 		return mergedPullRequestSyncResult{}, nil
 	}
-	syncBaseBranchConfirmed, confirmErr := confirmSyncBaseAfterMergedPullRequest(environment, options.BranchName, options.BaseBranch)
-	if confirmErr != nil {
-		return mergedPullRequestSyncResult{}, confirmErr
+	mergedBaseBranch, mergedBaseBranchErr := openPullRequestBaseBranch(*mergedPullRequest, options.BranchName)
+	if mergedBaseBranchErr != nil {
+		return mergedPullRequestSyncResult{}, mergedBaseBranchErr
 	}
-	if !syncBaseBranchConfirmed {
-		return mergedPullRequestSyncResult{Merged: true}, nil
-	}
-	if syncErr := syncBaseBranch(ctx, environment, repository, options.RemoteName, options.BaseBranch, options.CommitMessages); syncErr != nil {
+	options.BaseBranch = mergedBaseBranch
+	mergedResult, syncErr := syncKnownMergedPullRequestBranch(ctx, environment, repository, repositoryIdentifier, options)
+	if syncErr != nil {
 		return mergedPullRequestSyncResult{}, syncErr
 	}
-	return mergedPullRequestSyncResult{Merged: true, Synced: true}, nil
+	return mergedPullRequestSyncResult{SyncedBranch: mergedResult.SyncedBranch}, nil
 }
 
 func pushAndCreatePullRequest(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, repositoryIdentifier string, options strictPullRequestBranchOptions) error {
@@ -1109,15 +1121,21 @@ func openPullRequestForBranch(ctx context.Context, environment *workflow.Environ
 	return pullRequestForBranchWithState(ctx, environment, repositoryIdentifier, "", branchName, githubcli.PullRequestStateOpen)
 }
 
-func branchHasMergedPullRequest(ctx context.Context, environment *workflow.Environment, repositoryIdentifier string, baseBranch string, branchName string) (bool, error) {
-	pullRequest, pullRequestErr := pullRequestForBranchWithState(ctx, environment, repositoryIdentifier, baseBranch, branchName, githubcli.PullRequestStateMerged)
+func pullRequestForBranchWithState(ctx context.Context, environment *workflow.Environment, repositoryIdentifier string, baseBranch string, branchName string, state githubcli.PullRequestState) (*githubcli.PullRequest, error) {
+	pullRequests, pullRequestErr := pullRequestsForBranchWithState(ctx, environment, repositoryIdentifier, baseBranch, branchName, state)
 	if pullRequestErr != nil {
-		return false, pullRequestErr
+		return nil, pullRequestErr
 	}
-	return pullRequest != nil, nil
+	for _, pullRequest := range pullRequests {
+		if strings.TrimSpace(pullRequest.HeadRefName) == branchName {
+			matchedPullRequest := pullRequest
+			return &matchedPullRequest, nil
+		}
+	}
+	return nil, nil
 }
 
-func pullRequestForBranchWithState(ctx context.Context, environment *workflow.Environment, repositoryIdentifier string, baseBranch string, branchName string, state githubcli.PullRequestState) (*githubcli.PullRequest, error) {
+func pullRequestsForBranchWithState(ctx context.Context, environment *workflow.Environment, repositoryIdentifier string, baseBranch string, branchName string, state githubcli.PullRequestState) ([]githubcli.PullRequest, error) {
 	if environment.GitHubClient == nil {
 		return nil, errors.New(strictSyncMissingGitHubClientMessage)
 	}
@@ -1130,13 +1148,78 @@ func pullRequestForBranchWithState(ctx context.Context, environment *workflow.En
 	if pullRequestErr != nil {
 		return nil, pullRequestErr
 	}
+	return pullRequests, nil
+}
+
+func mergedPullRequestForCurrentBranchTip(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, repositoryIdentifier string, remoteName string, branchName string) (*githubcli.PullRequest, error) {
+	pullRequests, pullRequestErr := pullRequestsForBranchWithState(ctx, environment, repositoryIdentifier, "", branchName, githubcli.PullRequestStateMerged)
+	if pullRequestErr != nil {
+		return nil, pullRequestErr
+	}
+	branchTip, branchTipErr := currentStrictSyncBranchTip(ctx, environment.GitExecutor, repository.Path, remoteName, branchName)
+	if branchTipErr != nil {
+		return nil, branchTipErr
+	}
 	for _, pullRequest := range pullRequests {
-		if strings.TrimSpace(pullRequest.HeadRefName) == branchName {
+		if strings.TrimSpace(pullRequest.HeadRefName) != branchName {
+			continue
+		}
+		headRefOID := strings.TrimSpace(pullRequest.HeadRefOID)
+		if headRefOID == "" {
+			return nil, fmt.Errorf(strictSyncMissingPullRequestHeadOIDTemplate, branchName)
+		}
+		if !branchTip.Exists || (!branchTip.HasLocalOnlyCommits && headRefOID == branchTip.CommitID) {
 			matchedPullRequest := pullRequest
 			return &matchedPullRequest, nil
 		}
 	}
 	return nil, nil
+}
+
+func currentStrictSyncBranchTip(ctx context.Context, executor shared.GitExecutor, repositoryPath string, remoteName string, branchName string) (strictSyncBranchTip, error) {
+	remoteReference := fmt.Sprintf("%s/%s", remoteName, branchName)
+	remoteCommit, remoteExists, remoteCommitErr := strictSyncReferenceCommit(ctx, executor, repositoryPath, remoteReference)
+	if remoteCommitErr != nil {
+		return strictSyncBranchTip{}, remoteCommitErr
+	}
+	localReference := fmt.Sprintf("refs/heads/%s", branchName)
+	localCommit, localExists, localCommitErr := strictSyncReferenceCommit(ctx, executor, repositoryPath, localReference)
+	if localCommitErr != nil {
+		return strictSyncBranchTip{}, localCommitErr
+	}
+	if !remoteExists {
+		return strictSyncBranchTip{CommitID: localCommit, Exists: localExists}, nil
+	}
+	if !localExists {
+		return strictSyncBranchTip{CommitID: remoteCommit, Exists: true}, nil
+	}
+	localAheadCount, localAheadErr := commitCount(ctx, executor, repositoryPath, fmt.Sprintf("%s..%s", remoteReference, localReference))
+	if localAheadErr != nil {
+		return strictSyncBranchTip{}, localAheadErr
+	}
+	return strictSyncBranchTip{
+		CommitID:            remoteCommit,
+		Exists:              true,
+		HasLocalOnlyCommits: localAheadCount > 0,
+	}, nil
+}
+
+func strictSyncReferenceCommit(ctx context.Context, executor shared.GitExecutor, repositoryPath string, reference string) (string, bool, error) {
+	result, referenceErr := executor.ExecuteGit(ctx, execshell.CommandDetails{
+		Arguments:        []string{gitRevParseSubcommandConstant, gitVerifyFlagConstant, reference},
+		WorkingDirectory: repositoryPath,
+	})
+	if referenceErr != nil {
+		if isBranchMissingError(referenceErr) {
+			return "", false, nil
+		}
+		return "", false, referenceErr
+	}
+	commitID := strings.TrimSpace(result.StandardOutput)
+	if commitID == "" {
+		return "", false, fmt.Errorf(strictSyncEmptyReferenceCommitTemplate, reference)
+	}
+	return commitID, true, nil
 }
 
 func openPullRequestBaseBranch(pullRequest githubcli.PullRequest, branchName string) (string, error) {

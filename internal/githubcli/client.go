@@ -44,7 +44,7 @@ const (
 	requiredValueMessageConstant               = "value required"
 	executorNotConfiguredMessageConstant       = "github cli executor not configured"
 	pullRequestLimitDefaultValueConstant       = 100
-	pullRequestJSONFieldsConstant              = "number,title,headRefName,baseRefName"
+	pullRequestJSONFieldsConstant              = "number,title,headRefName,headRefOid,baseRefName"
 	repoViewJSONFieldsConstant                 = "defaultBranchRef,nameWithOwner,description,isInOrganization"
 	operationErrorMessageTemplateConstant      = "%s operation failed"
 	operationErrorWithCauseTemplateConstant    = "%s operation failed: %s"
@@ -96,6 +96,7 @@ type PullRequest struct {
 	Number      int
 	Title       string
 	HeadRefName string
+	HeadRefOID  string
 	BaseRefName string
 }
 
@@ -323,6 +324,7 @@ func (client *Client) ListPullRequests(executionContext context.Context, reposit
 		Number      int    `json:"number"`
 		Title       string `json:"title"`
 		HeadRefName string `json:"headRefName"`
+		HeadRefOID  string `json:"headRefOid"`
 		BaseRefName string `json:"baseRefName"`
 	}
 
@@ -337,6 +339,7 @@ func (client *Client) ListPullRequests(executionContext context.Context, reposit
 			Number:      pullRequestEntry.Number,
 			Title:       pullRequestEntry.Title,
 			HeadRefName: pullRequestEntry.HeadRefName,
+			HeadRefOID:  pullRequestEntry.HeadRefOID,
 			BaseRefName: pullRequestEntry.BaseRefName,
 		})
 	}

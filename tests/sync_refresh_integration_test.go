@@ -651,9 +651,11 @@ operations:
 
 	runGit(testInstance, repositoryPath, "push", "origin", "--delete", targetBranchName)
 	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--remotes", "--list", "origin/"+targetBranchName)))
+	sourceMergedHeadOID := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", sourceBranchName))
+	targetMergedHeadOID := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", targetBranchName))
 	mergedPullRequests := readTextFile(testInstance, githubLogPath) +
-		"merged-pr --base " + grandparentBranchName + " --head " + sourceBranchName + "\n" +
-		"merged-pr --base " + sourceBranchName + " --head " + targetBranchName + "\n"
+		"merged-pr --base " + grandparentBranchName + " --head " + sourceBranchName + " --oid " + sourceMergedHeadOID + "\n" +
+		"merged-pr --base " + sourceBranchName + " --head " + targetBranchName + " --oid " + targetMergedHeadOID + "\n"
 	require.NoError(testInstance, os.WriteFile(githubLogPath, []byte(mergedPullRequests), 0o600))
 	runMergedSync := func(branchName string, additionalArguments ...string) (string, error) {
 		commandArguments := []string{
@@ -724,8 +726,8 @@ operations:
 	require.Equal(testInstance, strandedWorkContents, readTextFile(testInstance, filepath.Join(repositoryPath, "stranded.txt")))
 	require.Equal(testInstance, "?? stranded.txt", strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
 	stashedHandoffSuffix := githubLogSuffix(stashedHandoffLog)
-	require.Contains(testInstance, stashedHandoffSuffix, "pr list --repo owner/project --state merged --base "+sourceBranchName+" --head "+targetBranchName)
-	require.Contains(testInstance, stashedHandoffSuffix, "pr list --repo owner/project --state merged --base "+grandparentBranchName+" --head "+sourceBranchName)
+	require.Contains(testInstance, stashedHandoffSuffix, "pr list --repo owner/project --state merged --head "+targetBranchName)
+	require.Contains(testInstance, stashedHandoffSuffix, "pr list --repo owner/project --state merged --head "+sourceBranchName)
 	require.NotContains(testInstance, stashedHandoffSuffix, "pr create ")
 	require.Equal(testInstance, preRecoveryPullRequestCreateCount, strings.Count(readTextFile(testInstance, githubLogPath), "pr create "))
 	require.Equal(testInstance, preRecoveryCreatedPullRequestCount, strings.Count(readTextFile(testInstance, githubLogPath), "created-pr "))
@@ -755,9 +757,7 @@ operations:
 	require.Equal(testInstance, sourceBranchName, strings.TrimSpace(runGit(testInstance, repositoryPath, "config", "--get", "branch."+targetBranchName+".gix-review-base")))
 	mergedSuffix := githubLogSuffix(mergedLog)
 	require.Contains(testInstance, mergedSuffix, "pr list --repo owner/project --state merged --head "+targetBranchName)
-	require.Contains(testInstance, mergedSuffix, "pr list --repo owner/project --state merged --base "+sourceBranchName+" --head "+targetBranchName)
 	require.Contains(testInstance, mergedSuffix, "pr list --repo owner/project --state merged --head "+sourceBranchName)
-	require.Contains(testInstance, mergedSuffix, "pr list --repo owner/project --state merged --base "+grandparentBranchName+" --head "+sourceBranchName)
 	require.NotContains(testInstance, mergedSuffix, "pr create ")
 	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--remotes", "--list", "origin/"+targetBranchName)))
 	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--remotes", "--list", "origin/"+sourceBranchName)))
@@ -772,7 +772,6 @@ operations:
 	require.Equal(testInstance, "origin/"+grandparentBranchName, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")))
 	parentMergedSuffix := githubLogSuffix(parentMergedLog)
 	require.Contains(testInstance, parentMergedSuffix, "pr list --repo owner/project --state merged --head "+sourceBranchName)
-	require.Contains(testInstance, parentMergedSuffix, "pr list --repo owner/project --state merged --base "+grandparentBranchName+" --head "+sourceBranchName)
 	require.NotContains(testInstance, parentMergedSuffix, "pr create ")
 	finalGitHubLog := readTextFile(testInstance, githubLogPath)
 	require.Equal(testInstance, pullRequestCreateCount, strings.Count(finalGitHubLog, "pr create "))

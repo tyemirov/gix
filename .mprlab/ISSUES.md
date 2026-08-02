@@ -298,6 +298,24 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Follow-up resolution:
   Gix now resolves the exact per-worktree index path, compares every commit-relevant entry and semantic flag, and performs every post-model ownership read through a bounded context detached from caller cancellation. The final read runs while Gix holds the canonical index lock; Gix copies the validated index into that private locked file and commits through `GIT_INDEX_FILE`, so a normal outside writer either mutates before the recheck and triggers handoff or loses the lock and cannot enter the commit. Focused cancellation coverage and public compiled-CLI regressions prove semantic-flag drift is rejected, post-check staging is lock-blocked, cluster commits remain separate, and the index lock is released on both success and handoff.
 
+- [x] [B048] (P1) Follow transitively merged pull-request stacks to master.
+  Reported on 2026-08-01 after plain `gix sync` on `tyemirov/improvement/I205-inventory-placement-groups` returned `branch ... does not have an open pull request` even though its pull request and every parent pull request were merged into `master`.
+  Observation:
+  - Gateway PR #164 merged I205 into B388, PR #163 merged B388 into B387, and PR #162 merged B387 into `master`.
+  - Strict sync checks for an open pull request and then asks whether the selected branch merged directly into `master`. Without local `gix-review-base` metadata, it does not discover the selected branch's actual merged base or follow the merged parent chain.
+  Requirements:
+  - Discover the actual base of a merged pull request for an existing branch even when no local stacked-review metadata exists.
+  - Follow each merged parent pull request until the chain reaches the first active remote branch; when every link reaches `master`, use the standard merged-branch prompt to offer syncing `master`.
+  - Prefer an active open pull request over historical merged records for a reused branch name and reject cycles or missing terminal branches without mutation.
+  - Preserve strict-sync transaction rollback, dirty merged-branch rejection, and single-prompt confirmation behavior.
+  Validation:
+  - Add public compiled-CLI coverage for a three-hop merged stack with all remote branch refs still present and no local review-base metadata. Plain `gix sync` must offer the standard `master` handoff, switch to synced `master` when accepted, create no pull request, and emit no rollback.
+  - Run `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check`.
+  Resolution:
+  Gix now discovers a merged pull request's actual base without assuming `master` or requiring local review-base metadata, then follows an arbitrary number of merged parent pull requests even while their remote refs remain. It stops at the configured base, an active open pull request, or a live terminal branch; active review state wins over historical merged records, and cycles fail before mutation. A fully merged chain produces one standard handoff prompt for the terminal base, while dirty merged branches are rejected before commit. The compiled-CLI regression reproduces the reported I205-to-B388-to-B387-to-`master` topology with all refs retained and no local metadata; it initially failed with the reported missing-open-pull-request rollback and now proves acceptance syncs `master` without creating a pull request or emitting rollback. Focused tests cover active-parent precedence, cycle rejection, and dirty-branch ordering. `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check` passed on 2026-08-01.
+  Review follow-up:
+  The first traversal keyed historical merged pull requests only by branch name. A reused branch, or a retained branch advanced after merge, could therefore inherit its old stack and hand off to `master` instead of publishing the new commits. Gix now requests each pull request's `headRefOid` and accepts the merged record only when that OID matches the fetched remote tip and no local-only commits exist, or when neither local nor remote ref survives. A mismatched selected head continues through the existing remote-branch publication flow; a mismatched parent becomes the terminal handoff. The compiled-CLI regression initially reproduced the false `master` handoff for a newly pushed reused child and now proves Gix creates its new pull request, while focused coverage proves an advanced parent stops traversal. `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check` passed for the follow-up on 2026-08-01.
+
 ## Maintenance
 
 - [ ] [M001R] (P2) Backlog hygiene and archive.

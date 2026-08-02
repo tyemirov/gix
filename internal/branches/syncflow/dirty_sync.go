@@ -543,11 +543,11 @@ func prepareStrictSyncBranchForDirtyWork(ctx context.Context, environment *workf
 			return pullRequestErr
 		}
 		if openPullRequest == nil {
-			mergedPullRequest, mergedPullRequestErr := branchHasMergedPullRequest(ctx, environment, repositoryIdentifier, baseBranch, branchName)
+			mergedPullRequest, mergedPullRequestErr := mergedPullRequestForCurrentBranchTip(ctx, environment, repository, repositoryIdentifier, remoteName, branchName)
 			if mergedPullRequestErr != nil {
 				return mergedPullRequestErr
 			}
-			if mergedPullRequest {
+			if mergedPullRequest != nil {
 				return fmt.Errorf(strictSyncStackedMergedDirtyTemplate, branchName)
 			}
 		}
