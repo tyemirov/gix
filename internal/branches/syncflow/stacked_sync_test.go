@@ -149,7 +149,7 @@ func TestPlanStrictSyncStackUsesMergedChildPullRequestBaseForHandoff(t *testing.
 	}}
 	githubExecutor := &strictSyncGitHubExecutor{outputs: []string{
 		`[]`,
-		`[{"number":8,"title":"Child","headRefName":"feature/child","baseRefName":"feature/actual-parent"}]`,
+		`[{"number":8,"title":"Child","headRefName":"feature/child","headRefOid":"` + strictSyncGitTestCommit + `","baseRefName":"feature/actual-parent"}]`,
 	}}
 	environment, repository := strictSyncStackTestContext(t, gitExecutor, githubExecutor)
 
@@ -174,7 +174,7 @@ func TestPlanStrictSyncStackDiscoversMergedChildPullRequestBeforeDirtyCommitWith
 	gitExecutor := &strictSyncGitExecutor{}
 	githubExecutor := &strictSyncGitHubExecutor{outputs: []string{
 		`[]`,
-		`[{"number":8,"title":"Child","headRefName":"feature/child","baseRefName":"feature/parent"}]`,
+		`[{"number":8,"title":"Child","headRefName":"feature/child","headRefOid":"` + strictSyncGitTestCommit + `","baseRefName":"feature/parent"}]`,
 	}}
 	environment, repository := strictSyncStackTestContext(t, gitExecutor, githubExecutor)
 
@@ -329,7 +329,7 @@ func TestEnsureStrictSyncStackParentRejectsInvalidReviewState(t *testing.T) {
 			name: "parent pull request is merged",
 			githubOutputs: []string{
 				`[]`,
-				`[{"number":7,"title":"Parent","headRefName":"feature/parent","baseRefName":"master"}]`,
+				`[{"number":7,"title":"Parent","headRefName":"feature/parent","headRefOid":"` + strictSyncGitTestCommit + `","baseRefName":"master"}]`,
 			},
 			expectedError: `cannot create stacked branch "feature/child" from "feature/parent": the parent branch pull request is already merged`,
 		},

@@ -24,7 +24,7 @@ import (
 	"github.com/tyemirov/utils/llm"
 )
 
-const mergedFeatureFooPullRequestJSON = `[{"number":7,"title":"Merged","headRefName":"feature/foo","baseRefName":"master"}]`
+const mergedFeatureFooPullRequestJSON = `[{"number":7,"title":"Merged","headRefName":"feature/foo","headRefOid":"` + strictSyncGitTestCommit + `","baseRefName":"master"}]`
 
 type recordingReporter struct {
 	events []shared.Event
@@ -120,6 +120,7 @@ type strictSyncGitExecutor struct {
 	diffOutput        string
 	revListOutput     string
 	revListOutputs    map[string]string
+	referenceCommits  map[string]string
 	missingReferences map[string]bool
 	commandErrors     map[string]error
 	mergeError        error
@@ -244,11 +245,16 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 		if strings.Join(details.Arguments, " ") == "rev-parse --verify HEAD" {
 			return execshell.ExecutionResult{StandardOutput: strictSyncGitTestCommit + "\n"}, nil
 		}
-		if len(details.Arguments) > 2 && details.Arguments[1] == "--verify" && executor.missingReferences[details.Arguments[2]] {
-			return execshell.ExecutionResult{}, commandFailedError("fatal: Needed a single revision")
-		}
-		if strings.Join(details.Arguments, " ") == "rev-parse --verify origin/feature/foo" {
-			return execshell.ExecutionResult{}, nil
+		if len(details.Arguments) > 2 && details.Arguments[1] == "--verify" {
+			reference := details.Arguments[2]
+			if executor.missingReferences[reference] {
+				return execshell.ExecutionResult{}, commandFailedError("fatal: Needed a single revision")
+			}
+			commitID := executor.referenceCommits[reference]
+			if commitID == "" {
+				commitID = strictSyncGitTestCommit
+			}
+			return execshell.ExecutionResult{StandardOutput: commitID + "\n"}, nil
 		}
 	case "rev-list":
 		output := executor.revListOutputs[strings.Join(details.Arguments, " ")]
@@ -1279,7 +1285,7 @@ func TestResolveMergedPullRequestBaseTargetRejectsMergedReviewCycle(t *testing.T
 	gitExecutor := &strictSyncGitExecutor{}
 	githubExecutor := &strictSyncGitHubExecutor{outputs: []string{
 		`[]`,
-		`[{"number":8,"title":"Cyclic parent","headRefName":"feature/parent","baseRefName":"feature/child"}]`,
+		`[{"number":8,"title":"Cyclic parent","headRefName":"feature/parent","headRefOid":"` + strictSyncGitTestCommit + `","baseRefName":"feature/child"}]`,
 	}}
 	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
 	require.NoError(t, githubClientError)
@@ -1302,6 +1308,153 @@ func TestResolveMergedPullRequestBaseTargetRejectsMergedReviewCycle(t *testing.T
 
 	require.EqualError(t, targetErr, `cannot resolve stacked pull-request chain: review base cycle at branch "feature/child"`)
 	require.Len(t, githubExecutor.commands, 2)
+}
+
+func TestResolveMergedPullRequestBaseTargetStopsAtAdvancedMergedParent(t *testing.T) {
+	const currentParentCommit = "1111111111111111111111111111111111111111"
+	const historicalParentCommit = "2222222222222222222222222222222222222222"
+	gitExecutor := &strictSyncGitExecutor{referenceCommits: map[string]string{
+		"origin/feature/parent":     currentParentCommit,
+		"refs/heads/feature/parent": currentParentCommit,
+	}}
+	githubExecutor := &strictSyncGitHubExecutor{outputs: []string{
+		`[]`,
+		`[{"number":8,"title":"Historical parent","headRefName":"feature/parent","headRefOid":"` + historicalParentCommit + `","baseRefName":"master"}]`,
+	}}
+	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
+	require.NoError(t, githubClientError)
+	environment := &workflow.Environment{
+		GitExecutor:  gitExecutor,
+		GitHubClient: githubClient,
+	}
+	repository := &workflow.RepositoryState{Path: "/tmp/project"}
+
+	targetBranch, targetErr := resolveMergedPullRequestBaseTarget(
+		context.Background(),
+		environment,
+		repository,
+		"owner/project",
+		shared.OriginRemoteNameConstant,
+		"feature/parent",
+		defaultSyncBaseBranch,
+		map[string]struct{}{"feature/child": {}},
+	)
+
+	require.NoError(t, targetErr)
+	require.Equal(t, "feature/parent", targetBranch)
+	require.Len(t, githubExecutor.commands, 2)
+}
+
+func TestMergedPullRequestForCurrentBranchTipSelectsMatchingHistoricalRecord(t *testing.T) {
+	const currentCommit = "1111111111111111111111111111111111111111"
+	const staleCommit = "2222222222222222222222222222222222222222"
+	gitExecutor := &strictSyncGitExecutor{referenceCommits: map[string]string{
+		"origin/feature/reused":     currentCommit,
+		"refs/heads/feature/reused": currentCommit,
+	}}
+	githubExecutor := &strictSyncGitHubExecutor{output: `[
+		{"number":7,"title":"Stale review","headRefName":"feature/reused","headRefOid":"` + staleCommit + `","baseRefName":"feature/parent"},
+		{"number":9,"title":"Current review","headRefName":"feature/reused","headRefOid":"` + currentCommit + `","baseRefName":"master"}
+	]`}
+	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
+	require.NoError(t, githubClientError)
+	environment := &workflow.Environment{
+		GitExecutor:  gitExecutor,
+		GitHubClient: githubClient,
+	}
+	repository := &workflow.RepositoryState{Path: "/tmp/project"}
+
+	pullRequest, pullRequestErr := mergedPullRequestForCurrentBranchTip(
+		context.Background(),
+		environment,
+		repository,
+		"owner/project",
+		shared.OriginRemoteNameConstant,
+		"feature/reused",
+	)
+
+	require.NoError(t, pullRequestErr)
+	require.NotNil(t, pullRequest)
+	require.Equal(t, 9, pullRequest.Number)
+}
+
+func TestCurrentStrictSyncBranchTip(t *testing.T) {
+	const remoteCommit = "1111111111111111111111111111111111111111"
+	const localCommit = "2222222222222222222222222222222222222222"
+	testCases := []struct {
+		name              string
+		referenceCommits  map[string]string
+		missingReferences map[string]bool
+		localAheadCount   string
+		expected          strictSyncBranchTip
+	}{
+		{
+			name: "matching local and remote",
+			referenceCommits: map[string]string{
+				"origin/feature/review":     remoteCommit,
+				"refs/heads/feature/review": remoteCommit,
+			},
+			expected: strictSyncBranchTip{CommitID: remoteCommit, Exists: true},
+		},
+		{
+			name: "local commits beyond remote",
+			referenceCommits: map[string]string{
+				"origin/feature/review":     remoteCommit,
+				"refs/heads/feature/review": localCommit,
+			},
+			localAheadCount: "1\n",
+			expected: strictSyncBranchTip{
+				CommitID:            remoteCommit,
+				Exists:              true,
+				HasLocalOnlyCommits: true,
+			},
+		},
+		{
+			name: "only remote survives",
+			referenceCommits: map[string]string{
+				"origin/feature/review": remoteCommit,
+			},
+			missingReferences: map[string]bool{"refs/heads/feature/review": true},
+			expected:          strictSyncBranchTip{CommitID: remoteCommit, Exists: true},
+		},
+		{
+			name: "only local survives",
+			referenceCommits: map[string]string{
+				"refs/heads/feature/review": localCommit,
+			},
+			missingReferences: map[string]bool{"origin/feature/review": true},
+			expected:          strictSyncBranchTip{CommitID: localCommit, Exists: true},
+		},
+		{
+			name: "no branch ref survives",
+			missingReferences: map[string]bool{
+				"origin/feature/review":     true,
+				"refs/heads/feature/review": true,
+			},
+			expected: strictSyncBranchTip{},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			gitExecutor := &strictSyncGitExecutor{
+				referenceCommits:  testCase.referenceCommits,
+				missingReferences: testCase.missingReferences,
+				revListOutput:     testCase.localAheadCount,
+			}
+
+			branchTip, branchTipErr := currentStrictSyncBranchTip(
+				context.Background(),
+				gitExecutor,
+				"/tmp/project",
+				shared.OriginRemoteNameConstant,
+				"feature/review",
+			)
+
+			require.NoError(t, branchTipErr)
+			require.Equal(t, testCase.expected, branchTip)
+		})
+	}
 }
 
 func TestHandleBranchSyncActionStrictPRBranchCommitFlagUsesDirtySyncCommitWithRequireClean(t *testing.T) {

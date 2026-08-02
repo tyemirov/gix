@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/tyemirov/gix/internal/execshell"
-	"github.com/tyemirov/gix/internal/githubcli"
 	"github.com/tyemirov/gix/internal/repos/shared"
 	"github.com/tyemirov/gix/internal/workflow"
 )
@@ -81,7 +80,7 @@ func planStrictSyncStack(ctx context.Context, environment *workflow.Environment,
 			if openPullRequest != nil {
 				return nil, nil
 			}
-			mergedPullRequest, mergedPullRequestErr := pullRequestForBranchWithState(ctx, environment, repositoryIdentifier, "", options.ChildBranch, githubcli.PullRequestStateMerged)
+			mergedPullRequest, mergedPullRequestErr := mergedPullRequestForCurrentBranchTip(ctx, environment, repository, repositoryIdentifier, options.RemoteName, options.ChildBranch)
 			if mergedPullRequestErr != nil {
 				return nil, mergedPullRequestErr
 			}
@@ -210,7 +209,7 @@ func ensureStrictSyncStackParentChain(ctx context.Context, environment *workflow
 		return executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitPushSubcommandConstant, gitPushSetUpstreamFlagConstant, options.RemoteName, options.Plan.ParentBranch})
 	}
 
-	mergedPullRequest, mergedPullRequestErr := pullRequestForBranchWithState(ctx, environment, repositoryIdentifier, "", options.Plan.ParentBranch, githubcli.PullRequestStateMerged)
+	mergedPullRequest, mergedPullRequestErr := mergedPullRequestForCurrentBranchTip(ctx, environment, repository, repositoryIdentifier, options.RemoteName, options.Plan.ParentBranch)
 	if mergedPullRequestErr != nil {
 		return mergedPullRequestErr
 	}
