@@ -24,6 +24,8 @@ import (
 	"github.com/tyemirov/utils/llm"
 )
 
+const mergedFeatureFooPullRequestJSON = `[{"number":7,"title":"Merged","headRefName":"feature/foo","baseRefName":"master"}]`
+
 type recordingReporter struct {
 	events []shared.Event
 }
@@ -1064,7 +1066,7 @@ func TestHandleBranchSyncActionStrictPRBranchPromptsToSyncMasterWhenPullRequestM
 	require.NoError(t, managerError)
 	githubExecutor := &strictSyncGitHubExecutor{outputs: []string{
 		`[]`,
-		`[{"number":7,"title":"Merged","headRefName":"feature/foo"}]`,
+		mergedFeatureFooPullRequestJSON,
 	}}
 	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
 	require.NoError(t, githubClientError)
@@ -1117,7 +1119,7 @@ func TestHandleBranchSyncActionStrictPRBranchPromptsToSyncMasterWhenMergedPullRe
 	}
 	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
 	require.NoError(t, managerError)
-	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":7,"title":"Merged","headRefName":"feature/foo"}]`}
+	githubExecutor := &strictSyncGitHubExecutor{output: mergedFeatureFooPullRequestJSON}
 	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
 	require.NoError(t, githubClientError)
 	output := &strings.Builder{}
@@ -1166,7 +1168,7 @@ func TestHandleBranchSyncActionStrictPRBranchKeepsMissingPullRequestErrorWhenMer
 	require.NoError(t, managerError)
 	githubExecutor := &strictSyncGitHubExecutor{outputs: []string{
 		`[]`,
-		`[{"number":7,"title":"Merged","headRefName":"feature/foo"}]`,
+		mergedFeatureFooPullRequestJSON,
 	}}
 	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
 	require.NoError(t, githubClientError)
@@ -1212,7 +1214,7 @@ func TestHandleBranchSyncActionStrictPRBranchAssumeYesSyncsMasterForMergedPullRe
 	require.NoError(t, managerError)
 	githubExecutor := &strictSyncGitHubExecutor{outputs: []string{
 		`[]`,
-		`[{"number":7,"title":"Merged","headRefName":"feature/foo"}]`,
+		mergedFeatureFooPullRequestJSON,
 	}}
 	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
 	require.NoError(t, githubClientError)
@@ -1243,6 +1245,63 @@ func TestHandleBranchSyncActionStrictPRBranchAssumeYesSyncsMasterForMergedPullRe
 
 	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "reset --hard origin/master")
+}
+
+func TestResolveMergedPullRequestBaseTargetPrefersActiveOpenPullRequest(t *testing.T) {
+	gitExecutor := &strictSyncGitExecutor{}
+	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":8,"title":"Active parent","headRefName":"feature/parent","baseRefName":"master"}]`}
+	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
+	require.NoError(t, githubClientError)
+	environment := &workflow.Environment{
+		GitExecutor:  gitExecutor,
+		GitHubClient: githubClient,
+	}
+	repository := &workflow.RepositoryState{Path: "/tmp/project"}
+
+	targetBranch, targetErr := resolveMergedPullRequestBaseTarget(
+		context.Background(),
+		environment,
+		repository,
+		"owner/project",
+		shared.OriginRemoteNameConstant,
+		"feature/parent",
+		defaultSyncBaseBranch,
+		map[string]struct{}{"feature/child": {}},
+	)
+
+	require.NoError(t, targetErr)
+	require.Equal(t, "feature/parent", targetBranch)
+	require.Len(t, githubExecutor.commands, 1)
+	require.Equal(t, string(githubcli.PullRequestStateOpen), githubCommandOption(githubExecutor.commands[0].Arguments, "--state"))
+}
+
+func TestResolveMergedPullRequestBaseTargetRejectsMergedReviewCycle(t *testing.T) {
+	gitExecutor := &strictSyncGitExecutor{}
+	githubExecutor := &strictSyncGitHubExecutor{outputs: []string{
+		`[]`,
+		`[{"number":8,"title":"Cyclic parent","headRefName":"feature/parent","baseRefName":"feature/child"}]`,
+	}}
+	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
+	require.NoError(t, githubClientError)
+	environment := &workflow.Environment{
+		GitExecutor:  gitExecutor,
+		GitHubClient: githubClient,
+	}
+	repository := &workflow.RepositoryState{Path: "/tmp/project"}
+
+	_, targetErr := resolveMergedPullRequestBaseTarget(
+		context.Background(),
+		environment,
+		repository,
+		"owner/project",
+		shared.OriginRemoteNameConstant,
+		"feature/parent",
+		defaultSyncBaseBranch,
+		map[string]struct{}{"feature/child": {}},
+	)
+
+	require.EqualError(t, targetErr, `cannot resolve stacked pull-request chain: review base cycle at branch "feature/child"`)
+	require.Len(t, githubExecutor.commands, 2)
 }
 
 func TestHandleBranchSyncActionStrictPRBranchCommitFlagUsesDirtySyncCommitWithRequireClean(t *testing.T) {

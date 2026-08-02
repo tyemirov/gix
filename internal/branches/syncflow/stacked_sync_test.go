@@ -170,6 +170,33 @@ func TestPlanStrictSyncStackUsesMergedChildPullRequestBaseForHandoff(t *testing.
 	require.Equal(t, string(githubcli.PullRequestStateMerged), githubCommandOption(githubExecutor.commands[1].Arguments, "--state"))
 }
 
+func TestPlanStrictSyncStackDiscoversMergedChildPullRequestBeforeDirtyCommitWithoutRecordedReviewBase(t *testing.T) {
+	gitExecutor := &strictSyncGitExecutor{}
+	githubExecutor := &strictSyncGitHubExecutor{outputs: []string{
+		`[]`,
+		`[{"number":8,"title":"Child","headRefName":"feature/child","baseRefName":"feature/parent"}]`,
+	}}
+	environment, repository := strictSyncStackTestContext(t, gitExecutor, githubExecutor)
+
+	plan, planErr := planStrictSyncStack(context.Background(), environment, repository, strictSyncStackPlanningOptions{
+		RemoteName:       shared.OriginRemoteNameConstant,
+		ChildBranch:      "feature/child",
+		BaseBranch:       defaultSyncBaseBranch,
+		ResolutionSource: syncCurrentBranchSource,
+		Dirty:            true,
+	})
+
+	require.NoError(t, planErr)
+	require.Equal(t, &strictSyncStackPlan{
+		ChildBranch:            "feature/child",
+		ParentBranch:           "feature/parent",
+		ChildPullRequestMerged: true,
+	}, plan)
+	require.Len(t, githubExecutor.commands, 2)
+	require.Equal(t, string(githubcli.PullRequestStateOpen), githubCommandOption(githubExecutor.commands[0].Arguments, "--state"))
+	require.Equal(t, string(githubcli.PullRequestStateMerged), githubCommandOption(githubExecutor.commands[1].Arguments, "--state"))
+}
+
 func TestEnsureStrictSyncStackParentUsesExistingOpenPullRequest(t *testing.T) {
 	gitExecutor := &strictSyncGitExecutor{}
 	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":7,"title":"Parent","headRefName":"feature/parent","baseRefName":"feature/grandparent"}]`}
