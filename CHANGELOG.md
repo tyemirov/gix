@@ -116,6 +116,22 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.1.19] - 2026-08-01
+
+- Merge pull request #405 from tyemirov/bugfix/B048-transitive-merged-stack-handoff
+- test: record and assert merged branch head OIDs in integration tests
+- fix(syncflow): ensure merged PR is matched to current remote branch tip
+- docs: clarify merged branch handoff and pull request inheritance in README
+- docs: clarify merged pull request stack and test coverage in changelog
+- docs: clarify merged-review handoff criteria in ARCHITECTURE.md
+- docs(issues): add follow-up clarifying merged pull request head OID matching
+- test: check transitively merged branches without review base and update PR queries
+- fix(syncflow): follow merged PR parent for dirty sync with no open review
+- docs: clarify merged branch handoff flow and prompts in README
+- docs(changelog): document merged-stack traversal and sync handoff behavior
+- docs: clarify merged-review handoff flow in sync preflight section
+- docs(issues): add B048 for transitive merged pull-request stack syncs
+
 ## [v1.1.18] - 2026-07-31
 
 - Merge pull request #404 from tyemirov/bugfix/B047-protect-dirty-cluster-ownership
