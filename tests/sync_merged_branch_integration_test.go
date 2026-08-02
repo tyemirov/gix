@@ -33,6 +33,7 @@ const (
 	syncMergedBranchStageCaptureResultVariable  = "GIX_SYNC_TEST_STAGE_CAPTURE_RESULT"
 	syncMergedBranchNameVariable                = "GIX_SYNC_TEST_BRANCH"
 	syncMergedBranchMergedVariable              = "GIX_SYNC_TEST_MERGED"
+	syncMergedBranchMergedHeadOIDVariable       = "GIX_SYNC_TEST_MERGED_HEAD_OID"
 	syncMergedBranchAPIKeyVariable              = "GIX_SYNC_TEST_LLM_KEY"
 )
 
@@ -50,6 +51,7 @@ func TestSyncCurrentMergedBranchPromptsAndSyncsMasterBeforeCreatingPullRequest(t
 	configurationPath := writeSyncMergedBranchConfiguration(testInstance)
 	githubLogPath := filepath.Join(testInstance.TempDir(), "gh.log")
 	pathVariable := buildSyncMergedBranchExecutablePath(testInstance)
+	mergedHeadOID := strings.TrimSpace(runGit(testInstance, fixture.RepositoryPath, "rev-parse", branchName))
 
 	output, runError := runIntegrationCommandWithInput(
 		testInstance,
@@ -57,8 +59,9 @@ func TestSyncCurrentMergedBranchPromptsAndSyncsMasterBeforeCreatingPullRequest(t
 		integrationCommandOptions{
 			PathVariable: pathVariable,
 			EnvironmentOverrides: map[string]string{
-				syncMergedBranchGitHubLogVariable: githubLogPath,
-				syncMergedBranchNameVariable:      branchName,
+				syncMergedBranchGitHubLogVariable:     githubLogPath,
+				syncMergedBranchNameVariable:          branchName,
+				syncMergedBranchMergedHeadOIDVariable: mergedHeadOID,
 			},
 		},
 		syncMergedBranchIntegrationTimeout,
@@ -86,13 +89,19 @@ func TestSyncTransitivelyMergedBranchPromptsAndSyncsMasterWithoutRecordedReviewB
 	fixture := createSyncTransitivelyMergedBranchFixture(testInstance, branchName, middleBranchName, parentBranchName)
 	configurationPath := writeSyncMergedBranchConfiguration(testInstance)
 	githubLogPath := filepath.Join(testInstance.TempDir(), "gh.log")
+	branchMergedHeadOID := strings.TrimSpace(runGit(testInstance, fixture.RepositoryPath, "rev-parse", branchName))
+	middleMergedHeadOID := strings.TrimSpace(runGit(testInstance, fixture.RepositoryPath, "rev-parse", middleBranchName))
+	parentMergedHeadOID := strings.TrimSpace(runGit(testInstance, fixture.RepositoryPath, "rev-parse", parentBranchName))
 	reviewChain := fmt.Sprintf(
-		"merged-pr --base %s --head %s\nmerged-pr --base %s --head %s\nmerged-pr --base master --head %s\n",
+		"merged-pr --base %s --head %s --oid %s\nmerged-pr --base %s --head %s --oid %s\nmerged-pr --base master --head %s --oid %s\n",
 		middleBranchName,
 		branchName,
+		branchMergedHeadOID,
 		parentBranchName,
 		middleBranchName,
+		middleMergedHeadOID,
 		parentBranchName,
+		parentMergedHeadOID,
 	)
 	require.NoError(testInstance, os.WriteFile(githubLogPath, []byte(reviewChain), 0o600))
 	pathVariable := buildSyncMergedBranchExecutablePath(testInstance)
@@ -127,6 +136,68 @@ func TestSyncTransitivelyMergedBranchPromptsAndSyncsMasterWithoutRecordedReviewB
 	require.NotContains(testInstance, githubLog, "pr create")
 }
 
+func TestSyncReusedMergedBranchHeadCreatesNewPullRequestInsteadOfHandoff(testInstance *testing.T) {
+	repositoryRoot := integrationRepositoryRoot(testInstance)
+	branchName := "feature/reused-stack-child"
+	middleBranchName := "feature/reused-stack-middle"
+	parentBranchName := "feature/reused-stack-parent"
+	fixture := createSyncTransitivelyMergedBranchFixture(testInstance, branchName, middleBranchName, parentBranchName)
+	mergedBranchHeadOID := strings.TrimSpace(runGit(testInstance, fixture.RepositoryPath, "rev-parse", branchName))
+	middleMergedHeadOID := strings.TrimSpace(runGit(testInstance, fixture.RepositoryPath, "rev-parse", middleBranchName))
+	parentMergedHeadOID := strings.TrimSpace(runGit(testInstance, fixture.RepositoryPath, "rev-parse", parentBranchName))
+
+	reusedPath := filepath.Join(fixture.RepositoryPath, "reused.txt")
+	require.NoError(testInstance, os.WriteFile(reusedPath, []byte("new review work\n"), 0o644))
+	runGit(testInstance, fixture.RepositoryPath, "add", "reused.txt")
+	runGit(testInstance, fixture.RepositoryPath, "commit", "-m", "reuse child branch for new review")
+	runGit(testInstance, fixture.RepositoryPath, "push", "origin", branchName)
+	reusedBranchHeadOID := strings.TrimSpace(runGit(testInstance, fixture.RepositoryPath, "rev-parse", branchName))
+	require.NotEqual(testInstance, mergedBranchHeadOID, reusedBranchHeadOID)
+
+	configurationPath := writeSyncMergedBranchConfiguration(testInstance)
+	githubLogPath := filepath.Join(testInstance.TempDir(), "gh.log")
+	reviewChain := fmt.Sprintf(
+		"merged-pr --base %s --head %s --oid %s\nmerged-pr --base %s --head %s --oid %s\nmerged-pr --base master --head %s --oid %s\n",
+		middleBranchName,
+		branchName,
+		mergedBranchHeadOID,
+		parentBranchName,
+		middleBranchName,
+		middleMergedHeadOID,
+		parentBranchName,
+		parentMergedHeadOID,
+	)
+	require.NoError(testInstance, os.WriteFile(githubLogPath, []byte(reviewChain), 0o600))
+	pathVariable := buildSyncMergedBranchExecutablePath(testInstance)
+	pullRequestBody := "Publish the reused branch's new commits for review."
+
+	output, runError := runIntegrationCommandWithInput(
+		testInstance,
+		repositoryRoot,
+		integrationCommandOptions{
+			PathVariable: pathVariable,
+			EnvironmentOverrides: map[string]string{
+				syncMergedBranchGitHubLogVariable: githubLogPath,
+				syncMergedBranchNameVariable:      branchName,
+				syncMergedBranchMergedVariable:    "false",
+			},
+		},
+		syncMergedBranchIntegrationTimeout,
+		"y\n",
+		[]string{"run", ".", "--config", configurationPath, "--log-level", "error", "sync", "--body", pullRequestBody, "--roots", fixture.RepositoryPath},
+	)
+	require.NoError(testInstance, runError, output)
+
+	require.NotContains(testInstance, output, "is already merged. Sync")
+	require.Contains(testInstance, output, fmt.Sprintf("SYNCED: %s (%s)", fixture.RepositoryPath, branchName))
+	require.Equal(testInstance, branchName, strings.TrimSpace(runGit(testInstance, fixture.RepositoryPath, "branch", "--show-current")))
+	require.Equal(testInstance, "new review work\n", readTextFile(testInstance, reusedPath))
+
+	githubLog := readTextFile(testInstance, githubLogPath)
+	require.Contains(testInstance, githubLog, "pr list --repo owner/project --state merged --head "+branchName)
+	require.Contains(testInstance, githubLog, "pr create --repo owner/project --base master --head "+branchName+" --title "+branchName+" --body "+pullRequestBody)
+}
+
 func TestSyncDirtyCurrentMergedBranchRejectsCommitBeforeHandoff(testInstance *testing.T) {
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	branchName := "feature/squashed-review-dirty"
@@ -149,9 +220,10 @@ func TestSyncDirtyCurrentMergedBranchRejectsCommitBeforeHandoff(testInstance *te
 		integrationCommandOptions{
 			PathVariable: pathVariable,
 			EnvironmentOverrides: map[string]string{
-				syncMergedBranchAPIKeyVariable:    "test-key",
-				syncMergedBranchGitHubLogVariable: githubLogPath,
-				syncMergedBranchNameVariable:      branchName,
+				syncMergedBranchAPIKeyVariable:        "test-key",
+				syncMergedBranchGitHubLogVariable:     githubLogPath,
+				syncMergedBranchNameVariable:          branchName,
+				syncMergedBranchMergedHeadOIDVariable: originalHead,
 			},
 		},
 		syncMergedBranchIntegrationTimeout,
@@ -722,7 +794,8 @@ if [ "$1" = "pr" ] && [ "$2" = "list" ]; then
   if [ "$state" = "merged" ]; then
     if [ -n "$merged_pull_request" ]; then
       base="$(printf '%s\n' "$merged_pull_request" | sed -n 's/.*--base \([^ ]*\) --head.*/\1/p')"
-      printf '[{"number":9,"title":"Merged","headRefName":"%s","baseRefName":"%s"}]\n' "$head" "$base"
+      head_oid="$(printf '%s\n' "$merged_pull_request" | sed -n 's/.*--oid \([^ ]*\).*/\1/p')"
+      printf '[{"number":9,"title":"Merged","headRefName":"%s","headRefOid":"%s","baseRefName":"%s"}]\n' "$head" "$head_oid" "$base"
       exit 0
     fi
     if [ "$GIX_SYNC_TEST_MERGED" = "false" ]; then
@@ -733,7 +806,7 @@ if [ "$1" = "pr" ] && [ "$2" = "list" ]; then
       printf '%s\n' '[]'
       exit 0
     fi
-    printf '[{"number":9,"title":"Merged","headRefName":"%s","baseRefName":"master"}]\n' "$GIX_SYNC_TEST_BRANCH"
+    printf '[{"number":9,"title":"Merged","headRefName":"%s","headRefOid":"%s","baseRefName":"master"}]\n' "$GIX_SYNC_TEST_BRANCH" "$GIX_SYNC_TEST_MERGED_HEAD_OID"
     exit 0
   fi
 fi

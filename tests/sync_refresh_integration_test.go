@@ -651,9 +651,11 @@ operations:
 
 	runGit(testInstance, repositoryPath, "push", "origin", "--delete", targetBranchName)
 	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--remotes", "--list", "origin/"+targetBranchName)))
+	sourceMergedHeadOID := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", sourceBranchName))
+	targetMergedHeadOID := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", targetBranchName))
 	mergedPullRequests := readTextFile(testInstance, githubLogPath) +
-		"merged-pr --base " + grandparentBranchName + " --head " + sourceBranchName + "\n" +
-		"merged-pr --base " + sourceBranchName + " --head " + targetBranchName + "\n"
+		"merged-pr --base " + grandparentBranchName + " --head " + sourceBranchName + " --oid " + sourceMergedHeadOID + "\n" +
+		"merged-pr --base " + sourceBranchName + " --head " + targetBranchName + " --oid " + targetMergedHeadOID + "\n"
 	require.NoError(testInstance, os.WriteFile(githubLogPath, []byte(mergedPullRequests), 0o600))
 	runMergedSync := func(branchName string, additionalArguments ...string) (string, error) {
 		commandArguments := []string{
