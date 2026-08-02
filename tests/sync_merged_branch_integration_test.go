@@ -74,7 +74,56 @@ func TestSyncCurrentMergedBranchPromptsAndSyncsMasterBeforeCreatingPullRequest(t
 
 	githubLog := readTextFile(testInstance, githubLogPath)
 	require.Contains(testInstance, githubLog, "pr list --repo owner/project --state open --head feature/squashed-review")
-	require.Contains(testInstance, githubLog, "pr list --repo owner/project --state merged --base master --head feature/squashed-review")
+	require.Contains(testInstance, githubLog, "pr list --repo owner/project --state merged --head feature/squashed-review")
+	require.NotContains(testInstance, githubLog, "pr create")
+}
+
+func TestSyncTransitivelyMergedBranchPromptsAndSyncsMasterWithoutRecordedReviewBase(testInstance *testing.T) {
+	repositoryRoot := integrationRepositoryRoot(testInstance)
+	branchName := "feature/stack-child"
+	middleBranchName := "feature/stack-middle"
+	parentBranchName := "feature/stack-parent"
+	fixture := createSyncTransitivelyMergedBranchFixture(testInstance, branchName, middleBranchName, parentBranchName)
+	configurationPath := writeSyncMergedBranchConfiguration(testInstance)
+	githubLogPath := filepath.Join(testInstance.TempDir(), "gh.log")
+	reviewChain := fmt.Sprintf(
+		"merged-pr --base %s --head %s\nmerged-pr --base %s --head %s\nmerged-pr --base master --head %s\n",
+		middleBranchName,
+		branchName,
+		parentBranchName,
+		middleBranchName,
+		parentBranchName,
+	)
+	require.NoError(testInstance, os.WriteFile(githubLogPath, []byte(reviewChain), 0o600))
+	pathVariable := buildSyncMergedBranchExecutablePath(testInstance)
+
+	output, runError := runIntegrationCommandWithInput(
+		testInstance,
+		repositoryRoot,
+		integrationCommandOptions{
+			PathVariable: pathVariable,
+			EnvironmentOverrides: map[string]string{
+				syncMergedBranchGitHubLogVariable: githubLogPath,
+				syncMergedBranchNameVariable:      branchName,
+				syncMergedBranchMergedVariable:    "false",
+			},
+		},
+		syncMergedBranchIntegrationTimeout,
+		"y\n",
+		[]string{"run", ".", "--config", configurationPath, "--log-level", "error", "sync", "--roots", fixture.RepositoryPath},
+	)
+	require.NoError(testInstance, runError, output)
+
+	require.Contains(testInstance, output, `Pull request for branch "feature/stack-child" into master is already merged. Sync master instead?`)
+	require.Contains(testInstance, output, fmt.Sprintf("SYNCED: %s (master)", fixture.RepositoryPath))
+	require.NotContains(testInstance, output, "SYNC_SWITCH_ROLLBACK")
+	require.Equal(testInstance, "master", strings.TrimSpace(runGit(testInstance, fixture.RepositoryPath, "branch", "--show-current")))
+	require.Equal(testInstance, "child review\n", readTextFile(testInstance, filepath.Join(fixture.RepositoryPath, "child.txt")))
+
+	githubLog := readTextFile(testInstance, githubLogPath)
+	require.Contains(testInstance, githubLog, "pr list --repo owner/project --state merged --head "+branchName)
+	require.Contains(testInstance, githubLog, "pr list --repo owner/project --state merged --head "+middleBranchName)
+	require.Contains(testInstance, githubLog, "pr list --repo owner/project --state merged --head "+parentBranchName)
 	require.NotContains(testInstance, githubLog, "pr create")
 }
 
@@ -116,7 +165,7 @@ func TestSyncDirtyCurrentMergedBranchRejectsCommitBeforeHandoff(testInstance *te
 
 	githubLog := readTextFile(testInstance, githubLogPath)
 	require.Contains(testInstance, githubLog, "pr list --repo owner/project --state open --head "+branchName)
-	require.Contains(testInstance, githubLog, "pr list --repo owner/project --state merged --base master --head "+branchName)
+	require.Contains(testInstance, githubLog, "pr list --repo owner/project --state merged --head "+branchName)
 	require.NotContains(testInstance, githubLog, "pr create")
 }
 
@@ -217,7 +266,7 @@ func TestSyncExistingRemoteBranchWithoutPullRequestCreatesPullRequest(testInstan
 	require.Equal(testInstance, branchName, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
 	githubLog := readTextFile(testInstance, githubLogPath)
 	require.Contains(testInstance, githubLog, "pr list --repo owner/project --state open --head feature/unreviewed-remote")
-	require.Contains(testInstance, githubLog, "pr list --repo owner/project --state merged --base master --head feature/unreviewed-remote")
+	require.Contains(testInstance, githubLog, "pr list --repo owner/project --state merged --head feature/unreviewed-remote")
 	require.Contains(testInstance, githubLog, "pr create --repo owner/project --base master --head feature/unreviewed-remote --title feature/unreviewed-remote --body Publish the existing remote branch for review.")
 }
 
@@ -281,7 +330,7 @@ func TestSyncDirtyExistingRemoteBranchWithoutPullRequestCommitsAndCreatesPullReq
 
 	githubLog := readTextFile(testInstance, githubLogPath)
 	require.Contains(testInstance, githubLog, "pr list --repo owner/project --state open --head "+branchName)
-	require.Contains(testInstance, githubLog, "pr list --repo owner/project --state merged --base master --head "+branchName)
+	require.Contains(testInstance, githubLog, "pr list --repo owner/project --state merged --head "+branchName)
 	require.Contains(testInstance, githubLog, "pr create --repo owner/project --base master --head "+branchName+" --title "+branchName+" --body "+pullRequestBody)
 }
 
@@ -450,6 +499,57 @@ func createSyncMergedBranchFixture(testInstance *testing.T, branchName string) s
 	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "feature.txt"), []byte("squashed review\n"), 0o644))
 	runGit(testInstance, repositoryPath, "add", "feature.txt")
 	runGit(testInstance, repositoryPath, "commit", "-m", "squash merged feature")
+	runGit(testInstance, repositoryPath, "push", "origin", "master")
+	runGit(testInstance, repositoryPath, "switch", branchName)
+
+	return syncMergedBranchFixture{
+		RemotePath:     remotePath,
+		RootPath:       repositoryRootPath,
+		RepositoryPath: repositoryPath,
+		BranchName:     branchName,
+	}
+}
+
+func createSyncTransitivelyMergedBranchFixture(testInstance *testing.T, branchName string, middleBranchName string, parentBranchName string) syncMergedBranchFixture {
+	testInstance.Helper()
+
+	workspacePath := syncHomeWorkspace(testInstance)
+	remotePath := filepath.Join(workspacePath, "remote.git")
+	repositoryRootPath := filepath.Join(workspacePath, "roots")
+	repositoryPath := filepath.Join(repositoryRootPath, "project")
+	createSyncGitHubBackedRepository(testInstance, remotePath, repositoryPath)
+
+	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "README.md"), []byte("initial\n"), 0o644))
+	runGit(testInstance, repositoryPath, "add", "README.md")
+	runGit(testInstance, repositoryPath, "commit", "-m", "initial commit")
+	runGit(testInstance, repositoryPath, "push", "-u", "origin", "master")
+
+	runGit(testInstance, repositoryPath, "switch", "-c", parentBranchName)
+	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "parent.txt"), []byte("parent review\n"), 0o644))
+	runGit(testInstance, repositoryPath, "add", "parent.txt")
+	runGit(testInstance, repositoryPath, "commit", "-m", "parent branch commit")
+	runGit(testInstance, repositoryPath, "push", "-u", "origin", parentBranchName)
+
+	runGit(testInstance, repositoryPath, "switch", "-c", middleBranchName)
+	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "middle.txt"), []byte("middle review\n"), 0o644))
+	runGit(testInstance, repositoryPath, "add", "middle.txt")
+	runGit(testInstance, repositoryPath, "commit", "-m", "middle branch commit")
+	runGit(testInstance, repositoryPath, "push", "-u", "origin", middleBranchName)
+
+	runGit(testInstance, repositoryPath, "switch", "-c", branchName)
+	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "child.txt"), []byte("child review\n"), 0o644))
+	runGit(testInstance, repositoryPath, "add", "child.txt")
+	runGit(testInstance, repositoryPath, "commit", "-m", "child branch commit")
+	runGit(testInstance, repositoryPath, "push", "-u", "origin", branchName)
+
+	runGit(testInstance, repositoryPath, "switch", middleBranchName)
+	runGit(testInstance, repositoryPath, "merge", "--no-ff", branchName, "-m", "merge child review")
+	runGit(testInstance, repositoryPath, "push", "origin", middleBranchName)
+	runGit(testInstance, repositoryPath, "switch", parentBranchName)
+	runGit(testInstance, repositoryPath, "merge", "--no-ff", middleBranchName, "-m", "merge middle review")
+	runGit(testInstance, repositoryPath, "push", "origin", parentBranchName)
+	runGit(testInstance, repositoryPath, "switch", "master")
+	runGit(testInstance, repositoryPath, "merge", "--no-ff", parentBranchName, "-m", "merge parent review")
 	runGit(testInstance, repositoryPath, "push", "origin", "master")
 	runGit(testInstance, repositoryPath, "switch", branchName)
 
