@@ -120,6 +120,15 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.1.21] - 2026-08-06
+
+- test: cover Pages deployment reconciliation states
+- fix(release): track GitHub Pages builds during deployment
+- docs: clarify Pages deployment and rebuild behavior
+- docs: update Pages deployment changelog
+- docs: document release and Pages deployment lifecycle
+- docs: record GitHub Pages deployment reconciliation fix
+
 ## [v1.1.20] - 2026-08-06
 
 - bugfix/B049-preserve-multi-provider-error-context (#406)
