@@ -316,6 +316,22 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Review follow-up:
   The first traversal keyed historical merged pull requests only by branch name. A reused branch, or a retained branch advanced after merge, could therefore inherit its old stack and hand off to `master` instead of publishing the new commits. Gix now requests each pull request's `headRefOid` and accepts the merged record only when that OID matches the fetched remote tip and no local-only commits exist, or when neither local nor remote ref survives. A mismatched selected head continues through the existing remote-branch publication flow; a mismatched parent becomes the terminal handoff. The compiled-CLI regression initially reproduced the false `master` handoff for a newly pushed reused child and now proves Gix creates its new pull request, while focused coverage proves an advanced parent stops traversal. `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check` passed for the follow-up on 2026-08-01.
 
+- [x] [B049] (P1) Preserve complete multi-provider failure context in CLI output.
+  Reported on 2026-08-06 after `gix sync` displayed `llm_proxy_client_http_failure (and 1 more failures)` when both the prioritized LLM Proxy request and the direct OpenAI request failed.
+  Observation:
+  - The prioritized client retains each connection name and wrapped transport error, but the workflow executor recursively unwraps ordinary error chains to their terminal leaves.
+  - The final command error prints only the first collected leaf plus a count, hiding the OpenAI failure and stripping the LLM Proxy HTTP status and response body.
+  Requirements:
+  - Preserve the complete contextual error returned by an ordinary operation, including every named prioritized LLM connection and its wrapped cause.
+  - Continue splitting typed repository `OperationError` joins so their existing structured event codes and subjects remain independently reportable.
+  - Keep standard Go error traversal intact for callers using `errors.Is` and `errors.As`.
+  Validation:
+  - Add public compiled-CLI coverage in which LLM Proxy returns HTTP 503 and direct OpenAI returns HTTP 429. The command must attempt both connections and print both names, statuses, and response details without the opaque `and 1 more failures` summary.
+  - Preserve existing joined repository-operation event coverage.
+  - Run `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check`.
+  Resolution:
+  The workflow executor now preserves the complete outer context of ordinary operation errors, including joined prioritized-client attempts, while it continues to split typed repository `OperationError` values for independently coded structured events. Final multi-failure summaries print every formatted failure instead of replacing later failures with a count, and returned causes retain standard `errors.Is`/`errors.As` traversal. The compiled-CLI regression first reproduced the reported proxy sentinel plus hidden OpenAI failure, then proved an LLM Proxy HTTP 503 and direct OpenAI HTTP 429 both retain their connection names, statuses, and response details. `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check` passed on 2026-08-06.
+
 ## Maintenance
 
 - [ ] [M001R] (P2) Backlog hygiene and archive.
