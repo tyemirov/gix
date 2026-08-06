@@ -424,6 +424,10 @@ func TestExecutorLogsAllErrorsFromJoinedOperationFailures(testInstance *testing.
 		RuntimeOptions{SkipRepositoryMetadata: true},
 	)
 	require.Error(testInstance, executionError)
+	require.Len(testInstance, outcome.Failures, 2)
+	require.Contains(testInstance, executionError.Error(), "cannot resolve origin owner metadata")
+	require.Contains(testInstance, executionError.Error(), "rewrite skipped")
+	require.NotContains(testInstance, executionError.Error(), "more failures")
 	eventCounts := outcome.ReporterSummaryData.EventCounts
 	require.Equal(
 		testInstance,
@@ -478,6 +482,27 @@ func TestFormatOperationFailureIncludesOperationName(t *testing.T) {
 	err := errors.New("unable to rename folder")
 	message := formatOperationFailure(nil, err, "repo.folder.rename")
 	require.Equal(t, "repo.folder.rename: unable to rename folder", message)
+}
+
+func TestCollectOperationErrorsPreservesWrappedJoinedContext(t *testing.T) {
+	proxyError := errors.New("proxy unavailable")
+	openAIError := errors.New("openai unavailable")
+	combinedError := fmt.Errorf(
+		"generate commit message: %w",
+		errors.Join(
+			fmt.Errorf("llm_proxy: %w", proxyError),
+			fmt.Errorf("openai: %w", openAIError),
+		),
+	)
+
+	collectedErrors := collectOperationErrors(combinedError)
+
+	require.Equal(t, []error{combinedError}, collectedErrors)
+	require.ErrorIs(t, collectedErrors[0], proxyError)
+	require.ErrorIs(t, collectedErrors[0], openAIError)
+	require.Contains(t, collectedErrors[0].Error(), "generate commit message")
+	require.Contains(t, collectedErrors[0].Error(), "llm_proxy: proxy unavailable")
+	require.Contains(t, collectedErrors[0].Error(), "openai: openai unavailable")
 }
 
 type executorStubRepositoryDiscoverer struct {
