@@ -21,6 +21,7 @@
 - Updated the LLM Proxy Go client from v0.2.21 to v0.2.46, moved Gix's configured proxy work budget to the current per-request timeout header, and raised the Go module floor to 1.25.12 with the dependency graph required by that client.
 
 ### Bug Fixes 🐛
+- Preserved complete ordinary operation errors at the workflow boundary, so exhausted LLM failover reports every connection name, HTTP status, and response detail instead of reducing the result to one sentinel plus an opaque failure count; typed repository-operation failures retain their independently coded structured events.
 - Followed the actual bases of transitively merged pull-request stacks even when every remote branch ref remains, so a branch whose complete review chain reached `master` now receives the standard `master` sync handoff instead of a missing-open-PR rollback; merged records must match the surviving branch's current head OID, so a reused or advanced head opens a new review instead of inheriting historical merged state.
 - Made dirty-cluster commits atomic with respect to normal Git index writers by holding the exact per-worktree index lock through a cancellation-independent ownership recheck, comparing semantic flags and intent-to-add state, and committing only from a private copy of the validated index.
 - Limited strict-sync worktree repair to registered checkouts whose canonical Git target is actually missing, and rejected copied-repository registrations that would otherwise take over a live sibling owned by the original repository.
@@ -59,6 +60,7 @@
 - Kept the syncflow builder description as the canonical text shown by `gix sync --help`.
 
 ### Testing 🧪
+- Added public compiled-CLI coverage for simultaneous LLM Proxy HTTP 503 and direct OpenAI HTTP 429 failures, proving both connections are attempted and both complete contextual errors reach command output.
 - Added compiled-CLI coverage for a three-pull-request merged chain with retained remote refs and no local review-base metadata, a reused child head that must open a new pull request, and focused open-parent precedence, advanced-parent termination, and cycle rejection guardrails.
 - Added compiled-CLI regressions for checkout drift, later-cluster staging, semantic index-flag drift, cancellation during final ownership inspection, and a post-check staging attempt blocked by the real index lock, including exact commit separation and lock cleanup.
 - Added a compiled-CLI regression proving a copied primary repository cannot rewrite a dirty live sibling's valid linkage to the original repository.
