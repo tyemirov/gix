@@ -160,6 +160,8 @@ llm:
 
 Each connection owns its routing data. Direct OpenAI owns its `model`; `llm_proxy` owns the upstream `provider` and `model`. Both connections require a positive, unique `priority`, and the lower number is attempted first. If that request fails, gix tries the next connection and returns the first successful response.
 
+If every configured connection fails, gix reports each attempted connection by name with its complete contextual error, including transport status and response details when the client provides them. Joined failures remain available to programmatic callers through standard Go error traversal.
+
 `llm_proxy.provider` is required. `llm_proxy.model` is optional and uses the selected provider's server-side default when omitted; `openai.model` defaults to `gpt-4.1` when omitted. A connection whose interpolated `credential` is empty is excluded, and at least one connection must have a credential. `--provider` and `--model` override the llm-proxy upstream for one invocation; they do not change connection priority. Endpoints and credentials are configuration-only and have no CLI or late environment-variable-name override.
 
 ## Automate sequences with workflows
