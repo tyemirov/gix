@@ -33,6 +33,8 @@ make deploy
 
 The release manifest intentionally records two revisions: `source_commit` identifies the source used to build the documentation archive, while `release_commit` identifies the release/changelog commit and annotated tag. Pages deployment verifies the public archive marker against `source_commit` and the published tag against `release_commit`; those identities are not interchangeable.
 
+Pages remains configured through GitHub's legacy branch publishing contract at `gh-pages:/`; the repository does not own a Pages Actions workflow. Deployment reconciles that configuration only when it is missing or different, then follows the GitHub Pages build for the exact deployed branch commit. A changed branch or configuration is the build trigger. An unchanged retry reuses a built, queued, or building record and requests one rebuild only when the matching build is absent or terminally errored. Public marker verification begins after that build succeeds, and failures report the Pages build status, error, commit, and URL.
+
 These maintainer targets use the repository-owned helpers under `scripts/release`. They require Bash 4+, Python 3.10+, GNU `timeout`, `rsync`, `tar`, `shasum`, `curl`, and an authenticated GitHub CLI in addition to the normal Go and Git prerequisites.
 
 ## The sync flow
