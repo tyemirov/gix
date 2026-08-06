@@ -118,6 +118,10 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.1.20] - 2026-08-06
+
+- bugfix/B049-preserve-multi-provider-error-context (#406)
+
 ## [v1.1.19] - 2026-08-01
 
 - Merge pull request #405 from tyemirov/bugfix/B048-transitive-merged-stack-handoff
