@@ -16,30 +16,35 @@ import (
 )
 
 const (
-	releaseMakeCommandTimeout           = 30 * time.Second
-	releaseToolDirectoryRelativePath    = "scripts/release"
-	releaseArtifactDirectoryVariable    = "RELEASE_ARTIFACT_DIR"
-	releaseFakeGoLogVariable            = "GIX_RELEASE_FAKE_GO_LOG"
-	releaseFakeGoFailureTargetVariable  = "GIX_RELEASE_FAKE_GO_FAILURE_TARGET"
-	releaseFakeGoMissingTargetVariable  = "GIX_RELEASE_FAKE_GO_MISSING_TARGET"
-	releaseFakeManifestVariable         = "GIX_RELEASE_FAKE_MANIFEST"
-	releaseFakePagesArchiveVariable     = "GIX_RELEASE_FAKE_PAGES_ARCHIVE"
-	releaseFakePagesMarkerVariable      = "GIX_RELEASE_FAKE_PAGES_MARKER"
-	releaseFakeReleaseCommitVariable    = "GIX_RELEASE_FAKE_RELEASE_COMMIT"
-	releaseFakeRemoteVariable           = "GIX_RELEASE_FAKE_REMOTE"
-	releaseRealGitVariable              = "GIX_RELEASE_REAL_GIT"
-	releaseFakeVersionVariable          = "GIX_RELEASE_FIXTURE_VERSION"
-	releaseExpectedFailureTarget        = "linux/arm64"
-	releaseMissingArtifactErrorFragment = "missing release artifact"
-	releaseManifestMismatchFragment     = "published release manifest does not match the locally prepared release"
-	releaseFixtureVersion               = "v9.8.7"
-	releaseFixtureURL                   = "https://pages.example.invalid"
-	releaseFixtureReleaseCommit         = "1111111111111111111111111111111111111111"
-	releaseFixtureSourceCommit          = "2222222222222222222222222222222222222222"
+	releaseMakeCommandTimeout            = 30 * time.Second
+	releaseToolDirectoryRelativePath     = "scripts/release"
+	releaseArtifactDirectoryVariable     = "RELEASE_ARTIFACT_DIR"
+	releaseFakeGoLogVariable             = "GIX_RELEASE_FAKE_GO_LOG"
+	releaseFakeGoFailureTargetVariable   = "GIX_RELEASE_FAKE_GO_FAILURE_TARGET"
+	releaseFakeGoMissingTargetVariable   = "GIX_RELEASE_FAKE_GO_MISSING_TARGET"
+	releaseFakeManifestVariable          = "GIX_RELEASE_FAKE_MANIFEST"
+	releaseFakePagesArchiveVariable      = "GIX_RELEASE_FAKE_PAGES_ARCHIVE"
+	releaseFakePagesMarkerVariable       = "GIX_RELEASE_FAKE_PAGES_MARKER"
+	releaseFakeGHLogVariable             = "GIX_RELEASE_FAKE_GH_LOG"
+	releaseFakePagesBuildCounterVariable = "GIX_RELEASE_FAKE_PAGES_BUILD_COUNTER"
+	releaseFakePagesBuildStatesVariable  = "GIX_RELEASE_FAKE_PAGES_BUILD_STATES"
+	releaseFakePagesConfigStateVariable  = "GIX_RELEASE_FAKE_PAGES_CONFIG_STATE"
+	releaseFakeReleaseCommitVariable     = "GIX_RELEASE_FAKE_RELEASE_COMMIT"
+	releaseFakeRemoteVariable            = "GIX_RELEASE_FAKE_REMOTE"
+	releaseRealGitVariable               = "GIX_RELEASE_REAL_GIT"
+	releaseFakeVersionVariable           = "GIX_RELEASE_FIXTURE_VERSION"
+	releaseExpectedFailureTarget         = "linux/arm64"
+	releaseMissingArtifactErrorFragment  = "missing release artifact"
+	releaseManifestMismatchFragment      = "published release manifest does not match the locally prepared release"
+	releaseFixtureVersion                = "v9.8.7"
+	releaseFixtureURL                    = "https://pages.example.invalid"
+	releaseFixtureReleaseCommit          = "1111111111111111111111111111111111111111"
+	releaseFixtureSourceCommit           = "2222222222222222222222222222222222222222"
 )
 
 var releaseDeployRequiredCommands = []string{
 	"awk",
+	"cat",
 	"cp",
 	"curl",
 	"find",
@@ -247,21 +252,25 @@ func TestPagesReleasePreservesDistinctCommitRolesAndNoJekyll(testInstance *testi
 	require.NoError(testInstance, realGitError)
 	publicMarkerPath := filepath.Join(testInstance.TempDir(), ".mprlab-release.json")
 	writeReleaseFixtureFile(testInstance, publicMarkerPath, string(markerContents))
+	ghLogPath := filepath.Join(testInstance.TempDir(), "gh-api.log")
+	buildCounterPath := filepath.Join(testInstance.TempDir(), "pages-build-counter")
 	deployPath := buildReleaseStubbedExecutablePath(testInstance, map[string]string{
 		"curl": releaseFakeCurlScript,
-		"gh":   releaseFakeGHDownloadScript,
+		"gh":   releaseFakeGHPagesScript,
 		"git":  releaseFakeGitDeployScript,
 	})
 	deployEnvironment := map[string]string{
-		releaseFakeManifestVariable:      preparedManifestPath,
-		releaseFakePagesArchiveVariable:  archivePath,
-		releaseFakePagesMarkerVariable:   publicMarkerPath,
-		releaseFakeReleaseCommitVariable: releaseFixtureReleaseCommit,
-		releaseFakeRemoteVariable:        remoteDirectory,
-		releaseRealGitVariable:           realGitPath,
-		releaseFakeVersionVariable:       releaseFixtureVersion,
-		"PAGES_VERIFY_ATTEMPTS":          "1",
-		"PAGES_VERIFY_DELAY_SECONDS":     "0",
+		releaseFakeManifestVariable:          preparedManifestPath,
+		releaseFakePagesArchiveVariable:      archivePath,
+		releaseFakePagesMarkerVariable:       publicMarkerPath,
+		releaseFakeGHLogVariable:             ghLogPath,
+		releaseFakePagesBuildCounterVariable: buildCounterPath,
+		releaseFakeReleaseCommitVariable:     releaseFixtureReleaseCommit,
+		releaseFakeRemoteVariable:            remoteDirectory,
+		releaseRealGitVariable:               realGitPath,
+		releaseFakeVersionVariable:           releaseFixtureVersion,
+		"PAGES_VERIFY_ATTEMPTS":              "1",
+		"PAGES_VERIFY_DELAY_SECONDS":         "0",
 	}
 	deployOutput, deployError := runReleaseDeployScript(
 		testInstance,
@@ -270,11 +279,17 @@ func TestPagesReleasePreservesDistinctCommitRolesAndNoJekyll(testInstance *testi
 		integrationCommandOptions{PathVariable: deployPath, EnvironmentOverrides: deployEnvironment},
 		"--version", releaseFixtureVersion,
 		"--url", releaseFixtureURL,
-		"--skip-configure",
 	)
 	require.NoError(testInstance, deployError, deployOutput)
 	require.Contains(testInstance, deployOutput, "Verified "+releaseFixtureURL+" at source "+releaseFixtureSourceCommit+".")
 	require.NotContains(testInstance, deployOutput, "at source "+releaseFixtureReleaseCommit+".")
+	ghLogContents, ghLogReadError := os.ReadFile(ghLogPath)
+	require.NoError(testInstance, ghLogReadError)
+	require.Equal(
+		testInstance,
+		"GET repos/{owner}/{repo}/pages\nGET repos/{owner}/{repo}/pages/builds?per_page=100\n",
+		string(ghLogContents),
+	)
 
 	deployedNoJekyllCommand := exec.Command(realGitPath, "--git-dir", remoteDirectory, "cat-file", "-e", "refs/heads/gh-pages:.nojekyll")
 	deployedNoJekyllOutput, deployedNoJekyllError := deployedNoJekyllCommand.CombinedOutput()
@@ -344,6 +359,263 @@ func TestPagesDeployPreflightsIntegrityDependencies(testInstance *testing.T) {
 			require.Contains(t, outputText, "error: "+missingCommand+" is required")
 		})
 	}
+}
+
+func TestPagesDeployReconcilesExistingBuildState(testInstance *testing.T) {
+	testCases := []struct {
+		name             string
+		buildStates      string
+		publicMarker     string
+		expectError      bool
+		expectBuildPosts int
+		expectedOutput   string
+	}{
+		{
+			name:             "completed-build-is-accepted",
+			buildStates:      "built",
+			publicMarker:     releasePagesMarkerFixture,
+			expectBuildPosts: 0,
+			expectedOutput:   "Verified " + releaseFixtureURL,
+		},
+		{
+			name:             "queued-build-completes",
+			buildStates:      "queued,built",
+			publicMarker:     releasePagesMarkerFixture,
+			expectBuildPosts: 0,
+			expectedOutput:   "Reusing active GitHub Pages build",
+		},
+		{
+			name:             "active-build-completes",
+			buildStates:      "building,built",
+			publicMarker:     releasePagesMarkerFixture,
+			expectBuildPosts: 0,
+			expectedOutput:   "Reusing active GitHub Pages build",
+		},
+		{
+			name:             "missing-build-retry-completes",
+			buildStates:      "missing,built",
+			publicMarker:     releasePagesMarkerFixture,
+			expectBuildPosts: 1,
+			expectedOutput:   "Requested one GitHub Pages rebuild",
+		},
+		{
+			name:             "terminal-build-retry-fails",
+			buildStates:      "errored,errored",
+			publicMarker:     `{}`,
+			expectError:      true,
+			expectBuildPosts: 1,
+			expectedOutput:   "GitHub Pages build failed for commit",
+		},
+	}
+
+	for _, testCase := range testCases {
+		testInstance.Run(testCase.name, func(t *testing.T) {
+			fixture := newReleasePagesDeployFixture(t)
+			fixture.seedRemote(t)
+			writeReleaseFixtureFile(t, fixture.publicMarkerPath, testCase.publicMarker)
+
+			outputText, runError := fixture.deploy(
+				t,
+				releaseFakeGHPagesScript,
+				map[string]string{
+					releaseFakePagesBuildStatesVariable: testCase.buildStates,
+					"PAGES_VERIFY_ATTEMPTS":             "2",
+					"PAGES_VERIFY_DELAY_SECONDS":        "0",
+				},
+				"--version", releaseFixtureVersion,
+				"--url", releaseFixtureURL,
+			)
+			if testCase.expectError {
+				require.Error(t, runError, outputText)
+			} else {
+				require.NoError(t, runError, outputText)
+			}
+			require.Contains(t, outputText, testCase.expectedOutput)
+
+			ghLogContents, ghLogReadError := os.ReadFile(fixture.ghLogPath)
+			require.NoError(t, ghLogReadError)
+			ghLog := string(ghLogContents)
+			require.NotContains(t, ghLog, "PUT repos/{owner}/{repo}/pages")
+			require.Equal(t, testCase.expectBuildPosts, strings.Count(ghLog, "POST repos/{owner}/{repo}/pages/builds"))
+		})
+	}
+}
+
+func TestPagesDeployReconcilesLegacyConfigurationWithoutDuplicateBuildRequest(testInstance *testing.T) {
+	testCases := []struct {
+		name               string
+		configurationState string
+		expectError        bool
+		expectedMutation   string
+		expectedOutput     string
+	}{
+		{
+			name:               "missing-configuration",
+			configurationState: "missing",
+			expectedMutation:   "POST repos/{owner}/{repo}/pages",
+			expectedOutput:     "Created GitHub Pages legacy source",
+		},
+		{
+			name:               "drifted-configuration",
+			configurationState: "drift",
+			expectedMutation:   "PUT repos/{owner}/{repo}/pages",
+			expectedOutput:     "Updated GitHub Pages legacy source",
+		},
+		{
+			name:               "configuration-api-unavailable",
+			configurationState: "unavailable",
+			expectError:        true,
+			expectedOutput:     "failed to inspect GitHub Pages configuration",
+		},
+	}
+
+	for _, testCase := range testCases {
+		testInstance.Run(testCase.name, func(t *testing.T) {
+			fixture := newReleasePagesDeployFixture(t)
+			writeReleaseFixtureFile(t, fixture.publicMarkerPath, releasePagesMarkerFixture)
+			outputText, runError := fixture.deploy(
+				t,
+				releaseFakeGHPagesScript,
+				map[string]string{
+					releaseFakePagesConfigStateVariable: testCase.configurationState,
+					"PAGES_VERIFY_ATTEMPTS":             "1",
+					"PAGES_VERIFY_DELAY_SECONDS":        "0",
+				},
+				"--version", releaseFixtureVersion,
+				"--url", releaseFixtureURL,
+			)
+			if testCase.expectError {
+				require.Error(t, runError, outputText)
+			} else {
+				require.NoError(t, runError, outputText)
+			}
+			require.Contains(t, outputText, testCase.expectedOutput)
+
+			ghLogContents, ghLogReadError := os.ReadFile(fixture.ghLogPath)
+			require.NoError(t, ghLogReadError)
+			ghLog := string(ghLogContents)
+			if testCase.expectedMutation == "" {
+				require.NotContains(t, ghLog, "PUT repos/{owner}/{repo}/pages")
+				require.NotContains(t, ghLog, "POST repos/{owner}/{repo}/pages\n")
+			} else {
+				require.Equal(t, 1, strings.Count(ghLog, testCase.expectedMutation))
+			}
+			require.NotContains(t, ghLog, "POST repos/{owner}/{repo}/pages/builds")
+		})
+	}
+}
+
+type releasePagesDeployFixture struct {
+	repositoryRoot       string
+	fixtureRepository    string
+	preparedManifestPath string
+	archivePath          string
+	publicMarkerPath     string
+	remoteDirectory      string
+	realGitPath          string
+	ghLogPath            string
+	buildCounterPath     string
+}
+
+func newReleasePagesDeployFixture(testInstance *testing.T) releasePagesDeployFixture {
+	testInstance.Helper()
+	repositoryRoot := releaseRepositoryRoot(testInstance)
+	fixtureRepository := createGitRepository(testInstance, gitRepositoryOptions{InitialBranch: "master"})
+	artifactDirectory := filepath.Join(testInstance.TempDir(), "artifact")
+	writeReleaseFixtureFile(testInstance, filepath.Join(artifactDirectory, "staging.json"), releaseStagingManifestFixture)
+	siteDirectory := filepath.Join(testInstance.TempDir(), "site")
+	writeReleaseFixtureFile(testInstance, filepath.Join(siteDirectory, "index.html"), "<!doctype html><title>Fixture</title>\n")
+
+	preparePath := buildReleaseStubbedExecutablePath(testInstance, map[string]string{"rsync": releaseFakeRsyncScript})
+	prepareOutput, prepareError := runReleasePrepareScript(
+		testInstance,
+		repositoryRoot,
+		fixtureRepository,
+		integrationCommandOptions{
+			PathVariable: preparePath,
+			EnvironmentOverrides: map[string]string{
+				releaseArtifactDirectoryVariable: artifactDirectory,
+				"RELEASE_VERSION":                releaseFixtureVersion,
+			},
+		},
+		"--source", siteDirectory,
+	)
+	require.NoError(testInstance, prepareError, prepareOutput)
+
+	archivePath := filepath.Join(artifactDirectory, "payloads", "release-assets", "pages.tar.gz")
+	archiveContents, archiveReadError := os.ReadFile(archivePath)
+	require.NoError(testInstance, archiveReadError)
+	archiveHash := fmt.Sprintf("%x", sha256.Sum256(archiveContents))
+	preparedManifest := strings.Replace(releasePreparedManifestFixture, releasePreparedPagesHash, archiveHash, 1)
+	preparedManifestPath := filepath.Join(fixtureRepository, ".git", "mprlab-release", "manifest.json")
+	writeReleaseFixtureFile(testInstance, preparedManifestPath, preparedManifest)
+
+	remoteDirectory := filepath.Join(testInstance.TempDir(), "remote.git")
+	initRemoteCommand := exec.Command("git", "init", "--bare", remoteDirectory)
+	initRemoteOutput, initRemoteError := initRemoteCommand.CombinedOutput()
+	require.NoError(testInstance, initRemoteError, string(initRemoteOutput))
+	realGitPath, realGitError := exec.LookPath("git")
+	require.NoError(testInstance, realGitError)
+
+	return releasePagesDeployFixture{
+		repositoryRoot:       repositoryRoot,
+		fixtureRepository:    fixtureRepository,
+		preparedManifestPath: preparedManifestPath,
+		archivePath:          archivePath,
+		publicMarkerPath:     filepath.Join(testInstance.TempDir(), ".mprlab-release.json"),
+		remoteDirectory:      remoteDirectory,
+		realGitPath:          realGitPath,
+		ghLogPath:            filepath.Join(testInstance.TempDir(), "gh-api.log"),
+		buildCounterPath:     filepath.Join(testInstance.TempDir(), "pages-build-counter"),
+	}
+}
+
+func (fixture releasePagesDeployFixture) seedRemote(testInstance *testing.T) {
+	testInstance.Helper()
+	outputText, runError := fixture.deploy(
+		testInstance,
+		releaseFakeGHDownloadScript,
+		nil,
+		"--version", releaseFixtureVersion,
+		"--skip-configure",
+		"--skip-verify",
+	)
+	require.NoError(testInstance, runError, outputText)
+}
+
+func (fixture releasePagesDeployFixture) deploy(
+	testInstance *testing.T,
+	ghScript string,
+	environmentOverrides map[string]string,
+	arguments ...string,
+) (string, error) {
+	testInstance.Helper()
+	deployPath := buildReleaseStubbedExecutablePath(testInstance, map[string]string{
+		"curl": releaseFakeCurlScript,
+		"gh":   ghScript,
+		"git":  releaseFakeGitDeployScript,
+	})
+	environment := map[string]string{
+		releaseFakeManifestVariable:          fixture.preparedManifestPath,
+		releaseFakePagesArchiveVariable:      fixture.archivePath,
+		releaseFakePagesMarkerVariable:       fixture.publicMarkerPath,
+		releaseFakeGHLogVariable:             fixture.ghLogPath,
+		releaseFakePagesBuildCounterVariable: fixture.buildCounterPath,
+		releaseFakeReleaseCommitVariable:     releaseFixtureReleaseCommit,
+		releaseFakeRemoteVariable:            fixture.remoteDirectory,
+		releaseRealGitVariable:               fixture.realGitPath,
+		releaseFakeVersionVariable:           releaseFixtureVersion,
+	}
+	for key, value := range environmentOverrides {
+		environment[key] = value
+	}
+	return runReleaseDeployScript(
+		testInstance,
+		fixture.repositoryRoot,
+		fixture.fixtureRepository,
+		integrationCommandOptions{PathVariable: deployPath, EnvironmentOverrides: environment},
+		arguments...,
+	)
 }
 
 func releaseRepositoryRoot(testInstance *testing.T) string {
@@ -518,6 +790,95 @@ done
 cp "${GIX_RELEASE_FAKE_MANIFEST}" "${download_directory}/manifest.json"
 cp "${GIX_RELEASE_FAKE_PAGES_ARCHIVE}" "${download_directory}/pages.tar.gz"
 `
+	releaseFakeGHPagesScript = `#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${1:-}" == "release" && "${2:-}" == "download" ]]; then
+  shift 2
+  download_directory=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --dir) download_directory="$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  [[ -n "${download_directory}" ]] || { echo "missing download directory" >&2; exit 42; }
+  cp "${GIX_RELEASE_FAKE_MANIFEST}" "${download_directory}/manifest.json"
+  cp "${GIX_RELEASE_FAKE_PAGES_ARCHIVE}" "${download_directory}/pages.tar.gz"
+  exit 0
+fi
+
+[[ "${1:-}" == "api" ]] || { echo "unexpected gh invocation: $*" >&2; exit 41; }
+shift
+method="GET"
+endpoint=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --method) method="$2"; shift 2 ;;
+    -f|-F) shift 2 ;;
+    -*) shift ;;
+    *)
+      if [[ -z "${endpoint}" ]]; then endpoint="$1"; fi
+      shift
+      ;;
+  esac
+done
+printf '%s %s\n' "${method}" "${endpoint}" >>"${GIX_RELEASE_FAKE_GH_LOG}"
+
+case "${method} ${endpoint}" in
+  "GET repos/{owner}/{repo}/pages")
+    case "${GIX_RELEASE_FAKE_PAGES_CONFIG_STATE:-current}" in
+      current)
+        printf '%s\n' '{"build_type":"legacy","https_enforced":true,"source":{"branch":"gh-pages","path":"/"}}'
+        ;;
+      drift)
+        printf '%s\n' '{"build_type":"workflow","https_enforced":false,"source":{"branch":"master","path":"/docs"}}'
+        ;;
+      missing)
+        echo 'gh: Not Found (HTTP 404)' >&2
+        exit 1
+        ;;
+      unavailable)
+        echo 'gh: Service Unavailable (HTTP 503)' >&2
+        exit 1
+        ;;
+      *)
+        echo "unexpected Pages configuration fixture state" >&2
+        exit 44
+        ;;
+    esac
+    ;;
+  "GET repos/{owner}/{repo}/pages/builds?per_page=100")
+    pages_commit="$("${GIX_RELEASE_REAL_GIT}" --git-dir "${GIX_RELEASE_FAKE_REMOTE}" rev-parse refs/heads/gh-pages)"
+    build_counter=0
+    if [[ -f "${GIX_RELEASE_FAKE_PAGES_BUILD_COUNTER}" ]]; then
+      build_counter="$(<"${GIX_RELEASE_FAKE_PAGES_BUILD_COUNTER}")"
+    fi
+    build_counter=$((build_counter + 1))
+    printf '%s\n' "${build_counter}" >"${GIX_RELEASE_FAKE_PAGES_BUILD_COUNTER}"
+    IFS=',' read -r -a build_states <<<"${GIX_RELEASE_FAKE_PAGES_BUILD_STATES:-built}"
+    build_state_index=$((build_counter - 1))
+    if (( build_state_index >= ${#build_states[@]} )); then
+      build_state_index=$((${#build_states[@]} - 1))
+    fi
+    build_state="${build_states[${build_state_index}]}"
+    if [[ "${build_state}" == "missing" ]]; then
+      printf '%s\n' '[]'
+    elif [[ "${build_state}" == "errored" ]]; then
+      printf '[{"commit":"%s","status":"errored","error":{"message":"fixture Pages failure"},"url":"https://api.example.invalid/pages/builds/%s"}]\n' "${pages_commit}" "${build_counter}"
+    else
+      printf '[{"commit":"%s","status":"%s","url":"https://api.example.invalid/pages/builds/%s"}]\n' "${pages_commit}" "${build_state}" "${build_counter}"
+    fi
+    ;;
+  "PUT repos/{owner}/{repo}/pages"|"POST repos/{owner}/{repo}/pages"|"POST repos/{owner}/{repo}/pages/builds")
+    printf '%s\n' '{}'
+    ;;
+  *)
+    echo "unexpected gh api invocation: ${method} ${endpoint}" >&2
+    exit 43
+    ;;
+esac
+`
 	releaseFakeRsyncScript = `#!/bin/sh
 set -eu
 while [ "$#" -gt 2 ]; do shift; done
@@ -544,6 +905,13 @@ exec "${GIX_RELEASE_REAL_GIT}" "$@"
   "release_timestamp": "2026-07-09T12:00:00-07:00",
   "source_commit": "2222222222222222222222222222222222222222",
   "version": "v9.8.7"
+}
+`
+	releasePagesMarkerFixture = `{
+  "release_timestamp": "2026-07-09T12:00:00-07:00",
+  "release_version": "v9.8.7",
+  "schema_version": 1,
+  "source_commit": "2222222222222222222222222222222222222222"
 }
 `
 )
