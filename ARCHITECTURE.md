@@ -33,6 +33,12 @@ Workflow orchestration (`internal/workflow`) now splits planning, runner orchest
 
 CLI builders run their workflows through `pkg/taskrunner`, which adapts the outcome: commands other than `gix workflow` drop the metrics, while the `workflow` command prints a stage-by-stage summary (duration and operation list) after the reporter writes its structured log. The summary data now also includes per-step outcome counts derived from `WORKFLOW_STEP_SUMMARY` events.
 
+## Release And Pages Deployment
+
+The repository-owned release lifecycle separates local sealing, remote publication, and Pages activation. `scripts/release/prepare_release.sh` records immutable source and release commits plus payload hashes under `.git/mprlab-release`; `publish_release.sh` publishes those exact refs and assets; `deploy_pages_artifact.sh` downloads and revalidates the published manifest and Pages archive before touching `gh-pages`.
+
+Pages uses GitHub's legacy branch source at `gh-pages:/` with `.nojekyll`, not a repository-owned Pages workflow. The deploy helper reconciles the current Pages configuration instead of rewriting it on every invocation. It then selects GitHub's Pages build for the exact deployed branch commit: a branch/configuration mutation owns the trigger, a matching queued, building, or built record is reused, and an unchanged retry requests one rebuild only for a missing or errored record. A built record gates public-marker validation; active, missing, and terminal outcomes retain their native build status, error, commit, and URL.
+
 ## Strict-Sync Conflict Resolution
 
 `internal/branches/syncflow/merge_conflict_resolution.go` owns the operation-scoped merge transaction after Git reports unmerged paths. Marker-bearing files are first rendered through Git's diff3 conflict form, then parsed into ordered non-conflicting regions and explicit BASE/OURS/THEIRS conflict regions. Non-conflicting bytes remain local throughout resolution.
