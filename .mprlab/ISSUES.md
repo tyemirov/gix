@@ -332,6 +332,24 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Resolution:
   The workflow executor now preserves the complete outer context of ordinary operation errors, including joined prioritized-client attempts, while it continues to split typed repository `OperationError` values for independently coded structured events. Final multi-failure summaries print every formatted failure instead of replacing later failures with a count, and returned causes retain standard `errors.Is`/`errors.As` traversal. The compiled-CLI regression first reproduced the reported proxy sentinel plus hidden OpenAI failure, then proved an LLM Proxy HTTP 503 and direct OpenAI HTTP 429 both retain their connection names, statuses, and response details. `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check` passed on 2026-08-06.
 
+- [x] [B050] (P1) Reconcile legacy GitHub Pages deployment state without duplicate builds.
+  Reported on 2026-08-06 after `make deploy` pushed the v1.1.20 Pages branch, triggered two GitHub-generated `pages-build-deployment` runs, and then reduced a queued build during a GitHub Pages outage to a stale-marker timeout.
+  Observation:
+  - The deploy helper unconditionally updates an already-correct legacy Pages configuration and then explicitly requests another build, so one invocation creates competing builds for the same `gh-pages` commit.
+  - Retries ignore existing Pages build state and can enqueue another build instead of reusing an active or completed build.
+  - Verification polls only the public marker, so terminal build failures and queued/building state lose their native status, error, commit, and build URL.
+  Requirements:
+  - Keep the canonical legacy `gh-pages:/` publishing source and `.nojekyll` artifact contract; do not add a repository-owned Pages workflow.
+  - Read and validate the current Pages configuration, mutate it only when missing or different, and distinguish a confirmed HTTP 404 from other GitHub API failures.
+  - Treat a changed Pages branch or changed Pages configuration as the invocation's build trigger. Reuse a matching built, queued, or building record, and request exactly one rebuild only when an unchanged retry finds no build or a terminally errored build for the exact deployed branch commit.
+  - Verify the exact Pages build before checking the public release marker. Preserve bounded polling while reporting the build status, native error, commit, and URL on failure.
+  Validation:
+  - Add public release-script coverage for a changed branch with current configuration, missing and drifted configuration, unavailable configuration API, an active build that completes, and a terminal build whose single retry fails.
+  - Prove current configuration causes no PUT, changed branch/configuration causes no redundant build POST, completed and active builds are reused, and a terminal unchanged build receives exactly one rebuild request.
+  - Run `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check`.
+  Resolution:
+  The Pages deploy helper now treats branch and configuration mutations as the legacy Pages build trigger, preserves an already-canonical `gh-pages:/` configuration, and fails closed when configuration inspection fails for any reason other than a confirmed HTTP 404. On unchanged retries it selects the exact deployed branch commit, accepts built builds, reuses queued or building builds, and requests exactly one rebuild for a missing or errored build. Verification now waits for that build before probing the public marker and reports native status, error, commit, and URL context. Public release-script regressions cover the configuration and build-state matrix, including the queued state returned by GitHub's build API. `make format`, `make test`, `make lint`, `make ci`, `make build`, `bash -n scripts/release/deploy_pages_artifact.sh`, and `git diff --check` passed on 2026-08-06.
+
 ## Maintenance
 
 - [ ] [M001R] (P2) Backlog hygiene and archive.
