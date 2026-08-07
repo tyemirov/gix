@@ -346,7 +346,18 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check`.
   Resolution:
   Release preparation now detects a single exact version tag before version selection or CI and reconciles that immutable release instead of selecting a successor. A complete matching local receipt is reused without GitHub access; a missing or partial receipt is rebuilt from the published GitHub Release only after the release object, remote annotated tag, manifest identity, changelog-only release commit, source parent, notes, asset inventory, payload paths, sizes, and hashes verify. New releases prepare in a sibling candidate directory and promote only a complete verified receipt, so every earlier preparation failure leaves the canonical receipt unchanged. A failure after release commit or tag creation atomically restores the transaction-owned refs and `CHANGELOG.md` to the prepared source. Conflicting local or published state fails closed with contextual errors. Public release-script regressions cover local reuse, staged and partial recovery, malformed and conflicting receipts, candidate failure, and post-tag sealing rollback. `make format`, `make test`, `make lint`, `make ci`, `make build`, shell and Python syntax checks, and `git diff --check` passed on 2026-08-06.
-- [ ] [B052] (P0) 11:06:17 tyemirov@Fast-MBP:~/Development/ISSUES.md - [master] $ gix sync -- repo: MarcoPoloResearchLab/ISSUES.md ---------------------------------------- 11:07:09 ERROR SYNC_SWITCH_ROLLBACK failed sync restored the starting checkout, local state, and adopted worktree topology; gix did not leave the target branch active task.action.branch.sync action failed: strict sync pull request description.llm: all llm connections failed: llm_proxy: send llm proxy request: llm_proxy_client_http_failure: post request: Post "https://llm-proxy-api.mprlab.com/v2?format=text%2Fplain&key=llmp_d199a55756d4c5709b37ae13c905444589102ceca9e838855931cefc891f13cb&provider=meta": remote error: tls: internal error openai: llm chat failed after 3 attempts: llm returned empty response 11:07:09 tyemirov@Fast-MBP:~/Development/ISSUES.md - [master].
+- [ ] [B052] (P0) Handle LLM proxy failures during gix sync PR description generation.
+  Goal:
+  Make `gix sync` handle pull request description LLM failures gracefully so a sync failure is clear, actionable, and does not leave the repository in an unexpected checkout or worktree state.
+  
+  Requirements:
+  Preserve the existing rollback behavior that restores the starting checkout, local state, and adopted worktree topology when strict sync cannot complete. Do not leave the target branch active after rollback. Surface the underlying LLM/proxy failures without exposing sensitive credentials or full API keys in user-facing output. Keep behavior compatible with strict sync semantics.
+  
+  Deliverables:
+  A code change that improves handling and reporting for `strict sync pull request description.llm` failures when all LLM providers or proxy calls fail. Sanitized error output for LLM proxy URLs/keys. Any necessary tests or fixtures covering LLM empty responses, proxy HTTP/TLS failures, and rollback after PR description generation failure. Documentation or help text updates if user-facing sync failure guidance changes.
+  
+  Validation:
+  Run the relevant sync and PR-description-generation tests. Reproduce or simulate an LLM proxy failure and confirm `gix sync` fails with a sanitized, actionable message while restoring the original checkout, local state, and worktree topology. Confirm logs do not include full LLM proxy keys or other secrets.
 
 
 ## Improvements
