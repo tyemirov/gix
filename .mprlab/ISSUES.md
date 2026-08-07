@@ -14,16 +14,12 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 - [ ] [B020] (P0) Investigate missing GitHub PR for branch after gix sync operation.
   Goal:
   Determine why `gh pr view -w` reports no pull requests for branch `gix/publish-seo-resource-hub-45-resource-pages-sitemap-and` in the SummerCan repo and ensure the correct PR exists or can be created without confusion.
-
   Requirements:
   Do not force-push, delete, or rename the `gix/publish-seo-resource-hub-45-resource-pages-sitemap-and` branch without confirmation from the code owner. Preserve all existing commits on this branch. Use only standard git and GitHub CLI operations available to the team. Keep changes scoped to resolving the PR visibility/association issue for this specific branch and repository.
-
   Deliverables:
   Diagnosis summary explaining why `gh pr view` cannot find a PR for `gix/publish-seo-resource-hub-45-resource-pages-sitemap-and` (for example, branch not pushed, PR created from a different fork, or PR closed). Clear instructions or executed steps to either associate the existing branch with its correct PR or create a new PR targeting the intended base branch. Updated internal notes or docs (if applicable) describing how to troubleshoot similar `gh pr view` no-pull-requests-found scenarios for feature branches.
-
   Validation:
   From the `gix/publish-seo-resource-hub-45-resource-pages-sitemap-and` branch, running `gh pr view` without extra flags returns the expected PR details instead of `no pull requests found`. The GitHub web UI shows an open or intentionally closed/merged PR that clearly references this branch as the head, with the correct base branch. The developer who reported the issue can follow the documented steps to reproduce the prior failure state and confirm it is explained and resolved or no longer reproducible.
-
 - [x] [B032] (P1) Fit the terminal audit report to the active terminal width.
   Reported on 2026-07-24.
   Observation:
@@ -42,7 +38,6 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make format`, `make test`, `make lint`, `make ci`, and `git diff --check`.
   Resolution:
   The table renderer now reads stdout's terminal size, uses `COLUMNS` when captured output has no size query, keeps a bounded horizontal grid where practical, and switches to a field/value layout below that threshold. CSV and HTML remain full-value exports. Public CLI coverage verifies compact and truncated horizontal layouts with display-width bounds and Unicode ellipses. `make format`, `make lint`, `make test`, and `make ci` passed on 2026-07-24.
-
 - [x] [B033] (P1) Preserve audit table width handling in workflows.
   Reported on 2026-07-24.
   Observation:
@@ -58,7 +53,6 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make ci` and `git diff --check`.
   Resolution:
   The flushing writer now exposes its underlying output for terminal-width detection, while retaining its flushing behavior. The workflow audit integration scenario verifies ellipsis and display-width bounds at 40 columns. README operator guidance now states that stdout workflow audit tables use the responsive renderer. `make ci` passed on 2026-07-24.
-
 - [x] [B034] (P2) {M015} Reject fractional LLM Proxy request timeouts before conversion.
   Found on 2026-07-25 during review of the LLM Proxy client upgrade.
   Observation:
@@ -71,7 +65,6 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make format`, `make test`, `make lint`, `make ci`, and `git diff --check`.
   Resolution:
   Workflow LLM configuration now rejects fractional `timeout_seconds` before constructing a client, while omitted and zero values retain the default-timeout path. Regression coverage verifies both sub-second and larger fractional values. `make format`, `make test`, `make lint`, and `make ci` passed on 2026-07-25.
-
 - [x] [B035] (P1) Remove adopted sibling worktrees with read-only generated caches.
   Found on 2026-07-27 while `gix sync tyemirov/B096-sqlite-execution-engine` adopted a linked B096 worktree.
   Observation:
@@ -85,7 +78,6 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make format`, `make test`, `make lint`, `make ci`, and `git diff --check`.
   Resolution:
   Gix now prepares the validated non-main sibling worktree with a non-symlink directory walk that adds only owner write and execute bits before `git worktree remove`; files and symlink targets remain untouched. The public CLI regression creates a read-only ignored Go-style cache, confirms full sibling removal, and confirms the requested branch becomes active. `make format`, `make test`, `make lint`, `make ci`, and `git diff --check` passed on 2026-07-27.
-
 - [x] [B036] (P0) Preserve dirty tracked files that match ignore rules during sync.
   Reported on 2026-07-27 after plain `gix sync` removed a valid edit to tracked `configs/.env.hecateapi.example` before rejecting an empty local branch.
   Observation:
@@ -101,7 +93,6 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make format`, `make test`, `make lint`, `make ci`, and `git diff --check`.
   Resolution:
   Sync now derives tracked and untracked path sets directly from Git's status entries. Exact tracked paths use force staging so matching ignore rules cannot block their modifications, deletions, renames, or staged additions; untracked paths retain normal ignore-respecting staging. The cached-ignore inspection and tracked-path restore code were removed. Public CLI coverage reproduces the reported empty local branch with dirty `configs/.env.hecateapi.example`, verifies its contents are committed and pushed into a new pull request, and retains ignored-untracked exclusion coverage. `make format`, `make test`, `make lint`, and `make ci` passed on 2026-07-27.
-
 - [x] [B038] (P0) Roll back rejected sync merges before returning control.
   Reported on 2026-07-28 after a clean `gix sync tyemirov/bugfix/B184-catalog-tile-final-font-fit` attempted to merge its open pull request base, rejected a lossy AI resolution, and left the PoodleScanner worktree with two unmerged paths and the base branch changes staged.
   Observation:
@@ -134,7 +125,6 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make format`, `make test`, `make lint`, `make ci`, and `git diff --check`.
   Resolution:
   Live inventory now carries the exact default-branch commit used for root license-blob inspection. Apply fetches that SHA, resets the sparse clone to it, and removes the local default branch's moving upstream before Gix runs. Focused licensing coverage passes with a real branch-advance regression.
-
 - [x] [B040] (P2) Validate existing license rollout pull requests before skipping them.
   Reported on 2026-07-28 during review of F011.
   Observation:
@@ -148,7 +138,6 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make format`, `make test`, `make lint`, `make ci`, `make license-rollout-plan`, and `git diff --check`.
   Resolution:
   Existing and newly created rollout pull requests now pass the same immutable base, single-commit history, exact changed-path/blob, canonical root-bundle, and final snapshot validation before their URLs count as prepared. Focused licensing coverage exercises every rejection boundary. `make format`, `make test`, `make lint`, `make ci`, `make license-rollout-plan`, and `git diff --check` passed on 2026-07-28; the live plan reverified 103 repositories, 97 eligible rollouts, and six review holds without mutation.
-
 - [x] [B041] (P0) Resolve AI merge conflicts by semantic region instead of full-file reproduction.
   Reported on 2026-07-28 after `gix sync bugfix/B038-rollback-failed-ai-merge` encountered additive conflicts in `.mprlab/ISSUES.md` and `CHANGELOG.md`, received an AI response, and rejected it for not preserving non-conflicting content.
   Observation:
@@ -178,7 +167,6 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Minimizing LLM calls is not an objective. In many two-sided conflicts, semantic resolution is best delegated to the model. Deterministic reconstruction must protect exact content and provide high-fidelity candidates, while the LLM remains the semantic decision-maker and rollback remains the lowest-priority recovery strategy.
   Resolution:
   Strict sync now reconstructs untouched file bytes locally and directly accepts only identical, unilateral, and marker-free current-stage decisions. Every marker-bearing region changed by both sides enters semantic LLM review. Concurrent insertions and compatible token edits provide lossless local candidates for the auditor; genuinely overlapping regions start with model generation. The model may approve or correct a candidate, but additive and replacement-intent validation prevents either side from disappearing, and exact rejection feedback drives up to four repair/audit attempts with the complete configured provider order available to each attempt. Git's cached-diff check gates the merge commit, and rollback remains final recovery after semantic strategy exhaustion, cancellation, or unrecoverable local failure. Public CLI coverage proves the reported large issue/changelog case performs exactly two region-only audits without exposing either stable file tail, preserves every entry exactly once, pushes the merge commit, and leaves a clean worktree. Repair, exhaustion, timeout, cancellation, marker-free deletion, index validation, and rollback-failure coverage are green. `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check` passed on 2026-07-29.
-
 - [x] [B042] (P0) Restore the starting checkout when an explicit target sync fails.
   Reported on 2026-07-29 after `gix sync bugfix/B038-rollback-failed-ai-merge` ran from B041, adopted and removed B038's linked worktree, switched the current checkout to B038, and then failed during conflict resolution.
   Observation:
@@ -196,7 +184,6 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check`.
   Resolution:
   Strict sync now snapshots the caller checkout and valid registered worktrees before target switching or sibling adoption. When any later step fails, cancellation-independent bounded cleanup restores the starting named branch or detached commit, then reattaches a detached main worktree or recreates removed linked worktrees at their original paths before restoring a caller stash. The original sync failure remains primary; successful cleanup emits `SYNC_SWITCH_ROLLBACK`, while cleanup failure retains both errors and emits `SYNC_SWITCH_HANDOFF`. Successful explicit-target sync still leaves the target active. Public CLI coverage exhausts semantic resolution after adopting a linked target, then proves the exact source checkout and clean target sibling are restored with no `MERGE_HEAD` or push; a focused guardrail covers filesystem-identical path aliases. The branch was verified against exact `origin/master` commit `b1357e4567b18fd65c5d68e01b72f1303f893176`. `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check` passed on 2026-07-29.
-
 - [x] [B043] (P0) Reject sync while an operator-owned revert is active.
   Reported on 2026-07-29 after plain `gix sync` ran on `bugfix/B095-app-owned-deploy-bundle` with a resolved but unfinished `git revert` and failed when it tried to switch to the already-active branch.
   Observation:
@@ -216,7 +203,6 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Review follow-up:
   The first preflight resolved the ambiguous revision name `REVERT_HEAD` only in the caller worktree. That falsely rejected an ordinary branch or tag with the same name and missed a per-worktree revert in a sibling that strict sync could adopt, commit, push, and remove. The final preflight lists every valid registered worktree, resolves its exact `REVERT_HEAD` Git path, validates a present file as a canonical commit identifier, and rejects before fetch. Public compiled-CLI regressions prove an active sibling revert remains byte-for-byte unchanged while an ordinary branch named `REVERT_HEAD` does not block sync.
   `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check` passed for the review follow-up on 2026-07-29.
-
 - [x] [B044] (P0) Make strict sync ownership-aware and transactional.
   Requested on 2026-07-29.
   Goal:
@@ -234,7 +220,6 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check`.
   Resolution:
   Strict sync now builds one exact per-worktree operation plan, rejects operator-owned merge, revert, cherry-pick, rebase, apply-mailbox, bisect, and sequencer state before fetch, and ignores ordinary marker-like refs. Its local transaction snapshots branch refs, commits, index state, tracked and untracked contents, stashes, and adoptable worktree topology; sibling publication is deferred to the normal target push. Pre-push failure restores the complete snapshot, while post-push failure preserves forward recovery state and reports `SYNC_SWITCH_HANDOFF`. Invocation-owned stashes restore with `--index`, use the bounded semantic conflict engine when necessary, and complete before `SYNCED`. Three declarative compiled-CLI tables cover operator preflight, rollback/publication boundaries, and successful finalization. `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check` passed on 2026-07-29.
-
 - [x] [B045] (P0) Close strict-sync transaction ownership gaps.
   Reported on 2026-07-29 during review of B044.
   Observation:
@@ -251,7 +236,6 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check`.
   Resolution:
   Strict sync now rejects every pre-existing unmerged index before snapshot acquisition and defensively repeats that check at snapshot and adoption boundaries. A snapshot is registered for rollback only after its exact backup exists; an earlier failure finalizes prior temporary snapshots without resetting unowned state. Every strict-sync push requests porcelain status, and only an actual ref creation, update, or deletion marks Git publication; an up-to-date push remains rollback-capable, successful pull-request creation remains a publication event, and an unprovable successful push fails closed under handoff. Local recovery journals only refs and worktrees the invocation mutates, advances each expected ref after successful Git commands, validates ownership before destructive cleanup, and compare-and-swaps only owned refs back to their starting values. The declarative tables now prove exact preservation of a stash-apply conflict, rollback after a no-op push, and survival of a concurrent unrelated sibling commit. `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check` passed on 2026-07-29.
-
 - [x] [B046] (P0) Repair stale linked-worktree linkage before strict-sync preflight.
   Reported on 2026-07-29 after `gix sync` in `/Users/tyemirov/Development/TellTale` failed while resolving `MERGE_HEAD` inside `/Users/tyemirov/Development/story-generator-b007`.
   Observation:
@@ -274,7 +258,6 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Unconditional `git worktree repair` treated the invoking common repository as authoritative. If a primary repository was copied instead of moved, the copy retained the original worktree registrations and repair rewrote a live sibling's valid `.git` pointer away from the still-existing original repository.
   Follow-up resolution:
   Strict sync now lists the topology first and resolves each live checkout's common Git directory. A checkout already owned by another live common repository is rejected without mutation. Only a checkout whose canonical `.git` target is missing is passed as an explicit path to `git worktree repair`, after which the topology is re-listed and ownership is revalidated before administrative-state inspection. The original moved-primary regression remains green, and a new compiled-CLI regression copies the primary repository, proves sync fails closed, and verifies both repositories' topology plus the sibling branch, commit, index, staged contents, untracked contents, and `.git` pointer remain exact. `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check` passed on 2026-07-29.
-
 - [x] [B047] (P0) Reject concurrent checkout or index drift during dirty sync commits.
   Reported on 2026-07-30 after two `gix sync` runs overlapped another writer in the same llm-proxy checkout.
   Observation:
@@ -297,7 +280,6 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - The checkpoint omitted skip-worktree, assume-unchanged, intent-to-add, and resolve-undo state, while cancellation could arrive after the conditional context check and interrupt the ownership read itself.
   Follow-up resolution:
   Gix now resolves the exact per-worktree index path, compares every commit-relevant entry and semantic flag, and performs every post-model ownership read through a bounded context detached from caller cancellation. The final read runs while Gix holds the canonical index lock; Gix copies the validated index into that private locked file and commits through `GIT_INDEX_FILE`, so a normal outside writer either mutates before the recheck and triggers handoff or loses the lock and cannot enter the commit. Focused cancellation coverage and public compiled-CLI regressions prove semantic-flag drift is rejected, post-check staging is lock-blocked, cluster commits remain separate, and the index lock is released on both success and handoff.
-
 - [x] [B048] (P1) Follow transitively merged pull-request stacks to master.
   Reported on 2026-08-01 after plain `gix sync` on `tyemirov/improvement/I205-inventory-placement-groups` returned `branch ... does not have an open pull request` even though its pull request and every parent pull request were merged into `master`.
   Observation:
@@ -315,7 +297,6 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Gix now discovers a merged pull request's actual base without assuming `master` or requiring local review-base metadata, then follows an arbitrary number of merged parent pull requests even while their remote refs remain. It stops at the configured base, an active open pull request, or a live terminal branch; active review state wins over historical merged records, and cycles fail before mutation. A fully merged chain produces one standard handoff prompt for the terminal base, while dirty merged branches are rejected before commit. The compiled-CLI regression reproduces the reported I205-to-B388-to-B387-to-`master` topology with all refs retained and no local metadata; it initially failed with the reported missing-open-pull-request rollback and now proves acceptance syncs `master` without creating a pull request or emitting rollback. Focused tests cover active-parent precedence, cycle rejection, and dirty-branch ordering. `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check` passed on 2026-08-01.
   Review follow-up:
   The first traversal keyed historical merged pull requests only by branch name. A reused branch, or a retained branch advanced after merge, could therefore inherit its old stack and hand off to `master` instead of publishing the new commits. Gix now requests each pull request's `headRefOid` and accepts the merged record only when that OID matches the fetched remote tip and no local-only commits exist, or when neither local nor remote ref survives. A mismatched selected head continues through the existing remote-branch publication flow; a mismatched parent becomes the terminal handoff. The compiled-CLI regression initially reproduced the false `master` handoff for a newly pushed reused child and now proves Gix creates its new pull request, while focused coverage proves an advanced parent stops traversal. `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check` passed for the follow-up on 2026-08-01.
-
 - [x] [B049] (P1) Preserve complete multi-provider failure context in CLI output.
   Reported on 2026-08-06 after `gix sync` displayed `llm_proxy_client_http_failure (and 1 more failures)` when both the prioritized LLM Proxy request and the direct OpenAI request failed.
   Observation:
@@ -331,7 +312,6 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check`.
   Resolution:
   The workflow executor now preserves the complete outer context of ordinary operation errors, including joined prioritized-client attempts, while it continues to split typed repository `OperationError` values for independently coded structured events. Final multi-failure summaries print every formatted failure instead of replacing later failures with a count, and returned causes retain standard `errors.Is`/`errors.As` traversal. The compiled-CLI regression first reproduced the reported proxy sentinel plus hidden OpenAI failure, then proved an LLM Proxy HTTP 503 and direct OpenAI HTTP 429 both retain their connection names, statuses, and response details. `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check` passed on 2026-08-06.
-
 - [x] [B050] (P1) Reconcile legacy GitHub Pages deployment state without duplicate builds.
   Reported on 2026-08-06 after `make deploy` pushed the v1.1.20 Pages branch, triggered two GitHub-generated `pages-build-deployment` runs, and then reduced a queued build during a GitHub Pages outage to a stale-marker timeout.
   Observation:
@@ -349,7 +329,6 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check`.
   Resolution:
   The Pages deploy helper now treats branch and configuration mutations as the legacy Pages build trigger, preserves an already-canonical `gh-pages:/` configuration, and fails closed when configuration inspection fails for any reason other than a confirmed HTTP 404. On unchanged retries it selects the exact deployed branch commit, accepts built builds, reuses queued or building builds, and requests exactly one rebuild for a missing or errored build. Verification now waits for that build before probing the public marker and reports native status, error, commit, and URL context. Public release-script regressions cover the configuration and build-state matrix, including the queued state returned by GitHub's build API. `make format`, `make test`, `make lint`, `make ci`, `make build`, `bash -n scripts/release/deploy_pages_artifact.sh`, and `git diff --check` passed on 2026-08-06.
-
 - [x] [B051] (P0) Make exact-tag release retries reuse verified sealed state.
   Reported on 2026-08-06 after retrying the canonical lifecycle at v1.1.21 selected v1.1.22, failed because `v1.1.21..HEAD` contained no commits, and replaced the valid local release receipt with incomplete v1.1.22 staging.
   Observation:
@@ -367,6 +346,21 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check`.
   Resolution:
   Release preparation now detects a single exact version tag before version selection or CI and reconciles that immutable release instead of selecting a successor. A complete matching local receipt is reused without GitHub access; a missing or partial receipt is rebuilt from the published GitHub Release only after the release object, remote annotated tag, manifest identity, changelog-only release commit, source parent, notes, asset inventory, payload paths, sizes, and hashes verify. New releases prepare in a sibling candidate directory and promote only a complete verified receipt, so every earlier preparation failure leaves the canonical receipt unchanged. A failure after release commit or tag creation atomically restores the transaction-owned refs and `CHANGELOG.md` to the prepared source. Conflicting local or published state fails closed with contextual errors. Public release-script regressions cover local reuse, staged and partial recovery, malformed and conflicting receipts, candidate failure, and post-tag sealing rollback. `make format`, `make test`, `make lint`, `make ci`, `make build`, shell and Python syntax checks, and `git diff --check` passed on 2026-08-06.
+- [ ] [B052] (P0) Handle LLM proxy failures during gix sync PR description generation.
+  Goal:
+  Make `gix sync` handle pull request description LLM failures gracefully so a sync failure is clear, actionable, and does not leave the repository in an unexpected checkout or worktree state.
+  
+  Requirements:
+  Preserve the existing rollback behavior that restores the starting checkout, local state, and adopted worktree topology when strict sync cannot complete. Do not leave the target branch active after rollback. Surface the underlying LLM/proxy failures without exposing sensitive credentials or full API keys in user-facing output. Keep behavior compatible with strict sync semantics.
+  
+  Deliverables:
+  A code change that improves handling and reporting for `strict sync pull request description.llm` failures when all LLM providers or proxy calls fail. Sanitized error output for LLM proxy URLs/keys. Any necessary tests or fixtures covering LLM empty responses, proxy HTTP/TLS failures, and rollback after PR description generation failure. Documentation or help text updates if user-facing sync failure guidance changes.
+  
+  Validation:
+  Run the relevant sync and PR-description-generation tests. Reproduce or simulate an LLM proxy failure and confirm `gix sync` fails with a sanitized, actionable message while restoring the original checkout, local state, and worktree topology. Confirm logs do not include full LLM proxy keys or other secrets.
+
+
+## Improvements
 
 ## Maintenance
 
@@ -522,7 +516,6 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Validation:
   - Add public workflow coverage showing a flat safeguards map fails before mutation and the structured form retains its existing hard-stop and soft-skip behavior.
   - Run `make test`, `make lint`, `make ci`, and `git diff --check`.
-
 - [x] [M015] (P1) Update the LLM Proxy Go client to the latest release.
   Requested on 2026-07-25.
   Goal:
@@ -535,6 +528,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make format`, `make test`, `make lint`, `make ci`, and `git diff --check`.
   Resolution:
   Updated the client to v0.2.46 and raised the Go module floor to 1.25.12 with the dependency graph selected by the current client. Gix now puts its configured proxy work budget on each v2 messages request while retaining the caller-owned HTTP timeout. The HTTP-boundary regression verifies the canonical timeout header alongside provider, model, and token routing. `make format`, `make test`, `make lint`, `make ci`, `go mod verify`, `go mod tidy -diff`, and `git diff --check` passed on 2026-07-25; the fast and black-box suites also passed with `GOTOOLCHAIN=go1.25.12`.
+
 
 ## Features
 
@@ -564,7 +558,6 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Each entry has exactly `kind`, `host`, and `credential`. `kind` is the closed enum `github` or `gitlab`; `host` is a lower-case DNS host without scheme, path, port, userinfo, or trailing slash; `credential` is a non-empty literal or a `${ENVIRONMENT_VARIABLE}` reference resolved from the inherited process environment.
   - The same host may appear once only. A configured host has one provider kind, one credential source, and one adapter. Conflicting duplicate host entries are a configuration error.
   - The generated default configuration must use this exact shape:
-
     ```yaml
     forges:
       - kind: github
@@ -574,7 +567,6 @@ Format: `- [ ] [B042] (P1) {I007} Title`
         host: gitlab.com
         credential: "${GITLAB_TOKEN}"
     ```
-
   - Credentials remain user-owned process environment inputs. Do not add dotenv loading, guessed token names, cross-provider token reuse, or a credential fallback chain.
   Canonical repository identity contract:
   - Introduce a provider-neutral immutable identity owned by a new `internal/forge` package. It contains the remote name, normalized transport, normalized host, forge kind, and full slash-separated project path.
@@ -652,7 +644,6 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Generic code has one forge-neutral identity and review-request contract; all provider branching is contained in the registry/adapters/capability boundary.
   - The current public schema and terminology are forward-only. No runtime compatibility aliases or fallback paths for the old GitHub-only configuration or PR vocabulary remain after migration.
   - GitHub-specific capabilities are explicit and safe, while supported generic operations have equivalent observable behavior on GitHub and GitLab.
-
 - [x] [F011] (P1) Prepare the canonical personal and MPR Lab license fleet rollout.
   Requested on 2026-07-28.
   Goal:
@@ -675,7 +666,6 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make format`, `make test`, `make lint`, `make ci`, and `git diff --check`.
   Resolution:
   Gix now owns exact PolyForm Noncommercial 1.0.0 and current MPR Lab proprietary bundles, a forward-only `license_template` contract, the frozen 103-repository inventory, six explicit legal holds, isolated sparse-clone execution, deterministic draft-PR recovery checks, and the single `make license-rollout-apply` mutation boundary. The live read-only plan verified 97 eligible repositories and six holds; the remote preflight found no existing draft PRs or orphan rollout branches. An isolated rehearsal rendered the official PolyForm file byte-for-byte and committed the complete three-file bundle without pushing. `make format`, `make test`, `make lint`, `make ci`, `make license-rollout-plan`, and `git diff --check` passed on 2026-07-28. No target repository branch or pull request was created.
-
 - [x] [F012] (P1) Retain an explicit number of recent GHCR package versions.
   Requested on 2026-07-28.
   Goal:
@@ -694,3 +684,8 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make format`, `make test`, `make lint`, `make ci`, and `git diff --check`.
   Resolution:
   `gix packages delete` now requires a positive invocation-owned `--keep` count, snapshots and validates all GHCR version pages, orders versions by `created_at` and descending version ID, preserves the newest requested count, and deletes all older tagged or untagged versions oldest-first. Public CLI and HTTP-boundary coverage verifies `--keep 3`, invalid counts, pagination, deterministic ties, no-op retention, malformed snapshots, and partial failures. README, architecture, current configuration, command help, and changelog contracts now describe the retention scope. `make format`, `make lint`, `make test`, `make ci`, and `git diff --check` passed on 2026-07-28.
+
+
+## Planning
+*do not implement yet*
+
