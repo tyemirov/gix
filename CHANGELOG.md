@@ -122,6 +122,10 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.1.22] - 2026-08-07
+
+- bugfix/B051-idempotent-exact-release-retry (#407)
+
 ## [v1.1.21] - 2026-08-06
 
 - test: cover Pages deployment reconciliation states
