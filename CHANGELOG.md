@@ -21,6 +21,7 @@
 - Updated the LLM Proxy Go client from v0.2.21 to v0.2.46, moved Gix's configured proxy work budget to the current per-request timeout header, and raised the Go module floor to 1.25.12 with the dependency graph required by that client.
 
 ### Bug Fixes 🐛
+- Made exact-tag release retries idempotent by reusing verified sealed receipts, recovering missing or incomplete receipts from matching published GitHub Release state, preserving the prior canonical receipt until a new candidate verifies completely, and rolling back release-owned changelog refs when sealing fails.
 - Reconciled legacy GitHub Pages configuration and exact-commit build state during deployment, eliminating unconditional configuration updates and duplicate build requests while preserving actionable building, errored, and public-marker diagnostics.
 - Preserved complete ordinary operation errors at the workflow boundary, so exhausted LLM failover reports every connection name, HTTP status, and response detail instead of reducing the result to one sentinel plus an opaque failure count; typed repository-operation failures retain their independently coded structured events.
 - Followed the actual bases of transitively merged pull-request stacks even when every remote branch ref remains, so a branch whose complete review chain reached `master` now receives the standard `master` sync handoff instead of a missing-open-PR rollback; merged records must match the surviving branch's current head OID, so a reused or advanced head opens a new review instead of inheriting historical merged state.
@@ -61,6 +62,7 @@
 - Kept the syncflow builder description as the canonical text shown by `gix sync --help`.
 
 ### Testing 🧪
+- Added public release-script coverage for exact-tag local reuse, published recovery from missing and partial receipts, conflicting local and published state, failed new-release preparation that leaves the prior receipt unchanged, and post-tag sealing failure that restores the source branch.
 - Added public release-script coverage for current, missing, drifted, and unavailable Pages configuration plus built, queued, building, missing, and terminal build reconciliation without duplicate triggers.
 - Added public compiled-CLI coverage for simultaneous LLM Proxy HTTP 503 and direct OpenAI HTTP 429 failures, proving both connections are attempted and both complete contextual errors reach command output.
 - Added compiled-CLI coverage for a three-pull-request merged chain with retained remote refs and no local review-base metadata, a reused child head that must open a new pull request, and focused open-parent precedence, advanced-parent termination, and cycle rejection guardrails.
