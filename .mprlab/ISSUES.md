@@ -350,6 +350,24 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Resolution:
   The Pages deploy helper now treats branch and configuration mutations as the legacy Pages build trigger, preserves an already-canonical `gh-pages:/` configuration, and fails closed when configuration inspection fails for any reason other than a confirmed HTTP 404. On unchanged retries it selects the exact deployed branch commit, accepts built builds, reuses queued or building builds, and requests exactly one rebuild for a missing or errored build. Verification now waits for that build before probing the public marker and reports native status, error, commit, and URL context. Public release-script regressions cover the configuration and build-state matrix, including the queued state returned by GitHub's build API. `make format`, `make test`, `make lint`, `make ci`, `make build`, `bash -n scripts/release/deploy_pages_artifact.sh`, and `git diff --check` passed on 2026-08-06.
 
+- [x] [B051] (P0) Make exact-tag release retries reuse verified sealed state.
+  Reported on 2026-08-06 after retrying the canonical lifecycle at v1.1.21 selected v1.1.22, failed because `v1.1.21..HEAD` contained no commits, and replaced the valid local release receipt with incomplete v1.1.22 staging.
+  Observation:
+  - Release version selection always bumps the latest tag, even when `HEAD` is already the exact published release commit.
+  - Release initialization deletes `.git/mprlab-release` before release-note generation and final sealing, so a later preparation failure destroys the prior valid receipt.
+  - `make deploy` then correctly rejects the missing manifest, leaving the canonical retry unable to resume the already-published release.
+  Requirements:
+  - Detect an exact release tag at `HEAD` before CI, version selection, artifact preparation, changelog mutation, commit, or tag creation.
+  - Verify and reuse a complete matching local sealed release. When local state is missing or incomplete, recover the same release from immutable published GitHub release state and verify its manifest, notes, payload hashes, tag, release commit, source parent, and release-only changelog change before reuse.
+  - Prepare a genuinely new release in an isolated candidate receipt and atomically promote it only after the complete manifest, notes, and payload inventory verify.
+  - Preserve the prior canonical receipt on every failed candidate preparation and reject conflicting local or published state without overwriting it.
+  Validation:
+  - Add public release-script coverage proving a valid exact-tag receipt is reused without CI or artifact preparation, missing/incomplete local state is recovered from matching published state, and conflicting published state fails closed.
+  - Prove a new-release failure after candidate initialization leaves the prior canonical receipt byte-for-byte unchanged.
+  - Run `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check`.
+  Resolution:
+  Release preparation now detects a single exact version tag before version selection or CI and reconciles that immutable release instead of selecting a successor. A complete matching local receipt is reused without GitHub access; a missing or partial receipt is rebuilt from the published GitHub Release only after the release object, remote annotated tag, manifest identity, changelog-only release commit, source parent, notes, asset inventory, payload paths, sizes, and hashes verify. New releases prepare in a sibling candidate directory and promote only a complete verified receipt, so every earlier preparation failure leaves the canonical receipt unchanged. A failure after release commit or tag creation atomically restores the transaction-owned refs and `CHANGELOG.md` to the prepared source. Conflicting local or published state fails closed with contextual errors. Public release-script regressions cover local reuse, staged and partial recovery, malformed and conflicting receipts, candidate failure, and post-tag sealing rollback. `make format`, `make test`, `make lint`, `make ci`, `make build`, shell and Python syntax checks, and `git diff --check` passed on 2026-08-06.
+
 ## Maintenance
 
 - [ ] [M001R] (P2) Backlog hygiene and archive.
