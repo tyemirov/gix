@@ -9,6 +9,7 @@
 - Added explicit GHCR retention to `gix packages delete --keep <count>`, preserving the newest requested versions and deleting every older tagged or untagged version.
 
 ### Improvements ⚙️
+- Replaced the application loader's generic YAML-map and mapstructure schema pass with one strict typed YAML decode, while preserving post-decode process-environment placeholder expansion.
 - Made `gix audit` terminal-readable by default with a table and added strict `--format csv` and `--format html` exports.
 - Replaced layered implicit configuration with one strict `config.yml`: explicit path, system file, then user file, with interactive user-file creation when none exists.
 - Removed dotenv discovery and the Viper configuration layer; placeholders now resolve only from the inherited process environment, while literal configuration values pass through unchanged.
@@ -62,6 +63,7 @@
 - Kept the syncflow builder description as the canonical text shown by `gix sync --help`.
 
 ### Testing 🧪
+- Added direct YAML-tag loader coverage and compiled-CLI coverage that rejects the removed `temperature` key through the strict typed schema.
 - Added public release-script coverage for exact-tag local reuse, published recovery from missing and partial receipts, conflicting local and published state, failed new-release preparation that leaves the prior receipt unchanged, and post-tag sealing failure that restores the source branch.
 - Added public release-script coverage for current, missing, drifted, and unavailable Pages configuration plus built, queued, building, missing, and terminal build reconciliation without duplicate triggers.
 - Added public compiled-CLI coverage for simultaneous LLM Proxy HTTP 503 and direct OpenAI HTTP 429 failures, proving both connections are attempted and both complete contextual errors reach command output.
