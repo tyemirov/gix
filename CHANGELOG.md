@@ -127,6 +127,12 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.1.24] - 2026-08-08
+
+- improvement/I010-single-yaml-configuration-decode (#416)
+- fix(llm): recover OpenAI with configured token budgets (#414)
+- docs: streamline CI verification guidance (#413)
+
 ## [v1.1.23] - 2026-08-08
 
 - style: reformat constants in branch default integration test for consistent indentation
