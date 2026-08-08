@@ -650,6 +650,7 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
 
 - On every launch, gix uses an explicit `--config <path>.yml` when supplied; otherwise it checks `/etc/gix/config.yml` and then `$HOME/.gix/config.yml`.
 - If neither discovered file exists, gix offers to create `$HOME/.gix/config.yml`. `--yes` accepts that prompt non-interactively.
+- Gix decodes `config.yml` once into the current typed YAML schema and rejects unknown fields. It does not pass a generic YAML map through a second schema decoder.
 - `gix init` writes `$HOME/.gix/config.yml`; `gix init --system` writes `/etc/gix/config.yml`. Add `--force` only when you intentionally want to replace an existing generated config.
 - Working-directory config files, `.yaml` aliases, `GIX_*` overrides, embedded runtime defaults, and layered configuration merging are not supported.
 - `${NAME}` placeholders in YAML values are expanded only from the process environment inherited when gix starts. Substituted text remains literal scalar content, including quotes, backslashes, newlines, colons, and hash characters. Gix never discovers or loads `.env` files; users of dotenv tooling must load those values into the process environment before launching gix.

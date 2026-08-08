@@ -229,6 +229,12 @@ func TestCLIConfigurationRejectsInvalidLLMSelection(testInstance *testing.T) {
 			proxyFields:       "    provider: meta\n    model: muse-spark-1.1\n",
 			expectedErrorText: "provider",
 		},
+		{
+			name:              "removed_temperature",
+			llmFields:         "  temperature: 1\n",
+			proxyFields:       "    provider: meta\n    model: muse-spark-1.1\n",
+			expectedErrorText: "field temperature not found in type cli.ApplicationLLMConfiguration",
+		},
 	}
 
 	for _, testCase := range testCases {

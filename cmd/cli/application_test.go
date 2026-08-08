@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -550,11 +551,14 @@ func TestCanonicalConfigurationTemplateProvidesCompleteCommandConfigurations(tes
 	require.Equal(testInstance, "https://api.openai.com/v1", embeddedConfiguration.LLM.OpenAI.BaseURL)
 	require.Equal(testInstance, "${OPENAI_API_KEY}", embeddedConfiguration.LLM.OpenAI.Credential)
 	require.Equal(testInstance, "high", embeddedConfiguration.LLM.OpenAI.Effort)
+	require.Equal(testInstance, 16_384, embeddedConfiguration.LLM.OpenAI.MaxCompletionTokens)
 	require.Equal(testInstance, 1, embeddedConfiguration.LLM.LLMProxy.Priority)
 	require.Equal(testInstance, "meta", embeddedConfiguration.LLM.LLMProxy.Provider)
 	require.Equal(testInstance, "muse-spark-1.1", embeddedConfiguration.LLM.LLMProxy.Model)
 	require.Equal(testInstance, "https://llm-proxy-api.mprlab.com", embeddedConfiguration.LLM.LLMProxy.BaseURL)
 	require.Equal(testInstance, "${LLM_PROXY_SECRET_KEY}", embeddedConfiguration.LLM.LLMProxy.Credential)
+	require.Zero(testInstance, embeddedConfiguration.LLM.LLMProxy.MaxCompletionTokens)
+	require.Equal(testInstance, 1_200, embeddedConfiguration.LLM.MaxCompletionTokens)
 
 	operationIndex := buildEmbeddedOperationIndex(testInstance)
 
@@ -812,18 +816,10 @@ func decodeEmbeddedApplicationConfiguration(testingInstance testing.TB) cli.Appl
 	testingInstance.Helper()
 
 	configurationData, _ := cli.EmbeddedDefaultConfiguration()
-	rawConfiguration := map[string]any{}
-	require.NoError(testingInstance, yaml.Unmarshal(configurationData, &rawConfiguration))
-
 	var configuration cli.ApplicationConfiguration
-	decoder, decoderError := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
-		TagName:          "mapstructure",
-		Result:           &configuration,
-		ErrorUnused:      true,
-		WeaklyTypedInput: true,
-	})
-	require.NoError(testingInstance, decoderError)
-	require.NoError(testingInstance, decoder.Decode(rawConfiguration))
+	decoder := yaml.NewDecoder(bytes.NewReader(configurationData))
+	decoder.KnownFields(true)
+	require.NoError(testingInstance, decoder.Decode(&configuration))
 
 	return configuration
 }

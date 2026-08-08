@@ -49,38 +49,38 @@ func (errorDetails InvalidOperationConfigurationError) Unwrap() error {
 
 // ApplicationConfiguration describes the persisted configuration for the CLI entrypoint.
 type ApplicationConfiguration struct {
-	Common     ApplicationCommonConfiguration      `mapstructure:"common"`
-	GitHub     ApplicationGitHubConfiguration      `mapstructure:"github"`
-	LLM        ApplicationLLMConfiguration         `mapstructure:"llm"`
-	Operations []ApplicationOperationConfiguration `mapstructure:"operations"`
-	Workflow   []ApplicationWorkflowStep           `mapstructure:"workflow"`
+	Common     ApplicationCommonConfiguration      `yaml:"common"`
+	GitHub     ApplicationGitHubConfiguration      `yaml:"github"`
+	LLM        ApplicationLLMConfiguration         `yaml:"llm"`
+	Operations []ApplicationOperationConfiguration `yaml:"operations"`
+	Workflow   []ApplicationWorkflowStep           `yaml:"workflow"`
 }
 
 // ApplicationWorkflowStep wraps one typed workflow step from the shared configuration file.
 type ApplicationWorkflowStep struct {
-	Step workflowpkg.StepConfiguration `mapstructure:"step"`
+	Step workflowpkg.StepConfiguration `yaml:"step"`
 }
 
 // ApplicationGitHubConfiguration stores the concrete credential used by GitHub CLI operations.
 type ApplicationGitHubConfiguration struct {
-	Credential string `mapstructure:"credential"`
+	Credential string `yaml:"credential"`
 }
 
 // ApplicationCommonConfiguration stores logging and execution defaults shared across commands.
 type ApplicationCommonConfiguration struct {
-	LogLevel     string `mapstructure:"log_level"`
-	LogFormat    string `mapstructure:"log_format"`
-	AssumeYes    bool   `mapstructure:"assume_yes"`
-	RequireClean bool   `mapstructure:"require_clean"`
+	LogLevel     string `yaml:"log_level"`
+	LogFormat    string `yaml:"log_format"`
+	AssumeYes    bool   `yaml:"assume_yes"`
+	RequireClean bool   `yaml:"require_clean"`
 }
 
 // ApplicationLLMConfiguration stores language-model defaults shared across LLM-backed commands.
 type ApplicationLLMConfiguration struct {
-	OpenAI              llmclient.OpenAIConnectionProfile   `mapstructure:"openai"`
-	LLMProxy            llmclient.LLMProxyConnectionProfile `mapstructure:"llm_proxy"`
-	Effort              string                              `mapstructure:"effort"`
-	MaxCompletionTokens int                                 `mapstructure:"max_completion_tokens"`
-	TimeoutSeconds      int                                 `mapstructure:"timeout_seconds"`
+	OpenAI              llmclient.OpenAIConnectionProfile   `yaml:"openai"`
+	LLMProxy            llmclient.LLMProxyConnectionProfile `yaml:"llm_proxy"`
+	Effort              string                              `yaml:"effort"`
+	MaxCompletionTokens int                                 `yaml:"max_completion_tokens"`
+	TimeoutSeconds      int                                 `yaml:"timeout_seconds"`
 }
 
 func (configuration ApplicationLLMConfiguration) connectionProfiles() llmclient.ConnectionProfiles {
@@ -106,8 +106,8 @@ func (configuration ApplicationLLMConfiguration) validateConnections() error {
 
 // ApplicationOperationConfiguration captures reusable operation defaults from the configuration file.
 type ApplicationOperationConfiguration struct {
-	Command []string       `mapstructure:"command"`
-	Options map[string]any `mapstructure:"with"`
+	Command []string       `yaml:"command"`
+	Options map[string]any `yaml:"with"`
 }
 
 // OperationConfigurations stores reusable operation defaults indexed by normalized operation name.
