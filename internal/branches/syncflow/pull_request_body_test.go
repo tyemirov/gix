@@ -158,3 +158,19 @@ func TestGenerateStrictSyncPullRequestBody_SanitizedLLMError(t *testing.T) {
 	assert.NotContains(t, err.Error(), "secret-proxy-key")
 	assert.Contains(t, err.Error(), "key=[REDACTED]")
 }
+
+func TestBuildStrictSyncPullRequestDescriptionRequestPreservesTokenHierarchy(t *testing.T) {
+	t.Parallel()
+
+	descriptionContext := strictSyncPullRequestDescriptionContext{
+		RepositoryLabel: "repository",
+		BaseBranch:      "master",
+		BranchName:      "feature",
+	}
+
+	inheritedRequest := buildStrictSyncPullRequestDescriptionRequest(descriptionContext, worktreeAdoptionCommitMessageOptions{})
+	require.Zero(t, inheritedRequest.MaxTokens)
+
+	commandRequest := buildStrictSyncPullRequestDescriptionRequest(descriptionContext, worktreeAdoptionCommitMessageOptions{MaxTokens: 32_768})
+	require.Equal(t, 32_768, commandRequest.MaxTokens)
+}

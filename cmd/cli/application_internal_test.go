@@ -113,7 +113,10 @@ func TestBranchSyncUsesGlobalLLMConnectionProfiles(t *testing.T) {
 	require.Equal(t, "meta", configuration.CommitMessage.ConnectionProfiles.LLMProxy.Provider)
 	require.Equal(t, "muse-spark-1.1", configuration.CommitMessage.ConnectionProfiles.LLMProxy.Model)
 	require.Equal(t, "proxy-secret", configuration.CommitMessage.ConnectionProfiles.LLMProxy.Credential)
+	require.Equal(t, 512, configuration.CommitMessage.ConnectionProfiles.LLMProxy.MaxCompletionTokens)
 	require.Equal(t, 2, configuration.CommitMessage.ConnectionProfiles.OpenAI.Priority)
+	require.Equal(t, 16_384, configuration.CommitMessage.ConnectionProfiles.OpenAI.MaxCompletionTokens)
+	require.Zero(t, configuration.CommitMessage.MaxTokens)
 }
 
 func TestApplicationGlobalLLMDefaultsUseConfiguredConnections(t *testing.T) {
@@ -124,15 +127,41 @@ func TestApplicationGlobalLLMDefaultsUseConfiguredConnections(t *testing.T) {
 	commitConfiguration := application.commitMessageConfiguration()
 	require.Equal(t, "meta", commitConfiguration.ConnectionProfiles.LLMProxy.Provider)
 	require.Equal(t, "muse-spark-1.1", commitConfiguration.ConnectionProfiles.LLMProxy.Model)
-	require.Equal(t, 512, commitConfiguration.MaxTokens)
+	require.Zero(t, commitConfiguration.MaxTokens)
+	require.Equal(t, 16_384, commitConfiguration.ConnectionProfiles.OpenAI.MaxCompletionTokens)
+	require.Equal(t, 512, commitConfiguration.ConnectionProfiles.LLMProxy.MaxCompletionTokens)
 
 	changelogConfiguration := application.changelogMessageConfiguration()
 	require.Equal(t, "meta", changelogConfiguration.ConnectionProfiles.LLMProxy.Provider)
 	require.Equal(t, "muse-spark-1.1", changelogConfiguration.ConnectionProfiles.LLMProxy.Model)
-	require.Equal(t, 512, changelogConfiguration.MaxTokens)
+	require.Zero(t, changelogConfiguration.MaxTokens)
 
 	syncConfiguration := application.branchSyncConfiguration()
 	require.Equal(t, "meta", syncConfiguration.CommitMessage.ConnectionProfiles.LLMProxy.Provider)
+}
+
+func TestApplicationCommandCompletionTokensOverrideProviderAndGlobalDefaults(t *testing.T) {
+	application := newApplicationConfigurationTestHarness(t, ApplicationConfiguration{
+		LLM: applicationTestLLMConfiguration(),
+	}, []ApplicationOperationConfiguration{
+		{
+			Command: []string{"message", "commit"},
+			Options: map[string]any{
+				"max_completion_tokens": 32_768,
+			},
+		},
+		{
+			Command: []string{"sync"},
+			Options: map[string]any{
+				"commit_message": map[string]any{
+					"max_completion_tokens": 24_576,
+				},
+			},
+		},
+	})
+
+	require.Equal(t, 32_768, application.commitMessageConfiguration().MaxTokens)
+	require.Equal(t, 24_576, application.branchSyncConfiguration().CommitMessage.MaxTokens)
 }
 
 func TestApplicationLLMConfigurationRequiresAtLeastOneCredential(t *testing.T) {
@@ -143,6 +172,15 @@ func TestApplicationLLMConfigurationRequiresAtLeastOneCredential(t *testing.T) {
 	validationError := configuration.validateConnections()
 
 	require.EqualError(t, validationError, "llm requires at least one connection credential")
+}
+
+func TestApplicationLLMConfigurationRejectsNegativeGlobalCompletionTokens(t *testing.T) {
+	configuration := applicationTestLLMConfiguration()
+	configuration.MaxCompletionTokens = -1
+
+	validationError := configuration.validateConnections()
+
+	require.EqualError(t, validationError, "llm max_completion_tokens must be non-negative")
 }
 
 func TestInitializeConfigurationRejectsPublicLLMTransport(t *testing.T) {
@@ -295,10 +333,11 @@ func newApplicationConfigurationTestHarness(t *testing.T, configuration Applicat
 func applicationTestLLMConfiguration() ApplicationLLMConfiguration {
 	return ApplicationLLMConfiguration{
 		OpenAI: llmclient.OpenAIConnectionProfile{
-			Priority:   2,
-			BaseURL:    "https://api.openai.com/v1",
-			Credential: "openai-secret",
-			Model:      "gpt-5.6-terra",
+			Priority:            2,
+			BaseURL:             "https://api.openai.com/v1",
+			Credential:          "openai-secret",
+			Model:               "gpt-5.6-terra",
+			MaxCompletionTokens: 16_384,
 		},
 		LLMProxy: llmclient.LLMProxyConnectionProfile{
 			Priority:   1,

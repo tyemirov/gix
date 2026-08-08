@@ -536,14 +536,9 @@ func (application *Application) branchCleanupConfiguration() branches.CommandCon
 
 func (application *Application) branchSyncConfiguration() syncflowcmd.CommandConfiguration {
 	configuration := syncflowcmd.DefaultCommandConfiguration()
-	messageConfiguration := application.commitMessageConfiguration()
-	configuration.CommitMessage = syncflowcmd.CommitMessageConfiguration{
-		LLMProxy:           messageConfiguration.LLMProxy,
-		Effort:             messageConfiguration.Effort,
-		MaxTokens:          messageConfiguration.MaxTokens,
-		TimeoutSeconds:     messageConfiguration.TimeoutSeconds,
-		ConnectionProfiles: messageConfiguration.ConnectionProfiles,
-	}
+	configuration.CommitMessage.Effort = application.configuration.LLM.Effort
+	configuration.CommitMessage.TimeoutSeconds = application.configuration.LLM.TimeoutSeconds
+	configuration.CommitMessage.ConnectionProfiles = application.configuration.LLM.connectionProfiles()
 	application.decodeBranchSyncOperationConfiguration(branchSyncOperationNameConstant, &configuration)
 
 	options, optionsExist := application.lookupOperationOptions(branchSyncOperationNameConstant)
@@ -779,9 +774,6 @@ func (application *Application) applyGlobalLLMDefaultsToCommitMessageConfigurati
 		return
 	}
 	configuration := application.configuration.LLM
-	if configuration.MaxCompletionTokens > 0 {
-		target.MaxTokens = configuration.MaxCompletionTokens
-	}
 	if configuration.Effort != "" {
 		target.Effort = configuration.Effort
 	}
@@ -795,9 +787,6 @@ func (application *Application) applyGlobalLLMDefaultsToChangelogMessageConfigur
 		return
 	}
 	configuration := application.configuration.LLM
-	if configuration.MaxCompletionTokens > 0 {
-		target.MaxTokens = configuration.MaxCompletionTokens
-	}
 	if configuration.Effort != "" {
 		target.Effort = configuration.Effort
 	}
