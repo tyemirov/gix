@@ -21,6 +21,8 @@
 - Updated the LLM Proxy Go client from v0.2.21 to v0.2.46, moved Gix's configured proxy work budget to the current per-request timeout header, and raised the Go module floor to 1.25.12 with the dependency graph required by that client.
 
 ### Bug Fixes 🐛
+- Made `gix sync --stash` automatically resolve conflicting restoration through a bounded diff3 planner, use the configured LLM only for unresolved semantic hunks, keep restored paths uncommitted and unstaged, remove the retained stash only after success, and delay `SYNCED` until restoration completes.
+- Replaced whole-file merge generation with strict hunk-identified JSON responses, deterministic additive and marker-free resolution, two-attempt validation feedback, all-files-before-write application, regular-file mode preservation, and pre-LLM rejection of binary or unsupported Git object modes.
 - Preserved dirty tracked files whose paths also match `.gitignore`; sync now stages exact tracked paths instead of restoring and discarding their pending contents before branch validation.
 - Made linked-worktree adoption restore owner write and execute permission on its directories before removal, preventing read-only ignored caches such as Go's module cache from leaving orphaned worktrees.
 - Rejected fractional workflow LLM `timeout_seconds` before they can be truncated into shorter or invalid LLM Proxy request budgets.
@@ -43,6 +45,7 @@
 - Kept the syncflow builder description as the canonical text shown by `gix sync --help`.
 
 ### Testing 🧪
+- Added public CLI regressions for a B089-sized target/stash `.mprlab/ISSUES.md` conflict with zero model calls, bounded semantic hunk resolution, executable-mode preservation, two lossy model responses, multi-file failure atomicity, and binary-conflict handoff.
 - Added public CLI regressions for a dirty tracked example-env file on an otherwise empty local branch, tracked ignored modifications and deletions, and ignored-untracked exclusion.
 - Added public CLI coverage for adopting a sibling worktree containing a read-only ignored cache.
 - Added public CLI coverage for compact and truncated horizontal audit tables at constrained terminal widths.
@@ -62,6 +65,7 @@
 - Added black-box release coverage for clean-checkout helpers, failed or missing platform outputs, replaced published manifests, and missing integrity prerequisites.
 
 ### Docs 📚
+- Documented automatic, validated stash-conflict restoration and the post-restoration completion-report boundary.
 - Documented that tracked status remains authoritative even when `.gitignore` matches the path and that ignore rules continue to govern only untracked staging.
 - Documented responsive audit-table behavior, the `COLUMNS` capture-width contract, and the full-value CSV/HTML export boundary.
 - Documented the audit table default and CSV/HTML export commands in the CLI, architecture, and site guides.

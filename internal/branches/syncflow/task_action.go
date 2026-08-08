@@ -43,6 +43,8 @@ const (
 	gitStashPushSubcommandConstant               = "push"
 	gitStashIncludeUntrackedFlagConstant         = "--include-untracked"
 	gitStashPopSubcommandConstant                = "pop"
+	gitStashDropSubcommandConstant               = "drop"
+	gitStashTopReferenceConstant                 = "stash@{0}"
 	gitMergeSubcommandConstant                   = "merge"
 	gitMergeNoEditFlagConstant                   = "--no-edit"
 	gitMergeFastForwardOnlyFlagConstant          = "--ff-only"
@@ -60,6 +62,8 @@ const (
 	gitSwitchTrackFlagConstant                   = "--track"
 	stashTrackedChangesFailureTemplateConstant   = "failed to stash tracked changes before switching: %w"
 	restoreStashedChangesFailureTemplateConstant = "failed to restore stashed changes after switching: %w"
+	resolveStashedChangesFailureTemplateConstant = "failed to resolve stashed changes after switching: %w"
+	dropRestoredStashFailureTemplateConstant     = "failed to remove the restored stash after switching: %w"
 	stashExecutorMissingMessageConstant          = "git executor required to manage stash operations"
 	strictSyncMissingGitHubClientMessage         = "strict sync requires GitHub CLI access to verify pull requests"
 	strictSyncMissingRepositoryMessage           = "strict sync requires a GitHub repository remote"
@@ -446,6 +450,13 @@ type strictSyncOptions struct {
 	ResolutionSource string
 }
 
+type strictSyncCompletion struct {
+	BranchName string
+	Source     string
+	Created    bool
+	Stashed    bool
+}
+
 func handleStrictSyncAction(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, options strictSyncOptions) (err error) {
 	if environment == nil || repository == nil {
 		return nil
@@ -519,17 +530,39 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 	}
 
 	stashPushed := false
+	var pendingCompletion *strictSyncCompletion
 	if dirty && options.StashChanges {
 		if stashErr := stashAllChanges(ctx, environment.GitExecutor, repository.Path); stashErr != nil {
 			return stashErr
 		}
 		stashPushed = true
 		defer func() {
-			if restoreErr := restoreStashedChanges(ctx, environment.GitExecutor, repository.Path, 1); restoreErr != nil {
-				err = errors.Join(err, restoreErr)
+			if err != nil {
+				if restoreErr := restoreStashedChanges(ctx, environment.GitExecutor, repository.Path, 1); restoreErr != nil {
+					err = errors.Join(err, restoreErr)
+				}
+				return
+			}
+			targetBranch := branchName
+			if pendingCompletion != nil {
+				targetBranch = pendingCompletion.BranchName
+			}
+			if restoreErr := restoreStrictSyncStashedChanges(ctx, environment, repository, targetBranch, options.CommitMessages); restoreErr != nil {
+				err = restoreErr
+				return
+			}
+			if pendingCompletion != nil {
+				reportStrictSync(repository, environment, pendingCompletion.BranchName, pendingCompletion.Source, pendingCompletion.Created, pendingCompletion.Stashed)
 			}
 		}()
 		dirty = false
+	}
+	reportCompletion := func(completion strictSyncCompletion) {
+		if stashPushed {
+			pendingCompletion = &completion
+			return
+		}
+		reportStrictSync(repository, environment, completion.BranchName, completion.Source, completion.Created, completion.Stashed)
 	}
 
 	if dirty && options.RequireClean && !options.CommitChanges {
@@ -592,7 +625,11 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 			if pushErr := executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitPushSubcommandConstant, remoteName, branchName}); pushErr != nil {
 				return pushErr
 			}
-			reportStrictSync(repository, environment, branchName, options.ResolutionSource, false, stashPushed)
+			reportCompletion(strictSyncCompletion{
+				BranchName: branchName,
+				Source:     options.ResolutionSource,
+				Stashed:    stashPushed,
+			})
 			return nil
 		}
 	}
@@ -601,7 +638,11 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 		if syncErr := syncBaseBranch(ctx, environment, repository, remoteName, baseBranch, options.CommitMessages); syncErr != nil {
 			return syncErr
 		}
-		reportStrictSync(repository, environment, branchName, options.ResolutionSource, false, stashPushed)
+		reportCompletion(strictSyncCompletion{
+			BranchName: branchName,
+			Source:     options.ResolutionSource,
+			Stashed:    stashPushed,
+		})
 		return nil
 	}
 
@@ -621,7 +662,12 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 	if strings.TrimSpace(pullRequestSyncResult.SyncedBranch) != "" {
 		reportBranchName = pullRequestSyncResult.SyncedBranch
 	}
-	reportStrictSync(repository, environment, reportBranchName, options.ResolutionSource, pullRequestSyncResult.Created, stashPushed)
+	reportCompletion(strictSyncCompletion{
+		BranchName: reportBranchName,
+		Source:     options.ResolutionSource,
+		Created:    pullRequestSyncResult.Created,
+		Stashed:    stashPushed,
+	})
 	return nil
 }
 
@@ -1371,6 +1417,53 @@ func restoreStashedChanges(ctx context.Context, executor shared.GitExecutor, rep
 		}); err != nil {
 			return fmt.Errorf(restoreStashedChangesFailureTemplateConstant, err)
 		}
+	}
+	return nil
+}
+
+func restoreStrictSyncStashedChanges(
+	ctx context.Context,
+	environment *workflow.Environment,
+	repository *workflow.RepositoryState,
+	targetBranch string,
+	commitMessages worktreeAdoptionCommitMessageOptions,
+) error {
+	if environment == nil || environment.GitExecutor == nil {
+		return errors.New(stashExecutorMissingMessageConstant)
+	}
+	_, popErr := environment.GitExecutor.ExecuteGit(ctx, execshell.CommandDetails{
+		Arguments:        []string{gitStashSubcommandConstant, gitStashPopSubcommandConstant},
+		WorkingDirectory: repository.Path,
+	})
+	if popErr == nil {
+		return nil
+	}
+	options := mergeConflictResolutionOptions{
+		SourceReference: gitStashTopReferenceConstant,
+		TargetBranch:    targetBranch,
+		Mode:            mergeConflictResolutionModeStash,
+	}
+	service := mergeConflictResolutionService{
+		executor:       environment.GitExecutor,
+		repositoryPath: repository.Path,
+		commitMessages: commitMessages,
+		reporter: func(level shared.EventLevel, code string, message string, details map[string]string) {
+			environment.ReportRepositoryEvent(repository, level, code, message, details)
+		},
+	}
+	conflictObserved, resolutionErr := service.Resolve(ctx, options)
+	if resolutionErr != nil {
+		if conflictObserved {
+			service.reportConflictHandoff(resolutionErr, options)
+		}
+		return fmt.Errorf(resolveStashedChangesFailureTemplateConstant, errors.Join(resolutionErr, popErr))
+	}
+	if !conflictObserved {
+		return fmt.Errorf(restoreStashedChangesFailureTemplateConstant, popErr)
+	}
+
+	if dropErr := executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitStashSubcommandConstant, gitStashDropSubcommandConstant, gitStashTopReferenceConstant}); dropErr != nil {
+		return fmt.Errorf(dropRestoredStashFailureTemplateConstant, dropErr)
 	}
 	return nil
 }

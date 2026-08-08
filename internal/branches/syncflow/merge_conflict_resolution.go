@@ -19,35 +19,38 @@ import (
 const (
 	gitDiffNameOnlyFlagConstant                 = "--name-only"
 	gitDiffFilterUnmergedFlagConstant           = "--diff-filter=U"
+	gitNullFlagConstant                         = "-z"
 	gitLsFilesSubcommandConstant                = "ls-files"
 	gitLsFilesUnmergedFlagConstant              = "-u"
 	gitShowSubcommandConstant                   = "show"
-	gitRmSubcommandConstant                     = "rm"
-	gitRmForceFlagConstant                      = "-f"
+	gitMergeFileSubcommandConstant              = "merge-file"
+	gitMergeFileStdoutFlagConstant              = "--stdout"
+	gitMergeFileDiff3FlagConstant               = "--diff3"
+	gitMergeFileMarkerSizeFlagTemplate          = "--marker-size=%d"
+	gitMergeFileLabelFlagConstant               = "-L"
+	gitRestoreSubcommandConstant                = "restore"
+	gitRestoreStagedFlagConstant                = "--staged"
 	gitCommitNoEditFlagConstant                 = "--no-edit"
 	mergeConflictResolutionMaxTokens            = 8192
-	mergeConflictResolutionFailureTemplate      = "failed to resolve merge conflicts with AI: %w"
+	mergeConflictResolutionFailureTemplate      = "failed to resolve merge conflicts automatically: %w"
 	mergeConflictResolutionInspectFailure       = "inspect unmerged files: %w"
 	mergeConflictResolutionStageInspectTemplate = "inspect conflict stages for %s: %w"
 	mergeConflictResolutionStageReadTemplate    = "read %s stage %d: %w"
 	mergeConflictResolutionWorktreeReadTemplate = "read conflicted worktree file %s: %w"
-	mergeConflictResolutionEmptyResponse        = "llm returned an empty merge resolution for %s"
-	mergeConflictResolutionConflictMarkers      = "llm left conflict markers in merge resolution for %s"
-	mergeConflictResolutionPreservationTemplate = "llm merge resolution for %s does not preserve non-conflicting content"
-	mergeConflictResolutionStructureTemplate    = "conflicted worktree file %s has invalid conflict marker structure"
 	mergeConflictResolutionWriteTemplate        = "write resolved merge file %s: %w"
 	mergeConflictResolutionStageTemplate        = "stage resolved merge file %s: %w"
-	mergeConflictResolutionDeleteTemplate       = "stage deleted merge file %s: %w"
 	mergeConflictResolutionCommitTemplate       = "complete resolved merge commit: %w"
 	mergeConflictResolutionPathTemplate         = "invalid conflicted path %q"
 	mergeConflictResolutionTimeoutTemplate      = "AI merge resolution timed out after %s"
 	mergeConflictResolutionCanceledMessage      = "AI merge resolution was canceled"
 	mergeConflictResolutionHandoffTemplate      = "AI merge resolution stopped after: %s. gix did not push. Inspect git status, then resolve and commit the merge, or run git merge --abort."
-	mergeConflictResolutionDeleteDirective      = "GIX_MERGE_RESOLUTION_DELETE_FILE"
-	mergeConflictResolutionSystemPrompt         = "You are an expert merge engineer resolving Git conflicts. Return only the complete final file contents. If the correct resolution is to delete this path, return exactly " + mergeConflictResolutionDeleteDirective + ". Preserve every intentional local OURS change while integrating compatible remote THEIRS changes. Do not drop local changes to make the merge easier. Remove conflict markers. Do not include explanations, markdown fences, or quotes."
-	mergeConflictResolutionUserPrompt           = "Repository: %s\nPath: %s\nTarget branch: %s\nMerged reference: %s\n\nBASE common ancestor:\n%s\n\nOURS current branch with local work that must be preserved:\n%s\n\nTHEIRS incoming branch to integrate:\n%s\n\nReturn only the resolved final contents for this path, or " + mergeConflictResolutionDeleteDirective + " if the path should be deleted."
-	mergeConflictResolutionAbsentStage          = "(file absent in this stage)"
+	stashConflictResolutionHandoffTemplate      = "AI stash restoration stopped after: %s. The stash remains. Inspect git status before retrying sync."
+	mergeConflictResolutionSystemPrompt         = "You resolve one bounded Git conflict hunk. Return exactly one JSON object with string fields hunk_id and content. Preserve the target intent while integrating the incoming intent. content replaces only this hunk; never reproduce the complete file. Do not return markdown, prose, conflict markers, or additional fields."
+	stashConflictResolutionSystemPrompt         = "You resolve one bounded Git stash-restoration conflict hunk. Return exactly one JSON object with string fields hunk_id and content. Preserve both the TARGET branch intent and the STASHED operator intent byte-for-byte wherever supplied. content replaces only this hunk; never reproduce the complete file. Do not return markdown, prose, conflict markers, or additional fields."
+	mergeConflictResolutionUserPrompt           = "Repository: %s\nPath: %s\nTarget branch: %s\nIncoming reference: %s\nHunk ID: %s\n\nCONTEXT BEFORE (read-only):\n%s\n\nBASE:\n%s\n\nTARGET:\n%s\n\nINCOMING:\n%s\n\nCONTEXT AFTER (read-only):\n%s\n\nReturn {\"hunk_id\":\"%s\",\"content\":\"...\"}."
+	mergeConflictResolutionRepairPrompt         = "The prior hunk response was rejected: %s\nReturn a corrected JSON object for hunk %s. Do not change the hunk id or return any other text."
 	mergeConflictResolutionProgressMaximum      = 10 * time.Second
+	mergeConflictResolutionAttemptLimit         = 2
 )
 
 var errMergeConflictResolutionDeadline = errors.New("AI merge resolution deadline exceeded")
@@ -64,20 +67,57 @@ type mergeConflictResolutionReporter func(level shared.EventLevel, code string, 
 type mergeConflictResolutionOptions struct {
 	SourceReference string
 	TargetBranch    string
+	Mode            mergeConflictResolutionMode
+}
+
+type mergeConflictResolutionMode uint8
+
+const (
+	mergeConflictResolutionModeMerge mergeConflictResolutionMode = iota
+	mergeConflictResolutionModeStash
+)
+
+func (options mergeConflictResolutionOptions) conflictEventCode() string {
+	if options.Mode == mergeConflictResolutionModeStash {
+		return shared.EventCodeStashConflict
+	}
+	return shared.EventCodeMergeConflict
+}
+
+func (options mergeConflictResolutionOptions) resolutionEventCode() string {
+	if options.Mode == mergeConflictResolutionModeStash {
+		return shared.EventCodeAIStashResolution
+	}
+	return shared.EventCodeAIMergeResolution
+}
+
+func (options mergeConflictResolutionOptions) validationEventCode() string {
+	if options.Mode == mergeConflictResolutionModeStash {
+		return shared.EventCodeAIStashValidation
+	}
+	return shared.EventCodeAIMergeValidation
+}
+
+func (options mergeConflictResolutionOptions) handoffEventCode() string {
+	if options.Mode == mergeConflictResolutionModeStash {
+		return shared.EventCodeAIStashHandoff
+	}
+	return shared.EventCodeAIMergeHandoff
 }
 
 type mergeConflictFile struct {
-	Path            string
-	Base            string
-	Ours            string
-	OursPresent     bool
-	Theirs          string
-	WorktreeContent string
+	Path     string
+	Base     mergeConflictStage
+	Target   mergeConflictStage
+	Incoming mergeConflictStage
+	Snapshot mergeConflictWorktreeSnapshot
 }
 
 type mergeConflictFileResolution struct {
-	Delete  bool
-	Content string
+	Path        string
+	Delete      bool
+	Content     string
+	Permissions os.FileMode
 }
 
 type mergeConflictMarkerState uint8
@@ -129,32 +169,38 @@ func (service mergeConflictResolutionService) Resolve(ctx context.Context, optio
 	}
 	service.reportConflictDetected(paths, options, timeout)
 
-	client, clientErr := resolveCommitMessageClient(service.commitMessages)
-	if clientErr != nil {
-		return true, service.normalizeResolutionError(resolutionContext, timeout, clientErr)
-	}
-
+	conflictFiles := make([]mergeConflictFile, 0, len(paths))
 	for pathIndex := range paths {
 		conflictFile, conflictFileErr := service.collectConflictFile(resolutionContext, paths[pathIndex])
 		if conflictFileErr != nil {
 			return true, service.normalizeResolutionError(resolutionContext, timeout, conflictFileErr)
 		}
-		resolution, resolutionErr := service.resolveConflictFile(resolutionContext, client, options, conflictFile, deadline, timeout)
+		conflictFiles = append(conflictFiles, conflictFile)
+	}
+
+	var client llm.ChatClient
+	resolutions := make([]mergeConflictFileResolution, 0, len(conflictFiles))
+	for conflictFileIndex := range conflictFiles {
+		resolution, resolvedClient, resolutionErr := service.prepareConflictFileResolution(
+			resolutionContext,
+			client,
+			options,
+			conflictFiles[conflictFileIndex],
+			deadline,
+			timeout,
+		)
 		if resolutionErr != nil {
 			return true, service.normalizeResolutionError(resolutionContext, timeout, resolutionErr)
 		}
-		if resolution.Delete {
-			if deleteErr := service.stageDeletedFile(resolutionContext, conflictFile.Path); deleteErr != nil {
-				return true, service.normalizeResolutionError(resolutionContext, timeout, deleteErr)
-			}
-		} else {
-			if writeErr := service.writeResolvedFile(conflictFile.Path, resolution.Content); writeErr != nil {
-				return true, service.normalizeResolutionError(resolutionContext, timeout, writeErr)
-			}
-			if stageErr := service.stageResolvedFile(resolutionContext, conflictFile.Path); stageErr != nil {
-				return true, service.normalizeResolutionError(resolutionContext, timeout, stageErr)
-			}
-		}
+		client = resolvedClient
+		resolutions = append(resolutions, resolution)
+	}
+
+	service.report(shared.EventLevelInfo, options.validationEventCode(), "all conflict resolutions validated; applying one worktree transaction", map[string]string{
+		"paths": strings.Join(paths, ", "),
+	})
+	if applyErr := service.applyConflictFileResolutions(resolutionContext, conflictFiles, resolutions); applyErr != nil {
+		return true, service.normalizeResolutionError(resolutionContext, timeout, applyErr)
 	}
 
 	remainingPaths, remainingErr := service.unmergedPaths(resolutionContext)
@@ -165,13 +211,26 @@ func (service mergeConflictResolutionService) Resolve(ctx context.Context, optio
 		return true, fmt.Errorf("unresolved merge conflicts remain: %s", strings.Join(remainingPaths, ", "))
 	}
 
-	service.report(shared.EventLevelInfo, shared.EventCodeAIMergeResolution, "all AI resolutions validated; completing merge commit", map[string]string{
+	if options.Mode == mergeConflictResolutionModeStash {
+		service.report(shared.EventLevelInfo, options.resolutionEventCode(), "all stash resolutions applied; restoring uncommitted work", map[string]string{
+			"paths": strings.Join(paths, ", "),
+		})
+		if unstageErr := service.unstageResolvedFiles(resolutionContext, paths); unstageErr != nil {
+			return true, service.normalizeResolutionError(resolutionContext, timeout, unstageErr)
+		}
+		service.report(shared.EventLevelInfo, options.resolutionEventCode(), "stash conflict resolution completed", map[string]string{
+			"paths": strings.Join(paths, ", "),
+		})
+		return true, nil
+	}
+
+	service.report(shared.EventLevelInfo, options.resolutionEventCode(), "all merge resolutions applied; completing merge commit", map[string]string{
 		"paths": strings.Join(paths, ", "),
 	})
 	if commitErr := executeGit(resolutionContext, service.executor, service.repositoryPath, []string{gitCommitSubcommandConstant, gitCommitNoEditFlagConstant}); commitErr != nil {
 		return true, service.normalizeResolutionError(resolutionContext, timeout, fmt.Errorf(mergeConflictResolutionCommitTemplate, commitErr))
 	}
-	service.report(shared.EventLevelInfo, shared.EventCodeAIMergeResolution, "AI merge resolution completed", map[string]string{
+	service.report(shared.EventLevelInfo, options.resolutionEventCode(), "merge conflict resolution completed", map[string]string{
 		"paths": strings.Join(paths, ", "),
 	})
 	return true, nil
@@ -195,10 +254,14 @@ func (service mergeConflictResolutionService) reportConflictDetected(paths []str
 	if len(paths) == 1 {
 		pathNoun = "path"
 	}
+	message := fmt.Sprintf("detected %d conflicted %s while merging %s into %s; resolving automatically", len(paths), pathNoun, strings.TrimSpace(options.SourceReference), strings.TrimSpace(options.TargetBranch))
+	if options.Mode == mergeConflictResolutionModeStash {
+		message = fmt.Sprintf("detected %d conflicted %s while restoring %s onto %s; resolving automatically", len(paths), pathNoun, strings.TrimSpace(options.SourceReference), strings.TrimSpace(options.TargetBranch))
+	}
 	service.report(
 		shared.EventLevelInfo,
-		shared.EventCodeMergeConflict,
-		fmt.Sprintf("detected %d conflicted %s while merging %s into %s; resolving with AI", len(paths), pathNoun, strings.TrimSpace(options.SourceReference), strings.TrimSpace(options.TargetBranch)),
+		options.conflictEventCode(),
+		message,
 		map[string]string{
 			"paths":            strings.Join(paths, ", "),
 			"source_reference": strings.TrimSpace(options.SourceReference),
@@ -209,14 +272,25 @@ func (service mergeConflictResolutionService) reportConflictDetected(paths []str
 }
 
 func (service mergeConflictResolutionService) reportMergeConflictHandoff(resolutionErr error, sourceReference string, targetBranch string) {
+	service.reportConflictHandoff(resolutionErr, mergeConflictResolutionOptions{
+		SourceReference: sourceReference,
+		TargetBranch:    targetBranch,
+	})
+}
+
+func (service mergeConflictResolutionService) reportConflictHandoff(resolutionErr error, options mergeConflictResolutionOptions) {
 	reason := strings.ReplaceAll(strings.TrimSpace(resolutionErr.Error()), "\n", "; ")
+	message := fmt.Sprintf(mergeConflictResolutionHandoffTemplate, reason)
+	if options.Mode == mergeConflictResolutionModeStash {
+		message = fmt.Sprintf(stashConflictResolutionHandoffTemplate, reason)
+	}
 	service.report(
 		shared.EventLevelError,
-		shared.EventCodeAIMergeHandoff,
-		fmt.Sprintf(mergeConflictResolutionHandoffTemplate, reason),
+		options.handoffEventCode(),
+		message,
 		map[string]string{
-			"source_reference": strings.TrimSpace(sourceReference),
-			"target_branch":    strings.TrimSpace(targetBranch),
+			"source_reference": strings.TrimSpace(options.SourceReference),
+			"target_branch":    strings.TrimSpace(options.TargetBranch),
 			"reason":           reason,
 		},
 	)
@@ -231,7 +305,7 @@ func (service mergeConflictResolutionService) report(level shared.EventLevel, co
 
 func (service mergeConflictResolutionService) unmergedPaths(ctx context.Context) ([]string, error) {
 	result, executionErr := service.executor.ExecuteGit(ctx, execshell.CommandDetails{
-		Arguments:        []string{gitDiffSubcommandConstant, gitDiffNameOnlyFlagConstant, gitDiffFilterUnmergedFlagConstant},
+		Arguments:        []string{gitDiffSubcommandConstant, gitDiffNameOnlyFlagConstant, gitNullFlagConstant, gitDiffFilterUnmergedFlagConstant},
 		WorkingDirectory: service.repositoryPath,
 	})
 	if executionErr != nil {
@@ -240,8 +314,7 @@ func (service mergeConflictResolutionService) unmergedPaths(ctx context.Context)
 
 	paths := make([]string, 0)
 	seenPaths := map[string]struct{}{}
-	for _, line := range strings.Split(result.StandardOutput, "\n") {
-		path := strings.TrimSpace(line)
+	for _, path := range strings.Split(result.StandardOutput, "\x00") {
 		if path == "" {
 			continue
 		}
@@ -260,76 +333,116 @@ func (service mergeConflictResolutionService) collectConflictFile(ctx context.Co
 		return mergeConflictFile{}, stagesErr
 	}
 
-	base, baseErr := service.conflictStageContent(ctx, path, stages, 1)
-	if baseErr != nil {
-		return mergeConflictFile{}, baseErr
+	if populateErr := service.populateConflictStageContents(ctx, path, stages); populateErr != nil {
+		return mergeConflictFile{}, populateErr
 	}
-	ours, oursErr := service.conflictStageContent(ctx, path, stages, 2)
-	if oursErr != nil {
-		return mergeConflictFile{}, oursErr
+	snapshot, snapshotErr := service.conflictedWorktreeSnapshot(path)
+	if snapshotErr != nil {
+		return mergeConflictFile{}, snapshotErr
 	}
-	theirs, theirsErr := service.conflictStageContent(ctx, path, stages, 3)
-	if theirsErr != nil {
-		return mergeConflictFile{}, theirsErr
+	conflictFile := mergeConflictFile{
+		Path:     path,
+		Base:     stages[1],
+		Target:   stages[2],
+		Incoming: stages[3],
+		Snapshot: snapshot,
 	}
-	worktreeContent, worktreeContentErr := service.conflictedWorktreeContent(path)
-	if worktreeContentErr != nil {
-		return mergeConflictFile{}, worktreeContentErr
+	if validationErr := validateMergeConflictFile(conflictFile); validationErr != nil {
+		return mergeConflictFile{}, validationErr
 	}
-	_, oursPresent := stages[2]
-	return mergeConflictFile{
-		Path:            path,
-		Base:            base,
-		Ours:            ours,
-		OursPresent:     oursPresent,
-		Theirs:          theirs,
-		WorktreeContent: worktreeContent,
+	return conflictFile, nil
+}
+
+func (service mergeConflictResolutionService) populateConflictStageContents(ctx context.Context, path string, stages map[int]mergeConflictStage) error {
+	for _, stageNumber := range []int{1, 2, 3} {
+		stage, exists := stages[stageNumber]
+		if !exists {
+			continue
+		}
+		content, contentErr := service.conflictStageContent(ctx, path, stageNumber)
+		if contentErr != nil {
+			return contentErr
+		}
+		stage.Content = content
+		stages[stageNumber] = stage
+	}
+	return nil
+}
+
+func (service mergeConflictResolutionService) conflictedWorktreeSnapshot(path string) (mergeConflictWorktreeSnapshot, error) {
+	worktreePath, pathErr := mergeConflictResolutionFilesystemPath(service.repositoryPath, path)
+	if pathErr != nil {
+		return mergeConflictWorktreeSnapshot{}, pathErr
+	}
+	fileInfo, statErr := os.Lstat(worktreePath)
+	if statErr != nil {
+		if os.IsNotExist(statErr) {
+			return mergeConflictWorktreeSnapshot{}, nil
+		}
+		return mergeConflictWorktreeSnapshot{}, fmt.Errorf(mergeConflictResolutionWorktreeReadTemplate, path, statErr)
+	}
+	if !fileInfo.Mode().IsRegular() {
+		return mergeConflictWorktreeSnapshot{}, fmt.Errorf("conflicted worktree path %s is not a regular file", path)
+	}
+	content, readErr := os.ReadFile(worktreePath)
+	if readErr != nil {
+		return mergeConflictWorktreeSnapshot{}, fmt.Errorf(mergeConflictResolutionWorktreeReadTemplate, path, readErr)
+	}
+	return mergeConflictWorktreeSnapshot{
+		Content:     string(content),
+		Permissions: fileInfo.Mode().Perm(),
+		Present:     true,
 	}, nil
 }
 
-func (service mergeConflictResolutionService) conflictedWorktreeContent(path string) (string, error) {
-	worktreePath, pathErr := mergeConflictResolutionFilesystemPath(service.repositoryPath, path)
-	if pathErr != nil {
-		return "", pathErr
-	}
-	content, readErr := os.ReadFile(worktreePath)
-	if readErr == nil {
-		return string(content), nil
-	}
-	if os.IsNotExist(readErr) {
-		return "", nil
-	}
-	return "", fmt.Errorf(mergeConflictResolutionWorktreeReadTemplate, path, readErr)
-}
-
-func (service mergeConflictResolutionService) conflictStages(ctx context.Context, path string) (map[int]struct{}, error) {
+func (service mergeConflictResolutionService) conflictStages(ctx context.Context, path string) (map[int]mergeConflictStage, error) {
 	result, executionErr := service.executor.ExecuteGit(ctx, execshell.CommandDetails{
-		Arguments:        []string{gitLsFilesSubcommandConstant, gitLsFilesUnmergedFlagConstant, gitPathspecSeparatorConstant, path},
+		Arguments:        []string{gitLsFilesSubcommandConstant, gitLsFilesUnmergedFlagConstant, gitNullFlagConstant, gitPathspecSeparatorConstant, path},
 		WorkingDirectory: service.repositoryPath,
 	})
 	if executionErr != nil {
 		return nil, fmt.Errorf(mergeConflictResolutionStageInspectTemplate, path, executionErr)
 	}
 
-	stages := map[int]struct{}{}
-	for _, line := range strings.Split(result.StandardOutput, "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 3 {
+	stages := map[int]mergeConflictStage{}
+	for _, entry := range strings.Split(result.StandardOutput, "\x00") {
+		if entry == "" {
 			continue
 		}
-		stage, stageErr := strconv.Atoi(fields[2])
+		metadata, returnedPath, found := strings.Cut(entry, "\t")
+		if !found {
+			return nil, fmt.Errorf("parse conflict stage metadata for %s", path)
+		}
+		if returnedPath != path {
+			return nil, fmt.Errorf("parse conflict stage metadata for %s: unexpected path %q", path, returnedPath)
+		}
+		fields := strings.Fields(metadata)
+		if len(fields) != 3 {
+			return nil, fmt.Errorf("parse conflict stage metadata for %s", path)
+		}
+		stageNumber, stageErr := strconv.Atoi(fields[2])
 		if stageErr != nil {
 			return nil, fmt.Errorf("parse conflict stage for %s: %w", path, stageErr)
 		}
-		stages[stage] = struct{}{}
+		if stageNumber < 1 || stageNumber > 3 {
+			return nil, fmt.Errorf("parse conflict stage for %s: unsupported stage %d", path, stageNumber)
+		}
+		if _, exists := stages[stageNumber]; exists {
+			return nil, fmt.Errorf("parse conflict stage for %s: duplicate stage %d", path, stageNumber)
+		}
+		stages[stageNumber] = mergeConflictStage{
+			Mode:     fields[0],
+			ObjectID: fields[1],
+			Present:  true,
+		}
+	}
+	if len(stages) < 2 {
+		return nil, fmt.Errorf("inspect conflict stages for %s: expected at least two stages", path)
 	}
 	return stages, nil
 }
 
-func (service mergeConflictResolutionService) conflictStageContent(ctx context.Context, path string, stages map[int]struct{}, stage int) (string, error) {
-	if _, exists := stages[stage]; !exists {
-		return mergeConflictResolutionAbsentStage, nil
-	}
+func (service mergeConflictResolutionService) conflictStageContent(ctx context.Context, path string, stage int) (string, error) {
 	stageReference := fmt.Sprintf(":%d:%s", stage, path)
 	result, executionErr := service.executor.ExecuteGit(ctx, execshell.CommandDetails{
 		Arguments:        []string{gitShowSubcommandConstant, stageReference},
@@ -341,53 +454,262 @@ func (service mergeConflictResolutionService) conflictStageContent(ctx context.C
 	return result.StandardOutput, nil
 }
 
-func (service mergeConflictResolutionService) resolveConflictFile(ctx context.Context, client llm.ChatClient, options mergeConflictResolutionOptions, conflictFile mergeConflictFile, deadline time.Time, timeout time.Duration) (mergeConflictFileResolution, error) {
-	request := service.buildResolutionRequest(options, conflictFile)
-	service.report(
-		shared.EventLevelInfo,
-		shared.EventCodeAIMergeResolution,
-		fmt.Sprintf("resolving %s with AI (deadline %s; Ctrl-C leaves the merge intact)", conflictFile.Path, timeout),
-		map[string]string{
-			"path":      conflictFile.Path,
-			"timeout":   timeout.String(),
-			"remaining": mergeConflictResolutionRemaining(deadline),
-		},
-	)
-	stopProgress := service.startMergeConflictResolutionProgress(ctx, conflictFile.Path, deadline)
-	response, responseErr := client.Chat(ctx, request)
-	stopProgress()
-	if responseErr != nil {
-		return mergeConflictFileResolution{}, responseErr
+func validateMergeConflictFile(conflictFile mergeConflictFile) error {
+	stages := []struct {
+		Name  string
+		Stage mergeConflictStage
+	}{
+		{Name: "base", Stage: conflictFile.Base},
+		{Name: "target", Stage: conflictFile.Target},
+		{Name: "incoming", Stage: conflictFile.Incoming},
 	}
-	service.report(
-		shared.EventLevelInfo,
-		shared.EventCodeAIMergeValidation,
-		fmt.Sprintf("validating AI resolution for %s", conflictFile.Path),
-		map[string]string{"path": conflictFile.Path},
-	)
-	resolvedContent := strings.TrimSpace(response)
-	if resolvedContent == "" {
-		return mergeConflictFileResolution{}, fmt.Errorf(mergeConflictResolutionEmptyResponse, conflictFile.Path)
+	for stageIndex := range stages {
+		if !stages[stageIndex].Stage.Present {
+			continue
+		}
+		if _, permissionsErr := mergeConflictRegularFilePermissions(stages[stageIndex].Stage.Mode); permissionsErr != nil {
+			return fmt.Errorf("%s stage for %s: %w", stages[stageIndex].Name, conflictFile.Path, permissionsErr)
+		}
+		if strings.IndexByte(stages[stageIndex].Stage.Content, 0) >= 0 {
+			return fmt.Errorf("%s stage for %s is binary and cannot be resolved as text", stages[stageIndex].Name, conflictFile.Path)
+		}
 	}
-	resolution := mergeConflictFileResolution{Content: response}
-	if resolvedContent == mergeConflictResolutionDeleteDirective {
-		resolution = mergeConflictFileResolution{Delete: true}
-	} else if containsConflictMarker(resolvedContent) {
-		return mergeConflictFileResolution{}, fmt.Errorf(mergeConflictResolutionConflictMarkers, conflictFile.Path)
-	}
-	if preservationErr := validateMergeConflictResolutionPreservation(conflictFile, resolution); preservationErr != nil {
-		return mergeConflictFileResolution{}, preservationErr
-	}
-	service.report(
-		shared.EventLevelInfo,
-		shared.EventCodeAIMergeResolution,
-		fmt.Sprintf("validated AI resolution for %s; staging", conflictFile.Path),
-		map[string]string{"path": conflictFile.Path},
-	)
-	return resolution, nil
+	return nil
 }
 
-func (service mergeConflictResolutionService) startMergeConflictResolutionProgress(ctx context.Context, path string, deadline time.Time) func() {
+func mergeConflictRegularFilePermissions(mode string) (os.FileMode, error) {
+	switch mode {
+	case "100644":
+		return 0o644, nil
+	case "100755":
+		return 0o755, nil
+	default:
+		return 0, fmt.Errorf("unsupported Git object mode %q", mode)
+	}
+}
+
+func mergeConflictResolvedPermissions(options mergeConflictResolutionOptions, conflictFile mergeConflictFile) (os.FileMode, error) {
+	baseMode := conflictFile.Base.Mode
+	targetMode := conflictFile.Target.Mode
+	incomingMode := conflictFile.Incoming.Mode
+	selectedMode := targetMode
+	if options.Mode == mergeConflictResolutionModeStash {
+		if conflictFile.Incoming.Present && incomingMode != baseMode {
+			selectedMode = incomingMode
+		} else if !conflictFile.Target.Present {
+			selectedMode = incomingMode
+		}
+	} else if conflictFile.Target.Present && targetMode == baseMode && conflictFile.Incoming.Present {
+		selectedMode = incomingMode
+	}
+	if selectedMode == "" {
+		return 0, fmt.Errorf("resolve file mode for %s: no surviving regular-file stage", conflictFile.Path)
+	}
+	return mergeConflictRegularFilePermissions(selectedMode)
+}
+
+func (service mergeConflictResolutionService) prepareConflictFileResolution(
+	ctx context.Context,
+	client llm.ChatClient,
+	options mergeConflictResolutionOptions,
+	conflictFile mergeConflictFile,
+	deadline time.Time,
+	timeout time.Duration,
+) (mergeConflictFileResolution, llm.ChatClient, error) {
+	if !conflictFile.Target.Present || !conflictFile.Incoming.Present {
+		resolution, resolutionErr := deterministicMarkerFreeConflictResolution(options, conflictFile)
+		if resolutionErr != nil {
+			return mergeConflictFileResolution{}, client, resolutionErr
+		}
+		service.report(shared.EventLevelInfo, options.resolutionEventCode(), fmt.Sprintf("resolved marker-free conflict for %s deterministically", conflictFile.Path), map[string]string{
+			"path":     conflictFile.Path,
+			"strategy": "deterministic",
+		})
+		return resolution, client, nil
+	}
+
+	diff3Content, diff3Err := service.mergeConflictDiff3(ctx, conflictFile)
+	if diff3Err != nil {
+		return mergeConflictFileResolution{}, client, diff3Err
+	}
+	plan, planErr := newMergeConflictPlan(conflictFile.Path, diff3Content)
+	if planErr != nil {
+		return mergeConflictFileResolution{}, client, planErr
+	}
+	hunkResolutions := make(map[string]string, len(plan.Hunks))
+	for hunkIndex := range plan.Hunks {
+		hunk := plan.Hunks[hunkIndex]
+		if deterministicResolution, deterministic := resolveDeterministicConflictHunk(hunk); deterministic {
+			hunkResolutions[hunk.ID] = deterministicResolution
+			service.report(shared.EventLevelInfo, options.resolutionEventCode(), fmt.Sprintf("resolved hunk %s in %s deterministically", hunk.ID, conflictFile.Path), map[string]string{
+				"hunk_id":  hunk.ID,
+				"path":     conflictFile.Path,
+				"strategy": "deterministic",
+			})
+			continue
+		}
+		if client == nil {
+			resolvedClient, clientErr := resolveCommitMessageClient(service.commitMessages)
+			if clientErr != nil {
+				return mergeConflictFileResolution{}, client, clientErr
+			}
+			client = resolvedClient
+		}
+		aiResolution, aiResolutionErr := service.resolveConflictHunk(ctx, client, options, conflictFile.Path, hunk, deadline, timeout)
+		if aiResolutionErr != nil {
+			return mergeConflictFileResolution{}, client, aiResolutionErr
+		}
+		hunkResolutions[hunk.ID] = aiResolution
+	}
+	content, renderErr := plan.render(hunkResolutions)
+	if renderErr != nil {
+		return mergeConflictFileResolution{}, client, renderErr
+	}
+	if containsConflictMarker(content) {
+		return mergeConflictFileResolution{}, client, fmt.Errorf("compiled resolution for %s contains conflict markers", conflictFile.Path)
+	}
+	permissions, permissionsErr := mergeConflictResolvedPermissions(options, conflictFile)
+	if permissionsErr != nil {
+		return mergeConflictFileResolution{}, client, permissionsErr
+	}
+	return mergeConflictFileResolution{
+		Path:        conflictFile.Path,
+		Content:     content,
+		Permissions: permissions,
+	}, client, nil
+}
+
+func deterministicMarkerFreeConflictResolution(options mergeConflictResolutionOptions, conflictFile mergeConflictFile) (mergeConflictFileResolution, error) {
+	selectedStage := conflictFile.Target
+	if options.Mode == mergeConflictResolutionModeStash {
+		selectedStage = conflictFile.Incoming
+	}
+	if !selectedStage.Present {
+		return mergeConflictFileResolution{Path: conflictFile.Path, Delete: true}, nil
+	}
+	permissions, permissionsErr := mergeConflictResolvedPermissions(options, conflictFile)
+	if permissionsErr != nil {
+		return mergeConflictFileResolution{}, permissionsErr
+	}
+	return mergeConflictFileResolution{
+		Path:        conflictFile.Path,
+		Content:     selectedStage.Content,
+		Permissions: permissions,
+	}, nil
+}
+
+func (service mergeConflictResolutionService) mergeConflictDiff3(ctx context.Context, conflictFile mergeConflictFile) (content string, returnErr error) {
+	temporaryDirectory, temporaryDirectoryErr := os.MkdirTemp("", "gix-conflict-plan-*")
+	if temporaryDirectoryErr != nil {
+		return "", fmt.Errorf("create conflict-plan workspace for %s: %w", conflictFile.Path, temporaryDirectoryErr)
+	}
+	defer func() {
+		if cleanupErr := os.RemoveAll(temporaryDirectory); cleanupErr != nil {
+			returnErr = errors.Join(returnErr, fmt.Errorf("remove conflict-plan workspace for %s: %w", conflictFile.Path, cleanupErr))
+		}
+	}()
+
+	targetPath := filepath.Join(temporaryDirectory, "target")
+	basePath := filepath.Join(temporaryDirectory, "base")
+	incomingPath := filepath.Join(temporaryDirectory, "incoming")
+	stages := []struct {
+		Path    string
+		Content string
+	}{
+		{Path: targetPath, Content: conflictFile.Target.Content},
+		{Path: basePath, Content: conflictFile.Base.Content},
+		{Path: incomingPath, Content: conflictFile.Incoming.Content},
+	}
+	for stageIndex := range stages {
+		if writeErr := os.WriteFile(stages[stageIndex].Path, []byte(stages[stageIndex].Content), 0o600); writeErr != nil {
+			return "", fmt.Errorf("write conflict-plan stage for %s: %w", conflictFile.Path, writeErr)
+		}
+	}
+
+	arguments := []string{
+		gitMergeFileSubcommandConstant,
+		gitMergeFileStdoutFlagConstant,
+		gitMergeFileDiff3FlagConstant,
+		fmt.Sprintf(gitMergeFileMarkerSizeFlagTemplate, mergeConflictPlanMarkerSize),
+		gitMergeFileLabelFlagConstant,
+		mergeConflictPlanTargetLabel,
+		gitMergeFileLabelFlagConstant,
+		mergeConflictPlanBaseLabel,
+		gitMergeFileLabelFlagConstant,
+		mergeConflictPlanIncomingLabel,
+		targetPath,
+		basePath,
+		incomingPath,
+	}
+	result, executionErr := service.executor.ExecuteGit(ctx, execshell.CommandDetails{
+		Arguments:        arguments,
+		WorkingDirectory: service.repositoryPath,
+	})
+	if executionErr == nil {
+		return result.StandardOutput, nil
+	}
+	var commandFailure execshell.CommandFailedError
+	if errors.As(executionErr, &commandFailure) &&
+		commandFailure.Result.ExitCode > 0 &&
+		commandFailure.Result.ExitCode <= 127 &&
+		commandFailure.Result.StandardOutput != "" {
+		return commandFailure.Result.StandardOutput, nil
+	}
+	return "", fmt.Errorf("compile diff3 conflict plan for %s: %w", conflictFile.Path, executionErr)
+}
+
+func (service mergeConflictResolutionService) resolveConflictHunk(
+	ctx context.Context,
+	client llm.ChatClient,
+	options mergeConflictResolutionOptions,
+	path string,
+	hunk mergeConflictHunk,
+	deadline time.Time,
+	timeout time.Duration,
+) (string, error) {
+	var priorResponse string
+	var validationErr error
+	for attempt := 1; attempt <= mergeConflictResolutionAttemptLimit; attempt++ {
+		request := service.buildHunkResolutionRequest(options, path, hunk, priorResponse, validationErr)
+		progressMessage := fmt.Sprintf("resolving hunk %s in %s with AI (attempt %d/%d; deadline %s; Ctrl-C leaves the merge intact)", hunk.ID, path, attempt, mergeConflictResolutionAttemptLimit, timeout)
+		if options.Mode == mergeConflictResolutionModeStash {
+			progressMessage = fmt.Sprintf("resolving hunk %s in %s with AI (attempt %d/%d; deadline %s; Ctrl-C leaves the stash and conflict intact)", hunk.ID, path, attempt, mergeConflictResolutionAttemptLimit, timeout)
+		}
+		service.report(shared.EventLevelInfo, options.resolutionEventCode(), progressMessage, map[string]string{
+			"attempt":   strconv.Itoa(attempt),
+			"hunk_id":   hunk.ID,
+			"path":      path,
+			"remaining": mergeConflictResolutionRemaining(deadline),
+			"strategy":  "ai",
+			"timeout":   timeout.String(),
+		})
+		stopProgress := service.startMergeConflictResolutionProgress(ctx, options, path, deadline)
+		response, responseErr := client.Chat(ctx, request)
+		stopProgress()
+		if responseErr != nil {
+			return "", responseErr
+		}
+		service.report(shared.EventLevelInfo, options.validationEventCode(), fmt.Sprintf("validating AI resolution for hunk %s in %s", hunk.ID, path), map[string]string{
+			"attempt": strconv.Itoa(attempt),
+			"hunk_id": hunk.ID,
+			"path":    path,
+		})
+		parsedResponse, parseErr := parseMergeConflictHunkResponse(response)
+		if parseErr == nil {
+			validatedContent, contentErr := validateMergeConflictHunkResponse(options, hunk, parsedResponse)
+			if contentErr == nil {
+				return validatedContent, nil
+			}
+			validationErr = contentErr
+		} else {
+			validationErr = parseErr
+		}
+		priorResponse = response
+	}
+	return "", fmt.Errorf("AI hunk resolution for %s in %s failed validation after %d attempts: %w", hunk.ID, path, mergeConflictResolutionAttemptLimit, validationErr)
+}
+
+func (service mergeConflictResolutionService) startMergeConflictResolutionProgress(ctx context.Context, options mergeConflictResolutionOptions, path string, deadline time.Time) func() {
 	if service.reporter == nil {
 		return func() {}
 	}
@@ -418,7 +740,7 @@ func (service mergeConflictResolutionService) startMergeConflictResolutionProgre
 				}
 				service.report(
 					shared.EventLevelInfo,
-					shared.EventCodeAIMergeResolution,
+					options.resolutionEventCode(),
 					fmt.Sprintf("still resolving %s with AI (%s elapsed; %s remaining)", path, mergeConflictResolutionElapsed(startedAt), mergeConflictResolutionRemaining(deadline)),
 					map[string]string{
 						"path":      path,
@@ -469,67 +791,168 @@ func mergeConflictResolutionElapsed(startedAt time.Time) string {
 	return elapsed.Round(time.Second).String()
 }
 
-func (service mergeConflictResolutionService) buildResolutionRequest(options mergeConflictResolutionOptions, conflictFile mergeConflictFile) llm.ChatRequest {
+func (service mergeConflictResolutionService) buildHunkResolutionRequest(
+	options mergeConflictResolutionOptions,
+	path string,
+	hunk mergeConflictHunk,
+	priorResponse string,
+	validationErr error,
+) llm.ChatRequest {
 	var temperature *float64
 	if service.commitMessages.Temperature != 0 {
 		temperatureValue := service.commitMessages.Temperature
 		temperature = &temperatureValue
 	}
-	return llm.ChatRequest{
-		Messages: []llm.Message{
-			{
-				Role:    "system",
-				Content: mergeConflictResolutionSystemPrompt,
-			},
-			{
-				Role: "user",
-				Content: fmt.Sprintf(
-					mergeConflictResolutionUserPrompt,
-					filepath.Base(filepath.Clean(service.repositoryPath)),
-					conflictFile.Path,
-					strings.TrimSpace(options.TargetBranch),
-					strings.TrimSpace(options.SourceReference),
-					conflictFile.Base,
-					conflictFile.Ours,
-					conflictFile.Theirs,
-				),
-			},
+	systemPrompt := mergeConflictResolutionSystemPrompt
+	if options.Mode == mergeConflictResolutionModeStash {
+		systemPrompt = stashConflictResolutionSystemPrompt
+	}
+	messages := []llm.Message{
+		{
+			Role:    "system",
+			Content: systemPrompt,
 		},
+		{
+			Role: "user",
+			Content: fmt.Sprintf(
+				mergeConflictResolutionUserPrompt,
+				filepath.Base(filepath.Clean(service.repositoryPath)),
+				path,
+				strings.TrimSpace(options.TargetBranch),
+				strings.TrimSpace(options.SourceReference),
+				hunk.ID,
+				hunk.ContextBefore,
+				hunk.Base,
+				hunk.Target,
+				hunk.Incoming,
+				hunk.ContextAfter,
+				hunk.ID,
+			),
+		},
+	}
+	if validationErr != nil {
+		messages = append(messages,
+			llm.Message{Role: "assistant", Content: priorResponse},
+			llm.Message{Role: "user", Content: fmt.Sprintf(mergeConflictResolutionRepairPrompt, validationErr.Error(), hunk.ID)},
+		)
+	}
+	return llm.ChatRequest{
+		Messages:    messages,
 		MaxTokens:   mergeConflictResolutionMaxTokens,
 		Temperature: temperature,
 	}
 }
 
-func (service mergeConflictResolutionService) writeResolvedFile(path string, content string) error {
+func (service mergeConflictResolutionService) applyConflictFileResolutions(
+	ctx context.Context,
+	conflictFiles []mergeConflictFile,
+	resolutions []mergeConflictFileResolution,
+) error {
+	if len(conflictFiles) != len(resolutions) {
+		return errors.New("apply conflict resolutions: file and resolution counts differ")
+	}
+	paths := make([]string, 0, len(resolutions))
+	for resolutionIndex := range resolutions {
+		if conflictFiles[resolutionIndex].Path != resolutions[resolutionIndex].Path {
+			return fmt.Errorf("apply conflict resolutions: path %q does not match %q", conflictFiles[resolutionIndex].Path, resolutions[resolutionIndex].Path)
+		}
+		if applyErr := service.applyConflictFileResolution(resolutions[resolutionIndex]); applyErr != nil {
+			rollbackErr := service.restoreConflictWorktreeSnapshots(conflictFiles)
+			return errors.Join(applyErr, rollbackErr)
+		}
+		paths = append(paths, resolutions[resolutionIndex].Path)
+	}
+	arguments := []string{gitAddSubcommandConstant, gitAddAllFlagConstant, gitPathspecSeparatorConstant}
+	arguments = append(arguments, paths...)
+	if stageErr := executeGit(ctx, service.executor, service.repositoryPath, arguments); stageErr != nil {
+		rollbackErr := service.restoreConflictWorktreeSnapshots(conflictFiles)
+		return errors.Join(fmt.Errorf(mergeConflictResolutionStageTemplate, strings.Join(paths, ", "), stageErr), rollbackErr)
+	}
+	return nil
+}
+
+func (service mergeConflictResolutionService) applyConflictFileResolution(resolution mergeConflictFileResolution) error {
+	resolvedPath, pathErr := mergeConflictResolutionFilesystemPath(service.repositoryPath, resolution.Path)
+	if pathErr != nil {
+		return pathErr
+	}
+	if resolution.Delete {
+		if removeErr := os.Remove(resolvedPath); removeErr != nil && !os.IsNotExist(removeErr) {
+			return fmt.Errorf("delete resolved merge file %s: %w", resolution.Path, removeErr)
+		}
+		return nil
+	}
+	return service.writeResolvedFile(resolution.Path, resolution.Content, resolution.Permissions)
+}
+
+func (service mergeConflictResolutionService) writeResolvedFile(path string, content string, permissions os.FileMode) (returnErr error) {
 	resolvedPath, pathErr := mergeConflictResolutionFilesystemPath(service.repositoryPath, path)
 	if pathErr != nil {
 		return pathErr
 	}
-	if writeErr := os.WriteFile(resolvedPath, []byte(content), 0o644); writeErr != nil {
-		return fmt.Errorf(mergeConflictResolutionWriteTemplate, path, writeErr)
+	temporaryFile, temporaryFileErr := os.CreateTemp(filepath.Dir(resolvedPath), ".gix-conflict-resolution-*")
+	if temporaryFileErr != nil {
+		return fmt.Errorf(mergeConflictResolutionWriteTemplate, path, temporaryFileErr)
+	}
+	temporaryPath := temporaryFile.Name()
+	defer func() {
+		if cleanupErr := os.Remove(temporaryPath); cleanupErr != nil && !os.IsNotExist(cleanupErr) {
+			returnErr = errors.Join(returnErr, fmt.Errorf("remove temporary resolution for %s: %w", path, cleanupErr))
+		}
+	}()
+	if chmodErr := temporaryFile.Chmod(permissions); chmodErr != nil {
+		closeErr := temporaryFile.Close()
+		return fmt.Errorf(mergeConflictResolutionWriteTemplate, path, errors.Join(chmodErr, closeErr))
+	}
+	if _, writeErr := temporaryFile.WriteString(content); writeErr != nil {
+		closeErr := temporaryFile.Close()
+		return fmt.Errorf(mergeConflictResolutionWriteTemplate, path, errors.Join(writeErr, closeErr))
+	}
+	if closeErr := temporaryFile.Close(); closeErr != nil {
+		return fmt.Errorf(mergeConflictResolutionWriteTemplate, path, closeErr)
+	}
+	if renameErr := os.Rename(temporaryPath, resolvedPath); renameErr != nil {
+		return fmt.Errorf(mergeConflictResolutionWriteTemplate, path, renameErr)
 	}
 	return nil
 }
 
-func (service mergeConflictResolutionService) stageResolvedFile(ctx context.Context, path string) error {
-	if stageErr := executeGit(ctx, service.executor, service.repositoryPath, []string{gitAddSubcommandConstant, gitPathspecSeparatorConstant, path}); stageErr != nil {
-		return fmt.Errorf(mergeConflictResolutionStageTemplate, path, stageErr)
+func (service mergeConflictResolutionService) restoreConflictWorktreeSnapshots(conflictFiles []mergeConflictFile) error {
+	var restoreErr error
+	for conflictFileIndex := range conflictFiles {
+		conflictFile := conflictFiles[conflictFileIndex]
+		resolvedPath, pathErr := mergeConflictResolutionFilesystemPath(service.repositoryPath, conflictFile.Path)
+		if pathErr != nil {
+			restoreErr = errors.Join(restoreErr, pathErr)
+			continue
+		}
+		if !conflictFile.Snapshot.Present {
+			if removeErr := os.Remove(resolvedPath); removeErr != nil && !os.IsNotExist(removeErr) {
+				restoreErr = errors.Join(restoreErr, fmt.Errorf("restore absent conflict path %s: %w", conflictFile.Path, removeErr))
+			}
+			continue
+		}
+		if writeErr := service.writeResolvedFile(conflictFile.Path, conflictFile.Snapshot.Content, conflictFile.Snapshot.Permissions); writeErr != nil {
+			restoreErr = errors.Join(restoreErr, fmt.Errorf("restore conflicted worktree file %s: %w", conflictFile.Path, writeErr))
+		}
 	}
-	return nil
+	return restoreErr
 }
 
-func (service mergeConflictResolutionService) stageDeletedFile(ctx context.Context, path string) error {
-	if _, pathErr := mergeConflictResolutionFilesystemPath(service.repositoryPath, path); pathErr != nil {
-		return pathErr
-	}
-	if deleteErr := executeGit(ctx, service.executor, service.repositoryPath, []string{gitRmSubcommandConstant, gitRmForceFlagConstant, gitPathspecSeparatorConstant, path}); deleteErr != nil {
-		return fmt.Errorf(mergeConflictResolutionDeleteTemplate, path, deleteErr)
+func (service mergeConflictResolutionService) unstageResolvedFiles(ctx context.Context, paths []string) error {
+	arguments := []string{gitRestoreSubcommandConstant, gitRestoreStagedFlagConstant, gitPathspecSeparatorConstant}
+	arguments = append(arguments, paths...)
+	if unstageErr := executeGit(ctx, service.executor, service.repositoryPath, arguments); unstageErr != nil {
+		return fmt.Errorf("restore resolved stash paths to the worktree: %w", unstageErr)
 	}
 	return nil
 }
 
 func mergeConflictResolutionFilesystemPath(repositoryPath string, path string) (string, error) {
-	cleanPath := filepath.Clean(strings.TrimSpace(path))
+	if path == "" {
+		return "", fmt.Errorf(mergeConflictResolutionPathTemplate, path)
+	}
+	cleanPath := filepath.Clean(path)
 	if cleanPath == "." || cleanPath == string(filepath.Separator) || cleanPath == ".." || filepath.IsAbs(cleanPath) || strings.HasPrefix(cleanPath, ".."+string(filepath.Separator)) {
 		return "", fmt.Errorf(mergeConflictResolutionPathTemplate, path)
 	}
@@ -538,94 +961,14 @@ func mergeConflictResolutionFilesystemPath(repositoryPath string, path string) (
 
 func containsConflictMarker(value string) bool {
 	for _, line := range strings.Split(value, "\n") {
-		if strings.HasPrefix(line, "<<<<<<<") || strings.HasPrefix(line, "=======") || strings.HasPrefix(line, ">>>>>>>") {
+		if strings.HasPrefix(line, "<<<<<<<") ||
+			strings.HasPrefix(line, "|||||||") ||
+			strings.HasPrefix(line, "=======") ||
+			strings.HasPrefix(line, ">>>>>>>") {
 			return true
 		}
 	}
 	return false
-}
-
-func validateMergeConflictResolutionPreservation(conflictFile mergeConflictFile, resolution mergeConflictFileResolution) error {
-	nonConflictingRegions, conflictCount, parseErr := mergeConflictNonConflictingRegions(conflictFile.WorktreeContent)
-	if parseErr != nil {
-		return fmt.Errorf(mergeConflictResolutionStructureTemplate+": %w", conflictFile.Path, parseErr)
-	}
-	if conflictCount == 0 {
-		return validateMarkerFreeMergeConflictResolution(conflictFile, resolution)
-	}
-	if !mergeConflictRegionsContainContent(nonConflictingRegions) {
-		return nil
-	}
-	if resolution.Delete || !mergeConflictResolutionPreservesRegions(resolution.Content, nonConflictingRegions) {
-		return fmt.Errorf(mergeConflictResolutionPreservationTemplate, conflictFile.Path)
-	}
-	return nil
-}
-
-func validateMarkerFreeMergeConflictResolution(conflictFile mergeConflictFile, resolution mergeConflictFileResolution) error {
-	if !conflictFile.OursPresent {
-		if resolution.Delete {
-			return nil
-		}
-		return fmt.Errorf(mergeConflictResolutionPreservationTemplate, conflictFile.Path)
-	}
-	if resolution.Delete || resolution.Content != conflictFile.Ours {
-		return fmt.Errorf(mergeConflictResolutionPreservationTemplate, conflictFile.Path)
-	}
-	return nil
-}
-
-func mergeConflictNonConflictingRegions(content string) ([]string, int, error) {
-	regions := make([]string, 0)
-	var currentRegion strings.Builder
-	state := mergeConflictMarkerStateOutside
-	conflictCount := 0
-
-	for _, line := range mergeConflictLines(content) {
-		switch state {
-		case mergeConflictMarkerStateOutside:
-			if mergeConflictLineHasPrefix(line, "<<<<<<<") {
-				regions = append(regions, currentRegion.String())
-				currentRegion.Reset()
-				state = mergeConflictMarkerStateOurs
-				conflictCount++
-				continue
-			}
-			currentRegion.WriteString(line)
-		case mergeConflictMarkerStateOurs:
-			switch {
-			case mergeConflictLineHasPrefix(line, "|||||||"):
-				state = mergeConflictMarkerStateBase
-			case mergeConflictLineHasPrefix(line, "======="):
-				state = mergeConflictMarkerStateTheirs
-			case mergeConflictLineHasPrefix(line, "<<<<<<<"), mergeConflictLineHasPrefix(line, ">>>>>>>"):
-				return nil, 0, errors.New("invalid ours conflict marker sequence")
-			}
-		case mergeConflictMarkerStateBase:
-			switch {
-			case mergeConflictLineHasPrefix(line, "======="):
-				state = mergeConflictMarkerStateTheirs
-			case mergeConflictLineHasPrefix(line, "<<<<<<<"), mergeConflictLineHasPrefix(line, "|||||||"), mergeConflictLineHasPrefix(line, ">>>>>>>"):
-				return nil, 0, errors.New("invalid base conflict marker sequence")
-			}
-		case mergeConflictMarkerStateTheirs:
-			switch {
-			case mergeConflictLineHasPrefix(line, ">>>>>>>"):
-				state = mergeConflictMarkerStateOutside
-			case mergeConflictLineHasPrefix(line, "<<<<<<<"):
-				return nil, 0, errors.New("invalid theirs conflict marker sequence")
-			}
-		}
-	}
-
-	if state != mergeConflictMarkerStateOutside {
-		return nil, 0, errors.New("unterminated conflict marker sequence")
-	}
-	if conflictCount == 0 {
-		return nil, 0, nil
-	}
-	regions = append(regions, currentRegion.String())
-	return regions, conflictCount, nil
 }
 
 func mergeConflictLines(content string) []string {
@@ -647,35 +990,9 @@ func mergeConflictLines(content string) []string {
 	return lines
 }
 
-func mergeConflictLineHasPrefix(line string, prefix string) bool {
-	lineWithoutTerminator := strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")
-	return strings.HasPrefix(lineWithoutTerminator, prefix)
-}
-
-func mergeConflictRegionsContainContent(regions []string) bool {
-	for regionIndex := range regions {
-		if regions[regionIndex] != "" {
-			return true
-		}
-	}
-	return false
-}
-
-func mergeConflictResolutionPreservesRegions(resolution string, regions []string) bool {
-	if len(regions) == 0 {
-		return true
-	}
+func mergeConflictResolutionContainsRegions(resolution string, regions []string) bool {
 	cursor := 0
-	prefix := regions[0]
-	if prefix != "" {
-		if !strings.HasPrefix(resolution, prefix) {
-			return false
-		}
-		cursor = len(prefix)
-	}
-
-	lastRegionIndex := len(regions) - 1
-	for regionIndex := 1; regionIndex < lastRegionIndex; regionIndex++ {
+	for regionIndex := range regions {
 		region := regions[regionIndex]
 		if region == "" {
 			continue
@@ -686,13 +1003,5 @@ func mergeConflictResolutionPreservesRegions(resolution string, regions []string
 		}
 		cursor += regionOffset + len(region)
 	}
-
-	suffix := regions[lastRegionIndex]
-	if suffix == "" {
-		return true
-	}
-	if !strings.HasSuffix(resolution, suffix) {
-		return false
-	}
-	return len(resolution)-len(suffix) >= cursor
+	return true
 }

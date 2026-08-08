@@ -102,6 +102,23 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Resolution:
   Sync now derives tracked and untracked path sets directly from Git's status entries. Exact tracked paths use force staging so matching ignore rules cannot block their modifications, deletions, renames, or staged additions; untracked paths retain normal ignore-respecting staging. The cached-ignore inspection and tracked-path restore code were removed. Public CLI coverage reproduces the reported empty local branch with dirty `configs/.env.hecateapi.example`, verifies its contents are committed and pushed into a new pull request, and retains ignored-untracked exclusion coverage. `make format`, `make test`, `make lint`, and `make ci` passed on 2026-07-27.
 
+- [x] [B037] (P0) Restore stashed sync conflicts automatically before reporting success.
+  Reported on 2026-07-28 after `gix sync bugfix/B089-provider-error-contract --stash` switched branches and then left `.mprlab/ISSUES.md` unmerged.
+  Observation:
+  Strict sync emits `REPO_SWITCHED` and `SYNCED` before its deferred `git stash pop` runs. When the target branch and the stashed work changed the same region, Git leaves an ordinary three-way conflict, retains the stash, and requires manual resolution even though Gix already owns a validated AI merge resolver.
+  Requirements:
+  - Treat restoration of the exact stash created by the active sync as part of the sync operation.
+  - When restoration produces unmerged paths, resolve safe conflicts deterministically, use the configured LLM only for unresolved semantic hunks, preserve both target-branch content and stashed operator work, validate the compiled files, and leave the restored changes uncommitted.
+  - Remove the applied stash only after every conflict is resolved and the restored work is valid; retain it on any failed automatic resolution.
+  - Emit `REPO_SWITCHED` and `SYNCED` only after stash restoration completes successfully.
+  - Keep non-conflicting `--stash` behavior and merge-conflict resolution behavior unchanged.
+  Validation:
+  - Public CLI coverage reproduces a B089-sized `.mprlab/ISSUES.md` target/stash conflict, runs an explicit branch handoff with `--stash`, and proves all additions survive without conflict markers or an LLM call, the target commit is unchanged, the restored file remains uncommitted, the operation exits successfully, and no stash remains.
+  - Cover bounded semantic resolution, executable-mode preservation, one repair attempt, multi-file failure atomicity, binary rejection before the LLM, retained failure state, and post-restoration `SYNCED` ordering.
+  - Run `make format`, `make test`, `make lint`, `make ci`, and `git diff --check`.
+  Resolution:
+  Strict `--stash` sync now treats stash restoration as part of the operation. The resolver compiles exact diff3 hunks from Git's index stages, preserves stable file bytes outside those hunks, resolves three-way-safe issue records and marker-free cases deterministically, and requests strict hunk-identified JSON only for remaining semantic conflicts. It validates every file before writing any, applies files with rollback protection and one index update, preserves regular-file modes, and rejects binary or unsupported object modes before the LLM. Stash mode requires target and stashed conflict intent, returns resolved paths as unstaged work, and drops the retained stash only after success. Completion events are deferred until restoration succeeds; two rejected responses keep every original conflict and the stash inspectable. Public CLI coverage exercises a B089-sized zero-LLM restoration, bounded semantic resolution, executable modes, lossy repair, multi-file atomicity, and binary handoff. `make format`, `make test`, `make lint`, `make ci`, and `git diff --check` passed on 2026-07-28.
+
 ## Maintenance
 
 - [ ] [M001R] (P2) Backlog hygiene and archive.

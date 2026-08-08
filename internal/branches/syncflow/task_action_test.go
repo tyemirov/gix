@@ -124,6 +124,8 @@ type strictSyncGitExecutor struct {
 	unmergedPaths     string
 	conflictStages    map[string]string
 	showOutputs       map[string]string
+	mergeFileOutput   string
+	mergeAttempted    bool
 	conflictsResolved bool
 	configValues      map[string]string
 	blockedBranch     string
@@ -181,14 +183,28 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 	case "ls-files":
 		if commandHasArgument(details.Arguments, gitLsFilesUnmergedFlagConstant) {
 			path := details.Arguments[len(details.Arguments)-1]
-			return execshell.ExecutionResult{StandardOutput: executor.conflictStages[path]}, nil
+			output := executor.conflictStages[path]
+			if commandHasArgument(details.Arguments, gitNullFlagConstant) {
+				output = strings.ReplaceAll(strings.TrimSuffix(output, "\n"), "\n", "\x00")
+				if output != "" {
+					output += "\x00"
+				}
+			}
+			return execshell.ExecutionResult{StandardOutput: output}, nil
 		}
 	case "diff":
 		if commandHasArgument(details.Arguments, gitDiffNameOnlyFlagConstant) && commandHasArgument(details.Arguments, gitDiffFilterUnmergedFlagConstant) {
 			if executor.conflictsResolved {
 				return execshell.ExecutionResult{}, nil
 			}
-			return execshell.ExecutionResult{StandardOutput: executor.unmergedPaths}, nil
+			output := executor.unmergedPaths
+			if commandHasArgument(details.Arguments, gitNullFlagConstant) {
+				output = strings.ReplaceAll(strings.TrimSuffix(output, "\n"), "\n", "\x00")
+				if output != "" {
+					output += "\x00"
+				}
+			}
+			return execshell.ExecutionResult{StandardOutput: output}, nil
 		}
 		if commandHasArgument(details.Arguments, "--stat") {
 			output := executor.diffStatOutput
@@ -226,13 +242,25 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 		}
 		return execshell.ExecutionResult{StandardOutput: output}, nil
 	case "merge":
+		executor.mergeAttempted = true
 		if executor.mergeError != nil {
 			return execshell.ExecutionResult{}, executor.mergeError
 		}
 	case "show":
 		return execshell.ExecutionResult{StandardOutput: executor.showOutputs[strings.Join(details.Arguments[1:], " ")]}, nil
+	case "merge-file":
+		return execshell.ExecutionResult{}, execshell.CommandFailedError{
+			Command: execshell.ShellCommand{
+				Name:    execshell.CommandGit,
+				Details: details,
+			},
+			Result: execshell.ExecutionResult{
+				ExitCode:       1,
+				StandardOutput: executor.mergeFileOutput,
+			},
+		}
 	case "add":
-		if len(details.Arguments) > 2 && details.Arguments[1] == gitPathspecSeparatorConstant {
+		if executor.mergeAttempted && commandHasArgument(details.Arguments, gitPathspecSeparatorConstant) {
 			executor.conflictsResolved = true
 		}
 	case "rm":
@@ -1445,6 +1473,24 @@ func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedCurrentDirtyMaster
 	generatedBranchName := "gix/support-agentic-model-and-reasoning-effort-settings"
 	pullRequestBody := "## Summary\n- Preserves local settings work and remote issue numbering."
 	resolvedContent := "stable preface\n# ISSUES\n\n- [x] [I010] Configure agentic model and effort from settings.\n- [x] [I003] Add clear search field.\nstable epilogue\n"
+	baseConflictContent := "# ISSUES\n\n- [x] [I002] Collapse execution card details.\n"
+	targetConflictContent := "# ISSUES\n\n- [x] [I010] Configure agentic model and effort from settings.\n"
+	incomingConflictContent := "# ISSUES\n\n- [x] [I003] Add clear search field.\n"
+	hunkID := mergeConflictHunkID("README.md", 0, baseConflictContent, targetConflictContent, incomingConflictContent)
+	structuredResolution := fmt.Sprintf(
+		`{"hunk_id":%q,"content":%q}`,
+		hunkID,
+		targetConflictContent+"- [x] [I003] Add clear search field.\n",
+	)
+	mergeFileOutput := "stable preface\n" +
+		mergeConflictPlanMarker("<", mergeConflictPlanTargetLabel) + "\n" +
+		targetConflictContent +
+		mergeConflictPlanMarker("|", mergeConflictPlanBaseLabel) + "\n" +
+		baseConflictContent +
+		strings.Repeat("=", mergeConflictPlanMarkerSize) + "\n" +
+		incomingConflictContent +
+		mergeConflictPlanMarker(">", mergeConflictPlanIncomingLabel) + "\n" +
+		"stable epilogue\n"
 	repositoryPath := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(repositoryPath, "README.md"), []byte("stable preface\n<<<<<<< HEAD\nlocal\n=======\nremote\n>>>>>>> origin/master\nstable epilogue\n"), 0o644))
 	gitExecutor := &strictSyncGitExecutor{
@@ -1456,10 +1502,11 @@ func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedCurrentDirtyMaster
 			"README.md": "100644 aaaaaaa 1\tREADME.md\n100644 bbbbbbb 2\tREADME.md\n100644 ccccccc 3\tREADME.md\n",
 		},
 		showOutputs: map[string]string{
-			":1:README.md": "# ISSUES\n\n- [x] [I002] Collapse execution card details.\n",
-			":2:README.md": "# ISSUES\n\n- [x] [I010] Configure agentic model and effort from settings.\n",
-			":3:README.md": "# ISSUES\n\n- [x] [I003] Add clear search field.\n",
+			":1:README.md": "stable preface\n" + baseConflictContent + "stable epilogue\n",
+			":2:README.md": "stable preface\n" + targetConflictContent + "stable epilogue\n",
+			":3:README.md": "stable preface\n" + incomingConflictContent + "stable epilogue\n",
 		},
+		mergeFileOutput: mergeFileOutput,
 		missingReferences: map[string]bool{
 			"origin/" + generatedBranchName:     true,
 			"refs/heads/" + generatedBranchName: true,
@@ -1470,7 +1517,7 @@ func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedCurrentDirtyMaster
 	githubExecutor := &strictSyncGitHubExecutor{}
 	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
 	require.NoError(t, githubClientError)
-	chatClient := &strictSyncChatClient{responses: []string{"fix: support agentic model and reasoning effort settings", "docs: update issue notes", resolvedContent, pullRequestBody}}
+	chatClient := &strictSyncChatClient{responses: []string{"fix: support agentic model and reasoning effort settings", "docs: update issue notes", structuredResolution, pullRequestBody}}
 	environment := &workflow.Environment{
 		GitExecutor:       gitExecutor,
 		RepositoryManager: gitManager,
@@ -1500,24 +1547,24 @@ func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedCurrentDirtyMaster
 	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	recordedCommands := recordedGitCommands(gitExecutor.commands)
 	require.Contains(t, recordedCommands, "merge --no-edit origin/master")
-	require.Contains(t, recordedCommands, "diff --name-only --diff-filter=U")
-	require.Contains(t, recordedCommands, "ls-files -u -- README.md")
+	require.Contains(t, recordedCommands, "diff --name-only -z --diff-filter=U")
+	require.Contains(t, recordedCommands, "ls-files -u -z -- README.md")
 	require.Contains(t, recordedCommands, "show :1:README.md")
 	require.Contains(t, recordedCommands, "show :2:README.md")
 	require.Contains(t, recordedCommands, "show :3:README.md")
-	require.Contains(t, recordedCommands, "add -- README.md")
+	require.Contains(t, recordedCommands, "add --all -- README.md")
 	require.Contains(t, recordedCommands, "commit --no-edit")
 	require.Contains(t, recordedCommands, "push -u origin "+generatedBranchName)
-	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, "merge --no-edit origin/master"), recordedGitCommandIndex(gitExecutor.commands, "add -- README.md"))
-	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, "add -- README.md"), recordedGitCommandIndex(gitExecutor.commands, "commit --no-edit"))
+	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, "merge --no-edit origin/master"), recordedGitCommandIndex(gitExecutor.commands, "add --all -- README.md"))
+	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, "add --all -- README.md"), recordedGitCommandIndex(gitExecutor.commands, "commit --no-edit"))
 	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, "commit --no-edit"), recordedGitCommandIndex(gitExecutor.commands, "push -u origin "+generatedBranchName))
 	resolvedBytes, resolvedReadErr := os.ReadFile(filepath.Join(repositoryPath, "README.md"))
 	require.NoError(t, resolvedReadErr)
 	require.Equal(t, resolvedContent, string(resolvedBytes))
 	require.Len(t, chatClient.requests, 4)
-	require.Contains(t, chatClient.requests[2].Messages[1].Content, "OURS current branch with local work that must be preserved")
+	require.Contains(t, chatClient.requests[2].Messages[1].Content, "Hunk ID: "+hunkID)
 	require.Contains(t, chatClient.requests[2].Messages[1].Content, "Configure agentic model")
-	require.Contains(t, chatClient.requests[2].Messages[1].Content, "THEIRS incoming branch to integrate")
+	require.Contains(t, chatClient.requests[2].Messages[1].Content, "INCOMING:")
 	require.Contains(t, chatClient.requests[2].Messages[1].Content, "Add clear search field")
 	require.Len(t, githubExecutor.commands, 1)
 	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", generatedBranchName, "--title", generatedBranchName, "--body", pullRequestBody}, githubExecutor.commands[0].Arguments)
@@ -1551,7 +1598,7 @@ func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedCurrentDirtyMaster
 	githubExecutor := &strictSyncGitHubExecutor{}
 	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
 	require.NoError(t, githubClientError)
-	chatClient := &strictSyncChatClient{responses: []string{"fix: remove obsolete readme after conflict", "docs: remove obsolete readme", mergeConflictResolutionDeleteDirective, pullRequestBody}}
+	chatClient := &strictSyncChatClient{responses: []string{"fix: remove obsolete readme after conflict", "docs: remove obsolete readme", pullRequestBody}}
 	environment := &workflow.Environment{
 		GitExecutor:       gitExecutor,
 		RepositoryManager: gitManager,
@@ -1581,21 +1628,17 @@ func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedCurrentDirtyMaster
 	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	recordedCommands := recordedGitCommands(gitExecutor.commands)
 	require.Contains(t, recordedCommands, "merge --no-edit origin/master")
-	require.Contains(t, recordedCommands, "ls-files -u -- README.md")
+	require.Contains(t, recordedCommands, "ls-files -u -z -- README.md")
 	require.Contains(t, recordedCommands, "show :1:README.md")
 	require.NotContains(t, recordedCommands, "show :2:README.md")
 	require.Contains(t, recordedCommands, "show :3:README.md")
-	require.Contains(t, recordedCommands, "rm -f -- README.md")
-	require.NotContains(t, recordedCommands, "add -- README.md")
+	require.Contains(t, recordedCommands, "add --all -- README.md")
 	require.Contains(t, recordedCommands, "commit --no-edit")
 	require.Contains(t, recordedCommands, "push -u origin "+generatedBranchName)
-	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, "rm -f -- README.md"), recordedGitCommandIndex(gitExecutor.commands, "commit --no-edit"))
+	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, "add --all -- README.md"), recordedGitCommandIndex(gitExecutor.commands, "commit --no-edit"))
 	_, readErr := os.Stat(readmePath)
 	require.True(t, os.IsNotExist(readErr))
-	require.Len(t, chatClient.requests, 4)
-	require.Contains(t, chatClient.requests[2].Messages[0].Content, mergeConflictResolutionDeleteDirective)
-	require.Contains(t, chatClient.requests[2].Messages[1].Content, "OURS current branch with local work that must be preserved")
-	require.Contains(t, chatClient.requests[2].Messages[1].Content, mergeConflictResolutionAbsentStage)
+	require.Len(t, chatClient.requests, 3)
 	require.Len(t, githubExecutor.commands, 1)
 	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", generatedBranchName, "--title", generatedBranchName, "--body", pullRequestBody}, githubExecutor.commands[0].Arguments)
 }
