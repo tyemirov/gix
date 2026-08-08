@@ -16,9 +16,9 @@ import (
 	"golang.org/x/mod/modfile"
 	"golang.org/x/tools/imports"
 
-	"github.com/tyemirov/gix/internal/execshell"
-	repoerrors "github.com/tyemirov/gix/internal/repos/errors"
-	"github.com/tyemirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/v5/internal/execshell"
+	repoerrors "github.com/tyemirov/gix/v5/internal/repos/errors"
+	"github.com/tyemirov/gix/v5/internal/repos/shared"
 )
 
 const (

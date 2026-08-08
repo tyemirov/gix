@@ -7,10 +7,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	workflowcmd "github.com/tyemirov/gix/cmd/cli/workflow"
-	"github.com/tyemirov/gix/internal/repos/shared"
-	"github.com/tyemirov/gix/internal/workflow"
-	"github.com/tyemirov/gix/pkg/taskrunner"
+	workflowcmd "github.com/tyemirov/gix/v5/cmd/cli/workflow"
+	"github.com/tyemirov/gix/v5/internal/repos/shared"
+	"github.com/tyemirov/gix/v5/internal/workflow"
+	"github.com/tyemirov/gix/v5/pkg/taskrunner"
 )
 
 const (

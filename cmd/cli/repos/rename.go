@@ -5,10 +5,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	workflowcmd "github.com/tyemirov/gix/cmd/cli/workflow"
-	"github.com/tyemirov/gix/internal/repos/shared"
-	flagutils "github.com/tyemirov/gix/internal/utils/flags"
-	"github.com/tyemirov/gix/internal/workflow"
+	workflowcmd "github.com/tyemirov/gix/v5/cmd/cli/workflow"
+	"github.com/tyemirov/gix/v5/internal/repos/shared"
+	flagutils "github.com/tyemirov/gix/v5/internal/utils/flags"
+	"github.com/tyemirov/gix/v5/internal/workflow"
 )
 
 const (

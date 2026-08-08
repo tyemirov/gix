@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/tyemirov/gix/internal/execshell"
-	"github.com/tyemirov/gix/internal/githubauth"
+	"github.com/tyemirov/gix/v5/internal/execshell"
+	"github.com/tyemirov/gix/v5/internal/githubauth"
 )
 
 const (

@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tyemirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/v5/internal/repos/shared"
 )
 
 func TestNewRepositoryPath(t *testing.T) {

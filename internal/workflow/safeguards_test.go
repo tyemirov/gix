@@ -6,8 +6,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tyemirov/gix/internal/gitrepo"
-	"github.com/tyemirov/gix/internal/repos/worktree"
+	"github.com/tyemirov/gix/v5/internal/gitrepo"
+	"github.com/tyemirov/gix/v5/internal/repos/worktree"
 )
 
 func TestEvaluateSafeguardsRequireClean(t *testing.T) {

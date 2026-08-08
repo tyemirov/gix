@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/tyemirov/gix/internal/execshell"
-	repoerrors "github.com/tyemirov/gix/internal/repos/errors"
+	"github.com/tyemirov/gix/v5/internal/execshell"
+	repoerrors "github.com/tyemirov/gix/v5/internal/repos/errors"
 )
 
 const (

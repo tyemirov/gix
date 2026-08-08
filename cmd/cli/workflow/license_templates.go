@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tyemirov/gix/internal/licenses"
-	workflowpkg "github.com/tyemirov/gix/internal/workflow"
+	"github.com/tyemirov/gix/v5/internal/licenses"
+	workflowpkg "github.com/tyemirov/gix/v5/internal/workflow"
 )
 
 const (

@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/tyemirov/gix/internal/audit"
-	"github.com/tyemirov/gix/internal/releases"
-	"github.com/tyemirov/gix/internal/repos/history"
-	"github.com/tyemirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/v5/internal/audit"
+	"github.com/tyemirov/gix/v5/internal/releases"
+	"github.com/tyemirov/gix/v5/internal/repos/history"
+	"github.com/tyemirov/gix/v5/internal/repos/shared"
 )
 
 const (

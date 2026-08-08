@@ -11,9 +11,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	repoerrors "github.com/tyemirov/gix/internal/repos/errors"
-	"github.com/tyemirov/gix/internal/repos/protocol"
-	"github.com/tyemirov/gix/internal/repos/shared"
+	repoerrors "github.com/tyemirov/gix/v5/internal/repos/errors"
+	"github.com/tyemirov/gix/v5/internal/repos/protocol"
+	"github.com/tyemirov/gix/v5/internal/repos/shared"
 )
 
 type stubGitManager struct {

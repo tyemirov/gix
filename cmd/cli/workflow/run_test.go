@@ -6,8 +6,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tyemirov/gix/internal/licenses"
-	"github.com/tyemirov/gix/internal/workflow"
+	"github.com/tyemirov/gix/v5/internal/licenses"
+	"github.com/tyemirov/gix/v5/internal/workflow"
 )
 
 func TestApplyVariableOverridesIgnoresNonHistoryActions(testInstance *testing.T) {

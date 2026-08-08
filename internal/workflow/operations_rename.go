@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/tyemirov/gix/internal/repos/rename"
-	"github.com/tyemirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/v5/internal/repos/rename"
+	"github.com/tyemirov/gix/v5/internal/repos/shared"
 )
 
 const (

@@ -3,7 +3,7 @@ package audit
 import (
 	"fmt"
 
-	"github.com/tyemirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/v5/internal/repos/shared"
 )
 
 // RemoteProtocolType enumerates supported git remote protocols.

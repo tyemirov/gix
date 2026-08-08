@@ -600,6 +600,21 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make format`, `make test`, `make lint`, `make ci`, and `git diff --check`.
   Resolution:
   Updated the client to v0.2.46 and raised the Go module floor to 1.25.12 with the dependency graph selected by the current client. Gix now puts its configured proxy work budget on each v2 messages request while retaining the caller-owned HTTP timeout. The HTTP-boundary regression verifies the canonical timeout header alongside provider, model, and token routing. `make format`, `make test`, `make lint`, `make ci`, `go mod verify`, `go mod tidy -diff`, and `git diff --check` passed on 2026-07-25; the fast and black-box suites also passed with `GOTOOLCHAIN=go1.25.12`.
+- [-] [M016] (P0) Correct the published SemVer history and establish the Go v5 module line.
+  Requested on 2026-08-08 after the release audit found breaking changes published as consecutive `v1.1.x` patch releases.
+  Goal:
+  Publish the historically correct v2 through v5 release boundaries and make the current v5.0.1 release installable through the canonical Go major-version module path.
+  Requirements:
+  - Publish v2.0.0, v3.0.0, v4.0.0, v4.1.0, and v5.0.0 as immutable aliases of the audited historical release commits.
+  - Reconstruct every aliased manifest, release note, and Pages marker with the corrected version instead of copying internally false artifacts.
+  - Preserve the original binaries and source/release commit identities for each historical alias.
+  - Change the current module path and all self-imports to `github.com/tyemirov/gix/v5` before v5.0.1.
+  - Keep the historical migration bounded to the declared mapping, fail before mutation on conflicting state, and remove the migration path after completion.
+  Validation:
+  - Public migration coverage proves exact mapping, corrected manifests and Pages markers, complete asset inventories, and pre-mutation rejection of conflicts.
+  - `make ci`, `make build`, `go mod verify`, `go mod tidy -diff`, and `git diff --check` pass for the v5 source.
+  - Every requested annotated tag and ready GitHub Release resolves to its audited commit with verified assets.
+  - `go install github.com/tyemirov/gix/v5@v5.0.1` succeeds and the installed executable reports v5.0.1.
 
 
 ## Features

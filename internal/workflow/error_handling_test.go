@@ -9,9 +9,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tyemirov/gix/internal/audit"
-	repoerrors "github.com/tyemirov/gix/internal/repos/errors"
-	"github.com/tyemirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/v5/internal/audit"
+	repoerrors "github.com/tyemirov/gix/v5/internal/repos/errors"
+	"github.com/tyemirov/gix/v5/internal/repos/shared"
 )
 
 func TestLogRepositoryOperationErrorFormatsStructuredMessage(testInstance *testing.T) {

@@ -9,9 +9,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tyemirov/gix/internal/execshell"
-	"github.com/tyemirov/gix/internal/gitrepo"
-	"github.com/tyemirov/gix/internal/repos/filesystem"
+	"github.com/tyemirov/gix/v5/internal/execshell"
+	"github.com/tyemirov/gix/v5/internal/gitrepo"
+	"github.com/tyemirov/gix/v5/internal/repos/filesystem"
 )
 
 type recordingShellExecutor struct {

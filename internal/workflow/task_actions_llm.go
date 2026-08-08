@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tyemirov/gix/internal/changelog"
-	"github.com/tyemirov/gix/internal/commitmsg"
+	"github.com/tyemirov/gix/v5/internal/changelog"
+	"github.com/tyemirov/gix/v5/internal/commitmsg"
 	"github.com/tyemirov/utils/llm"
 )
 

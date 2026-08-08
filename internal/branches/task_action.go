@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/tyemirov/gix/internal/branches/refresh"
-	"github.com/tyemirov/gix/internal/workflow"
+	"github.com/tyemirov/gix/v5/internal/branches/refresh"
+	"github.com/tyemirov/gix/v5/internal/workflow"
 )
 
 const (

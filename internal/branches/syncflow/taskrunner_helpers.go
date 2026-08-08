@@ -1,8 +1,8 @@
 package syncflow
 
 import (
-	"github.com/tyemirov/gix/internal/workflow"
-	"github.com/tyemirov/gix/pkg/taskrunner"
+	"github.com/tyemirov/gix/v5/internal/workflow"
+	"github.com/tyemirov/gix/v5/pkg/taskrunner"
 )
 
 type TaskRunnerExecutor = taskrunner.Executor

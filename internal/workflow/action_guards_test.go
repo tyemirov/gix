@@ -7,9 +7,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tyemirov/gix/internal/execshell"
-	"github.com/tyemirov/gix/internal/gitrepo"
-	"github.com/tyemirov/gix/internal/repos/worktree"
+	"github.com/tyemirov/gix/v5/internal/execshell"
+	"github.com/tyemirov/gix/v5/internal/gitrepo"
+	"github.com/tyemirov/gix/v5/internal/repos/worktree"
 )
 
 func TestCleanWorktreeGuardIgnoresConfiguredPatterns(t *testing.T) {

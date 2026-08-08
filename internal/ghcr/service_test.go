@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/tyemirov/gix/internal/ghcr"
+	"github.com/tyemirov/gix/v5/internal/ghcr"
 )
 
 const (

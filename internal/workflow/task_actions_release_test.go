@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tyemirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/v5/internal/execshell"
 )
 
 type retagActionExecutor struct {

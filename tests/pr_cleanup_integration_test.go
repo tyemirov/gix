@@ -16,11 +16,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/tyemirov/gix/internal/branches"
-	"github.com/tyemirov/gix/internal/execshell"
-	"github.com/tyemirov/gix/internal/githubauth"
-	"github.com/tyemirov/gix/internal/repos/shared"
-	flagutils "github.com/tyemirov/gix/internal/utils/flags"
+	"github.com/tyemirov/gix/v5/internal/branches"
+	"github.com/tyemirov/gix/v5/internal/execshell"
+	"github.com/tyemirov/gix/v5/internal/githubauth"
+	"github.com/tyemirov/gix/v5/internal/repos/shared"
+	flagutils "github.com/tyemirov/gix/v5/internal/utils/flags"
 )
 
 const (

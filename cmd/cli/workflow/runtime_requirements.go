@@ -1,6 +1,6 @@
 package workflow
 
-import workflowpkg "github.com/tyemirov/gix/internal/workflow"
+import workflowpkg "github.com/tyemirov/gix/v5/internal/workflow"
 
 type runtimeRequirements struct {
 	includeNestedRepositories            bool

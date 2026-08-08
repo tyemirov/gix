@@ -7,8 +7,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tyemirov/gix/internal/repos/shared"
-	"github.com/tyemirov/gix/internal/workflow"
+	"github.com/tyemirov/gix/v5/internal/repos/shared"
+	"github.com/tyemirov/gix/v5/internal/workflow"
 )
 
 type fakeExecutor struct {
