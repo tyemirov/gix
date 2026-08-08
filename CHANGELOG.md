@@ -122,6 +122,13 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.1.23] - 2026-08-08
+
+- style: reformat constants in branch default integration test for consistent indentation
+- refactor: replace LLM temperature configuration with reasoning effort settings across CLI and workflow internal tasks
+- Update .mprlab/ISSUES.md (#409)
+- Onboard repository for ISSUES.md (#408)
+
 ## [v1.1.22] - 2026-08-07
 
 - bugfix/B051-idempotent-exact-release-retry (#407)
