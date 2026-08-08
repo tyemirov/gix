@@ -298,7 +298,12 @@ if [[ "${dry_run}" == "true" ]]; then
 fi
 
 echo "==> [release] Running make ci"
-timeout -k "${ci_timeout}s" -s SIGKILL "${ci_timeout}s" make ci
+(
+  unset MAKEFLAGS MAKELEVEL MAKEOVERRIDES MFLAGS
+  unset PAGES_DEPLOY_ARGS PAGES_VERSION PUBLISH_RELEASE_ARGS
+  unset RELEASE_ARGS RELEASE_ARTIFACT_TARGETS RELEASE_BUMP RELEASE_CI_TIMEOUT RELEASE_HELPER RELEASE_SCHEME RELEASE_VERSION
+  timeout -k "${ci_timeout}s" -s SIGKILL "${ci_timeout}s" make ci
+)
 
 echo "==> [release] Rechecking local state after CI"
 run_local_preflight
