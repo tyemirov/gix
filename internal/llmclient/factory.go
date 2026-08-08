@@ -47,7 +47,7 @@ type OpenAIConnectionProfile struct {
 	Credential          string `yaml:"credential"`
 	Model               string `yaml:"model"`
 	Effort              string `yaml:"effort"`
-	MaxCompletionTokens int    `mapstructure:"max_completion_tokens"`
+	MaxCompletionTokens int    `yaml:"max_completion_tokens"`
 }
 
 // LLMProxyConnectionProfile stores the llm-proxy connection and its upstream selection.
@@ -58,7 +58,7 @@ type LLMProxyConnectionProfile struct {
 	Provider            string `yaml:"provider"`
 	Model               string `yaml:"model"`
 	Effort              string `yaml:"effort"`
-	MaxCompletionTokens int    `mapstructure:"max_completion_tokens"`
+	MaxCompletionTokens int    `yaml:"max_completion_tokens"`
 }
 
 // ConnectionProfiles stores the ordered LLM connection candidates.
