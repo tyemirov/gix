@@ -108,6 +108,46 @@ func TestReleaseTargetsUseRepositoryOwnedHelpers(testInstance *testing.T) {
 	}
 }
 
+func TestReleaseMakeTargetForwardsExplicitVersionIntent(testInstance *testing.T) {
+	fixture := newExactReleaseFixture(testInstance)
+	copyReleaseFile(testInstance, fixture.repositoryRoot, fixture.repositoryPath, "Makefile")
+	for _, helperFile := range releaseRequiredHelperFiles {
+		copyReleaseFile(
+			testInstance,
+			fixture.repositoryRoot,
+			fixture.repositoryPath,
+			filepath.Join(releaseToolDirectoryRelativePath, helperFile),
+		)
+	}
+	runGit(testInstance, fixture.repositoryPath, "add", "Makefile", releaseToolDirectoryRelativePath)
+	runGit(testInstance, fixture.repositoryPath, "commit", "-m", "test: install release helpers")
+
+	testCases := []struct {
+		name            string
+		makeVariable    string
+		expectedVersion string
+	}{
+		{name: "bump", makeVariable: "RELEASE_BUMP=minor", expectedVersion: "v9.9.0"},
+		{name: "version", makeVariable: "RELEASE_VERSION=v12.3.4", expectedVersion: "v12.3.4"},
+	}
+
+	for _, testCase := range testCases {
+		testInstance.Run(testCase.name, func(t *testing.T) {
+			outputText, runError := runReleaseMakeCommand(
+				t,
+				fixture.repositoryPath,
+				map[string]string{},
+				"release",
+				testCase.makeVariable,
+				"RELEASE_ARGS=--dry-run",
+			)
+
+			require.NoError(t, runError, outputText)
+			require.Contains(t, outputText, "next_version="+testCase.expectedVersion)
+		})
+	}
+}
+
 func TestReleaseArtifactsStopAtFailedPlatformBuild(testInstance *testing.T) {
 	repositoryRoot := releaseRepositoryRoot(testInstance)
 	buildLogPath := filepath.Join(testInstance.TempDir(), "go-builds.log")
@@ -313,6 +353,130 @@ func TestReleaseExactTagRejectsConflictingLocalReceipt(testInstance *testing.T) 
 	require.NoFileExists(testInstance, ghLogPath)
 }
 
+func TestReleaseNewSemVerRequiresExplicitIntent(testInstance *testing.T) {
+	fixture := newExactReleaseFixture(testInstance)
+	before := readReleaseArtifactTree(testInstance, fixture.artifactDirectory)
+	fixture.commitNextSource(testInstance)
+	makeLogPath := filepath.Join(testInstance.TempDir(), "make.log")
+	pathVariable := buildReleaseStubbedExecutablePath(testInstance, map[string]string{"make": releaseFakeMakeScript})
+
+	outputText, runError := runReleasePrepareReleaseScript(
+		testInstance,
+		fixture.repositoryRoot,
+		fixture.repositoryPath,
+		integrationCommandOptions{
+			PathVariable: pathVariable,
+			EnvironmentOverrides: map[string]string{
+				"RELEASE_BUMP":                       "",
+				"RELEASE_VERSION":                    "",
+				releaseFakeMakeLogVariable:           makeLogPath,
+				releaseFakeMakeFailureTargetVariable: "ci",
+			},
+		},
+	)
+
+	require.Error(testInstance, runError, outputText)
+	require.Contains(testInstance, outputText, "new SemVer release requires --bump patch, --bump minor, --bump major, or --version")
+	require.NoFileExists(testInstance, makeLogPath)
+	require.Equal(testInstance, before, readReleaseArtifactTree(testInstance, fixture.artifactDirectory))
+}
+
+func TestReleaseNewSemVerSelectsExplicitIntent(testInstance *testing.T) {
+	fixture := newExactReleaseFixture(testInstance)
+	fixture.commitNextSource(testInstance)
+	testCases := []struct {
+		name            string
+		arguments       []string
+		expectedVersion string
+	}{
+		{name: "patch", arguments: []string{"--dry-run", "--bump", "patch"}, expectedVersion: "v9.8.8"},
+		{name: "minor", arguments: []string{"--dry-run", "--bump", "minor"}, expectedVersion: "v9.9.0"},
+		{name: "major", arguments: []string{"--dry-run", "--bump", "major"}, expectedVersion: "v10.0.0"},
+		{name: "exact", arguments: []string{"--dry-run", "--version", "v12.3.4"}, expectedVersion: "v12.3.4"},
+	}
+
+	for _, testCase := range testCases {
+		testInstance.Run(testCase.name, func(t *testing.T) {
+			outputText, runError := runReleasePrepareReleaseScript(
+				t,
+				fixture.repositoryRoot,
+				fixture.repositoryPath,
+				integrationCommandOptions{EnvironmentOverrides: map[string]string{
+					"RELEASE_BUMP":    "",
+					"RELEASE_VERSION": "",
+				}},
+				testCase.arguments...,
+			)
+
+			require.NoError(t, runError, outputText)
+			require.Contains(t, outputText, "version_scheme=semver")
+			require.Contains(t, outputText, "next_version="+testCase.expectedVersion)
+			require.Contains(t, outputText, "changelog_boundary="+releaseFixtureVersion)
+		})
+	}
+}
+
+func TestReleaseRejectsConflictingVersionIntent(testInstance *testing.T) {
+	fixture := newExactReleaseFixture(testInstance)
+	fixture.commitNextSource(testInstance)
+	testCases := []struct {
+		name            string
+		arguments       []string
+		expectedMessage string
+	}{
+		{
+			name:            "version_and_bump",
+			arguments:       []string{"--dry-run", "--version", "v12.3.4", "--bump", "major"},
+			expectedMessage: "--version and --bump cannot be combined",
+		},
+		{
+			name:            "calver_and_bump",
+			arguments:       []string{"--dry-run", "--scheme", "calver", "--bump", "patch"},
+			expectedMessage: "--bump is only valid for SemVer releases",
+		},
+	}
+
+	for _, testCase := range testCases {
+		testInstance.Run(testCase.name, func(t *testing.T) {
+			outputText, runError := runReleasePrepareReleaseScript(
+				t,
+				fixture.repositoryRoot,
+				fixture.repositoryPath,
+				integrationCommandOptions{EnvironmentOverrides: map[string]string{
+					"RELEASE_BUMP":    "",
+					"RELEASE_VERSION": "",
+				}},
+				testCase.arguments...,
+			)
+
+			require.Error(t, runError, outputText)
+			require.Contains(t, outputText, testCase.expectedMessage)
+		})
+	}
+}
+
+func TestReleaseCalVerRemainsTimestampDerived(testInstance *testing.T) {
+	fixture := newExactReleaseFixture(testInstance)
+	fixture.commitNextSource(testInstance)
+
+	outputText, runError := runReleasePrepareReleaseScript(
+		testInstance,
+		fixture.repositoryRoot,
+		fixture.repositoryPath,
+		integrationCommandOptions{EnvironmentOverrides: map[string]string{
+			"RELEASE_BUMP":    "",
+			"RELEASE_VERSION": "",
+		}},
+		"--dry-run",
+		"--scheme",
+		"calver",
+	)
+
+	require.NoError(testInstance, runError, outputText)
+	require.Contains(testInstance, outputText, "version_scheme=calver")
+	require.Contains(testInstance, outputText, "next_version=")
+}
+
 func TestReleaseCandidateFailurePreservesCanonicalReceipt(testInstance *testing.T) {
 	fixture := newExactReleaseFixture(testInstance)
 	before := readReleaseArtifactTree(testInstance, fixture.artifactDirectory)
@@ -329,6 +493,7 @@ func TestReleaseCandidateFailurePreservesCanonicalReceipt(testInstance *testing.
 		integrationCommandOptions{
 			PathVariable: pathVariable,
 			EnvironmentOverrides: map[string]string{
+				"RELEASE_BUMP":                       "patch",
 				"RELEASE_ARTIFACT_TARGETS":           "fixture-artifact",
 				releaseFakeMakeLogVariable:           makeLogPath,
 				releaseFakeMakeFailureTargetVariable: "fixture-artifact",
@@ -359,6 +524,7 @@ func TestReleaseSealingFailureRestoresSourceState(testInstance *testing.T) {
 		integrationCommandOptions{
 			PathVariable: pathVariable,
 			EnvironmentOverrides: map[string]string{
+				"RELEASE_BUMP":                       "patch",
 				"RELEASE_ARTIFACT_TARGETS":           "fixture-artifact",
 				releaseFakeMakeUnsafePayloadVariable: "true",
 			},
@@ -389,6 +555,13 @@ type exactReleaseFixture struct {
 	sourceCommit      string
 	notes             string
 	manifest          string
+}
+
+func (fixture exactReleaseFixture) commitNextSource(testInstance *testing.T) {
+	testInstance.Helper()
+	writeReleaseFixtureFile(testInstance, filepath.Join(fixture.repositoryPath, "README.md"), "next release\n")
+	runGit(testInstance, fixture.repositoryPath, "add", "README.md")
+	runGit(testInstance, fixture.repositoryPath, "commit", "-m", "feat: next release")
 }
 
 func newExactReleaseFixture(testInstance *testing.T) exactReleaseFixture {

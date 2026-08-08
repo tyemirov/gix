@@ -4,6 +4,9 @@ RELEASE_TARGETS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd
 RELEASE_BINARY_NAME := gix
 RELEASE_ARTIFACT_NAMES := gix_linux_amd64 gix_linux_arm64 gix_darwin_amd64 gix_darwin_arm64 gix_windows_amd64.exe
 RELEASE_ARGS ?=
+RELEASE_BUMP ?=
+RELEASE_SCHEME ?=
+RELEASE_VERSION ?=
 RELEASE_HELPER ?=
 PUBLISH_RELEASE_ARGS ?=
 RELEASE_ARTIFACT_TARGETS ?= release-artifacts pages-artifact
@@ -63,7 +66,7 @@ license-rollout-apply: build
 	timeout -k 350s -s SIGKILL 350s python3 "$(LICENSE_ROLLOUT_SCRIPT)" apply --manifest "$(LICENSE_ROLLOUT_MANIFEST)" --workflow "$(LICENSE_ROLLOUT_WORKFLOW)" --gix bin/gix
 
 release:
-	@RELEASE_HELPER="$(RELEASE_HELPER)" RELEASE_ARTIFACT_TARGETS="$(RELEASE_ARTIFACT_TARGETS)" "$(RELEASE_TOOL_DIR)/prepare_release.sh" $(RELEASE_ARGS)
+	@RELEASE_BUMP="$(RELEASE_BUMP)" RELEASE_SCHEME="$(RELEASE_SCHEME)" RELEASE_VERSION="$(RELEASE_VERSION)" RELEASE_HELPER="$(RELEASE_HELPER)" RELEASE_ARTIFACT_TARGETS="$(RELEASE_ARTIFACT_TARGETS)" "$(RELEASE_TOOL_DIR)/prepare_release.sh" $(RELEASE_ARGS)
 
 release-artifacts:
 	@test -n "$(RELEASE_ARTIFACT_DIR)" || { echo "error: RELEASE_ARTIFACT_DIR is required" >&2; exit 1; }

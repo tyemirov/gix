@@ -16,8 +16,8 @@ It never fetches, pushes, publishes an image/store build, updates GitHub Pages,
 or deploys production.
 
 Options:
-  --bump <patch|minor|major>  SemVer bump when no exact version is supplied. Default: patch
-  --version <value>           Exact local release tag/version to prepare
+  --bump <patch|minor|major>  Required intent for a new SemVer release unless --version is supplied
+  --version <value>           Exact local release tag/version to prepare; cannot be combined with --bump
   --scheme <semver|calver>    Override the locally detected versioning scheme
   --dry-run                   Validate and report the selected version without changing files
   --help                      Show this help text
@@ -29,10 +29,10 @@ if [[ -v RELEASE_HELPER ]]; then
 else
   helper=""
 fi
-if [[ -v RELEASE_BUMP ]] && [[ -n "${RELEASE_BUMP}" ]]; then
+if [[ -v RELEASE_BUMP ]]; then
   bump="${RELEASE_BUMP}"
 else
-  bump="patch"
+  bump=""
 fi
 if [[ -v RELEASE_VERSION ]]; then
   version="${RELEASE_VERSION}"
@@ -90,9 +90,13 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "${bump}" in
-  patch|minor|major) ;;
+  ""|patch|minor|major) ;;
   *) echo "error: --bump must be patch, minor, or major" >&2; exit 1 ;;
 esac
+if [[ -n "${version}" && -n "${bump}" ]]; then
+  echo "error: --version and --bump cannot be combined" >&2
+  exit 1
+fi
 case "${scheme}" in
   ""|semver|calver) ;;
   *) echo "error: --scheme must be semver or calver" >&2; exit 1 ;;
@@ -134,6 +138,11 @@ with open(sys.argv[1], "r", encoding="utf-8") as handle:
 explicit_version, bump, requested_scheme = sys.argv[2], sys.argv[3], sys.argv[4]
 info = data.get("version_info") or {}
 effective_scheme = requested_scheme or info.get("scheme_guess") or "none"
+
+if effective_scheme == "calver" and bump:
+    raise SystemExit("--bump is only valid for SemVer releases")
+if effective_scheme in ("semver", "mixed") and not explicit_version and not bump:
+    raise SystemExit("new SemVer release requires --bump patch, --bump minor, --bump major, or --version")
 
 def semver_bump(latest):
     if not latest:
@@ -255,6 +264,10 @@ if [[ -n "${exact_release_version}" ]]; then
   }
   [[ -z "${scheme}" || "${scheme}" == "${exact_release_scheme}" ]] || {
     echo "error: exact release ${exact_release_version} uses ${exact_release_scheme}, not ${scheme}" >&2
+    exit 1
+  }
+  [[ -z "${bump}" || "${exact_release_scheme}" == "semver" ]] || {
+    echo "error: --bump is only valid for SemVer releases" >&2
     exit 1
   }
   reuse_args=(reuse-exact-release --version "${exact_release_version}" --default-branch "${default_branch}")
