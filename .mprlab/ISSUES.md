@@ -410,6 +410,10 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run focused tests, `make format`, `make ci`, `make build`, shell/Python syntax checks, and `git diff --check`.
   Resolution:
   The Make release boundary now forwards explicit `RELEASE_BUMP`, `RELEASE_VERSION`, and `RELEASE_SCHEME` values. New SemVer preparation requires exactly one patch, minor, major, or exact-version intent and rejects missing, conflicting, and CalVer-incompatible inputs before CI. Timestamp-derived CalVer selection and zero-argument exact-tag receipt reuse remain unchanged. Public Make and release-script regressions cover every intent path and preserve candidate isolation, rollback, receipt recovery, and publication behavior. Focused release tests, shell and Python syntax checks, `make format`, and `make ci` passed on 2026-08-08; `make build` and `git diff --check` completed before publication.
+  Review follow-up:
+  A checkout without local version tags reported `scheme_guess: none`, bypassed the new missing-intent guard, and still selected `v1.0.0` before running CI.
+  Follow-up resolution:
+  Release selection now normalizes the untagged default to the initial SemVer contract unless CalVer is explicitly requested. A public release-script regression proves that bare preparation stops before CI and preserves the canonical receipt, while an explicit patch intent selects `v1.0.0` with a SemVer scheme. Focused release tests, `bash -n scripts/release/prepare_release.sh`, `make format`, `make ci`, `make build`, and `git diff --check` passed on 2026-08-08.
 
 
 
