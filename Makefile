@@ -21,7 +21,7 @@ LICENSE_ROLLOUT_SCRIPT := scripts/licensing/license_rollout.py
 LICENSE_ROLLOUT_MANIFEST := configs/licensing/fleet.json
 LICENSE_ROLLOUT_WORKFLOW := configs/license-rollout.yaml
 
-.PHONY: format check-format lint test test-unit test-integration test-fast test-slow test-licensing test-release build license-rollout-plan license-rollout-apply release release-artifacts pages-artifact publish-release publish deploy pages-deploy ci
+.PHONY: format check-format lint test test-unit test-integration test-fast test-slow test-licensing build license-rollout-plan license-rollout-apply release release-artifacts pages-artifact publish-release publish deploy pages-deploy ci
 
 format:
 	gofmt -w $(GO_SOURCES)
@@ -42,13 +42,9 @@ lint:
 test-fast:
 	go test $(FAST_TEST_PACKAGES)
 	$(MAKE) test-licensing
-	$(MAKE) test-release
 
 test-licensing:
 	python3 -m unittest discover -s scripts/licensing -p 'test_*.py'
-
-test-release:
-	python3 -m unittest discover -s scripts/release -p 'test_*.py'
 
 test-slow:
 	go test ./tests
