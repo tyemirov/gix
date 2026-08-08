@@ -84,13 +84,23 @@ type ApplicationLLMConfiguration struct {
 }
 
 func (configuration ApplicationLLMConfiguration) connectionProfiles() llmclient.ConnectionProfiles {
-	return llmclient.ConnectionProfiles{
+	profiles := llmclient.ConnectionProfiles{
 		OpenAI:   configuration.OpenAI,
 		LLMProxy: configuration.LLMProxy,
 	}
+	if profiles.OpenAI.MaxCompletionTokens == 0 {
+		profiles.OpenAI.MaxCompletionTokens = configuration.MaxCompletionTokens
+	}
+	if profiles.LLMProxy.MaxCompletionTokens == 0 {
+		profiles.LLMProxy.MaxCompletionTokens = configuration.MaxCompletionTokens
+	}
+	return profiles
 }
 
 func (configuration ApplicationLLMConfiguration) validateConnections() error {
+	if configuration.MaxCompletionTokens < 0 {
+		return errors.New("llm max_completion_tokens must be non-negative")
+	}
 	return configuration.connectionProfiles().Validate()
 }
 

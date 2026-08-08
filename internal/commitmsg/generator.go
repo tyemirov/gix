@@ -15,7 +15,6 @@ import (
 )
 
 const (
-	defaultMaxTokens         = 256
 	defaultPatchCharacterCap = 16000
 )
 
@@ -121,14 +120,9 @@ func (generator Generator) BuildRequest(ctx context.Context, options Options) (l
 		),
 	}
 
-	maxTokens := options.MaxTokens
-	if maxTokens <= 0 {
-		maxTokens = defaultMaxTokens
-	}
-
 	request := llm.ChatRequest{
 		Messages:  []llm.Message{systemMessage, userMessage},
-		MaxTokens: maxTokens,
+		MaxTokens: options.MaxTokens,
 	}
 
 	return request, nil

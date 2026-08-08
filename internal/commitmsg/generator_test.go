@@ -32,7 +32,7 @@ func TestBuildRequestStagedDiff(t *testing.T) {
 	require.Contains(t, request.Messages[1].Content, "internal/app.go | 10 +++++-----")
 	require.Contains(t, request.Messages[1].Content, "func updated()")
 	require.Contains(t, request.Messages[1].Content, "Diff source: STAGED")
-	require.Equal(t, defaultMaxTokens, request.MaxTokens)
+	require.Zero(t, request.MaxTokens)
 
 	expectedCommands := [][]string{
 		{"status", "--short"},

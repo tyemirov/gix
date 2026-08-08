@@ -360,6 +360,23 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Run the relevant sync and PR-description-generation tests. Reproduce or simulate an LLM proxy failure and confirm `gix sync` fails with a sanitized, actionable message while restoring the original checkout, local state, and worktree topology. Confirm logs do not include full LLM proxy keys or other secrets.
   Resolution:
   PR description generation now passes underlying errors through `sanitizeLLMDescriptionError`, which redacts query parameters (`key=`, `secret=`, `token=`, `api_key=`), authentication headers (`Bearer`, `Authorization:`, `X-Api-Key:`), basic auth credentials in URLs, and literal configured connection secrets. Strict sync transaction rollback runs before remote push when description generation fails, restoring starting checkouts, branches, and worktree topology. Unit and integration tests verify error sanitization, empty responses, and strict sync transaction rollback behavior.
+- [x] [B053] (P0) Recover direct OpenAI after reasoning-only empty completions.
+  Reported on 2026-08-08 after `gix sync` failed to generate a pull request description when LLM Proxy returned a TLS transport error and direct OpenAI exhausted three attempts with empty responses.
+  Observation:
+  The prioritized client reaches the configured OpenAI connection, but the direct client repeats the same bounded reasoning request three times. If every response consumes its completion budget before producing visible text, the usable backup connection is reported as failed and strict sync rolls back.
+  Requirements:
+  - Preserve configured connection priority, OpenAI model, reasoning effort, timeout, and ordinary error behavior.
+  - Add `max_completion_tokens` to each provider profile and resolve the budget through the canonical `command > provider > llm` hierarchy.
+  - Keep token-budget policy in `config.yml`; do not raise or default completion budgets in request or recovery code.
+  - After the direct OpenAI client exhausts its normal retries specifically with the typed empty-response error, repeat the resolved request for one bounded recovery round.
+  - Preserve cancellation and complete primary/recovery failure context. Do not retry authentication, HTTP, or unrelated transport failures through this recovery path.
+  Validation:
+  - Add compiled CLI coverage in which LLM Proxy uses and fails at the inherited global budget, while three direct OpenAI attempts return empty `finish_reason=length` responses and recovery succeeds at the provider budget.
+  - Verify an explicit command budget overrides both provider and global values, and sync does not inherit the `message commit` command budget.
+  - Preserve the existing compiled-CLI coverage for complete multi-provider failure reporting.
+  - Run `make format`, focused tests, `make ci`, `make build`, and `git diff --check`.
+  Resolution:
+  Provider profiles now accept and strictly validate `max_completion_tokens`. Application configuration resolves completion budgets through `command > provider > llm`; absent command values remain unset through commit, changelog, sync pull-request, and merge-resolution request builders, and sync no longer inherits the `message commit` command budget. The generated and active user configuration assign 16,384 tokens to direct OpenAI while LLM Proxy inherits the global 1,200-token value. Direct OpenAI repeats the same resolved request for one recovery cycle only after typed empty-response exhaustion, preserving ordinary failures, cancellation, and joined primary/recovery context. The compiled CLI regression proves one failed proxy request at the global budget, three empty OpenAI attempts plus a successful recovery at the provider budget, and complete multi-provider error reporting. Focused tests, `make format`, `make ci`, `make build`, and `git diff --check` passed on 2026-08-08.
 
 
 
@@ -691,4 +708,3 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## Planning
 *do not implement yet*
-

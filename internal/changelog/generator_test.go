@@ -52,7 +52,7 @@ func TestBuildRequestUsesLatestTagBaseline(t *testing.T) {
 	require.Contains(t, userMessage, "abc123 2025-10-01")
 	require.Contains(t, userMessage, "internal/app.go | 10")
 	require.Contains(t, userMessage, "diff --git a/internal/app.go")
-	require.Equal(t, defaultMaxTokens, request.MaxTokens)
+	require.Zero(t, request.MaxTokens)
 
 	expectedCommands := [][]string{
 		{"describe", "--tags", "--abbrev=0"},
