@@ -600,7 +600,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make format`, `make test`, `make lint`, `make ci`, and `git diff --check`.
   Resolution:
   Updated the client to v0.2.46 and raised the Go module floor to 1.25.12 with the dependency graph selected by the current client. Gix now puts its configured proxy work budget on each v2 messages request while retaining the caller-owned HTTP timeout. The HTTP-boundary regression verifies the canonical timeout header alongside provider, model, and token routing. `make format`, `make test`, `make lint`, `make ci`, `go mod verify`, `go mod tidy -diff`, and `git diff --check` passed on 2026-07-25; the fast and black-box suites also passed with `GOTOOLCHAIN=go1.25.12`.
-- [-] [M016] (P0) Correct the published SemVer history and establish the Go v5 module line.
+- [x] [M016] (P0) Correct the published SemVer history and establish the Go v5 module line.
   Requested on 2026-08-08 after the release audit found breaking changes published as consecutive `v1.1.x` patch releases.
   Goal:
   Publish the historically correct v2 through v5 release boundaries and make the current v5.0.1 release installable through the canonical Go major-version module path.
@@ -615,6 +615,8 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - `make ci`, `make build`, `go mod verify`, `go mod tidy -diff`, and `git diff --check` pass for the v5 source.
   - Every requested annotated tag and ready GitHub Release resolves to its audited commit with verified assets.
   - `go install github.com/tyemirov/gix/v5@v5.0.1` succeeds and the installed executable reports v5.0.1.
+  Resolution:
+  The audited v2.0.0, v3.0.0, v4.0.0, v4.1.0, and v5.0.0 aliases are published as ready GitHub Releases at their historical release commits. Their original binaries remain byte-identical, while their release notes, manifests, and embedded Pages markers identify the corrected versions and retain the audited source and release commits. Current source now uses the canonical `github.com/tyemirov/gix/v5` module path throughout. The bounded migration rejected conflicting state, passed its public tests and two live read-only rehearsals, published and verified every target asset, and was removed after completion. `make format`, `make ci`, `make build`, `go mod verify`, `go mod tidy -diff`, Python syntax checks, and `git diff --check` passed before the v5.0.1 release cut.
 
 
 ## Features
