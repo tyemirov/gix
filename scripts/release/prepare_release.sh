@@ -138,6 +138,8 @@ with open(sys.argv[1], "r", encoding="utf-8") as handle:
 explicit_version, bump, requested_scheme = sys.argv[2], sys.argv[3], sys.argv[4]
 info = data.get("version_info") or {}
 effective_scheme = requested_scheme or info.get("scheme_guess") or "none"
+if effective_scheme == "none":
+    effective_scheme = "semver"
 
 if effective_scheme == "calver" and bump:
     raise SystemExit("--bump is only valid for SemVer releases")
