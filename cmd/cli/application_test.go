@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -812,18 +813,10 @@ func decodeEmbeddedApplicationConfiguration(testingInstance testing.TB) cli.Appl
 	testingInstance.Helper()
 
 	configurationData, _ := cli.EmbeddedDefaultConfiguration()
-	rawConfiguration := map[string]any{}
-	require.NoError(testingInstance, yaml.Unmarshal(configurationData, &rawConfiguration))
-
 	var configuration cli.ApplicationConfiguration
-	decoder, decoderError := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
-		TagName:          "mapstructure",
-		Result:           &configuration,
-		ErrorUnused:      true,
-		WeaklyTypedInput: true,
-	})
-	require.NoError(testingInstance, decoderError)
-	require.NoError(testingInstance, decoder.Decode(rawConfiguration))
+	decoder := yaml.NewDecoder(bytes.NewReader(configurationData))
+	decoder.KnownFields(true)
+	require.NoError(testingInstance, decoder.Decode(&configuration))
 
 	return configuration
 }
