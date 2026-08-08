@@ -3,7 +3,7 @@ package workflow
 import (
 	"strings"
 
-	"github.com/tyemirov/gix/internal/llmclient"
+	"github.com/tyemirov/gix/v5/internal/llmclient"
 )
 
 // TasksApplyDefinition describes serialized options for the tasks.apply operation.

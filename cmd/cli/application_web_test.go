@@ -17,11 +17,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tyemirov/gix/internal/githubauth"
-	"github.com/tyemirov/gix/internal/llmclient"
-	"github.com/tyemirov/gix/internal/repos/shared"
-	"github.com/tyemirov/gix/internal/web"
-	"github.com/tyemirov/gix/internal/workflow"
+	"github.com/tyemirov/gix/v5/internal/githubauth"
+	"github.com/tyemirov/gix/v5/internal/llmclient"
+	"github.com/tyemirov/gix/v5/internal/repos/shared"
+	"github.com/tyemirov/gix/v5/internal/web"
+	"github.com/tyemirov/gix/v5/internal/workflow"
 	"github.com/tyemirov/utils/llm"
 )
 

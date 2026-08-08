@@ -9,12 +9,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	branches "github.com/tyemirov/gix/internal/branches"
-	"github.com/tyemirov/gix/internal/execshell"
-	"github.com/tyemirov/gix/internal/repos/shared"
-	flagutils "github.com/tyemirov/gix/internal/utils/flags"
-	rootutils "github.com/tyemirov/gix/internal/utils/roots"
-	"github.com/tyemirov/gix/internal/workflow"
+	branches "github.com/tyemirov/gix/v5/internal/branches"
+	"github.com/tyemirov/gix/v5/internal/execshell"
+	"github.com/tyemirov/gix/v5/internal/repos/shared"
+	flagutils "github.com/tyemirov/gix/v5/internal/utils/flags"
+	rootutils "github.com/tyemirov/gix/v5/internal/utils/roots"
+	"github.com/tyemirov/gix/v5/internal/workflow"
 )
 
 const (

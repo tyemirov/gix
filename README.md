@@ -13,7 +13,7 @@ gix makes branch-targeted Git synchronization mechanical: explicit branch target
 
 ## Quick Start
 
-1. Install the CLI: `go install github.com/tyemirov/gix@latest` (Go 1.25+).
+1. Install the CLI: `go install github.com/tyemirov/gix/v5@latest` (Go 1.25+).
 2. Create the canonical user configuration: `gix init`.
 3. Either replace the generated credential placeholders with literal values in `$HOME/.gix/config.yml`, or export `GH_TOKEN`, `GITHUB_PACKAGES_TOKEN`, and `LLM_PROXY_SECRET_KEY` before launching gix. Gix interpolates only its inherited process environment and never loads `.env` files.
 4. Attach or verify a workspace: `gix sync https://github.com/OWNER/REPO.git`.

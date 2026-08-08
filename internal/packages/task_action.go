@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tyemirov/gix/internal/ghcr"
-	"github.com/tyemirov/gix/internal/workflow"
+	"github.com/tyemirov/gix/v5/internal/ghcr"
+	"github.com/tyemirov/gix/v5/internal/workflow"
 )
 
 const taskActionPackagesRetention = "repo.packages.retention"

@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/tyemirov/gix/internal/llmclient"
+	"github.com/tyemirov/gix/v5/internal/llmclient"
 )
 
 func TestTaskLLMClientConfigurationClientUsesProviderConnection(t *testing.T) {

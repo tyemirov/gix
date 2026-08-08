@@ -7,12 +7,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/tyemirov/gix/internal/execshell"
-	"github.com/tyemirov/gix/internal/githubcli"
-	"github.com/tyemirov/gix/internal/gitrepo"
-	"github.com/tyemirov/gix/internal/repos/dependencies"
-	"github.com/tyemirov/gix/internal/repos/discovery"
-	"github.com/tyemirov/gix/internal/repos/filesystem"
+	"github.com/tyemirov/gix/v5/internal/execshell"
+	"github.com/tyemirov/gix/v5/internal/githubcli"
+	"github.com/tyemirov/gix/v5/internal/gitrepo"
+	"github.com/tyemirov/gix/v5/internal/repos/dependencies"
+	"github.com/tyemirov/gix/v5/internal/repos/discovery"
+	"github.com/tyemirov/gix/v5/internal/repos/filesystem"
 )
 
 func TestResolveRepositoryDiscoverer(t *testing.T) {

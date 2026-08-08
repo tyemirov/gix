@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tyemirov/gix/internal/execshell"
-	"github.com/tyemirov/gix/internal/gitrepo"
-	migrate "github.com/tyemirov/gix/internal/migrate"
-	"github.com/tyemirov/gix/internal/repos/identity"
-	"github.com/tyemirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/v5/internal/execshell"
+	"github.com/tyemirov/gix/v5/internal/gitrepo"
+	migrate "github.com/tyemirov/gix/v5/internal/migrate"
+	"github.com/tyemirov/gix/v5/internal/repos/identity"
+	"github.com/tyemirov/gix/v5/internal/repos/shared"
 )
 
 const (

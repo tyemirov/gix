@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/tyemirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/v5/internal/repos/shared"
 )
 
 // NewHumanEventFormatter returns the workflow human-readable formatter.

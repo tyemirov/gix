@@ -9,11 +9,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/tyemirov/gix/internal/audit"
-	"github.com/tyemirov/gix/internal/githubcli"
-	"github.com/tyemirov/gix/internal/gitrepo"
-	"github.com/tyemirov/gix/internal/repos/shared"
-	"github.com/tyemirov/gix/internal/workflow"
+	"github.com/tyemirov/gix/v5/internal/audit"
+	"github.com/tyemirov/gix/v5/internal/githubcli"
+	"github.com/tyemirov/gix/v5/internal/gitrepo"
+	"github.com/tyemirov/gix/v5/internal/repos/shared"
+	"github.com/tyemirov/gix/v5/internal/workflow"
 )
 
 func TestPlanStrictSyncStack(t *testing.T) {

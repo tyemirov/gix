@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	workflowpkg "github.com/tyemirov/gix/internal/workflow"
+	workflowpkg "github.com/tyemirov/gix/v5/internal/workflow"
 )
 
 func TestDeriveRuntimeRequirementsForRenameOperation(t *testing.T) {

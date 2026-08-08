@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/tyemirov/gix/internal/audit"
+	"github.com/tyemirov/gix/v5/internal/audit"
 )
 
 const (

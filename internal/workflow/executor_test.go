@@ -12,11 +12,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tyemirov/gix/internal/execshell"
-	"github.com/tyemirov/gix/internal/githubcli"
-	"github.com/tyemirov/gix/internal/gitrepo"
-	repoerrors "github.com/tyemirov/gix/internal/repos/errors"
-	"github.com/tyemirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/v5/internal/execshell"
+	"github.com/tyemirov/gix/v5/internal/githubcli"
+	"github.com/tyemirov/gix/v5/internal/gitrepo"
+	repoerrors "github.com/tyemirov/gix/v5/internal/repos/errors"
+	"github.com/tyemirov/gix/v5/internal/repos/shared"
 )
 
 func TestExecutorReturnsStructuredErrorMessage(testInstance *testing.T) {

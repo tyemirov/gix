@@ -7,8 +7,8 @@ import (
 
 	mapstructure "github.com/go-viper/mapstructure/v2"
 
-	"github.com/tyemirov/gix/internal/llmclient"
-	workflowpkg "github.com/tyemirov/gix/internal/workflow"
+	"github.com/tyemirov/gix/v5/internal/llmclient"
+	workflowpkg "github.com/tyemirov/gix/v5/internal/workflow"
 )
 
 // DuplicateOperationConfigurationError indicates that the configuration file defines the same operation multiple times.

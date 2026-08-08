@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
-	"github.com/tyemirov/gix/internal/utils"
+	"github.com/tyemirov/gix/v5/internal/utils"
 )
 
 const boolFlagParseErrorTemplate = "unable to parse flag %q: %w"
