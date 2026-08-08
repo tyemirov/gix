@@ -62,10 +62,51 @@ func TestCLIMissingConfigurationOffersUserConfigurationCreation(testInstance *te
 		require.NoError(subtest, readError)
 		require.Contains(subtest, string(configurationData), `credential: "${LLM_PROXY_SECRET_KEY}"`)
 		require.Contains(subtest, string(configurationData), `credential: "${OPENAI_API_KEY}"`)
-		require.Contains(subtest, string(configurationData), "    max_completion_tokens: 16384")
+		require.Contains(subtest, string(configurationData), "  max_completion_tokens: 4800")
+		require.Equal(subtest, 1, strings.Count(string(configurationData), "max_completion_tokens:"))
 		require.Contains(subtest, string(configurationData), `credential: "${GH_TOKEN}"`)
 		require.Contains(subtest, string(configurationData), `credential: "${GITHUB_PACKAGES_TOKEN}"`)
 	})
+}
+
+func TestCLIConfigurationRequiresCompletionTokenBudget(testInstance *testing.T) {
+	currentWorkingDirectory, workingDirectoryError := os.Getwd()
+	require.NoError(testInstance, workingDirectoryError)
+	repositoryRootDirectory := filepath.Dir(currentWorkingDirectory)
+
+	binaryPath := buildIntegrationBinary(testInstance, repositoryRootDirectory)
+	workingDirectory := testInstance.TempDir()
+	configurationPath := filepath.Join(workingDirectory, "config.yml")
+	configurationContent := `common:
+  log_level: error
+  log_format: console
+llm:
+  openai:
+    priority: 2
+    model: gpt-5.6-terra
+    base_url: https://api.openai.com/v1
+    credential: openai-secret
+  llm_proxy:
+    priority: 1
+    provider: meta
+    model: muse-spark-1.1
+    base_url: https://llm-proxy.example
+    credential: proxy-secret
+operations: []
+`
+	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
+
+	outputText, runError := runBinaryIntegrationCommand(
+		testInstance,
+		binaryPath,
+		workingDirectory,
+		map[string]string{},
+		integrationCommandTimeout,
+		[]string{"--config", configurationPath, "version"},
+	)
+
+	require.Error(testInstance, runError)
+	require.Contains(testInstance, outputText, "llm max_completion_tokens is required and must be positive")
 }
 
 func TestCLIConfigurationInterpolatesProcessEnvironment(testInstance *testing.T) {
@@ -94,6 +135,7 @@ func TestCLIConfigurationInterpolatesProcessEnvironment(testInstance *testing.T)
 		"    model: muse-spark-1.1",
 		`    base_url: "https://llm-proxy-api.mprlab.com"`,
 		`    credential: "${LLM_PROXY_SECRET_KEY}"`,
+		"  max_completion_tokens: 1200",
 		"operations: []",
 		"",
 	}, "\n")
@@ -144,6 +186,7 @@ func TestCLIConfigurationIgnoresSiblingDotEnv(testInstance *testing.T) {
 		"    model: muse-spark-1.1",
 		"    base_url: https://llm-proxy-api.mprlab.com",
 		`    credential: ""`,
+		"  max_completion_tokens: 1200",
 		"operations: []",
 		"",
 	}, "\n")
@@ -256,6 +299,7 @@ func TestCLIConfigurationRejectsInvalidLLMSelection(testInstance *testing.T) {
 				testCase.proxyFields +
 				"    base_url: https://llm-proxy.example\n" +
 				"    credential: proxy-secret\n" +
+				"  max_completion_tokens: 1200\n" +
 				"operations: []\n"
 			require.NoError(subtest, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
 
@@ -310,6 +354,8 @@ func TestCLIConfigurationInitializationCreatesFiles(testInstance *testing.T) {
 	fileContent, readError := os.ReadFile(expectedConfigurationPath)
 	require.NoError(testInstance, readError)
 	require.NotEmpty(testInstance, fileContent)
+	require.Contains(testInstance, string(fileContent), "  max_completion_tokens: 4800")
+	require.Equal(testInstance, 1, strings.Count(string(fileContent), "max_completion_tokens:"))
 	require.NoFileExists(testInstance, filepath.Join(workingDirectory, integrationConfigFileNameConstant))
 }
 

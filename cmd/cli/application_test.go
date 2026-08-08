@@ -27,7 +27,7 @@ import (
 
 const (
 	testConfigurationFileNameConstant                        = "config.yml"
-	testLLMConfigurationBlockConstant                        = "llm:\n  openai:\n    priority: 2\n    model: gpt-5.6-terra\n    base_url: https://api.openai.com/v1\n    credential: openai-test-secret\n  llm_proxy:\n    priority: 1\n    provider: meta\n    model: muse-spark-1.1\n    base_url: https://llm-proxy.example\n    credential: proxy-test-secret\n"
+	testLLMConfigurationBlockConstant                        = "llm:\n  openai:\n    priority: 2\n    model: gpt-5.6-terra\n    base_url: https://api.openai.com/v1\n    credential: openai-test-secret\n  llm_proxy:\n    priority: 1\n    provider: meta\n    model: muse-spark-1.1\n    base_url: https://llm-proxy.example\n    credential: proxy-test-secret\n  max_completion_tokens: 1200\n"
 	testConfigurationHeaderConstant                          = "common:\n  log_level: error\n  log_format: structured\n" + testLLMConfigurationBlockConstant + "operations:\n"
 	testConsoleConfigurationHeaderConstant                   = "common:\n  log_level: error\n  log_format: console\n" + testLLMConfigurationBlockConstant + "operations:\n"
 	testDebugConfigurationHeaderConstant                     = "common:\n  log_level: debug\n  log_format: structured\n" + testLLMConfigurationBlockConstant + "operations:\n"
@@ -551,14 +551,14 @@ func TestCanonicalConfigurationTemplateProvidesCompleteCommandConfigurations(tes
 	require.Equal(testInstance, "https://api.openai.com/v1", embeddedConfiguration.LLM.OpenAI.BaseURL)
 	require.Equal(testInstance, "${OPENAI_API_KEY}", embeddedConfiguration.LLM.OpenAI.Credential)
 	require.Equal(testInstance, "high", embeddedConfiguration.LLM.OpenAI.Effort)
-	require.Equal(testInstance, 16_384, embeddedConfiguration.LLM.OpenAI.MaxCompletionTokens)
+	require.Zero(testInstance, embeddedConfiguration.LLM.OpenAI.MaxCompletionTokens)
 	require.Equal(testInstance, 1, embeddedConfiguration.LLM.LLMProxy.Priority)
 	require.Equal(testInstance, "meta", embeddedConfiguration.LLM.LLMProxy.Provider)
 	require.Equal(testInstance, "muse-spark-1.1", embeddedConfiguration.LLM.LLMProxy.Model)
 	require.Equal(testInstance, "https://llm-proxy-api.mprlab.com", embeddedConfiguration.LLM.LLMProxy.BaseURL)
 	require.Equal(testInstance, "${LLM_PROXY_SECRET_KEY}", embeddedConfiguration.LLM.LLMProxy.Credential)
 	require.Zero(testInstance, embeddedConfiguration.LLM.LLMProxy.MaxCompletionTokens)
-	require.Equal(testInstance, 1_200, embeddedConfiguration.LLM.MaxCompletionTokens)
+	require.Equal(testInstance, 4_800, embeddedConfiguration.LLM.MaxCompletionTokens)
 
 	operationIndex := buildEmbeddedOperationIndex(testInstance)
 
@@ -703,7 +703,7 @@ func TestCanonicalConfigurationTemplateProvidesCompleteCommandConfigurations(tes
 				assertions.NotContains(options, "provider")
 				assertions.NotContains(options, "api_key_env")
 				assertions.NotContains(options, "base_url")
-				assertions.Equal(256, options["max_completion_tokens"])
+				assertions.NotContains(options, "max_completion_tokens")
 			},
 		},
 		{
@@ -717,7 +717,7 @@ func TestCanonicalConfigurationTemplateProvidesCompleteCommandConfigurations(tes
 				assertions.NotContains(options, "provider")
 				assertions.NotContains(options, "api_key_env")
 				assertions.NotContains(options, "base_url")
-				assertions.Equal(1200, options["max_completion_tokens"])
+				assertions.NotContains(options, "max_completion_tokens")
 			},
 		},
 	}

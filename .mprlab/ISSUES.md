@@ -377,6 +377,22 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make format`, focused tests, `make ci`, `make build`, and `git diff --check`.
   Resolution:
   Provider profiles now accept and strictly validate `max_completion_tokens`. Application configuration resolves completion budgets through `command > provider > llm`; absent command values remain unset through commit, changelog, sync pull-request, and merge-resolution request builders, and sync no longer inherits the `message commit` command budget. The generated and active user configuration assign 16,384 tokens to direct OpenAI while LLM Proxy inherits the global 1,200-token value. Direct OpenAI repeats the same resolved request for one recovery cycle only after typed empty-response exhaustion, preserving ordinary failures, cancellation, and joined primary/recovery context. The compiled CLI regression proves one failed proxy request at the global budget, three empty OpenAI attempts plus a successful recovery at the provider budget, and complete multi-provider error reporting. Focused tests, `make format`, `make ci`, `make build`, and `git diff --check` passed on 2026-08-08.
+- [x] [B054] (P0) Require the global completion-token budget from configuration.
+  Requested on 2026-08-08 after reviewing the B053 provider-specific token defaults.
+  Goal:
+  Keep completion-token policy in the canonical `config.yml` while retaining the established `command > provider > llm` override hierarchy.
+  Requirements:
+  - Require a positive top-level `llm.max_completion_tokens` value during application initialization.
+  - Make `gix init` generate one 4,800-token global default suitable for the configured reasoning models.
+  - Keep optional provider and command values as explicit configuration overrides, but do not prepopulate them in the generated file.
+  - Store no numeric completion-token policy in Go code.
+  Validation:
+  - A compiled `gix init` writes exactly one `max_completion_tokens` key with value 4,800.
+  - A compiled `gix version --config <path>` rejects a configuration that omits the global value.
+  - Existing command, provider, and global precedence coverage remains green.
+  - Run `make format`, focused tests, `make ci`, `make build`, and `git diff --check`.
+  Resolution:
+  Application initialization now requires a positive top-level `llm.max_completion_tokens`. `gix init` generates exactly one completion-token setting, the 4,800-token global budget, while provider and command fields remain optional explicit overrides under the existing `command > provider > llm` hierarchy. Numeric completion-token policy is absent from production Go defaults. Compiled initialization and rejection regressions, hierarchy coverage, focused integration tests, `make format`, and `make ci` passed on 2026-08-08; `make build` and `git diff --check` completed before publication.
 
 
 

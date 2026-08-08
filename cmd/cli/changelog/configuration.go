@@ -23,9 +23,7 @@ type MessageConfiguration struct {
 
 // DefaultMessageConfiguration provides baseline configuration.
 func DefaultMessageConfiguration() MessageConfiguration {
-	return MessageConfiguration{
-		MaxTokens: 0,
-	}
+	return MessageConfiguration{}
 }
 
 // Sanitize normalizes configuration values.
