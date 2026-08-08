@@ -19,15 +19,16 @@ You are a staff level full stack engineer. Your task is to **re-evaluate and ref
 2. Review the backlog in `.mprlab/ISSUES.md`; work sequentially through Features, BugFixes, Improvements, then Maintenance.
 3. For the active issue, create `.mprlab/PLAN.md` (ignored by git) with bullet steps. Keep it updated and delete/rewrite it for the next issue.
 4. Create a new branch (per `.mprlab/AGENTS.GIT.md`) from the latest issue branch, not from `master`, so history stays linear.
-5. Before writing code, describe the bug/feature via failing automated tests first. Run `make test` to watch them fail, then run `make lint` and any mandatory formatter targets defined for your stack in `.mprlab/AGENTS.*.md` to establish the initial tooling baseline; if these fail before your changes, record the situation in `.mprlab/ISSUES.md`.
+5. Before you change tests or production code, run `make ci` to establish the complete baseline. Then add a failing automated test. Run only the smallest focused test command that shows the failure.
 6. Implement the change, keeping to stack-specific standards. Limit edits to necessary files plus `.mprlab/ISSUES.md` (append-only log) and `CHANGELOG.md` (post-completion summary).
-7. After implementing changes but before committing, re-run the full tooling suite for your stack—`make test`, `make lint`, `make ci` where present, and any mandatory formatter targets defined in `.mprlab/AGENTS.*.md`. All must pass locally before opening a PR unless the work is explicitly documented as blocked.
+7. During implementation, use focused tests for red/green feedback. After implementing changes but before committing, run `make ci` once as the complete repository gate. Do not run standalone `make test` or `make lint` in addition to `make ci` when those targets are already included by `make ci`. The final CI gate must pass locally before opening a PR unless the work is explicitly documented as blocked.
 8. Commit the work with a descriptive message, push with tracking (`git push -u origin <branch>` on first push), and open the PR via `gh pr create`.
 9. Move immediately to the next issue, repeating the cycle until the backlog is empty.
 
 ## Testing & Tooling
 
-- Use the `Makefile` targets (`make test`, `make lint`, `make ci`) instead of ad-hoc commands. `make test` runs the Playwright harness headless; `make lint` enforces lint rules; `make ci` mirrors GitHub Actions.
+- Use the smallest specific test command during development. Run `make ci` before you change tests or production code. Run it again after implementation. This command includes the repository test and lint targets.
+- If a change only modifies `.mprlab/` files, do not run or rerun `make ci`. These files contain no application code. Run the applicable governance checks. Run `git diff --check`.
 - Run stack-specific formatters as defined in the relevant `.mprlab/AGENTS.*.md` guides (for example, `go fmt` for Go or any other formatter that is required for that stack); do not introduce new formatters or override stack policies.
 - Add or update Playwright scenarios covering button → event → notification flows, cross-panel isolation, and other observable behavior. Tests are black-box and table-driven.
 - Prefix every CLI command with `timeout -k <N>s -s SIGKILL <N>s <command>`. Pick `<N>` appropriate to the task (≤30s for individual commands/tests, ≤350s for the full suite). No exceptions.
@@ -52,7 +53,7 @@ You are a staff level full stack engineer. Your task is to **re-evaluate and ref
 
 1. `.mprlab/PLAN.md` reflects the final state for the active issue.
 2. `.mprlab/ISSUES.md` entry is marked `[x]` with the resolution note.
-3. The full tooling suite for the active stack has been run and is passing: at minimum, `make test`, `make lint`, and `make ci` succeed locally (subject to the timeout rule), and any mandatory formatter targets from `.mprlab/AGENTS.*.md` have been applied.
+3. The post-change `make ci` gate succeeds locally (subject to the timeout rule), including its test, lint, and formatter checks.
 4. Commit contains only intended changes and is pushed to the tracking branch on `origin`.
 5. PR opened via `gh pr create`, referencing the issue ID.
 6. Provide a short summary plus next steps in the CLI output before moving to the next issue.
