@@ -130,6 +130,16 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v5.0.1] - 2026-08-08
+
+- Merge pull request #421 from tyemirov/bugfix/B056-isolate-release-ci-intent
+- fix(release): isolate CI from release intent
+- Merge pull request #420 from tyemirov/maintenance/M016-remove-semver-migration
+- maintenance: remove completed SemVer migration
+- Merge pull request #419 from tyemirov/maintenance/M016-retroactive-semver-releases
+- maintenance: establish corrected v5 release line
+- Require explicit SemVer intent for releases (#418)
+
 ## [v1.1.25] - 2026-08-08
 
 - fix(config): require global completion token budget (#417)
