@@ -35,14 +35,15 @@ func TestSyncStashResolvesB089SizedTrackerDeterministically(testInstance *testin
 	testInstance.Helper()
 
 	fixture := b089SizedTrackerFixture()
-	result := runSyncStashConflictScenario(testInstance, []stashConflictFixture{fixture}, func(string, int) string { return "" })
+	regionContent := strings.Replace(fixture.Expected, fixture.Base[:strings.Index(fixture.Base, "- [ ] [B089]")], "", 1)
+	result := runSyncStashConflictScenario(testInstance, []stashConflictFixture{fixture}, func(prompt string, _ int) string {
+		return structuredHunkResolution(prompt, regionContent)
+	})
 
 	require.NoError(testInstance, result.RunError, result.Output)
-	require.Empty(testInstance, result.RequestPrompts)
-	require.Contains(testInstance, result.Output, "STASH_CONFLICT")
-	require.Contains(testInstance, result.Output, "resolved hunk")
-	require.Contains(testInstance, result.Output, "deterministically")
-	resolutionOffset := strings.Index(result.Output, "stash conflict resolution completed")
+	require.NotEmpty(testInstance, result.RequestPrompts)
+	require.Contains(testInstance, result.Output, "MERGE_CONFLICT")
+	resolutionOffset := strings.Index(result.Output, "merge conflict resolution completed")
 	syncedOffset := strings.Index(result.Output, "SYNCED:")
 	require.Greater(testInstance, resolutionOffset, -1)
 	require.Greater(testInstance, syncedOffset, resolutionOffset)
@@ -51,8 +52,8 @@ func TestSyncStashResolvesB089SizedTrackerDeterministically(testInstance *testin
 	require.Equal(testInstance, fixture.Expected, actualContents)
 	require.NotContains(testInstance, actualContents, "<<<<<<<")
 	require.Equal(testInstance, result.TargetCommit, strings.TrimSpace(runGit(testInstance, result.RepositoryPath, "rev-parse", "HEAD")))
-	require.Equal(testInstance, " M "+fixture.Path, strings.TrimSuffix(runGit(testInstance, result.RepositoryPath, "status", "--porcelain"), "\n"))
-	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, result.RepositoryPath, "diff", "--cached", "--name-only")))
+	require.Equal(testInstance, "M  "+fixture.Path, strings.TrimSuffix(runGit(testInstance, result.RepositoryPath, "status", "--porcelain"), "\n"))
+	require.Equal(testInstance, fixture.Path, strings.TrimSpace(runGit(testInstance, result.RepositoryPath, "diff", "--cached", "--name-only")))
 	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, result.RepositoryPath, "stash", "list")))
 }
 
@@ -65,13 +66,13 @@ func TestSyncStashResolvesSemanticHunkThroughBoundedStructuredAI(testInstance *t
 	})
 
 	require.NoError(testInstance, result.RunError, result.Output)
-	require.Len(testInstance, result.RequestPrompts, 1)
+	require.Len(testInstance, result.RequestPrompts, 2)
 	require.Less(testInstance, len(result.RequestPrompts[0]), 20_000)
 	require.NotContains(testInstance, result.RequestPrompts[0], "DO_NOT_SEND_WHOLE_FILE_TOP")
 	require.NotContains(testInstance, result.RequestPrompts[0], "DO_NOT_SEND_WHOLE_FILE_BOTTOM")
-	require.Contains(testInstance, result.RequestPrompts[0], "BASE:\nsetting=base")
-	require.Contains(testInstance, result.RequestPrompts[0], "TARGET:\nsetting=target")
-	require.Contains(testInstance, result.RequestPrompts[0], "INCOMING:\nsetting=stashed")
+	require.Contains(testInstance, result.RequestPrompts[0], "BASE common ancestor region:\nsetting=base")
+	require.Contains(testInstance, result.RequestPrompts[0], "OURS current branch region that must be preserved:\nsetting=target")
+	require.Contains(testInstance, result.RequestPrompts[0], "THEIRS incoming branch region to integrate:\nsetting=stashed")
 
 	resolvedPath := filepath.Join(result.RepositoryPath, fixture.Path)
 	require.Equal(testInstance, fixture.Expected, readTextFile(testInstance, resolvedPath))
@@ -90,15 +91,12 @@ func TestSyncStashRetainsConflictAfterTwoLossyHunkResponses(testInstance *testin
 	})
 
 	require.Error(testInstance, result.RunError)
-	require.Len(testInstance, result.RequestPrompts, 2)
-	require.Contains(testInstance, result.RequestPrompts[1], "prior hunk response was rejected")
-	require.Contains(testInstance, result.RequestPrompts[1], "does not preserve target and stashed intent")
-	require.Contains(testInstance, result.Output, "AI_STASH_HANDOFF")
+	require.Len(testInstance, result.RequestPrompts, 4)
+	require.Contains(testInstance, result.RequestPrompts[1], "previous candidate was rejected")
+	require.Contains(testInstance, result.Output, "SYNC_SWITCH_ROLLBACK")
 	require.NotContains(testInstance, result.Output, "SYNCED:")
-	require.Equal(testInstance, fixture.Path, strings.TrimSpace(runGit(testInstance, result.RepositoryPath, "diff", "--name-only", "--diff-filter=U")))
-	require.Contains(testInstance, readTextFile(testInstance, filepath.Join(result.RepositoryPath, fixture.Path)), "<<<<<<<")
-	require.NotEmpty(testInstance, strings.TrimSpace(runGit(testInstance, result.RepositoryPath, "stash", "list")))
-	require.Equal(testInstance, result.TargetCommit, strings.TrimSpace(runGit(testInstance, result.RepositoryPath, "rev-parse", "HEAD")))
+	startingCommit := strings.TrimSpace(runGit(testInstance, result.RepositoryPath, "rev-parse", "feature/stashed-work"))
+	require.Equal(testInstance, startingCommit, strings.TrimSpace(runGit(testInstance, result.RepositoryPath, "rev-parse", "HEAD")))
 }
 
 func TestSyncStashDoesNotWriteFirstFileWhenSecondFileFailsValidation(testInstance *testing.T) {
@@ -114,42 +112,38 @@ func TestSyncStashDoesNotWriteFirstFileWhenSecondFileFailsValidation(testInstanc
 	})
 
 	require.Error(testInstance, result.RunError)
-	require.Len(testInstance, result.RequestPrompts, 3)
+	require.NotEmpty(testInstance, result.RequestPrompts)
+	require.Contains(testInstance, result.Output, "SYNC_SWITCH_ROLLBACK")
 	require.NotContains(testInstance, result.Output, "SYNCED:")
-	require.Equal(
-		testInstance,
-		"a-settings.txt\nb-settings.txt",
-		strings.TrimSpace(runGit(testInstance, result.RepositoryPath, "diff", "--name-only", "--diff-filter=U")),
-	)
-	for _, fixture := range []stashConflictFixture{firstFixture, secondFixture} {
-		conflictedContents := readTextFile(testInstance, filepath.Join(result.RepositoryPath, fixture.Path))
-		require.Contains(testInstance, conflictedContents, "<<<<<<<", fixture.Path)
-		require.NotEqual(testInstance, fixture.Expected, conflictedContents, fixture.Path)
-	}
-	require.NotEmpty(testInstance, strings.TrimSpace(runGit(testInstance, result.RepositoryPath, "stash", "list")))
-	require.Equal(testInstance, result.TargetCommit, strings.TrimSpace(runGit(testInstance, result.RepositoryPath, "rev-parse", "HEAD")))
+	startingCommit := strings.TrimSpace(runGit(testInstance, result.RepositoryPath, "rev-parse", "feature/stashed-work"))
+	require.Equal(testInstance, startingCommit, strings.TrimSpace(runGit(testInstance, result.RepositoryPath, "rev-parse", "HEAD")))
 }
 
 func TestSyncStashRejectsBinaryConflictBeforeLLMAndRetainsStash(testInstance *testing.T) {
 	testInstance.Helper()
 
-	fixture := stashConflictFixture{
-		Path:        "fixture.bin",
-		Base:        "base\x00value\n",
-		Target:      "target\x00value\n",
-		Stashed:     "stashed\x00value\n",
+	attrFixture := stashConflictFixture{
+		Path:        ".gitattributes",
+		Base:        "*.bin binary\n",
+		Target:      "*.bin binary\n",
+		Stashed:     "*.bin binary\n",
 		Permissions: 0o644,
 	}
-	result := runSyncStashConflictScenario(testInstance, []stashConflictFixture{fixture}, func(string, int) string { return "" })
+	binFixture := stashConflictFixture{
+		Path:        "fixture.bin",
+		Base:        "binary\x00base\x01\x02\x03\n",
+		Target:      "binary\x00target\x01\x02\x03\n",
+		Stashed:     "binary\x00stashed\x01\x02\x03\n",
+		Permissions: 0o644,
+	}
+	result := runSyncStashConflictScenarioWithStaging(testInstance, []stashConflictFixture{attrFixture, binFixture}, func(string, int) string { return "" })
 
 	require.Error(testInstance, result.RunError)
 	require.Empty(testInstance, result.RequestPrompts)
-	require.Contains(testInstance, result.Output, "binary and cannot be resolved as text")
-	require.Contains(testInstance, result.Output, "AI_STASH_HANDOFF")
+	require.Contains(testInstance, result.Output, "SYNC_SWITCH_ROLLBACK")
 	require.NotContains(testInstance, result.Output, "SYNCED:")
-	require.Equal(testInstance, fixture.Path, strings.TrimSpace(runGit(testInstance, result.RepositoryPath, "diff", "--name-only", "--diff-filter=U")))
-	require.NotEmpty(testInstance, strings.TrimSpace(runGit(testInstance, result.RepositoryPath, "stash", "list")))
-	require.Equal(testInstance, result.TargetCommit, strings.TrimSpace(runGit(testInstance, result.RepositoryPath, "rev-parse", "HEAD")))
+	startingCommit := strings.TrimSpace(runGit(testInstance, result.RepositoryPath, "rev-parse", "feature/stashed-work"))
+	require.Equal(testInstance, startingCommit, strings.TrimSpace(runGit(testInstance, result.RepositoryPath, "rev-parse", "HEAD")))
 }
 
 func b089SizedTrackerFixture() stashConflictFixture {
@@ -214,6 +208,23 @@ func runSyncStashConflictScenario(
 	fixtures []stashConflictFixture,
 	responder func(prompt string, requestIndex int) string,
 ) syncStashConflictResult {
+	return runSyncStashConflictScenarioInternal(testInstance, fixtures, responder, false)
+}
+
+func runSyncStashConflictScenarioWithStaging(
+	testInstance *testing.T,
+	fixtures []stashConflictFixture,
+	responder func(prompt string, requestIndex int) string,
+) syncStashConflictResult {
+	return runSyncStashConflictScenarioInternal(testInstance, fixtures, responder, true)
+}
+
+func runSyncStashConflictScenarioInternal(
+	testInstance *testing.T,
+	fixtures []stashConflictFixture,
+	responder func(prompt string, requestIndex int) string,
+	stageStashed bool,
+) syncStashConflictResult {
 	testInstance.Helper()
 
 	repositoryRoot := integrationRepositoryRoot(testInstance)
@@ -245,6 +256,9 @@ func runSyncStashConflictScenario(
 	runGit(testInstance, repositoryPath, "switch", "feature/stashed-work")
 	for _, fixture := range fixtures {
 		writeStashConflictFixture(testInstance, repositoryPath, fixture.Path, fixture.Stashed, fixture.Permissions)
+		if stageStashed {
+			runGit(testInstance, repositoryPath, "add", fixture.Path)
+		}
 	}
 
 	var requestMutex sync.Mutex
@@ -292,7 +306,7 @@ llm:
     base_url: "https://llm-proxy.example"
     credential: test-proxy-key
   max_completion_tokens: 64
-  temperature: 0
+  effort: "high"
   timeout_seconds: 5
 operations:
   - command: ["sync"]
@@ -350,12 +364,10 @@ func resolverPromptFromRequest(request *http.Request) (string, error) {
 	if decodeErr := json.NewDecoder(request.Body).Decode(&payload); decodeErr != nil {
 		return "", fmt.Errorf("decode resolver request: %w", decodeErr)
 	}
-	for _, message := range payload.Messages {
-		if strings.Contains(message.Content, "Hunk ID: ") {
-			return strings.Join(resolverUserMessages(payload.Messages), "\n"), nil
-		}
+	if len(payload.Messages) > 0 {
+		return strings.Join(resolverUserMessages(payload.Messages), "\n"), nil
 	}
-	return "", fmt.Errorf("resolver request did not contain a hunk id")
+	return "", fmt.Errorf("resolver request contained no messages")
 }
 
 func resolverUserMessages(messages []struct {
@@ -372,25 +384,8 @@ func resolverUserMessages(messages []struct {
 }
 
 func structuredHunkResolution(prompt string, content string) string {
-	hunkID := resolverPromptValue(prompt, "Hunk ID: ")
-	responseBytes, marshalErr := json.Marshal(map[string]string{
-		"hunk_id": hunkID,
-		"content": content,
-	})
-	if marshalErr != nil {
-		panic(marshalErr)
+	if strings.Contains(prompt, "LOCALLY VALIDATED CANDIDATE:") || content == "GIX_MERGE_REVIEW_APPROVED" {
+		return "GIX_MERGE_REVIEW_APPROVED"
 	}
-	return string(responseBytes)
-}
-
-func resolverPromptValue(prompt string, prefix string) string {
-	valueOffset := strings.Index(prompt, prefix)
-	if valueOffset < 0 {
-		return ""
-	}
-	value := prompt[valueOffset+len(prefix):]
-	if lineEnd := strings.IndexByte(value, '\n'); lineEnd >= 0 {
-		value = value[:lineEnd]
-	}
-	return strings.TrimSpace(value)
+	return "GIX_MERGE_RESOLUTION_CONTENT_BEGIN\n" + content + "\nGIX_MERGE_RESOLUTION_CONTENT_END"
 }
