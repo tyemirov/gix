@@ -393,6 +393,27 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make format`, focused tests, `make ci`, `make build`, and `git diff --check`.
   Resolution:
   Application initialization now requires a positive top-level `llm.max_completion_tokens`. `gix init` generates exactly one completion-token setting, the 4,800-token global budget, while provider and command fields remain optional explicit overrides under the existing `command > provider > llm` hierarchy. Numeric completion-token policy is absent from production Go defaults. Compiled initialization and rejection regressions, hierarchy coverage, focused integration tests, `make format`, and `make ci` passed on 2026-08-08; `make build` and `git diff --check` completed before publication.
+- [x] [B055] (P0) Require explicit intent for new SemVer releases.
+  Reported on 2026-08-08 after `make release` published breaking configuration changes as the twenty-fifth consecutive `v1.1.x` patch release.
+  Goal:
+  Prevent a new SemVer release from silently selecting a patch version when the operator has not declared the release intent.
+  Requirements:
+  - Require exactly one explicit `patch`, `minor`, `major`, or exact-version intent before selecting a new SemVer release.
+  - Preserve zero-argument exact-tag receipt verification and reuse.
+  - Preserve timestamp-derived CalVer selection without a SemVer bump argument.
+  - Reject conflicting exact-version and bump inputs and reject SemVer bump inputs for CalVer.
+  - Expose the canonical intent through `make release RELEASE_BUMP=<patch|minor|major>` or `make release RELEASE_VERSION=<version>`.
+  Validation:
+  - Public release-script coverage rejects missing and conflicting intent before CI or artifact preparation.
+  - Public coverage selects patch, minor, major, and exact versions from the same release boundary.
+  - Existing exact-tag reuse, candidate isolation, rollback, and publication tests remain green.
+  - Run focused tests, `make format`, `make ci`, `make build`, shell/Python syntax checks, and `git diff --check`.
+  Resolution:
+  The Make release boundary now forwards explicit `RELEASE_BUMP`, `RELEASE_VERSION`, and `RELEASE_SCHEME` values. New SemVer preparation requires exactly one patch, minor, major, or exact-version intent and rejects missing, conflicting, and CalVer-incompatible inputs before CI. Timestamp-derived CalVer selection and zero-argument exact-tag receipt reuse remain unchanged. Public Make and release-script regressions cover every intent path and preserve candidate isolation, rollback, receipt recovery, and publication behavior. Focused release tests, shell and Python syntax checks, `make format`, and `make ci` passed on 2026-08-08; `make build` and `git diff --check` completed before publication.
+  Review follow-up:
+  A checkout without local version tags reported `scheme_guess: none`, bypassed the new missing-intent guard, and still selected `v1.0.0` before running CI.
+  Follow-up resolution:
+  Release selection now normalizes the untagged default to the initial SemVer contract unless CalVer is explicitly requested. A public release-script regression proves that bare preparation stops before CI and preserves the canonical receipt, while an explicit patch intent selects `v1.0.0` with a SemVer scheme. Focused release tests, `bash -n scripts/release/prepare_release.sh`, `make format`, `make ci`, `make build`, and `git diff --check` passed on 2026-08-08.
 
 
 

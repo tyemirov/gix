@@ -24,10 +24,12 @@ gix makes branch-targeted Git synchronization mechanical: explicit branch target
 ## Release, Publish, Deploy
 
 ```bash
-make release
+make release RELEASE_BUMP=patch
 make publish
 make deploy
 ```
+
+For a new SemVer release, set `RELEASE_BUMP` to exactly `patch`, `minor`, or `major`, or set `RELEASE_VERSION` to the exact version. Release preparation rejects a missing or conflicting intent before CI. Timestamp-derived CalVer releases use `RELEASE_SCHEME=calver` and do not accept a SemVer bump. At an exact release tag, plain `make release` remains the idempotent retry command.
 
 `make release` runs CI and prepares the cross-platform binaries, checksums, documentation Pages archive, changelog commit, annotated tag, and release manifest entirely from local state under `.git/mprlab-release`. It performs no remote write for a new release. At an exact release tag, the command verifies and reuses the complete local sealed receipt without rerunning CI; if that receipt is missing or incomplete, it reconstructs it from the matching published GitHub Release and verifies the manifest, notes, payload hashes, annotated tag, source parent, and changelog-only release commit. New release preparation uses a separate candidate receipt and replaces the canonical receipt only after the candidate verifies, so a preparation failure preserves the previous sealed release and rolls back its transaction-owned changelog commit and tag. `make publish` pushes the exact prepared Git refs and GitHub Release assets through canonical `origin` without rebuilding. `make deploy` activates the published documentation archive at `gix.mprlab.com` only when the downloaded manifest matches that locally prepared release; the CLI itself has no runtime rollout.
 
