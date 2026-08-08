@@ -381,6 +381,52 @@ func TestReleaseNewSemVerRequiresExplicitIntent(testInstance *testing.T) {
 	require.Equal(testInstance, before, readReleaseArtifactTree(testInstance, fixture.artifactDirectory))
 }
 
+func TestReleaseInitialSemVerRequiresExplicitIntentWithoutLocalTags(testInstance *testing.T) {
+	fixture := newExactReleaseFixture(testInstance)
+	runGit(testInstance, fixture.repositoryPath, "tag", "--delete", fixture.version)
+	fixture.commitNextSource(testInstance)
+	before := readReleaseArtifactTree(testInstance, fixture.artifactDirectory)
+	makeLogPath := filepath.Join(testInstance.TempDir(), "make.log")
+	pathVariable := buildReleaseStubbedExecutablePath(testInstance, map[string]string{"make": releaseFakeMakeScript})
+	commandOptions := integrationCommandOptions{
+		PathVariable: pathVariable,
+		EnvironmentOverrides: map[string]string{
+			"RELEASE_BUMP":                       "",
+			"RELEASE_VERSION":                    "",
+			releaseFakeMakeLogVariable:           makeLogPath,
+			releaseFakeMakeFailureTargetVariable: "ci",
+		},
+	}
+
+	outputText, runError := runReleasePrepareReleaseScript(
+		testInstance,
+		fixture.repositoryRoot,
+		fixture.repositoryPath,
+		commandOptions,
+	)
+
+	require.Error(testInstance, runError, outputText)
+	require.Contains(testInstance, outputText, "new SemVer release requires --bump patch, --bump minor, --bump major, or --version")
+	require.NoFileExists(testInstance, makeLogPath)
+	require.Equal(testInstance, before, readReleaseArtifactTree(testInstance, fixture.artifactDirectory))
+
+	outputText, runError = runReleasePrepareReleaseScript(
+		testInstance,
+		fixture.repositoryRoot,
+		fixture.repositoryPath,
+		commandOptions,
+		"--dry-run",
+		"--bump",
+		"patch",
+	)
+
+	require.NoError(testInstance, runError, outputText)
+	require.Contains(testInstance, outputText, "version_scheme=semver")
+	require.Contains(testInstance, outputText, "next_version=v1.0.0")
+	require.Contains(testInstance, outputText, "changelog_boundary=<none>")
+	require.NoFileExists(testInstance, makeLogPath)
+}
+
 func TestReleaseNewSemVerSelectsExplicitIntent(testInstance *testing.T) {
 	fixture := newExactReleaseFixture(testInstance)
 	fixture.commitNextSource(testInstance)
