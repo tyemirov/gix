@@ -377,6 +377,7 @@ func writeSyncWorktreeAdoptionConfiguration(testInstance *testing.T, baseURL str
     model: muse-spark-1.1
     base_url: "https://llm-proxy.example"
     credential: integration-proxy-key
+  max_completion_tokens: 1200
 `
 	messageConfiguration := ""
 	if strings.TrimSpace(baseURL) != "" {

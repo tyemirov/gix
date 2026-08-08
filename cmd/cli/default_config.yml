@@ -11,7 +11,6 @@ llm:
   openai:
     priority: 2
     model: gpt-5.6-terra
-    max_completion_tokens: 16384
     base_url: "https://api.openai.com/v1"
     credential: "${OPENAI_API_KEY}"
     effort: "high"
@@ -21,7 +20,7 @@ llm:
     model: muse-spark-1.1
     base_url: "https://llm-proxy-api.mprlab.com"
     credential: "${LLM_PROXY_SECRET_KEY}"
-  max_completion_tokens: 1200
+  max_completion_tokens: 4800
   timeout_seconds: 60
 
 operations:
@@ -95,11 +94,9 @@ operations:
       roots:
         - .
       diff_source: staged
-      max_completion_tokens: 256
       timeout_seconds: 60
   - command: ["message", "changelog"]
     with:
       roots:
         - .
-      max_completion_tokens: 1200
       timeout_seconds: 60

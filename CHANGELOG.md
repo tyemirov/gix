@@ -15,7 +15,7 @@
 - Removed dotenv discovery and the Viper configuration layer; placeholders now resolve only from the inherited process environment, while literal configuration values pass through unchanged.
 - Replaced top-level LLM provider/model selection with complete `openai` and `llm_proxy` profiles: each owns its routing fields, endpoint, interpolated credential, and positive unique priority.
 - Added ordered LLM failover: credentialed profiles run from lowest priority number to highest, request failures advance to the next profile, and the first successful response wins.
-- Added strict completion-token precedence from command to provider profile to top-level `llm`, with the generated configuration assigning direct OpenAI a 16,384-token budget while LLM Proxy inherits the global budget.
+- Added strict completion-token precedence from command to provider profile to top-level `llm`, with one required 4,800-token generated global default and optional explicit provider or command overrides.
 - Moved GitHub CLI and GHCR credentials into the same load-time interpolation contract, eliminating their late environment reads and package-service URL override.
 - Removed runtime `GIX_*`, `api_key_env`, LLM `base_url`, working-directory config, `.yaml`, and embedded-default fallbacks from the configuration contract.
 
@@ -23,6 +23,7 @@
 - Updated the LLM Proxy Go client from v0.2.21 to v0.2.46, moved Gix's configured proxy work budget to the current per-request timeout header, and raised the Go module floor to 1.25.12 with the dependency graph required by that client.
 
 ### Bug Fixes 🐛
+- Required a positive top-level `llm.max_completion_tokens` value during startup and removed generated provider and command token defaults, keeping completion-token policy in `config.yml` while preserving the command-to-provider-to-global hierarchy.
 - Recovered direct OpenAI from reasoning-only empty completions by repeating the resolved configured request for one bounded recovery cycle after normal empty-response retries are exhausted, while ordinary connection failures and cancellation retain their existing behavior.
 - Made exact-tag release retries idempotent by reusing verified sealed receipts, recovering missing or incomplete receipts from matching published GitHub Release state, preserving the prior canonical receipt until a new candidate verifies completely, and rolling back release-owned changelog refs when sealing fails.
 - Reconciled legacy GitHub Pages configuration and exact-commit build state during deployment, eliminating unconditional configuration updates and duplicate build requests while preserving actionable building, errored, and public-marker diagnostics.

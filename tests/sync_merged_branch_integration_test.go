@@ -665,6 +665,7 @@ llm:
     model: muse-spark-1.1
     base_url: https://llm-proxy.example
     credential: integration-proxy-key
+  max_completion_tokens: 1200
 operations:
   - command: ["sync"]
     with:

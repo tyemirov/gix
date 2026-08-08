@@ -98,8 +98,8 @@ func (configuration ApplicationLLMConfiguration) connectionProfiles() llmclient.
 }
 
 func (configuration ApplicationLLMConfiguration) validateConnections() error {
-	if configuration.MaxCompletionTokens < 0 {
-		return errors.New("llm max_completion_tokens must be non-negative")
+	if configuration.MaxCompletionTokens <= 0 {
+		return errors.New("llm max_completion_tokens is required and must be positive")
 	}
 	return configuration.connectionProfiles().Validate()
 }

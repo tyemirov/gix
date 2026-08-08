@@ -180,7 +180,7 @@ func TestApplicationLLMConfigurationRejectsNegativeGlobalCompletionTokens(t *tes
 
 	validationError := configuration.validateConnections()
 
-	require.EqualError(t, validationError, "llm max_completion_tokens must be non-negative")
+	require.EqualError(t, validationError, "llm max_completion_tokens is required and must be positive")
 }
 
 func TestInitializeConfigurationRejectsPublicLLMTransport(t *testing.T) {
@@ -201,6 +201,7 @@ llm:
     model: muse-spark-1.1
     base_url: https://llm-proxy.example
     credential: proxy-secret
+  max_completion_tokens: 1200
 operations: []
 `
 	require.NoError(t, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
@@ -230,6 +231,7 @@ llm:
     model: muse-spark-1.1
     base_url: https://llm-proxy.example
     credential: proxy-secret
+  max_completion_tokens: 1200
 operations: []
 `
 	require.NoError(t, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
@@ -712,6 +714,7 @@ llm:
     model: muse-spark-1.1
     base_url: https://llm-proxy.example
     credential: proxy-secret
+  max_completion_tokens: 1200
 operations:
   - command: ["release"]
     with:
@@ -750,6 +753,7 @@ llm:
     model: muse-spark-1.1
     base_url: https://llm-proxy.example
     credential: proxy-secret
+  max_completion_tokens: 1200
 operations:
   - command: ["folder", "rename"]
     with:
@@ -786,6 +790,7 @@ llm:
     model: muse-spark-1.1
     base_url: https://llm-proxy.example
     credential: proxy-secret
+  max_completion_tokens: 1200
 operations:
   - command: ["message", "commit"]
     with:
@@ -838,6 +843,7 @@ llm:
     model: muse-spark-1.1
     base_url: https://llm-proxy.example
     credential: proxy-secret
+  max_completion_tokens: 1200
 operations: []
 workflow:
   - step:

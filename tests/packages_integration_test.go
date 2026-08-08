@@ -22,7 +22,7 @@ const (
 	packagesIntegrationTokenEnvNameConstant             = "GITHUB_PACKAGES_TOKEN"
 	packagesIntegrationTokenValueConstant               = "packages-token-value"
 	packagesIntegrationConfigFileNameConstant           = "config.yml"
-	packagesIntegrationConfigTemplateConstant           = "common:\n  log_level: error\n  log_format: console\ngithub:\n  credential: \"${GH_TOKEN}\"\nllm:\n  openai:\n    priority: 1\n    model: gpt-5.6-terra\n    base_url: https://api.openai.com/v1\n    credential: integration-openai-key\n  llm_proxy:\n    priority: 2\n    provider: meta\n    model: muse-spark-1.1\n    base_url: https://llm-proxy.example\n    credential: integration-proxy-key\noperations:\n  - command: [\"packages\", \"delete\"]\n    with:\n      base_url: %q\n      credential: \"${GITHUB_PACKAGES_TOKEN}\"\n%s      roots:\n        - %s\nworkflow: []\n"
+	packagesIntegrationConfigTemplateConstant           = "common:\n  log_level: error\n  log_format: console\ngithub:\n  credential: \"${GH_TOKEN}\"\nllm:\n  openai:\n    priority: 1\n    model: gpt-5.6-terra\n    base_url: https://api.openai.com/v1\n    credential: integration-openai-key\n  llm_proxy:\n    priority: 2\n    provider: meta\n    model: muse-spark-1.1\n    base_url: https://llm-proxy.example\n    credential: integration-proxy-key\n  max_completion_tokens: 1200\noperations:\n  - command: [\"packages\", \"delete\"]\n    with:\n      base_url: %q\n      credential: \"${GITHUB_PACKAGES_TOKEN}\"\n%s      roots:\n        - %s\nworkflow: []\n"
 	packagesIntegrationPackageLineTemplateConstant      = "      package: %s\n"
 	packagesIntegrationSubtestNameTemplateConstant      = "%d_%s"
 	packagesIntegrationRunSubcommandConstant            = "run"

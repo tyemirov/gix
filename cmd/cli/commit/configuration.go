@@ -24,7 +24,6 @@ type MessageConfiguration struct {
 func DefaultMessageConfiguration() MessageConfiguration {
 	return MessageConfiguration{
 		DiffSource: defaultDiffSource,
-		MaxTokens:  0,
 	}
 }
 
