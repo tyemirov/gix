@@ -365,6 +365,21 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## Improvements
 
+- [x] [I010] (P1) Remove the redundant generic configuration decode.
+  Goal:
+  Use one strict YAML decoder for the application configuration schema.
+  Requirements:
+  - Decode YAML directly into the typed target configuration and reject unknown fields.
+  - Expand inherited environment placeholders after YAML decoding without reparsing configuration data.
+  - Preserve literal values, optional credential placeholders, required placeholder errors, and scalar characters from environment values.
+  - Remove the generic `map[string]any` and `mapstructure` decode from the configuration loader.
+  Validation:
+  - Add public compiled-CLI coverage that rejects the removed `temperature` key through the strict YAML schema.
+  - Preserve focused configuration-loader coverage for placeholder and unknown-field behavior.
+  - Run the complete post-change `make ci` gate and `git diff --check`.
+  Resolution:
+  The application loader now performs one strict YAML decode directly into the typed target and rejects unknown fields through that decoder. Environment placeholders expand afterward in decoded string values, preserving literal substituted characters, optional credential placeholders, and required-placeholder errors without reparsing a generic YAML map. The loader no longer imports `mapstructure` or constructs `map[string]any`; command-specific operation option maps retain their separate typed decode after the application schema is loaded. Focused loader, documentation, and compiled-CLI regressions pass, including rejection of the removed `temperature` key. The complete pre-change and post-change `make ci` gates, `make format`, the live user-configuration version command, and `git diff --check` passed on 2026-08-08.
+
 ## Maintenance
 
 - [ ] [M001R] (P2) Backlog hygiene and archive.
@@ -691,4 +706,3 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## Planning
 *do not implement yet*
-
