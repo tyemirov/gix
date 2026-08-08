@@ -23,6 +23,7 @@ const (
 	gitWorktreeListSubcommandConstant        = "list"
 	gitWorktreeRemoveSubcommandConstant      = "remove"
 	gitWorktreePruneSubcommandConstant       = "prune"
+	gitWorktreeRepairSubcommandConstant      = "repair"
 	gitPorcelainFlagConstant                 = "--porcelain"
 	gitPorcelainBranchFlagConstant           = "--branch"
 	gitSwitchDetachFlagConstant              = "--detach"
@@ -72,15 +73,17 @@ const (
 )
 
 type worktreeAdoptionOptions struct {
-	BranchName     string
-	RemoteName     string
-	CommitMessages worktreeAdoptionCommitMessageOptions
+	BranchName          string
+	RemoteName          string
+	CommitMessages      worktreeAdoptionCommitMessageOptions
+	PublishBeforeChange bool
 }
 
 type worktreeAdoptionChangeOptions struct {
 	BranchName                 string
 	RemoteName                 string
 	CommitMessages             worktreeAdoptionCommitMessageOptions
+	PublishBeforeChange        bool
 	RefetchRemoteAfterAdoption bool
 	Change                     func() error
 }
@@ -119,9 +122,10 @@ func (service worktreeAdoptionService) Change(ctx context.Context, options workt
 	}
 
 	adoptionErr := service.adoptExistingBranchWorktree(ctx, worktreeAdoptionOptions{
-		BranchName:     options.BranchName,
-		RemoteName:     remoteName,
-		CommitMessages: options.CommitMessages,
+		BranchName:          options.BranchName,
+		RemoteName:          remoteName,
+		CommitMessages:      options.CommitMessages,
+		PublishBeforeChange: options.PublishBeforeChange,
 	})
 	if adoptionErr != nil {
 		return adoptionErr
@@ -145,8 +149,8 @@ func isBranchAlreadyUsedByWorktreeError(err error) bool {
 
 type worktreeAdoptionCommitMessageOptions struct {
 	LLMProxy           llmclient.LLMProxySelection
+	Effort             string
 	MaxTokens          int
-	Temperature        float64
 	TimeoutSeconds     int
 	ConnectionProfiles llmclient.ConnectionProfiles
 	Client             llm.ChatClient
@@ -154,6 +158,7 @@ type worktreeAdoptionCommitMessageOptions struct {
 
 type listedWorktree struct {
 	Path       string
+	Commit     string
 	BranchName string
 	Locked     bool
 	Prunable   bool
@@ -168,8 +173,8 @@ func worktreeAdoptionCommitMessageOptionsFromConfiguration(configuration CommitM
 	sanitized := configuration.Sanitize()
 	return worktreeAdoptionCommitMessageOptions{
 		LLMProxy:           sanitized.LLMProxy,
+		Effort:             sanitized.Effort,
 		MaxTokens:          sanitized.MaxTokens,
-		Temperature:        sanitized.Temperature,
 		TimeoutSeconds:     sanitized.TimeoutSeconds,
 		ConnectionProfiles: sanitized.ConnectionProfiles,
 	}
@@ -273,6 +278,8 @@ func parseListedWorktrees(output string) []listedWorktree {
 		case "worktree":
 			flushCurrent()
 			current.Path = strings.TrimSpace(strings.TrimPrefix(line, "worktree"))
+		case "HEAD":
+			current.Commit = strings.TrimSpace(strings.TrimPrefix(line, "HEAD"))
 		case "branch":
 			referenceName := strings.TrimSpace(strings.TrimPrefix(line, "branch"))
 			current.BranchName = strings.TrimPrefix(referenceName, gitBranchReferencePrefix)
@@ -291,6 +298,9 @@ func (service worktreeAdoptionService) adoptSiblingWorktree(ctx context.Context,
 	remoteName := strings.TrimSpace(options.RemoteName)
 	if remoteName == "" {
 		remoteName = defaultRemoteNameConstant
+	}
+	if protectErr := protectStrictSyncWorktree(ctx, worktree); protectErr != nil {
+		return protectErr
 	}
 
 	service.environment.ReportRepositoryEvent(
@@ -322,13 +332,15 @@ func (service worktreeAdoptionService) adoptSiblingWorktree(ctx context.Context,
 			worktreeAdoptCommitMessage,
 			map[string]string{"branch": branchName, "worktree": worktree.Path},
 		)
-		if pushErr := pushSiblingBranch(ctx, service.environment.GitExecutor, worktree.Path, remoteName, branchName); pushErr != nil {
-			return pushErr
+		if options.PublishBeforeChange {
+			if pushErr := pushSiblingBranch(ctx, service.environment.GitExecutor, worktree.Path, remoteName, branchName); pushErr != nil {
+				return pushErr
+			}
+			pushed = true
 		}
-		pushed = true
 	}
 
-	if !status.Dirty {
+	if !status.Dirty && options.PublishBeforeChange {
 		needsPush, needsPushErr := cleanSiblingBranchNeedsPush(ctx, service.environment.GitExecutor, worktree.Path, remoteName, branchName, status)
 		if needsPushErr != nil {
 			return needsPushErr
@@ -511,12 +523,6 @@ func generateSiblingCommitMessage(ctx context.Context, executor shared.GitExecut
 		return "", clientErr
 	}
 
-	var temperature *float64
-	if options.Temperature != 0 {
-		temperatureValue := options.Temperature
-		temperature = &temperatureValue
-	}
-
 	generator := commitmsg.Generator{
 		GitExecutor: executor,
 		Client:      client,
@@ -525,7 +531,6 @@ func generateSiblingCommitMessage(ctx context.Context, executor shared.GitExecut
 		RepositoryPath: worktreePath,
 		Source:         commitmsg.DiffSourceStaged,
 		MaxTokens:      options.MaxTokens,
-		Temperature:    temperature,
 	})
 	if generateErr != nil {
 		return "", fmt.Errorf(worktreeMessageGenerationFailureTemplate, worktreePath, generateErr)
@@ -542,9 +547,31 @@ func resolveCommitMessageClient(options worktreeAdoptionCommitMessageOptions) (l
 		options.ConnectionProfiles,
 		options.LLMProxy,
 		llmclient.RuntimeConfig{
+			Effort:              options.Effort,
 			MaxCompletionTokens: options.MaxTokens,
-			Temperature:         options.Temperature,
 			RequestTimeout:      timeout,
+		},
+		nil,
+	)
+	if clientErr != nil {
+		return nil, fmt.Errorf(worktreeMessageClientFailureTemplate, clientErr)
+	}
+	return client, nil
+}
+
+func resolveMergeConflictResolutionClient(options worktreeAdoptionCommitMessageOptions) (llm.ChatClient, error) {
+	if options.Client != nil {
+		return options.Client, nil
+	}
+	timeout := worktreeAdoptionMessageTimeout(options)
+	client, clientErr := llmclient.NewPrioritizedFactory(
+		options.ConnectionProfiles,
+		options.LLMProxy,
+		llmclient.RuntimeConfig{
+			Effort:              options.Effort,
+			MaxCompletionTokens: options.MaxTokens,
+			RequestTimeout:      timeout,
+			RetryAttempts:       1,
 		},
 		nil,
 	)
@@ -570,14 +597,53 @@ func pushSiblingBranch(ctx context.Context, executor shared.GitExecutor, worktre
 }
 
 func executeGit(ctx context.Context, executor shared.GitExecutor, workingDirectory string, arguments []string) error {
-	_, executionErr := executor.ExecuteGit(ctx, execshell.CommandDetails{
+	return executeGitDetails(ctx, executor, execshell.CommandDetails{
 		Arguments:        arguments,
 		WorkingDirectory: workingDirectory,
 	})
-	return executionErr
+}
+
+func executeGitDetails(ctx context.Context, executor shared.GitExecutor, details execshell.CommandDetails) error {
+	mutationJournal, journalErr := prepareStrictSyncGitMutation(ctx, executor, details.WorkingDirectory, details.Arguments)
+	if journalErr != nil {
+		return journalErr
+	}
+
+	executionDetails := details
+	executionArguments := details.Arguments
+	transaction, strictSync := strictSyncTransactionFromContext(ctx)
+	strictSyncPush := strictSync && !transaction.restoring && len(details.Arguments) > 0 && details.Arguments[0] == gitPushSubcommand
+	if strictSyncPush && !strictSyncArgumentsContain(details.Arguments, gitPorcelainFlagConstant) {
+		executionArguments = append(append([]string(nil), details.Arguments...), gitPorcelainFlagConstant)
+	}
+	executionDetails.Arguments = executionArguments
+	result, executionErr := executor.ExecuteGit(ctx, executionDetails)
+	if executionErr != nil {
+		return executionErr
+	}
+	if mutationErr := completeStrictSyncGitMutation(ctx, executor, mutationJournal); mutationErr != nil {
+		return mutationErr
+	}
+	if strictSyncPush {
+		published, publicationErr := strictSyncPushUpdatedRemote(result.StandardOutput)
+		if publicationErr != nil {
+			markStrictSyncPublished(ctx)
+			return publicationErr
+		}
+		if published {
+			markStrictSyncPublished(ctx)
+		}
+	}
+	return nil
 }
 
 func sameFilesystemPath(firstPath string, secondPath string) bool {
+	firstInfo, firstInfoErr := os.Stat(strings.TrimSpace(firstPath))
+	secondInfo, secondInfoErr := os.Stat(strings.TrimSpace(secondPath))
+	if firstInfoErr == nil && secondInfoErr == nil {
+		return os.SameFile(firstInfo, secondInfo)
+	}
+
 	normalizedFirst := normalizeFilesystemPath(firstPath)
 	normalizedSecond := normalizeFilesystemPath(secondPath)
 	if normalizedFirst == "" || normalizedSecond == "" {

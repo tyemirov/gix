@@ -37,3 +37,5 @@ Icon?
 # Ephemeral local planning scratch
 /PLAN.md
 /.mprlab/PLAN.md
+__pycache__/
+*.pyc

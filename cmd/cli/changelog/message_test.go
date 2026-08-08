@@ -150,7 +150,7 @@ func TestMessageCommandOutputsChangelogOnce(t *testing.T) {
 	require.NotContains(t, out, "TASK_APPLY", "workflow logs should be suppressed for changelog command")
 	require.Equal(t, 1, client.calls, "chat client should be invoked exactly once")
 	require.Equal(t, llmclient.TransportOpenAICompatible, client.config.Transport)
-	require.Equal(t, llmclient.ProviderOpenAI, client.config.Provider)
+	require.Equal(t, llmclient.FallbackProvider, client.config.Provider)
 }
 
 func testConnectionProfiles() llmclient.ConnectionProfiles {

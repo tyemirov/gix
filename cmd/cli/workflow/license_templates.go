@@ -24,6 +24,7 @@ const (
 	defaultLicenseModeConstant                         = "overwrite"
 	defaultLicensePermissionsConstant                  = 420
 	licenseTemplateConflictErrorTemplateConstant       = "license template %q cannot be used with %s"
+	licenseTemplateAliasRemovedErrorConstant           = "workflow variable \"template\" is obsolete; use \"license_template\""
 	licenseTemplateMissingStepErrorTemplateConstant    = "license template %q did not match any workflow steps"
 	licenseTemplateTasksTypeErrorTemplateConstant      = "license workflow tasks must be a list"
 	licenseTemplateTaskTypeErrorTemplateConstant       = "license workflow task entry must be a map"
@@ -38,6 +39,10 @@ const (
 func applyLicenseTemplateOverrides(configuration *workflowpkg.Configuration, variables map[string]string) error {
 	if configuration == nil || variables == nil {
 		return nil
+	}
+
+	if _, hasRemovedAlias := variables["template"]; hasRemovedAlias {
+		return errors.New(licenseTemplateAliasRemovedErrorConstant)
 	}
 
 	templateName, hasTemplate := resolveLicenseTemplateName(variables)
@@ -55,10 +60,6 @@ func applyLicenseTemplateOverrides(configuration *workflowpkg.Configuration, var
 	}
 
 	applyLicenseTemplateDefaults(variables, templateBundle.Name)
-	if len(strings.TrimSpace(variables[licenses.VariableTemplate])) == 0 {
-		variables[licenses.VariableTemplate] = templateBundle.Name
-	}
-
 	updated := false
 	for stepIndex := range configuration.Steps {
 		step := &configuration.Steps[stepIndex]
@@ -88,10 +89,6 @@ func resolveLicenseTemplateName(variables map[string]string) (string, bool) {
 	if len(templateValue) > 0 {
 		return templateValue, true
 	}
-	templateValue = strings.TrimSpace(variables[licenses.VariableTemplateAlias])
-	if len(templateValue) > 0 {
-		return templateValue, true
-	}
 	return "", false
 }
 
@@ -110,6 +107,9 @@ func applyLicenseTemplateDefaults(variables map[string]string, templateName stri
 	if len(strings.TrimSpace(variables[licenses.VariableYear])) == 0 {
 		variables[licenses.VariableYear] = currentYearString()
 	}
+	if templateUsesCommercialContact(templateName) && len(strings.TrimSpace(variables[licenses.VariableContact])) == 0 {
+		variables[licenses.VariableContact] = licenses.DefaultContact
+	}
 	if !strings.EqualFold(templateName, licenses.TemplateNameBSL) {
 		return
 	}
@@ -119,6 +119,11 @@ func applyLicenseTemplateDefaults(variables map[string]string, templateName stri
 	if len(strings.TrimSpace(variables[licenses.VariableChangeLicense])) == 0 {
 		variables[licenses.VariableChangeLicense] = licenses.DefaultChangeLicense
 	}
+}
+
+func templateUsesCommercialContact(templateName string) bool {
+	return strings.EqualFold(templateName, licenses.TemplateNamePolyFormNoncommercial) ||
+		strings.EqualFold(templateName, licenses.TemplateNameProprietary)
 }
 
 func currentYearString() string {

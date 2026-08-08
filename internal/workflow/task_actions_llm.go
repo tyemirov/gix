@@ -18,14 +18,12 @@ const (
 	taskActionChangelog        = "changelog.message.generate"
 	commitOptionDiffSource     = "diff_source"
 	commitOptionMaxTokens      = "max_tokens"
-	commitOptionTemperature    = "temperature"
 	commitOptionClient         = "client"
 	changelogOptionVersion     = "version"
 	changelogOptionRelease     = "release_date"
 	changelogOptionSinceRef    = "since_reference"
 	changelogOptionSinceDate   = "since_date"
 	changelogOptionMaxTokens   = "max_tokens"
-	changelogOptionTemperature = "temperature"
 	changelogOptionClient      = "client"
 	taskActionCaptureOptionKey = "capture_as"
 )
@@ -57,11 +55,6 @@ func handleCommitMessageAction(ctx context.Context, environment *Environment, re
 		return maxTokensErr
 	}
 
-	temperature, temperatureErr := readOptionalFloatOption(parameters, commitOptionTemperature)
-	if temperatureErr != nil {
-		return temperatureErr
-	}
-
 	client, clientErr := extractCommitClient(parameters)
 	if clientErr != nil {
 		return clientErr
@@ -77,7 +70,6 @@ func handleCommitMessageAction(ctx context.Context, environment *Environment, re
 		RepositoryPath: repository.Path,
 		Source:         diffSource,
 		MaxTokens:      maxTokens,
-		Temperature:    temperature,
 	})
 	if generateErr != nil {
 		return generateErr
@@ -124,11 +116,6 @@ func handleChangelogAction(ctx context.Context, environment *Environment, reposi
 		return maxTokensErr
 	}
 
-	temperature, temperatureErr := readOptionalFloatOption(parameters, changelogOptionTemperature)
-	if temperatureErr != nil {
-		return temperatureErr
-	}
-
 	client, clientErr := extractChangelogClient(parameters)
 	if clientErr != nil {
 		return clientErr
@@ -147,7 +134,6 @@ func handleChangelogAction(ctx context.Context, environment *Environment, reposi
 		SinceReference: sinceReference,
 		SinceDate:      sinceDate,
 		MaxTokens:      maxTokens,
-		Temperature:    temperature,
 	}
 
 	result, generateErr := generator.Generate(ctx, options)
@@ -270,22 +256,6 @@ func readIntOption(options map[string]any, key string) (int, error) {
 		return int(typed), nil
 	default:
 		return 0, fmt.Errorf("%s must be an integer", key)
-	}
-}
-
-func readOptionalFloatOption(options map[string]any, key string) (*float64, error) {
-	raw, exists := options[key]
-	if !exists || raw == nil {
-		return nil, nil
-	}
-	switch typed := raw.(type) {
-	case float32:
-		value := float64(typed)
-		return &value, nil
-	case float64:
-		return &typed, nil
-	default:
-		return nil, fmt.Errorf("%s must be a float", key)
 	}
 }
 

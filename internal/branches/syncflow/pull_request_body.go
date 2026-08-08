@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/tyemirov/gix/internal/execshell"
@@ -28,6 +29,29 @@ const (
 	gitDiffStatFlagConstant                         = "--stat"
 	gitDiffUnifiedFlagConstant                      = "--unified=3"
 )
+
+var (
+	llmQuerySecretPattern   = regexp.MustCompile(`(?i)(\b(?:key|secret|token|api_key|credential)=)([^& \t\r\n"'>]+)`)
+	llmHeaderSecretPattern  = regexp.MustCompile(`(?i)(\b(?:Authorization:\s*(?:Bearer\s+)?|Bearer\s+|X-Api-Key:\s*))([^\s,"'>]+)`)
+	llmURLCredentialPattern = regexp.MustCompile(`(https?://)([^/@:\s]+)(?::([^/@\s]+))?@`)
+)
+
+func sanitizeLLMDescriptionError(err error, options worktreeAdoptionCommitMessageOptions) error {
+	if err == nil {
+		return nil
+	}
+	message := err.Error()
+	if cred := strings.TrimSpace(options.ConnectionProfiles.OpenAI.Credential); cred != "" {
+		message = strings.ReplaceAll(message, cred, "[REDACTED]")
+	}
+	if cred := strings.TrimSpace(options.ConnectionProfiles.LLMProxy.Credential); cred != "" {
+		message = strings.ReplaceAll(message, cred, "[REDACTED]")
+	}
+	message = llmQuerySecretPattern.ReplaceAllString(message, "${1}[REDACTED]")
+	message = llmHeaderSecretPattern.ReplaceAllString(message, "${1}[REDACTED]")
+	message = llmURLCredentialPattern.ReplaceAllString(message, "${1}[REDACTED]@")
+	return errors.New(message)
+}
 
 type strictSyncPullRequestDescriptionOptions struct {
 	RepositoryPath string
@@ -114,12 +138,12 @@ func generateStrictSyncPullRequestBody(ctx context.Context, executor shared.GitE
 	}
 	client, clientErr := resolveCommitMessageClient(options.CommitMessages)
 	if clientErr != nil {
-		return "", clientErr
+		return "", fmt.Errorf(strictSyncPullRequestDescriptionLLMTemplate, sanitizeLLMDescriptionError(clientErr, options.CommitMessages))
 	}
 	request := buildStrictSyncPullRequestDescriptionRequest(descriptionContext, options.CommitMessages)
 	response, responseErr := client.Chat(ctx, request)
 	if responseErr != nil {
-		return "", fmt.Errorf(strictSyncPullRequestDescriptionLLMTemplate, responseErr)
+		return "", fmt.Errorf(strictSyncPullRequestDescriptionLLMTemplate, sanitizeLLMDescriptionError(responseErr, options.CommitMessages))
 	}
 	trimmedResponse := strings.TrimSpace(response)
 	if trimmedResponse == "" {
@@ -183,11 +207,6 @@ func strictSyncPullRequestDescriptionGitOutput(ctx context.Context, executor sha
 }
 
 func buildStrictSyncPullRequestDescriptionRequest(descriptionContext strictSyncPullRequestDescriptionContext, options worktreeAdoptionCommitMessageOptions) llm.ChatRequest {
-	var temperature *float64
-	if options.Temperature != 0 {
-		temperatureValue := options.Temperature
-		temperature = &temperatureValue
-	}
 	maxTokens := options.MaxTokens
 	if maxTokens <= 0 {
 		maxTokens = strictSyncPullRequestDescriptionMaxTokens
@@ -213,8 +232,7 @@ func buildStrictSyncPullRequestDescriptionRequest(descriptionContext strictSyncP
 				),
 			},
 		},
-		MaxTokens:   maxTokens,
-		Temperature: temperature,
+		MaxTokens: maxTokens,
 	}
 }
 

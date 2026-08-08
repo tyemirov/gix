@@ -48,6 +48,7 @@ const (
 	gitPullFastForwardFlagConstant            = "--ff-only"
 	gitRevParseSubcommandConstant             = "rev-parse"
 	gitVerifyFlagConstant                     = "--verify"
+	gitRevParseQuietFlagConstant              = "--quiet"
 	gitTerminalPromptEnvironmentNameConstant  = "GIT_TERMINAL_PROMPT"
 	gitTerminalPromptEnvironmentDisableValue  = "0"
 )

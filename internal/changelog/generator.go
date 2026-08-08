@@ -31,7 +31,6 @@ type Options struct {
 	SinceDate       *time.Time
 	IncludeWorktree bool
 	MaxTokens       int
-	Temperature     *float64
 }
 
 // Result contains the generated changelog section and request context.
@@ -162,9 +161,8 @@ func (generator Generator) BuildRequest(ctx context.Context, options Options) (l
 	}
 
 	request := llm.ChatRequest{
-		Messages:    []llm.Message{systemMessage, userMessage},
-		MaxTokens:   maxTokens,
-		Temperature: options.Temperature,
+		Messages:  []llm.Message{systemMessage, userMessage},
+		MaxTokens: maxTokens,
 	}
 
 	return request, nil

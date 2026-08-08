@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -38,7 +39,7 @@ import (
 
 var commandOperationRequirements = map[string][]string{
 	auditOperationNameConstant:           {auditOperationNameConstant},
-	packagesDeleteCommandPathKeyConstant: {packagesPurgeOperationNameConstant},
+	packagesDeleteCommandPathKeyConstant: {packagesDeleteOperationNameConstant},
 	pullRequestsDeleteCommandPathKeyConstant: {
 		branchCleanupOperationNameConstant,
 	},
@@ -238,8 +239,12 @@ func (application *Application) configurationInitializationCommand() *cobra.Comm
 
 // Execute runs the configured Cobra command hierarchy and ensures logger flushing.
 func (application *Application) Execute() error {
+	executionContext, stopSignalNotifications := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stopSignalNotifications()
+
 	return application.ExecuteWithOptions(ExecutionOptions{
 		Arguments:      os.Args[1:],
+		Context:        executionContext,
 		StandardInput:  os.Stdin,
 		StandardOutput: os.Stdout,
 		StandardError:  os.Stderr,
@@ -512,7 +517,7 @@ func (application *Application) auditCommandConfiguration() audit.CommandConfigu
 
 func (application *Application) packagesConfiguration() packages.Configuration {
 	configuration := packages.DefaultConfiguration()
-	application.decodeOperationConfiguration(packagesPurgeOperationNameConstant, &configuration.Purge)
+	application.decodeOperationConfiguration(packagesDeleteOperationNameConstant, &configuration.Delete)
 
 	return configuration
 }
@@ -534,8 +539,8 @@ func (application *Application) branchSyncConfiguration() syncflowcmd.CommandCon
 	messageConfiguration := application.commitMessageConfiguration()
 	configuration.CommitMessage = syncflowcmd.CommitMessageConfiguration{
 		LLMProxy:           messageConfiguration.LLMProxy,
+		Effort:             messageConfiguration.Effort,
 		MaxTokens:          messageConfiguration.MaxTokens,
-		Temperature:        messageConfiguration.Temperature,
 		TimeoutSeconds:     messageConfiguration.TimeoutSeconds,
 		ConnectionProfiles: messageConfiguration.ConnectionProfiles,
 	}
@@ -777,8 +782,8 @@ func (application *Application) applyGlobalLLMDefaultsToCommitMessageConfigurati
 	if configuration.MaxCompletionTokens > 0 {
 		target.MaxTokens = configuration.MaxCompletionTokens
 	}
-	if configuration.Temperature != 0 {
-		target.Temperature = configuration.Temperature
+	if configuration.Effort != "" {
+		target.Effort = configuration.Effort
 	}
 	if configuration.TimeoutSeconds > 0 {
 		target.TimeoutSeconds = configuration.TimeoutSeconds
@@ -793,8 +798,8 @@ func (application *Application) applyGlobalLLMDefaultsToChangelogMessageConfigur
 	if configuration.MaxCompletionTokens > 0 {
 		target.MaxTokens = configuration.MaxCompletionTokens
 	}
-	if configuration.Temperature != 0 {
-		target.Temperature = configuration.Temperature
+	if configuration.Effort != "" {
+		target.Effort = configuration.Effort
 	}
 	if configuration.TimeoutSeconds > 0 {
 		target.TimeoutSeconds = configuration.TimeoutSeconds
@@ -957,8 +962,8 @@ func operationConfigurationSchemaTarget(operationName string) (any, bool) {
 	switch operationName {
 	case auditOperationNameConstant:
 		return &audit.CommandConfiguration{}, true
-	case packagesPurgeOperationNameConstant:
-		return &packages.PurgeConfiguration{}, true
+	case packagesDeleteOperationNameConstant:
+		return &packages.DeleteConfiguration{}, true
 	case branchCleanupOperationNameConstant:
 		return &branches.CommandConfiguration{}, true
 	case reposRenameOperationNameConstant:

@@ -15,20 +15,20 @@ import (
 )
 
 const (
-	optionTaskLLMKeyConstant            = "llm"
-	optionTaskLLMProxyKeyConstant       = "llm_proxy"
-	optionTaskLLMProviderKeyConstant    = "provider"
-	optionTaskLLMModelKeyConstant       = "model"
-	optionTaskLLMTimeoutKeyConstant     = "timeout_seconds"
-	optionTaskLLMMaxTokensKeyConstant   = "max_completion_tokens"
-	optionTaskLLMTemperatureKeyConstant = "temperature"
+	optionTaskLLMKeyConstant          = "llm"
+	optionTaskLLMProxyKeyConstant     = "llm_proxy"
+	optionTaskLLMProviderKeyConstant  = "provider"
+	optionTaskLLMModelKeyConstant     = "model"
+	optionTaskLLMTimeoutKeyConstant   = "timeout_seconds"
+	optionTaskLLMMaxTokensKeyConstant = "max_completion_tokens"
+	optionTaskLLMEffortKeyConstant    = "effort"
 )
 
 var supportedTaskLLMConfigurationKeys = map[string]struct{}{
-	optionTaskLLMProxyKeyConstant:       {},
-	optionTaskLLMTimeoutKeyConstant:     {},
-	optionTaskLLMMaxTokensKeyConstant:   {},
-	optionTaskLLMTemperatureKeyConstant: {},
+	optionTaskLLMProxyKeyConstant:     {},
+	optionTaskLLMTimeoutKeyConstant:   {},
+	optionTaskLLMMaxTokensKeyConstant: {},
+	optionTaskLLMEffortKeyConstant:    {},
 }
 
 var supportedTaskLLMProxyConfigurationKeys = map[string]struct{}{
@@ -40,9 +40,8 @@ var supportedTaskLLMProxyConfigurationKeys = map[string]struct{}{
 type TaskLLMClientConfiguration struct {
 	llmProxy            llmclient.LLMProxySelection
 	connectionProfiles  llmclient.ConnectionProfiles
+	effort              string
 	maxCompletionTokens int
-	temperature         float64
-	hasTemperature      bool
 	timeout             time.Duration
 
 	clientOnce sync.Once
@@ -100,16 +99,15 @@ func buildTaskLLMConfiguration(reader optionReader) (*TaskLLMClientConfiguration
 		return nil, maxTokensErr
 	}
 
-	temperature, hasTemperature, temperatureErr := parseOptionalFloat(rawConfiguration[optionTaskLLMTemperatureKeyConstant])
-	if temperatureErr != nil {
-		return nil, temperatureErr
+	effort, _, effortErr := configReader.stringValue(optionTaskLLMEffortKeyConstant)
+	if effortErr != nil {
+		return nil, effortErr
 	}
 
 	return &TaskLLMClientConfiguration{
 		llmProxy:            llmclient.LLMProxySelection{Provider: providerName, Model: model},
+		effort:              effort,
 		maxCompletionTokens: maxTokens,
-		temperature:         temperature,
-		hasTemperature:      hasTemperature,
 		timeout:             timeout,
 	}, nil
 }
@@ -146,13 +144,11 @@ func (configuration *TaskLLMClientConfiguration) Client() (llm.ChatClient, error
 
 	configuration.clientOnce.Do(func() {
 		runtimeConfiguration := llmclient.RuntimeConfig{
+			Effort:         configuration.effort,
 			RequestTimeout: configuration.timeout,
 		}
 		if configuration.maxCompletionTokens > 0 {
 			runtimeConfiguration.MaxCompletionTokens = configuration.maxCompletionTokens
-		}
-		if configuration.hasTemperature {
-			runtimeConfiguration.Temperature = configuration.temperature
 		}
 
 		client, clientErr := llmclient.NewPrioritizedFactory(
@@ -208,17 +204,6 @@ func parseOptionalInt(raw any) (int, error) {
 		return 0, fmt.Errorf("%s must be non-negative", optionTaskLLMMaxTokensKeyConstant)
 	}
 	return int(value), nil
-}
-
-func parseOptionalFloat(raw any) (float64, bool, error) {
-	if raw == nil {
-		return 0, false, nil
-	}
-	value, err := parseFloat(raw, optionTaskLLMTemperatureKeyConstant)
-	if err != nil {
-		return 0, false, err
-	}
-	return value, true, nil
 }
 
 func parseFloat(raw any, key string) (float64, error) {

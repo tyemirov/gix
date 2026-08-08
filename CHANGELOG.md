@@ -6,7 +6,7 @@
 - Archived resolved backlog records and refreshed the current documentation for strict configuration, release source-versus-release commit identities, and the local web audit workspace.
 
 ### Features ✨
-- _No changes._
+- Added explicit GHCR retention to `gix packages delete --keep <count>`, preserving the newest requested versions and deleting every older tagged or untagged version.
 
 ### Improvements ⚙️
 - Made `gix audit` terminal-readable by default with a table and added strict `--format csv` and `--format html` exports.
@@ -21,14 +21,31 @@
 - Updated the LLM Proxy Go client from v0.2.21 to v0.2.46, moved Gix's configured proxy work budget to the current per-request timeout header, and raised the Go module floor to 1.25.12 with the dependency graph required by that client.
 
 ### Bug Fixes 🐛
-- Made `gix sync --stash` automatically resolve conflicting restoration through a bounded diff3 planner, use the configured LLM only for unresolved semantic hunks, keep restored paths uncommitted and unstaged, remove the retained stash only after success, and delay `SYNCED` until restoration completes.
-- Replaced whole-file merge generation with strict hunk-identified JSON responses, deterministic additive and marker-free resolution, two-attempt validation feedback, all-files-before-write application, regular-file mode preservation, and pre-LLM rejection of binary or unsupported Git object modes.
+- Made exact-tag release retries idempotent by reusing verified sealed receipts, recovering missing or incomplete receipts from matching published GitHub Release state, preserving the prior canonical receipt until a new candidate verifies completely, and rolling back release-owned changelog refs when sealing fails.
+- Reconciled legacy GitHub Pages configuration and exact-commit build state during deployment, eliminating unconditional configuration updates and duplicate build requests while preserving actionable building, errored, and public-marker diagnostics.
+- Preserved complete ordinary operation errors at the workflow boundary, so exhausted LLM failover reports every connection name, HTTP status, and response detail instead of reducing the result to one sentinel plus an opaque failure count; typed repository-operation failures retain their independently coded structured events.
+- Followed the actual bases of transitively merged pull-request stacks even when every remote branch ref remains, so a branch whose complete review chain reached `master` now receives the standard `master` sync handoff instead of a missing-open-PR rollback; merged records must match the surviving branch's current head OID, so a reused or advanced head opens a new review instead of inheriting historical merged state.
+- Made dirty-cluster commits atomic with respect to normal Git index writers by holding the exact per-worktree index lock through a cancellation-independent ownership recheck, comparing semantic flags and intent-to-add state, and committing only from a private copy of the validated index.
+- Limited strict-sync worktree repair to registered checkouts whose canonical Git target is actually missing, and rejected copied-repository registrations that would otherwise take over a live sibling owned by the original repository.
+- Repaired canonical linked-worktree registration before strict-sync preflight, so an existing checkout whose `.git` file still points at a moved primary repository no longer makes every `gix sync` fail.
+- Rejected operator-owned unmerged indexes before strict-sync snapshot mutation, including stash-apply conflicts that have no merge or sequencer marker.
+- Derived strict-sync Git publication from porcelain ref statuses, so an up-to-date push remains rollback-capable while an actual ref update, pull-request creation, or unprovable successful response enters the handoff boundary.
+- Limited rollback to journaled transaction-owned refs and adopted worktrees, using compare-and-swap ref restoration so unrelated concurrent branch advances survive.
+- Replaced the revert-only strict-sync guard with one exact per-worktree operation preflight for merge, revert, cherry-pick, rebase, apply-mailbox, bisect, and sequencer state; ordinary marker-like refs remain valid, while malformed administrative state fails closed before fetch or mutation.
+- Made rejected, timed-out, or canceled strict-sync merge resolution abort the operation-owned merge before returning, restoring the exact pre-merge branch/worktree state and reserving manual handoff for a failed Git rollback.
+- Converted CLI Ctrl-C into context cancellation and detached `MERGE_HEAD` inspection, so cancellation before conflict discovery still aborts the operation-owned merge.
+- Made strict sync transactional across the caller and every sibling it may adopt: transaction-owned snapshots preserve commits, local branch refs, the index, staged and unstaged contents, untracked files, stash ordering, and worktree topology; pre-push failure restores the exact snapshot, while post-push failure preserves forward recovery state under `SYNC_SWITCH_HANDOFF`.
+- Deferred sibling publication to the normal target-branch push and made invocation-owned stashes restore by exact object with `--index`, use bounded semantic conflict resolution when required, and finish before `SYNCED` is reported.
+- Replaced strict-sync's one-shot full-file AI merge path with a fidelity-first diff3 ladder: exact local reconstruction, authoritative no-choice/current-stage decisions, lossless issue/changelog and token candidates, and mandatory semantic LLM audit for every two-sided marker-bearing region.
+- Deferred strict-sync rollback until every deterministic and bounded semantic strategy is exhausted, while retaining immediate final recovery for caller cancellation or unrecoverable Git/filesystem failure and manual handoff only for a failed abort.
+- Required existing license-rollout drafts to match the inspected base, canonical one-commit history, exact changed paths, and rendered license blobs before apply can skip them.
+- Pinned every license-rollout clone to the exact default-branch commit whose root license blobs passed planning, preventing a later branch advance from changing the mutation base.
 - Preserved dirty tracked files whose paths also match `.gitignore`; sync now stages exact tracked paths instead of restoring and discarding their pending contents before branch validation.
 - Made linked-worktree adoption restore owner write and execute permission on its directories before removal, preventing read-only ignored caches such as Go's module cache from leaving orphaned worktrees.
 - Rejected fractional workflow LLM `timeout_seconds` before they can be truncated into shorter or invalid LLM Proxy request budgets.
 - Made `gix audit` fit its terminal table to the active width, using bounded field/value rows on narrow terminals and Unicode-aware ellipses for constrained cells.
 - Escaped literal delimiters in terminal audit-table cells and aligned Unicode names by their terminal display width.
-- Made strict-sync AI merge resolution visible and bounded: gix now reports conflict, resolution, validation, and recovery phases; applies `timeout_seconds` to the complete operation; and gives an exact manual handoff without pushing when a result is rejected, cancelled, or timed out.
+- Made strict-sync semantic resolution visible and bounded: every candidate and audit reports its region, strategy, attempt, validation result, and provider-order deadline before final recovery can run.
 - Pruned stale linked-worktree metadata before `gix sync` retries branch adoption, so a missing temporary worktree no longer causes a `chdir` failure.
 - Switched worktree inspection to NUL-delimited porcelain status so `gix sync` passes literal filenames containing spaces to Git instead of treating display quotes as path bytes.
 - Rejected explicit dirty base-branch sync before commit generation when the required remote base ref does not exist, preventing stranded local commits.
@@ -40,12 +57,31 @@
 - Rejected dirty auto-commit on known-merged branches before work could be stranded and directed the work through the stashed handoff path.
 - Rejected clean or stashed missing branches before child creation or pull-request publication because a correctly stacked child would have no review delta.
 - Fixed `gix sync <new-branch>` to create a missing target on top of the current branch before clustering dirty work, preventing checkout-overwrite failures and lost branch ancestry.
-- Rejected incomplete AI merge-conflict output before it can truncate a file, create a merge commit, push, or open a pull request, including marker-free modify/delete conflicts.
+- Rejected incomplete semantic merge candidates before they can truncate a file, create a merge commit, push, or open a pull request.
 - Made repository release targets self-contained, fail closed when any expected platform artifact is missing, anchor Pages deployment to the locally prepared release manifest, and publish consistently through canonical `origin`.
 - Kept the syncflow builder description as the canonical text shown by `gix sync --help`.
 
 ### Testing 🧪
-- Added public CLI regressions for a B089-sized target/stash `.mprlab/ISSUES.md` conflict with zero model calls, bounded semantic hunk resolution, executable-mode preservation, two lossy model responses, multi-file failure atomicity, and binary-conflict handoff.
+- Added public release-script coverage for exact-tag local reuse, published recovery from missing and partial receipts, conflicting local and published state, failed new-release preparation that leaves the prior receipt unchanged, and post-tag sealing failure that restores the source branch.
+- Added public release-script coverage for current, missing, drifted, and unavailable Pages configuration plus built, queued, building, missing, and terminal build reconciliation without duplicate triggers.
+- Added public compiled-CLI coverage for simultaneous LLM Proxy HTTP 503 and direct OpenAI HTTP 429 failures, proving both connections are attempted and both complete contextual errors reach command output.
+- Added compiled-CLI coverage for a three-pull-request merged chain with retained remote refs and no local review-base metadata, a reused child head that must open a new pull request, and focused open-parent precedence, advanced-parent termination, and cycle rejection guardrails.
+- Added compiled-CLI regressions for checkout drift, later-cluster staging, semantic index-flag drift, cancellation during final ownership inspection, and a post-check staging attempt blocked by the real index lock, including exact commit separation and lock cleanup.
+- Added a compiled-CLI regression proving a copied primary repository cannot rewrite a dirty live sibling's valid linkage to the original repository.
+- Added a public compiled-CLI regression that moves a primary repository while retaining a dirty linked checkout, proves the stale non-prunable `.git` pointer fails before sync, and verifies repair preserves the sibling branch, commit, index, staged and unstaged contents, and untracked files exactly.
+- Extended the three declarative strict-sync integration tables with operator-owned stash-apply conflicts, rollback after an up-to-date push, and preservation of a concurrent unrelated sibling commit.
+- Added three declarative compiled-CLI integration tables covering operator-owned Git-operation preflight, pre-publication rollback versus post-publication handoff, and successful clean, dirty-commit, indexed-stash, and semantic stash-conflict finalization.
+- Added public compiled-CLI coverage for resolved but unfinished reverts in both the caller and an adoptable sibling worktree, proving sync performs no fetch, switch, index mutation, LLM request, commit, or push and preserves the exact transactions.
+- Added compiled-CLI coverage proving an ordinary branch named `REVERT_HEAD` does not impersonate sequencer state, plus focused preflight coverage for active, absent, unreadable, invalid, and non-canonical `REVERT_HEAD` files.
+- Added public CLI coverage for a clean pull-request branch whose remote review base conflicts and receives a lossy AI resolution, proving the target commit and contents are restored with no `MERGE_HEAD`, dirty status, push, or manual handoff.
+- Added a compiled-CLI SIGINT regression that interrupts immediately after Git creates conflicts and verifies exact rollback before conflict inspection or LLM dispatch.
+- Added public CLI coverage for a failed target sync that starts on another branch and adopts a linked target worktree, proving the source checkout and target sibling are both restored without a merge transaction or push.
+- Added public CLI coverage for large additive `.mprlab/ISSUES.md` and `CHANGELOG.md` conflicts, proving one region-scoped semantic audit per file, omission of large untouched tails from model requests, exact local/incoming entry preservation, merge commit creation, push, and a clean final worktree.
+- Added public CLI coverage proving a one-sided semantic candidate is rejected, repaired from exact replacement-intent feedback, explicitly audited, and committed without rollback.
+- Added public CLI coverage for a clean pull-request branch whose remote review base exhausts every semantic attempt, proving the target commit and contents are restored with no `MERGE_HEAD`, dirty status, push, or manual handoff.
+- Added licensing regressions for matching existing drafts plus wrong bases, noncanonical histories, unrelated or modified files, and rollout heads that move during validation.
+- Added a Git-backed licensing regression that advances a default branch after planning and proves the sparse clone and subsequent workflow fetch remain on the inspected commit.
+- Added public CLI and HTTP-boundary coverage for mandatory positive retention, complete pre-delete pagination, mixed tagged/untagged version ordering, malformed snapshots, and partial delete failures.
 - Added public CLI regressions for a dirty tracked example-env file on an otherwise empty local branch, tracked ignored modifications and deletions, and ignored-untracked exclusion.
 - Added public CLI coverage for adopting a sibling worktree containing a read-only ignored cache.
 - Added public CLI coverage for compact and truncated horizontal audit tables at constrained terminal widths.
@@ -53,7 +89,7 @@
 - Added public CLI coverage for default table output, explicit CSV and HTML exports, and rejected audit report formats.
 - Added black-box coverage for configuration discovery, initialization prompts, process-only interpolation, ignored sibling `.env` files, literal credentials, missing placeholders, strict operation schemas, and LLM profile routing.
 - Added public CLI coverage for LLM connection priority, successful OpenAI-to-llm-proxy failover, stop-after-success behavior, obsolete schema rejection, and profile validation.
-- Added public CLI regressions for lossy and timed-out AI merge resolution, including phase output, heartbeat, timeout, no merge-resolution commit or push, and the manual recovery handoff.
+- Added public CLI regressions proving lossy and timed-out semantic candidates exhaust every bounded attempt before rollback, with phase output, heartbeat, no merge commit, and no push.
 - Added public CLI coverage for explicit `gix sync master` from a missing, Git-prunable linked worktree.
 - Added a public plain-`gix sync` regression proving deletion of `legacy/managing-director/IMD Logo.png` is committed and pushed with the literal path argument.
 - Added a black-box regression proving an explicit dirty `master` sync with no `origin/master` leaves local history and pending files unchanged without calling the LLM.
@@ -61,21 +97,148 @@
 - Added public CLI regressions for dirty unreviewed remote branches and dirty merged remote branches without stack metadata.
 - Added a public CLI regression proving a three-level parent stack remains intact, parent push/PR creation precedes child creation, clustered commits stay linear, a failed child PR creation retries against the persisted parent, and merged stacks hand off normally.
 - Added a black-box dirty-sync regression that verifies two top-level change clusters become two linear commits above the original branch before push and pull-request creation.
-- Added CLI regressions for isolated explicit-master rescue, local-only generated-name collisions, marker-bearing and marker-free merge-resolution truncation, and the assembled sync help output.
+- Added CLI regressions for isolated explicit-master rescue, local-only generated-name collisions, marker-bearing candidate rejection, deterministic marker-free deletion, and the assembled sync help output.
 - Added black-box release coverage for clean-checkout helpers, failed or missing platform outputs, replaced published manifests, and missing integrity prerequisites.
 
 ### Docs 📚
-- Documented automatic, validated stash-conflict restoration and the post-restoration completion-report boundary.
+- Documented merged-stack traversal to the first active parent or `master` and the single terminal handoff prompt.
+- Documented the ownership probe that distinguishes a repairable missing link from a live worktree owned by another common repository.
+- Documented canonical worktree-link repair as the metadata-only boundary before strict-sync administrative-state preflight.
+- Documented unmerged-index preflight, actual-update publication, and transaction-owned compare-and-swap rollback semantics.
+- Documented exact per-worktree Git-operation ownership, the immutable strict-sync plan, complete local-state snapshots, the push publication boundary, and indexed stash finalization before success.
+- Documented the diff3 fidelity ladder, deterministic lossless candidate construction, mandatory semantic LLM review for two-sided content, replacement-intent validation, and bounded repair.
+- Documented rollback as final recovery after strategy exhaustion, cancellation, or unrecoverable local failure, with manual recovery reserved for a failed Git abort.
+- Documented the fail-closed validation contract for existing deterministic license-rollout drafts.
+- Documented the immutable inspected-commit boundary between license-rollout planning and mutation.
+- Documented the required `--keep 3` GHCR retention workflow and its tagged-version deletion scope.
 - Documented that tracked status remains authoritative even when `.gitignore` matches the path and that ignore rules continue to govern only untracked staging.
 - Documented responsive audit-table behavior, the `COLUMNS` capture-width contract, and the full-value CSV/HTML export boundary.
 - Documented the audit table default and CSV/HTML export commands in the CLI, architecture, and site guides.
 - Documented the canonical `config.yml` discovery and interpolation contract plus the exact Meta Muse-first and OpenAI-first priority settings.
-- Documented strict-sync AI merge-resolution deadlines, progress, and manual recovery behavior.
+- Documented per-provider semantic-attempt budgets, progress, validation feedback, final rollback, and rollback-failure handoff behavior.
 - Documented explicit branch targets as binding dirty-commit destinations and distinguished explicit `master` from plain current-branch rescue.
 - Documented that unreviewed remote-backed branches accept dirty commits before the missing pull request is opened, while merged branches reject auto-commit.
 - Documented the canonical `master <- parent PR <- child PR` sync chain and the no-delta rejection for clean missing branches.
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
-- Documented validated AI conflict resolution and the repository-owned release workflow prerequisites.
+- Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
+
+## [v1.1.22] - 2026-08-07
+
+- bugfix/B051-idempotent-exact-release-retry (#407)
+
+## [v1.1.21] - 2026-08-06
+
+- test: cover Pages deployment reconciliation states
+- fix(release): track GitHub Pages builds during deployment
+- docs: clarify Pages deployment and rebuild behavior
+- docs: update Pages deployment changelog
+- docs: document release and Pages deployment lifecycle
+- docs: record GitHub Pages deployment reconciliation fix
+
+## [v1.1.20] - 2026-08-06
+
+- bugfix/B049-preserve-multi-provider-error-context (#406)
+
+## [v1.1.19] - 2026-08-01
+
+- Merge pull request #405 from tyemirov/bugfix/B048-transitive-merged-stack-handoff
+- test: record and assert merged branch head OIDs in integration tests
+- fix(syncflow): ensure merged PR is matched to current remote branch tip
+- docs: clarify merged branch handoff and pull request inheritance in README
+- docs: clarify merged pull request stack and test coverage in changelog
+- docs: clarify merged-review handoff criteria in ARCHITECTURE.md
+- docs(issues): add follow-up clarifying merged pull request head OID matching
+- test: check transitively merged branches without review base and update PR queries
+- fix(syncflow): follow merged PR parent for dirty sync with no open review
+- docs: clarify merged branch handoff flow and prompts in README
+- docs(changelog): document merged-stack traversal and sync handoff behavior
+- docs: clarify merged-review handoff flow in sync preflight section
+- docs(issues): add B048 for transitive merged pull-request stack syncs
+
+## [v1.1.18] - 2026-07-31
+
+- Merge pull request #404 from tyemirov/bugfix/B047-protect-dirty-cluster-ownership
+- test: verify index lock handling and semantic state during sync commit
+- feat(syncflow): hold exact index lock and commit private copy for dirty clusters
+- docs: update ownership boundary and index locking details in README
+- docs(changelog): update entries for atomic dirty-cluster commits and new tests
+- docs: clarify dirty sync live index checkpoint and locking sequence
+- docs: add review and resolution for locked commit ownership and index flags
+- test: verify concurrent dirty-cluster mutation handoff in sync transaction
+- feat(syncflow): detect concurrent checkout and index changes during dirty sync
+- docs: clarify dirty-cluster commit-message ownership and concurrency handling
+- fix(syncflow): reject concurrent drift on dirty-cluster commit-message requests
+- docs: document clustered dirty commit checkpoints around LLM requests
+- docs(issues): document concurrent checkout and index drift handling in sync
+
+## [v1.1.17] - 2026-07-29
+
+- Merge pull request #403 from tyemirov/bugfix/B046-repair-stale-worktree-linkage
+- test: simplify error assertion in stale worktree repair test
+- test: add integration test for strict sync worktree ownership enforcement
+- fix(syncflow): validate and repair only missing worktree links during preflight
+- docs: clarify strict sync linked-worktree validation and repair details
+- chore(changelog): update for strict-sync worktree ownership checks and docs
+- docs: update strict sync preflight explanation in ARCHITECTURE.md
+- docs: document strict sync follow-up handling for copied primary repositories
+- fix(syncflow): repair linked-worktree registration before strict-sync preflight
+
+## [v1.1.16] - 2026-07-29
+
+- Merge pull request #402 from tyemirov/bugfix/B043-reject-active-revert-sync
+- test: cover unmerged index and unrelated advances in sync state rollback
+- feat(syncflow): reject and preflight unmerged index state for strict sync
+- docs: update strict sync and transaction details in README
+- feat(syncflow): add strict preflight, publication, and rollback semantics
+- docs: clarify strict sync preflight and transaction publication boundaries
+- docs(issues): document resolution of strict-sync transaction ownership gaps
+- test: cover strict-sync admin state rejection across all worktrees
+- feat(syncflow): detect operator-owned Git ops before strict sync
+- docs: clarify strict sync, stash recovery, and transaction restoration
+- feat(syncflow): add per-worktree Git-operation preflight and transaction snapshots
+- docs: update transaction and preflight logic in architecture overview
+- docs(issues): document ownership-aware transactional strict sync design
+- fix(sync): reject operator-owned reverts before mutation
+
+## [v1.1.15] - 2026-07-29
+
+- Merge pull request #399 from tyemirov/bugfix/B038-rollback-failed-ai-merge
+- Merge branch 'bugfix/B042-rollback-failed-target-switch' into bugfix/B038-rollback-failed-ai-merge
+- fix(sync): restore starting checkout and worktrees on failed target sync
+- Merge pull request #400 from tyemirov/bugfix/B041-semantic-conflict-region-resolution
+- test: add integration test for large semantic merge with region audit
+- feat(syncflow): implement structured semantic merge conflict resolution
+- docs: clarify LLM merge conflict strategies and rollback workflow in README
+- docs(changelog): document fidelity-first semantic merge ladder and region auditing
+- docs: document strict-sync conflict resolution architecture
+- docs(ISSUES): document region-scoped semantic AI merge conflict resolution
+- fix: ensure CLI Ctrl-C triggers cancellation and merge rollback before conflict inspection
+- Merge branch 'master' into bugfix/B038-rollback-failed-ai-merge
+- Merge pull request #398 from tyemirov/feature/F011-license-fleet-rollout
+- feat(licensing): validate rollout pull request history, blobs, and state
+- docs: clarify license rollout plan and apply immutability guarantees
+- docs: clarify rollout plan and apply process in README
+- docs: update changelog with license-rollout validation and pinning updates
+- docs: clarify license rollout workflow and commit-pinning in architecture guide
+- docs(issues): add B039 and B040 for license rollout pinning and PR validation
+- Merge remote-tracking branch 'origin/master' into feature/F011-license-fleet-rollout
+- test: add and update integration tests for AI merge rollback scenarios
+- feat(syncflow): automatically roll back failed AI merge conflicts
+- docs: clarify merge conflict abort and rollback behavior in README
+- docs: document strict-sync merge rollback and clarify changelog entries
+- docs(issues): document rollback of rejected sync merges and strict cleanup requirements
+- Merge pull request #397 from tyemirov/feature/F012-ghcr-retention
+- feat(licensing): add license_rollout.py and initial tests for license automation
+- feat(licenses): add PolyForm Noncommercial and proprietary license templates
+- docs: add detailed licensing rollout plan and correct license CLI option
+- feat(licensing): add rollout workflow and fleet inventory
+- test(cli/workflow): reject legacy "template" variable and add rollout coverage
+- feat: add explicit GHCR retention
+- docs: update license workflow vars and add rollout policy reference
+- chore(makefile): add licensing rollout/test targets and script integration
+- docs(architecture): clarify license bundle fleet workflow and verification
+- docs(issues): document preparation of the canonical license rollout fleet
+- chore: ignore Python cache files and bytecode in .gitignore
 
 ## [v1.1.14] - 2026-07-27
 

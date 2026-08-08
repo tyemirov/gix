@@ -98,7 +98,6 @@ func TestTasksApplyDefinitionOptionsSerializesTaskDefinition(t *testing.T) {
 func TestTasksApplyDefinitionOptionsSerializesLLMConfiguration(t *testing.T) {
 	t.Helper()
 
-	temperature := 0.2
 	definition := TasksApplyDefinition{
 		Tasks: []TaskDefinition{
 			{
@@ -112,7 +111,7 @@ func TestTasksApplyDefinitionOptionsSerializesLLMConfiguration(t *testing.T) {
 			},
 			TimeoutSeconds:      30,
 			MaxCompletionTokens: 512,
-			Temperature:         &temperature,
+			Effort:              "high",
 		},
 	}
 
@@ -125,5 +124,5 @@ func TestTasksApplyDefinitionOptionsSerializesLLMConfiguration(t *testing.T) {
 	require.Equal(t, "gpt-test", proxyOptions[optionTaskLLMModelKeyConstant])
 	require.Equal(t, 30, llmOptions[optionTaskLLMTimeoutKeyConstant])
 	require.Equal(t, 512, llmOptions[optionTaskLLMMaxTokensKeyConstant])
-	require.Equal(t, temperature, llmOptions[optionTaskLLMTemperatureKeyConstant])
+	require.Equal(t, "high", llmOptions[optionTaskLLMEffortKeyConstant])
 }

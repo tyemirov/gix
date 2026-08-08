@@ -97,9 +97,7 @@ func (action filesApplyAction) Execute(ctx context.Context, execCtx *ExecutionCo
 			if err := applyAppendIfMissingChange(execCtx.Environment.FileSystem, change); err != nil {
 				return err
 			}
-			if execCtx != nil && execCtx.Environment != nil {
-				execCtx.Environment.RecordMutatedFile(execCtx.Repository, change.relativePath)
-			}
+			execCtx.Environment.RecordMutatedFile(execCtx.Repository, change.relativePath)
 			continue
 		}
 		directory := filepath.Dir(change.absolutePath)
@@ -109,9 +107,7 @@ func (action filesApplyAction) Execute(ctx context.Context, execCtx *ExecutionCo
 		if err := execCtx.Environment.FileSystem.WriteFile(change.absolutePath, change.content, change.permissions); err != nil {
 			return err
 		}
-		if execCtx != nil && execCtx.Environment != nil {
-			execCtx.Environment.RecordMutatedFile(execCtx.Repository, change.relativePath)
-		}
+		execCtx.Environment.RecordMutatedFile(execCtx.Repository, change.relativePath)
 	}
 
 	execCtx.recordFilesApplied()

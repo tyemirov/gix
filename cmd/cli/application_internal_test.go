@@ -154,7 +154,7 @@ llm:
   transport: llm_proxy
   openai:
     priority: 2
-    model: gpt-4.1
+    model: gpt-5.6-terra
     base_url: https://api.openai.com/v1
     credential: openai-secret
   llm_proxy:
@@ -184,7 +184,7 @@ func TestInitializeConfigurationRequiresLLMProvider(t *testing.T) {
 llm:
   openai:
     priority: 2
-    model: gpt-4.1
+    model: gpt-5.6-terra
     base_url: https://api.openai.com/v1
     credential: openai-secret
   llm_proxy:
@@ -212,14 +212,14 @@ func TestApplicationOperationLLMProxyProviderOverrideClearsConfiguredModel(t *te
 			Command: []string{"message", "commit"},
 			Options: map[string]any{
 				"llm_proxy": map[string]any{
-					"provider": llmclient.ProviderOpenAI,
+					"provider": llmclient.FallbackProvider,
 				},
 			},
 		},
 	})
 
 	commitConfiguration := application.commitMessageConfiguration()
-	require.Equal(t, llmclient.ProviderOpenAI, commitConfiguration.LLMProxy.Provider)
+	require.Equal(t, llmclient.FallbackProvider, commitConfiguration.LLMProxy.Provider)
 	require.Empty(t, commitConfiguration.LLMProxy.Model)
 	require.Equal(t, "meta", commitConfiguration.ConnectionProfiles.LLMProxy.Provider)
 	require.Equal(t, "muse-spark-1.1", commitConfiguration.ConnectionProfiles.LLMProxy.Model)
@@ -238,7 +238,7 @@ func TestApplicationSyncCommitMessageLLMProxyProviderOverrideClearsConfiguredMod
 			Options: map[string]any{
 				"commit_message": map[string]any{
 					"llm_proxy": map[string]any{
-						"provider": llmclient.ProviderOpenAI,
+						"provider": llmclient.FallbackProvider,
 					},
 				},
 			},
@@ -246,7 +246,7 @@ func TestApplicationSyncCommitMessageLLMProxyProviderOverrideClearsConfiguredMod
 	})
 
 	configuration := application.branchSyncConfiguration()
-	require.Equal(t, llmclient.ProviderOpenAI, configuration.CommitMessage.LLMProxy.Provider)
+	require.Equal(t, llmclient.FallbackProvider, configuration.CommitMessage.LLMProxy.Provider)
 	require.Empty(t, configuration.CommitMessage.LLMProxy.Model)
 	require.Equal(t, "meta", configuration.CommitMessage.ConnectionProfiles.LLMProxy.Provider)
 }
@@ -298,7 +298,7 @@ func applicationTestLLMConfiguration() ApplicationLLMConfiguration {
 			Priority:   2,
 			BaseURL:    "https://api.openai.com/v1",
 			Credential: "openai-secret",
-			Model:      llmclient.DefaultOpenAIModel,
+			Model:      "gpt-5.6-terra",
 		},
 		LLMProxy: llmclient.LLMProxyConnectionProfile{
 			Priority:   1,
@@ -600,7 +600,7 @@ func TestApplicationHierarchicalCommandsLoadExpectedOperations(t *testing.T) {
 
 	repoPackagesCommand, _, packagesError := rootCommand.Find([]string{"packages", "delete"})
 	require.NoError(t, packagesError)
-	require.Equal(t, []string{packagesPurgeOperationNameConstant}, application.operationsRequiredForCommand(repoPackagesCommand))
+	require.Equal(t, []string{packagesDeleteOperationNameConstant}, application.operationsRequiredForCommand(repoPackagesCommand))
 
 	branchDefaultCommand, _, branchDefaultError := rootCommand.Find([]string{defaultCommandNameConstant})
 	require.NoError(t, branchDefaultError)
@@ -664,7 +664,7 @@ func TestRepoReleaseConfigurationUsesConfigFileValues(t *testing.T) {
 llm:
   openai:
     priority: 2
-    model: gpt-4.1
+    model: gpt-5.6-terra
     base_url: https://api.openai.com/v1
     credential: openai-secret
   llm_proxy:
@@ -702,7 +702,7 @@ func TestInitializeConfigurationRejectsMissingRequiredOperation(t *testing.T) {
 llm:
   openai:
     priority: 2
-    model: gpt-4.1
+    model: gpt-5.6-terra
     base_url: https://api.openai.com/v1
     credential: openai-secret
   llm_proxy:
@@ -738,7 +738,7 @@ func TestInitializeConfigurationRejectsObsoleteOperationField(t *testing.T) {
 llm:
   openai:
     priority: 2
-    model: gpt-4.1
+    model: gpt-5.6-terra
     base_url: https://api.openai.com/v1
     credential: openai-secret
   llm_proxy:
@@ -790,7 +790,7 @@ func TestInitializeConfigurationRejectsObsoleteWorkflowLLMField(t *testing.T) {
 llm:
   openai:
     priority: 2
-    model: gpt-4.1
+    model: gpt-5.6-terra
     base_url: https://api.openai.com/v1
     credential: openai-secret
   llm_proxy:

@@ -29,9 +29,11 @@ make publish
 make deploy
 ```
 
-`make release` runs CI and prepares the cross-platform binaries, checksums, documentation Pages archive, changelog commit, annotated tag, and release manifest entirely from local state under `.git/mprlab-release`. It performs no remote write. `make publish` pushes the exact prepared Git refs and GitHub Release assets through canonical `origin` without rebuilding. `make deploy` activates the published documentation archive at `gix.mprlab.com` only when the downloaded manifest matches that locally prepared release; the CLI itself has no runtime rollout.
+`make release` runs CI and prepares the cross-platform binaries, checksums, documentation Pages archive, changelog commit, annotated tag, and release manifest entirely from local state under `.git/mprlab-release`. It performs no remote write for a new release. At an exact release tag, the command verifies and reuses the complete local sealed receipt without rerunning CI; if that receipt is missing or incomplete, it reconstructs it from the matching published GitHub Release and verifies the manifest, notes, payload hashes, annotated tag, source parent, and changelog-only release commit. New release preparation uses a separate candidate receipt and replaces the canonical receipt only after the candidate verifies, so a preparation failure preserves the previous sealed release and rolls back its transaction-owned changelog commit and tag. `make publish` pushes the exact prepared Git refs and GitHub Release assets through canonical `origin` without rebuilding. `make deploy` activates the published documentation archive at `gix.mprlab.com` only when the downloaded manifest matches that locally prepared release; the CLI itself has no runtime rollout.
 
 The release manifest intentionally records two revisions: `source_commit` identifies the source used to build the documentation archive, while `release_commit` identifies the release/changelog commit and annotated tag. Pages deployment verifies the public archive marker against `source_commit` and the published tag against `release_commit`; those identities are not interchangeable.
+
+Pages remains configured through GitHub's legacy branch publishing contract at `gh-pages:/`; the repository does not own a Pages Actions workflow. Deployment reconciles that configuration only when it is missing or different, then follows the GitHub Pages build for the exact deployed branch commit. A changed branch or configuration is the build trigger. An unchanged retry reuses a built, queued, or building record and requests one rebuild only when the matching build is absent or terminally errored. Public marker verification begins after that build succeeds, and failures report the Pages build status, error, commit, and URL.
 
 These maintainer targets use the repository-owned helpers under `scripts/release`. They require Bash 4+, Python 3.10+, GNU `timeout`, `rsync`, `tar`, `shasum`, `curl`, and an authenticated GitHub CLI in addition to the normal Go and Git prerequisites.
 
@@ -50,15 +52,21 @@ An explicit branch target is binding. With dirty work, sync carries the pending 
 
 Tracked files remain authoritative dirty work even when their paths match `.gitignore`. Sync stages those exact tracked paths, while ordinary untracked files continue through Git's normal ignore-respecting behavior; sync never restores a tracked path merely because an ignore rule also matches it.
 
+Strict sync first lists registered worktrees and validates that every live checkout resolves to the caller's common Git directory. It repairs only linked checkouts whose canonical `.git` target is missing, passing those exact paths to Git and then re-listing and revalidating the topology. This reconnects a checkout after its primary repository moves, while a checkout that still belongs to another live common repository is rejected without mutation; copying a primary repository cannot take over the original repository's sibling. Missing Git-prunable registrations remain on the established prune path. Ownership, repair, and validation failures stop with worktree and repository context. Strict sync then builds one preflight plan and refuses to begin while any valid registered worktree contains an operator-owned merge, revert, cherry-pick, rebase, apply-mailbox, bisect, sequencer operation, or unmerged index. It resolves the exact per-worktree Git administrative paths (`MERGE_HEAD`, `REVERT_HEAD`, `CHERRY_PICK_HEAD`, `rebase-merge`, `rebase-apply`, `BISECT_START`, and `sequencer`) instead of resolving ambiguous revisions, so ordinary branches or tags with those names do not impersonate operation state. Present commit markers must contain canonical commit identifiers, administrative directories must have the expected kind, and every inspection failure stops sync. An unmerged index is rejected even when no administrative marker remains, as with a conflicted `git stash apply`. Rejection occurs before fetch, stash, checkout/worktree content changes, index or ref mutation, LLM dispatch, commit, or push and reports the matching explicit recovery action.
+
 When an explicit branch does not exist, sync requires dirty work that will become the new branch's commits and creates the branch at the current branch's `HEAD`. If the current branch is not `master`, sync first publishes its committed `HEAD`: an existing open pull request is preserved, while a missing pull request is opened against its recorded review base, recursively ensuring the existing stack, or against the configured base when no parent is recorded. Only after that parent pull request exists does sync create the child branch, cluster changed paths by top-level area, and commit each cluster with a Conventional Commit message from the configured `github.com/tyemirov/utils/llm` client. The child is aligned with `origin/<parent-branch>`, pushed, and opened as a pull request against the parent branch, producing a real review stack instead of duplicating the parent changes against `master`.
 
-Clean or `--stash` creation of a missing branch is rejected before child branch creation or pull-request publication because no committed child delta would exist against its parent. The selected parent is recorded in local `branch.<child>.gix-review-base` Git config before child creation, so a retry after push or pull-request failure keeps the same review base and deeper stacks retain every recorded link. An existing remote-backed branch with no pull request remains publishable review work: sync first rejects merged branch state, then saves any dirty work and opens the missing pull request through the same base-delta path used for clean branches. Once the child pull request merges, its actual merged base drives the normal handoff; if merged ancestor heads were also deleted, sync follows their merged pull requests to the first surviving remote base. Uncommitted work on a known-merged branch is rejected before commit; rerun with `--stash` to carry that work through the merged handoff, then create its new review branch from the surviving base. `--stash` remains available when syncing an existing branch, `--commit` explicitly selects the default dirty auto-commit policy for scripts that already pass it, and `--require-clean` opts back into failing when the worktree is dirty. Explicit `--title` and `--body` values apply to the requested child; an automatically opened parent uses its own default title and diff-generated body.
+Clean or `--stash` creation of a missing branch is rejected before child branch creation or pull-request publication because no committed child delta would exist against its parent. The selected parent is recorded in local `branch.<child>.gix-review-base` Git config before child creation, so a retry after push or pull-request failure keeps the same review base and deeper stacks retain every recorded link. An existing remote-backed branch with no pull request remains publishable review work: sync first rejects current merged branch state, then saves any dirty work and opens the missing pull request through the same base-delta path used for clean branches. A historical merged record counts as current only when its recorded head OID matches the surviving branch tip and the local branch has no local-only commits. Reusing or advancing that branch therefore opens a new pull request instead of inheriting the old handoff. Once the child pull request merges, its actual merged base drives the normal handoff. Sync follows every matching merged parent pull request regardless of whether its remote branch ref remains, stops at the first branch with an active open pull request or no later matching merged pull request, and uses one standard handoff prompt for that terminal branch. When every merged link reaches `master`, the prompt offers to sync `master`. Uncommitted work on a known-merged branch is rejected before commit; rerun with `--stash` to carry that work through the merged handoff, then create its new review branch from the surviving base. `--stash` remains available when syncing an existing branch, `--commit` explicitly selects the default dirty auto-commit policy for scripts that already pass it, and `--require-clean` opts back into failing when the worktree is dirty. Explicit `--title` and `--body` values apply to the requested child; an automatically opened parent uses its own default title and diff-generated body.
 
-When the target branch is held by a linked worktree, sync first prunes stale worktree registration and preserves any sibling changes that need to survive before retrying the switch. It does not discard dirty sibling work as a shortcut to changing branches.
+When the target branch is held by a linked worktree, sync first prunes stale registration and preserves sibling changes before retrying the switch. Sibling adoption may commit locally to release the checkout, but it does not publish from the sibling; an actual remote ref update reported by the normal target-branch push or successful pull-request creation is the publication boundary. Before its first local mutation, the strict-sync transaction snapshots the caller and target sibling checkout, commit, index, tracked contents, untracked contents, stash list, and topology. It journals only branch refs and worktrees the invocation mutates. A pre-publication failure compare-and-swaps those owned refs back to their starting commits, restores the exact files and staged/unstaged distinction, and recreates only adopted topology; unrelated branch advances and worktrees remain untouched. An up-to-date push performs no remote write and therefore remains rollback-capable until another publication occurs. A failure after publication cannot undo the remote write: Gix preserves the published checkout and any invocation-owned recovery stash, emits `SYNC_SWITCH_HANDOFF`, and never reports `SYNCED`.
 
-Merge conflicts are compiled from Git's three index stages into bounded diff3 hunks. Gix resolves mechanically safe cases locally, including three-way-safe `ISSUES.md` record additions and marker-free modify/delete conflicts, and sends only unresolved semantic hunks plus bounded adjacent context to the configured LLM. Each model response is strict JSON tied to the hunk identifier; unchanged file content never enters the response. Every hunk and file is validated before a rollback-protected apply phase and one index update. Regular-file modes are preserved, while binary content and unsupported Git object modes are rejected before any model call. Two invalid hunk responses stop before merge commit or push and leave the original conflict inspectable. The PR branch is the target; its remote review base is the incoming side.
+Dirty-cluster commit-message requests are also ownership boundaries. Immediately after staging one cluster, Gix verifies that the complete staged path set belongs to that cluster and checkpoints the active checkout, `HEAD`, exact per-worktree index path, cache entries, skip-worktree and assume-unchanged flags, intent-to-add state, and resolve-undo records. Every post-model ownership inspection uses a cancellation-independent bounded context. For the final inspection, Gix first acquires the worktree's canonical `index.lock`, rechecks the checkpoint while normal Git index writers are excluded, copies the validated index into the private locked file, and commits from that copy through `GIT_INDEX_FILE`; the live index is never replaced by the commit. A writer that wins before the lock is detected as drift, while one that arrives after the lock cannot stage into the commit. Either ownership loss stops before commit or push without reset, clean, or restoration across outside state, retains the transaction snapshot, emits one `SYNC_SWITCH_HANDOFF`, and directs the operator to stop the other writer before retrying.
 
-Stash restoration is part of the `--stash` sync contract. When the target branch and stashed operator work conflict, Gix uses the same bounded planner, with validation that requires both target and stashed conflict intent. A validated resolution returns the restored paths as uncommitted, unstaged work and removes the retained stash; a rejected resolution keeps the stash and every original conflict inspectable. `REPO_SWITCHED` and `SYNCED` are emitted only after restoration succeeds.
+`--stash` is invocation-owned. Gix reapplies it with `--index`, resolves a conflicted apply through the same bounded semantic conflict engine, validates the resulting index, and drops only that exact stash. `SYNCED` is emitted only after restoration and transaction-snapshot cleanup succeed. A failed pre-publication restoration returns to the original caller state; a failed post-publication restoration retains the stash and conflicted recovery state under the explicit handoff contract.
+
+For marker-bearing merge conflicts, Gix renders Git's diff3 form, parses each conflict region, and reconstructs the complete file locally from byte-exact non-conflicting regions. It directly accepts only cases with no two-sided semantic choice: byte-identical sides or a change on only one side. Marker-free modify/delete or rename/delete conflicts preserve the exact current-stage decision, including deletion. Every marker-bearing region changed by both sides requires semantic LLM audit. Empty-BASE concurrent insertions—including `.mprlab/ISSUES.md` and root `CHANGELOG.md` entries—start with an exact OURS-then-THEIRS candidate; non-overlapping token edits start with a byte-preserving local merge candidate. These deterministic strategies protect fidelity, but they do not replace the model's semantic decision.
+
+Each audit sends only the conflict's BASE, OURS, THEIRS, and local candidate, never the complete file or untouched regions. The model may approve the candidate or return a semantic correction. When no safe local candidate exists, the model generates one from the three conflict regions. Every returned candidate must use the required content envelope and preserve locally derived replacement intent from both sides; a locally valid correction is audited again before acceptance. Rejections become exact feedback for the next bounded repair attempt. Before committing, Gix also requires no unmerged paths and a clean cached-diff check. Rollback is the final recovery strategy: it runs only after four semantic attempts are exhausted, the caller cancels, or an unrecoverable Git/filesystem failure prevents further resolution. A bounded merge abort restores the target's pre-merge state; before publication, the enclosing transaction then restores the complete caller and target-sibling snapshot. After publication, recovery remains forward-only and preserves the published state under an explicit handoff. The PR branch is "ours"; its remote review base is "theirs".
 
 ## Other maintenance workflows
 
@@ -97,10 +105,10 @@ Delete local and remote branches whose pull requests are already closed.
 ### Clear out stale GHCR images
 
 ```shell
-gix packages delete --roots ~/Development/containers --yes
+gix packages delete --keep 3 --roots ~/Development/containers --yes
 ```
 
-Remove untagged GitHub Container Registry versions in one sweep.
+Keep the three newest GitHub Container Registry versions for each discovered package and delete every older version, whether tagged or untagged.
 
 ### Inspect repositories or export an audit report
 
@@ -130,7 +138,7 @@ gix message commit --roots .
 gix message changelog --since-tag v1.2.0 --version v1.3.0
 ```
 
-Use the reusable LLM client (`github.com/tyemirov/utils/llm`) to summarise staged changes or recent history. `gix sync` uses the same configured client for automatic dirty-work commit messages and strict-sync merge resolution. Its configured `timeout_seconds` bounds the complete AI merge-resolution operation; gix reports the active resolution phase and leaves a rejected, cancelled, or timed-out merge intact for manual recovery before any push.
+Use the reusable LLM client (`github.com/tyemirov/utils/llm`) to summarise staged changes or recent history. `gix sync` uses the configured provider order only for genuinely overlapping strict-sync regions. For semantic resolution, `timeout_seconds` is the per-provider request budget: each candidate or audit attempt can exhaust every credentialed provider once, and validation feedback can drive up to four bounded attempts. Gix reports the active region, strategy, attempt, and deadline. Rollback remains deferred until the strategy ladder is exhausted unless the caller cancels or local Git/filesystem state makes continuation impossible.
 
 The generated configuration defaults to Meta Muse through MPR LLM Proxy and declares both available connections:
 
@@ -138,9 +146,10 @@ The generated configuration defaults to Meta Muse through MPR LLM Proxy and decl
 llm:
   openai:
     priority: 2
-    model: gpt-4.1
+    model: gpt-5.6-terra
     base_url: "https://api.openai.com/v1"
     credential: "${OPENAI_API_KEY}"
+    effort: "high"
   llm_proxy:
     priority: 1
     provider: meta
@@ -148,13 +157,15 @@ llm:
     base_url: "https://llm-proxy-api.mprlab.com"
     credential: "${LLM_PROXY_SECRET_KEY}"
   max_completion_tokens: 1200
-  temperature: 0
+  effort: "high"
   timeout_seconds: 60
 ```
 
 Each connection owns its routing data. Direct OpenAI owns its `model`; `llm_proxy` owns the upstream `provider` and `model`. Both connections require a positive, unique `priority`, and the lower number is attempted first. If that request fails, gix tries the next connection and returns the first successful response.
 
-`llm_proxy.provider` is required. `llm_proxy.model` is optional and uses the selected provider's server-side default when omitted; `openai.model` defaults to `gpt-4.1` when omitted. A connection whose interpolated `credential` is empty is excluded, and at least one connection must have a credential. `--provider` and `--model` override the llm-proxy upstream for one invocation; they do not change connection priority. Endpoints and credentials are configuration-only and have no CLI or late environment-variable-name override.
+If every configured connection fails, gix reports each attempted connection by name with its complete contextual error, including transport status and response details when the client provides them. Joined failures remain available to programmatic callers through standard Go error traversal.
+
+`llm_proxy.provider` is required. `llm_proxy.model` is optional and uses the selected provider's server-side default when omitted; `openai.model` defaults to `gpt-5.6-terra` when omitted. A connection whose interpolated `credential` is empty is excluded, and at least one connection must have a credential. `--provider` and `--model` override the llm-proxy upstream for one invocation; they do not change connection priority. Endpoints and credentials are configuration-only and have no CLI or late environment-variable-name override.
 
 ## Automate sequences with workflows
 
@@ -201,7 +212,7 @@ Combine these steps to build fully custom git flows without relying on one monol
 Use runtime variables to parameterize presets or external configs:
 
 ```shell
-gix workflow license --var template=mit --var branch=chore/license --roots ~/Development --yes
+gix workflow license --var license_template=mit --var license_branch=chore/license --roots ~/Development --yes
 gix workflow namespace --var namespace_old=github.com/old/org --var namespace_new=github.com/new/org --roots ~/Research
 ```
 
@@ -216,15 +227,16 @@ Variables appear inside task templates via `{{ index .Environment "key" }}` and 
 
 | Variable | Description |
 | --- | --- |
-| `template` / `license_template` | Embedded template name (`bsl`, `mit`, or `proprietary`). When set, `license_content` is derived. |
+| `license_template` | Embedded template name (`bsl`, `mit`, `polyform-noncommercial`, or `proprietary`). When set, `license_content` is derived. |
 | `license_content` | License text (required when no template is set). |
 | `license_target` | Relative path for the output file (defaults to `LICENSE`). |
-| `license_commercial_target` | Optional BSL commercial license path (defaults to `COMMERCIAL_LICENSE.md`). |
+| `license_commercial_target` | Optional commercial-notice path for templates that include one (defaults to `COMMERCIAL_LICENSE.md`). |
 | `license_mode` | File handling mode (`overwrite`, `skip-if-exists`, or `append-if-missing`). |
-| `license_year` | MIT/Proprietary year override (defaults to the current year). |
+| `license_year` | MIT, PolyForm-notice, or proprietary year override (defaults to the current year). |
 | `license_author` | MIT author override (defaults to the repository owner). |
 | `license_company` | Proprietary company override (defaults to the repository owner). |
-| `license_licensor` | BSL licensor override (defaults to the repository owner). |
+| `license_licensor` | BSL or PolyForm licensor override (defaults to the repository owner). |
+| `license_contact` | Commercial-license contact (defaults to `legal@mprlab.com` for templates that use it). |
 | `license_project_name` | BSL project name override (defaults to the repository name). |
 | `license_change_date` | BSL change date (defaults to `2029-01-01`). |
 | `license_change_license` | BSL change license (defaults to `Apache License 2.0`). |
@@ -246,7 +258,23 @@ Variables appear inside task templates via `{{ index .Environment "key" }}` and 
 | `namespace_push` | Optional boolean (`true`/`false`) controlling whether rewritten branches push. Defaults to `true`. |
 | `namespace_commit_message` | Optional commit message template for the rewrite commit. |
 
-Use the `gix workflow license` preset with `--var template=bsl` / `mit` / `proprietary` (or `license_content`) plus the `license_*` overrides to distribute license content; the old `gix repo-license-apply` wrapper has been removed.
+Use the `gix workflow license` preset with the canonical `license_template`
+variable (`bsl`, `mit`, `polyform-noncommercial`, or `proprietary`) or
+`license_content` plus the `license_*` overrides to distribute license content.
+The old `template` variable and `gix repo-license-apply` wrapper have been
+removed.
+
+The reviewed personal and MPR Lab fleet policy, legal holds, frozen inventory,
+and one-command draft-PR handoff are documented in
+[`docs/licensing-rollout.md`](docs/licensing-rollout.md). Run
+`make license-rollout-plan` for the read-only drift check. After review,
+`make license-rollout-apply` creates the eligible draft pull requests.
+The plan resolves each default branch to one commit, reads its license blobs
+from that revision, and pins apply clones to the same commit even if the
+remote branch advances before the clone starts.
+Apply accepts an already-open deterministic draft only after its base commit,
+single rollout commit, complete changed-file set, and rendered license blobs
+match the reviewed plan and a final pull-request snapshot remains unchanged.
 
 ### Workflow syntax
 
@@ -484,7 +512,7 @@ Schema highlights:
   - `mode: replace` rewrites matching substrings using `replacements: [{ from, to }]` (templated). File paths accept glob patterns, including recursive `**/*.ext`, so you can update many files with one entry.
 - Actions: `{ type, options }` where `type` is one of:
  - `repo.remote.update`, `repo.remote.convert-protocol`, `repo.folder.rename`, `branch.default`, `repo.release.tag`, `audit.report`, `repo.history.purge`, `repo.files.replace`, `repo.namespace.rewrite`
-- LLM: optional `{ llm_proxy: { provider, model }, timeout_seconds, max_completion_tokens, temperature }` block. When the block is present, `llm_proxy.provider` is required and `llm_proxy.model` is optional. The nested selection overrides only the configured llm-proxy upstream; connection endpoints, credentials, and priority cannot be declared inside workflow tasks.
+- LLM: optional `{ llm_proxy: { provider, model }, timeout_seconds, max_completion_tokens, effort }` block. When the block is present, `llm_proxy.provider` is required and `llm_proxy.model` is optional. The nested selection overrides only the configured llm-proxy upstream; connection endpoints, credentials, and priority cannot be declared inside workflow tasks.
 - Commit: `{ message }` (templated). Defaults to `Apply task <name>` when empty.
 - Pull request: `{ title, body, base, draft }` (templated; optional).
 - Safeguards: `{ hard_stop: {...}, soft_skip: {...} }` blocks that control whether a violation aborts the repository (`hard_stop`) or just skips the current task/action (`soft_skip`).
@@ -591,13 +619,13 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
  - Converts remote protocols in bulk.
 - `gix prs delete [--limit <N>] [--remote <name>] [--roots <dir>...] [-y]` (alias `purge`)
  - Deletes branches whose pull requests are closed. Flags: `--limit`, `--remote`.
-- `gix packages delete [--package <name>] [--roots <dir>...] [-y]` (alias `prune`)
- - Removes untagged GHCR versions. Flag: `--package` for the container name.
+- `gix packages delete --keep <count> [--package <name>] [--roots <dir>...] [-y]` (alias `prune`)
+ - Preserves the newest positive `--keep` count by `created_at` and deletes every older tagged or untagged GHCR version. Equal timestamps are ordered by version ID, newest first. Flag: `--package` optionally overrides the container name.
 - `gix files replace --find <string> [--replace <string>] [--pattern <glob>...] [--command "<shell>"] [--require-clean] [--branch <name>] [--require-path <rel>...] [--roots <dir>...] [-y]` (alias `sub`)
  - Performs text substitutions across matched files with optional safeguards.
 - `gix files add --template <path> [--content <text>] [--mode overwrite|skip-if-exists|append-if-missing] [--branch <template>] [--remote <name>] [--commit-message <text>] [--roots <dir>...] [-y]` (alias `seed`)
  - Seeds or updates files across repositories, creating branches and pushes when configured.
-- `gix workflow license --var template=mit --var license_branch=chore/license --roots <dir>... [-y]`
+- `gix workflow license --var license_template=mit --var license_branch=chore/license --roots <dir>... [-y]`
  - Runs the embedded license preset; see “License preset variables” for supported options.
 - `gix workflow namespace --var namespace_old=... --var namespace_new=... [--roots <dir>...] [-y]`
  - Runs the embedded namespace rewrite preset; see “Namespace preset variables” for supported options.
@@ -607,14 +635,14 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
  - Creates and pushes an annotated tag for each repository root.
 - `gix release retag --map <tag=ref> [--map <tag=ref>...] [--message-template <text>] [--remote <name>] [--roots <dir>...] [-y]` (alias `fix`)
  - Reassigns existing release tags to provided commits and force-pushes updates.
-- `gix message changelog [--version <v>] [--release-date YYYY-MM-DD] [--since-tag <ref>] [--since-date <ts>] [--max-tokens <N>] [--temperature <0-2>] [--provider <provider>] [--model <id>] [--timeout-seconds <N>] [--roots <dir>...]` (aliases `section`)
+- `gix message changelog [--version <v>] [--release-date YYYY-MM-DD] [--since-tag <ref>] [--since-date <ts>] [--max-tokens <N>] [--effort <low|medium|high>] [--provider <provider>] [--model <id>] [--timeout-seconds <N>] [--roots <dir>...]` (aliases `section`)
  - Generates a changelog section from git history using the configured LLM.
-- `gix message commit [--diff-source staged|worktree] [--max-tokens <N>] [--temperature <0-2>] [--provider <provider>] [--model <id>] [--timeout-seconds <N>] [--roots <dir>...]` (alias `msg`)
+- `gix message commit [--diff-source staged|worktree] [--max-tokens <N>] [--effort <low|medium|high>] [--provider <provider>] [--model <id>] [--timeout-seconds <N>] [--roots <dir>...]` (alias `msg`)
  - Drafts Conventional Commit subjects and optional bullets using the configured LLM.
 - `gix default <target-branch> [--roots <dir>...] [-y]`
  - Promotes the default branch across repositories.
 - `gix sync [remote-url|branch] [--remote <name>] [--title <text>] [--body <markdown>] [--stash | --commit] [--require-clean] [--roots <dir>...]` (alias `switch`)
- - Synchronizes the current workspace through the Gix flow. An explicit branch is the dirty-commit target; explicit `master` sync commits to, merges, and pushes `master` directly. Existing non-base PR branches sync against their current PR base branch. A dirty missing explicit branch is created at the current `HEAD`; a non-`master` current branch is published and PR-backed first, then the child PR targets that parent branch. Clean or `--stash` creation of a missing branch is rejected because it has no child review delta. Dirty work is clustered, LLM-described, committed, and pushed by default, except known-merged branches reject auto-commit and require a stashed handoff before new review work is created. Plain `gix sync` on dirty current `master` keeps the generated PR rescue flow. Sync never rebases or force-pushes. PR body text is generated from the branch diff unless `--body` or `sync.pull_request.body` is set; PR title defaults to the branch unless `--title` or `sync.pull_request.title` is set. `--stash` temporarily shelves dirty work on existing branches, `--commit` explicitly selects the auto-commit policy, and `--require-clean` requires a clean worktree only when no dirty-work policy is selected.
+ - Synchronizes the current workspace through the Gix flow. An explicit branch is the dirty-commit target; explicit `master` sync commits to, merges, and pushes `master` directly. Existing non-base PR branches sync against their current PR base branch; merged branches follow every merged parent to the first active branch or configured base before offering one handoff prompt. A dirty missing explicit branch is created at the current `HEAD`; a non-`master` current branch is published and PR-backed first, then the child PR targets that parent branch. Clean or `--stash` creation of a missing branch is rejected because it has no child review delta. Dirty work is clustered, LLM-described, committed, and pushed by default, except known-merged branches reject auto-commit and require a stashed handoff before new review work is created. Plain `gix sync` on dirty current `master` keeps the generated PR rescue flow. Sync validates linked-worktree ownership and repairs only missing canonical links before preflight, then rejects operator-owned Git operations and snapshots the caller plus target sibling; pre-push failures restore the exact local state, while post-push failures retain forward recovery state. Sync never rebases or force-pushes. PR body text is generated from the branch diff unless `--body` or `sync.pull_request.body` is set; PR title defaults to the branch unless `--title` or `sync.pull_request.title` is set. `--stash` restores the exact index before success, `--commit` explicitly selects the auto-commit policy, and `--require-clean` requires a clean worktree only when no dirty-work policy is selected.
 ## Configuration essentials
 
 - On every launch, gix uses an explicit `--config <path>.yml` when supplied; otherwise it checks `/etc/gix/config.yml` and then `$HOME/.gix/config.yml`.
@@ -623,7 +651,7 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
 - Working-directory config files, `.yaml` aliases, `GIX_*` overrides, embedded runtime defaults, and layered configuration merging are not supported.
 - `${NAME}` placeholders in YAML values are expanded only from the process environment inherited when gix starts. Substituted text remains literal scalar content, including quotes, backslashes, newlines, colons, and hash characters. Gix never discovers or loads `.env` files; users of dotenv tooling must load those values into the process environment before launching gix.
 - Literal values in `config.yml`, including literal credentials, are used as written.
-- `github.credential` supplies the concrete token injected into GitHub CLI calls. The `packages delete` operation similarly owns its concrete `base_url` and `credential`; neither integration performs a later environment lookup.
+- `github.credential` supplies the concrete token injected into GitHub CLI calls. The `packages delete` operation similarly owns its concrete `base_url` and `credential`; neither integration performs a later environment lookup. Retention is intentionally invocation-owned: every `packages delete` call must provide a positive `--keep` value.
 - The `openai` and `llm_proxy` connections store their own routing fields, positive unique `priority`, concrete `base_url`, and interpolated `credential` values in `config.yml`. Lower priority numbers run first; failed requests continue to the next credentialed connection.
 - A connection with an empty interpolated credential is inactive. At least one connection credential is required.
 - The config controls shared behavior such as `log_level`, `log_format`, `assume_yes`, and `require_clean`.

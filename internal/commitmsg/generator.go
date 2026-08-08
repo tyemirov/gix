@@ -36,7 +36,6 @@ type Options struct {
 	RepositoryPath string
 	Source         DiffSource
 	MaxTokens      int
-	Temperature    *float64
 }
 
 // Result contains the generated commit message and the prompt that produced it.
@@ -128,9 +127,8 @@ func (generator Generator) BuildRequest(ctx context.Context, options Options) (l
 	}
 
 	request := llm.ChatRequest{
-		Messages:    []llm.Message{systemMessage, userMessage},
-		MaxTokens:   maxTokens,
-		Temperature: options.Temperature,
+		Messages:  []llm.Message{systemMessage, userMessage},
+		MaxTokens: maxTokens,
 	}
 
 	return request, nil

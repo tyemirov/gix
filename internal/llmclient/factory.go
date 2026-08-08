@@ -1,9 +1,12 @@
 package llmclient
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -13,17 +16,16 @@ import (
 )
 
 const (
-	DefaultOpenAIModel        = "gpt-4.1"
-	ProviderOpenAI            = "openai"
+	FallbackProvider          = "openai"
 	defaultRequestTimeout     = 60 * time.Second
 	transportRequiredMessage  = "llm internal transport is required"
 	providerRequiredMessage   = "llm llm_proxy provider is required"
 	baseURLRequiredMessage    = "llm base_url is required"
 	credentialRequiredMessage = "llm credential is required"
+	modelRequiredMessage      = "llm model is required"
 	priorityRequiredMessage   = "llm connection priority must be positive"
 	priorityUniqueMessage     = "llm connection priorities must be unique"
 	connectionRequiredMessage = "llm requires at least one connection credential"
-	connectionOpenAI          = "openai"
 	connectionLLMProxy        = "llm_proxy"
 )
 
@@ -43,6 +45,7 @@ type OpenAIConnectionProfile struct {
 	BaseURL    string `mapstructure:"base_url"`
 	Credential string `mapstructure:"credential"`
 	Model      string `mapstructure:"model"`
+	Effort     string `mapstructure:"effort"`
 }
 
 // LLMProxyConnectionProfile stores the llm-proxy connection and its upstream selection.
@@ -52,6 +55,7 @@ type LLMProxyConnectionProfile struct {
 	Credential string `mapstructure:"credential"`
 	Provider   string `mapstructure:"provider"`
 	Model      string `mapstructure:"model"`
+	Effort     string `mapstructure:"effort"`
 }
 
 // ConnectionProfiles stores the ordered LLM connection candidates.
@@ -68,8 +72,8 @@ type LLMProxySelection struct {
 
 // RuntimeConfig stores request behavior shared by every connection candidate.
 type RuntimeConfig struct {
+	Effort              string
 	MaxCompletionTokens int
-	Temperature         float64
 	HTTPClient          llm.HTTPClient
 	RequestTimeout      time.Duration
 	RetryAttempts       int
@@ -85,8 +89,8 @@ type Config struct {
 	BaseURL             string
 	APIKey              string
 	Model               string
+	Effort              string
 	MaxCompletionTokens int
-	Temperature         float64
 	HTTPClient          llm.HTTPClient
 	RequestTimeout      time.Duration
 	RetryAttempts       int
@@ -101,6 +105,7 @@ type ClientFactory func(Config) (llm.ChatClient, error)
 type proxyChatClient struct {
 	client                llmproxyclient.Client
 	model                 string
+	effort                string
 	requestTimeoutSeconds int
 }
 
@@ -183,13 +188,13 @@ func (profiles ConnectionProfiles) orderedConfigurations(
 	openAIProfile.Credential = strings.TrimSpace(openAIProfile.Credential)
 	openAIProfile.Model = strings.TrimSpace(openAIProfile.Model)
 	if openAIProfile.Priority <= 0 {
-		return nil, fmt.Errorf("%s: %s", connectionOpenAI, priorityRequiredMessage)
+		return nil, fmt.Errorf("%s: %s", FallbackProvider, priorityRequiredMessage)
 	}
 	if openAIProfile.BaseURL == "" {
-		return nil, fmt.Errorf("%s: %s", connectionOpenAI, baseURLRequiredMessage)
+		return nil, fmt.Errorf("%s: %s", FallbackProvider, baseURLRequiredMessage)
 	}
 	if openAIProfile.Model == "" {
-		openAIProfile.Model = DefaultOpenAIModel
+		return nil, fmt.Errorf("%s: %s", FallbackProvider, modelRequiredMessage)
 	}
 
 	proxyProfile := profiles.LLMProxy
@@ -229,14 +234,15 @@ func (profiles ConnectionProfiles) orderedConfigurations(
 	candidates := make([]prioritizedConfigCandidate, 0, 2)
 	if openAIProfile.Credential != "" {
 		candidates = append(candidates, prioritizedConfigCandidate{
-			name:     connectionOpenAI,
+			name:     FallbackProvider,
 			priority: openAIProfile.Priority,
 			config: runtimeConfiguration.apply(Config{
 				Transport: TransportOpenAICompatible,
-				Provider:  ProviderOpenAI,
+				Provider:  FallbackProvider,
 				BaseURL:   openAIProfile.BaseURL,
 				APIKey:    openAIProfile.Credential,
 				Model:     openAIProfile.Model,
+				Effort:    openAIProfile.Effort,
 			}),
 		})
 	}
@@ -250,6 +256,7 @@ func (profiles ConnectionProfiles) orderedConfigurations(
 				BaseURL:   proxyProfile.BaseURL,
 				APIKey:    proxyProfile.Credential,
 				Model:     proxyProfile.Model,
+				Effort:    proxyProfile.Effort,
 			}),
 		})
 	}
@@ -260,8 +267,10 @@ func (profiles ConnectionProfiles) orderedConfigurations(
 }
 
 func (configuration RuntimeConfig) apply(candidate Config) Config {
+	if effort := strings.TrimSpace(configuration.Effort); effort != "" {
+		candidate.Effort = effort
+	}
 	candidate.MaxCompletionTokens = configuration.MaxCompletionTokens
-	candidate.Temperature = configuration.Temperature
 	candidate.HTTPClient = configuration.HTTPClient
 	candidate.RequestTimeout = configuration.RequestTimeout
 	candidate.RetryAttempts = configuration.RetryAttempts
@@ -274,7 +283,7 @@ func (configuration RuntimeConfig) apply(candidate Config) Config {
 func validateProviderTransport(transport Transport, provider string) error {
 	switch transport {
 	case TransportOpenAICompatible:
-		if provider == ProviderOpenAI {
+		if provider == FallbackProvider {
 			return nil
 		}
 	case TransportLLMProxy:
@@ -301,7 +310,7 @@ func normalizeFactoryConfiguration(configuration Config) (Config, error) {
 	configuration.APIKey = strings.TrimSpace(configuration.APIKey)
 	configuration.Model = strings.TrimSpace(configuration.Model)
 	if configuration.Transport == TransportOpenAICompatible && configuration.Model == "" {
-		configuration.Model = DefaultOpenAIModel
+		return Config{}, fmt.Errorf("%s: %s", FallbackProvider, modelRequiredMessage)
 	}
 	return configuration, nil
 }
@@ -328,14 +337,57 @@ func NewFactory(configuration Config) (llm.ChatClient, error) {
 	}
 }
 
+type reasoningEffortHTTPClient struct {
+	client llm.HTTPClient
+	effort string
+}
+
+func newReasoningEffortHTTPClient(client llm.HTTPClient, effort string) llm.HTTPClient {
+	if client == nil {
+		client = http.DefaultClient
+	}
+	return &reasoningEffortHTTPClient{
+		client: client,
+		effort: strings.TrimSpace(effort),
+	}
+}
+
+func (c *reasoningEffortHTTPClient) Do(request *http.Request) (*http.Response, error) {
+	if c.effort == "" || request == nil || request.Body == nil || request.Method != http.MethodPost {
+		return c.client.Do(request)
+	}
+	bodyBytes, err := io.ReadAll(request.Body)
+	_ = request.Body.Close()
+	if err != nil {
+		return nil, err
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(bodyBytes, &payload); err != nil {
+		request.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+		return c.client.Do(request)
+	}
+	payload["reasoning_effort"] = c.effort
+	modifiedBytes, err := json.Marshal(payload)
+	if err != nil {
+		request.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+		return c.client.Do(request)
+	}
+	request.Body = io.NopCloser(bytes.NewReader(modifiedBytes))
+	request.ContentLength = int64(len(modifiedBytes))
+	return c.client.Do(request)
+}
+
 func (configuration Config) toOpenAICompatibleConfig() llm.Config {
+	httpClient := configuration.HTTPClient
+	if effort := strings.TrimSpace(configuration.Effort); effort != "" {
+		httpClient = newReasoningEffortHTTPClient(httpClient, effort)
+	}
 	return llm.Config{
 		BaseURL:             strings.TrimSpace(configuration.BaseURL),
 		APIKey:              configuration.APIKey,
 		Model:               configuration.Model,
 		MaxCompletionTokens: configuration.MaxCompletionTokens,
-		Temperature:         configuration.Temperature,
-		HTTPClient:          configuration.HTTPClient,
+		HTTPClient:          httpClient,
 		RequestTimeout:      configuration.RequestTimeout,
 		RetryAttempts:       configuration.RetryAttempts,
 		RetryInitialBackoff: configuration.RetryInitialBackoff,
@@ -345,9 +397,6 @@ func (configuration Config) toOpenAICompatibleConfig() llm.Config {
 }
 
 func newProxyChatClient(configuration Config) (llm.ChatClient, error) {
-	if configuration.Temperature > 0 {
-		return nil, errors.New("llm proxy client does not support temperature")
-	}
 	timeout := configuration.RequestTimeout
 	if timeout <= 0 {
 		timeout = defaultRequestTimeout
@@ -371,6 +420,7 @@ func newProxyChatClient(configuration Config) (llm.ChatClient, error) {
 	return proxyChatClient{
 		client:                client,
 		model:                 strings.TrimSpace(configuration.Model),
+		effort:                strings.TrimSpace(configuration.Effort),
 		requestTimeoutSeconds: int(timeout / time.Second),
 	}, nil
 }
@@ -378,9 +428,6 @@ func newProxyChatClient(configuration Config) (llm.ChatClient, error) {
 func (client proxyChatClient) Chat(ctx context.Context, request llm.ChatRequest) (string, error) {
 	if request.ResponseFormat != nil {
 		return "", errors.New("llm proxy client does not support response_format")
-	}
-	if request.Temperature != nil && *request.Temperature > 0 {
-		return "", errors.New("llm proxy client does not support temperature")
 	}
 	messages := make([]llmproxyclient.MessageInput, 0, len(request.Messages))
 	for _, message := range request.Messages {
@@ -393,10 +440,15 @@ func (client proxyChatClient) Chat(ctx context.Context, request llm.ChatRequest)
 	if model == "" {
 		model = client.model
 	}
+	var reasoningEffort *string
+	if client.effort != "" {
+		reasoningEffort = &client.effort
+	}
 	maxTokens := request.MaxTokens
 	proxyRequest, requestError := llmproxyclient.NewMessagesRequest(llmproxyclient.MessagesRequestInput{
 		Messages:              messages,
 		Model:                 model,
+		ReasoningEffort:       reasoningEffort,
 		WebSearch:             false,
 		MaxTokens:             positiveIntPointer(maxTokens),
 		RequestTimeoutSeconds: &client.requestTimeoutSeconds,

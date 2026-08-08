@@ -22,7 +22,7 @@ const (
 	packagesIntegrationTokenEnvNameConstant             = "GITHUB_PACKAGES_TOKEN"
 	packagesIntegrationTokenValueConstant               = "packages-token-value"
 	packagesIntegrationConfigFileNameConstant           = "config.yml"
-	packagesIntegrationConfigTemplateConstant           = "common:\n  log_level: error\n  log_format: console\ngithub:\n  credential: \"${GH_TOKEN}\"\nllm:\n  openai:\n    priority: 1\n    model: gpt-4.1\n    base_url: https://api.openai.com/v1\n    credential: integration-openai-key\n  llm_proxy:\n    priority: 2\n    provider: meta\n    model: muse-spark-1.1\n    base_url: https://llm-proxy.example\n    credential: integration-proxy-key\noperations:\n  - command: [\"packages\", \"delete\"]\n    with:\n      base_url: %q\n      credential: \"${GITHUB_PACKAGES_TOKEN}\"\n%s      roots:\n        - %s\nworkflow: []\n"
+	packagesIntegrationConfigTemplateConstant           = "common:\n  log_level: error\n  log_format: console\ngithub:\n  credential: \"${GH_TOKEN}\"\nllm:\n  openai:\n    priority: 1\n    model: gpt-5.6-terra\n    base_url: https://api.openai.com/v1\n    credential: integration-openai-key\n  llm_proxy:\n    priority: 2\n    provider: meta\n    model: muse-spark-1.1\n    base_url: https://llm-proxy.example\n    credential: integration-proxy-key\noperations:\n  - command: [\"packages\", \"delete\"]\n    with:\n      base_url: %q\n      credential: \"${GITHUB_PACKAGES_TOKEN}\"\n%s      roots:\n        - %s\nworkflow: []\n"
 	packagesIntegrationPackageLineTemplateConstant      = "      package: %s\n"
 	packagesIntegrationSubtestNameTemplateConstant      = "%d_%s"
 	packagesIntegrationRunSubcommandConstant            = "run"
@@ -30,15 +30,20 @@ const (
 	packagesIntegrationConfigFlagTemplateConstant       = "--config=%s"
 	packagesIntegrationPackagesNamespaceCommand         = "packages"
 	packagesIntegrationDeleteActionCommand              = "delete"
+	packagesIntegrationKeepThreeFlagConstant            = "--keep=3"
 	packagesIntegrationCommandTimeout                   = 10 * time.Second
 	packagesIntegrationExpectedPageSizeConstant         = 100
-	packagesIntegrationTaggedVersionIDConstant          = 101
-	packagesIntegrationFirstUntaggedVersionIDConstant   = 202
-	packagesIntegrationSecondUntaggedVersionIDConstant  = 303
+	packagesIntegrationNewestTaggedVersionIDConstant    = 505
+	packagesIntegrationSecondNewestVersionIDConstant    = 404
+	packagesIntegrationThirdNewestVersionIDConstant     = 303
+	packagesIntegrationOlderTaggedVersionIDConstant     = 202
+	packagesIntegrationOldestUntaggedVersionIDConstant  = 101
 	packagesIntegrationVersionsResponseTemplateConstant = `[
-{"id":%d,"metadata":{"container":{"tags":["stable"]}}},
-{"id":%d,"metadata":{"container":{"tags":[]}}},
-{"id":%d,"metadata":{"container":{"tags":[]}}}
+{"id":%d,"created_at":"2026-07-05T12:00:00Z","metadata":{"container":{"tags":["latest","v5"]}}},
+{"id":%d,"created_at":"2026-07-04T12:00:00Z","metadata":{"container":{"tags":[]}}},
+{"id":%d,"created_at":"2026-07-03T12:00:00Z","metadata":{"container":{"tags":["v3"]}}},
+{"id":%d,"created_at":"2026-07-02T12:00:00Z","metadata":{"container":{"tags":["v2"]}}},
+{"id":%d,"created_at":"2026-07-01T12:00:00Z","metadata":{"container":{"tags":[]}}}
 ]`
 	packagesIntegrationVersionsPathTemplateConstant  = "/orgs/%s/packages/container/%s/versions"
 	packagesIntegrationDeletePathTemplateConstant    = "/orgs/%s/packages/container/%s/versions/%d"
@@ -175,9 +180,11 @@ func TestPackagesCommandIntegration(testInstance *testing.T) {
 
 	pageOnePayload := fmt.Sprintf(
 		packagesIntegrationVersionsResponseTemplateConstant,
-		packagesIntegrationTaggedVersionIDConstant,
-		packagesIntegrationFirstUntaggedVersionIDConstant,
-		packagesIntegrationSecondUntaggedVersionIDConstant,
+		packagesIntegrationNewestTaggedVersionIDConstant,
+		packagesIntegrationSecondNewestVersionIDConstant,
+		packagesIntegrationThirdNewestVersionIDConstant,
+		packagesIntegrationOlderTaggedVersionIDConstant,
+		packagesIntegrationOldestUntaggedVersionIDConstant,
 	)
 
 	testCases := []struct {
@@ -186,9 +193,9 @@ func TestPackagesCommandIntegration(testInstance *testing.T) {
 		expectedDeleteIDs []int64
 	}{
 		{
-			name:              "purge_deletes_untagged_versions",
+			name:              "retention_deletes_tagged_and_untagged_versions_older_than_keep_count",
 			packageOverride:   packagesIntegrationPackageConstant,
-			expectedDeleteIDs: []int64{packagesIntegrationFirstUntaggedVersionIDConstant, packagesIntegrationSecondUntaggedVersionIDConstant},
+			expectedDeleteIDs: []int64{packagesIntegrationOlderTaggedVersionIDConstant, packagesIntegrationOldestUntaggedVersionIDConstant},
 		},
 	}
 
@@ -233,6 +240,7 @@ func TestPackagesCommandIntegration(testInstance *testing.T) {
 				fmt.Sprintf(packagesIntegrationConfigFlagTemplateConstant, configPath),
 				packagesIntegrationPackagesNamespaceCommand,
 				packagesIntegrationDeleteActionCommand,
+				packagesIntegrationKeepThreeFlagConstant,
 			}
 
 			pathVariable := os.Getenv("PATH")
@@ -261,18 +269,19 @@ func TestPackagesCommandIntegration(testInstance *testing.T) {
 			if len(testCase.expectedDeleteIDs) == 0 {
 				require.Empty(subtest, deleteRequests)
 			} else {
-				require.GreaterOrEqual(subtest, len(deleteRequests), len(testCase.expectedDeleteIDs))
-				for deleteIndex, expectedIdentifier := range testCase.expectedDeleteIDs {
-					deleteRequest := deleteRequests[deleteIndex]
-					require.Equal(subtest, expectedIdentifier, deleteRequest.versionID)
+				require.Len(subtest, deleteRequests, len(testCase.expectedDeleteIDs))
+				actualIdentifiers := make([]int64, 0, len(deleteRequests))
+				for _, deleteRequest := range deleteRequests {
+					actualIdentifiers = append(actualIdentifiers, deleteRequest.versionID)
 					expectedDeletePath := fmt.Sprintf(
 						packagesIntegrationDeletePathTemplateConstant,
 						packagesIntegrationOwnerConstant,
 						expectedPackageName,
-						expectedIdentifier,
+						deleteRequest.versionID,
 					)
 					require.Equal(subtest, expectedDeletePath, deleteRequest.path)
 				}
+				require.ElementsMatch(subtest, testCase.expectedDeleteIDs, actualIdentifiers)
 			}
 
 			authorizationHeaders := serverState.snapshotAuthorizationHeaders()
@@ -282,6 +291,81 @@ func TestPackagesCommandIntegration(testInstance *testing.T) {
 			for _, headerValue := range authorizationHeaders {
 				require.Equal(subtest, expectedAuthorization, headerValue)
 			}
+		})
+	}
+}
+
+func TestPackagesCommandRequiresExplicitPositiveKeep(testInstance *testing.T) {
+	workingDirectory, workingDirectoryError := os.Getwd()
+	require.NoError(testInstance, workingDirectoryError)
+	repositoryRoot := filepath.Dir(workingDirectory)
+
+	testCases := []struct {
+		name          string
+		keepArguments []string
+		expectedError string
+	}{
+		{
+			name:          "missing_keep",
+			expectedError: "packages delete requires --keep with a positive version count",
+		},
+		{
+			name:          "zero_keep",
+			keepArguments: []string{"--keep=0"},
+			expectedError: "keep count must be greater than zero",
+		},
+		{
+			name:          "negative_keep",
+			keepArguments: []string{"--keep=-1"},
+			expectedError: "keep count must be greater than zero",
+		},
+	}
+
+	for testCaseIndex, testCase := range testCases {
+		subtestName := fmt.Sprintf(packagesIntegrationSubtestNameTemplateConstant, testCaseIndex, testCase.name)
+		testInstance.Run(subtestName, func(subtest *testing.T) {
+			serverState := newPackagesIntegrationServer("[]")
+			server := httptest.NewServer(serverState)
+			defer server.Close()
+
+			repositoryName := filepath.Base(repositoryRoot)
+			cleanupRemote := configurePackagesIntegrationRemote(subtest, repositoryRoot, packagesIntegrationOwnerConstant, repositoryName)
+			defer cleanupRemote()
+
+			stubDirectory := createPackagesIntegrationStub(subtest, packagesIntegrationOwnerConstant, repositoryName)
+			configPath := filepath.Join(subtest.TempDir(), packagesIntegrationConfigFileNameConstant)
+			configContent := fmt.Sprintf(
+				packagesIntegrationConfigTemplateConstant,
+				server.URL,
+				"",
+				repositoryRoot,
+			)
+			require.NoError(subtest, os.WriteFile(configPath, []byte(configContent), 0o600))
+			subtest.Setenv(packagesIntegrationTokenEnvNameConstant, packagesIntegrationTokenValueConstant)
+
+			arguments := []string{
+				packagesIntegrationRunSubcommandConstant,
+				packagesIntegrationModulePathConstant,
+				fmt.Sprintf(packagesIntegrationConfigFlagTemplateConstant, configPath),
+				packagesIntegrationPackagesNamespaceCommand,
+				packagesIntegrationDeleteActionCommand,
+			}
+			arguments = append(arguments, testCase.keepArguments...)
+
+			pathVariable := os.Getenv("PATH")
+			extendedPath := fmt.Sprintf("%s%c%s", stubDirectory, os.PathListSeparator, pathVariable)
+			commandOptions := integrationCommandOptions{PathVariable: extendedPath}
+			output, _ := runFailingIntegrationCommand(
+				subtest,
+				repositoryRoot,
+				commandOptions,
+				packagesIntegrationCommandTimeout,
+				arguments,
+			)
+
+			require.Contains(subtest, output, testCase.expectedError)
+			require.Empty(subtest, serverState.snapshotListRequests())
+			require.Empty(subtest, serverState.snapshotDeleteRequests())
 		})
 	}
 }

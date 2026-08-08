@@ -50,6 +50,21 @@ func (reader optionReader) stringValue(key string) (string, bool, error) {
 	}
 }
 
+func (reader optionReader) rawStringValue(key string) (string, bool, error) {
+	value, exists := reader.entries[key]
+	if !exists {
+		return "", false, nil
+	}
+	switch typed := value.(type) {
+	case string:
+		return typed, true, nil
+	case fmt.Stringer:
+		return typed.String(), true, nil
+	default:
+		return "", true, fmt.Errorf("option %s must be a string", key)
+	}
+}
+
 func (reader optionReader) boolValue(key string) (bool, bool, error) {
 	value, exists := reader.entries[key]
 	if !exists {

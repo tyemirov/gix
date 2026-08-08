@@ -14,10 +14,9 @@ import (
 )
 
 const (
-	syncWorktreeAdoptionTimeout        = 20 * time.Second
-	syncWorktreeAdoptionBranchName     = "feature/adopt-worktree"
-	syncWorktreeAdoptionAPIKeyVariable = "TEST_GIX_LLM_KEY"
-	syncWorktreeAdoptionMissingGitHub  = "strict sync requires a GitHub repository remote"
+	syncWorktreeAdoptionTimeout       = 20 * time.Second
+	syncWorktreeAdoptionBranchName    = "feature/adopt-worktree"
+	syncWorktreeAdoptionMissingGitHub = "strict sync requires a GitHub repository remote"
 )
 
 type syncWorktreeAdoptionFixture struct {
@@ -116,6 +115,154 @@ func TestSyncExplicitMasterPrunesStaleLinkedWorktreeBeforeSwitch(testInstance *t
 	require.Contains(testInstance, output, fmt.Sprintf("SYNCED: %s (master)", repositoryPath))
 	require.Equal(testInstance, "master", strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
 	require.NotContains(testInstance, runGit(testInstance, repositoryPath, "worktree", "list", "--porcelain"), "worktree "+canonicalSiblingPath)
+}
+
+func TestSyncRepairsStaleLinkedWorktreeAfterPrimaryRepositoryMove(testInstance *testing.T) {
+	repositoryRoot := integrationRepositoryRoot(testInstance)
+	binaryPath := buildIntegrationBinary(testInstance, repositoryRoot)
+	workspacePath := testInstance.TempDir()
+	remotePath := filepath.Join(workspacePath, "remote.git")
+	originalRepositoryPath := filepath.Join(workspacePath, "story-generator")
+	relocatedRepositoryPath := filepath.Join(workspacePath, "TellTale")
+	siblingPath := filepath.Join(workspacePath, "story-generator-b007")
+	siblingBranch := "feature/sibling"
+
+	runGitWithDir(testInstance, "", "init", "--bare", remotePath)
+	runGitWithDir(testInstance, "", "init", "--initial-branch=master", originalRepositoryPath)
+	configureGitIdentity(testInstance, originalRepositoryPath)
+	runGit(testInstance, originalRepositoryPath, "remote", "add", "origin", remotePath)
+	require.NoError(testInstance, os.WriteFile(filepath.Join(originalRepositoryPath, "README.md"), []byte("initial\n"), 0o644))
+	runGit(testInstance, originalRepositoryPath, "add", "README.md")
+	runGit(testInstance, originalRepositoryPath, "commit", "-m", "initial commit")
+	runGit(testInstance, originalRepositoryPath, "push", "-u", "origin", "master")
+	runGit(testInstance, originalRepositoryPath, "branch", siblingBranch)
+	runGit(testInstance, originalRepositoryPath, "worktree", "add", siblingPath, siblingBranch)
+
+	siblingReadmePath := filepath.Join(siblingPath, "README.md")
+	require.NoError(testInstance, os.WriteFile(siblingReadmePath, []byte("initial\nstaged sibling change\n"), 0o644))
+	runGit(testInstance, siblingPath, "add", "README.md")
+	require.NoError(testInstance, os.WriteFile(siblingReadmePath, []byte("initial\nstaged sibling change\nunstaged sibling change\n"), 0o644))
+	require.NoError(testInstance, os.WriteFile(filepath.Join(siblingPath, "untracked-sibling.txt"), []byte("untracked sibling change\n"), 0o644))
+
+	expectedSiblingBranch := strings.TrimSpace(runGit(testInstance, siblingPath, "branch", "--show-current"))
+	expectedSiblingHead := strings.TrimSpace(runGit(testInstance, siblingPath, "rev-parse", "HEAD"))
+	expectedSiblingIndex := runGit(testInstance, siblingPath, "ls-files", "--stage", "-z")
+	expectedSiblingStatus := runGit(testInstance, siblingPath, "status", "--porcelain=v1", "-z", "--untracked-files=all")
+	expectedSiblingFiles := snapshotSyncFiles(testInstance, siblingPath)
+	canonicalOriginalRepositoryPath, canonicalOriginalErr := filepath.EvalSymlinks(originalRepositoryPath)
+	require.NoError(testInstance, canonicalOriginalErr)
+	canonicalSiblingPath, canonicalSiblingErr := filepath.EvalSymlinks(siblingPath)
+	require.NoError(testInstance, canonicalSiblingErr)
+
+	require.NoError(testInstance, os.Rename(originalRepositoryPath, relocatedRepositoryPath))
+	canonicalRelocatedRepositoryPath, canonicalRelocatedErr := filepath.EvalSymlinks(relocatedRepositoryPath)
+	require.NoError(testInstance, canonicalRelocatedErr)
+
+	staleGitFileContents, staleGitFileErr := os.ReadFile(filepath.Join(siblingPath, ".git"))
+	require.NoError(testInstance, staleGitFileErr)
+	require.Contains(testInstance, string(staleGitFileContents), filepath.Join(canonicalOriginalRepositoryPath, ".git", "worktrees"))
+
+	worktreeList := runGit(testInstance, relocatedRepositoryPath, "worktree", "list", "--porcelain")
+	require.Contains(testInstance, worktreeList, "worktree "+canonicalSiblingPath)
+	require.NotContains(testInstance, worktreeList, "prunable")
+
+	brokenProbe := exec.Command("git", "-C", siblingPath, "rev-parse", "--git-path", "MERGE_HEAD")
+	brokenProbe.Env = buildGitCommandEnvironment(nil)
+	brokenProbeOutput, brokenProbeErr := brokenProbe.CombinedOutput()
+	require.Error(testInstance, brokenProbeErr, string(brokenProbeOutput))
+
+	configurationPath := writeSyncWorktreeAdoptionConfiguration(testInstance, "")
+	output, runError := runBinaryIntegrationCommand(
+		testInstance,
+		binaryPath,
+		relocatedRepositoryPath,
+		nil,
+		syncWorktreeAdoptionTimeout,
+		[]string{"--config", configurationPath, "sync", "master", "--roots", relocatedRepositoryPath},
+	)
+	require.NoError(testInstance, runError, output)
+	require.Contains(testInstance, output, fmt.Sprintf("SYNCED: %s (master)", relocatedRepositoryPath))
+
+	repairedGitFileContents, repairedGitFileErr := os.ReadFile(filepath.Join(siblingPath, ".git"))
+	require.NoError(testInstance, repairedGitFileErr)
+	require.Contains(testInstance, string(repairedGitFileContents), filepath.Join(canonicalRelocatedRepositoryPath, ".git", "worktrees"))
+	require.Equal(testInstance, expectedSiblingBranch, strings.TrimSpace(runGit(testInstance, siblingPath, "branch", "--show-current")))
+	require.Equal(testInstance, expectedSiblingHead, strings.TrimSpace(runGit(testInstance, siblingPath, "rev-parse", "HEAD")))
+	require.Equal(testInstance, expectedSiblingIndex, runGit(testInstance, siblingPath, "ls-files", "--stage", "-z"))
+	require.Equal(testInstance, expectedSiblingStatus, runGit(testInstance, siblingPath, "status", "--porcelain=v1", "-z", "--untracked-files=all"))
+	require.Equal(testInstance, expectedSiblingFiles, snapshotSyncFiles(testInstance, siblingPath))
+}
+
+func TestSyncRejectsCopiedPrimaryWithoutTakingOverLiveLinkedWorktree(testInstance *testing.T) {
+	repositoryRoot := integrationRepositoryRoot(testInstance)
+	binaryPath := buildIntegrationBinary(testInstance, repositoryRoot)
+	workspacePath := testInstance.TempDir()
+	remotePath := filepath.Join(workspacePath, "remote.git")
+	originalRepositoryPath := filepath.Join(workspacePath, "original")
+	copiedRepositoryPath := filepath.Join(workspacePath, "copied")
+	siblingPath := filepath.Join(workspacePath, "linked")
+	siblingBranch := "feature/live-owner"
+
+	runGitWithDir(testInstance, "", "init", "--bare", remotePath)
+	runGitWithDir(testInstance, "", "init", "--initial-branch=master", originalRepositoryPath)
+	configureGitIdentity(testInstance, originalRepositoryPath)
+	runGit(testInstance, originalRepositoryPath, "remote", "add", "origin", remotePath)
+	require.NoError(testInstance, os.WriteFile(filepath.Join(originalRepositoryPath, "README.md"), []byte("initial\n"), 0o644))
+	runGit(testInstance, originalRepositoryPath, "add", "README.md")
+	runGit(testInstance, originalRepositoryPath, "commit", "-m", "initial commit")
+	runGit(testInstance, originalRepositoryPath, "push", "-u", "origin", "master")
+	runGit(testInstance, originalRepositoryPath, "branch", siblingBranch)
+	runGit(testInstance, originalRepositoryPath, "worktree", "add", siblingPath, siblingBranch)
+
+	siblingReadmePath := filepath.Join(siblingPath, "README.md")
+	require.NoError(testInstance, os.WriteFile(siblingReadmePath, []byte("initial\nlive sibling change\n"), 0o644))
+	runGit(testInstance, siblingPath, "add", "README.md")
+	require.NoError(testInstance, os.WriteFile(filepath.Join(siblingPath, "untracked-sibling.txt"), []byte("live untracked change\n"), 0o644))
+
+	expectedSiblingBranch := strings.TrimSpace(runGit(testInstance, siblingPath, "branch", "--show-current"))
+	expectedSiblingHead := strings.TrimSpace(runGit(testInstance, siblingPath, "rev-parse", "HEAD"))
+	expectedSiblingIndex := runGit(testInstance, siblingPath, "ls-files", "--stage", "-z")
+	expectedSiblingStatus := runGit(testInstance, siblingPath, "status", "--porcelain=v1", "-z", "--untracked-files=all")
+	expectedSiblingFiles := snapshotSyncFiles(testInstance, siblingPath)
+	expectedSiblingGitFile, expectedSiblingGitFileErr := os.ReadFile(filepath.Join(siblingPath, ".git"))
+	require.NoError(testInstance, expectedSiblingGitFileErr)
+	expectedOriginalWorktrees := runGit(testInstance, originalRepositoryPath, "worktree", "list", "--porcelain")
+
+	require.NoError(testInstance, os.CopyFS(copiedRepositoryPath, os.DirFS(originalRepositoryPath)))
+	expectedCopiedWorktrees := runGit(testInstance, copiedRepositoryPath, "worktree", "list", "--porcelain")
+	canonicalOriginalRepositoryPath, canonicalOriginalErr := filepath.EvalSymlinks(originalRepositoryPath)
+	require.NoError(testInstance, canonicalOriginalErr)
+	canonicalSiblingPath, canonicalSiblingErr := filepath.EvalSymlinks(siblingPath)
+	require.NoError(testInstance, canonicalSiblingErr)
+
+	configurationPath := writeSyncWorktreeAdoptionConfiguration(testInstance, "")
+	output, runError := runBinaryIntegrationCommand(
+		testInstance,
+		binaryPath,
+		copiedRepositoryPath,
+		nil,
+		syncWorktreeAdoptionTimeout,
+		[]string{"--config", configurationPath, "sync", "master", "--roots", copiedRepositoryPath},
+	)
+
+	require.Error(testInstance, runError, output)
+	require.Contains(testInstance, output, "belongs to live common repository")
+	require.Contains(testInstance, output, canonicalSiblingPath)
+	require.Contains(testInstance, output, filepath.Join(canonicalOriginalRepositoryPath, ".git"))
+	require.Contains(testInstance, output, filepath.Join(copiedRepositoryPath, ".git"))
+	require.Contains(testInstance, output, "remove the conflicting registration explicitly")
+	require.NotContains(testInstance, output, "SYNCED:")
+
+	actualSiblingGitFile, actualSiblingGitFileErr := os.ReadFile(filepath.Join(siblingPath, ".git"))
+	require.NoError(testInstance, actualSiblingGitFileErr)
+	require.Equal(testInstance, expectedSiblingGitFile, actualSiblingGitFile)
+	require.Equal(testInstance, expectedOriginalWorktrees, runGit(testInstance, originalRepositoryPath, "worktree", "list", "--porcelain"))
+	require.Equal(testInstance, expectedCopiedWorktrees, runGit(testInstance, copiedRepositoryPath, "worktree", "list", "--porcelain"))
+	require.Equal(testInstance, expectedSiblingBranch, strings.TrimSpace(runGit(testInstance, siblingPath, "branch", "--show-current")))
+	require.Equal(testInstance, expectedSiblingHead, strings.TrimSpace(runGit(testInstance, siblingPath, "rev-parse", "HEAD")))
+	require.Equal(testInstance, expectedSiblingIndex, runGit(testInstance, siblingPath, "ls-files", "--stage", "-z"))
+	require.Equal(testInstance, expectedSiblingStatus, runGit(testInstance, siblingPath, "status", "--porcelain=v1", "-z", "--untracked-files=all"))
+	require.Equal(testInstance, expectedSiblingFiles, snapshotSyncFiles(testInstance, siblingPath))
 }
 
 func TestSyncAdoptsSiblingWorktreeWithReadOnlyIgnoredCache(testInstance *testing.T) {
@@ -221,7 +368,7 @@ func writeSyncWorktreeAdoptionConfiguration(testInstance *testing.T, baseURL str
 	llmConfiguration := `llm:
   openai:
     priority: 1
-    model: gpt-4.1
+    model: gpt-5.6-terra
     base_url: https://api.openai.com/v1
     credential: integration-openai-key
   llm_proxy:
@@ -246,7 +393,7 @@ func writeSyncWorktreeAdoptionConfiguration(testInstance *testing.T, baseURL str
     base_url: "https://llm-proxy.example"
     credential: test-proxy-key
   max_completion_tokens: 64
-  temperature: 0
+  effort: "high"
   timeout_seconds: 5
 `, baseURL)
 		messageConfiguration = `
@@ -254,7 +401,7 @@ func writeSyncWorktreeAdoptionConfiguration(testInstance *testing.T, baseURL str
     with:
       diff_source: staged
       max_completion_tokens: 64
-      temperature: 0
+      effort: "high"
       timeout_seconds: 5
 `
 	}

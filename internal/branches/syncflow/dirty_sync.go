@@ -4,10 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/tyemirov/gix/internal/commitmsg"
+	"github.com/tyemirov/gix/internal/execshell"
 	"github.com/tyemirov/gix/internal/repos/shared"
 	"github.com/tyemirov/gix/internal/repos/worktree"
 	"github.com/tyemirov/gix/internal/workflow"
@@ -26,6 +30,23 @@ const (
 	strictSyncGeneratedBranchFailure      = "failed to generate dirty sync branch name: %w"
 	strictSyncGeneratedBranchLimit        = 100
 	strictSyncGeneratedBranchLimitMessage = "unable to select generated sync branch after 100 attempts for %q"
+	strictSyncDirtyClusterPathsTemplate   = "worktree %s changed outside the strict-sync transaction before generating the commit message for dirty cluster %q: staged paths changed from %s to %s"
+	strictSyncDirtyClusterStateTemplate   = "worktree %s changed outside the strict-sync transaction while generating the commit message for dirty cluster %q: %s"
+	strictSyncDirtyClusterCaptureTemplate = "capture dirty sync cluster ownership at %s: %w"
+	strictSyncDirtyClusterLockTemplate    = "lock dirty sync cluster index at %s: %w"
+	strictSyncDirtyClusterCopyTemplate    = "copy dirty sync cluster index from %s: %w"
+	strictSyncDirtyClusterUnlockTemplate  = "release dirty sync cluster index lock at %s: %w"
+	gitDiffNoRenamesFlagConstant          = "--no-renames"
+	gitDiffRawFlagConstant                = "--raw"
+	gitDiffNoAbbrevFlagConstant           = "--no-abbrev"
+	gitDiffITAInvisibleFlagConstant       = "--ita-invisible-in-index"
+	gitNullOutputFlagConstant             = "-z"
+	gitLsFilesStageFlagConstant           = "--stage"
+	gitLsFilesAssumeUnchangedFlagConstant = "-v"
+	gitLsFilesResolveUndoFlagConstant     = "--resolve-undo"
+	gitIndexFileEnvironmentNameConstant   = "GIT_INDEX_FILE"
+	gitIndexPathNameConstant              = "index"
+	gitIndexLockSuffixConstant            = ".lock"
 )
 
 var syncConventionalCommitTypes = map[string]struct{}{
@@ -48,6 +69,29 @@ type syncCommitCluster struct {
 	UntrackedPaths []string
 }
 
+type strictSyncDirtyClusterCheckpoint struct {
+	BranchName string
+	CommitID   string
+	IndexPath  string
+	Index      strictSyncSemanticIndex
+}
+
+type strictSyncSemanticIndex struct {
+	Entries         string
+	IntentToAddDiff string
+	ResolveUndo     string
+}
+
+type strictSyncDirtyClusterCommitExecutor interface {
+	commitStrictSyncDirtyCluster(context.Context, string, string, string, strictSyncDirtyClusterCheckpoint) error
+}
+
+type strictSyncIndexLock struct {
+	indexPath string
+	lockPath  string
+	file      *os.File
+}
+
 type strictSyncDirtyBranchStartPoint uint8
 
 const (
@@ -63,12 +107,6 @@ func saveDirtyWorkClusters(ctx context.Context, executor shared.GitExecutor, rep
 	client, clientErr := resolveCommitMessageClient(options)
 	if clientErr != nil {
 		return 0, clientErr
-	}
-
-	var temperature *float64
-	if options.Temperature != 0 {
-		temperatureValue := options.Temperature
-		temperature = &temperatureValue
 	}
 
 	generator := commitmsg.Generator{
@@ -96,22 +134,374 @@ func saveDirtyWorkClusters(ctx context.Context, executor shared.GitExecutor, rep
 				return committedClusters, fmt.Errorf(strictSyncDirtyStageFailureTemplate, cluster.Root, stageErr)
 			}
 		}
+		if stagedPathsErr := validateStrictSyncDirtyClusterStagedPaths(ctx, executor, repositoryPath, cluster); stagedPathsErr != nil {
+			return committedClusters, stagedPathsErr
+		}
+		checkpoint, checkpointErr := captureStrictSyncDirtyClusterCheckpoint(ctx, executor, repositoryPath)
+		if checkpointErr != nil {
+			return committedClusters, checkpointErr
+		}
 		result, generateErr := generator.Generate(ctx, commitmsg.Options{
 			RepositoryPath: repositoryPath,
 			Source:         commitmsg.DiffSourceStaged,
 			MaxTokens:      options.MaxTokens,
-			Temperature:    temperature,
 		})
 		if generateErr != nil {
+			if ownershipErr := validateStrictSyncDirtyClusterCheckpoint(ctx, executor, repositoryPath, cluster.Root, checkpoint); ownershipErr != nil {
+				return committedClusters, ownershipErr
+			}
 			return committedClusters, fmt.Errorf(strictSyncDirtyMessageFailureTemplate, cluster.Root, generateErr)
 		}
-		if commitErr := executeGit(ctx, executor, repositoryPath, []string{gitCommitSubcommandConstant, gitCommitMessageFlagConstant, result.Message}); commitErr != nil {
+		if commitErr := commitStrictSyncDirtyCluster(ctx, executor, repositoryPath, cluster.Root, result.Message, checkpoint); commitErr != nil {
 			return committedClusters, fmt.Errorf(strictSyncDirtyClusterFailureTemplate, cluster.Root, commitErr)
 		}
 		committedClusters++
 	}
 
 	return committedClusters, nil
+}
+
+func validateStrictSyncDirtyClusterStagedPaths(ctx context.Context, executor shared.GitExecutor, repositoryPath string, cluster syncCommitCluster) error {
+	clusterPathspecs := append(append([]string(nil), cluster.TrackedPaths...), cluster.UntrackedPaths...)
+	for pathIndex := range clusterPathspecs {
+		clusterPathspecs[pathIndex] = normalizeSyncStatusPath(clusterPathspecs[pathIndex])
+	}
+	sort.Strings(clusterPathspecs)
+	clusterPathspecs = compactStrictSyncPaths(clusterPathspecs)
+
+	stagedPathArguments := []string{
+		gitDiffSubcommandConstant,
+		gitDiffCachedFlagConstant,
+		gitDiffNameOnlyFlagConstant,
+		gitDiffNoRenamesFlagConstant,
+		gitNullOutputFlagConstant,
+		gitPathspecSeparatorConstant,
+	}
+	scopedPathArguments := append(append([]string(nil), stagedPathArguments...), clusterPathspecs...)
+	expectedResult, expectedPathsErr := executor.ExecuteGit(ctx, execshell.CommandDetails{
+		Arguments:        scopedPathArguments,
+		WorkingDirectory: repositoryPath,
+	})
+	if expectedPathsErr != nil {
+		return fmt.Errorf(strictSyncDirtyClusterCaptureTemplate, repositoryPath, expectedPathsErr)
+	}
+	expectedPaths, expectedParseErr := parseStrictSyncNULTerminatedPaths(expectedResult.StandardOutput)
+	if expectedParseErr != nil {
+		return fmt.Errorf(strictSyncDirtyClusterCaptureTemplate, repositoryPath, expectedParseErr)
+	}
+	sort.Strings(expectedPaths)
+	expectedPaths = compactStrictSyncPaths(expectedPaths)
+
+	actualResult, stagedPathsErr := executor.ExecuteGit(ctx, execshell.CommandDetails{
+		Arguments: []string{
+			gitDiffSubcommandConstant,
+			gitDiffCachedFlagConstant,
+			gitDiffNameOnlyFlagConstant,
+			gitDiffNoRenamesFlagConstant,
+			gitNullOutputFlagConstant,
+			gitPathspecSeparatorConstant,
+		},
+		WorkingDirectory: repositoryPath,
+	})
+	if stagedPathsErr != nil {
+		return fmt.Errorf(strictSyncDirtyClusterCaptureTemplate, repositoryPath, stagedPathsErr)
+	}
+	actualPaths, parseErr := parseStrictSyncNULTerminatedPaths(actualResult.StandardOutput)
+	if parseErr != nil {
+		return fmt.Errorf(strictSyncDirtyClusterCaptureTemplate, repositoryPath, parseErr)
+	}
+	sort.Strings(actualPaths)
+	actualPaths = compactStrictSyncPaths(actualPaths)
+	if equalStrictSyncPaths(expectedPaths, actualPaths) {
+		return nil
+	}
+	ownershipErr := fmt.Errorf(
+		strictSyncDirtyClusterPathsTemplate,
+		repositoryPath,
+		cluster.Root,
+		formatStrictSyncPaths(expectedPaths),
+		formatStrictSyncPaths(actualPaths),
+	)
+	return markStrictSyncOwnershipLost(ctx, ownershipErr)
+}
+
+func captureStrictSyncDirtyClusterCheckpoint(ctx context.Context, executor shared.GitExecutor, repositoryPath string) (strictSyncDirtyClusterCheckpoint, error) {
+	branchResult, branchErr := executor.ExecuteGit(ctx, execshell.CommandDetails{
+		Arguments:        []string{gitRevParseSubcommandConstant, gitAbbrevRefFlagConstant, gitHeadReferenceConstant},
+		WorkingDirectory: repositoryPath,
+	})
+	if branchErr != nil {
+		return strictSyncDirtyClusterCheckpoint{}, fmt.Errorf(strictSyncDirtyClusterCaptureTemplate, repositoryPath, branchErr)
+	}
+	commitResult, commitErr := executor.ExecuteGit(ctx, execshell.CommandDetails{
+		Arguments:        []string{gitRevParseSubcommandConstant, gitVerifyFlagConstant, gitHeadReferenceConstant},
+		WorkingDirectory: repositoryPath,
+	})
+	if commitErr != nil {
+		return strictSyncDirtyClusterCheckpoint{}, fmt.Errorf(strictSyncDirtyClusterCaptureTemplate, repositoryPath, commitErr)
+	}
+	indexPathResult, indexPathErr := executor.ExecuteGit(ctx, execshell.CommandDetails{
+		Arguments:        []string{gitRevParseSubcommandConstant, gitPathFlagConstant, gitIndexPathNameConstant},
+		WorkingDirectory: repositoryPath,
+	})
+	if indexPathErr != nil {
+		return strictSyncDirtyClusterCheckpoint{}, fmt.Errorf(strictSyncDirtyClusterCaptureTemplate, repositoryPath, indexPathErr)
+	}
+	indexPath, indexPathResolveErr := resolveStrictSyncIndexPath(repositoryPath, indexPathResult.StandardOutput)
+	if indexPathResolveErr != nil {
+		return strictSyncDirtyClusterCheckpoint{}, fmt.Errorf(strictSyncDirtyClusterCaptureTemplate, repositoryPath, indexPathResolveErr)
+	}
+	index, indexErr := captureStrictSyncSemanticIndex(ctx, executor, repositoryPath)
+	if indexErr != nil {
+		return strictSyncDirtyClusterCheckpoint{}, indexErr
+	}
+	return strictSyncDirtyClusterCheckpoint{
+		BranchName: strings.TrimSpace(branchResult.StandardOutput),
+		CommitID:   strings.TrimSpace(commitResult.StandardOutput),
+		IndexPath:  indexPath,
+		Index:      index,
+	}, nil
+}
+
+func validateStrictSyncDirtyClusterCheckpoint(ctx context.Context, executor shared.GitExecutor, repositoryPath string, clusterRoot string, expected strictSyncDirtyClusterCheckpoint) error {
+	inspectionContext, cancelInspection := context.WithTimeout(context.WithoutCancel(ctx), mergeConflictResolutionRollbackTimeout)
+	defer cancelInspection()
+
+	actual, checkpointErr := captureStrictSyncDirtyClusterCheckpoint(inspectionContext, executor, repositoryPath)
+	if checkpointErr != nil {
+		ownershipErr := fmt.Errorf(
+			strictSyncDirtyClusterStateTemplate,
+			repositoryPath,
+			clusterRoot,
+			fmt.Sprintf("current checkout and index could not be inspected: %s", strings.TrimSpace(checkpointErr.Error())),
+		)
+		return markStrictSyncOwnershipLost(ctx, ownershipErr)
+	}
+
+	changes := make([]string, 0, 2)
+	if actual.BranchName != expected.BranchName || actual.CommitID != expected.CommitID {
+		changes = append(changes, fmt.Sprintf(
+			"checkout changed from %s at %s to %s at %s",
+			strictSyncCheckoutName(expected.BranchName),
+			expected.CommitID,
+			strictSyncCheckoutName(actual.BranchName),
+			actual.CommitID,
+		))
+	}
+	if actual.IndexPath != expected.IndexPath || actual.Index != expected.Index {
+		changes = append(changes, "index changed")
+	}
+	if len(changes) == 0 {
+		return nil
+	}
+	ownershipErr := fmt.Errorf(
+		strictSyncDirtyClusterStateTemplate,
+		repositoryPath,
+		clusterRoot,
+		strings.Join(changes, "; "),
+	)
+	return markStrictSyncOwnershipLost(ctx, ownershipErr)
+}
+
+func captureStrictSyncSemanticIndex(ctx context.Context, executor shared.GitExecutor, repositoryPath string) (strictSyncSemanticIndex, error) {
+	entriesResult, entriesErr := executor.ExecuteGit(ctx, execshell.CommandDetails{
+		Arguments: []string{
+			gitLsFilesSubcommandConstant,
+			gitLsFilesStageFlagConstant,
+			gitLsFilesAssumeUnchangedFlagConstant,
+			gitNullOutputFlagConstant,
+		},
+		WorkingDirectory: repositoryPath,
+	})
+	if entriesErr != nil {
+		return strictSyncSemanticIndex{}, fmt.Errorf(strictSyncDirtyClusterCaptureTemplate, repositoryPath, entriesErr)
+	}
+	intentToAddResult, intentToAddErr := executor.ExecuteGit(ctx, execshell.CommandDetails{
+		Arguments: []string{
+			gitDiffSubcommandConstant,
+			gitDiffCachedFlagConstant,
+			gitDiffRawFlagConstant,
+			gitDiffNoAbbrevFlagConstant,
+			gitDiffNoRenamesFlagConstant,
+			gitDiffITAInvisibleFlagConstant,
+			gitNullOutputFlagConstant,
+			gitPathspecSeparatorConstant,
+		},
+		WorkingDirectory: repositoryPath,
+	})
+	if intentToAddErr != nil {
+		return strictSyncSemanticIndex{}, fmt.Errorf(strictSyncDirtyClusterCaptureTemplate, repositoryPath, intentToAddErr)
+	}
+	resolveUndoResult, resolveUndoErr := executor.ExecuteGit(ctx, execshell.CommandDetails{
+		Arguments: []string{
+			gitLsFilesSubcommandConstant,
+			gitLsFilesResolveUndoFlagConstant,
+			gitNullOutputFlagConstant,
+		},
+		WorkingDirectory: repositoryPath,
+	})
+	if resolveUndoErr != nil {
+		return strictSyncSemanticIndex{}, fmt.Errorf(strictSyncDirtyClusterCaptureTemplate, repositoryPath, resolveUndoErr)
+	}
+	return strictSyncSemanticIndex{
+		Entries:         entriesResult.StandardOutput,
+		IntentToAddDiff: intentToAddResult.StandardOutput,
+		ResolveUndo:     resolveUndoResult.StandardOutput,
+	}, nil
+}
+
+func resolveStrictSyncIndexPath(repositoryPath string, output string) (string, error) {
+	indexPath := strings.TrimSpace(output)
+	if indexPath == "" {
+		return "", errors.New("git did not report an index path")
+	}
+	if !filepath.IsAbs(indexPath) {
+		indexPath = filepath.Join(repositoryPath, indexPath)
+	}
+	return filepath.Clean(indexPath), nil
+}
+
+func commitStrictSyncDirtyCluster(ctx context.Context, executor shared.GitExecutor, repositoryPath string, clusterRoot string, message string, expected strictSyncDirtyClusterCheckpoint) error {
+	if commitExecutor, available := executor.(strictSyncDirtyClusterCommitExecutor); available {
+		return commitExecutor.commitStrictSyncDirtyCluster(ctx, repositoryPath, clusterRoot, message, expected)
+	}
+	return commitStrictSyncDirtyClusterWithLockedIndex(ctx, executor, repositoryPath, clusterRoot, message, expected)
+}
+
+func commitStrictSyncDirtyClusterWithLockedIndex(ctx context.Context, executor shared.GitExecutor, repositoryPath string, clusterRoot string, message string, expected strictSyncDirtyClusterCheckpoint) (resultErr error) {
+	indexLock, lockErr := acquireStrictSyncIndexLock(expected.IndexPath)
+	if lockErr != nil {
+		if errors.Is(lockErr, os.ErrExist) {
+			ownershipErr := fmt.Errorf(
+				strictSyncDirtyClusterStateTemplate,
+				repositoryPath,
+				clusterRoot,
+				fmt.Sprintf("index lock %s appeared before commit", expected.IndexPath+gitIndexLockSuffixConstant),
+			)
+			return markStrictSyncOwnershipLost(ctx, ownershipErr)
+		}
+		return fmt.Errorf(strictSyncDirtyClusterLockTemplate, expected.IndexPath, lockErr)
+	}
+	defer func() {
+		if unlockErr := indexLock.release(); unlockErr != nil {
+			resultErr = errors.Join(resultErr, fmt.Errorf(strictSyncDirtyClusterUnlockTemplate, indexLock.lockPath, unlockErr))
+		}
+	}()
+
+	if ownershipErr := validateStrictSyncDirtyClusterCheckpoint(ctx, executor, repositoryPath, clusterRoot, expected); ownershipErr != nil {
+		return ownershipErr
+	}
+	if copyErr := indexLock.copyIndex(); copyErr != nil {
+		return copyErr
+	}
+	return executeGitDetails(ctx, executor, execshell.CommandDetails{
+		Arguments:        []string{gitCommitSubcommandConstant, gitCommitMessageFlagConstant, message},
+		WorkingDirectory: repositoryPath,
+		EnvironmentVariables: map[string]string{
+			gitIndexFileEnvironmentNameConstant: indexLock.lockPath,
+		},
+	})
+}
+
+func acquireStrictSyncIndexLock(indexPath string) (*strictSyncIndexLock, error) {
+	lockPath := indexPath + gitIndexLockSuffixConstant
+	lockFile, lockErr := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	return &strictSyncIndexLock{
+		indexPath: indexPath,
+		lockPath:  lockPath,
+		file:      lockFile,
+	}, nil
+}
+
+func (indexLock *strictSyncIndexLock) copyIndex() error {
+	source, sourceErr := os.Open(indexLock.indexPath)
+	if sourceErr != nil {
+		return fmt.Errorf(strictSyncDirtyClusterCopyTemplate, indexLock.indexPath, sourceErr)
+	}
+	_, copyErr := io.Copy(indexLock.file, source)
+	sourceCloseErr := source.Close()
+	lockCloseErr := indexLock.file.Close()
+	indexLock.file = nil
+	if combinedErr := errors.Join(copyErr, sourceCloseErr, lockCloseErr); combinedErr != nil {
+		return fmt.Errorf(strictSyncDirtyClusterCopyTemplate, indexLock.indexPath, combinedErr)
+	}
+	return nil
+}
+
+func (indexLock *strictSyncIndexLock) release() error {
+	var closeErr error
+	if indexLock.file != nil {
+		closeErr = indexLock.file.Close()
+		indexLock.file = nil
+	}
+	removeErr := os.Remove(indexLock.lockPath)
+	if errors.Is(removeErr, os.ErrNotExist) {
+		removeErr = nil
+	}
+	return errors.Join(closeErr, removeErr)
+}
+
+func strictSyncCheckoutName(branchName string) string {
+	trimmedBranch := strings.TrimSpace(branchName)
+	if trimmedBranch == "" || trimmedBranch == gitHeadReferenceConstant {
+		return "detached HEAD"
+	}
+	return fmt.Sprintf("branch %q", trimmedBranch)
+}
+
+func parseStrictSyncNULTerminatedPaths(output string) ([]string, error) {
+	if output == "" {
+		return nil, nil
+	}
+	if !strings.HasSuffix(output, "\x00") {
+		return nil, errors.New("staged path output is not NUL terminated")
+	}
+	records := strings.Split(output[:len(output)-1], "\x00")
+	paths := make([]string, 0, len(records))
+	for recordIndex := range records {
+		normalizedPath := normalizeSyncStatusPath(records[recordIndex])
+		if normalizedPath == "" {
+			return nil, fmt.Errorf("staged path record %d is empty", recordIndex+1)
+		}
+		paths = append(paths, normalizedPath)
+	}
+	return paths, nil
+}
+
+func compactStrictSyncPaths(paths []string) []string {
+	compacted := paths[:0]
+	for pathIndex := range paths {
+		if paths[pathIndex] == "" {
+			continue
+		}
+		if len(compacted) > 0 && compacted[len(compacted)-1] == paths[pathIndex] {
+			continue
+		}
+		compacted = append(compacted, paths[pathIndex])
+	}
+	return compacted
+}
+
+func equalStrictSyncPaths(expected []string, actual []string) bool {
+	if len(expected) != len(actual) {
+		return false
+	}
+	for pathIndex := range expected {
+		if expected[pathIndex] != actual[pathIndex] {
+			return false
+		}
+	}
+	return true
+}
+
+func formatStrictSyncPaths(paths []string) string {
+	if len(paths) == 0 {
+		return "[]"
+	}
+	return "[" + strings.Join(paths, ", ") + "]"
 }
 
 func filterIgnoredUntrackedSyncStatusEntries(statusEntries []string) []string {
@@ -146,11 +536,11 @@ func prepareStrictSyncBranchForDirtyWork(ctx context.Context, environment *workf
 			return pullRequestErr
 		}
 		if openPullRequest == nil {
-			mergedPullRequest, mergedPullRequestErr := branchHasMergedPullRequest(ctx, environment, repositoryIdentifier, baseBranch, branchName)
+			mergedPullRequest, mergedPullRequestErr := mergedPullRequestForCurrentBranchTip(ctx, environment, repository, repositoryIdentifier, remoteName, branchName)
 			if mergedPullRequestErr != nil {
 				return mergedPullRequestErr
 			}
-			if mergedPullRequest {
+			if mergedPullRequest != nil {
 				return fmt.Errorf(strictSyncStackedMergedDirtyTemplate, branchName)
 			}
 		}
@@ -257,11 +647,6 @@ func generateSyncBranchMessage(ctx context.Context, executor shared.GitExecutor,
 	if clientErr != nil {
 		return "", clientErr
 	}
-	var temperature *float64
-	if options.Temperature != 0 {
-		temperatureValue := options.Temperature
-		temperature = &temperatureValue
-	}
 	generator := commitmsg.Generator{
 		GitExecutor: executor,
 		Client:      client,
@@ -270,7 +655,6 @@ func generateSyncBranchMessage(ctx context.Context, executor shared.GitExecutor,
 		RepositoryPath: repositoryPath,
 		Source:         commitmsg.DiffSourceAll,
 		MaxTokens:      options.MaxTokens,
-		Temperature:    temperature,
 	})
 	if generateErr != nil {
 		return "", generateErr
@@ -278,7 +662,7 @@ func generateSyncBranchMessage(ctx context.Context, executor shared.GitExecutor,
 	return result.Message, nil
 }
 
-func selectGeneratedSyncBranchName(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, remoteName string, baseBranch string, options worktreeAdoptionCommitMessageOptions) (string, error) {
+func selectGeneratedSyncBranchName(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, remoteName string, options worktreeAdoptionCommitMessageOptions) (string, error) {
 	initialBranchName, initialBranchErr := generatedSyncBranchName(ctx, environment.GitExecutor, repository.Path, options)
 	if initialBranchErr != nil {
 		return "", initialBranchErr

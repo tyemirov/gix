@@ -84,7 +84,7 @@ func TestCLIConfigurationInterpolatesProcessEnvironment(testInstance *testing.T)
 		"llm:",
 		"  openai:",
 		"    priority: 2",
-		"    model: gpt-4.1",
+		"    model: gpt-5.6-terra",
 		`    base_url: "https://api.openai.com/v1"`,
 		`    credential: "${OPENAI_API_KEY}"`,
 		"  llm_proxy:",
@@ -134,7 +134,7 @@ func TestCLIConfigurationIgnoresSiblingDotEnv(testInstance *testing.T) {
 		"llm:",
 		"  openai:",
 		"    priority: 1",
-		"    model: gpt-4.1",
+		"    model: gpt-5.6-terra",
 		"    base_url: https://api.openai.com/v1",
 		"    credential: literal-openai-secret",
 		"  llm_proxy:",
@@ -241,7 +241,7 @@ func TestCLIConfigurationRejectsInvalidLLMSelection(testInstance *testing.T) {
 				testCase.llmFields +
 				"  openai:\n" +
 				"    priority: 2\n" +
-				"    model: gpt-4.1\n" +
+				"    model: gpt-5.6-terra\n" +
 				"    base_url: https://api.openai.com/v1\n" +
 				"    credential: openai-secret\n" +
 				"  llm_proxy:\n" +

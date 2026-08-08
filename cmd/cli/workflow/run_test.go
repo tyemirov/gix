@@ -107,7 +107,7 @@ func TestApplyVariableOverridesAppliesEmbeddedLicenseTemplate(testInstance *test
 	}
 
 	variables := map[string]string{
-		licenses.VariableTemplateAlias: licenses.TemplateNameBSL,
+		licenses.VariableTemplate: licenses.TemplateNameBSL,
 	}
 
 	require.NoError(testInstance, applyVariableOverrides(configuration, variables))
@@ -128,4 +128,109 @@ func TestApplyVariableOverridesAppliesEmbeddedLicenseTemplate(testInstance *test
 		}
 	}
 	require.True(testInstance, commercialFound)
+}
+
+func TestApplyVariableOverridesRejectsRemovedLicenseTemplateAlias(testInstance *testing.T) {
+	configuration := &workflow.Configuration{
+		Steps: []workflow.StepConfiguration{
+			{
+				Command: []string{"tasks", "apply"},
+				Options: map[string]any{
+					"tasks": []any{
+						map[string]any{
+							"name": licenseTaskNameConstant,
+							"files": []any{
+								map[string]any{
+									"path":    "LICENSE",
+									"content": "{{ .Environment.license_content }}",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	overrideError := applyVariableOverrides(configuration, map[string]string{
+		"template": licenses.TemplateNameMIT,
+	})
+
+	require.EqualError(
+		testInstance,
+		overrideError,
+		`workflow variable "template" is obsolete; use "license_template"`,
+	)
+}
+
+func TestLicenseRolloutConfigurationAcceptsTemplateBundle(testInstance *testing.T) {
+	configuration, loadError := workflow.LoadConfiguration("../../../configs/license-rollout.yaml")
+	require.NoError(testInstance, loadError)
+
+	overrideError := applyVariableOverrides(&configuration, map[string]string{
+		licenses.VariableTemplate: licenses.TemplateNamePolyFormNoncommercial,
+	})
+	require.NoError(testInstance, overrideError)
+
+	templateFileCount := 0
+	for _, step := range configuration.Steps {
+		if workflow.CommandPathKey(step.Command) != "tasks apply" {
+			continue
+		}
+		tasks, tasksOK := step.Options["tasks"].([]any)
+		if !tasksOK {
+			continue
+		}
+		for _, taskValue := range tasks {
+			taskEntry, taskOK := taskValue.(map[string]any)
+			if !taskOK || taskEntry["name"] != licenseTaskNameConstant {
+				continue
+			}
+			files, filesOK := taskEntry["files"].([]any)
+			require.True(testInstance, filesOK)
+			templateFileCount = len(files)
+		}
+	}
+
+	require.Equal(testInstance, 3, templateFileCount)
+}
+
+func TestLicenseRolloutConfigurationRemovesObsoleteLicenseAliases(testInstance *testing.T) {
+	configuration, loadError := workflow.LoadConfiguration("../../../configs/license-rollout.yaml")
+	require.NoError(testInstance, loadError)
+
+	var commandArguments []any
+	for _, step := range configuration.Steps {
+		if workflow.CommandPathKey(step.Command) != "command run" {
+			continue
+		}
+		arguments, argumentsOK := step.Options["command"].([]any)
+		require.True(testInstance, argumentsOK)
+		commandArguments = arguments
+	}
+
+	require.ElementsMatch(
+		testInstance,
+		[]any{
+			"git",
+			"rm",
+			"--ignore-unmatch",
+			"--",
+			"COMMERCIAL_LICENSE",
+			"COMMERCIAL_LICENSE.txt",
+			"COPYING",
+			"COPYING.md",
+			"LICENCE",
+			"LICENCE.md",
+			"LICENCE.txt",
+			"LICENSE.md",
+			"LICENSE.txt",
+			"MIT-LICENSE",
+			"MIT-LICENSE.txt",
+			"NOTICE.md",
+			"NOTICE.txt",
+			"UNLICENSE",
+		},
+		commandArguments,
+	)
 }

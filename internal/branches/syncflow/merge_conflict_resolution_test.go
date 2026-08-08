@@ -1,111 +1,310 @@
 package syncflow
 
 import (
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/tyemirov/gix/internal/execshell"
 )
 
-func TestConflictPlanDeterministicallyCombinesB089ShapedInsertions(t *testing.T) {
-	base := "- [ ] [B089] Base provider contract.\n"
-	target := "- [x] [B089] Target provider contract.\n- [x] [I042] Target branch addition.\n"
-	incoming := base + "- [ ] [I037] Stashed operator addition.\n"
-	diff3Content := "stable prefix\n" +
-		mergeConflictPlanMarker("<", mergeConflictPlanTargetLabel) + "\n" +
-		target +
-		mergeConflictPlanMarker("|", mergeConflictPlanBaseLabel) + "\n" +
-		base +
-		strings.Repeat("=", mergeConflictPlanMarkerSize) + "\n" +
-		incoming +
-		mergeConflictPlanMarker(">", mergeConflictPlanIncomingLabel) + "\n" +
+type mergeConflictIndexCheckExecutor struct {
+	commands          []execshell.CommandDetails
+	conflictsResolved bool
+}
+
+func (executor *mergeConflictIndexCheckExecutor) ExecuteGit(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
+	executor.commands = append(executor.commands, details)
+	command := strings.Join(details.Arguments, " ")
+	switch command {
+	case "diff --name-only --diff-filter=U":
+		if executor.conflictsResolved {
+			return execshell.ExecutionResult{}, nil
+		}
+		return execshell.ExecutionResult{StandardOutput: ".mprlab/ISSUES.md\n"}, nil
+	case "ls-files -u -- .mprlab/ISSUES.md":
+		return execshell.ExecutionResult{
+			StandardOutput: "100644 aaaaaaa 1\t.mprlab/ISSUES.md\n100644 bbbbbbb 2\t.mprlab/ISSUES.md\n100644 ccccccc 3\t.mprlab/ISSUES.md\n",
+		}, nil
+	case "show :1:.mprlab/ISSUES.md":
+		return execshell.ExecutionResult{StandardOutput: "stable prefix\nstable suffix\n"}, nil
+	case "show :2:.mprlab/ISSUES.md":
+		return execshell.ExecutionResult{StandardOutput: "stable prefix\nlocal insertion\nstable suffix\n"}, nil
+	case "show :3:.mprlab/ISSUES.md":
+		return execshell.ExecutionResult{StandardOutput: "stable prefix\nincoming insertion\nstable suffix\n"}, nil
+	case "checkout --conflict=diff3 -- .mprlab/ISSUES.md":
+		return execshell.ExecutionResult{}, nil
+	case "add -- .mprlab/ISSUES.md":
+		executor.conflictsResolved = true
+		return execshell.ExecutionResult{}, nil
+	case "diff --cached --check":
+		return execshell.ExecutionResult{}, errors.New("trailing whitespace in staged resolution")
+	case "commit --no-edit":
+		return execshell.ExecutionResult{}, errors.New("commit must not run after failed cached diff validation")
+	default:
+		return execshell.ExecutionResult{}, nil
+	}
+}
+
+func (executor *mergeConflictIndexCheckExecutor) ExecuteGitHubCLI(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
+	return execshell.ExecutionResult{}, nil
+}
+
+func TestParseMergeConflictDocumentReconstructsMultipleDiff3Regions(t *testing.T) {
+	content := "stable prefix\n" +
+		"<<<<<<< HEAD\n" +
+		"ours first\n" +
+		"||||||| parent\n" +
+		"base first\n" +
+		"=======\n" +
+		"theirs first\n" +
+		">>>>>>> origin/master\n" +
+		"stable middle\n" +
+		"<<<<<<< HEAD\n" +
+		"ours insertion\n" +
+		"||||||| parent\n" +
+		"=======\n" +
+		"theirs insertion\n" +
+		">>>>>>> origin/master\n" +
 		"stable suffix\n"
 
-	plan, planErr := newMergeConflictPlan(".mprlab/ISSUES.md", diff3Content)
-	require.NoError(t, planErr)
-	require.Len(t, plan.Hunks, 1)
+	document, parseErr := parseMergeConflictDocument(content)
 
-	resolution, deterministic := resolveDeterministicConflictHunk(plan.Hunks[0])
-	require.True(t, deterministic)
-	require.Contains(t, resolution, "- [x] [B089] Target provider contract.")
-	require.Contains(t, resolution, "- [x] [I042] Target branch addition.")
-	require.Contains(t, resolution, "- [ ] [I037] Stashed operator addition.")
-	require.NotContains(t, resolution, "- [ ] [B089] Base provider contract.")
-
-	rendered, renderErr := plan.render(map[string]string{plan.Hunks[0].ID: resolution})
-	require.NoError(t, renderErr)
-	require.Equal(t, "stable prefix\n"+resolution+"stable suffix\n", rendered)
-}
-
-func TestConflictPlanLeavesGenericSameAnchorInsertionsForSemanticResolution(t *testing.T) {
-	hunk := mergeConflictHunk{
-		Path:     "config.yml",
-		Target:   "setting: target\n",
-		Incoming: "setting: incoming\n",
-	}
-
-	resolution, deterministic := resolveDeterministicConflictHunk(hunk)
-	require.False(t, deterministic)
-	require.Empty(t, resolution)
-}
-
-func TestStructuredStashHunkResolutionRequiresBothIntents(t *testing.T) {
-	hunk := mergeConflictHunk{
-		ID:       "hunk-id",
-		Base:     "base\n",
-		Target:   "target\n",
-		Incoming: "stashed\n",
-	}
-	options := mergeConflictResolutionOptions{Mode: mergeConflictResolutionModeStash}
-
-	validContent, validErr := validateMergeConflictHunkResponse(options, hunk, mergeConflictHunkResponse{
-		HunkID:  "hunk-id",
-		Content: "target\nstashed\n",
-	})
-	require.NoError(t, validErr)
-	require.Equal(t, "target\nstashed\n", validContent)
-
-	_, lossyErr := validateMergeConflictHunkResponse(options, hunk, mergeConflictHunkResponse{
-		HunkID:  "hunk-id",
-		Content: "target\n",
-	})
-	require.EqualError(t, lossyErr, "hunk hunk-id does not preserve target and stashed intent")
-}
-
-func TestMarkerFreeStashResolutionPreservesStashedDeletion(t *testing.T) {
-	conflictFile := mergeConflictFile{
-		Path:   "obsolete.txt",
-		Base:   mergeConflictStage{Mode: "100644", Present: true, Content: "base\n"},
-		Target: mergeConflictStage{Mode: "100644", Present: true, Content: "target\n"},
-	}
-
-	resolution, resolutionErr := deterministicMarkerFreeConflictResolution(
-		mergeConflictResolutionOptions{Mode: mergeConflictResolutionModeStash},
-		conflictFile,
+	require.NoError(t, parseErr)
+	require.Equal(t, []string{"stable prefix\n", "stable middle\n", "stable suffix\n"}, document.NonConflictingRegions)
+	require.Equal(
+		t,
+		[]mergeConflictRegion{
+			{
+				Ours:        "ours first\n",
+				Base:        "base first\n",
+				BasePresent: true,
+				Theirs:      "theirs first\n",
+			},
+			{
+				Ours:        "ours insertion\n",
+				BasePresent: true,
+				Theirs:      "theirs insertion\n",
+			},
+		},
+		document.ConflictRegions,
 	)
-	require.NoError(t, resolutionErr)
-	require.True(t, resolution.Delete)
-	require.Equal(t, "obsolete.txt", resolution.Path)
+	require.Equal(
+		t,
+		"stable prefix\nresolved first\nstable middle\nours insertion\ntheirs insertion\nstable suffix\n",
+		document.resolve([]string{"resolved first\n", "ours insertion\ntheirs insertion\n"}),
+	)
 }
 
-func TestNormalizeMergeConflictHunkTerminatorUsesStageConvention(t *testing.T) {
-	hunk := mergeConflictHunk{Target: "target\r\n", Incoming: "incoming\r\n"}
-	require.Equal(t, "resolved\r\n", normalizeMergeConflictHunkTerminator("resolved", hunk))
-	require.Equal(t, "", normalizeMergeConflictHunkTerminator("", hunk))
+func TestParseMergeConflictDocumentRejectsInvalidMarkerStructures(t *testing.T) {
+	testCases := map[string]string{
+		"unexpected marker": "stable\n=======\nstable\n",
+		"invalid ours":      "<<<<<<< HEAD\nours\n<<<<<<< nested\n=======\ntheirs\n>>>>>>> source\n",
+		"invalid base":      "<<<<<<< HEAD\nours\n||||||| base\n>>>>>>> source\n=======\ntheirs\n>>>>>>> source\n",
+		"invalid theirs":    "<<<<<<< HEAD\nours\n=======\ntheirs\n=======\n>>>>>>> source\n",
+		"unterminated":      "<<<<<<< HEAD\nours\n=======\ntheirs\n",
+	}
+
+	for testName, content := range testCases {
+		t.Run(testName, func(t *testing.T) {
+			_, parseErr := parseMergeConflictDocument(content)
+			require.Error(t, parseErr)
+		})
+	}
 }
 
-func TestConflictFileValidationRejectsBinaryAndUnsupportedObjectModes(t *testing.T) {
-	binaryConflict := mergeConflictFile{
-		Path:   "fixture.bin",
-		Base:   mergeConflictStage{Mode: "100644", Present: true, Content: "base\x00value"},
-		Target: mergeConflictStage{Mode: "100644", Present: true, Content: "target\x00value"},
-	}
-	require.EqualError(t, validateMergeConflictFile(binaryConflict), "base stage for fixture.bin is binary and cannot be resolved as text")
+func TestMergeConflictResolutionContentPreservesBoundaryWhitespace(t *testing.T) {
+	expectedContent := "\nresolved region\n\n"
+	response := "\n" +
+		mergeConflictResolutionContentBegin + "\n" +
+		expectedContent +
+		"\n" + mergeConflictResolutionContentEnd +
+		"\n"
 
-	symlinkConflict := mergeConflictFile{
-		Path:   "fixture-link",
-		Base:   mergeConflictStage{Mode: "120000", Present: true, Content: "base-target"},
-		Target: mergeConflictStage{Mode: "120000", Present: true, Content: "target"},
+	content, contentErr := mergeConflictResolutionContent("ISSUES.md", response)
+
+	require.NoError(t, contentErr)
+	require.Equal(t, expectedContent, content)
+}
+
+func TestMergeConflictResolutionContentRejectsMissingOrEmptyEnvelope(t *testing.T) {
+	_, missingEnvelopeErr := mergeConflictResolutionContent("ISSUES.md", "resolved region")
+	require.Error(t, missingEnvelopeErr)
+	require.Contains(t, missingEnvelopeErr.Error(), "required content envelope")
+
+	emptyResponse := mergeConflictResolutionContentBegin + "\n\n" + mergeConflictResolutionContentEnd
+	_, emptyContentErr := mergeConflictResolutionContent("ISSUES.md", emptyResponse)
+	require.Error(t, emptyContentErr)
+	require.Contains(t, emptyContentErr.Error(), "empty merge resolution")
+}
+
+func TestValidateMergeConflictRegionResponseContracts(t *testing.T) {
+	additiveRegion := mergeConflictRegion{
+		Ours:        "ours insertion\n",
+		BasePresent: true,
+		Theirs:      "theirs insertion\n",
 	}
-	require.EqualError(t, validateMergeConflictFile(symlinkConflict), `base stage for fixture-link: unsupported Git object mode "120000"`)
+	require.NoError(t, validateMergeConflictRegionResponse("ISSUES.md", 0, additiveRegion, additiveRegion.Ours+additiveRegion.Theirs))
+	require.NoError(t, validateMergeConflictRegionResponse("ISSUES.md", 0, additiveRegion, additiveRegion.Theirs+additiveRegion.Ours))
+
+	additiveLossErr := validateMergeConflictRegionResponse("ISSUES.md", 0, additiveRegion, additiveRegion.Ours)
+	require.Error(t, additiveLossErr)
+	require.Contains(t, additiveLossErr.Error(), "not an exact ordering of OURS and THEIRS")
+
+	nonAdditiveRegion := mergeConflictRegion{
+		Ours:        "reviewers: alice, bob\n",
+		Base:        "reviewers: alice\n",
+		BasePresent: true,
+		Theirs:      "reviewers: alice, carol\n",
+	}
+	require.NoError(t, validateMergeConflictRegionResponse("ISSUES.md", 1, nonAdditiveRegion, "reviewers: alice, bob, carol\n"))
+
+	oursLossErr := validateMergeConflictRegionResponse("ISSUES.md", 1, nonAdditiveRegion, nonAdditiveRegion.Theirs)
+	require.Error(t, oursLossErr)
+	require.Contains(t, oursLossErr.Error(), "does not preserve OURS replacement intent")
+
+	theirsLossErr := validateMergeConflictRegionResponse("ISSUES.md", 1, nonAdditiveRegion, nonAdditiveRegion.Ours)
+	require.Error(t, theirsLossErr)
+	require.Contains(t, theirsLossErr.Error(), "does not preserve THEIRS replacement intent")
+}
+
+func TestDeterministicMergeConflictRegionResolutionBuildsAuthoritativeResultsAndAuditedCandidates(t *testing.T) {
+	testCases := map[string]struct {
+		region                mergeConflictRegion
+		expectedContent       string
+		expectedStrategy      string
+		requiresSemanticAudit bool
+	}{
+		"identical sides": {
+			region: mergeConflictRegion{
+				Ours:        "same\n",
+				Base:        "base\n",
+				BasePresent: true,
+				Theirs:      "same\n",
+			},
+			expectedContent:  "same\n",
+			expectedStrategy: "identical sides",
+		},
+		"ours unchanged": {
+			region: mergeConflictRegion{
+				Ours:        "base\n",
+				Base:        "base\n",
+				BasePresent: true,
+				Theirs:      "incoming\n",
+			},
+			expectedContent:  "incoming\n",
+			expectedStrategy: "incoming-only change",
+		},
+		"theirs unchanged": {
+			region: mergeConflictRegion{
+				Ours:        "local\n",
+				Base:        "base\n",
+				BasePresent: true,
+				Theirs:      "base\n",
+			},
+			expectedContent:  "local\n",
+			expectedStrategy: "local-only change",
+		},
+		"concurrent insertions require audit": {
+			region: mergeConflictRegion{
+				Ours:        "local insertion\n",
+				BasePresent: true,
+				Theirs:      "incoming insertion\n",
+			},
+			expectedContent:       "local insertion\nincoming insertion\n",
+			expectedStrategy:      "concurrent insertions",
+			requiresSemanticAudit: true,
+		},
+		"non-overlapping token edits": {
+			region: mergeConflictRegion{
+				Ours:        "policy: strict timeout=30\n",
+				Base:        "policy: standard timeout=30\n",
+				BasePresent: true,
+				Theirs:      "policy: standard timeout=60\n",
+			},
+			expectedContent:       "policy: strict timeout=60\n",
+			expectedStrategy:      "non-overlapping token edits",
+			requiresSemanticAudit: true,
+		},
+	}
+
+	for testName, testCase := range testCases {
+		t.Run(testName, func(t *testing.T) {
+			resolution, resolved := deterministicMergeConflictRegionResolution(testCase.region)
+
+			require.True(t, resolved)
+			require.Equal(t, testCase.expectedContent, resolution.Content)
+			require.Equal(t, testCase.expectedStrategy, resolution.Strategy)
+			require.Equal(t, testCase.requiresSemanticAudit, resolution.RequiresSemanticAudit)
+		})
+	}
+}
+
+func TestDeterministicMergeConflictRegionResolutionDefersOverlappingTokenInsertions(t *testing.T) {
+	region := mergeConflictRegion{
+		Ours:        "reviewers: alice, bob\n",
+		Base:        "reviewers: alice\n",
+		BasePresent: true,
+		Theirs:      "reviewers: alice, carol\n",
+	}
+
+	_, resolved := deterministicMergeConflictRegionResolution(region)
+
+	require.False(t, resolved)
+}
+
+func TestResolveRejectsCachedDiffCheckBeforeMergeCommit(t *testing.T) {
+	repositoryPath := t.TempDir()
+	issuesDirectory := filepath.Join(repositoryPath, ".mprlab")
+	require.NoError(t, os.MkdirAll(issuesDirectory, 0o755))
+	require.NoError(
+		t,
+		os.WriteFile(
+			filepath.Join(issuesDirectory, "ISSUES.md"),
+			[]byte(
+				"stable prefix\n"+
+					"<<<<<<< HEAD\n"+
+					"local insertion\n"+
+					"||||||| parent\n"+
+					"=======\n"+
+					"incoming insertion\n"+
+					">>>>>>> origin/master\n"+
+					"stable suffix\n",
+			),
+			0o644,
+		),
+	)
+
+	executor := &mergeConflictIndexCheckExecutor{}
+	service := mergeConflictResolutionService{
+		executor:       executor,
+		repositoryPath: repositoryPath,
+		commitMessages: worktreeAdoptionCommitMessageOptions{
+			Client: &strictSyncChatClient{response: mergeConflictResolutionReviewApproved},
+		},
+	}
+
+	conflictObserved, resolutionErr := service.Resolve(
+		context.Background(),
+		mergeConflictResolutionOptions{
+			SourceReference: "origin/master",
+			TargetBranch:    "feature/target",
+		},
+	)
+
+	require.True(t, conflictObserved)
+	require.Error(t, resolutionErr)
+	require.Contains(t, resolutionErr.Error(), "validate resolved merge index")
+	require.Contains(t, resolutionErr.Error(), "trailing whitespace")
+	recordedCommands := make([]string, 0, len(executor.commands))
+	for _, command := range executor.commands {
+		recordedCommands = append(recordedCommands, strings.Join(command.Arguments, " "))
+	}
+	require.Contains(t, recordedCommands, "diff --cached --check")
+	require.NotContains(t, recordedCommands, "commit --no-edit")
 }

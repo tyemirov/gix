@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/tyemirov/gix/internal/execshell"
-	"github.com/tyemirov/gix/internal/githubcli"
 	"github.com/tyemirov/gix/internal/repos/shared"
 	"github.com/tyemirov/gix/internal/workflow"
 )
@@ -38,6 +37,7 @@ type strictSyncStackPlan struct {
 type strictSyncStackPlanningOptions struct {
 	RemoteName       string
 	ChildBranch      string
+	BaseBranch       string
 	ResolutionSource string
 	Dirty            bool
 	StashChanges     bool
@@ -68,36 +68,40 @@ func planStrictSyncStack(ctx context.Context, environment *workflow.Environment,
 		if storedParentBranch == options.ChildBranch {
 			return nil, fmt.Errorf(strictSyncStackedReviewBaseCycleTemplate, options.ChildBranch)
 		}
-		if remoteExists || localExists {
-			repositoryIdentifier := strictSyncRepositoryIdentifier(repository)
-			if repositoryIdentifier != "" && environment.GitHubClient != nil {
-				openPullRequest, openPullRequestErr := openPullRequestForBranch(ctx, environment, repositoryIdentifier, options.ChildBranch)
-				if openPullRequestErr != nil {
-					return nil, openPullRequestErr
-				}
-				if openPullRequest != nil {
-					return nil, nil
-				}
-				mergedPullRequest, mergedPullRequestErr := pullRequestForBranchWithState(ctx, environment, repositoryIdentifier, "", options.ChildBranch, githubcli.PullRequestStateMerged)
-				if mergedPullRequestErr != nil {
-					return nil, mergedPullRequestErr
-				}
-				if mergedPullRequest != nil {
-					mergedBaseBranch, mergedBaseBranchErr := openPullRequestBaseBranch(*mergedPullRequest, options.ChildBranch)
-					if mergedBaseBranchErr != nil {
-						return nil, mergedBaseBranchErr
-					}
-					if mergedBaseBranch == options.ChildBranch {
-						return nil, fmt.Errorf(strictSyncStackedReviewBaseCycleTemplate, options.ChildBranch)
-					}
-					return &strictSyncStackPlan{
-						ChildBranch:            options.ChildBranch,
-						ParentBranch:           mergedBaseBranch,
-						ChildPullRequestMerged: true,
-					}, nil
-				}
+	}
+	inspectMergedStateBeforeCommit := options.Dirty && options.ChildBranch != options.BaseBranch
+	if (remoteExists || localExists) && (storedParentBranch != "" || inspectMergedStateBeforeCommit) {
+		repositoryIdentifier := strictSyncRepositoryIdentifier(repository)
+		if repositoryIdentifier != "" && environment.GitHubClient != nil {
+			openPullRequest, openPullRequestErr := openPullRequestForBranch(ctx, environment, repositoryIdentifier, options.ChildBranch)
+			if openPullRequestErr != nil {
+				return nil, openPullRequestErr
 			}
-		} else if !options.Dirty || options.StashChanges {
+			if openPullRequest != nil {
+				return nil, nil
+			}
+			mergedPullRequest, mergedPullRequestErr := mergedPullRequestForCurrentBranchTip(ctx, environment, repository, repositoryIdentifier, options.RemoteName, options.ChildBranch)
+			if mergedPullRequestErr != nil {
+				return nil, mergedPullRequestErr
+			}
+			if mergedPullRequest != nil {
+				mergedBaseBranch, mergedBaseBranchErr := openPullRequestBaseBranch(*mergedPullRequest, options.ChildBranch)
+				if mergedBaseBranchErr != nil {
+					return nil, mergedBaseBranchErr
+				}
+				if mergedBaseBranch == options.ChildBranch {
+					return nil, fmt.Errorf(strictSyncStackedReviewBaseCycleTemplate, options.ChildBranch)
+				}
+				return &strictSyncStackPlan{
+					ChildBranch:            options.ChildBranch,
+					ParentBranch:           mergedBaseBranch,
+					ChildPullRequestMerged: true,
+				}, nil
+			}
+		}
+	}
+	if storedParentBranch != "" {
+		if !remoteExists && !localExists && (!options.Dirty || options.StashChanges) {
 			return nil, fmt.Errorf(strictSyncStackedBranchNoChangesTemplate, options.ChildBranch, storedParentBranch)
 		}
 		return &strictSyncStackPlan{
@@ -205,7 +209,7 @@ func ensureStrictSyncStackParentChain(ctx context.Context, environment *workflow
 		return executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitPushSubcommandConstant, gitPushSetUpstreamFlagConstant, options.RemoteName, options.Plan.ParentBranch})
 	}
 
-	mergedPullRequest, mergedPullRequestErr := pullRequestForBranchWithState(ctx, environment, repositoryIdentifier, "", options.Plan.ParentBranch, githubcli.PullRequestStateMerged)
+	mergedPullRequest, mergedPullRequestErr := mergedPullRequestForCurrentBranchTip(ctx, environment, repository, repositoryIdentifier, options.RemoteName, options.Plan.ParentBranch)
 	if mergedPullRequestErr != nil {
 		return mergedPullRequestErr
 	}

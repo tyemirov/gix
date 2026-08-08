@@ -40,7 +40,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ -n "${url}" || "${verify}" == "false" ]] || { echo "error: --url is required unless --skip-verify is set" >&2; exit 1; }
-required_commands=(awk cp curl find gh git head mkdir mktemp python3 rm shasum sleep tar)
+required_commands=(awk cat cp curl find gh git head mkdir mktemp python3 rm shasum sleep tar)
 for command_name in "${required_commands[@]}"; do
   command -v "${command_name}" >/dev/null 2>&1 || { echo "error: ${command_name} is required" >&2; exit 1; }
 done
@@ -132,29 +132,161 @@ fi
 find "${checkout_directory}" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
 cp -R "${site_directory}"/. "${checkout_directory}/"
 git -C "${checkout_directory}" add -A
+pages_branch_changed="false"
 if ! git -C "${checkout_directory}" diff --cached --quiet; then
   git -C "${checkout_directory}" -c user.name="MPR Lab Pages Deployer" -c user.email="pages-deployer@mprlab.invalid" commit -m "Deploy Pages for ${version}" >/dev/null
   git -C "${checkout_directory}" push origin "HEAD:refs/heads/${branch}"
+  pages_branch_changed="true"
 else
   echo "Pages branch already contains ${version} from source ${source_commit}."
 fi
+pages_commit="$(git -C "${checkout_directory}" rev-parse HEAD)"
 
+pages_configuration_changed="false"
 if [[ "${configure}" == "true" ]]; then
-  if gh api repos/{owner}/{repo}/pages >/dev/null 2>&1; then
-    gh api --method PUT repos/{owner}/{repo}/pages -f build_type=legacy -f "source[branch]=${branch}" -f 'source[path]=/' -F https_enforced=true >/dev/null
+  pages_configuration_path="${temporary_directory}/pages-configuration.json"
+  pages_configuration_error_path="${temporary_directory}/pages-configuration-error.txt"
+  if gh api repos/{owner}/{repo}/pages >"${pages_configuration_path}" 2>"${pages_configuration_error_path}"; then
+    pages_configuration_state="$(python3 - "${pages_configuration_path}" "${branch}" <<'PY'
+import json
+import sys
+
+configuration_path, expected_branch = sys.argv[1:]
+try:
+    configuration = json.load(open(configuration_path, encoding="utf-8"))
+except (OSError, json.JSONDecodeError) as error:
+    raise SystemExit(f"GitHub Pages configuration response is invalid: {error}")
+
+source = configuration.get("source")
+matches = (
+    configuration.get("build_type") == "legacy"
+    and isinstance(source, dict)
+    and source.get("branch") == expected_branch
+    and source.get("path") == "/"
+    and configuration.get("https_enforced") is True
+)
+print("current" if matches else "update")
+PY
+)"
+    if [[ "${pages_configuration_state}" == "update" ]]; then
+      if ! gh api --method PUT repos/{owner}/{repo}/pages -f build_type=legacy -f "source[branch]=${branch}" -f 'source[path]=/' -F https_enforced=true >/dev/null; then
+        echo "error: failed to update GitHub Pages legacy source to ${branch}:/" >&2
+        exit 1
+      fi
+      pages_configuration_changed="true"
+      echo "Updated GitHub Pages legacy source to ${branch}:/."
+    fi
+  elif python3 - "${pages_configuration_error_path}" <<'PY'
+import pathlib
+import re
+import sys
+
+message = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+raise SystemExit(0 if re.search(r"\bHTTP 404\b", message) else 1)
+PY
+  then
+    if ! gh api --method POST repos/{owner}/{repo}/pages -f build_type=legacy -f "source[branch]=${branch}" -f 'source[path]=/' -F https_enforced=true >/dev/null; then
+      echo "error: failed to create GitHub Pages legacy source at ${branch}:/" >&2
+      exit 1
+    fi
+    pages_configuration_changed="true"
+    echo "Created GitHub Pages legacy source at ${branch}:/."
   else
-    gh api --method POST repos/{owner}/{repo}/pages -f build_type=legacy -f "source[branch]=${branch}" -f 'source[path]=/' -F https_enforced=true >/dev/null
+    cat "${pages_configuration_error_path}" >&2
+    echo "error: failed to inspect GitHub Pages configuration" >&2
+    exit 1
   fi
-  gh api --method POST repos/{owner}/{repo}/pages/builds >/dev/null
 fi
 
 if [[ "${verify}" == "true" ]]; then
   marker_url="${url%/}/.mprlab-release.json"
   attempts="${PAGES_VERIFY_ATTEMPTS:-12}"
   delay_seconds="${PAGES_VERIFY_DELAY_SECONDS:-5}"
+  [[ "${attempts}" =~ ^[1-9][0-9]*$ ]] || { echo "error: PAGES_VERIFY_ATTEMPTS must be a positive integer" >&2; exit 1; }
+  [[ "${delay_seconds}" =~ ^[0-9]+$ ]] || { echo "error: PAGES_VERIFY_DELAY_SECONDS must be a non-negative integer" >&2; exit 1; }
+
+  read_pages_build() {
+    local builds_path="${temporary_directory}/pages-builds.json"
+    local builds_error_path="${temporary_directory}/pages-builds-error.txt"
+    if ! gh api "repos/{owner}/{repo}/pages/builds?per_page=100" >"${builds_path}" 2>"${builds_error_path}"; then
+      cat "${builds_error_path}" >&2
+      echo "error: failed to inspect GitHub Pages builds for commit ${pages_commit}" >&2
+      return 1
+    fi
+    python3 - "${builds_path}" "${pages_commit}" <<'PY'
+import json
+import sys
+
+builds_path, expected_commit = sys.argv[1:]
+try:
+    builds = json.load(open(builds_path, encoding="utf-8"))
+except (OSError, json.JSONDecodeError) as error:
+    raise SystemExit(f"GitHub Pages build response is invalid for commit {expected_commit}: {error}")
+if not isinstance(builds, list):
+    raise SystemExit(f"GitHub Pages build response is not a list for commit {expected_commit}")
+
+matching = [build for build in builds if isinstance(build, dict) and build.get("commit") == expected_commit]
+priority = {
+    "built": 0,
+    "building": 1,
+    "queued": 2,
+    "errored": 3,
+}
+matching.sort(key=lambda build: priority.get(build.get("status"), 3))
+if not matching:
+    print("missing")
+    print("-")
+    print("-")
+    raise SystemExit(0)
+
+build = matching[0]
+status = build.get("status")
+if not isinstance(status, str) or not status:
+    raise SystemExit(f"GitHub Pages build has no status for commit {expected_commit}")
+url = build.get("url") if isinstance(build.get("url"), str) and build.get("url") else "-"
+error = build.get("error")
+message = error.get("message") if isinstance(error, dict) else None
+if not isinstance(message, str) or not message:
+    message = "-"
+print(status)
+print(url.replace("\n", " "))
+print(message.replace("\n", " "))
+PY
+  }
+
+  parse_pages_build() {
+    pages_build_status="${1%%$'\n'*}"
+    local remaining_values="${1#*$'\n'}"
+    pages_build_url="${remaining_values%%$'\n'*}"
+    pages_build_error="${remaining_values#*$'\n'}"
+  }
+
+  pages_build_values="$(read_pages_build)"
+  parse_pages_build "${pages_build_values}"
+  ignored_terminal_build_url="-"
+  if [[ "${pages_branch_changed}" == "true" || "${pages_configuration_changed}" == "true" ]]; then
+    if [[ "${pages_branch_changed}" == "false" && "${pages_build_status}" == "errored" ]]; then
+      ignored_terminal_build_url="${pages_build_url}"
+    fi
+  elif [[ "${pages_build_status}" == "missing" || "${pages_build_status}" == "errored" ]]; then
+    ignored_terminal_build_url="${pages_build_url}"
+    if ! gh api --method POST repos/{owner}/{repo}/pages/builds >/dev/null; then
+      echo "error: failed to request GitHub Pages rebuild for commit ${pages_commit}" >&2
+      exit 1
+    fi
+    echo "Requested one GitHub Pages rebuild for commit ${pages_commit}."
+  elif [[ "${pages_build_status}" == "queued" || "${pages_build_status}" == "building" ]]; then
+    echo "Reusing active GitHub Pages build for commit ${pages_commit}: ${pages_build_url}"
+  elif [[ "${pages_build_status}" != "built" ]]; then
+    echo "error: GitHub Pages returned unknown build status ${pages_build_status} for commit ${pages_commit}: ${pages_build_url}" >&2
+    exit 1
+  fi
+
+  marker=""
   for ((attempt = 1; attempt <= attempts; attempt += 1)); do
-    marker="$(curl --fail --silent --show-error "${marker_url}" 2>/dev/null || true)"
-    if python3 - "${version}" "${source_commit}" "${marker}" >/dev/null 2>&1 <<'PY'
+    if [[ "${pages_build_status}" == "built" ]]; then
+      marker="$(curl --fail --silent --show-error "${marker_url}" 2>/dev/null || true)"
+      if python3 - "${version}" "${source_commit}" "${marker}" >/dev/null 2>&1 <<'PY'
 import json
 import sys
 
@@ -166,13 +298,32 @@ if data.get("release_version") != sys.argv[1]:
 if data.get("source_commit") != sys.argv[2]:
     raise SystemExit(1)
 PY
-    then
-      echo "Verified ${url} at source ${source_commit}."
-      exit 0
+      then
+        echo "Verified ${url} at source ${source_commit}."
+        echo "GitHub Pages build ${pages_build_url} published commit ${pages_commit}."
+        exit 0
+      fi
+    elif [[ "${pages_build_status}" == "errored" && "${pages_build_url}" != "${ignored_terminal_build_url}" ]]; then
+      echo "error: GitHub Pages build failed for commit ${pages_commit}: status=${pages_build_status} error=${pages_build_error} url=${pages_build_url}" >&2
+      exit 1
+    elif [[ ! "${pages_build_status}" =~ ^(missing|queued|building|errored)$ ]]; then
+      echo "error: GitHub Pages returned unknown build status ${pages_build_status} for commit ${pages_commit}: ${pages_build_url}" >&2
+      exit 1
     fi
-    sleep "${delay_seconds}"
+
+    if (( attempt < attempts )); then
+      sleep "${delay_seconds}"
+      pages_build_values="$(read_pages_build)"
+      parse_pages_build "${pages_build_values}"
+    fi
   done
-  echo "error: Pages marker did not reach source ${source_commit}: ${marker_url}" >&2
+  if [[ "${pages_build_status}" == "built" ]]; then
+    echo "error: GitHub Pages build ${pages_build_url} reached commit ${pages_commit}, but the public marker did not reach source ${source_commit}: ${marker_url}" >&2
+  elif [[ "${pages_build_status}" == "errored" ]]; then
+    echo "error: GitHub Pages build failed for commit ${pages_commit}: status=${pages_build_status} error=${pages_build_error} url=${pages_build_url}" >&2
+  else
+    echo "error: GitHub Pages build for commit ${pages_commit} remained ${pages_build_status} after ${attempts} checks: ${pages_build_url}" >&2
+  fi
   exit 1
 fi
 

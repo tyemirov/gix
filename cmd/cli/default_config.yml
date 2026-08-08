@@ -10,9 +10,10 @@ github:
 llm:
   openai:
     priority: 2
-    model: gpt-4.1
+    model: gpt-5.6-terra
     base_url: "https://api.openai.com/v1"
     credential: "${OPENAI_API_KEY}"
+    effort: "high"
   llm_proxy:
     priority: 1
     provider: meta
@@ -20,7 +21,6 @@ llm:
     base_url: "https://llm-proxy-api.mprlab.com"
     credential: "${LLM_PROXY_SECRET_KEY}"
   max_completion_tokens: 1200
-  temperature: 0
   timeout_seconds: 60
 
 operations:
@@ -30,6 +30,7 @@ operations:
         - .
   - command: ["packages", "delete"]
     with:
+      # Retention is explicit at invocation time: gix packages delete --keep 3
       base_url: "https://api.github.com"
       credential: "${GITHUB_PACKAGES_TOKEN}"
       roots:
@@ -94,12 +95,10 @@ operations:
         - .
       diff_source: staged
       max_completion_tokens: 256
-      temperature: 0
       timeout_seconds: 60
   - command: ["message", "changelog"]
     with:
       roots:
         - .
       max_completion_tokens: 1200
-      temperature: 0
       timeout_seconds: 60

@@ -83,7 +83,7 @@ func TestMessageCommitUsesLLMConnectionPriorityAndFailover(testInstance *testing
 llm:
   openai:
     priority: %d
-    model: gpt-4.1
+    model: gpt-5.6-terra
     base_url: %q
     credential: openai-secret
   llm_proxy:
@@ -93,7 +93,7 @@ llm:
     base_url: %q
     credential: proxy-secret
   max_completion_tokens: 64
-  temperature: 0
+  effort: "high"
   timeout_seconds: 2
 operations:
   - command: ["message", "commit"]
@@ -125,4 +125,90 @@ operations:
 			capturedProxyProviderMutex.Unlock()
 		})
 	}
+}
+
+func TestMessageCommitReportsEveryFailedLLMConnectionWithContext(testInstance *testing.T) {
+	currentWorkingDirectory, workingDirectoryError := os.Getwd()
+	require.NoError(testInstance, workingDirectoryError)
+	repositoryRootDirectory := filepath.Dir(currentWorkingDirectory)
+	binaryPath := buildIntegrationBinary(testInstance, repositoryRootDirectory)
+
+	var openAIAttempts atomic.Int32
+	openAIServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/chat/completions" {
+			http.NotFound(responseWriter, request)
+			return
+		}
+		openAIAttempts.Add(1)
+		responseWriter.WriteHeader(http.StatusTooManyRequests)
+		_, _ = responseWriter.Write([]byte("openai unavailable"))
+	}))
+	testInstance.Cleanup(openAIServer.Close)
+
+	var llmProxyAttempts atomic.Int32
+	llmProxyServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/v2" {
+			http.NotFound(responseWriter, request)
+			return
+		}
+		llmProxyAttempts.Add(1)
+		responseWriter.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = responseWriter.Write([]byte("proxy unavailable"))
+	}))
+	testInstance.Cleanup(llmProxyServer.Close)
+
+	repositoryPath := createGitRepository(testInstance, gitRepositoryOptions{
+		DirectoryName: "priority-failure-fixture",
+		InitialBranch: "main",
+	})
+	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "README.md"), []byte("priority failure\n"), 0o644))
+	addCommand := exec.Command("git", "-C", repositoryPath, "add", "README.md")
+	addCommand.Env = buildGitCommandEnvironment(nil)
+	addOutput, addError := addCommand.CombinedOutput()
+	require.NoError(testInstance, addError, string(addOutput))
+
+	configurationPath := filepath.Join(testInstance.TempDir(), "config.yml")
+	configurationContent := fmt.Sprintf(`common:
+  log_level: error
+  log_format: console
+llm:
+  openai:
+    priority: 2
+    model: gpt-5.6-terra
+    base_url: %q
+    credential: openai-secret
+  llm_proxy:
+    priority: 1
+    provider: meta
+    model: muse-spark-1.1
+    base_url: %q
+    credential: proxy-secret
+  max_completion_tokens: 64
+  effort: "high"
+  timeout_seconds: 2
+operations:
+  - command: ["message", "commit"]
+    with:
+      roots:
+        - %q
+      diff_source: staged
+`, openAIServer.URL, llmProxyServer.URL, repositoryPath)
+	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
+
+	outputText, runError := runBinaryIntegrationCommand(
+		testInstance,
+		binaryPath,
+		repositoryPath,
+		map[string]string{},
+		10*time.Second,
+		[]string{"--config", configurationPath, "message", "commit"},
+	)
+
+	require.Error(testInstance, runError)
+	require.Equal(testInstance, int32(1), llmProxyAttempts.Load())
+	require.Positive(testInstance, openAIAttempts.Load())
+	require.Contains(testInstance, outputText, "all llm connections failed")
+	require.Contains(testInstance, outputText, `llm_proxy: send llm proxy request: llm_proxy_client_http_failure: status=503 body="proxy unavailable"`)
+	require.Contains(testInstance, outputText, "openai: llm chat failed after 3 attempts: llm http error 429: openai unavailable")
+	require.NotContains(testInstance, outputText, "(and 1 more failures)")
 }

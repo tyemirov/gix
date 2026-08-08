@@ -2,6 +2,7 @@ package syncflow
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"go.uber.org/zap"
@@ -18,11 +20,14 @@ import (
 	"github.com/tyemirov/gix/internal/execshell"
 	"github.com/tyemirov/gix/internal/githubcli"
 	"github.com/tyemirov/gix/internal/gitrepo"
+	"github.com/tyemirov/gix/internal/llmclient"
 	"github.com/tyemirov/gix/internal/repos/prompt"
 	"github.com/tyemirov/gix/internal/repos/shared"
 	"github.com/tyemirov/gix/internal/workflow"
 	"github.com/tyemirov/utils/llm"
 )
+
+const mergedFeatureFooPullRequestJSON = `[{"number":7,"title":"Merged","headRefName":"feature/foo","headRefOid":"` + strictSyncGitTestCommit + `","baseRefName":"master"}]`
 
 type recordingReporter struct {
 	events []shared.Event
@@ -118,25 +123,30 @@ type strictSyncGitExecutor struct {
 	diffOutput        string
 	revListOutput     string
 	revListOutputs    map[string]string
+	referenceCommits  map[string]string
 	missingReferences map[string]bool
 	commandErrors     map[string]error
 	mergeError        error
 	unmergedPaths     string
 	conflictStages    map[string]string
 	showOutputs       map[string]string
-	mergeFileOutput   string
-	mergeAttempted    bool
 	conflictsResolved bool
+	mergeAttempted    bool
 	configValues      map[string]string
 	blockedBranch     string
 	blockedWorktree   string
 	worktreeRemoved   bool
 	currentBranch     string
+	stashCommits      []string
+	pushOutput        string
+	commonDirectory   string
+	stagedPaths       []string
 }
 
 const (
 	strictSyncGitAbbrevRefFlag = "--abbrev-ref"
 	strictSyncGitHeadReference = "HEAD"
+	strictSyncGitTestCommit    = "0123456789abcdef0123456789abcdef01234567"
 )
 
 func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
@@ -183,28 +193,22 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 	case "ls-files":
 		if commandHasArgument(details.Arguments, gitLsFilesUnmergedFlagConstant) {
 			path := details.Arguments[len(details.Arguments)-1]
-			output := executor.conflictStages[path]
-			if commandHasArgument(details.Arguments, gitNullFlagConstant) {
-				output = strings.ReplaceAll(strings.TrimSuffix(output, "\n"), "\n", "\x00")
-				if output != "" {
-					output += "\x00"
-				}
-			}
-			return execshell.ExecutionResult{StandardOutput: output}, nil
+			return execshell.ExecutionResult{StandardOutput: executor.conflictStages[path]}, nil
+		}
+		if commandHasArgument(details.Arguments, gitLsFilesStageFlagConstant) {
+			return execshell.ExecutionResult{StandardOutput: strictSyncTestIndexOutput(executor.stagedPaths)}, nil
 		}
 	case "diff":
 		if commandHasArgument(details.Arguments, gitDiffNameOnlyFlagConstant) && commandHasArgument(details.Arguments, gitDiffFilterUnmergedFlagConstant) {
-			if executor.conflictsResolved {
+			if executor.conflictsResolved || !executor.mergeAttempted {
 				return execshell.ExecutionResult{}, nil
 			}
-			output := executor.unmergedPaths
-			if commandHasArgument(details.Arguments, gitNullFlagConstant) {
-				output = strings.ReplaceAll(strings.TrimSuffix(output, "\n"), "\n", "\x00")
-				if output != "" {
-					output += "\x00"
-				}
-			}
-			return execshell.ExecutionResult{StandardOutput: output}, nil
+			return execshell.ExecutionResult{StandardOutput: executor.unmergedPaths}, nil
+		}
+		if commandHasArgument(details.Arguments, gitDiffCachedFlagConstant) &&
+			commandHasArgument(details.Arguments, gitDiffNameOnlyFlagConstant) &&
+			commandHasArgument(details.Arguments, gitNullOutputFlagConstant) {
+			return execshell.ExecutionResult{StandardOutput: strictSyncTestStagedPathOutput(details.Arguments, executor.stagedPaths)}, nil
 		}
 		if commandHasArgument(details.Arguments, "--stat") {
 			output := executor.diffStatOutput
@@ -219,6 +223,12 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 		}
 		return execshell.ExecutionResult{StandardOutput: output}, nil
 	case "rev-parse":
+		if len(details.Arguments) > 1 && details.Arguments[1] == gitCommonDirectoryFlagConstant {
+			if executor.commonDirectory == "" {
+				executor.commonDirectory = filepath.Join(details.WorkingDirectory, ".git")
+			}
+			return execshell.ExecutionResult{StandardOutput: executor.commonDirectory + "\n"}, nil
+		}
 		if len(details.Arguments) > 2 && details.Arguments[1] == strictSyncGitAbbrevRefFlag && details.Arguments[2] == strictSyncGitHeadReference {
 			currentBranch := executor.currentBranch
 			if currentBranch == "" {
@@ -226,11 +236,28 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 			}
 			return execshell.ExecutionResult{StandardOutput: currentBranch + "\n"}, nil
 		}
-		if len(details.Arguments) > 2 && details.Arguments[1] == "--verify" && executor.missingReferences[details.Arguments[2]] {
-			return execshell.ExecutionResult{}, commandFailedError("fatal: Needed a single revision")
+		if len(details.Arguments) > 2 && details.Arguments[1] == gitPathFlagConstant {
+			return execshell.ExecutionResult{StandardOutput: filepath.Join(details.WorkingDirectory, ".git", details.Arguments[2]) + "\n"}, nil
 		}
-		if strings.Join(details.Arguments, " ") == "rev-parse --verify origin/feature/foo" {
-			return execshell.ExecutionResult{}, nil
+		if strings.Join(details.Arguments, " ") == "rev-parse --verify refs/stash" {
+			if len(executor.stashCommits) == 0 {
+				return execshell.ExecutionResult{}, commandFailedErrorWithExitCode("", 1)
+			}
+			return execshell.ExecutionResult{StandardOutput: executor.stashCommits[0] + "\n"}, nil
+		}
+		if strings.Join(details.Arguments, " ") == "rev-parse --verify HEAD" {
+			return execshell.ExecutionResult{StandardOutput: strictSyncGitTestCommit + "\n"}, nil
+		}
+		if len(details.Arguments) > 2 && details.Arguments[1] == "--verify" {
+			reference := details.Arguments[2]
+			if executor.missingReferences[reference] {
+				return execshell.ExecutionResult{}, commandFailedError("fatal: Needed a single revision")
+			}
+			commitID := executor.referenceCommits[reference]
+			if commitID == "" {
+				commitID = strictSyncGitTestCommit
+			}
+			return execshell.ExecutionResult{StandardOutput: commitID + "\n"}, nil
 		}
 	case "rev-list":
 		output := executor.revListOutputs[strings.Join(details.Arguments, " ")]
@@ -241,6 +268,18 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 			output = "0\n"
 		}
 		return execshell.ExecutionResult{StandardOutput: output}, nil
+	case "for-each-ref":
+		currentBranch := executor.currentBranch
+		if currentBranch == "" {
+			currentBranch = defaultSyncBaseBranch
+		}
+		return execshell.ExecutionResult{StandardOutput: fmt.Sprintf("refs/heads/%s %s\n", currentBranch, strictSyncGitTestCommit)}, nil
+	case "push":
+		output := executor.pushOutput
+		if output == "" {
+			output = " \trefs/heads/feature/foo:refs/heads/feature/foo\t0000000..1111111\n"
+		}
+		return execshell.ExecutionResult{StandardOutput: output}, nil
 	case "merge":
 		executor.mergeAttempted = true
 		if executor.mergeError != nil {
@@ -248,21 +287,15 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 		}
 	case "show":
 		return execshell.ExecutionResult{StandardOutput: executor.showOutputs[strings.Join(details.Arguments[1:], " ")]}, nil
-	case "merge-file":
-		return execshell.ExecutionResult{}, execshell.CommandFailedError{
-			Command: execshell.ShellCommand{
-				Name:    execshell.CommandGit,
-				Details: details,
-			},
-			Result: execshell.ExecutionResult{
-				ExitCode:       1,
-				StandardOutput: executor.mergeFileOutput,
-			},
-		}
 	case "add":
-		if executor.mergeAttempted && commandHasArgument(details.Arguments, gitPathspecSeparatorConstant) {
+		executor.stagedPaths = strictSyncTestAddedPaths(details.Arguments, executor.statusOutput)
+		if len(details.Arguments) > 2 && details.Arguments[1] == gitPathspecSeparatorConstant {
 			executor.conflictsResolved = true
 		}
+	case "commit":
+		executor.stagedPaths = nil
+	case "reset":
+		executor.stagedPaths = nil
 	case "rm":
 		if commandHasArgument(details.Arguments, gitPathspecSeparatorConstant) {
 			executor.conflictsResolved = true
@@ -277,13 +310,94 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 		}
 	case "worktree":
 		if len(details.Arguments) > 2 && details.Arguments[1] == gitWorktreeListSubcommandConstant {
-			return execshell.ExecutionResult{StandardOutput: fmt.Sprintf("worktree /tmp/project\nbranch refs/heads/master\n\nworktree %s\nbranch refs/heads/%s\n", executor.blockedWorktree, executor.blockedBranch)}, nil
+			currentBranch := executor.currentBranch
+			if currentBranch == "" {
+				currentBranch = defaultSyncBaseBranch
+			}
+			output := fmt.Sprintf("worktree %s\nHEAD %s\nbranch refs/heads/%s\n", details.WorkingDirectory, strictSyncGitTestCommit, currentBranch)
+			if executor.blockedWorktree != "" {
+				output += fmt.Sprintf("\nworktree %s\nHEAD %s\nbranch refs/heads/%s\n", executor.blockedWorktree, strictSyncGitTestCommit, executor.blockedBranch)
+			}
+			return execshell.ExecutionResult{StandardOutput: output}, nil
 		}
 		if len(details.Arguments) > 2 && details.Arguments[1] == gitWorktreeRemoveSubcommandConstant {
 			executor.worktreeRemoved = true
 		}
+	case "stash":
+		if len(details.Arguments) > 1 && details.Arguments[1] == gitStashPushSubcommandConstant {
+			stashCommit := fmt.Sprintf("%040x", len(executor.stashCommits)+1)
+			executor.stashCommits = append([]string{stashCommit}, executor.stashCommits...)
+			return execshell.ExecutionResult{}, nil
+		}
+		if len(details.Arguments) > 1 && details.Arguments[1] == gitStashListSubcommandConstant {
+			return execshell.ExecutionResult{StandardOutput: strings.Join(executor.stashCommits, "\n") + "\n"}, nil
+		}
+		if len(details.Arguments) > 2 && details.Arguments[1] == gitStashDropSubcommandConstant {
+			var stashIndex int
+			if _, scanErr := fmt.Sscanf(details.Arguments[2], "stash@{%d}", &stashIndex); scanErr == nil && stashIndex >= 0 && stashIndex < len(executor.stashCommits) {
+				executor.stashCommits = append(executor.stashCommits[:stashIndex], executor.stashCommits[stashIndex+1:]...)
+			}
+			return execshell.ExecutionResult{}, nil
+		}
 	}
 	return execshell.ExecutionResult{}, nil
+}
+
+func strictSyncTestAddedPaths(arguments []string, statusOutput string) []string {
+	for argumentIndex := range arguments {
+		if arguments[argumentIndex] != gitPathspecSeparatorConstant {
+			continue
+		}
+		return append([]string(nil), arguments[argumentIndex+1:]...)
+	}
+	paths := make([]string, 0)
+	for _, statusEntry := range strings.Split(strings.TrimSpace(statusOutput), "\n") {
+		paths = append(paths, syncStatusEntryPaths(statusEntry)...)
+	}
+	return paths
+}
+
+func strictSyncTestStagedPathOutput(arguments []string, stagedPaths []string) string {
+	pathspecs := []string(nil)
+	for argumentIndex := range arguments {
+		if arguments[argumentIndex] != gitPathspecSeparatorConstant {
+			continue
+		}
+		pathspecs = arguments[argumentIndex+1:]
+		break
+	}
+	selectedPaths := make([]string, 0, len(stagedPaths))
+	for pathIndex := range stagedPaths {
+		if len(pathspecs) == 0 || strictSyncTestPathMatchesAnyPathspec(stagedPaths[pathIndex], pathspecs) {
+			selectedPaths = append(selectedPaths, stagedPaths[pathIndex])
+		}
+	}
+	if len(selectedPaths) == 0 {
+		return ""
+	}
+	return strings.Join(selectedPaths, "\x00") + "\x00"
+}
+
+func strictSyncTestPathMatchesAnyPathspec(path string, pathspecs []string) bool {
+	normalizedPath := strings.TrimSuffix(filepath.ToSlash(path), "/")
+	for pathspecIndex := range pathspecs {
+		normalizedPathspec := strings.TrimSuffix(filepath.ToSlash(pathspecs[pathspecIndex]), "/")
+		if normalizedPath == normalizedPathspec || strings.HasPrefix(normalizedPath, normalizedPathspec+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+func strictSyncTestIndexOutput(stagedPaths []string) string {
+	if len(stagedPaths) == 0 {
+		return ""
+	}
+	records := make([]string, 0, len(stagedPaths))
+	for pathIndex := range stagedPaths {
+		records = append(records, fmt.Sprintf("100644 %s 0\t%s", strictSyncGitTestCommit, stagedPaths[pathIndex]))
+	}
+	return strings.Join(records, "\x00") + "\x00"
 }
 
 func testStatusCommandOutput(arguments []string, output string) string {
@@ -296,6 +410,13 @@ func testStatusCommandOutput(arguments []string, output string) string {
 
 func (executor *strictSyncGitExecutor) ExecuteGitHubCLI(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
 	return execshell.ExecutionResult{}, nil
+}
+
+func (executor *strictSyncGitExecutor) commitStrictSyncDirtyCluster(ctx context.Context, repositoryPath string, clusterRoot string, message string, expected strictSyncDirtyClusterCheckpoint) error {
+	if ownershipErr := validateStrictSyncDirtyClusterCheckpoint(ctx, executor, repositoryPath, clusterRoot, expected); ownershipErr != nil {
+		return ownershipErr
+	}
+	return executeGit(ctx, executor, repositoryPath, []string{gitCommitSubcommandConstant, gitCommitMessageFlagConstant, message})
 }
 
 type strictSyncGitHubExecutor struct {
@@ -854,7 +975,7 @@ func TestHandleBranchSyncActionStrictPRBranchAdoptsDirtySiblingWorktree(t *testi
 	require.Contains(t, recordedCommands, "status --porcelain --branch")
 	require.Contains(t, recordedCommands, "add --all")
 	require.Contains(t, recordedCommands, "commit -m fix: adopt sibling worktree")
-	require.Contains(t, recordedCommands, "push --set-upstream origin feature/foo")
+	require.NotContains(t, recordedCommands, "push --set-upstream origin feature/foo")
 	worktreeRemoveCommand := "worktree remove " + blockedWorktree
 	require.Contains(t, recordedCommands, worktreeRemoveCommand)
 	require.Contains(t, recordedCommands, "worktree prune")
@@ -954,7 +1075,7 @@ func TestHandleBranchSyncActionStrictPRBranchPromptsToSyncMasterWhenPullRequestM
 	require.NoError(t, managerError)
 	githubExecutor := &strictSyncGitHubExecutor{outputs: []string{
 		`[]`,
-		`[{"number":7,"title":"Merged","headRefName":"feature/foo"}]`,
+		mergedFeatureFooPullRequestJSON,
 	}}
 	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
 	require.NoError(t, githubClientError)
@@ -1007,7 +1128,7 @@ func TestHandleBranchSyncActionStrictPRBranchPromptsToSyncMasterWhenMergedPullRe
 	}
 	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
 	require.NoError(t, managerError)
-	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":7,"title":"Merged","headRefName":"feature/foo"}]`}
+	githubExecutor := &strictSyncGitHubExecutor{output: mergedFeatureFooPullRequestJSON}
 	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
 	require.NoError(t, githubClientError)
 	output := &strings.Builder{}
@@ -1056,7 +1177,7 @@ func TestHandleBranchSyncActionStrictPRBranchKeepsMissingPullRequestErrorWhenMer
 	require.NoError(t, managerError)
 	githubExecutor := &strictSyncGitHubExecutor{outputs: []string{
 		`[]`,
-		`[{"number":7,"title":"Merged","headRefName":"feature/foo"}]`,
+		mergedFeatureFooPullRequestJSON,
 	}}
 	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
 	require.NoError(t, githubClientError)
@@ -1102,7 +1223,7 @@ func TestHandleBranchSyncActionStrictPRBranchAssumeYesSyncsMasterForMergedPullRe
 	require.NoError(t, managerError)
 	githubExecutor := &strictSyncGitHubExecutor{outputs: []string{
 		`[]`,
-		`[{"number":7,"title":"Merged","headRefName":"feature/foo"}]`,
+		mergedFeatureFooPullRequestJSON,
 	}}
 	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
 	require.NoError(t, githubClientError)
@@ -1133,6 +1254,210 @@ func TestHandleBranchSyncActionStrictPRBranchAssumeYesSyncsMasterForMergedPullRe
 
 	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "reset --hard origin/master")
+}
+
+func TestResolveMergedPullRequestBaseTargetPrefersActiveOpenPullRequest(t *testing.T) {
+	gitExecutor := &strictSyncGitExecutor{}
+	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":8,"title":"Active parent","headRefName":"feature/parent","baseRefName":"master"}]`}
+	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
+	require.NoError(t, githubClientError)
+	environment := &workflow.Environment{
+		GitExecutor:  gitExecutor,
+		GitHubClient: githubClient,
+	}
+	repository := &workflow.RepositoryState{Path: "/tmp/project"}
+
+	targetBranch, targetErr := resolveMergedPullRequestBaseTarget(
+		context.Background(),
+		environment,
+		repository,
+		"owner/project",
+		shared.OriginRemoteNameConstant,
+		"feature/parent",
+		defaultSyncBaseBranch,
+		map[string]struct{}{"feature/child": {}},
+	)
+
+	require.NoError(t, targetErr)
+	require.Equal(t, "feature/parent", targetBranch)
+	require.Len(t, githubExecutor.commands, 1)
+	require.Equal(t, string(githubcli.PullRequestStateOpen), githubCommandOption(githubExecutor.commands[0].Arguments, "--state"))
+}
+
+func TestResolveMergedPullRequestBaseTargetRejectsMergedReviewCycle(t *testing.T) {
+	gitExecutor := &strictSyncGitExecutor{}
+	githubExecutor := &strictSyncGitHubExecutor{outputs: []string{
+		`[]`,
+		`[{"number":8,"title":"Cyclic parent","headRefName":"feature/parent","headRefOid":"` + strictSyncGitTestCommit + `","baseRefName":"feature/child"}]`,
+	}}
+	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
+	require.NoError(t, githubClientError)
+	environment := &workflow.Environment{
+		GitExecutor:  gitExecutor,
+		GitHubClient: githubClient,
+	}
+	repository := &workflow.RepositoryState{Path: "/tmp/project"}
+
+	_, targetErr := resolveMergedPullRequestBaseTarget(
+		context.Background(),
+		environment,
+		repository,
+		"owner/project",
+		shared.OriginRemoteNameConstant,
+		"feature/parent",
+		defaultSyncBaseBranch,
+		map[string]struct{}{"feature/child": {}},
+	)
+
+	require.EqualError(t, targetErr, `cannot resolve stacked pull-request chain: review base cycle at branch "feature/child"`)
+	require.Len(t, githubExecutor.commands, 2)
+}
+
+func TestResolveMergedPullRequestBaseTargetStopsAtAdvancedMergedParent(t *testing.T) {
+	const currentParentCommit = "1111111111111111111111111111111111111111"
+	const historicalParentCommit = "2222222222222222222222222222222222222222"
+	gitExecutor := &strictSyncGitExecutor{referenceCommits: map[string]string{
+		"origin/feature/parent":     currentParentCommit,
+		"refs/heads/feature/parent": currentParentCommit,
+	}}
+	githubExecutor := &strictSyncGitHubExecutor{outputs: []string{
+		`[]`,
+		`[{"number":8,"title":"Historical parent","headRefName":"feature/parent","headRefOid":"` + historicalParentCommit + `","baseRefName":"master"}]`,
+	}}
+	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
+	require.NoError(t, githubClientError)
+	environment := &workflow.Environment{
+		GitExecutor:  gitExecutor,
+		GitHubClient: githubClient,
+	}
+	repository := &workflow.RepositoryState{Path: "/tmp/project"}
+
+	targetBranch, targetErr := resolveMergedPullRequestBaseTarget(
+		context.Background(),
+		environment,
+		repository,
+		"owner/project",
+		shared.OriginRemoteNameConstant,
+		"feature/parent",
+		defaultSyncBaseBranch,
+		map[string]struct{}{"feature/child": {}},
+	)
+
+	require.NoError(t, targetErr)
+	require.Equal(t, "feature/parent", targetBranch)
+	require.Len(t, githubExecutor.commands, 2)
+}
+
+func TestMergedPullRequestForCurrentBranchTipSelectsMatchingHistoricalRecord(t *testing.T) {
+	const currentCommit = "1111111111111111111111111111111111111111"
+	const staleCommit = "2222222222222222222222222222222222222222"
+	gitExecutor := &strictSyncGitExecutor{referenceCommits: map[string]string{
+		"origin/feature/reused":     currentCommit,
+		"refs/heads/feature/reused": currentCommit,
+	}}
+	githubExecutor := &strictSyncGitHubExecutor{output: `[
+		{"number":7,"title":"Stale review","headRefName":"feature/reused","headRefOid":"` + staleCommit + `","baseRefName":"feature/parent"},
+		{"number":9,"title":"Current review","headRefName":"feature/reused","headRefOid":"` + currentCommit + `","baseRefName":"master"}
+	]`}
+	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
+	require.NoError(t, githubClientError)
+	environment := &workflow.Environment{
+		GitExecutor:  gitExecutor,
+		GitHubClient: githubClient,
+	}
+	repository := &workflow.RepositoryState{Path: "/tmp/project"}
+
+	pullRequest, pullRequestErr := mergedPullRequestForCurrentBranchTip(
+		context.Background(),
+		environment,
+		repository,
+		"owner/project",
+		shared.OriginRemoteNameConstant,
+		"feature/reused",
+	)
+
+	require.NoError(t, pullRequestErr)
+	require.NotNil(t, pullRequest)
+	require.Equal(t, 9, pullRequest.Number)
+}
+
+func TestCurrentStrictSyncBranchTip(t *testing.T) {
+	const remoteCommit = "1111111111111111111111111111111111111111"
+	const localCommit = "2222222222222222222222222222222222222222"
+	testCases := []struct {
+		name              string
+		referenceCommits  map[string]string
+		missingReferences map[string]bool
+		localAheadCount   string
+		expected          strictSyncBranchTip
+	}{
+		{
+			name: "matching local and remote",
+			referenceCommits: map[string]string{
+				"origin/feature/review":     remoteCommit,
+				"refs/heads/feature/review": remoteCommit,
+			},
+			expected: strictSyncBranchTip{CommitID: remoteCommit, Exists: true},
+		},
+		{
+			name: "local commits beyond remote",
+			referenceCommits: map[string]string{
+				"origin/feature/review":     remoteCommit,
+				"refs/heads/feature/review": localCommit,
+			},
+			localAheadCount: "1\n",
+			expected: strictSyncBranchTip{
+				CommitID:            remoteCommit,
+				Exists:              true,
+				HasLocalOnlyCommits: true,
+			},
+		},
+		{
+			name: "only remote survives",
+			referenceCommits: map[string]string{
+				"origin/feature/review": remoteCommit,
+			},
+			missingReferences: map[string]bool{"refs/heads/feature/review": true},
+			expected:          strictSyncBranchTip{CommitID: remoteCommit, Exists: true},
+		},
+		{
+			name: "only local survives",
+			referenceCommits: map[string]string{
+				"refs/heads/feature/review": localCommit,
+			},
+			missingReferences: map[string]bool{"origin/feature/review": true},
+			expected:          strictSyncBranchTip{CommitID: localCommit, Exists: true},
+		},
+		{
+			name: "no branch ref survives",
+			missingReferences: map[string]bool{
+				"origin/feature/review":     true,
+				"refs/heads/feature/review": true,
+			},
+			expected: strictSyncBranchTip{},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			gitExecutor := &strictSyncGitExecutor{
+				referenceCommits:  testCase.referenceCommits,
+				missingReferences: testCase.missingReferences,
+				revListOutput:     testCase.localAheadCount,
+			}
+
+			branchTip, branchTipErr := currentStrictSyncBranchTip(
+				context.Background(),
+				gitExecutor,
+				"/tmp/project",
+				shared.OriginRemoteNameConstant,
+				"feature/review",
+			)
+
+			require.NoError(t, branchTipErr)
+			require.Equal(t, testCase.expected, branchTip)
+		})
+	}
 }
 
 func TestHandleBranchSyncActionStrictPRBranchCommitFlagUsesDirtySyncCommitWithRequireClean(t *testing.T) {
@@ -1452,7 +1777,7 @@ func TestHandleBranchSyncActionStrictPRBranchCreatesGeneratedBranchFromCurrentDi
 	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	require.NotEqual(t, -1, recordedGitCommandIndex(gitExecutor.commands, "switch -c "+generatedBranchName))
 	require.Equal(t, -1, recordedGitCommandIndex(gitExecutor.commands, "switch -c "+generatedBranchName+" origin/master"))
-	require.NotContains(t, recordedGitCommands(gitExecutor.commands), "stash push --include-untracked")
+	require.NotContains(t, recordedGitCommands(gitExecutor.commands), strictSyncInvocationStashMessage)
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "add --force --all -- README.md")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "commit -m docs: update readme")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "merge --no-edit origin/master")
@@ -1472,27 +1797,28 @@ func TestHandleBranchSyncActionStrictPRBranchCreatesGeneratedBranchFromCurrentDi
 func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedCurrentDirtyMasterMergeConflict(t *testing.T) {
 	generatedBranchName := "gix/support-agentic-model-and-reasoning-effort-settings"
 	pullRequestBody := "## Summary\n- Preserves local settings work and remote issue numbering."
-	resolvedContent := "stable preface\n# ISSUES\n\n- [x] [I010] Configure agentic model and effort from settings.\n- [x] [I003] Add clear search field.\nstable epilogue\n"
-	baseConflictContent := "# ISSUES\n\n- [x] [I002] Collapse execution card details.\n"
-	targetConflictContent := "# ISSUES\n\n- [x] [I010] Configure agentic model and effort from settings.\n"
-	incomingConflictContent := "# ISSUES\n\n- [x] [I003] Add clear search field.\n"
-	hunkID := mergeConflictHunkID("README.md", 0, baseConflictContent, targetConflictContent, incomingConflictContent)
-	structuredResolution := fmt.Sprintf(
-		`{"hunk_id":%q,"content":%q}`,
-		hunkID,
-		targetConflictContent+"- [x] [I003] Add clear search field.\n",
-	)
-	mergeFileOutput := "stable preface\n" +
-		mergeConflictPlanMarker("<", mergeConflictPlanTargetLabel) + "\n" +
-		targetConflictContent +
-		mergeConflictPlanMarker("|", mergeConflictPlanBaseLabel) + "\n" +
-		baseConflictContent +
-		strings.Repeat("=", mergeConflictPlanMarkerSize) + "\n" +
-		incomingConflictContent +
-		mergeConflictPlanMarker(">", mergeConflictPlanIncomingLabel) + "\n" +
-		"stable epilogue\n"
+	baseRegion := "# ISSUES\n\n- [x] [I002] Collapse execution card details.\n"
+	oursRegion := "# ISSUES\n\n- [x] [I010] Configure agentic model and effort from settings.\n"
+	theirsRegion := "# ISSUES\n\n- [x] [I003] Add clear search field.\n"
+	resolvedRegion := oursRegion + "- [x] [I003] Add clear search field.\n"
+	resolvedContent := "stable preface\n" + resolvedRegion + "stable epilogue\n"
 	repositoryPath := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(repositoryPath, "README.md"), []byte("stable preface\n<<<<<<< HEAD\nlocal\n=======\nremote\n>>>>>>> origin/master\nstable epilogue\n"), 0o644))
+	require.NoError(
+		t,
+		os.WriteFile(
+			filepath.Join(repositoryPath, "README.md"),
+			[]byte(
+				"stable preface\n<<<<<<< HEAD\n"+
+					oursRegion+
+					"||||||| parent of HEAD\n"+
+					baseRegion+
+					"=======\n"+
+					theirsRegion+
+					">>>>>>> origin/master\nstable epilogue\n",
+			),
+			0o644,
+		),
+	)
 	gitExecutor := &strictSyncGitExecutor{
 		statusOutput:  " M README.md\n",
 		revListOutput: "1\n",
@@ -1502,11 +1828,10 @@ func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedCurrentDirtyMaster
 			"README.md": "100644 aaaaaaa 1\tREADME.md\n100644 bbbbbbb 2\tREADME.md\n100644 ccccccc 3\tREADME.md\n",
 		},
 		showOutputs: map[string]string{
-			":1:README.md": "stable preface\n" + baseConflictContent + "stable epilogue\n",
-			":2:README.md": "stable preface\n" + targetConflictContent + "stable epilogue\n",
-			":3:README.md": "stable preface\n" + incomingConflictContent + "stable epilogue\n",
+			":1:README.md": baseRegion,
+			":2:README.md": oursRegion,
+			":3:README.md": theirsRegion,
 		},
-		mergeFileOutput: mergeFileOutput,
 		missingReferences: map[string]bool{
 			"origin/" + generatedBranchName:     true,
 			"refs/heads/" + generatedBranchName: true,
@@ -1517,7 +1842,16 @@ func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedCurrentDirtyMaster
 	githubExecutor := &strictSyncGitHubExecutor{}
 	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
 	require.NoError(t, githubClientError)
-	chatClient := &strictSyncChatClient{responses: []string{"fix: support agentic model and reasoning effort settings", "docs: update issue notes", structuredResolution, pullRequestBody}}
+	resolvedRegionResponse := mergeConflictResolutionContentBegin + "\n" +
+		resolvedRegion +
+		"\n" + mergeConflictResolutionContentEnd
+	chatClient := &strictSyncChatClient{responses: []string{
+		"fix: support agentic model and reasoning effort settings",
+		"docs: update issue notes",
+		resolvedRegionResponse,
+		mergeConflictResolutionReviewApproved,
+		pullRequestBody,
+	}}
 	environment := &workflow.Environment{
 		GitExecutor:       gitExecutor,
 		RepositoryManager: gitManager,
@@ -1547,25 +1881,30 @@ func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedCurrentDirtyMaster
 	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	recordedCommands := recordedGitCommands(gitExecutor.commands)
 	require.Contains(t, recordedCommands, "merge --no-edit origin/master")
-	require.Contains(t, recordedCommands, "diff --name-only -z --diff-filter=U")
-	require.Contains(t, recordedCommands, "ls-files -u -z -- README.md")
+	require.Contains(t, recordedCommands, "diff --name-only --diff-filter=U")
+	require.Contains(t, recordedCommands, "ls-files -u -- README.md")
 	require.Contains(t, recordedCommands, "show :1:README.md")
 	require.Contains(t, recordedCommands, "show :2:README.md")
 	require.Contains(t, recordedCommands, "show :3:README.md")
-	require.Contains(t, recordedCommands, "add --all -- README.md")
+	require.Contains(t, recordedCommands, "checkout --conflict=diff3 -- README.md")
+	require.Contains(t, recordedCommands, "add -- README.md")
 	require.Contains(t, recordedCommands, "commit --no-edit")
 	require.Contains(t, recordedCommands, "push -u origin "+generatedBranchName)
-	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, "merge --no-edit origin/master"), recordedGitCommandIndex(gitExecutor.commands, "add --all -- README.md"))
-	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, "add --all -- README.md"), recordedGitCommandIndex(gitExecutor.commands, "commit --no-edit"))
+	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, "merge --no-edit origin/master"), recordedGitCommandIndex(gitExecutor.commands, "add -- README.md"))
+	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, "add -- README.md"), recordedGitCommandIndex(gitExecutor.commands, "commit --no-edit"))
 	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, "commit --no-edit"), recordedGitCommandIndex(gitExecutor.commands, "push -u origin "+generatedBranchName))
 	resolvedBytes, resolvedReadErr := os.ReadFile(filepath.Join(repositoryPath, "README.md"))
 	require.NoError(t, resolvedReadErr)
 	require.Equal(t, resolvedContent, string(resolvedBytes))
-	require.Len(t, chatClient.requests, 4)
-	require.Contains(t, chatClient.requests[2].Messages[1].Content, "Hunk ID: "+hunkID)
+	require.Len(t, chatClient.requests, 5)
+	require.Contains(t, chatClient.requests[2].Messages[1].Content, "OURS current branch region that must be preserved")
 	require.Contains(t, chatClient.requests[2].Messages[1].Content, "Configure agentic model")
-	require.Contains(t, chatClient.requests[2].Messages[1].Content, "INCOMING:")
+	require.Contains(t, chatClient.requests[2].Messages[1].Content, "THEIRS incoming branch region to integrate")
 	require.Contains(t, chatClient.requests[2].Messages[1].Content, "Add clear search field")
+	require.NotContains(t, chatClient.requests[2].Messages[1].Content, "stable preface")
+	require.NotContains(t, chatClient.requests[2].Messages[1].Content, "stable epilogue")
+	require.Contains(t, chatClient.requests[3].Messages[0].Content, "semantic fidelity auditor")
+	require.Contains(t, chatClient.requests[3].Messages[1].Content, resolvedRegion)
 	require.Len(t, githubExecutor.commands, 1)
 	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", generatedBranchName, "--title", generatedBranchName, "--body", pullRequestBody}, githubExecutor.commands[0].Arguments)
 }
@@ -1628,17 +1967,19 @@ func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedCurrentDirtyMaster
 	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	recordedCommands := recordedGitCommands(gitExecutor.commands)
 	require.Contains(t, recordedCommands, "merge --no-edit origin/master")
-	require.Contains(t, recordedCommands, "ls-files -u -z -- README.md")
+	require.Contains(t, recordedCommands, "ls-files -u -- README.md")
 	require.Contains(t, recordedCommands, "show :1:README.md")
 	require.NotContains(t, recordedCommands, "show :2:README.md")
 	require.Contains(t, recordedCommands, "show :3:README.md")
-	require.Contains(t, recordedCommands, "add --all -- README.md")
+	require.Contains(t, recordedCommands, "rm -f -- README.md")
+	require.NotContains(t, recordedCommands, "add -- README.md")
 	require.Contains(t, recordedCommands, "commit --no-edit")
 	require.Contains(t, recordedCommands, "push -u origin "+generatedBranchName)
-	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, "add --all -- README.md"), recordedGitCommandIndex(gitExecutor.commands, "commit --no-edit"))
+	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, "rm -f -- README.md"), recordedGitCommandIndex(gitExecutor.commands, "commit --no-edit"))
 	_, readErr := os.Stat(readmePath)
 	require.True(t, os.IsNotExist(readErr))
 	require.Len(t, chatClient.requests, 3)
+	require.Contains(t, chatClient.requests[2].Messages[1].Content, "Comparison range: origin/master..."+generatedBranchName)
 	require.Len(t, githubExecutor.commands, 1)
 	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", generatedBranchName, "--title", generatedBranchName, "--body", pullRequestBody}, githubExecutor.commands[0].Arguments)
 }
@@ -1799,7 +2140,8 @@ func TestHandleBranchSyncActionStrictPRBranchCommitsDirtyWorkToExplicitMaster(t 
 	recordedCommands := recordedGitCommands(gitExecutor.commands)
 	require.Contains(t, recordedCommands, "stash push --include-untracked")
 	require.Contains(t, recordedCommands, "switch master")
-	require.Contains(t, recordedCommands, "stash pop")
+	require.Contains(t, recordedCommands, "stash apply --index")
+	require.Contains(t, recordedCommands, "stash drop")
 	require.Contains(t, recordedCommands, "commit -m docs: preserve dirty work on explicit master")
 	require.Contains(t, recordedCommands, "merge --no-edit origin/master")
 	require.Contains(t, recordedCommands, "push origin master")
@@ -1924,14 +2266,14 @@ func TestHandleBranchSyncActionStrictPRBranchStopsBeforePushOnMergeConflict(t *t
 func recordedGitCommands(commands []execshell.CommandDetails) string {
 	lines := make([]string, 0, len(commands))
 	for _, command := range commands {
-		lines = append(lines, strings.Join(command.Arguments, " "))
+		lines = append(lines, strings.Join(normalizedRecordedGitArguments(command.Arguments), " "))
 	}
 	return strings.Join(lines, "\n")
 }
 
 func recordedGitCommandIndex(commands []execshell.CommandDetails, target string) int {
 	for commandIndex := range commands {
-		if strings.Join(commands[commandIndex].Arguments, " ") == target {
+		if strings.Join(normalizedRecordedGitArguments(commands[commandIndex].Arguments), " ") == target {
 			return commandIndex
 		}
 	}
@@ -1940,7 +2282,7 @@ func recordedGitCommandIndex(commands []execshell.CommandDetails, target string)
 
 func recordedGitCommandLastIndex(commands []execshell.CommandDetails, target string) int {
 	for commandIndex := len(commands) - 1; commandIndex >= 0; commandIndex-- {
-		if strings.Join(commands[commandIndex].Arguments, " ") == target {
+		if strings.Join(normalizedRecordedGitArguments(commands[commandIndex].Arguments), " ") == target {
 			return commandIndex
 		}
 	}
@@ -1950,11 +2292,25 @@ func recordedGitCommandLastIndex(commands []execshell.CommandDetails, target str
 func recordedGitCommandCount(commands []execshell.CommandDetails, target string) int {
 	count := 0
 	for commandIndex := range commands {
-		if strings.Join(commands[commandIndex].Arguments, " ") == target {
+		if strings.Join(normalizedRecordedGitArguments(commands[commandIndex].Arguments), " ") == target {
 			count++
 		}
 	}
 	return count
+}
+
+func normalizedRecordedGitArguments(arguments []string) []string {
+	if len(arguments) == 0 || arguments[0] != gitPushSubcommand {
+		return arguments
+	}
+	normalized := make([]string, 0, len(arguments))
+	for argumentIndex := range arguments {
+		if arguments[argumentIndex] == gitPorcelainFlagConstant {
+			continue
+		}
+		normalized = append(normalized, arguments[argumentIndex])
+	}
+	return normalized
 }
 
 func commandHasArgument(arguments []string, target string) bool {
@@ -1964,6 +2320,74 @@ func commandHasArgument(arguments []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func TestStrictSyncPushUpdatedRemote(testInstance *testing.T) {
+	testCases := []struct {
+		Name            string
+		Output          string
+		ExpectedUpdated bool
+		ExpectedError   string
+	}{
+		{
+			Name:            "FastForward",
+			Output:          "To origin\n \trefs/heads/feature:refs/heads/feature\t1111111..2222222\nDone\n",
+			ExpectedUpdated: true,
+		},
+		{
+			Name:            "NewBranch",
+			Output:          "*\trefs/heads/feature:refs/heads/feature\t[new branch]\n",
+			ExpectedUpdated: true,
+		},
+		{
+			Name:   "UpToDate",
+			Output: "=\trefs/heads/feature:refs/heads/feature\t[up to date]\n",
+		},
+		{
+			Name:          "MissingStatus",
+			Output:        "Everything up-to-date\n",
+			ExpectedError: strictSyncPushStatusMissingMessage,
+		},
+		{
+			Name:          "UnknownStatus",
+			Output:        "?\trefs/heads/feature:refs/heads/feature\tunknown\n",
+			ExpectedError: "unknown porcelain status",
+		},
+	}
+
+	for testCaseIndex := range testCases {
+		testCase := testCases[testCaseIndex]
+		testInstance.Run(testCase.Name, func(testInstance *testing.T) {
+			updated, parseErr := strictSyncPushUpdatedRemote(testCase.Output)
+			require.Equal(testInstance, testCase.ExpectedUpdated, updated)
+			if testCase.ExpectedError == "" {
+				require.NoError(testInstance, parseErr)
+			} else {
+				require.ErrorContains(testInstance, parseErr, testCase.ExpectedError)
+			}
+		})
+	}
+}
+
+func TestCreatePullRequestMarksStrictSyncPublished(testInstance *testing.T) {
+	githubExecutor := &strictSyncGitHubExecutor{}
+	githubClient, githubClientErr := githubcli.NewClient(githubExecutor)
+	require.NoError(testInstance, githubClientErr)
+	transaction := &strictSyncTransaction{}
+	ctx := withStrictSyncTransaction(context.Background(), transaction)
+	environment := &workflow.Environment{GitHubClient: githubClient}
+
+	createErr := createPullRequest(ctx, environment, strictPullRequestCreateOptions{
+		RepositoryIdentifier: "owner/repository",
+		BaseBranch:           defaultSyncBaseBranch,
+		BranchName:           "feature/review",
+		Title:                "Review",
+		Body:                 "Body",
+	})
+
+	require.NoError(testInstance, createErr)
+	require.True(testInstance, transaction.published)
+	require.Len(testInstance, githubExecutor.commands, 1)
 }
 
 func TestHandleBranchSyncActionConfiguresTrackingRemoteWhenMissing(t *testing.T) {
@@ -2468,4 +2892,65 @@ func TestHandleBranchSyncActionRestoresCommit(t *testing.T) {
 		}
 	}
 	require.True(t, foundCheckout)
+}
+
+func TestHandleBranchSyncAction_RollbackAndSanitizationOnPRDescriptionFailure(t *testing.T) {
+	gitExecutor := &strictSyncGitExecutor{
+		statusOutput:  "",
+		revListOutput: "1\n",
+		currentBranch: "feature",
+		diffOutput:    "1 file changed\n",
+	}
+	githubExecutor := &strictSyncGitHubExecutor{output: "[]"}
+	githubClient, githubClientErr := githubcli.NewClient(githubExecutor)
+	require.NoError(t, githubClientErr)
+	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(t, managerError)
+
+	failingChatClient := &mockFailingChatClient{
+		err: errors.New("llm proxy error: Post https://proxy.llm.internal/v2/chat?key=secret-proxy-key-12345: 500 Internal Server Error"),
+	}
+
+	environment := &workflow.Environment{
+		GitExecutor:       gitExecutor,
+		GitHubClient:      githubClient,
+		RepositoryManager: gitManager,
+		Logger:            zap.NewNop(),
+		Output:            io.Discard,
+		Errors:            io.Discard,
+	}
+	repository := &workflow.RepositoryState{
+		Path: "/tmp/project",
+		Inspection: audit.RepositoryInspection{
+			LocalBranch:    "feature",
+			FinalOwnerRepo: "owner/project",
+		},
+	}
+	parameters := map[string]any{
+		taskOptionBranchName:         "feature",
+		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
+		taskOptionRequirePullRequest: true,
+		taskOptionBaseBranch:         "master",
+		taskOptionRequireClean:       false,
+		taskOptionWorktreeCommitMessage: worktreeAdoptionCommitMessageOptions{
+			Client: failingChatClient,
+			ConnectionProfiles: llmclient.ConnectionProfiles{
+				LLMProxy: llmclient.LLMProxyConnectionProfile{
+					Credential: "proxy-secret-token-67890",
+				},
+			},
+		},
+	}
+
+	syncErr := handleBranchSyncAction(context.Background(), environment, repository, parameters)
+	require.Error(t, syncErr)
+	assert.Contains(t, syncErr.Error(), "strict sync pull request description.llm:")
+	assert.NotContains(t, syncErr.Error(), "secret-proxy-key-12345")
+	assert.NotContains(t, syncErr.Error(), "proxy-secret-token-67890")
+	assert.Contains(t, syncErr.Error(), "key=[REDACTED]")
+
+	recordedCommands := recordedGitCommands(gitExecutor.commands)
+	require.NotContains(t, recordedCommands, "push origin feature")
+	githubCommands := recordedGitCommands(githubExecutor.commands)
+	require.NotContains(t, githubCommands, "pr create")
 }

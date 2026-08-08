@@ -111,12 +111,17 @@ func collectOperationErrors(err error) []error {
 
 	if single, ok := err.(singleUnwrapper); ok {
 		child := single.Unwrap()
-		if child != nil {
+		if child != nil && containsRepositoryOperationError(child) {
 			return collectOperationErrors(child)
 		}
 	}
 
 	return []error{err}
+}
+
+func containsRepositoryOperationError(err error) bool {
+	var operationError repoerrors.OperationError
+	return errors.As(err, &operationError)
 }
 
 // NewExecutor constructs an Executor instance from the provided operations, preserving sequential execution semantics.
@@ -381,10 +386,11 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 	}
 	outcome.Failures = failuresExport
 
-	message := stageFailures[0].message
-	if len(stageFailures) > 1 {
-		message = fmt.Sprintf("%s (and %d more failures)", message, len(stageFailures)-1)
+	failureMessages := make([]string, 0, len(stageFailures))
+	for _, failure := range stageFailures {
+		failureMessages = append(failureMessages, failure.message)
 	}
+	message := strings.Join(failureMessages, "\n")
 
 	return outcome, operationFailureError{
 		message: message,

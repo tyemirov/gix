@@ -6,12 +6,14 @@ usage() {
 Usage:
   prepare_release.sh [options]
 
-Prepares a release entirely from local repository state. The command validates
-the worktree, runs make ci, creates the changelog commit and annotated tag, and
-writes the release manifest and notes under .git/mprlab-release.
+Prepares a new release entirely from local repository state. The command
+validates the worktree, runs make ci, creates the changelog commit and annotated
+tag, and writes the release manifest and notes under .git/mprlab-release. At an
+exact release tag, it verifies and reuses the sealed local receipt or recovers
+that receipt from the matching published GitHub Release.
 
-It never fetches, pushes, calls GitHub, publishes an image/store build, updates
-GitHub Pages, or deploys production.
+It never fetches, pushes, publishes an image/store build, updates GitHub Pages,
+or deploys production.
 
 Options:
   --bump <patch|minor|major>  SemVer bump when no exact version is supplied. Default: patch
@@ -179,8 +181,52 @@ print(effective_scheme)
 
 preflight_json="$(mktemp)"
 notes_file="$(mktemp)"
+candidate_artifact_dir=""
+source_commit=""
+default_branch=""
+release_commit=""
+release_tag=""
+release_tag_created="false"
+release_promoted="false"
+
+rollback_release_commit() {
+  local current_branch current_head tag_commit tag_object
+  current_branch="$(git branch --show-current)"
+  current_head="$(git rev-parse HEAD)"
+  if [[ "${current_branch}" != "${default_branch}" || "${current_head}" != "${release_commit}" ]]; then
+    echo "error: release rollback ownership changed; expected ${default_branch} at ${release_commit}, found ${current_branch:-<detached>} at ${current_head}" >&2
+    return 1
+  fi
+
+  if [[ "${release_tag_created}" == "true" ]]; then
+    tag_commit="$(git rev-parse --verify "refs/tags/${release_tag}^{commit}")"
+    tag_object="$(git rev-parse --verify "refs/tags/${release_tag}")"
+    if [[ "${tag_commit}" != "${release_commit}" ]]; then
+      echo "error: release rollback does not own tag ${release_tag}" >&2
+      return 1
+    fi
+    printf 'start\nupdate refs/heads/%s %s %s\ndelete refs/tags/%s %s\nprepare\ncommit\n' \
+      "${default_branch}" "${source_commit}" "${release_commit}" "${release_tag}" "${tag_object}" |
+      git update-ref --stdin
+  else
+    printf 'start\nupdate refs/heads/%s %s %s\nprepare\ncommit\n' \
+      "${default_branch}" "${source_commit}" "${release_commit}" |
+      git update-ref --stdin
+  fi
+  git restore --source "${source_commit}" --staged --worktree -- CHANGELOG.md
+  echo "Restored ${default_branch} to ${source_commit} after release preparation failed." >&2
+}
+
 cleanup() {
+  local exit_status="$?"
+  if [[ "${exit_status}" -ne 0 && -n "${release_commit}" && "${release_promoted}" != "true" ]]; then
+    rollback_release_commit || exit_status=1
+  fi
   rm -f "${preflight_json}" "${notes_file}"
+  if [[ -n "${candidate_artifact_dir}" && -d "${candidate_artifact_dir}" ]]; then
+    rm -rf "${candidate_artifact_dir}"
+  fi
+  return "${exit_status}"
 }
 trap cleanup EXIT
 
@@ -200,6 +246,27 @@ echo "==> [release] Checking local release state"
 run_local_preflight
 default_branch="$(json_value "${preflight_json}" "default_branch")"
 source_commit="$(git rev-parse HEAD)"
+exact_release_version="$(json_value "${preflight_json}" "version_info.exact_head_version_tag")"
+exact_release_scheme="$(json_value "${preflight_json}" "version_info.exact_head_version_scheme")"
+if [[ -n "${exact_release_version}" ]]; then
+  [[ -z "${version}" || "${version}" == "${exact_release_version}" ]] || {
+    echo "error: HEAD is already exact release ${exact_release_version}; requested ${version}" >&2
+    exit 1
+  }
+  [[ -z "${scheme}" || "${scheme}" == "${exact_release_scheme}" ]] || {
+    echo "error: exact release ${exact_release_version} uses ${exact_release_scheme}, not ${scheme}" >&2
+    exit 1
+  }
+  reuse_args=(reuse-exact-release --version "${exact_release_version}" --default-branch "${default_branch}")
+  if [[ "${dry_run}" == "true" ]]; then
+    reuse_args+=(--dry-run)
+  fi
+  "${helper}" "${reuse_args[@]}"
+  if [[ "${dry_run}" == "true" ]]; then
+    echo "Verified exact release ${exact_release_version}; no new version will be prepared."
+  fi
+  exit 0
+fi
 selection="$(select_release "${preflight_json}")"
 next_version="$(sed -n '1p' <<<"${selection}")"
 boundary_tag="$(sed -n '2p' <<<"${selection}")"
@@ -226,14 +293,17 @@ next_version="$(sed -n '1p' <<<"${selection}")"
 boundary_tag="$(sed -n '2p' <<<"${selection}")"
 effective_scheme="$(sed -n '3p' <<<"${selection}")"
 
-"${helper}" initialize-release-artifact \
-  --version "${next_version}" \
-  --source-commit "${source_commit}" \
-  --release-timestamp "${release_timestamp}"
 artifact_dir="$(git rev-parse --git-path mprlab-release)"
 if [[ "${artifact_dir}" != /* ]]; then
   artifact_dir="${repo_root}/${artifact_dir}"
 fi
+candidate_artifact_dir="$(mktemp -d "$(dirname "${artifact_dir}")/mprlab-release-candidate.XXXXXX")"
+
+"${helper}" initialize-release-artifact \
+  --version "${next_version}" \
+  --source-commit "${source_commit}" \
+  --release-timestamp "${release_timestamp}" \
+  --artifact-dir "${candidate_artifact_dir}"
 
 if [[ -n "${artifact_targets}" ]]; then
   read -r -a artifact_target_list <<<"${artifact_targets}"
@@ -241,7 +311,7 @@ if [[ -n "${artifact_targets}" ]]; then
     RELEASE_VERSION="${next_version}" \
     RELEASE_TIMESTAMP="${release_timestamp}" \
     MOBILE_RELEASE_TIMESTAMP="${release_timestamp}" \
-    RELEASE_ARTIFACT_DIR="${artifact_dir}" \
+    RELEASE_ARTIFACT_DIR="${candidate_artifact_dir}" \
     make --no-print-directory "${artifact_target_list[@]}"
   echo "==> [release] Rechecking local state after artifact preparation"
   run_local_preflight
@@ -270,13 +340,20 @@ fi
 
 git commit -m "Release ${next_version}"
 release_commit="$(git rev-parse HEAD)"
+release_tag="${next_version}"
 git tag -a "${next_version}" -m "Release ${next_version}" "${release_commit}"
+release_tag_created="true"
 "${helper}" write-release-artifact \
   --version "${next_version}" \
   --source-commit "${source_commit}" \
   --release-commit "${release_commit}" \
   --notes-file "${notes_file}" \
   --default-branch "${default_branch}" \
-  --release-timestamp "${release_timestamp}"
+  --release-timestamp "${release_timestamp}" \
+  --artifact-dir "${candidate_artifact_dir}"
+"${helper}" verify-release-artifact --artifact-dir "${candidate_artifact_dir}"
+"${helper}" promote-release-artifact --artifact-dir "${candidate_artifact_dir}"
+release_promoted="true"
+candidate_artifact_dir=""
 
 echo "Prepared ${next_version} at ${release_commit}. Run make publish to publish it."

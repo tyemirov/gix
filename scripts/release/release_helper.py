@@ -13,7 +13,7 @@ import subprocess
 import tempfile
 import urllib.error
 import urllib.request
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 
@@ -318,6 +318,17 @@ def calver_candidate(tags: list[str], release_timestamp: dt.datetime) -> dict[st
 
 def version_info(cwd: Path, release_timestamp: dt.datetime) -> dict[str, Any]:
     tags = all_tags(cwd)
+    exact_head_version_tags = [
+        tag
+        for tag in run(["git", "tag", "--points-at", "HEAD", "--sort=-version:refname"], cwd=cwd).stdout.splitlines()
+        if tag_scheme(tag)
+    ]
+    if len(exact_head_version_tags) > 1:
+        raise HelperError(
+            "HEAD has multiple release version tags",
+            {"exact_head_version_tags": exact_head_version_tags},
+        )
+    exact_head_version_tag = exact_head_version_tags[0] if exact_head_version_tags else None
     semver_tags = [tag for tag in tags if tag_scheme(tag) == "semver"]
     calver_tags = sorted((tag for tag in tags if tag_scheme(tag) == "calver"), key=calver_sort_key, reverse=True)
     version_tags = [tag for tag in tags if tag_scheme(tag)]
@@ -342,6 +353,8 @@ def version_info(cwd: Path, release_timestamp: dt.datetime) -> dict[str, Any]:
 
     return {
         "scheme_guess": scheme_guess,
+        "exact_head_version_tag": exact_head_version_tag,
+        "exact_head_version_scheme": tag_scheme(exact_head_version_tag) if exact_head_version_tag else None,
         "latest_tag": latest_by_guess,
         "latest_any_version_tag": version_tags[0] if version_tags else None,
         "latest_semver_tag": semver_tags[0] if semver_tags else None,
@@ -632,6 +645,346 @@ def load_release_artifact(cwd: Path, override: str | None = None) -> tuple[Path,
         )
     verify_payloads(artifact_path, manifest.get("payloads"))
     return artifact_path, manifest, notes_path
+
+
+def release_notes_from_changelog(cwd: Path, version: str) -> str:
+    changelog_path = cwd / "CHANGELOG.md"
+    if not changelog_path.is_file():
+        raise HelperError("release changelog is missing", {"changelog": str(changelog_path)})
+    changelog = changelog_path.read_text(encoding="utf-8")
+    heading = re.compile(rf"^## \[{re.escape(version)}\](?:\s+-[^\n]*)?$", re.MULTILINE)
+    match = heading.search(changelog)
+    if not match:
+        raise HelperError("release changelog entry is missing", {"version": version})
+    next_heading = re.search(r"^##\s+", changelog[match.end() :], re.MULTILINE)
+    end = match.end() + next_heading.start() if next_heading else len(changelog)
+    return changelog[match.start() : end].strip()
+
+
+def validate_exact_release_manifest(
+    cwd: Path,
+    manifest: dict[str, Any],
+    notes: str,
+    version: str,
+    default_branch: str,
+) -> None:
+    if manifest.get("schema_version") != 2 or manifest.get("artifact_kind") != "mprlab.release":
+        raise HelperError("published release manifest has an invalid contract", {"version": version})
+    release_commit = str(manifest.get("release_commit") or "")
+    source_commit = str(manifest.get("source_commit") or "")
+    expected = {
+        "version": version,
+        "release_commit": resolve_commit(cwd, "HEAD", "head"),
+        "source_commit": resolve_commit(cwd, "HEAD^", "release_parent"),
+        "default_branch": default_branch,
+    }
+    actual = {
+        "version": manifest.get("version"),
+        "release_commit": release_commit,
+        "source_commit": source_commit,
+        "default_branch": manifest.get("default_branch"),
+    }
+    if actual != expected:
+        raise HelperError(
+            "published release manifest does not match exact tag",
+            {"expected": expected, "actual": actual},
+        )
+    if resolve_commit(cwd, version, "version") != expected["release_commit"]:
+        raise HelperError("exact release tag does not point at HEAD", {"version": version})
+    tag_object_type = run(["git", "cat-file", "-t", f"refs/tags/{version}"], cwd=cwd).stdout.strip()
+    if tag_object_type != "tag":
+        raise HelperError("exact release tag is not annotated", {"version": version, "object_type": tag_object_type})
+    changed_files = run(
+        ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", release_commit], cwd=cwd
+    ).stdout.splitlines()
+    if changed_files != ["CHANGELOG.md"]:
+        raise HelperError(
+            "exact release commit must contain only CHANGELOG.md",
+            {"version": version, "changed_files": changed_files},
+        )
+    release_timestamp = manifest.get("release_timestamp")
+    if not isinstance(release_timestamp, str) or not release_timestamp:
+        raise HelperError("published release manifest has no release timestamp", {"version": version})
+    parse_release_timestamp(release_timestamp)
+    changelog_notes = release_notes_from_changelog(cwd, version)
+    if normalize_markdown(notes) != normalize_markdown(changelog_notes):
+        raise HelperError("exact release notes do not match CHANGELOG.md", {"version": version})
+
+
+def load_exact_release_artifact(
+    cwd: Path,
+    version: str,
+    default_branch: str,
+    override: str | None = None,
+) -> tuple[Path, dict[str, Any], Path]:
+    artifact_path, manifest, notes_path = load_release_artifact(cwd, override)
+    validate_exact_release_manifest(
+        cwd,
+        manifest,
+        notes_path.read_text(encoding="utf-8"),
+        version,
+        default_branch,
+    )
+    return artifact_path, manifest, notes_path
+
+
+def artifact_has_missing_files(artifact_path: Path, manifest: dict[str, Any]) -> bool:
+    if not (artifact_path / "notes.md").is_file():
+        return True
+    payloads = manifest.get("payloads")
+    if not isinstance(payloads, list):
+        return False
+    return any(
+        not isinstance(entry, dict)
+        or not isinstance(entry.get("path"), str)
+        or not (artifact_path / entry["path"]).is_file()
+        for entry in payloads
+    )
+
+
+def promote_release_artifact(cwd: Path, candidate_path: Path) -> Path:
+    destination = release_artifact_dir(cwd)
+    candidate = candidate_path.resolve()
+    if candidate == destination or candidate.parent != destination.parent:
+        raise HelperError(
+            "release candidate must be a sibling of the canonical receipt",
+            {"candidate": str(candidate), "destination": str(destination)},
+        )
+    backup = Path(tempfile.mkdtemp(prefix="mprlab-release-backup.", dir=destination.parent))
+    backup.rmdir()
+    moved_destination = False
+    try:
+        if destination.exists():
+            destination.rename(backup)
+            moved_destination = True
+        candidate.rename(destination)
+    except OSError as error:
+        if moved_destination and backup.exists() and not destination.exists():
+            backup.rename(destination)
+        raise HelperError(
+            "failed to promote verified release receipt",
+            {"candidate": str(candidate), "destination": str(destination), "error": str(error)},
+        ) from error
+    if backup.exists():
+        shutil.rmtree(backup)
+    return destination
+
+
+def published_release_asset_names(manifest: dict[str, Any]) -> list[str]:
+    payloads = manifest.get("payloads")
+    if not isinstance(payloads, list):
+        raise HelperError("published release payload inventory is invalid")
+    names = ["manifest.json"]
+    prefix = "payloads/release-assets/"
+    for entry in payloads:
+        if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
+            raise HelperError("published release payload entry is invalid", {"entry": entry})
+        relative_path = entry["path"]
+        canonical_path = PurePosixPath(relative_path)
+        if (
+            not relative_path.startswith(prefix)
+            or canonical_path.is_absolute()
+            or canonical_path.as_posix() != relative_path
+            or ".." in canonical_path.parts
+        ):
+            raise HelperError(
+                "published release payload path is not recoverable from GitHub Release",
+                {"path": relative_path},
+            )
+        names.append(canonical_path.name)
+    if len(names) != len(set(names)):
+        raise HelperError("published release asset names are duplicated", {"asset_names": names})
+    return names
+
+
+def recover_published_exact_release(
+    cwd: Path,
+    version: str,
+    default_branch: str,
+    local_manifest_contents: bytes | None,
+    dry_run: bool,
+) -> Path | None:
+    missing = require_tools(["git", "gh"])
+    if missing:
+        raise HelperError("required tools are missing", {"missing_tools": missing})
+    release = gh_json(
+        [
+            "gh",
+            "release",
+            "view",
+            version,
+            "--json",
+            "tagName,body,publishedAt,isDraft,isPrerelease,targetCommitish,url,assets",
+        ],
+        cwd,
+    )
+    if not isinstance(release, dict):
+        raise HelperError("published GitHub Release response is invalid", {"version": version})
+    release_errors: list[str] = []
+    if release.get("tagName") != version:
+        release_errors.append("tagName does not match")
+    if release.get("isDraft"):
+        release_errors.append("release is a draft")
+    if release.get("isPrerelease"):
+        release_errors.append("release is a prerelease")
+    if not release.get("publishedAt"):
+        release_errors.append("release has no publication timestamp")
+    if release.get("targetCommitish") not in (default_branch, resolve_commit(cwd, "HEAD", "head")):
+        release_errors.append("targetCommitish does not match the release")
+    if release_errors:
+        raise HelperError(
+            "published GitHub Release does not match exact tag",
+            {"version": version, "errors": release_errors, "url": release.get("url")},
+        )
+    remote_tag_commit = ls_remote_tag_commit(cwd, version)
+    head_commit = resolve_commit(cwd, "HEAD", "head")
+    if remote_tag_commit != head_commit:
+        raise HelperError(
+            "remote release tag does not match exact tag",
+            {"version": version, "remote_tag_commit": remote_tag_commit, "head": head_commit},
+        )
+
+    destination = release_artifact_dir(cwd)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    candidate = Path(tempfile.mkdtemp(prefix="mprlab-release-candidate.", dir=destination.parent))
+    try:
+        manifest_path = candidate / "manifest.json"
+        run(
+            ["gh", "release", "download", version, "--pattern", "manifest.json", "--dir", str(candidate)],
+            cwd=cwd,
+        )
+        if not manifest_path.is_file():
+            raise HelperError("published release manifest asset is missing", {"version": version})
+        remote_manifest_contents = manifest_path.read_bytes()
+        if local_manifest_contents is not None and local_manifest_contents != remote_manifest_contents:
+            raise HelperError("published release manifest conflicts with local sealed manifest", {"version": version})
+        try:
+            manifest = json.loads(remote_manifest_contents)
+        except json.JSONDecodeError as error:
+            raise HelperError(
+                "published release manifest is invalid JSON",
+                {"version": version, "error": str(error)},
+            ) from error
+        if not isinstance(manifest, dict):
+            raise HelperError("published release manifest is not an object", {"version": version})
+        notes = str(release.get("body") or "").strip() + "\n"
+        validate_exact_release_manifest(cwd, manifest, notes, version, default_branch)
+        expected_asset_names = published_release_asset_names(manifest)
+        actual_asset_names = sorted(
+            asset.get("name")
+            for asset in release.get("assets") or []
+            if isinstance(asset, dict) and isinstance(asset.get("name"), str)
+        )
+        if sorted(expected_asset_names) != actual_asset_names:
+            raise HelperError(
+                "published GitHub Release assets do not match the manifest",
+                {"expected": sorted(expected_asset_names), "actual": actual_asset_names},
+            )
+        (candidate / "notes.md").write_text(notes, encoding="utf-8")
+        for entry in manifest["payloads"]:
+            relative_path = entry["path"]
+            asset_name = Path(relative_path).name
+            download_directory = candidate / relative_path
+            download_directory.parent.mkdir(parents=True, exist_ok=True)
+            temporary_download = candidate / f"download-{asset_name}"
+            temporary_download.mkdir()
+            run(
+                ["gh", "release", "download", version, "--pattern", asset_name, "--dir", str(temporary_download)],
+                cwd=cwd,
+            )
+            downloaded_path = temporary_download / asset_name
+            if not downloaded_path.is_file():
+                raise HelperError(
+                    "published release payload asset is missing",
+                    {"version": version, "asset": asset_name},
+                )
+            downloaded_path.rename(download_directory)
+            temporary_download.rmdir()
+        load_exact_release_artifact(cwd, version, default_branch, str(candidate))
+        if dry_run:
+            emit({"ok": True, "action": "recover", "dry_run": True, "version": version})
+            return None
+        promoted = promote_release_artifact(cwd, candidate)
+        emit({"ok": True, "action": "recovered", "version": version, "artifact_dir": str(promoted)})
+        return promoted
+    finally:
+        if candidate.exists():
+            shutil.rmtree(candidate)
+
+
+def command_reuse_exact_release(args: argparse.Namespace) -> int:
+    cwd = repo_root()
+    artifact_path = release_artifact_dir(cwd, args.artifact_dir)
+    manifest_path = artifact_path / "manifest.json"
+    local_manifest_contents: bytes | None = None
+    if manifest_path.is_file():
+        local_manifest_contents = manifest_path.read_bytes()
+        try:
+            manifest = json.loads(local_manifest_contents)
+        except json.JSONDecodeError as error:
+            raise HelperError(
+                "local sealed release manifest is invalid JSON",
+                {"manifest": str(manifest_path), "error": str(error)},
+            ) from error
+        if not isinstance(manifest, dict):
+            raise HelperError("local sealed release manifest is not an object", {"manifest": str(manifest_path)})
+        try:
+            validate_exact_release_manifest(
+                cwd,
+                manifest,
+                (artifact_path / "notes.md").read_text(encoding="utf-8")
+                if (artifact_path / "notes.md").is_file()
+                else release_notes_from_changelog(cwd, args.version),
+                args.version,
+                args.default_branch,
+            )
+        except HelperError as error:
+            raise HelperError(
+                "local sealed release conflicts with exact tag",
+                {"version": args.version, "error": str(error), "details": error.details},
+            ) from error
+        if not artifact_has_missing_files(artifact_path, manifest):
+            try:
+                load_exact_release_artifact(cwd, args.version, args.default_branch, args.artifact_dir)
+            except HelperError as error:
+                raise HelperError(
+                    "local sealed release conflicts with exact tag",
+                    {"version": args.version, "error": str(error), "details": error.details},
+                ) from error
+            emit(
+                {
+                    "ok": True,
+                    "action": "reuse",
+                    "dry_run": args.dry_run,
+                    "version": args.version,
+                    "artifact_dir": str(artifact_path),
+                }
+            )
+            print(f"Reused sealed release {args.version}.")
+            return 0
+
+    recovered = recover_published_exact_release(
+        cwd,
+        args.version,
+        args.default_branch,
+        local_manifest_contents,
+        args.dry_run,
+    )
+    if not args.dry_run and recovered is None:
+        raise HelperError("published exact release recovery did not produce a receipt", {"version": args.version})
+    if args.dry_run:
+        print(f"Verified recoverable exact release {args.version}.")
+    else:
+        print(f"Recovered and reused sealed release {args.version}.")
+    return 0
+
+
+def command_promote_release_artifact(args: argparse.Namespace) -> int:
+    cwd = repo_root()
+    candidate, manifest, _ = load_release_artifact(cwd, args.artifact_dir)
+    destination = promote_release_artifact(cwd, candidate)
+    emit({"ok": True, "artifact_dir": str(destination), "manifest": manifest})
+    return 0
 
 
 def command_verify_release_artifact(args: argparse.Namespace) -> int:
@@ -1205,6 +1558,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     verify_artifact.add_argument("--artifact-dir")
     verify_artifact.set_defaults(func=command_verify_release_artifact)
+
+    reuse_exact = subparsers.add_parser(
+        "reuse-exact-release",
+        help="Verify and reuse or recover the sealed release for an exact tag at HEAD.",
+    )
+    reuse_exact.add_argument("--version", required=True)
+    reuse_exact.add_argument("--default-branch", required=True)
+    reuse_exact.add_argument("--artifact-dir")
+    reuse_exact.add_argument("--dry-run", action="store_true")
+    reuse_exact.set_defaults(func=command_reuse_exact_release)
+
+    promote_artifact = subparsers.add_parser(
+        "promote-release-artifact",
+        help="Atomically replace the canonical receipt with a verified release candidate.",
+    )
+    promote_artifact.add_argument("--artifact-dir", required=True)
+    promote_artifact.set_defaults(func=command_promote_release_artifact)
 
     publish_prepared = subparsers.add_parser(
         "publish-prepared-release",

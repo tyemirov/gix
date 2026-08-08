@@ -11,7 +11,7 @@ func TestTaskLLMClientConfigurationClientUsesProviderConnection(t *testing.T) {
 	configurationReader := newOptionReader(map[string]any{
 		optionTaskLLMKeyConstant: map[string]any{
 			optionTaskLLMProxyKeyConstant: map[string]any{
-				optionTaskLLMProviderKeyConstant: llmclient.ProviderOpenAI,
+				optionTaskLLMProviderKeyConstant: llmclient.FallbackProvider,
 				optionTaskLLMModelKeyConstant:    "gpt-test",
 			},
 			optionTaskLLMTimeoutKeyConstant:   12,
@@ -61,7 +61,7 @@ func TestTaskLLMClientConfigurationRejectsFractionalTimeoutSeconds(t *testing.T)
 			configurationReader := newOptionReader(map[string]any{
 				optionTaskLLMKeyConstant: map[string]any{
 					optionTaskLLMProxyKeyConstant: map[string]any{
-						optionTaskLLMProviderKeyConstant: llmclient.ProviderOpenAI,
+						optionTaskLLMProviderKeyConstant: llmclient.FallbackProvider,
 					},
 					optionTaskLLMTimeoutKeyConstant: testCase.timeoutSeconds,
 				},
@@ -79,7 +79,7 @@ func TestTaskLLMClientConfigurationClientFailsWithoutInjectedCredential(t *testi
 	configurationReader := newOptionReader(map[string]any{
 		optionTaskLLMKeyConstant: map[string]any{
 			optionTaskLLMProxyKeyConstant: map[string]any{
-				optionTaskLLMProviderKeyConstant: llmclient.ProviderOpenAI,
+				optionTaskLLMProviderKeyConstant: llmclient.FallbackProvider,
 				optionTaskLLMModelKeyConstant:    "gpt-test",
 			},
 		},
@@ -112,7 +112,7 @@ func TestTaskLLMClientConfigurationRejectsObsoleteCredentialFields(t *testing.T)
 	configurationReader := newOptionReader(map[string]any{
 		optionTaskLLMKeyConstant: map[string]any{
 			optionTaskLLMProxyKeyConstant: map[string]any{
-				optionTaskLLMProviderKeyConstant: llmclient.ProviderOpenAI,
+				optionTaskLLMProviderKeyConstant: llmclient.FallbackProvider,
 				optionTaskLLMModelKeyConstant:    "gpt-test",
 			},
 			"api_key_env": "OPENAI_API_KEY",
