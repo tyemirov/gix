@@ -656,7 +656,7 @@ github:
 llm:
   openai:
     priority: 1
-    model: gpt-4.1
+    model: gpt-5.6-terra
     base_url: https://api.openai.com/v1
     credential: integration-openai-key
   llm_proxy:
@@ -698,7 +698,7 @@ llm:
     base_url: "https://llm-proxy.example"
     credential: test-proxy-key
   max_completion_tokens: 64
-  temperature: 0
+  effort: "high"
   timeout_seconds: 5
 operations:
   - command: ["sync"]
@@ -708,7 +708,7 @@ operations:
     with:
       diff_source: staged
       max_completion_tokens: 64
-      temperature: 0
+      effort: "high"
       timeout_seconds: 5
 `, baseURL)
 	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))

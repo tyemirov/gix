@@ -899,7 +899,6 @@ func (application *Application) applyWebAuditCommitChanges(
 		RepositoryPath: repositoryPath,
 		Source:         commitmsg.DiffSourceAll,
 		MaxTokens:      configuration.MaxTokens,
-		Temperature:    webOptionalTemperature(configuration.Temperature),
 	})
 	if generateError != nil {
 		return fmt.Errorf("audit.commit.generate %s: %w", repositoryPath, generateError)
@@ -967,7 +966,6 @@ func (application *Application) applyWebAuditUpdateChangelog(
 		ReleaseDate:     releaseDateValue,
 		IncludeWorktree: true,
 		MaxTokens:       configuration.MaxTokens,
-		Temperature:     webOptionalTemperature(configuration.Temperature),
 	})
 	if generateError != nil {
 		return fmt.Errorf("audit.changelog.generate %s: %w", repositoryPath, generateError)
@@ -1000,7 +998,7 @@ func (application *Application) webCommitMessageClient() (llm.ChatClient, commit
 	client, clientError := application.newWebLLMClient(
 		configuration.LLMProxy,
 		configuration.MaxTokens,
-		configuration.Temperature,
+		configuration.Effort,
 		configuration.TimeoutSeconds,
 		configuration.ConnectionProfiles,
 	)
@@ -1012,7 +1010,7 @@ func (application *Application) webChangelogMessageClient() (llm.ChatClient, cha
 	client, clientError := application.newWebLLMClient(
 		configuration.LLMProxy,
 		configuration.MaxTokens,
-		configuration.Temperature,
+		configuration.Effort,
 		configuration.TimeoutSeconds,
 		configuration.ConnectionProfiles,
 	)
@@ -1022,16 +1020,14 @@ func (application *Application) webChangelogMessageClient() (llm.ChatClient, cha
 func (application *Application) newWebLLMClient(
 	proxySelection llmclient.LLMProxySelection,
 	maxTokens int,
-	temperature float64,
+	effort string,
 	timeoutSeconds int,
 	connectionProfiles llmclient.ConnectionProfiles,
 ) (llm.ChatClient, error) {
 	runtimeConfiguration := llmclient.RuntimeConfig{
+		Effort:              effort,
 		MaxCompletionTokens: maxTokens,
 		RequestTimeout:      time.Duration(timeoutSeconds) * time.Second,
-	}
-	if temperature > 0 {
-		runtimeConfiguration.Temperature = temperature
 	}
 
 	return llmclient.NewPrioritizedFactory(
@@ -1040,13 +1036,6 @@ func (application *Application) newWebLLMClient(
 		runtimeConfiguration,
 		application.llmClientFactory,
 	)
-}
-
-func webOptionalTemperature(temperature float64) *float64 {
-	if temperature == 0 {
-		return nil
-	}
-	return &temperature
 }
 
 func writeWebExecutionOutput(outputWriter io.Writer, result execshell.ExecutionResult) {

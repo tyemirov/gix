@@ -14,10 +14,9 @@ import (
 )
 
 const (
-	syncWorktreeAdoptionTimeout        = 20 * time.Second
-	syncWorktreeAdoptionBranchName     = "feature/adopt-worktree"
-	syncWorktreeAdoptionAPIKeyVariable = "TEST_GIX_LLM_KEY"
-	syncWorktreeAdoptionMissingGitHub  = "strict sync requires a GitHub repository remote"
+	syncWorktreeAdoptionTimeout       = 20 * time.Second
+	syncWorktreeAdoptionBranchName    = "feature/adopt-worktree"
+	syncWorktreeAdoptionMissingGitHub = "strict sync requires a GitHub repository remote"
 )
 
 type syncWorktreeAdoptionFixture struct {
@@ -369,7 +368,7 @@ func writeSyncWorktreeAdoptionConfiguration(testInstance *testing.T, baseURL str
 	llmConfiguration := `llm:
   openai:
     priority: 1
-    model: gpt-4.1
+    model: gpt-5.6-terra
     base_url: https://api.openai.com/v1
     credential: integration-openai-key
   llm_proxy:
@@ -394,7 +393,7 @@ func writeSyncWorktreeAdoptionConfiguration(testInstance *testing.T, baseURL str
     base_url: "https://llm-proxy.example"
     credential: test-proxy-key
   max_completion_tokens: 64
-  temperature: 0
+  effort: "high"
   timeout_seconds: 5
 `, baseURL)
 		messageConfiguration = `
@@ -402,7 +401,7 @@ func writeSyncWorktreeAdoptionConfiguration(testInstance *testing.T, baseURL str
     with:
       diff_source: staged
       max_completion_tokens: 64
-      temperature: 0
+      effort: "high"
       timeout_seconds: 5
 `
 	}

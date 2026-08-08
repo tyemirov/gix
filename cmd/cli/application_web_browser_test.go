@@ -45,7 +45,6 @@ const (
 	auditQueuePanelSelectorConstant        = "#audit-queue-panel"
 	auditQueueSummarySelectorConstant      = "#audit-queue-summary"
 	auditQueueListSelectorConstant         = "#audit-queue-list"
-	auditQueueClearSelectorConstant        = "#audit-queue-clear"
 	auditQueueApplySelectorConstant        = "#audit-queue-apply"
 	auditQueueRenameSelectorConstant       = "[data-audit-action='rename_folder']"
 	auditQueueCanonicalSelectorConstant    = "[data-audit-action='update_remote_canonical']"

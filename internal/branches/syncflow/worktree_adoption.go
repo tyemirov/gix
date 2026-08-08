@@ -149,8 +149,8 @@ func isBranchAlreadyUsedByWorktreeError(err error) bool {
 
 type worktreeAdoptionCommitMessageOptions struct {
 	LLMProxy           llmclient.LLMProxySelection
+	Effort             string
 	MaxTokens          int
-	Temperature        float64
 	TimeoutSeconds     int
 	ConnectionProfiles llmclient.ConnectionProfiles
 	Client             llm.ChatClient
@@ -173,8 +173,8 @@ func worktreeAdoptionCommitMessageOptionsFromConfiguration(configuration CommitM
 	sanitized := configuration.Sanitize()
 	return worktreeAdoptionCommitMessageOptions{
 		LLMProxy:           sanitized.LLMProxy,
+		Effort:             sanitized.Effort,
 		MaxTokens:          sanitized.MaxTokens,
-		Temperature:        sanitized.Temperature,
 		TimeoutSeconds:     sanitized.TimeoutSeconds,
 		ConnectionProfiles: sanitized.ConnectionProfiles,
 	}
@@ -523,12 +523,6 @@ func generateSiblingCommitMessage(ctx context.Context, executor shared.GitExecut
 		return "", clientErr
 	}
 
-	var temperature *float64
-	if options.Temperature != 0 {
-		temperatureValue := options.Temperature
-		temperature = &temperatureValue
-	}
-
 	generator := commitmsg.Generator{
 		GitExecutor: executor,
 		Client:      client,
@@ -537,7 +531,6 @@ func generateSiblingCommitMessage(ctx context.Context, executor shared.GitExecut
 		RepositoryPath: worktreePath,
 		Source:         commitmsg.DiffSourceStaged,
 		MaxTokens:      options.MaxTokens,
-		Temperature:    temperature,
 	})
 	if generateErr != nil {
 		return "", fmt.Errorf(worktreeMessageGenerationFailureTemplate, worktreePath, generateErr)
@@ -554,8 +547,8 @@ func resolveCommitMessageClient(options worktreeAdoptionCommitMessageOptions) (l
 		options.ConnectionProfiles,
 		options.LLMProxy,
 		llmclient.RuntimeConfig{
+			Effort:              options.Effort,
 			MaxCompletionTokens: options.MaxTokens,
-			Temperature:         options.Temperature,
 			RequestTimeout:      timeout,
 		},
 		nil,
@@ -575,8 +568,8 @@ func resolveMergeConflictResolutionClient(options worktreeAdoptionCommitMessageO
 		options.ConnectionProfiles,
 		options.LLMProxy,
 		llmclient.RuntimeConfig{
+			Effort:              options.Effort,
 			MaxCompletionTokens: options.MaxTokens,
-			Temperature:         options.Temperature,
 			RequestTimeout:      timeout,
 			RetryAttempts:       1,
 		},

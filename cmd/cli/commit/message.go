@@ -24,8 +24,8 @@ const (
 	diffSourceFlagUsage            = "Diff source to summarize (staged|worktree)"
 	maxTokensFlagName              = "max-tokens"
 	maxTokensFlagUsage             = "Override the maximum completion tokens"
-	temperatureFlagName            = "temperature"
-	temperatureFlagUsage           = "Override the sampling temperature (0-2)"
+	effortFlagName                 = "effort"
+	effortFlagUsage                = "Override reasoning effort (low|medium|high)"
 	providerFlagName               = "provider"
 	providerFlagUsage              = "Override the LLM provider"
 	modelFlagName                  = "model"
@@ -33,11 +33,11 @@ const (
 	timeoutFlagName                = "timeout-seconds"
 	timeoutFlagUsage               = "Override the LLM request timeout in seconds"
 
-	taskTypeCommitMessage       = "commit.message.generate"
-	taskOptionCommitDiffSource  = "diff_source"
-	taskOptionCommitMaxTokens   = "max_tokens"
-	taskOptionCommitTemperature = "temperature"
-	taskOptionCommitClient      = "client"
+	taskTypeCommitMessage      = "commit.message.generate"
+	taskOptionCommitDiffSource = "diff_source"
+	taskOptionCommitMaxTokens  = "max_tokens"
+	taskOptionCommitEffort     = "effort"
+	taskOptionCommitClient     = "client"
 )
 
 // ClientFactory builds one connection client from configuration.
@@ -68,7 +68,7 @@ func (builder *MessageCommandBuilder) Build() (*cobra.Command, error) {
 
 	command.Flags().String(diffSourceFlagName, "", diffSourceFlagUsage)
 	command.Flags().Int(maxTokensFlagName, 0, maxTokensFlagUsage)
-	command.Flags().Float64(temperatureFlagName, 0, temperatureFlagUsage)
+	command.Flags().String(effortFlagName, "", effortFlagUsage)
 	command.Flags().String(providerFlagName, "", providerFlagUsage)
 	command.Flags().String(modelFlagName, "", modelFlagUsage)
 	command.Flags().Int(timeoutFlagName, 0, timeoutFlagUsage)
@@ -96,10 +96,7 @@ func (builder *MessageCommandBuilder) run(command *cobra.Command, arguments []st
 		return maxTokensError
 	}
 
-	temperaturePointer, temperatureError := resolveTemperature(command, configuration)
-	if temperatureError != nil {
-		return temperatureError
-	}
+	effort := resolveEffort(command, configuration)
 
 	proxySelection := configuration.LLMProxy
 	providerChanged := false
@@ -158,8 +155,8 @@ func (builder *MessageCommandBuilder) run(command *cobra.Command, arguments []st
 		configuration.ConnectionProfiles,
 		proxySelection,
 		llmclient.RuntimeConfig{
+			Effort:              effort,
 			MaxCompletionTokens: configuration.MaxTokens,
-			Temperature:         configuration.Temperature,
 			RequestTimeout:      timeout,
 		},
 		builder.ClientFactory,
@@ -175,8 +172,8 @@ func (builder *MessageCommandBuilder) run(command *cobra.Command, arguments []st
 		taskOptionCommitMaxTokens:  maxTokens,
 		taskOptionCommitClient:     client,
 	}
-	if temperaturePointer != nil {
-		actionOptions[taskOptionCommitTemperature] = *temperaturePointer
+	if effort != "" {
+		actionOptions[taskOptionCommitEffort] = effort
 	}
 
 	taskDefinition := workflow.TaskDefinition{
@@ -265,21 +262,11 @@ func resolveMaxTokens(command *cobra.Command, configuration MessageConfiguration
 	return maxTokens, nil
 }
 
-func resolveTemperature(command *cobra.Command, configuration MessageConfiguration) (*float64, error) {
+func resolveEffort(command *cobra.Command, configuration MessageConfiguration) string {
 	if command != nil {
-		if flagValue, flagError := command.Flags().GetFloat64(temperatureFlagName); flagError == nil && command.Flags().Changed(temperatureFlagName) {
-			if flagValue < 0 {
-				return nil, errors.New("temperature cannot be negative")
-			}
-			return &flagValue, nil
+		if flagValue, flagError := command.Flags().GetString(effortFlagName); flagError == nil && command.Flags().Changed(effortFlagName) {
+			return strings.TrimSpace(flagValue)
 		}
 	}
-	if configuration.Temperature != 0 {
-		value := configuration.Temperature
-		if value < 0 {
-			return nil, errors.New("temperature cannot be negative")
-		}
-		return &value, nil
-	}
-	return nil, nil
+	return strings.TrimSpace(configuration.Effort)
 }

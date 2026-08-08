@@ -93,7 +93,7 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 
 	executionFlags, executionFlagsAvailable := flagutils.ResolveExecutionFlags(command)
 
-	explicitBranch, configuredFallbackBranch, remainingArgs := builder.resolveBranchName(command, arguments, configuration)
+	explicitBranch, configuredFallbackBranch, remainingArgs := builder.resolveBranchName(arguments, configuration)
 
 	refreshRequested := configuration.RequireClean
 	stashRequested := configuration.StashChanges
@@ -240,7 +240,7 @@ func (builder *CommandBuilder) resolveConfiguration() CommandConfiguration {
 	return builder.ConfigurationProvider().Sanitize()
 }
 
-func (builder *CommandBuilder) resolveBranchName(command *cobra.Command, arguments []string, configuration CommandConfiguration) (string, string, []string) {
+func (builder *CommandBuilder) resolveBranchName(arguments []string, configuration CommandConfiguration) (string, string, []string) {
 	remaining := arguments
 	if len(remaining) > 0 {
 		branch := strings.TrimSpace(remaining[0])

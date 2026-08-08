@@ -78,8 +78,8 @@ type ApplicationCommonConfiguration struct {
 type ApplicationLLMConfiguration struct {
 	OpenAI              llmclient.OpenAIConnectionProfile   `mapstructure:"openai"`
 	LLMProxy            llmclient.LLMProxyConnectionProfile `mapstructure:"llm_proxy"`
+	Effort              string                              `mapstructure:"effort"`
 	MaxCompletionTokens int                                 `mapstructure:"max_completion_tokens"`
-	Temperature         float64                             `mapstructure:"temperature"`
 	TimeoutSeconds      int                                 `mapstructure:"timeout_seconds"`
 }
 

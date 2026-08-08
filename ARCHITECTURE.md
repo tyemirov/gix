@@ -158,9 +158,10 @@ github:
 llm:
   openai:
     priority: 2
-    model: gpt-4.1
+    model: gpt-5.6-terra
     base_url: "https://api.openai.com/v1"
     credential: "${OPENAI_API_KEY}"
+    effort: "high"
   llm_proxy:
     priority: 1
     provider: meta
@@ -168,7 +169,7 @@ llm:
     base_url: "https://llm-proxy-api.mprlab.com"
     credential: "${LLM_PROXY_SECRET_KEY}"
   max_completion_tokens: 1200
-  temperature: 0
+  effort: "high"
   timeout_seconds: 60
 
 operations:

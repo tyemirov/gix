@@ -17,7 +17,7 @@ type TaskLLMDefinition struct {
 	LLMProxy            llmclient.LLMProxySelection
 	TimeoutSeconds      int
 	MaxCompletionTokens int
-	Temperature         *float64
+	Effort              string
 }
 
 // Options returns the serialized configuration map for tasks.apply presets.
@@ -44,8 +44,8 @@ func (definition TaskLLMDefinition) encode() map[string]any {
 	if definition.MaxCompletionTokens > 0 {
 		options[optionTaskLLMMaxTokensKeyConstant] = definition.MaxCompletionTokens
 	}
-	if definition.Temperature != nil {
-		options[optionTaskLLMTemperatureKeyConstant] = *definition.Temperature
+	if effort := strings.TrimSpace(definition.Effort); effort != "" {
+		options[optionTaskLLMEffortKeyConstant] = effort
 	}
 	return options
 }

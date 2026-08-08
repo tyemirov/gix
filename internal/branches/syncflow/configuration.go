@@ -14,8 +14,8 @@ const defaultCommitMessageTimeoutSeconds = 60
 // CommitMessageConfiguration captures LLM settings for automatic worktree checkpoint commits and strict-sync merge resolution.
 type CommitMessageConfiguration struct {
 	LLMProxy           llmclient.LLMProxySelection  `mapstructure:"llm_proxy"`
+	Effort             string                       `mapstructure:"effort"`
 	MaxTokens          int                          `mapstructure:"max_completion_tokens"`
-	Temperature        float64                      `mapstructure:"temperature"`
 	TimeoutSeconds     int                          `mapstructure:"timeout_seconds"`
 	ConnectionProfiles llmclient.ConnectionProfiles `mapstructure:"-"`
 }

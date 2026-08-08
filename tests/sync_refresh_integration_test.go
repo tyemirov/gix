@@ -165,7 +165,7 @@ llm:
     base_url: "https://llm-proxy.example"
     credential: test-proxy-key
   max_completion_tokens: 64
-  temperature: 0
+  effort: "high"
   timeout_seconds: 5
 operations:
   - command: ["sync"]
@@ -177,7 +177,7 @@ operations:
     with:
       diff_source: staged
       max_completion_tokens: 64
-      temperature: 0
+      effort: "high"
       timeout_seconds: 5
 `, llmServer.URL)
 	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
@@ -293,7 +293,7 @@ llm:
     base_url: "https://llm-proxy.example"
     credential: test-proxy-key
   max_completion_tokens: 64
-  temperature: 0
+  effort: "high"
   timeout_seconds: 5
 operations:
   - command: ["sync"]
@@ -303,7 +303,7 @@ operations:
     with:
       diff_source: staged
       max_completion_tokens: 64
-      temperature: 0
+      effort: "high"
       timeout_seconds: 5
 `, llmServer.URL)
 	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
@@ -508,7 +508,7 @@ llm:
     base_url: "https://llm-proxy.example"
     credential: test-proxy-key
   max_completion_tokens: 64
-  temperature: 0
+  effort: "high"
   timeout_seconds: 5
 operations:
   - command: ["sync"]
@@ -518,7 +518,7 @@ operations:
     with:
       diff_source: staged
       max_completion_tokens: 64
-      temperature: 0
+      effort: "high"
       timeout_seconds: 5
 `, llmServer.URL)
 	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
@@ -843,7 +843,7 @@ llm:
     base_url: "https://llm-proxy.example"
     credential: test-proxy-key
   max_completion_tokens: 64
-  temperature: 0
+  effort: "high"
   timeout_seconds: 5
 operations:
   - command: ["sync"]
@@ -853,7 +853,7 @@ operations:
     with:
       diff_source: staged
       max_completion_tokens: 64
-      temperature: 0
+      effort: "high"
       timeout_seconds: 5
 `, llmServer.URL)
 	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
@@ -992,7 +992,7 @@ llm:
     base_url: "https://llm-proxy.example"
     credential: test-proxy-key
   max_completion_tokens: 64
-  temperature: 0
+  effort: "high"
   timeout_seconds: 5
 operations:
   - command: ["sync"]
@@ -1002,7 +1002,7 @@ operations:
     with:
       diff_source: staged
       max_completion_tokens: 64
-      temperature: 0
+      effort: "high"
       timeout_seconds: 5
 `, llmServer.URL)
 	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
@@ -1148,7 +1148,7 @@ llm:
     base_url: "https://llm-proxy.example"
     credential: ""
   max_completion_tokens: 64
-  temperature: 0
+  effort: "high"
   timeout_seconds: 2
 operations:
   - command: ["sync"]
@@ -1158,7 +1158,7 @@ operations:
     with:
       diff_source: staged
       max_completion_tokens: 64
-      temperature: 0
+      effort: "high"
       timeout_seconds: 2
 `, llmServer.URL)
 	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
@@ -1297,7 +1297,7 @@ llm:
     base_url: "https://llm-proxy.example"
     credential: test-proxy-key
   max_completion_tokens: 64
-  temperature: 0
+  effort: "high"
   timeout_seconds: 5
 operations:
   - command: ["sync"]
@@ -1307,7 +1307,7 @@ operations:
     with:
       diff_source: staged
       max_completion_tokens: 64
-      temperature: 0
+      effort: "high"
       timeout_seconds: 5
 `, llmServer.URL)
 	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
@@ -1473,7 +1473,7 @@ llm:
     base_url: "https://llm-proxy.example"
     credential: test-proxy-key
   max_completion_tokens: 64
-  temperature: 0
+  effort: "high"
   timeout_seconds: 5
 operations:
   - command: ["sync"]
@@ -1483,7 +1483,7 @@ operations:
     with:
       diff_source: staged
       max_completion_tokens: 64
-      temperature: 0
+      effort: "high"
       timeout_seconds: 5
 `, llmServer.URL)
 	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))

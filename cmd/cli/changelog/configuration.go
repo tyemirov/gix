@@ -11,8 +11,8 @@ import (
 type MessageConfiguration struct {
 	Roots              []string                     `mapstructure:"roots"`
 	LLMProxy           llmclient.LLMProxySelection  `mapstructure:"llm_proxy"`
+	Effort             string                       `mapstructure:"effort"`
 	MaxTokens          int                          `mapstructure:"max_completion_tokens"`
-	Temperature        float64                      `mapstructure:"temperature"`
 	TimeoutSeconds     int                          `mapstructure:"timeout_seconds"`
 	Version            string                       `mapstructure:"version"`
 	ReleaseDate        string                       `mapstructure:"release_date"`
@@ -24,8 +24,7 @@ type MessageConfiguration struct {
 // DefaultMessageConfiguration provides baseline configuration.
 func DefaultMessageConfiguration() MessageConfiguration {
 	return MessageConfiguration{
-		MaxTokens:   0,
-		Temperature: 0,
+		MaxTokens: 0,
 	}
 }
 
@@ -36,13 +35,10 @@ func (configuration MessageConfiguration) Sanitize() MessageConfiguration {
 
 	sanitized.LLMProxy.Provider = strings.TrimSpace(configuration.LLMProxy.Provider)
 	sanitized.LLMProxy.Model = strings.TrimSpace(configuration.LLMProxy.Model)
+	sanitized.Effort = strings.TrimSpace(configuration.Effort)
 
 	if configuration.MaxTokens < 0 {
 		sanitized.MaxTokens = 0
-	}
-
-	if configuration.Temperature < 0 {
-		sanitized.Temperature = 0
 	}
 
 	sanitized.Version = strings.TrimSpace(configuration.Version)

@@ -244,7 +244,7 @@ func TestBuildTaskOperationInjectsLLMConfiguration(t *testing.T) {
 	options := map[string]any{
 		optionTaskLLMKeyConstant: map[string]any{
 			optionTaskLLMProxyKeyConstant: map[string]any{
-				optionTaskLLMProviderKeyConstant: llmclient.ProviderOpenAI,
+				optionTaskLLMProviderKeyConstant: llmclient.FallbackProvider,
 				optionTaskLLMModelKeyConstant:    "gpt-test",
 			},
 		},

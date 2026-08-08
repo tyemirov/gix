@@ -539,8 +539,8 @@ func (application *Application) branchSyncConfiguration() syncflowcmd.CommandCon
 	messageConfiguration := application.commitMessageConfiguration()
 	configuration.CommitMessage = syncflowcmd.CommitMessageConfiguration{
 		LLMProxy:           messageConfiguration.LLMProxy,
+		Effort:             messageConfiguration.Effort,
 		MaxTokens:          messageConfiguration.MaxTokens,
-		Temperature:        messageConfiguration.Temperature,
 		TimeoutSeconds:     messageConfiguration.TimeoutSeconds,
 		ConnectionProfiles: messageConfiguration.ConnectionProfiles,
 	}
@@ -782,8 +782,8 @@ func (application *Application) applyGlobalLLMDefaultsToCommitMessageConfigurati
 	if configuration.MaxCompletionTokens > 0 {
 		target.MaxTokens = configuration.MaxCompletionTokens
 	}
-	if configuration.Temperature != 0 {
-		target.Temperature = configuration.Temperature
+	if configuration.Effort != "" {
+		target.Effort = configuration.Effort
 	}
 	if configuration.TimeoutSeconds > 0 {
 		target.TimeoutSeconds = configuration.TimeoutSeconds
@@ -798,8 +798,8 @@ func (application *Application) applyGlobalLLMDefaultsToChangelogMessageConfigur
 	if configuration.MaxCompletionTokens > 0 {
 		target.MaxTokens = configuration.MaxCompletionTokens
 	}
-	if configuration.Temperature != 0 {
-		target.Temperature = configuration.Temperature
+	if configuration.Effort != "" {
+		target.Effort = configuration.Effort
 	}
 	if configuration.TimeoutSeconds > 0 {
 		target.TimeoutSeconds = configuration.TimeoutSeconds

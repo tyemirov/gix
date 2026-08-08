@@ -40,7 +40,6 @@ const (
 
 	webWorkflowPrimitiveParameterTypeStringConstant   = "a string"
 	webWorkflowPrimitiveParameterTypeBooleanConstant  = "a boolean"
-	webWorkflowPrimitiveProtocolPlaceholderConstant   = "ssh"
 	webWorkflowPrimitiveOwnerPlaceholderConstant      = "owner"
 	webWorkflowPrimitiveBranchPlaceholderConstant     = "master"
 	webWorkflowPrimitiveRemotePlaceholderConstant     = "origin"

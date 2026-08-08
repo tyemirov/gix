@@ -301,7 +301,7 @@ func handleBranchSyncAction(ctx context.Context, environment *workflow.Environme
 		BranchName:      resolvedBranchName,
 		RemoteName:      remoteName,
 		CreateIfMissing: createIfMissing,
-		pullMode:        pullModeForRefreshState(refreshSkipped),
+		pullMode:        pullModeForRefreshState(),
 	}
 	commitMessageOptions, commitMessageErr := worktreeAdoptionCommitMessageOptionsFromParameters(parameters)
 	if commitMessageErr != nil {
@@ -590,7 +590,7 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 			}
 		}
 		if commitBranchName == baseBranch && !commitToExplicitBaseBranch {
-			generatedBranchName, generatedBranchErr := selectGeneratedSyncBranchName(ctx, environment, repository, remoteName, baseBranch, options.CommitMessages)
+			generatedBranchName, generatedBranchErr := selectGeneratedSyncBranchName(ctx, environment, repository, remoteName, options.CommitMessages)
 			if generatedBranchErr != nil {
 				return generatedBranchErr
 			}
@@ -1348,7 +1348,7 @@ func reportStrictSync(repository *workflow.RepositoryState, environment *workflo
 	}
 }
 
-func pullModeForRefreshState(refreshSkipped bool) pullMode {
+func pullModeForRefreshState() pullMode {
 	return pullModeFastForwardOnly
 }
 

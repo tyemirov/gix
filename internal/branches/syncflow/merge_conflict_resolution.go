@@ -932,8 +932,7 @@ func (service mergeConflictResolutionService) buildRegionResolutionRequest(optio
 				Content: userPrompt,
 			},
 		},
-		MaxTokens:   mergeConflictResolutionMaxTokens,
-		Temperature: service.mergeConflictResolutionTemperature(),
+		MaxTokens: mergeConflictResolutionMaxTokens,
 	}
 }
 
@@ -965,17 +964,8 @@ func (service mergeConflictResolutionService) buildRegionReviewRequest(options m
 				Content: userPrompt,
 			},
 		},
-		MaxTokens:   mergeConflictResolutionMaxTokens,
-		Temperature: service.mergeConflictResolutionTemperature(),
+		MaxTokens: mergeConflictResolutionMaxTokens,
 	}
-}
-
-func (service mergeConflictResolutionService) mergeConflictResolutionTemperature() *float64 {
-	if service.commitMessages.Temperature == 0 {
-		return nil
-	}
-	temperature := service.commitMessages.Temperature
-	return &temperature
 }
 
 func (service mergeConflictResolutionService) writeResolvedFile(path string, content string) error {

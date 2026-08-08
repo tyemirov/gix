@@ -554,7 +554,7 @@ func TestSyncDirtyClusterCommitLocksTheCheckedIndex(testInstance *testing.T) {
 		if requestIndex == 2 {
 			message = "feat: add state"
 		}
-		_, _ = responseWriter.Write([]byte(fmt.Sprintf(`{"choices":[{"message":{"role":"assistant","content":%q}}]}`, message)))
+		_, _ = responseWriter.Write(fmt.Appendf(nil, `{"choices":[{"message":{"role":"assistant","content":%q}}]}`, message))
 	}))
 	testInstance.Cleanup(llmServer.Close)
 

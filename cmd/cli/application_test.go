@@ -26,7 +26,7 @@ import (
 
 const (
 	testConfigurationFileNameConstant                        = "config.yml"
-	testLLMConfigurationBlockConstant                        = "llm:\n  openai:\n    priority: 2\n    model: gpt-4.1\n    base_url: https://api.openai.com/v1\n    credential: openai-test-secret\n  llm_proxy:\n    priority: 1\n    provider: meta\n    model: muse-spark-1.1\n    base_url: https://llm-proxy.example\n    credential: proxy-test-secret\n"
+	testLLMConfigurationBlockConstant                        = "llm:\n  openai:\n    priority: 2\n    model: gpt-5.6-terra\n    base_url: https://api.openai.com/v1\n    credential: openai-test-secret\n  llm_proxy:\n    priority: 1\n    provider: meta\n    model: muse-spark-1.1\n    base_url: https://llm-proxy.example\n    credential: proxy-test-secret\n"
 	testConfigurationHeaderConstant                          = "common:\n  log_level: error\n  log_format: structured\n" + testLLMConfigurationBlockConstant + "operations:\n"
 	testConsoleConfigurationHeaderConstant                   = "common:\n  log_level: error\n  log_format: console\n" + testLLMConfigurationBlockConstant + "operations:\n"
 	testDebugConfigurationHeaderConstant                     = "common:\n  log_level: debug\n  log_format: structured\n" + testLLMConfigurationBlockConstant + "operations:\n"
@@ -72,15 +72,7 @@ const (
 	configurationFileFieldNameConstant                       = "config_file"
 	testUserConfigurationDirectoryNameConstant               = ".gix"
 	testXDGConfigHomeDirectoryNameConstant                   = "config"
-	testCaseWorkingDirectoryPreferredMessageConstant         = "WorkingDirectoryPreferred"
-	testCaseXDGDirectoryIgnoredMessageConstant               = "XDGDirectoryIgnored"
-	testCaseHomeDirectoryFallbackMessageConstant             = "HomeDirectoryFallback"
-	testCaseXDGOnlyIgnoredMessageConstant                    = "XDGOnlyIgnored"
 	applicationSearchPathSubtestNameTemplateConstant         = "%d_%s"
-	configurationDirectoryRoleWorkingConstant                = "working"
-	configurationDirectoryRoleHomeConstant                   = "home"
-	configurationDirectoryRoleNoneConstant                   = "none"
-	configurationInitializationUserTestNameConstant          = "UserScope"
 	configurationInitializationForceRequiredTestNameConstant = "ForceRequired"
 	configurationInitializationForceEnabledTestNameConstant  = "ForceEnabled"
 	configurationInitializationCommandArgumentConstant       = "init"
@@ -554,9 +546,10 @@ func TestCanonicalConfigurationTemplateProvidesCompleteCommandConfigurations(tes
 	embeddedConfiguration := decodeEmbeddedApplicationConfiguration(testInstance)
 	require.Equal(testInstance, "${GH_TOKEN}", embeddedConfiguration.GitHub.Credential)
 	require.Equal(testInstance, 2, embeddedConfiguration.LLM.OpenAI.Priority)
-	require.Equal(testInstance, "gpt-4.1", embeddedConfiguration.LLM.OpenAI.Model)
+	require.Equal(testInstance, "gpt-5.6-terra", embeddedConfiguration.LLM.OpenAI.Model)
 	require.Equal(testInstance, "https://api.openai.com/v1", embeddedConfiguration.LLM.OpenAI.BaseURL)
 	require.Equal(testInstance, "${OPENAI_API_KEY}", embeddedConfiguration.LLM.OpenAI.Credential)
+	require.Equal(testInstance, "high", embeddedConfiguration.LLM.OpenAI.Effort)
 	require.Equal(testInstance, 1, embeddedConfiguration.LLM.LLMProxy.Priority)
 	require.Equal(testInstance, "meta", embeddedConfiguration.LLM.LLMProxy.Provider)
 	require.Equal(testInstance, "muse-spark-1.1", embeddedConfiguration.LLM.LLMProxy.Model)

@@ -13,8 +13,8 @@ const defaultDiffSource = "staged"
 type MessageConfiguration struct {
 	Roots              []string                     `mapstructure:"roots"`
 	LLMProxy           llmclient.LLMProxySelection  `mapstructure:"llm_proxy"`
+	Effort             string                       `mapstructure:"effort"`
 	MaxTokens          int                          `mapstructure:"max_completion_tokens"`
-	Temperature        float64                      `mapstructure:"temperature"`
 	DiffSource         string                       `mapstructure:"diff_source"`
 	TimeoutSeconds     int                          `mapstructure:"timeout_seconds"`
 	ConnectionProfiles llmclient.ConnectionProfiles `mapstructure:"-"`
@@ -23,9 +23,8 @@ type MessageConfiguration struct {
 // DefaultMessageConfiguration provides baseline configuration.
 func DefaultMessageConfiguration() MessageConfiguration {
 	return MessageConfiguration{
-		DiffSource:  defaultDiffSource,
-		MaxTokens:   0,
-		Temperature: 0,
+		DiffSource: defaultDiffSource,
+		MaxTokens:  0,
 	}
 }
 

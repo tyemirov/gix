@@ -83,7 +83,7 @@ func TestMessageCommitUsesLLMConnectionPriorityAndFailover(testInstance *testing
 llm:
   openai:
     priority: %d
-    model: gpt-4.1
+    model: gpt-5.6-terra
     base_url: %q
     credential: openai-secret
   llm_proxy:
@@ -93,7 +93,7 @@ llm:
     base_url: %q
     credential: proxy-secret
   max_completion_tokens: 64
-  temperature: 0
+  effort: "high"
   timeout_seconds: 2
 operations:
   - command: ["message", "commit"]
@@ -174,7 +174,7 @@ func TestMessageCommitReportsEveryFailedLLMConnectionWithContext(testInstance *t
 llm:
   openai:
     priority: 2
-    model: gpt-4.1
+    model: gpt-5.6-terra
     base_url: %q
     credential: openai-secret
   llm_proxy:
@@ -184,7 +184,7 @@ llm:
     base_url: %q
     credential: proxy-secret
   max_completion_tokens: 64
-  temperature: 0
+  effort: "high"
   timeout_seconds: 2
 operations:
   - command: ["message", "commit"]

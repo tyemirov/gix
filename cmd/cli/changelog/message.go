@@ -30,8 +30,8 @@ const (
 	sinceDateFlagUsage             = "Timestamp boundary (RFC3339 or YYYY-MM-DD) for changes; conflicts with --since-tag"
 	maxTokensFlagName              = "max-tokens"
 	maxTokensFlagUsage             = "Override the maximum completion tokens"
-	temperatureFlagName            = "temperature"
-	temperatureFlagUsage           = "Override the sampling temperature (0-2)"
+	effortFlagName                 = "effort"
+	effortFlagUsage                = "Override reasoning effort (low|medium|high)"
 	providerFlagName               = "provider"
 	providerFlagUsage              = "Override the LLM provider"
 	modelFlagName                  = "model"
@@ -45,7 +45,7 @@ const (
 	taskOptionChangelogSinceRef    = "since_reference"
 	taskOptionChangelogSinceDate   = "since_date"
 	taskOptionChangelogMaxTokens   = "max_tokens"
-	taskOptionChangelogTemperature = "temperature"
+	taskOptionChangelogEffort      = "effort"
 	taskOptionChangelogClient      = "client"
 )
 
@@ -80,7 +80,7 @@ func (builder *MessageCommandBuilder) Build() (*cobra.Command, error) {
 	command.Flags().String(sinceReferenceFlagName, "", sinceReferenceFlagUsage)
 	command.Flags().String(sinceDateFlagName, "", sinceDateFlagUsage)
 	command.Flags().Int(maxTokensFlagName, 0, maxTokensFlagUsage)
-	command.Flags().Float64(temperatureFlagName, 0, temperatureFlagUsage)
+	command.Flags().String(effortFlagName, "", effortFlagUsage)
 	command.Flags().String(providerFlagName, "", providerFlagUsage)
 	command.Flags().String(modelFlagName, "", modelFlagUsage)
 	command.Flags().Int(timeoutFlagName, 0, timeoutFlagUsage)
@@ -146,10 +146,7 @@ func (builder *MessageCommandBuilder) run(command *cobra.Command, arguments []st
 		return maxTokensError
 	}
 
-	temperaturePointer, temperatureError := resolveTemperature(command, configuration)
-	if temperatureError != nil {
-		return temperatureError
-	}
+	effort := resolveEffort(command, configuration)
 
 	proxySelection := configuration.LLMProxy
 	providerChanged := false
@@ -208,8 +205,8 @@ func (builder *MessageCommandBuilder) run(command *cobra.Command, arguments []st
 		configuration.ConnectionProfiles,
 		proxySelection,
 		llmclient.RuntimeConfig{
+			Effort:              effort,
 			MaxCompletionTokens: configuration.MaxTokens,
-			Temperature:         configuration.Temperature,
 			RequestTimeout:      timeoutDuration,
 		},
 		builder.ClientFactory,
@@ -230,8 +227,8 @@ func (builder *MessageCommandBuilder) run(command *cobra.Command, arguments []st
 	if sinceDate != nil {
 		actionOptions[taskOptionChangelogSinceDate] = sinceDate
 	}
-	if temperaturePointer != nil {
-		actionOptions[taskOptionChangelogTemperature] = *temperaturePointer
+	if effort != "" {
+		actionOptions[taskOptionChangelogEffort] = effort
 	}
 
 	taskDefinition := workflow.TaskDefinition{
@@ -302,20 +299,13 @@ func resolveMaxTokens(command *cobra.Command, configuration MessageConfiguration
 	return maxTokens, nil
 }
 
-func resolveTemperature(command *cobra.Command, configuration MessageConfiguration) (*float64, error) {
+func resolveEffort(command *cobra.Command, configuration MessageConfiguration) string {
 	if command != nil {
-		if flagValue, flagError := command.Flags().GetFloat64(temperatureFlagName); flagError == nil && command.Flags().Changed(temperatureFlagName) {
-			if flagValue < 0 {
-				return nil, errors.New("temperature cannot be negative")
-			}
-			return &flagValue, nil
+		if flagValue, flagError := command.Flags().GetString(effortFlagName); flagError == nil && command.Flags().Changed(effortFlagName) {
+			return strings.TrimSpace(flagValue)
 		}
 	}
-	if configuration.Temperature > 0 {
-		value := configuration.Temperature
-		return &value, nil
-	}
-	return nil, nil
+	return strings.TrimSpace(configuration.Effort)
 }
 
 func parseSinceDate(value string) (*time.Time, error) {

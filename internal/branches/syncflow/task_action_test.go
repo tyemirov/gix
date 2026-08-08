@@ -2,6 +2,7 @@ package syncflow
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"go.uber.org/zap"
@@ -18,6 +20,7 @@ import (
 	"github.com/tyemirov/gix/internal/execshell"
 	"github.com/tyemirov/gix/internal/githubcli"
 	"github.com/tyemirov/gix/internal/gitrepo"
+	"github.com/tyemirov/gix/internal/llmclient"
 	"github.com/tyemirov/gix/internal/repos/prompt"
 	"github.com/tyemirov/gix/internal/repos/shared"
 	"github.com/tyemirov/gix/internal/workflow"
@@ -2889,4 +2892,65 @@ func TestHandleBranchSyncActionRestoresCommit(t *testing.T) {
 		}
 	}
 	require.True(t, foundCheckout)
+}
+
+func TestHandleBranchSyncAction_RollbackAndSanitizationOnPRDescriptionFailure(t *testing.T) {
+	gitExecutor := &strictSyncGitExecutor{
+		statusOutput:  "",
+		revListOutput: "1\n",
+		currentBranch: "feature",
+		diffOutput:    "1 file changed\n",
+	}
+	githubExecutor := &strictSyncGitHubExecutor{output: "[]"}
+	githubClient, githubClientErr := githubcli.NewClient(githubExecutor)
+	require.NoError(t, githubClientErr)
+	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(t, managerError)
+
+	failingChatClient := &mockFailingChatClient{
+		err: errors.New("llm proxy error: Post https://proxy.llm.internal/v2/chat?key=secret-proxy-key-12345: 500 Internal Server Error"),
+	}
+
+	environment := &workflow.Environment{
+		GitExecutor:       gitExecutor,
+		GitHubClient:      githubClient,
+		RepositoryManager: gitManager,
+		Logger:            zap.NewNop(),
+		Output:            io.Discard,
+		Errors:            io.Discard,
+	}
+	repository := &workflow.RepositoryState{
+		Path: "/tmp/project",
+		Inspection: audit.RepositoryInspection{
+			LocalBranch:    "feature",
+			FinalOwnerRepo: "owner/project",
+		},
+	}
+	parameters := map[string]any{
+		taskOptionBranchName:         "feature",
+		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
+		taskOptionRequirePullRequest: true,
+		taskOptionBaseBranch:         "master",
+		taskOptionRequireClean:       false,
+		taskOptionWorktreeCommitMessage: worktreeAdoptionCommitMessageOptions{
+			Client: failingChatClient,
+			ConnectionProfiles: llmclient.ConnectionProfiles{
+				LLMProxy: llmclient.LLMProxyConnectionProfile{
+					Credential: "proxy-secret-token-67890",
+				},
+			},
+		},
+	}
+
+	syncErr := handleBranchSyncAction(context.Background(), environment, repository, parameters)
+	require.Error(t, syncErr)
+	assert.Contains(t, syncErr.Error(), "strict sync pull request description.llm:")
+	assert.NotContains(t, syncErr.Error(), "secret-proxy-key-12345")
+	assert.NotContains(t, syncErr.Error(), "proxy-secret-token-67890")
+	assert.Contains(t, syncErr.Error(), "key=[REDACTED]")
+
+	recordedCommands := recordedGitCommands(gitExecutor.commands)
+	require.NotContains(t, recordedCommands, "push origin feature")
+	githubCommands := recordedGitCommands(githubExecutor.commands)
+	require.NotContains(t, githubCommands, "pr create")
 }

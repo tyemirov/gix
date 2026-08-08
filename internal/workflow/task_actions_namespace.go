@@ -201,7 +201,7 @@ func handleNamespaceRewriteAction(ctx context.Context, environment *Environment,
 	logNamespaceApply(environment, repository, result.BranchName, filesChanged, result.PushPerformed)
 	recordNamespaceMutations(environment, repository, result)
 
-	if environment != nil && environment.Variables != nil && result.PushPerformed {
+	if environment.Variables != nil && result.PushPerformed {
 		if variableName, ok := namespaceBranchVariableName(repository); ok && len(strings.TrimSpace(result.BranchName)) > 0 {
 			environment.Variables.Set(variableName, strings.TrimSpace(result.BranchName))
 		}

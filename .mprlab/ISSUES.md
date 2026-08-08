@@ -346,7 +346,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make format`, `make test`, `make lint`, `make ci`, `make build`, and `git diff --check`.
   Resolution:
   Release preparation now detects a single exact version tag before version selection or CI and reconciles that immutable release instead of selecting a successor. A complete matching local receipt is reused without GitHub access; a missing or partial receipt is rebuilt from the published GitHub Release only after the release object, remote annotated tag, manifest identity, changelog-only release commit, source parent, notes, asset inventory, payload paths, sizes, and hashes verify. New releases prepare in a sibling candidate directory and promote only a complete verified receipt, so every earlier preparation failure leaves the canonical receipt unchanged. A failure after release commit or tag creation atomically restores the transaction-owned refs and `CHANGELOG.md` to the prepared source. Conflicting local or published state fails closed with contextual errors. Public release-script regressions cover local reuse, staged and partial recovery, malformed and conflicting receipts, candidate failure, and post-tag sealing rollback. `make format`, `make test`, `make lint`, `make ci`, `make build`, shell and Python syntax checks, and `git diff --check` passed on 2026-08-06.
-- [ ] [B052] (P0) Handle LLM proxy failures during gix sync PR description generation.
+- [x] [B052] (P0) Handle LLM proxy failures during gix sync PR description generation.
   Goal:
   Make `gix sync` handle pull request description LLM failures gracefully so a sync failure is clear, actionable, and does not leave the repository in an unexpected checkout or worktree state.
   
@@ -358,6 +358,9 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   
   Validation:
   Run the relevant sync and PR-description-generation tests. Reproduce or simulate an LLM proxy failure and confirm `gix sync` fails with a sanitized, actionable message while restoring the original checkout, local state, and worktree topology. Confirm logs do not include full LLM proxy keys or other secrets.
+  Resolution:
+  PR description generation now passes underlying errors through `sanitizeLLMDescriptionError`, which redacts query parameters (`key=`, `secret=`, `token=`, `api_key=`), authentication headers (`Bearer`, `Authorization:`, `X-Api-Key:`), basic auth credentials in URLs, and literal configured connection secrets. Strict sync transaction rollback runs before remote push when description generation fails, restoring starting checkouts, branches, and worktree topology. Unit and integration tests verify error sanitization, empty responses, and strict sync transaction rollback behavior.
+
 
 
 ## Improvements

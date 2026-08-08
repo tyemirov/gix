@@ -109,12 +109,6 @@ func saveDirtyWorkClusters(ctx context.Context, executor shared.GitExecutor, rep
 		return 0, clientErr
 	}
 
-	var temperature *float64
-	if options.Temperature != 0 {
-		temperatureValue := options.Temperature
-		temperature = &temperatureValue
-	}
-
 	generator := commitmsg.Generator{
 		GitExecutor: executor,
 		Client:      client,
@@ -151,7 +145,6 @@ func saveDirtyWorkClusters(ctx context.Context, executor shared.GitExecutor, rep
 			RepositoryPath: repositoryPath,
 			Source:         commitmsg.DiffSourceStaged,
 			MaxTokens:      options.MaxTokens,
-			Temperature:    temperature,
 		})
 		if generateErr != nil {
 			if ownershipErr := validateStrictSyncDirtyClusterCheckpoint(ctx, executor, repositoryPath, cluster.Root, checkpoint); ownershipErr != nil {
@@ -654,11 +647,6 @@ func generateSyncBranchMessage(ctx context.Context, executor shared.GitExecutor,
 	if clientErr != nil {
 		return "", clientErr
 	}
-	var temperature *float64
-	if options.Temperature != 0 {
-		temperatureValue := options.Temperature
-		temperature = &temperatureValue
-	}
 	generator := commitmsg.Generator{
 		GitExecutor: executor,
 		Client:      client,
@@ -667,7 +655,6 @@ func generateSyncBranchMessage(ctx context.Context, executor shared.GitExecutor,
 		RepositoryPath: repositoryPath,
 		Source:         commitmsg.DiffSourceAll,
 		MaxTokens:      options.MaxTokens,
-		Temperature:    temperature,
 	})
 	if generateErr != nil {
 		return "", generateErr
@@ -675,7 +662,7 @@ func generateSyncBranchMessage(ctx context.Context, executor shared.GitExecutor,
 	return result.Message, nil
 }
 
-func selectGeneratedSyncBranchName(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, remoteName string, baseBranch string, options worktreeAdoptionCommitMessageOptions) (string, error) {
+func selectGeneratedSyncBranchName(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, remoteName string, options worktreeAdoptionCommitMessageOptions) (string, error) {
 	initialBranchName, initialBranchErr := generatedSyncBranchName(ctx, environment.GitExecutor, repository.Path, options)
 	if initialBranchErr != nil {
 		return "", initialBranchErr

@@ -70,7 +70,7 @@ func TestMessageCommandGeneratesCommitMessage(t *testing.T) {
 	require.Equal(t, 0, action.Options[taskOptionCommitMaxTokens])
 	require.NotNil(t, action.Options[taskOptionCommitClient])
 	require.Equal(t, llmclient.TransportOpenAICompatible, client.config.Transport)
-	require.Equal(t, llmclient.ProviderOpenAI, client.config.Provider)
+	require.Equal(t, llmclient.FallbackProvider, client.config.Provider)
 	require.Equal(t, "mock-model", client.config.Model)
 	require.Equal(t, "test-api-key", client.config.APIKey)
 	require.Nil(t, client.request)
