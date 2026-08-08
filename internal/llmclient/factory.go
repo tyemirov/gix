@@ -41,27 +41,27 @@ const (
 
 // OpenAIConnectionProfile stores the direct OpenAI connection defined in config.yml.
 type OpenAIConnectionProfile struct {
-	Priority   int    `mapstructure:"priority"`
-	BaseURL    string `mapstructure:"base_url"`
-	Credential string `mapstructure:"credential"`
-	Model      string `mapstructure:"model"`
-	Effort     string `mapstructure:"effort"`
+	Priority   int    `yaml:"priority"`
+	BaseURL    string `yaml:"base_url"`
+	Credential string `yaml:"credential"`
+	Model      string `yaml:"model"`
+	Effort     string `yaml:"effort"`
 }
 
 // LLMProxyConnectionProfile stores the llm-proxy connection and its upstream selection.
 type LLMProxyConnectionProfile struct {
-	Priority   int    `mapstructure:"priority"`
-	BaseURL    string `mapstructure:"base_url"`
-	Credential string `mapstructure:"credential"`
-	Provider   string `mapstructure:"provider"`
-	Model      string `mapstructure:"model"`
-	Effort     string `mapstructure:"effort"`
+	Priority   int    `yaml:"priority"`
+	BaseURL    string `yaml:"base_url"`
+	Credential string `yaml:"credential"`
+	Provider   string `yaml:"provider"`
+	Model      string `yaml:"model"`
+	Effort     string `yaml:"effort"`
 }
 
 // ConnectionProfiles stores the ordered LLM connection candidates.
 type ConnectionProfiles struct {
-	OpenAI   OpenAIConnectionProfile   `mapstructure:"openai"`
-	LLMProxy LLMProxyConnectionProfile `mapstructure:"llm_proxy"`
+	OpenAI   OpenAIConnectionProfile   `yaml:"openai"`
+	LLMProxy LLMProxyConnectionProfile `yaml:"llm_proxy"`
 }
 
 // LLMProxySelection overrides the configured llm-proxy upstream for one operation.

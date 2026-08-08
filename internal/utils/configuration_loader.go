@@ -1,22 +1,24 @@
 package utils
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
 
-	mapstructure "github.com/go-viper/mapstructure/v2"
 	"gopkg.in/yaml.v3"
 )
 
 const (
-	configurationReadErrorTemplateConstant     = "config_file_read_failed: path=%s: %v"
-	configurationParseErrorTemplateConstant    = "config_file_parse_failed: path=%s: %v"
+	configurationReadErrorTemplateConstant     = "config_file_read_failed: path=%s: %w"
+	configurationParseErrorTemplateConstant    = "config_file_parse_failed: path=%s: %w"
 	configurationPlaceholderErrorTemplate      = "config_placeholder_missing: names=%s"
 	configurationPathRequiredErrorMessage      = "config_file_path_required"
+	configurationTargetErrorMessage            = "config_file_target_must_be_non_nil_pointer"
 	optionalCredentialConfigurationKeyConstant = "credential"
 )
 
@@ -50,32 +52,24 @@ func (loader *ConfigurationLoader) LoadConfiguration(configurationFilePath strin
 		return LoadedConfiguration{}, fmt.Errorf(configurationReadErrorTemplateConstant, trimmedPath, readError)
 	}
 
-	var configurationDocument yaml.Node
-	if parseError := yaml.Unmarshal(configurationData, &configurationDocument); parseError != nil {
+	targetValue := reflect.ValueOf(targetConfiguration)
+	if !targetValue.IsValid() || targetValue.Kind() != reflect.Pointer || targetValue.IsNil() {
+		return LoadedConfiguration{}, fmt.Errorf(configurationParseErrorTemplateConstant, trimmedPath, errors.New(configurationTargetErrorMessage))
+	}
+
+	decodedTarget := reflect.New(targetValue.Elem().Type())
+	configurationDecoder := yaml.NewDecoder(bytes.NewReader(configurationData))
+	configurationDecoder.KnownFields(true)
+	if parseError := configurationDecoder.Decode(decodedTarget.Interface()); parseError != nil {
 		return LoadedConfiguration{}, fmt.Errorf(configurationParseErrorTemplateConstant, trimmedPath, parseError)
 	}
 
-	expansionError := expandConfigurationPlaceholders(&configurationDocument, processEnvironment())
+	expansionError := expandConfigurationPlaceholders(decodedTarget, processEnvironment())
 	if expansionError != nil {
 		return LoadedConfiguration{}, expansionError
 	}
 
-	rawConfiguration := map[string]any{}
-	if parseError := configurationDocument.Decode(&rawConfiguration); parseError != nil {
-		return LoadedConfiguration{}, fmt.Errorf(configurationParseErrorTemplateConstant, trimmedPath, parseError)
-	}
-	decoder, decoderError := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
-		TagName:          "mapstructure",
-		Result:           targetConfiguration,
-		ErrorUnused:      true,
-		WeaklyTypedInput: true,
-	})
-	if decoderError != nil {
-		return LoadedConfiguration{}, fmt.Errorf(configurationParseErrorTemplateConstant, trimmedPath, decoderError)
-	}
-	if decodeError := decoder.Decode(rawConfiguration); decodeError != nil {
-		return LoadedConfiguration{}, fmt.Errorf(configurationParseErrorTemplateConstant, trimmedPath, decodeError)
-	}
+	targetValue.Elem().Set(decodedTarget.Elem())
 
 	return LoadedConfiguration{ConfigFileUsed: trimmedPath}, nil
 }
@@ -89,9 +83,9 @@ func processEnvironment() map[string]string {
 	return environment
 }
 
-func expandConfigurationPlaceholders(configurationDocument *yaml.Node, environment map[string]string) error {
+func expandConfigurationPlaceholders(configurationValue reflect.Value, environment map[string]string) error {
 	missingPlaceholders := map[string]struct{}{}
-	expandConfigurationNode(configurationDocument, environment, missingPlaceholders, "")
+	expandConfigurationValue(configurationValue, environment, missingPlaceholders, "")
 	if len(missingPlaceholders) == 0 {
 		return nil
 	}
@@ -104,33 +98,71 @@ func expandConfigurationPlaceholders(configurationDocument *yaml.Node, environme
 	return fmt.Errorf(configurationPlaceholderErrorTemplate, strings.Join(missingNames, ","))
 }
 
-func expandConfigurationNode(
-	configurationNode *yaml.Node,
+func expandConfigurationValue(
+	configurationValue reflect.Value,
 	environment map[string]string,
 	missingPlaceholders map[string]struct{},
 	optionalPlaceholderName string,
 ) {
-	if configurationNode == nil {
+	if !configurationValue.IsValid() {
 		return
 	}
 
-	switch configurationNode.Kind {
-	case yaml.DocumentNode, yaml.SequenceNode:
-		for _, childNode := range configurationNode.Content {
-			expandConfigurationNode(childNode, environment, missingPlaceholders, "")
+	switch configurationValue.Kind() {
+	case reflect.Interface:
+		if configurationValue.IsNil() || !configurationValue.CanSet() {
+			return
 		}
-	case yaml.MappingNode:
-		for childIndex := 0; childIndex+1 < len(configurationNode.Content); childIndex += 2 {
-			keyNode := configurationNode.Content[childIndex]
-			valueNode := configurationNode.Content[childIndex+1]
-			optionalCredentialName := ""
-			if keyNode.Kind == yaml.ScalarNode && keyNode.Value == optionalCredentialConfigurationKeyConstant {
-				optionalCredentialName = exactPlaceholderName(valueNode)
+		expandedValue := reflect.New(configurationValue.Elem().Type()).Elem()
+		expandedValue.Set(configurationValue.Elem())
+		expandConfigurationValue(expandedValue, environment, missingPlaceholders, optionalPlaceholderName)
+		configurationValue.Set(expandedValue)
+	case reflect.Pointer:
+		if configurationValue.IsNil() {
+			return
+		}
+		expandConfigurationValue(configurationValue.Elem(), environment, missingPlaceholders, optionalPlaceholderName)
+	case reflect.Struct:
+		configurationType := configurationValue.Type()
+		for fieldIndex := 0; fieldIndex < configurationValue.NumField(); fieldIndex++ {
+			fieldDefinition := configurationType.Field(fieldIndex)
+			if fieldDefinition.PkgPath != "" {
+				continue
 			}
-			expandConfigurationNode(valueNode, environment, missingPlaceholders, optionalCredentialName)
+			fieldName := configurationYAMLFieldName(fieldDefinition)
+			if fieldName == "-" {
+				continue
+			}
+			fieldValue := configurationValue.Field(fieldIndex)
+			fieldOptionalPlaceholder := optionalCredentialPlaceholder(fieldName, fieldValue)
+			expandConfigurationValue(fieldValue, environment, missingPlaceholders, fieldOptionalPlaceholder)
 		}
-	case yaml.ScalarNode:
-		configurationNode.Value = configurationPlaceholderPattern.ReplaceAllStringFunc(configurationNode.Value, func(placeholder string) string {
+	case reflect.Map:
+		if configurationValue.IsNil() {
+			return
+		}
+		mapIterator := configurationValue.MapRange()
+		for mapIterator.Next() {
+			mapKey := mapIterator.Key()
+			mapValue := mapIterator.Value()
+			expandedValue := reflect.New(mapValue.Type()).Elem()
+			expandedValue.Set(mapValue)
+			mapOptionalPlaceholder := ""
+			if mapKey.Kind() == reflect.String {
+				mapOptionalPlaceholder = optionalCredentialPlaceholder(mapKey.String(), mapValue)
+			}
+			expandConfigurationValue(expandedValue, environment, missingPlaceholders, mapOptionalPlaceholder)
+			configurationValue.SetMapIndex(mapKey, expandedValue)
+		}
+	case reflect.Slice, reflect.Array:
+		for elementIndex := 0; elementIndex < configurationValue.Len(); elementIndex++ {
+			expandConfigurationValue(configurationValue.Index(elementIndex), environment, missingPlaceholders, "")
+		}
+	case reflect.String:
+		if !configurationValue.CanSet() {
+			return
+		}
+		expandedString := configurationPlaceholderPattern.ReplaceAllStringFunc(configurationValue.String(), func(placeholder string) string {
 			matches := configurationPlaceholderPattern.FindStringSubmatch(placeholder)
 			placeholderName := matches[1]
 			if !configurationPlaceholderNamePattern.MatchString(placeholderName) {
@@ -146,15 +178,37 @@ func expandConfigurationNode(
 			missingPlaceholders[placeholderName] = struct{}{}
 			return placeholder
 		})
+		configurationValue.SetString(expandedString)
 	}
 }
 
-func exactPlaceholderName(configurationNode *yaml.Node) string {
-	if configurationNode == nil || configurationNode.Kind != yaml.ScalarNode {
+func configurationYAMLFieldName(fieldDefinition reflect.StructField) string {
+	fieldName, _, _ := strings.Cut(fieldDefinition.Tag.Get("yaml"), ",")
+	if fieldName != "" {
+		return fieldName
+	}
+	return strings.ToLower(fieldDefinition.Name)
+}
+
+func optionalCredentialPlaceholder(configurationKey string, configurationValue reflect.Value) string {
+	if configurationKey != optionalCredentialConfigurationKeyConstant {
 		return ""
 	}
-	matches := configurationPlaceholderPattern.FindStringSubmatch(configurationNode.Value)
-	if len(matches) != 2 || matches[0] != configurationNode.Value {
+	for configurationValue.IsValid() && (configurationValue.Kind() == reflect.Interface || configurationValue.Kind() == reflect.Pointer) {
+		if configurationValue.IsNil() {
+			return ""
+		}
+		configurationValue = configurationValue.Elem()
+	}
+	if !configurationValue.IsValid() || configurationValue.Kind() != reflect.String {
+		return ""
+	}
+	return exactPlaceholderName(configurationValue.String())
+}
+
+func exactPlaceholderName(configurationValue string) string {
+	matches := configurationPlaceholderPattern.FindStringSubmatch(configurationValue)
+	if len(matches) != 2 || matches[0] != configurationValue {
 		return ""
 	}
 	if !configurationPlaceholderNamePattern.MatchString(matches[1]) {

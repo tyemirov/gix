@@ -11,16 +11,51 @@ import (
 )
 
 type configurationFixture struct {
-	Common configurationCommonFixture `mapstructure:"common"`
-	LLM    configurationLLMFixture    `mapstructure:"llm"`
+	Common configurationCommonFixture `yaml:"common"`
+	LLM    configurationLLMFixture    `yaml:"llm"`
 }
 
 type configurationCommonFixture struct {
-	LogLevel string `mapstructure:"log_level"`
+	LogLevel string `yaml:"log_level"`
 }
 
 type configurationLLMFixture struct {
-	Credential string `mapstructure:"credential"`
+	Credential string `yaml:"credential"`
+}
+
+type yamlOnlyConfigurationFixture struct {
+	CanonicalValue string `yaml:"canonical_value"`
+}
+
+type mapConfigurationFixture struct {
+	Operation map[string]any `yaml:"operation"`
+}
+
+func TestConfigurationLoaderDecodesYAMLTagsDirectly(t *testing.T) {
+	configurationPath := filepath.Join(t.TempDir(), "config.yml")
+	require.NoError(t, os.WriteFile(configurationPath, []byte("canonical_value: expected\n"), 0o600))
+
+	var loadedConfiguration yamlOnlyConfigurationFixture
+	_, loadError := utils.NewConfigurationLoader().LoadConfiguration(configurationPath, &loadedConfiguration)
+
+	require.NoError(t, loadError)
+	require.Equal(t, "expected", loadedConfiguration.CanonicalValue)
+}
+
+func TestConfigurationLoaderExpandsMapValuesAfterTypedDecode(t *testing.T) {
+	configurationPath := filepath.Join(t.TempDir(), "config.yml")
+	require.NoError(t, os.WriteFile(configurationPath, []byte(
+		"operation:\n  credential: \"${CONFIG_TEST_OPTIONAL_MAP_CREDENTIAL}\"\n  label: \"${CONFIG_TEST_MAP_LABEL}\"\n",
+	), 0o600))
+	expectedLabel := "quoted\" value\\with\\slashes\nsecond line: # literal ${NOT_RECURSIVE}"
+	t.Setenv("CONFIG_TEST_MAP_LABEL", expectedLabel)
+
+	var loadedConfiguration mapConfigurationFixture
+	_, loadError := utils.NewConfigurationLoader().LoadConfiguration(configurationPath, &loadedConfiguration)
+
+	require.NoError(t, loadError)
+	require.Equal(t, "", loadedConfiguration.Operation["credential"])
+	require.Equal(t, expectedLabel, loadedConfiguration.Operation["label"])
 }
 
 func TestConfigurationLoaderUsesProcessEnvironmentAndIgnoresSiblingDotEnv(t *testing.T) {
