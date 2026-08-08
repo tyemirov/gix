@@ -414,6 +414,20 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   A checkout without local version tags reported `scheme_guess: none`, bypassed the new missing-intent guard, and still selected `v1.0.0` before running CI.
   Follow-up resolution:
   Release selection now normalizes the untagged default to the initial SemVer contract unless CalVer is explicitly requested. A public release-script regression proves that bare preparation stops before CI and preserves the canonical receipt, while an explicit patch intent selects `v1.0.0` with a SemVer scheme. Focused release tests, `bash -n scripts/release/prepare_release.sh`, `make format`, `make ci`, `make build`, and `git diff --check` passed on 2026-08-08.
+- [x] [B056] (P0) Isolate release intent from the release CI subprocess.
+  Found on 2026-08-08 while preparing the exact v5.0.1 release.
+  Goal:
+  Keep the selected release intent owned by the outer release transaction while running the canonical CI gate in a clean Make environment.
+  Requirements:
+  - Remove release-control and recursive-Make variables only from the `make ci` subprocess environment.
+  - Preserve the already selected exact version, changelog boundary, artifact preparation inputs, rollback, and receipt contracts in the outer transaction.
+  - Do not weaken or skip any CI test to make release preparation pass.
+  Validation:
+  - A public release-script regression proves exact-version and Make override values are absent inside the CI subprocess.
+  - The failed v5.0.1 attempt leaves master, the v5.0.1 tag, and the canonical v1.1.25 receipt unchanged.
+  - Run focused release tests, `bash -n scripts/release/prepare_release.sh`, `make format`, `make ci`, `make build`, and `git diff --check`.
+  Resolution:
+  Release preparation now removes release-control and recursive-Make variables only around its `make ci` subprocess, while retaining the selected version and artifact inputs in the outer transaction. The public regression seeds every affected variable and proves the CI subprocess receives none of them. The failed v5.0.1 attempt left master, the tag namespace, and the canonical v1.1.25 receipt unchanged. Focused release coverage, shell syntax validation, `make format`, `make ci`, `make build`, `go mod verify`, `go mod tidy -diff`, and `git diff --check` passed on 2026-08-08.
 
 
 

@@ -29,6 +29,7 @@ const (
 	releaseFakePublishedDirectoryVariable = "GIX_RELEASE_FAKE_PUBLISHED_DIRECTORY"
 	releaseFakeReleaseViewVariable        = "GIX_RELEASE_FAKE_RELEASE_VIEW"
 	releaseFakeMakeLogVariable            = "GIX_RELEASE_FAKE_MAKE_LOG"
+	releaseFakeMakeEnvironmentLogVariable = "GIX_RELEASE_FAKE_MAKE_ENV_LOG"
 	releaseFakeMakeFailureTargetVariable  = "GIX_RELEASE_FAKE_MAKE_FAILURE_TARGET"
 	releaseFakeMakeUnsafePayloadVariable  = "GIX_RELEASE_FAKE_MAKE_UNSAFE_PAYLOAD"
 	releaseFakePagesBuildCounterVariable  = "GIX_RELEASE_FAKE_PAGES_BUILD_COUNTER"
@@ -460,6 +461,63 @@ func TestReleaseNewSemVerSelectsExplicitIntent(testInstance *testing.T) {
 			require.Contains(t, outputText, "changelog_boundary="+releaseFixtureVersion)
 		})
 	}
+}
+
+func TestReleaseCIReceivesNoOuterReleaseOrMakeIntent(testInstance *testing.T) {
+	fixture := newExactReleaseFixture(testInstance)
+	fixture.commitNextSource(testInstance)
+	environmentLogPath := filepath.Join(testInstance.TempDir(), "make-environment.log")
+	pathVariable := buildReleaseStubbedExecutablePath(testInstance, map[string]string{"make": releaseFakeMakeScript})
+
+	outputText, runError := runReleasePrepareReleaseScript(
+		testInstance,
+		fixture.repositoryRoot,
+		fixture.repositoryPath,
+		integrationCommandOptions{
+			PathVariable: pathVariable,
+			EnvironmentOverrides: map[string]string{
+				"MAKEFLAGS":                           "-- RELEASE_BUMP=major RELEASE_VERSION=v99.0.0",
+				"MAKELEVEL":                           "7",
+				"MAKEOVERRIDES":                       "RELEASE_BUMP RELEASE_VERSION",
+				"MFLAGS":                              "--silent",
+				"PAGES_DEPLOY_ARGS":                   "--fixture-pages-argument",
+				"PAGES_VERSION":                       "v88.0.0",
+				"PUBLISH_RELEASE_ARGS":                "--fixture-publish-argument",
+				"RELEASE_ARGS":                        "--fixture-release-argument",
+				"RELEASE_ARTIFACT_TARGETS":            "fixture-artifact",
+				"RELEASE_BUMP":                        "",
+				"RELEASE_CI_TIMEOUT":                  "30",
+				"RELEASE_HELPER":                      filepath.Join(fixture.repositoryRoot, releaseToolDirectoryRelativePath, "release_helper.py"),
+				"RELEASE_SCHEME":                      "semver",
+				"RELEASE_VERSION":                     "v12.3.4",
+				releaseFakeMakeEnvironmentLogVariable: environmentLogPath,
+				releaseFakeMakeFailureTargetVariable:  "ci",
+			},
+		},
+	)
+
+	require.Error(testInstance, runError, outputText)
+	require.Contains(testInstance, outputText, "fixture artifact failure: ci")
+	environmentLog, readError := os.ReadFile(environmentLogPath)
+	require.NoError(testInstance, readError)
+	require.Equal(
+		testInstance,
+		"MAKEFLAGS=<unset>\n"+
+			"MAKELEVEL=<unset>\n"+
+			"MAKEOVERRIDES=<unset>\n"+
+			"MFLAGS=<unset>\n"+
+			"PAGES_DEPLOY_ARGS=<unset>\n"+
+			"PAGES_VERSION=<unset>\n"+
+			"PUBLISH_RELEASE_ARGS=<unset>\n"+
+			"RELEASE_ARGS=<unset>\n"+
+			"RELEASE_ARTIFACT_TARGETS=<unset>\n"+
+			"RELEASE_BUMP=<unset>\n"+
+			"RELEASE_CI_TIMEOUT=<unset>\n"+
+			"RELEASE_HELPER=<unset>\n"+
+			"RELEASE_SCHEME=<unset>\n"+
+			"RELEASE_VERSION=<unset>\n",
+		string(environmentLog),
+	)
 }
 
 func TestReleaseRejectsConflictingVersionIntent(testInstance *testing.T) {
@@ -1352,6 +1410,24 @@ set -euo pipefail
 target="${1:-}"
 if [[ "${target}" == "--no-print-directory" ]]; then
   target="${2:-}"
+fi
+if [[ -n "${GIX_RELEASE_FAKE_MAKE_ENV_LOG:-}" ]]; then
+  {
+    printf 'MAKEFLAGS=%s\n' "${MAKEFLAGS-<unset>}"
+    printf 'MAKELEVEL=%s\n' "${MAKELEVEL-<unset>}"
+    printf 'MAKEOVERRIDES=%s\n' "${MAKEOVERRIDES-<unset>}"
+    printf 'MFLAGS=%s\n' "${MFLAGS-<unset>}"
+    printf 'PAGES_DEPLOY_ARGS=%s\n' "${PAGES_DEPLOY_ARGS-<unset>}"
+    printf 'PAGES_VERSION=%s\n' "${PAGES_VERSION-<unset>}"
+    printf 'PUBLISH_RELEASE_ARGS=%s\n' "${PUBLISH_RELEASE_ARGS-<unset>}"
+    printf 'RELEASE_ARGS=%s\n' "${RELEASE_ARGS-<unset>}"
+    printf 'RELEASE_ARTIFACT_TARGETS=%s\n' "${RELEASE_ARTIFACT_TARGETS-<unset>}"
+    printf 'RELEASE_BUMP=%s\n' "${RELEASE_BUMP-<unset>}"
+    printf 'RELEASE_CI_TIMEOUT=%s\n' "${RELEASE_CI_TIMEOUT-<unset>}"
+    printf 'RELEASE_HELPER=%s\n' "${RELEASE_HELPER-<unset>}"
+    printf 'RELEASE_SCHEME=%s\n' "${RELEASE_SCHEME-<unset>}"
+    printf 'RELEASE_VERSION=%s\n' "${RELEASE_VERSION-<unset>}"
+  } >"${GIX_RELEASE_FAKE_MAKE_ENV_LOG}"
 fi
 if [[ "${target}" == "${GIX_RELEASE_FAKE_MAKE_FAILURE_TARGET:-}" ]]; then
   if [[ -n "${GIX_RELEASE_FAKE_MAKE_LOG:-}" ]]; then
