@@ -16,7 +16,6 @@ import (
 )
 
 const (
-	defaultMaxTokens                 = 1200
 	defaultCommitLogCharacterLimit   = 12000
 	defaultDiffSummaryCharacterLimit = 6000
 	defaultDiffCharacterLimit        = 18000
@@ -155,14 +154,9 @@ func (generator Generator) BuildRequest(ctx context.Context, options Options) (l
 		Content: strings.Join(userSections, "\n"),
 	}
 
-	maxTokens := options.MaxTokens
-	if maxTokens <= 0 {
-		maxTokens = defaultMaxTokens
-	}
-
 	request := llm.ChatRequest{
 		Messages:  []llm.Message{systemMessage, userMessage},
-		MaxTokens: maxTokens,
+		MaxTokens: options.MaxTokens,
 	}
 
 	return request, nil

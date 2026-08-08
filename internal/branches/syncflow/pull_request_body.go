@@ -14,7 +14,6 @@ import (
 )
 
 const (
-	strictSyncPullRequestDescriptionMaxTokens       = 768
 	strictSyncPullRequestDescriptionFragmentLimit   = 16000
 	strictSyncPullRequestDescriptionNoDiffMessage   = "strict sync pull request description.empty_diff: branch diff is empty for %s"
 	strictSyncPullRequestDescriptionEmptyResponse   = "strict sync pull request description.empty_response: llm returned an empty pull request description"
@@ -207,10 +206,6 @@ func strictSyncPullRequestDescriptionGitOutput(ctx context.Context, executor sha
 }
 
 func buildStrictSyncPullRequestDescriptionRequest(descriptionContext strictSyncPullRequestDescriptionContext, options worktreeAdoptionCommitMessageOptions) llm.ChatRequest {
-	maxTokens := options.MaxTokens
-	if maxTokens <= 0 {
-		maxTokens = strictSyncPullRequestDescriptionMaxTokens
-	}
 	return llm.ChatRequest{
 		Messages: []llm.Message{
 			{
@@ -232,7 +227,7 @@ func buildStrictSyncPullRequestDescriptionRequest(descriptionContext strictSyncP
 				),
 			},
 		},
-		MaxTokens: maxTokens,
+		MaxTokens: options.MaxTokens,
 	}
 }
 

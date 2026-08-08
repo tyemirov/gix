@@ -27,6 +27,7 @@ const (
 	priorityUniqueMessage     = "llm connection priorities must be unique"
 	connectionRequiredMessage = "llm requires at least one connection credential"
 	connectionLLMProxy        = "llm_proxy"
+	completionTokensMessage   = "llm max_completion_tokens must be non-negative"
 )
 
 // Transport identifies how chat requests are sent.
@@ -41,21 +42,23 @@ const (
 
 // OpenAIConnectionProfile stores the direct OpenAI connection defined in config.yml.
 type OpenAIConnectionProfile struct {
-	Priority   int    `yaml:"priority"`
-	BaseURL    string `yaml:"base_url"`
-	Credential string `yaml:"credential"`
-	Model      string `yaml:"model"`
-	Effort     string `yaml:"effort"`
+	Priority            int    `yaml:"priority"`
+	BaseURL             string `yaml:"base_url"`
+	Credential          string `yaml:"credential"`
+	Model               string `yaml:"model"`
+	Effort              string `yaml:"effort"`
+	MaxCompletionTokens int    `mapstructure:"max_completion_tokens"`
 }
 
 // LLMProxyConnectionProfile stores the llm-proxy connection and its upstream selection.
 type LLMProxyConnectionProfile struct {
-	Priority   int    `yaml:"priority"`
-	BaseURL    string `yaml:"base_url"`
-	Credential string `yaml:"credential"`
-	Provider   string `yaml:"provider"`
-	Model      string `yaml:"model"`
-	Effort     string `yaml:"effort"`
+	Priority            int    `yaml:"priority"`
+	BaseURL             string `yaml:"base_url"`
+	Credential          string `yaml:"credential"`
+	Provider            string `yaml:"provider"`
+	Model               string `yaml:"model"`
+	Effort              string `yaml:"effort"`
+	MaxCompletionTokens int    `mapstructure:"max_completion_tokens"`
 }
 
 // ConnectionProfiles stores the ordered LLM connection candidates.
@@ -106,6 +109,7 @@ type proxyChatClient struct {
 	client                llmproxyclient.Client
 	model                 string
 	effort                string
+	maxCompletionTokens   int
 	requestTimeoutSeconds int
 }
 
@@ -122,6 +126,10 @@ type prioritizedConfigCandidate struct {
 	name     string
 	priority int
 	config   Config
+}
+
+type openAIChatClient struct {
+	client llm.ChatClient
 }
 
 func parseInternalTransport(rawValue string) (Transport, error) {
@@ -196,6 +204,9 @@ func (profiles ConnectionProfiles) orderedConfigurations(
 	if openAIProfile.Model == "" {
 		return nil, fmt.Errorf("%s: %s", FallbackProvider, modelRequiredMessage)
 	}
+	if openAIProfile.MaxCompletionTokens < 0 {
+		return nil, fmt.Errorf("%s: %s", FallbackProvider, completionTokensMessage)
+	}
 
 	proxyProfile := profiles.LLMProxy
 	proxyProfile.BaseURL = strings.TrimSpace(proxyProfile.BaseURL)
@@ -223,6 +234,9 @@ func (profiles ConnectionProfiles) orderedConfigurations(
 	if selectedModel := strings.TrimSpace(selection.Model); selectedModel != "" {
 		proxyProfile.Model = selectedModel
 	}
+	if proxyProfile.MaxCompletionTokens < 0 {
+		return nil, fmt.Errorf("%s: %s", connectionLLMProxy, completionTokensMessage)
+	}
 
 	if openAIProfile.Priority == proxyProfile.Priority {
 		return nil, errors.New(priorityUniqueMessage)
@@ -237,12 +251,13 @@ func (profiles ConnectionProfiles) orderedConfigurations(
 			name:     FallbackProvider,
 			priority: openAIProfile.Priority,
 			config: runtimeConfiguration.apply(Config{
-				Transport: TransportOpenAICompatible,
-				Provider:  FallbackProvider,
-				BaseURL:   openAIProfile.BaseURL,
-				APIKey:    openAIProfile.Credential,
-				Model:     openAIProfile.Model,
-				Effort:    openAIProfile.Effort,
+				Transport:           TransportOpenAICompatible,
+				Provider:            FallbackProvider,
+				BaseURL:             openAIProfile.BaseURL,
+				APIKey:              openAIProfile.Credential,
+				Model:               openAIProfile.Model,
+				Effort:              openAIProfile.Effort,
+				MaxCompletionTokens: openAIProfile.MaxCompletionTokens,
 			}),
 		})
 	}
@@ -251,12 +266,13 @@ func (profiles ConnectionProfiles) orderedConfigurations(
 			name:     connectionLLMProxy,
 			priority: proxyProfile.Priority,
 			config: runtimeConfiguration.apply(Config{
-				Transport: TransportLLMProxy,
-				Provider:  proxyProfile.Provider,
-				BaseURL:   proxyProfile.BaseURL,
-				APIKey:    proxyProfile.Credential,
-				Model:     proxyProfile.Model,
-				Effort:    proxyProfile.Effort,
+				Transport:           TransportLLMProxy,
+				Provider:            proxyProfile.Provider,
+				BaseURL:             proxyProfile.BaseURL,
+				APIKey:              proxyProfile.Credential,
+				Model:               proxyProfile.Model,
+				Effort:              proxyProfile.Effort,
+				MaxCompletionTokens: proxyProfile.MaxCompletionTokens,
 			}),
 		})
 	}
@@ -270,7 +286,9 @@ func (configuration RuntimeConfig) apply(candidate Config) Config {
 	if effort := strings.TrimSpace(configuration.Effort); effort != "" {
 		candidate.Effort = effort
 	}
-	candidate.MaxCompletionTokens = configuration.MaxCompletionTokens
+	if configuration.MaxCompletionTokens > 0 {
+		candidate.MaxCompletionTokens = configuration.MaxCompletionTokens
+	}
 	candidate.HTTPClient = configuration.HTTPClient
 	candidate.RequestTimeout = configuration.RequestTimeout
 	candidate.RetryAttempts = configuration.RetryAttempts
@@ -331,10 +349,30 @@ func NewFactory(configuration Config) (llm.ChatClient, error) {
 	case TransportLLMProxy:
 		return newProxyChatClient(normalizedConfiguration)
 	case TransportOpenAICompatible:
-		return llm.NewFactory(normalizedConfiguration.toOpenAICompatibleConfig())
+		client, clientError := llm.NewFactory(normalizedConfiguration.toOpenAICompatibleConfig())
+		if clientError != nil {
+			return nil, clientError
+		}
+		return openAIChatClient{client: client}, nil
 	default:
 		return nil, fmt.Errorf("unsupported llm transport %q", normalizedConfiguration.Transport)
 	}
+}
+
+func (client openAIChatClient) Chat(ctx context.Context, request llm.ChatRequest) (string, error) {
+	response, responseError := client.client.Chat(ctx, request)
+	if responseError == nil || !errors.Is(responseError, llm.ErrEmptyResponse) {
+		return response, responseError
+	}
+	if contextError := ctx.Err(); contextError != nil {
+		return "", fmt.Errorf("openai empty-response recovery cancelled: %w", errors.Join(responseError, contextError))
+	}
+
+	recoveryResponse, recoveryError := client.client.Chat(ctx, request)
+	if recoveryError != nil {
+		return "", fmt.Errorf("openai empty-response recovery failed: %w", errors.Join(responseError, recoveryError))
+	}
+	return recoveryResponse, nil
 }
 
 type reasoningEffortHTTPClient struct {
@@ -421,6 +459,7 @@ func newProxyChatClient(configuration Config) (llm.ChatClient, error) {
 		client:                client,
 		model:                 strings.TrimSpace(configuration.Model),
 		effort:                strings.TrimSpace(configuration.Effort),
+		maxCompletionTokens:   configuration.MaxCompletionTokens,
 		requestTimeoutSeconds: int(timeout / time.Second),
 	}, nil
 }
@@ -445,6 +484,9 @@ func (client proxyChatClient) Chat(ctx context.Context, request llm.ChatRequest)
 		reasoningEffort = &client.effort
 	}
 	maxTokens := request.MaxTokens
+	if maxTokens <= 0 {
+		maxTokens = client.maxCompletionTokens
+	}
 	proxyRequest, requestError := llmproxyclient.NewMessagesRequest(llmproxyclient.MessagesRequestInput{
 		Messages:              messages,
 		Model:                 model,

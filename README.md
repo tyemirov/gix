@@ -147,6 +147,7 @@ llm:
   openai:
     priority: 2
     model: gpt-5.6-terra
+    max_completion_tokens: 16384
     base_url: "https://api.openai.com/v1"
     credential: "${OPENAI_API_KEY}"
     effort: "high"
@@ -161,7 +162,9 @@ llm:
   timeout_seconds: 60
 ```
 
-Each connection owns its routing data. Direct OpenAI owns its `model`; `llm_proxy` owns the upstream `provider` and `model`. Both connections require a positive, unique `priority`, and the lower number is attempted first. If that request fails, gix tries the next connection and returns the first successful response.
+Each connection owns its routing data. Direct OpenAI owns its `model`; `llm_proxy` owns the upstream `provider` and `model`. Both connections require a positive, unique `priority`, and the lower number is attempted first. If that request fails, gix tries the next connection and returns the first successful response. Completion-token budgets resolve from the command configuration first, then the selected connection profile, then the top-level `llm.max_completion_tokens`. The generated configuration gives direct OpenAI 16,384 tokens and lets LLM Proxy inherit the global 1,200-token budget.
+
+Direct OpenAI treats an exhausted sequence of empty completions as reasoning-budget exhaustion, not as a usable response. It preserves the resolved request and performs one additional bounded retry cycle. This recovery is limited to the typed empty-response condition; authentication, HTTP, transport, and cancellation failures keep their normal failure behavior.
 
 If every configured connection fails, gix reports each attempted connection by name with its complete contextual error, including transport status and response details when the client provides them. Joined failures remain available to programmatic callers through standard Go error traversal.
 

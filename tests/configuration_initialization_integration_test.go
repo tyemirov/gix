@@ -62,6 +62,7 @@ func TestCLIMissingConfigurationOffersUserConfigurationCreation(testInstance *te
 		require.NoError(subtest, readError)
 		require.Contains(subtest, string(configurationData), `credential: "${LLM_PROXY_SECRET_KEY}"`)
 		require.Contains(subtest, string(configurationData), `credential: "${OPENAI_API_KEY}"`)
+		require.Contains(subtest, string(configurationData), "    max_completion_tokens: 16384")
 		require.Contains(subtest, string(configurationData), `credential: "${GH_TOKEN}"`)
 		require.Contains(subtest, string(configurationData), `credential: "${GITHUB_PACKAGES_TOKEN}"`)
 	})

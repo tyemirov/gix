@@ -11,6 +11,7 @@ llm:
   openai:
     priority: 2
     model: gpt-5.6-terra
+    max_completion_tokens: 16384
     base_url: "https://api.openai.com/v1"
     credential: "${OPENAI_API_KEY}"
     effort: "high"

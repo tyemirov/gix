@@ -31,7 +31,6 @@ const (
 	gitMergeHeadReferenceConstant               = "MERGE_HEAD"
 	gitDiffCachedFlagConstant                   = "--cached"
 	gitDiffCheckFlagConstant                    = "--check"
-	mergeConflictResolutionMaxTokens            = 8192
 	mergeConflictResolutionMaxSemanticAttempts  = 4
 	mergeConflictResolutionFailureTemplate      = "failed to resolve merge conflicts: %w"
 	mergeConflictResolutionInspectFailure       = "inspect unmerged files: %w"
@@ -932,7 +931,7 @@ func (service mergeConflictResolutionService) buildRegionResolutionRequest(optio
 				Content: userPrompt,
 			},
 		},
-		MaxTokens: mergeConflictResolutionMaxTokens,
+		MaxTokens: service.commitMessages.MaxTokens,
 	}
 }
 
@@ -964,7 +963,7 @@ func (service mergeConflictResolutionService) buildRegionReviewRequest(options m
 				Content: userPrompt,
 			},
 		},
-		MaxTokens: mergeConflictResolutionMaxTokens,
+		MaxTokens: service.commitMessages.MaxTokens,
 	}
 }
 
