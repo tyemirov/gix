@@ -542,6 +542,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   The decision, tag, receipt, manifest, binary, and GitHub Release use one version.
   The release lifecycle no longer has a separate Go install version. The Gix module retracts prior root-module versions through `v1.1.26`.
   Fixed-major selection excludes other major tags. Standard SemVer still supports major, minor, and patch releases.
+  The fixed-major policy remains internal to Gix. The shared version-decision contract remains `mprlab.version-decision/v1` for Gateway release consumers.
   Compiled installation coverage proves that `go install github.com/tyemirov/gix@latest` selects and reports the authoritative version.
   Focused tests, module checks, `make build`, `make ci`, Governor checks, and `git diff --check` passed on 2026-08-09.
 - [x] [I010] (P1) Remove the redundant generic configuration decode.
