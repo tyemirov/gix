@@ -28,71 +28,15 @@ print("" if value is None else value)
 PY
 }
 
-select_release() {
-  python3 -c '
-import json
-import re
-import sys
-
-with open(sys.argv[1], "r", encoding="utf-8") as handle:
-    data = json.load(handle)
-semver_bump = sys.argv[2]
-info = data.get("version_info") or {}
-detected_scheme = info.get("scheme_guess") or "none"
-if detected_scheme in ("none", "semver", "mixed"):
-    effective_scheme = "semver"
-elif detected_scheme == "calver":
-    effective_scheme = "calver"
-else:
-    raise SystemExit(f"release version scheme is unsupported: {detected_scheme}")
-
-def select_semver(latest):
-    if not latest:
-        return "v1.0.0"
-    if semver_bump not in ("patch", "minor", "major"):
-        raise SystemExit("autonomous SemVer decision must be patch, minor, or major")
-    match = re.match(r"^(v?)(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$", latest)
-    if not match:
-        raise SystemExit(f"latest SemVer tag is invalid: {latest}")
-    prefix, major, minor, patch = match.groups()
-    major, minor, patch = int(major), int(minor), int(patch)
-    if semver_bump == "major":
-        major, minor, patch = major + 1, 0, 0
-    elif semver_bump == "minor":
-        minor, patch = minor + 1, 0
-    else:
-        patch += 1
-    selected_prefix = prefix or "v"
-    return f"{selected_prefix}{major}.{minor}.{patch}"
-
-if effective_scheme == "semver":
-    selected = select_semver(info.get("latest_semver_tag") or "")
-elif effective_scheme == "calver":
-    candidate = info.get("calver_candidate") or {}
-    if candidate.get("ok") is not True:
-        raise SystemExit("CalVer candidate is not valid for this release timestamp")
-    selected = info.get("next_calver") or ""
-if effective_scheme == "calver":
-    boundary = info.get("latest_calver_tag") or ""
-elif effective_scheme == "semver":
-    boundary = info.get("latest_semver_tag") or ""
-
-if not selected:
-    raise SystemExit("release version selection returned an empty version")
-print(selected)
-print(boundary)
-print(effective_scheme)
-' "$1" "$2"
-}
-
-decide_semver_bump() {
-  local boundary="$1"
+decide_release_version() {
+  local release_timestamp="$1"
+  local source_commit="$2"
   local decision_output decision_values
-  if ! decision_output="$(go run . message semver "${boundary}")"; then
-    echo "error: autonomous SemVer decision failed" >&2
+  if ! decision_output="$(go run . release next --format json --release-timestamp "${release_timestamp}")"; then
+    echo "error: autonomous release version decision failed" >&2
     exit 1
   fi
-  decision_values="$(python3 -c '
+  decision_values="$(printf '%s\n' "${decision_output}" | python3 -c '
 import json
 import sys
 
@@ -102,19 +46,25 @@ for line in sys.stdin.read().splitlines():
         value = json.loads(line)
     except json.JSONDecodeError:
         continue
-    if isinstance(value, dict) and set(value) == {"bump", "reason", "deterministic_floor"}:
+    if isinstance(value, dict) and value.get("contract") == "mprlab.version-decision/v1":
         matches.append(value)
 if len(matches) != 1:
     raise SystemExit("release decision command did not return exactly one decision")
 decision = matches[0]
-if decision["bump"] not in ("patch", "minor", "major"):
-    raise SystemExit("release decision command returned an invalid bump")
+if decision.get("scheme") not in ("semver", "calver"):
+    raise SystemExit("release decision command returned an invalid scheme")
+if decision.get("source_commit") != sys.argv[1]:
+    raise SystemExit("release decision command returned a different source commit")
+if not isinstance(decision.get("next_version"), str) or not decision["next_version"]:
+    raise SystemExit("release decision command returned an empty next version")
 if not isinstance(decision["reason"], str) or not decision["reason"].strip():
     raise SystemExit("release decision command returned an empty reason")
-print(decision["bump"])
+print(decision["next_version"])
+print(decision.get("boundary_tag") or "")
+print(decision["scheme"])
 print(decision["reason"].strip())
-' <<<"${decision_output}")" || {
-    echo "error: autonomous SemVer decision output is invalid" >&2
+' "${source_commit}")" || {
+    echo "error: autonomous release version decision output is invalid" >&2
     exit 1
   }
   printf '%s\n' "${decision_values}"
@@ -202,31 +152,16 @@ echo "==> [release] Running make ci"
 echo "==> [release] Rechecking local state after CI"
 run_local_preflight
 [[ "$(git rev-parse HEAD)" == "${source_commit}" ]] || { echo "error: HEAD changed while make ci was running" >&2; exit 1; }
-detected_scheme="$(json_value "${preflight_json}" "version_info.scheme_guess")"
-semver_bump=""
-semver_reason=""
-case "${detected_scheme}" in
-  none|semver|mixed)
-    boundary_tag="$(json_value "${preflight_json}" "version_info.latest_semver_tag")"
-    if [[ -n "${boundary_tag}" ]]; then
-      echo "==> [release] Deciding the SemVer successor"
-      decision_values="$(decide_semver_bump "${boundary_tag}")"
-      semver_bump="$(sed -n '1p' <<<"${decision_values}")"
-      semver_reason="$(sed -n '2p' <<<"${decision_values}")"
-      echo "semver_decision=${semver_bump}"
-      echo "semver_reason=${semver_reason}"
-    fi
-    ;;
-  calver) ;;
-  *) echo "error: release version scheme is unsupported: ${detected_scheme}" >&2; exit 1 ;;
-esac
-selection="$(select_release "${preflight_json}" "${semver_bump}")"
-next_version="$(sed -n '1p' <<<"${selection}")"
-boundary_tag="$(sed -n '2p' <<<"${selection}")"
-effective_scheme="$(sed -n '3p' <<<"${selection}")"
+echo "==> [release] Deciding the release version"
+decision_values="$(decide_release_version "${release_timestamp}" "${source_commit}")"
+next_version="$(sed -n '1p' <<<"${decision_values}")"
+boundary_tag="$(sed -n '2p' <<<"${decision_values}")"
+effective_scheme="$(sed -n '3p' <<<"${decision_values}")"
+release_reason="$(sed -n '4p' <<<"${decision_values}")"
 echo "version_scheme=${effective_scheme}"
 echo "next_version=${next_version}"
 echo "changelog_boundary=${boundary_tag:-<none>}"
+echo "version_reason=${release_reason}"
 
 artifact_dir="$(git rev-parse --git-path mprlab-release)"
 if [[ "${artifact_dir}" != /* ]]; then
@@ -250,8 +185,6 @@ make --no-print-directory "${artifact_target_list[@]}"
 echo "==> [release] Rechecking local state after artifact preparation"
 run_local_preflight
 [[ "$(git rev-parse HEAD)" == "${source_commit}" ]] || { echo "error: HEAD changed while preparing release artifacts" >&2; exit 1; }
-rechecked_selection="$(select_release "${preflight_json}" "${semver_bump}")"
-[[ "${rechecked_selection}" == "${selection}" ]] || { echo "error: autonomous release selection changed while preparing artifacts" >&2; exit 1; }
 
 echo "==> [release] Preparing ${next_version} from local Git history"
 notes_args=(generate-notes --version "${next_version}" --release-date "${release_date}")
