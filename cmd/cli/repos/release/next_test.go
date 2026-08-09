@@ -32,7 +32,7 @@ func TestNextCommandSelectsEstablishedSemVer(t *testing.T) {
 	output := executeNextCommand(t, builder, "--format", "json")
 
 	require.JSONEq(t, `{
-		"contract":"mprlab.version-decision/v1",
+		"contract":"mprlab.version-decision/v2",
 		"scheme":"semver",
 		"source_commit":"abc123",
 		"boundary_tag":"v1.2.3",
@@ -86,11 +86,11 @@ func TestNextCommandExcludesRetiredTags(t *testing.T) {
 	require.Contains(t, output, `"next_version":"v1.2.4"`)
 }
 
-func TestNextCommandSelectsRootGoInstallTransportVersion(t *testing.T) {
+func TestNextCommandIgnoresInvalidHistoricalMajorTags(t *testing.T) {
 	executor := &nextGitExecutor{responses: map[string]string{
 		"rev-parse --show-toplevel":                         "/repo\n",
 		"rev-parse HEAD":                                    "source600\n",
-		"rev-parse --verify v6.0.0^{commit}":                "base600\n",
+		"rev-parse --verify v1.1.25^{commit}":               "base600\n",
 		"merge-base --is-ancestor base600 source600":        "",
 		"tag --list":                                        "v1.1.25\nv6.0.0\n",
 		"log --pretty=format:%s%n%b%x1e base600..source600": "fix: repair root installation\n\x1e",
@@ -99,12 +99,36 @@ func TestNextCommandSelectsRootGoInstallTransportVersion(t *testing.T) {
 		"show source600:CHANGELOG.md":                       "# Changelog\n\n## [Unreleased]\n\n- Fixed root installation.\n",
 	}}
 	client := &nextChatClient{response: `{"impact":"compatible","public_contract":"root Go installation","reason":"The release repairs root installation."}`}
-	builder := nextTestBuilder(executor, client, []byte("schema_version: 1\nscheme: semver\ngo_install:\n  module_path: github.com/tyemirov/gix\n  product_version_file: internal/version/product-version.txt\n"))
+	builder := nextTestBuilder(executor, client, []byte("schema_version: 1\nscheme: semver\nsemver:\n  fixed_major: 1\n"))
 
 	output := executeNextCommand(t, builder, "--format", "json")
 
-	require.Contains(t, output, `"next_version":"v6.0.1"`)
-	require.Contains(t, output, `"go_install":{"module_path":"github.com/tyemirov/gix","version":"v1.1.26","product_version_file":"internal/version/product-version.txt"}`)
+	require.Contains(t, output, `"previous_version":"v1.1.25"`)
+	require.Contains(t, output, `"next_version":"v1.1.26"`)
+	require.Contains(t, output, `"fixed_major":1`)
+	require.NotContains(t, output, "go_install")
+}
+
+func TestNextCommandMapsFixedMajorIncompatibilityToMinor(t *testing.T) {
+	executor := &nextGitExecutor{responses: map[string]string{
+		"rev-parse --show-toplevel":                         "/repo\n",
+		"rev-parse HEAD":                                    "source601\n",
+		"rev-parse --verify v1.1.26^{commit}":               "base601\n",
+		"merge-base --is-ancestor base601 source601":        "",
+		"tag --list":                                        "v1.1.26\nv7.0.1\n",
+		"log --pretty=format:%s%n%b%x1e base601..source601": "change the release contract\n\x1e",
+		"diff --stat base601..source601":                    "README.md | 2 +-\n",
+		"diff --no-ext-diff --unified=1 base601..source601": "diff --git a/README.md b/README.md\n",
+		"show source601:CHANGELOG.md":                       "# Changelog\n\n## [Unreleased]\n\n- Changed the release contract.\n",
+	}}
+	client := &nextChatClient{response: `{"impact":"incompatible","public_contract":"Gix release versions","reason":"The release changes the Gix version contract."}`}
+	builder := nextTestBuilder(executor, client, []byte("schema_version: 1\nscheme: semver\nsemver:\n  fixed_major: 1\n"))
+
+	output := executeNextCommand(t, builder, "--format", "json")
+
+	require.Contains(t, output, `"previous_version":"v1.1.26"`)
+	require.Contains(t, output, `"next_version":"v1.2.0"`)
+	require.Contains(t, output, `"bump":"minor"`)
 }
 
 func TestNextCommandSelectsCalVerWithoutLLM(t *testing.T) {
@@ -119,7 +143,7 @@ func TestNextCommandSelectsCalVerWithoutLLM(t *testing.T) {
 	output := executeNextCommand(t, builder, "--format", "json", "--release-timestamp", "2026-08-09T00:00:00Z")
 
 	require.JSONEq(t, `{
-		"contract":"mprlab.version-decision/v1",
+		"contract":"mprlab.version-decision/v2",
 		"scheme":"calver",
 		"source_commit":"abc123",
 		"boundary_tag":"26.808.235959",
@@ -138,12 +162,6 @@ func nextTestBuilder(executor *nextGitExecutor, client *nextChatClient, configur
 			return "/repo", nil
 		},
 		ReadFile: func(path string) ([]byte, error) {
-			if strings.HasSuffix(path, "go.mod") {
-				return []byte("module github.com/tyemirov/gix\n"), nil
-			}
-			if strings.HasSuffix(path, "product-version.txt") {
-				return []byte("v6.0.0\n"), nil
-			}
 			return configuration, nil
 		},
 		ConfigurationProvider: func() NextConfiguration {
