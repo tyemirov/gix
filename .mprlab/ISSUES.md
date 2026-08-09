@@ -428,6 +428,24 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run focused release tests, `bash -n scripts/release/prepare_release.sh`, `make format`, `make ci`, `make build`, and `git diff --check`.
   Resolution:
   Release preparation now removes release-control and recursive-Make variables only around its `make ci` subprocess, while retaining the selected version and artifact inputs in the outer transaction. The public regression seeds every affected variable and proves the CI subprocess receives none of them. The failed v5.0.1 attempt left master, the tag namespace, and the canonical v1.1.25 receipt unchanged. Focused release coverage, shell syntax validation, `make format`, `make ci`, `make build`, `go mod verify`, `go mod tidy -diff`, and `git diff --check` passed on 2026-08-08.
+- [x] [B057] (P0) Accept inherited whitespace in a resolved merge.
+  Reported on 2026-08-08 after `gix sync` resolved three conflict regions in `.mprlab/ISSUES.md` and then rolled back.
+  Observation:
+  - `origin/master` already contains the reported extra blank line at the end of `.mprlab/ISSUES.md`.
+  - The final staged index check compares the result only to the current branch.
+  - The check incorrectly identifies exact incoming content as a merge resolution error.
+  Requirements:
+  - Validate each staged path against both merge parents.
+  - Accept a path when Git reports no new whitespace error relative to one parent.
+  - Reject a path when both parent comparisons report a whitespace error.
+  - Preserve conflict-region validation and operation-owned rollback behavior.
+  Validation:
+  - Add public CLI coverage for a resolved conflict with an incoming extra blank line at the file end.
+  - Prove that sync preserves the incoming bytes and completes the merge.
+  - Preserve rejection coverage for whitespace that the resolution adds.
+  - Run `make format`, focused tests, `make ci`, `make build`, and `git diff --check`.
+  Resolution:
+  Resolved merge validation now checks each staged path against the current parent and the incoming parent. Exact whitespace from either parent can pass. Whitespace that is new to both parents still fails and uses operation-owned rollback. The public CLI regression preserves the incoming blank line, completes the semantic merge, pushes, and leaves a clean checkout. `make format`, `make test-fast`, `make test-slow`, `make ci`, `make build`, and `git diff --check` passed on 2026-08-08.
 
 
 

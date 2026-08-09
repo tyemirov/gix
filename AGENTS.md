@@ -46,7 +46,7 @@ All rules for validation, error handling, invariants, and “confident programmi
 ### Tooling Workflow (Tests, Lint, Format)
 
 - For any change intended to land, agents MUST ensure that all required tooling for the relevant stack (tests, linters, and formatters as defined in `AGENTS*` and `.mprlab/POLICY.md`) passes cleanly on the branch before code is merged or released.
-- `.mprlab/NOTES.md` defines the concrete workflow for humans (when and how to invoke specific commands such as `make test`, `make lint`, `make ci`, and formatter targets); agents should treat those steps as given but do not need to restate or modify them.
+- `.mprlab/NOTES.md` defines the human workflow. `.mprlab/POLICY.md` defines when validation targets run.
 
 ### Testing Philosophy
 
@@ -73,14 +73,18 @@ Read these files before editing:
 
 - `.mprlab/POLICY.md`: binding validation and confident-programming rules.
 - `.mprlab/PLANNING.md`: durable planning contract.
+- `.mprlab/AGENTS.DOCS.md`: ASD-STE100 documentation rules.
+- `.mprlab/TERMINOLOGY.md`: approved repository technical terms.
 - `.mprlab/issues-md-format.md`: issue tracker format and recurring identifier rules.
 - `.mprlab/ISSUES.md`: active issue tracker.
 - `.mprlab/AGENTS.GIT.md`: Git and pull request workflow.
+- `.mprlab/AGENTS.API.md`: RESTful HTTP and gRPC API guidance.
 - `.mprlab/AGENTS.GO.md`: Go guidance.
+- `.mprlab/AGENTS.PY.md`: Python guidance.
 - `.mprlab/AGENTS.FRONTEND.md`: browser frontend guidance.
 
-Do not create `.mprlab/AGENTS.md`. Scoped stack guidance belongs in `.mprlab/AGENTS.*.md` files.
-If guidance conflicts, follow `.mprlab/POLICY.md` first, then root `AGENTS.md`, then the relevant scoped stack guide.
+Do not create `.mprlab/AGENTS.md`. Scoped guidance belongs in `.mprlab/AGENTS.*.md` files.
+If guidance conflicts, follow `.mprlab/POLICY.md` first, then root `AGENTS.md`, then the relevant scoped guide.
 <!-- END MPRLAB-GOVERNANCE -->
 
 <!-- BEGIN ISSUES.MD MANAGED ONBOARDING -->

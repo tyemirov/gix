@@ -52,6 +52,9 @@ const (
 	mergeConflictResolutionStageTemplate        = "stage resolved merge file %s: %w"
 	mergeConflictResolutionDeleteTemplate       = "stage deleted merge file %s: %w"
 	mergeConflictResolutionIndexCheckTemplate   = "validate resolved merge index: %w"
+	mergeConflictResolutionIndexPathsTemplate   = "inspect resolved merge index paths: %w"
+	mergeConflictParentResolveTemplate          = "resolve incoming merge parent %s: %w"
+	mergeConflictResolutionParentCheckTemplate  = "validate resolved merge path %s against incoming parent %s: %w"
 	mergeConflictResolutionCommitTemplate       = "complete resolved merge commit: %w"
 	mergeConflictResolutionPathTemplate         = "invalid conflicted path %q"
 	mergeConflictResolutionTimeoutTemplate      = "AI merge resolution timed out after %s"
@@ -199,6 +202,10 @@ func (service mergeConflictResolutionService) Resolve(ctx context.Context, optio
 		return false, nil
 	}
 	service.reportConflictDetected(paths, options, timeout)
+	incomingParentCommit, incomingParentErr := service.resolveIncomingParentCommit(ctx, options)
+	if incomingParentErr != nil {
+		return true, service.normalizeResolutionError(ctx, incomingParentErr)
+	}
 
 	var client llm.ChatClient
 	clientProvider := func() (llm.ChatClient, error) {
@@ -243,8 +250,8 @@ func (service mergeConflictResolutionService) Resolve(ctx context.Context, optio
 	if len(remainingPaths) > 0 {
 		return true, fmt.Errorf("unresolved merge conflicts remain: %s", strings.Join(remainingPaths, ", "))
 	}
-	if indexCheckErr := executeGit(ctx, service.executor, service.repositoryPath, []string{gitDiffSubcommandConstant, gitDiffCachedFlagConstant, gitDiffCheckFlagConstant}); indexCheckErr != nil {
-		return true, service.normalizeResolutionError(ctx, fmt.Errorf(mergeConflictResolutionIndexCheckTemplate, indexCheckErr))
+	if indexCheckErr := service.validateResolvedMergeIndex(ctx, options.SourceReference, incomingParentCommit); indexCheckErr != nil {
+		return true, service.normalizeResolutionError(ctx, indexCheckErr)
 	}
 
 	if options.Completion == mergeConflictCompletionPreserveIndex {
@@ -263,6 +270,112 @@ func (service mergeConflictResolutionService) Resolve(ctx context.Context, optio
 		"paths": strings.Join(paths, ", "),
 	})
 	return true, nil
+}
+
+func (service mergeConflictResolutionService) resolveIncomingParentCommit(ctx context.Context, options mergeConflictResolutionOptions) (string, error) {
+	incomingParentReference := strings.TrimSpace(options.SourceReference)
+	if options.Completion == mergeConflictCompletionCommit {
+		incomingParentReference = gitMergeHeadReferenceConstant
+	}
+	result, resolveErr := service.executor.ExecuteGit(ctx, execshell.CommandDetails{
+		Arguments: []string{
+			gitRevParseSubcommandConstant,
+			gitVerifyFlagConstant,
+			gitEndOfOptionsFlagConstant,
+			incomingParentReference + gitCommitPeelSuffixConstant,
+		},
+		WorkingDirectory: service.repositoryPath,
+	})
+	if resolveErr != nil {
+		return "", fmt.Errorf(mergeConflictParentResolveTemplate, incomingParentReference, resolveErr)
+	}
+	incomingParentCommit := strings.TrimSpace(result.StandardOutput)
+	if incomingParentCommit == "" {
+		return "", fmt.Errorf(mergeConflictParentResolveTemplate, incomingParentReference, errors.New("git returned an empty commit identifier"))
+	}
+	return incomingParentCommit, nil
+}
+
+func (service mergeConflictResolutionService) validateResolvedMergeIndex(ctx context.Context, sourceReference string, incomingParentCommit string) error {
+	indexCheckErr := executeGit(ctx, service.executor, service.repositoryPath, []string{
+		gitDiffSubcommandConstant,
+		gitDiffCachedFlagConstant,
+		gitDiffCheckFlagConstant,
+	})
+	if indexCheckErr == nil {
+		return nil
+	}
+
+	stagedPathsResult, stagedPathsErr := service.executor.ExecuteGit(ctx, execshell.CommandDetails{
+		Arguments: []string{
+			gitDiffSubcommandConstant,
+			gitDiffCachedFlagConstant,
+			gitDiffNameOnlyFlagConstant,
+			gitDiffNoRenamesFlagConstant,
+			gitNullOutputFlagConstant,
+			gitPathspecSeparatorConstant,
+		},
+		WorkingDirectory: service.repositoryPath,
+	})
+	if stagedPathsErr != nil {
+		return fmt.Errorf(
+			mergeConflictResolutionIndexCheckTemplate,
+			errors.Join(indexCheckErr, fmt.Errorf(mergeConflictResolutionIndexPathsTemplate, stagedPathsErr)),
+		)
+	}
+	stagedPaths, stagedPathsParseErr := parseStrictSyncNULTerminatedPaths(stagedPathsResult.StandardOutput)
+	if stagedPathsParseErr != nil {
+		return fmt.Errorf(
+			mergeConflictResolutionIndexCheckTemplate,
+			errors.Join(indexCheckErr, fmt.Errorf(mergeConflictResolutionIndexPathsTemplate, stagedPathsParseErr)),
+		)
+	}
+	if len(stagedPaths) == 0 {
+		return fmt.Errorf(mergeConflictResolutionIndexCheckTemplate, indexCheckErr)
+	}
+
+	for pathIndex := range stagedPaths {
+		path := stagedPaths[pathIndex]
+		currentParentCheckErr := executeGit(ctx, service.executor, service.repositoryPath, []string{
+			gitDiffSubcommandConstant,
+			gitDiffCachedFlagConstant,
+			gitDiffCheckFlagConstant,
+			gitPathspecSeparatorConstant,
+			path,
+		})
+		if currentParentCheckErr == nil {
+			continue
+		}
+
+		incomingParentCheckErr := executeGit(ctx, service.executor, service.repositoryPath, []string{
+			gitDiffSubcommandConstant,
+			gitDiffCachedFlagConstant,
+			gitDiffCheckFlagConstant,
+			incomingParentCommit,
+			gitPathspecSeparatorConstant,
+			path,
+		})
+		if incomingParentCheckErr != nil {
+			return fmt.Errorf(
+				mergeConflictResolutionIndexCheckTemplate,
+				errors.Join(
+					currentParentCheckErr,
+					fmt.Errorf(mergeConflictResolutionParentCheckTemplate, path, strings.TrimSpace(sourceReference), incomingParentCheckErr),
+				),
+			)
+		}
+
+		service.report(
+			shared.EventLevelInfo,
+			shared.EventCodeAIMergeValidation,
+			fmt.Sprintf("accepted inherited whitespace for %s from incoming parent %s", path, strings.TrimSpace(sourceReference)),
+			map[string]string{
+				"path":             path,
+				"source_reference": strings.TrimSpace(sourceReference),
+			},
+		)
+	}
+	return nil
 }
 
 func (service mergeConflictResolutionService) normalizeResolutionError(ctx context.Context, resolutionErr error) error {

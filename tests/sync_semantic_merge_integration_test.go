@@ -45,8 +45,8 @@ func TestSyncAuditsLargeAdditiveIssueAndChangelogConflictsBySemanticRegion(testI
 
 	baseIssues := issuePrefix + stableIssueSuffix
 	oursIssues := issuePrefix + oursIssueBlock + stableIssueSuffix
-	theirsIssues := issuePrefix + theirsIssueBlock + stableIssueSuffix
-	expectedIssues := issuePrefix + oursIssueBlock + theirsIssueBlock + stableIssueSuffix
+	theirsIssues := issuePrefix + theirsIssueBlock + stableIssueSuffix + "\n"
+	expectedIssues := issuePrefix + oursIssueBlock + theirsIssueBlock + stableIssueSuffix + "\n"
 	baseChangelog := changelogPrefix + changelogSuffix
 	oursChangelog := changelogPrefix + oursChangelogBlock + changelogSuffix
 	theirsChangelog := changelogPrefix + theirsChangelogBlock + changelogSuffix
@@ -97,9 +97,27 @@ func TestSyncAuditsLargeAdditiveIssueAndChangelogConflictsBySemanticRegion(testI
 			return
 		}
 		requestBodies <- string(requestBody)
-		if requestCount.Add(1) > 2 {
+		requestNumber := requestCount.Add(1)
+		if requestNumber > 2 {
 			http.Error(responseWriter, "additive resolution exceeded one semantic audit per conflict region", http.StatusInternalServerError)
 			return
+		}
+		if requestNumber == 1 {
+			advanceReferenceCommand := exec.Command(
+				"git",
+				"-C",
+				repositoryPath,
+				"update-ref",
+				"refs/remotes/origin/"+baseBranchName,
+				targetCommit,
+				incomingCommit,
+			)
+			advanceReferenceCommand.Env = buildGitCommandEnvironment(nil)
+			advanceReferenceOutput, advanceReferenceErr := advanceReferenceCommand.CombinedOutput()
+			if advanceReferenceErr != nil {
+				http.Error(responseWriter, string(advanceReferenceOutput), http.StatusInternalServerError)
+				return
+			}
 		}
 		responseWriter.Header().Set("Content-Type", "application/json")
 		_, _ = fmt.Fprintf(
@@ -183,12 +201,14 @@ operations:
 	require.Contains(testInstance, output, "derived .mprlab/ISSUES.md conflict region 1/1 candidate using concurrent insertions; requesting semantic audit")
 	require.Contains(testInstance, output, "derived CHANGELOG.md conflict region 1/1 candidate using concurrent insertions; requesting semantic audit")
 	require.Equal(testInstance, 2, strings.Count(output, "semantic audit approved"))
+	require.Contains(testInstance, output, "accepted inherited whitespace for .mprlab/ISSUES.md from incoming parent origin/"+baseBranchName)
 	require.Contains(testInstance, output, "merge conflict resolution completed")
 	require.NotContains(testInstance, output, "AI_MERGE_ROLLBACK")
 	require.NotContains(testInstance, output, "AI_MERGE_HANDOFF")
 	require.Equal(testInstance, int64(2), requestCount.Load())
 	require.Equal(testInstance, expectedIssues, readTextFile(testInstance, issuesPath))
 	require.Equal(testInstance, expectedChangelog, readTextFile(testInstance, changelogPath))
+	require.Equal(testInstance, targetCommit, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "origin/"+baseBranchName)))
 	require.Equal(testInstance, 1, strings.Count(readTextFile(testInstance, issuesPath), "[B041]"))
 	require.Equal(testInstance, 1, strings.Count(readTextFile(testInstance, issuesPath), "[B042]"))
 	require.Equal(testInstance, 1, strings.Count(readTextFile(testInstance, issuesPath), "[B043]"))
