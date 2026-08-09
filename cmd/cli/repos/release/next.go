@@ -63,7 +63,6 @@ type VersionDecision struct {
 	Reason             string                `json:"reason"`
 	EvidenceSHA256     string                `json:"evidence_sha256,omitempty"`
 	ReleaseTimestamp   string                `json:"release_timestamp,omitempty"`
-	FixedMajor         int                   `json:"fixed_major,omitempty"`
 }
 
 // NextCommandBuilder assembles the release successor command.
@@ -224,7 +223,6 @@ func (builder NextCommandBuilder) decideSemVer(command *cobra.Command, gitExecut
 		SourceCommit:    sourceCommit,
 		BoundaryTag:     previous,
 		PreviousVersion: previous,
-		FixedMajor:      fixedMajor,
 	}
 	if previous == "" {
 		initialMajor := 1

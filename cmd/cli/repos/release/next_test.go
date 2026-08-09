@@ -32,7 +32,7 @@ func TestNextCommandSelectsEstablishedSemVer(t *testing.T) {
 	output := executeNextCommand(t, builder, "--format", "json")
 
 	require.JSONEq(t, `{
-		"contract":"mprlab.version-decision/v2",
+		"contract":"mprlab.version-decision/v1",
 		"scheme":"semver",
 		"source_commit":"abc123",
 		"boundary_tag":"v1.2.3",
@@ -103,9 +103,10 @@ func TestNextCommandIgnoresInvalidHistoricalMajorTags(t *testing.T) {
 
 	output := executeNextCommand(t, builder, "--format", "json")
 
+	require.Contains(t, output, `"contract":"mprlab.version-decision/v1"`)
 	require.Contains(t, output, `"previous_version":"v1.1.25"`)
 	require.Contains(t, output, `"next_version":"v1.1.26"`)
-	require.Contains(t, output, `"fixed_major":1`)
+	require.NotContains(t, output, "fixed_major")
 	require.NotContains(t, output, "go_install")
 }
 
@@ -143,7 +144,7 @@ func TestNextCommandSelectsCalVerWithoutLLM(t *testing.T) {
 	output := executeNextCommand(t, builder, "--format", "json", "--release-timestamp", "2026-08-09T00:00:00Z")
 
 	require.JSONEq(t, `{
-		"contract":"mprlab.version-decision/v2",
+		"contract":"mprlab.version-decision/v1",
 		"scheme":"calver",
 		"source_commit":"abc123",
 		"boundary_tag":"26.808.235959",
