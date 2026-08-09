@@ -29,7 +29,11 @@ make publish
 make deploy
 ```
 
-These three targets accept no release flags, arguments, or lifecycle overrides. `make release` detects the version scheme from the repository tags. For an existing SemVer line, an internal LLM decision node inspects every committed change since the latest SemVer tag, including commit messages, the diff summary, the Unreleased changelog, and a bounded diff excerpt. It selects `major`, `minor`, or `patch` from the public-contract effect of the complete range. A Conventional Commit `!` or `BREAKING CHANGE` marker enforces a `major` floor, and a `feat` marker enforces a `minor` floor. The model can raise that floor but cannot lower it. Missing, invalid, or unavailable model output stops the release without selecting a version. A repository without version tags starts at `v1.0.0`; an established CalVer line keeps timestamp-derived selection. At an exact release tag, `make release` remains the idempotent retry command.
+These three targets accept no release flags, arguments, or lifecycle overrides. Each repository declares its release scheme in `.mprlab/release.yml`. `gix release next` validates this config and selects the next version.
+
+For an established SemVer sequence, the command uses an LLM to examine all committed changes after the latest SemVer tag. The evidence includes commit messages, the diff summary, the Unreleased changelog, and a bounded diff excerpt. The command selects `major`, `minor`, or `patch` from the public contract effect of the complete range. A Conventional Commit `!` or `BREAKING CHANGE` marker sets a `major` floor. A `feat` marker sets a `minor` floor. The model can increase the floor but cannot decrease it.
+
+Invalid or unavailable model output stops the release before version selection. A SemVer repository without tags starts at `v1.0.0`. A CalVer repository uses the canonical UTC release timestamp. At an exact release tag, `make release` is the idempotent retry command.
 
 `make release` runs CI and prepares the cross-platform binaries, checksums, documentation Pages archive, changelog commit, annotated tag, and release manifest entirely from local state under `.git/mprlab-release`. It performs no remote write for a new release. At an exact release tag, the command verifies and reuses the complete local sealed receipt without rerunning CI; if that receipt is missing or incomplete, it reconstructs it from the matching published GitHub Release and verifies the manifest, notes, payload hashes, annotated tag, source parent, and changelog-only release commit. New release preparation uses a separate candidate receipt and replaces the canonical receipt only after the candidate verifies, so a preparation failure preserves the previous sealed release and rolls back its transaction-owned changelog commit and tag. `make publish` pushes the exact prepared Git refs and GitHub Release assets through canonical `origin` without rebuilding. `make deploy` activates the published documentation archive at `gix.mprlab.com` only when the downloaded manifest matches that locally prepared release; the CLI itself has no runtime rollout.
 
@@ -637,6 +641,8 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
  - Purges paths from history using git-filter-repo and optionally force-pushes updates.
 - `gix release <tag> [--message <text>] [--remote <name>] [--roots <dir>...] [-y]` (alias `rel`)
  - Creates and pushes an annotated tag for each repository root.
+- `gix release next [--format text|json] [--release-timestamp <RFC3339>] [--exclude-tag <tag>...]`
+ - Reads `.mprlab/release.yml` and selects the next canonical SemVer or CalVer version for the current repository.
 - `gix release retag --map <tag=ref> [--map <tag=ref>...] [--message-template <text>] [--remote <name>] [--roots <dir>...] [-y]` (alias `fix`)
  - Reassigns existing release tags to provided commits and force-pushes updates.
 - `gix message changelog [--version <v>] [--release-date YYYY-MM-DD] [--since-tag <ref>] [--since-date <ts>] [--max-tokens <N>] [--effort <low|medium|high>] [--provider <provider>] [--model <id>] [--timeout-seconds <N>] [--roots <dir>...]` (aliases `section`)
