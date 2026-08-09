@@ -138,6 +138,26 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.2.0] - 2026-08-09
+
+- Merge pull request #426 from tyemirov/tyemirov/improvement/I011-fixed-major-versioning
+- test(release): use version decision contract v1 fixtures
+- fix(release): accept v1 version decision contract
+- fix(release): restore version decision contract v1
+- fix(release): remove fixed major from version decision output
+- docs: clarify release version contract boundary
+- test: update release tests for authoritative version tags
+- refactor(release): remove Go install transport support
+- feat(release): support fixed-major SemVer releases
+- fix(release): retract superseded module versions
+- feat(release): support fixed-major SemVer versioning
+- feat(release): unify Gix releases under fixed-major SemVer
+- fix(release): inject version into renamed linker variable
+- fix(release): unify Gix releases under a single v1 version
+- refactor(release): unify versions under fixed-major policy
+- feat(release): configure fixed-major v1 policy
+- fix(release): classify SemVer by supported public contracts
+
 ## [v7.0.0] - 2026-08-09
 
 - Merge pull request #424 from tyemirov/tyemirov/bugfix/B059-root-go-install-latest
