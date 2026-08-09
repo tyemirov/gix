@@ -1,45 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-usage() {
-  cat <<'USAGE'
-Usage:
-  deploy_pages_artifact.sh --url <public-url> [options]
-
-Downloads manifest.json and pages.tar.gz from a published GitHub Release,
-verifies them against the remote tag, and replaces the configured Pages branch.
-
-Options:
-  --remote <name>       Git remote. Default: origin
-  --branch <name>       Pages branch. Default: gh-pages
-  --version <tag>       Published release tag. Default: exact v* tag at HEAD
-  --url <url>           Public Pages URL used for post-deploy verification
-  --skip-configure      Do not create/update the Pages branch source setting
-  --skip-verify         Do not verify the public release marker
-  --help                Show this help text
-USAGE
-}
-
+[[ $# -eq 0 ]] || { echo "error: make deploy accepts no arguments" >&2; exit 1; }
 remote="origin"
 branch="gh-pages"
 version=""
-url=""
-configure="true"
-verify="true"
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --remote) [[ $# -ge 2 ]] || { echo "error: --remote requires a value" >&2; exit 1; }; remote="$2"; shift 2 ;;
-    --branch) [[ $# -ge 2 ]] || { echo "error: --branch requires a value" >&2; exit 1; }; branch="$2"; shift 2 ;;
-    --version) [[ $# -ge 2 ]] || { echo "error: --version requires a value" >&2; exit 1; }; version="$2"; shift 2 ;;
-    --url) [[ $# -ge 2 ]] || { echo "error: --url requires a value" >&2; exit 1; }; url="$2"; shift 2 ;;
-    --skip-configure) configure="false"; shift ;;
-    --skip-verify) verify="false"; shift ;;
-    --help|-h) usage; exit 0 ;;
-    *) echo "error: unknown argument: $1" >&2; usage; exit 1 ;;
-  esac
-done
+url="https://gix.mprlab.com/"
 
-[[ -n "${url}" || "${verify}" == "false" ]] || { echo "error: --url is required unless --skip-verify is set" >&2; exit 1; }
 required_commands=(awk cat cp curl find gh git head mkdir mktemp python3 rm shasum sleep tar)
 for command_name in "${required_commands[@]}"; do
   command -v "${command_name}" >/dev/null 2>&1 || { echo "error: ${command_name} is required" >&2; exit 1; }
@@ -51,7 +18,7 @@ prepared_manifest="${git_directory}/mprlab-release/manifest.json"
 if [[ -z "${version}" ]]; then
   version="$(git tag --points-at HEAD --list 'v*' --sort=-version:refname | head -n 1)"
 fi
-[[ -n "${version}" ]] || { echo "error: no exact release tag at HEAD; pass --version after make publish" >&2; exit 1; }
+[[ -n "${version}" ]] || { echo "error: no exact release tag at HEAD; run make release" >&2; exit 1; }
 
 temporary_directory="$(mktemp -d)"
 trap 'rm -rf "${temporary_directory}"' EXIT
@@ -143,10 +110,9 @@ fi
 pages_commit="$(git -C "${checkout_directory}" rev-parse HEAD)"
 
 pages_configuration_changed="false"
-if [[ "${configure}" == "true" ]]; then
-  pages_configuration_path="${temporary_directory}/pages-configuration.json"
-  pages_configuration_error_path="${temporary_directory}/pages-configuration-error.txt"
-  if gh api repos/{owner}/{repo}/pages >"${pages_configuration_path}" 2>"${pages_configuration_error_path}"; then
+pages_configuration_path="${temporary_directory}/pages-configuration.json"
+pages_configuration_error_path="${temporary_directory}/pages-configuration-error.txt"
+if gh api repos/{owner}/{repo}/pages >"${pages_configuration_path}" 2>"${pages_configuration_error_path}"; then
     pages_configuration_state="$(python3 - "${pages_configuration_path}" "${branch}" <<'PY'
 import json
 import sys
@@ -195,15 +161,11 @@ PY
     cat "${pages_configuration_error_path}" >&2
     echo "error: failed to inspect GitHub Pages configuration" >&2
     exit 1
-  fi
 fi
 
-if [[ "${verify}" == "true" ]]; then
-  marker_url="${url%/}/.mprlab-release.json"
-  attempts="${PAGES_VERIFY_ATTEMPTS:-12}"
-  delay_seconds="${PAGES_VERIFY_DELAY_SECONDS:-5}"
-  [[ "${attempts}" =~ ^[1-9][0-9]*$ ]] || { echo "error: PAGES_VERIFY_ATTEMPTS must be a positive integer" >&2; exit 1; }
-  [[ "${delay_seconds}" =~ ^[0-9]+$ ]] || { echo "error: PAGES_VERIFY_DELAY_SECONDS must be a non-negative integer" >&2; exit 1; }
+marker_url="${url%/}/.mprlab-release.json"
+attempts="12"
+delay_seconds="5"
 
   read_pages_build() {
     local builds_path="${temporary_directory}/pages-builds.json"
@@ -324,7 +286,4 @@ PY
   else
     echo "error: GitHub Pages build for commit ${pages_commit} remained ${pages_build_status} after ${attempts} checks: ${pages_build_url}" >&2
   fi
-  exit 1
-fi
-
-echo "Deployed Pages release ${version} from source ${source_commit}."
+exit 1
