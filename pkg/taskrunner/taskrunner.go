@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/tyemirov/gix/v5/internal/workflow"
+	"github.com/tyemirov/gix/internal/workflow"
 )
 
 // Executor runs workflow task definitions across repositories.

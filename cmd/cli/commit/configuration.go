@@ -3,8 +3,8 @@ package commit
 import (
 	"strings"
 
-	"github.com/tyemirov/gix/v5/internal/llmclient"
-	rootutils "github.com/tyemirov/gix/v5/internal/utils/roots"
+	"github.com/tyemirov/gix/internal/llmclient"
+	rootutils "github.com/tyemirov/gix/internal/utils/roots"
 )
 
 const defaultDiffSource = "staged"

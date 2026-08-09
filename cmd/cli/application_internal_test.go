@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/tyemirov/gix/v5/internal/llmclient"
-	flagutils "github.com/tyemirov/gix/v5/internal/utils/flags"
+	"github.com/tyemirov/gix/internal/llmclient"
+	flagutils "github.com/tyemirov/gix/internal/utils/flags"
 )
 
 const (

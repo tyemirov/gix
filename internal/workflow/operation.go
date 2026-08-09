@@ -11,12 +11,12 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/tyemirov/gix/v5/internal/audit"
-	"github.com/tyemirov/gix/v5/internal/githubcli"
-	"github.com/tyemirov/gix/v5/internal/gitrepo"
-	"github.com/tyemirov/gix/v5/internal/llmclient"
-	"github.com/tyemirov/gix/v5/internal/repos/prompt"
-	"github.com/tyemirov/gix/v5/internal/repos/shared"
+	"github.com/tyemirov/gix/internal/audit"
+	"github.com/tyemirov/gix/internal/githubcli"
+	"github.com/tyemirov/gix/internal/gitrepo"
+	"github.com/tyemirov/gix/internal/llmclient"
+	"github.com/tyemirov/gix/internal/repos/prompt"
+	"github.com/tyemirov/gix/internal/repos/shared"
 )
 
 // Operation coordinates a single workflow step across repositories.

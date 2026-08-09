@@ -9,8 +9,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tyemirov/gix/v5/internal/execshell"
-	"github.com/tyemirov/gix/v5/internal/llmclient"
+	"github.com/tyemirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/llmclient"
 	"github.com/tyemirov/utils/llm"
 )
 
@@ -86,6 +86,27 @@ func TestNextCommandExcludesRetiredTags(t *testing.T) {
 	require.Contains(t, output, `"next_version":"v1.2.4"`)
 }
 
+func TestNextCommandSelectsRootGoInstallTransportVersion(t *testing.T) {
+	executor := &nextGitExecutor{responses: map[string]string{
+		"rev-parse --show-toplevel":                         "/repo\n",
+		"rev-parse HEAD":                                    "source600\n",
+		"rev-parse --verify v6.0.0^{commit}":                "base600\n",
+		"merge-base --is-ancestor base600 source600":        "",
+		"tag --list":                                        "v1.1.25\nv6.0.0\n",
+		"log --pretty=format:%s%n%b%x1e base600..source600": "fix: repair root installation\n\x1e",
+		"diff --stat base600..source600":                    " go.mod | 2 +-\n",
+		"diff --unified=3 base600..source600":               "diff --git a/go.mod b/go.mod\n",
+		"show source600:CHANGELOG.md":                       "# Changelog\n\n## [Unreleased]\n\n- Fixed root installation.\n",
+	}}
+	client := &nextChatClient{response: `{"bump":"patch","reason":"The release repairs root installation."}`}
+	builder := nextTestBuilder(executor, client, []byte("schema_version: 1\nscheme: semver\ngo_install:\n  module_path: github.com/tyemirov/gix\n  product_version_file: internal/version/product-version.txt\n"))
+
+	output := executeNextCommand(t, builder, "--format", "json")
+
+	require.Contains(t, output, `"next_version":"v6.0.1"`)
+	require.Contains(t, output, `"go_install":{"module_path":"github.com/tyemirov/gix","version":"v1.1.26","product_version_file":"internal/version/product-version.txt"}`)
+}
+
 func TestNextCommandSelectsCalVerWithoutLLM(t *testing.T) {
 	executor := &nextGitExecutor{responses: map[string]string{
 		"rev-parse --show-toplevel": "/repo\n",
@@ -116,7 +137,13 @@ func nextTestBuilder(executor *nextGitExecutor, client *nextChatClient, configur
 		WorkingDirectoryProvider: func() (string, error) {
 			return "/repo", nil
 		},
-		ReadFile: func(string) ([]byte, error) {
+		ReadFile: func(path string) ([]byte, error) {
+			if strings.HasSuffix(path, "go.mod") {
+				return []byte("module github.com/tyemirov/gix\n"), nil
+			}
+			if strings.HasSuffix(path, "product-version.txt") {
+				return []byte("v6.0.0\n"), nil
+			}
 			return configuration, nil
 		},
 		ConfigurationProvider: func() NextConfiguration {

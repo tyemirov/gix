@@ -13,7 +13,7 @@ gix makes branch-targeted Git synchronization mechanical: explicit branch target
 
 ## Quick Start
 
-1. Install the CLI: `go install github.com/tyemirov/gix/v5@latest` (Go 1.25+).
+1. Install the CLI: `go install github.com/tyemirov/gix@latest` (Go 1.25+).
 2. Create the canonical user configuration: `gix init`.
 3. Either replace the generated credential placeholders with literal values in `$HOME/.gix/config.yml`, or export `GH_TOKEN`, `GITHUB_PACKAGES_TOKEN`, and `LLM_PROXY_SECRET_KEY` before launching gix. Gix interpolates only its inherited process environment and never loads `.env` files.
 4. Attach or verify a workspace: `gix sync https://github.com/OWNER/REPO.git`.
@@ -35,9 +35,15 @@ For an established SemVer sequence, the command uses an LLM to examine all commi
 
 Invalid or unavailable model output stops the release before version selection. A SemVer repository without tags starts at `v1.0.0`. A CalVer repository uses the canonical UTC release timestamp. At an exact release tag, `make release` is the idempotent retry command.
 
-`make release` runs CI and prepares the cross-platform binaries, checksums, documentation Pages archive, changelog commit, annotated tag, and release manifest entirely from local state under `.git/mprlab-release`. It performs no remote write for a new release. At an exact release tag, the command verifies and reuses the complete local sealed receipt without rerunning CI; if that receipt is missing or incomplete, it reconstructs it from the matching published GitHub Release and verifies the manifest, notes, payload hashes, annotated tag, source parent, and changelog-only release commit. New release preparation uses a separate candidate receipt and replaces the canonical receipt only after the candidate verifies, so a preparation failure preserves the previous sealed release and rolls back its transaction-owned changelog commit and tag. `make publish` pushes the exact prepared Git refs and GitHub Release assets through canonical `origin` without rebuilding. `make deploy` activates the published documentation archive at `gix.mprlab.com` only when the downloaded manifest matches that locally prepared release; the CLI itself has no runtime rollout.
+Gix uses product SemVer for its public releases. Each Gix release also advances a root-module v1 transport tag so `go install github.com/tyemirov/gix@latest` resolves the same release commit. The installed command reports the product version, not the transport tag. `.mprlab/release.yml` declares this install channel, and `gix release next` includes both versions in one decision.
 
-The release manifest intentionally records two revisions: `source_commit` identifies the source used to build the documentation archive, while `release_commit` identifies the release/changelog commit and annotated tag. Pages deployment verifies the public archive marker against `source_commit` and the published tag against `release_commit`; those identities are not interchangeable.
+`make release` runs CI. It prepares the binaries, checksums, Pages archive, release metadata commit, two annotated tags, and release manifest. The local `.git/mprlab-release` directory contains the sealed receipt. New release preparation does not write to a remote repository.
+
+At an exact release tag, the command verifies and reuses the complete local receipt without another CI run. If the receipt is incomplete, the command reconstructs it from the matching GitHub Release. Reconstruction verifies the manifest, notes, hashes, both annotated tags, source parent, and exact release metadata files.
+
+New release preparation uses a separate candidate receipt. A preparation failure preserves the prior receipt and rolls back the transaction-owned commit and tags. `make publish` pushes the exact prepared Git refs and GitHub Release assets through canonical `origin`. `make deploy` activates the published Pages archive only when the downloaded manifest matches the prepared release. The CLI has no runtime rollout.
+
+The release manifest records two revisions. `source_commit` identifies the source that builds the Pages archive. `release_commit` identifies the release metadata commit and its tags. The optional `go_install` object binds its module path, transport version, and product-version file to that commit. Pages deployment verifies the public archive marker against `source_commit`. It verifies the published product tag against `release_commit`. These identities are not interchangeable.
 
 Pages remains configured through GitHub's legacy branch publishing contract at `gh-pages:/`; the repository does not own a Pages Actions workflow. Deployment reconciles that configuration only when it is missing or different, then follows the GitHub Pages build for the exact deployed branch commit. A changed branch or configuration is the build trigger. An unchanged retry reuses a built, queued, or building record and requests one rebuild only when the matching build is absent or terminally errored. Public marker verification begins after that build succeeds, and failures report the Pages build status, error, commit, and URL.
 
@@ -642,7 +648,7 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
 - `gix release <tag> [--message <text>] [--remote <name>] [--roots <dir>...] [-y]` (alias `rel`)
  - Creates and pushes an annotated tag for each repository root.
 - `gix release next [--format text|json] [--release-timestamp <RFC3339>] [--exclude-tag <tag>...]`
- - Reads `.mprlab/release.yml` and selects the next canonical SemVer or CalVer version for the current repository.
+ - Reads `.mprlab/release.yml` and selects the next canonical SemVer or CalVer version. A configured root Go channel receives its next v1 transport version.
 - `gix release retag --map <tag=ref> [--map <tag=ref>...] [--message-template <text>] [--remote <name>] [--roots <dir>...] [-y]` (alias `fix`)
  - Reassigns existing release tags to provided commits and force-pushes updates.
 - `gix message changelog [--version <v>] [--release-date YYYY-MM-DD] [--since-tag <ref>] [--since-date <ts>] [--max-tokens <N>] [--effort <low|medium|high>] [--provider <provider>] [--model <id>] [--timeout-seconds <N>] [--roots <dir>...]` (aliases `section`)

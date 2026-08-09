@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tyemirov/gix/v5/internal/llmclient"
+	"github.com/tyemirov/gix/internal/llmclient"
 )
 
 func TestTasksApplyDefinitionOptionsSerializesTaskDefinition(t *testing.T) {

@@ -14,14 +14,14 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tyemirov/gix/v5/internal/audit"
-	"github.com/tyemirov/gix/v5/internal/commitmsg"
-	"github.com/tyemirov/gix/v5/internal/execshell"
-	"github.com/tyemirov/gix/v5/internal/githubcli"
-	"github.com/tyemirov/gix/v5/internal/gitrepo"
-	"github.com/tyemirov/gix/v5/internal/llmclient"
-	"github.com/tyemirov/gix/v5/internal/repos/filesystem"
-	"github.com/tyemirov/gix/v5/internal/repos/shared"
+	"github.com/tyemirov/gix/internal/audit"
+	"github.com/tyemirov/gix/internal/commitmsg"
+	"github.com/tyemirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/githubcli"
+	"github.com/tyemirov/gix/internal/gitrepo"
+	"github.com/tyemirov/gix/internal/llmclient"
+	"github.com/tyemirov/gix/internal/repos/filesystem"
+	"github.com/tyemirov/gix/internal/repos/shared"
 	"github.com/tyemirov/utils/llm"
 )
 

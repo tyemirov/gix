@@ -37,7 +37,7 @@ import json
 import sys
 
 manifest = json.load(open(sys.argv[1], encoding="utf-8"))
-if manifest.get("schema_version") != 2 or manifest.get("artifact_kind") != "mprlab.release":
+if manifest.get("schema_version") != 3 or manifest.get("artifact_kind") != "mprlab.release":
     raise SystemExit("published release manifest has an invalid contract")
 if manifest.get("version") != sys.argv[2]:
     raise SystemExit("published release manifest has the wrong version")

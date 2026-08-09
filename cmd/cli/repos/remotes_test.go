@@ -13,10 +13,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	repos "github.com/tyemirov/gix/v5/cmd/cli/repos"
-	workflowcmd "github.com/tyemirov/gix/v5/cmd/cli/workflow"
-	flagutils "github.com/tyemirov/gix/v5/internal/utils/flags"
-	"github.com/tyemirov/gix/v5/internal/workflow"
+	repos "github.com/tyemirov/gix/cmd/cli/repos"
+	workflowcmd "github.com/tyemirov/gix/cmd/cli/workflow"
+	flagutils "github.com/tyemirov/gix/internal/utils/flags"
+	"github.com/tyemirov/gix/internal/workflow"
 )
 
 const (

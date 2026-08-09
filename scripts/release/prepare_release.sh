@@ -63,6 +63,19 @@ print(decision["next_version"])
 print(decision.get("boundary_tag") or "")
 print(decision["scheme"])
 print(decision["reason"].strip())
+go_install = decision.get("go_install")
+if go_install is None:
+    print("")
+    print("")
+    print("")
+else:
+    expected_keys = {"module_path", "version", "product_version_file"}
+    if not isinstance(go_install, dict) or set(go_install) != expected_keys:
+        raise SystemExit("release decision command returned an invalid Go install contract")
+    for key in ("module_path", "version", "product_version_file"):
+        if not isinstance(go_install[key], str) or not go_install[key].strip():
+            raise SystemExit("release decision command returned an incomplete Go install contract")
+        print(go_install[key].strip())
 ' "${source_commit}")" || {
     echo "error: autonomous release version decision output is invalid" >&2
     exit 1
@@ -78,10 +91,13 @@ default_branch=""
 release_commit=""
 release_tag=""
 release_tag_created="false"
+go_install_tag=""
+go_install_tag_created="false"
+product_version_file=""
 release_promoted="false"
 
 rollback_release_commit() {
-  local current_branch current_head tag_commit tag_object
+  local current_branch current_head tag_commit tag_object go_install_tag_commit go_install_tag_object
   current_branch="$(git branch --show-current)"
   current_head="$(git rev-parse HEAD)"
   if [[ "${current_branch}" != "${default_branch}" || "${current_head}" != "${release_commit}" ]]; then
@@ -96,15 +112,32 @@ rollback_release_commit() {
       echo "error: release rollback does not own tag ${release_tag}" >&2
       return 1
     fi
-    printf 'start\nupdate refs/heads/%s %s %s\ndelete refs/tags/%s %s\nprepare\ncommit\n' \
-      "${default_branch}" "${source_commit}" "${release_commit}" "${release_tag}" "${tag_object}" |
-      git update-ref --stdin
+    if [[ "${go_install_tag_created}" == "true" ]]; then
+      go_install_tag_commit="$(git rev-parse --verify "refs/tags/${go_install_tag}^{commit}")"
+      go_install_tag_object="$(git rev-parse --verify "refs/tags/${go_install_tag}")"
+      if [[ "${go_install_tag_commit}" != "${release_commit}" ]]; then
+        echo "error: release rollback does not own tag ${go_install_tag}" >&2
+        return 1
+      fi
+    fi
+    {
+      printf 'start\nupdate refs/heads/%s %s %s\ndelete refs/tags/%s %s\n' \
+        "${default_branch}" "${source_commit}" "${release_commit}" "${release_tag}" "${tag_object}"
+      if [[ "${go_install_tag_created}" == "true" ]]; then
+        printf 'delete refs/tags/%s %s\n' "${go_install_tag}" "${go_install_tag_object}"
+      fi
+      printf 'prepare\ncommit\n'
+    } | git update-ref --stdin
   else
     printf 'start\nupdate refs/heads/%s %s %s\nprepare\ncommit\n' \
       "${default_branch}" "${source_commit}" "${release_commit}" |
       git update-ref --stdin
   fi
-  git restore --source "${source_commit}" --staged --worktree -- CHANGELOG.md
+  release_metadata_files=(CHANGELOG.md)
+  if [[ -n "${product_version_file}" ]]; then
+    release_metadata_files+=("${product_version_file}")
+  fi
+  git restore --source "${source_commit}" --staged --worktree -- "${release_metadata_files[@]}"
   echo "Restored ${default_branch} to ${source_commit} after release preparation failed." >&2
 }
 
@@ -158,10 +191,18 @@ next_version="$(sed -n '1p' <<<"${decision_values}")"
 boundary_tag="$(sed -n '2p' <<<"${decision_values}")"
 effective_scheme="$(sed -n '3p' <<<"${decision_values}")"
 release_reason="$(sed -n '4p' <<<"${decision_values}")"
+go_install_module="$(sed -n '5p' <<<"${decision_values}")"
+go_install_version="$(sed -n '6p' <<<"${decision_values}")"
+product_version_file="$(sed -n '7p' <<<"${decision_values}")"
 echo "version_scheme=${effective_scheme}"
 echo "next_version=${next_version}"
 echo "changelog_boundary=${boundary_tag:-<none>}"
 echo "version_reason=${release_reason}"
+if [[ -n "${go_install_version}" ]]; then
+  echo "go_install_module=${go_install_module}"
+  echo "go_install_version=${go_install_version}"
+  echo "product_version_file=${product_version_file}"
+fi
 
 artifact_dir="$(git rev-parse --git-path mprlab-release)"
 if [[ "${artifact_dir}" != /* ]]; then
@@ -169,11 +210,21 @@ if [[ "${artifact_dir}" != /* ]]; then
 fi
 candidate_artifact_dir="$(mktemp -d "$(dirname "${artifact_dir}")/mprlab-release-candidate.XXXXXX")"
 
-"${helper}" initialize-release-artifact \
-  --version "${next_version}" \
-  --source-commit "${source_commit}" \
-  --release-timestamp "${release_timestamp}" \
+initialize_artifact_args=(
+  initialize-release-artifact
+  --version "${next_version}"
+  --source-commit "${source_commit}"
+  --release-timestamp "${release_timestamp}"
   --artifact-dir "${candidate_artifact_dir}"
+)
+if [[ -n "${go_install_version}" ]]; then
+  initialize_artifact_args+=(
+    --go-install-module "${go_install_module}"
+    --go-install-version "${go_install_version}"
+    --product-version-file "${product_version_file}"
+  )
+fi
+"${helper}" "${initialize_artifact_args[@]}"
 
 read -r -a artifact_target_list <<<"${artifact_targets}"
 echo "==> [release] Preparing local artifacts: ${artifact_targets}"
@@ -193,15 +244,23 @@ if [[ -n "${boundary_tag}" ]]; then
 fi
 "${helper}" "${notes_args[@]}" | tee "${notes_file}"
 "${helper}" insert-changelog --notes-file "${notes_file}"
+if [[ -n "${go_install_version}" ]]; then
+  "${helper}" write-product-version --path "${product_version_file}" --version "${next_version}"
+fi
 
-git add CHANGELOG.md
-if git diff --cached --quiet -- CHANGELOG.md; then
-  echo "error: CHANGELOG.md has no staged release changes" >&2
+release_metadata_files=(CHANGELOG.md)
+if [[ -n "${product_version_file}" ]]; then
+  release_metadata_files+=("${product_version_file}")
+fi
+git add -- "${release_metadata_files[@]}"
+if git diff --cached --quiet -- "${release_metadata_files[@]}"; then
+  echo "error: release metadata has no staged changes" >&2
   exit 1
 fi
-staged_files="$(git diff --cached --name-only)"
-if [[ "${staged_files}" != "CHANGELOG.md" ]]; then
-  echo "error: release commit may contain only CHANGELOG.md" >&2
+staged_files="$(git diff --cached --name-only | LC_ALL=C sort)"
+expected_staged_files="$(printf '%s\n' "${release_metadata_files[@]}" | LC_ALL=C sort)"
+if [[ "${staged_files}" != "${expected_staged_files}" ]]; then
+  echo "error: release commit must contain the exact release metadata files" >&2
   printf '%s\n' "${staged_files}" >&2
   exit 1
 fi
@@ -211,14 +270,29 @@ release_commit="$(git rev-parse HEAD)"
 release_tag="${next_version}"
 git tag -a "${next_version}" -m "Release ${next_version}" "${release_commit}"
 release_tag_created="true"
-"${helper}" write-release-artifact \
-  --version "${next_version}" \
-  --source-commit "${source_commit}" \
-  --release-commit "${release_commit}" \
-  --notes-file "${notes_file}" \
-  --default-branch "${default_branch}" \
-  --release-timestamp "${release_timestamp}" \
+if [[ -n "${go_install_version}" ]]; then
+  go_install_tag="${go_install_version}"
+  git tag -a "${go_install_tag}" -m "Go install transport for ${next_version}" "${release_commit}"
+  go_install_tag_created="true"
+fi
+write_artifact_args=(
+  write-release-artifact
+  --version "${next_version}"
+  --source-commit "${source_commit}"
+  --release-commit "${release_commit}"
+  --notes-file "${notes_file}"
+  --default-branch "${default_branch}"
+  --release-timestamp "${release_timestamp}"
   --artifact-dir "${candidate_artifact_dir}"
+)
+if [[ -n "${go_install_version}" ]]; then
+  write_artifact_args+=(
+    --go-install-module "${go_install_module}"
+    --go-install-version "${go_install_version}"
+    --product-version-file "${product_version_file}"
+  )
+fi
+"${helper}" "${write_artifact_args[@]}"
 "${helper}" verify-release-artifact --artifact-dir "${candidate_artifact_dir}"
 "${helper}" promote-release-artifact --artifact-dir "${candidate_artifact_dir}"
 release_promoted="true"

@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"path"
 	"regexp"
 	"sort"
 	"strings"
 	"time"
 
+	"golang.org/x/mod/module"
 	"gopkg.in/yaml.v3"
 )
 
@@ -40,8 +42,15 @@ const (
 
 // Configuration is the source-controlled release version contract.
 type Configuration struct {
-	SchemaVersion int    `yaml:"schema_version"`
-	Scheme        Scheme `yaml:"scheme"`
+	SchemaVersion int                     `yaml:"schema_version"`
+	Scheme        Scheme                  `yaml:"scheme"`
+	GoInstall     *GoInstallConfiguration `yaml:"go_install,omitempty"`
+}
+
+// GoInstallConfiguration defines one root-module installation channel.
+type GoInstallConfiguration struct {
+	ModulePath         string `yaml:"module_path"`
+	ProductVersionFile string `yaml:"product_version_file"`
 }
 
 var (
@@ -69,6 +78,21 @@ func ParseConfiguration(data []byte) (Configuration, error) {
 	}
 	if configuration.Scheme != SchemeSemVer && configuration.Scheme != SchemeCalVer {
 		return Configuration{}, fmt.Errorf("release configuration scheme must be %q or %q", SchemeSemVer, SchemeCalVer)
+	}
+	if configuration.GoInstall != nil {
+		configuration.GoInstall.ModulePath = strings.TrimSpace(configuration.GoInstall.ModulePath)
+		if moduleError := module.CheckPath(configuration.GoInstall.ModulePath); moduleError != nil {
+			return Configuration{}, fmt.Errorf("release configuration go_install.module_path is invalid: %w", moduleError)
+		}
+		configuration.GoInstall.ProductVersionFile = strings.TrimSpace(configuration.GoInstall.ProductVersionFile)
+		if configuration.GoInstall.ProductVersionFile == "" ||
+			path.Clean(configuration.GoInstall.ProductVersionFile) != configuration.GoInstall.ProductVersionFile ||
+			strings.Contains(configuration.GoInstall.ProductVersionFile, "\\") ||
+			strings.HasPrefix(configuration.GoInstall.ProductVersionFile, "/") ||
+			configuration.GoInstall.ProductVersionFile == ".." ||
+			strings.HasPrefix(configuration.GoInstall.ProductVersionFile, "../") {
+			return Configuration{}, errors.New("release configuration go_install.product_version_file must be a canonical repository-relative path")
+		}
 	}
 	return configuration, nil
 }
@@ -139,6 +163,27 @@ func NextSemVer(previous string, bump Bump) (string, error) {
 		parsed.patch.Add(parsed.patch, one)
 	}
 	return fmt.Sprintf("v%s.%s.%s", parsed.major.String(), parsed.minor.String(), parsed.patch.String()), nil
+}
+
+// NextGoInstallVersion returns the next patch on the root module's v1
+// transport line.
+func NextGoInstallVersion(tags []string) (string, error) {
+	latest := semverValue{}
+	found := false
+	for _, tag := range tags {
+		parsed, parseError := parseSemVer(tag)
+		if parseError != nil || parsed.major.Cmp(big.NewInt(1)) != 0 {
+			continue
+		}
+		if !found || parsed.compare(latest) > 0 {
+			latest = parsed
+			found = true
+		}
+	}
+	if !found {
+		return "v1.0.0", nil
+	}
+	return NextSemVer(latest.raw, BumpPatch)
 }
 
 // LatestCalVer returns the greatest canonical CalVer tag.

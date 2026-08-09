@@ -13,9 +13,9 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 
-	branches "github.com/tyemirov/gix/v5/internal/branches"
-	"github.com/tyemirov/gix/v5/internal/execshell"
-	"github.com/tyemirov/gix/v5/internal/repos/shared"
+	branches "github.com/tyemirov/gix/internal/branches"
+	"github.com/tyemirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/repos/shared"
 )
 
 const (

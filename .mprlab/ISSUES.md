@@ -463,6 +463,31 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make format`, focused tests, shell and Python syntax checks, `go mod verify`, `go mod tidy -diff`, `make build`, `make ci`, and `git diff --check`.
   Resolution:
   The lifecycle Make targets now call fixed repository helpers with no arguments. Each repository declares its release scheme in `.mprlab/release.yml`. The public `gix release next` command owns SemVer and CalVer selection. For SemVer, Gix resolves the boundary tag and source commit before it collects evidence. Gix classifies all commit messages, diff summaries, and Unreleased notes through bounded evidence packets. The first packet also contains the bounded diff excerpt. Gix selects the highest packet result and applies the non-lowerable Conventional Commit floor. Selection failures stop before candidate creation. An untagged SemVer repository selects `v1.0.0`, and CalVer uses the canonical UTC timestamp. Exact-tag reconciliation, sealed publication, and fixed Pages deployment retain their current contracts.
+- [x] [B059] (P0) Keep root Go install on the latest Gix release.
+  Reported on 2026-08-09 after the `v6.0.0` release.
+  Expected result:
+  `go install github.com/tyemirov/gix@latest` installs the latest Gix product release.
+  Actual result:
+  The command installs `v1.1.25` because the release changed the module path and did not advance the root Go module channel.
+  Requirements:
+  - Keep `go install github.com/tyemirov/gix@latest` as the only documented Go installation command.
+  - Keep product SemVer as the canonical user-visible release version.
+  - Publish one root Go transport tag for each product release. Both tags must identify the same release commit.
+  - Make `gix version` report the product version for a root Go installation.
+  - Store the product version and transport version in the Gix version decision and sealed release receipt.
+  - Reject release preparation or publication when either version, tag, module path, or commit identity does not match.
+  - Restore the root module path and update all current imports in one forward-only change.
+  Validation:
+  - Add a compiled test that runs the canonical `go install` command against a module proxy and verifies the installed product version.
+  - Add public release coverage for product-version updates, paired local tags, rollback, receipt recovery, publication, and remote tag verification.
+  - Run `make format`, focused tests, `make ci`, module checks, Governor checks, and `git diff --check`.
+  Resolution:
+  Gix now uses the root `github.com/tyemirov/gix` module. Each product release also gets one v1 Go transport tag on the release commit.
+  The version decision and schema 3 receipt bind both versions, the module path, the product-version file, and the release commit.
+  Release preparation and publication reject a mismatch. The installed root-module binary reports the embedded product version.
+  Compiled installation coverage runs the canonical command. Public release tests cover paired tags, rollback, recovery, publication, and remote verification.
+  `make format`, `make build`, `make ci`, module checks, syntax checks, and `git diff --check` passed on 2026-08-09.
+  The Governor normalizer and changed-line language review also passed.
 
 
 

@@ -24,6 +24,9 @@
 - Updated the LLM Proxy Go client from v0.2.21 to v0.2.46, moved Gix's configured proxy work budget to the current per-request timeout header, and raised the Go module floor to 1.25.12 with the dependency graph required by that client.
 
 ### Bug Fixes 🐛
+- Restored the root `github.com/tyemirov/gix` module.
+- Paired each product release with a v1 Go transport tag on the same commit.
+- Made the canonical `go install github.com/tyemirov/gix@latest` command install a binary that reports the latest product version.
 - Bound SemVer evidence to resolved source and boundary commits and classified complete commit, diff summary, and Unreleased evidence through bounded packets.
 - Required a positive top-level `llm.max_completion_tokens` value during startup and removed generated provider and command token defaults, keeping completion-token policy in `config.yml` while preserving the command-to-provider-to-global hierarchy.
 - Recovered direct OpenAI from reasoning-only empty completions by repeating the resolved configured request for one bounded recovery cycle after normal empty-response retries are exhausted, while ordinary connection failures and cancellation retain their existing behavior.
@@ -68,6 +71,8 @@
 - Kept the syncflow builder description as the canonical text shown by `gix sync --help`.
 
 ### Testing 🧪
+- Added compiled root-module installation coverage.
+- Added public release coverage for product-version updates, paired tags, sealed receipts, rollback, publication, and remote tag verification.
 - Added public Make and release-script coverage for zero-argument lifecycle targets, autonomous patch, minor, and major SemVer decisions, fail-closed decision errors, initial SemVer, timestamp-derived CalVer, and exact-tag reuse.
 - Added direct YAML-tag loader coverage and compiled-CLI coverage that rejects the removed `temperature` key through the strict typed schema.
 - Added public compiled-CLI coverage for LLM Proxy failure at the inherited global token budget followed by three reasoning-budget-exhausted direct OpenAI responses and a successful recovery at the provider budget, plus focused precedence, error, and cancellation guardrails.

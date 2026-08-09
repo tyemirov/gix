@@ -3,7 +3,7 @@ package changelog
 import (
 	"go.uber.org/zap"
 
-	"github.com/tyemirov/gix/v5/pkg/taskrunner"
+	"github.com/tyemirov/gix/pkg/taskrunner"
 )
 
 // LoggerProvider yields a zap logger for command execution.

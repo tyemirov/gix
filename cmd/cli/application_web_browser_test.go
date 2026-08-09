@@ -18,7 +18,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tyemirov/gix/v5/internal/web"
+	"github.com/tyemirov/gix/internal/web"
 )
 
 const (

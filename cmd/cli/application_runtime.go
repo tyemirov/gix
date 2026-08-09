@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 
-	flagutils "github.com/tyemirov/gix/v5/internal/utils/flags"
+	flagutils "github.com/tyemirov/gix/internal/utils/flags"
 )
 
 var errVersionHandled = errors.New("version handled")

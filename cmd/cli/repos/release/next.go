@@ -12,13 +12,14 @@ import (
 
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
+	"golang.org/x/mod/modfile"
 
-	"github.com/tyemirov/gix/v5/internal/execshell"
-	"github.com/tyemirov/gix/v5/internal/llmclient"
-	"github.com/tyemirov/gix/v5/internal/releaseversion"
-	"github.com/tyemirov/gix/v5/internal/repos/shared"
-	"github.com/tyemirov/gix/v5/internal/semverdecision"
-	"github.com/tyemirov/gix/v5/pkg/taskrunner"
+	"github.com/tyemirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/llmclient"
+	"github.com/tyemirov/gix/internal/releaseversion"
+	"github.com/tyemirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/internal/semverdecision"
+	"github.com/tyemirov/gix/pkg/taskrunner"
 )
 
 const (
@@ -63,6 +64,14 @@ type VersionDecision struct {
 	Reason             string                `json:"reason"`
 	EvidenceSHA256     string                `json:"evidence_sha256,omitempty"`
 	ReleaseTimestamp   string                `json:"release_timestamp,omitempty"`
+	GoInstall          *GoInstallDecision    `json:"go_install,omitempty"`
+}
+
+// GoInstallDecision binds one root Go module tag to a product release.
+type GoInstallDecision struct {
+	ModulePath         string `json:"module_path"`
+	Version            string `json:"version"`
+	ProductVersionFile string `json:"product_version_file"`
 }
 
 // NextCommandBuilder assembles the release successor command.
@@ -192,14 +201,59 @@ func (builder NextCommandBuilder) decide(command *cobra.Command) (VersionDecisio
 		}
 	}
 
+	var decision VersionDecision
+	var decisionError error
 	switch releaseConfiguration.Scheme {
 	case releaseversion.SchemeSemVer:
-		return builder.decideSemVer(command, dependencies.GitExecutor, repositoryRoot, sourceCommit, tags)
+		decision, decisionError = builder.decideSemVer(command, dependencies.GitExecutor, repositoryRoot, sourceCommit, tags)
 	case releaseversion.SchemeCalVer:
-		return builder.decideCalVer(command, sourceCommit, tags)
+		decision, decisionError = builder.decideCalVer(command, sourceCommit, tags)
 	default:
 		return VersionDecision{}, fmt.Errorf("unsupported release scheme %q", releaseConfiguration.Scheme)
 	}
+	if decisionError != nil {
+		return VersionDecision{}, decisionError
+	}
+	return builder.attachGoInstallDecision(repositoryRoot, releaseConfiguration, tags, decision)
+}
+
+func (builder NextCommandBuilder) attachGoInstallDecision(repositoryRoot string, configuration releaseversion.Configuration, tags []string, decision VersionDecision) (VersionDecision, error) {
+	if configuration.GoInstall == nil {
+		return decision, nil
+	}
+	readFile := builder.ReadFile
+	if readFile == nil {
+		readFile = os.ReadFile
+	}
+	moduleData, readError := readFile(filepath.Join(repositoryRoot, "go.mod"))
+	if readError != nil {
+		return VersionDecision{}, fmt.Errorf("read Go module contract: %w", readError)
+	}
+	actualModulePath := strings.TrimSpace(modfile.ModulePath(moduleData))
+	if actualModulePath != configuration.GoInstall.ModulePath {
+		return VersionDecision{}, fmt.Errorf("go install module path must be %q: found %q", configuration.GoInstall.ModulePath, actualModulePath)
+	}
+	productVersionData, productVersionError := readFile(filepath.Join(repositoryRoot, configuration.GoInstall.ProductVersionFile))
+	if productVersionError != nil {
+		return VersionDecision{}, fmt.Errorf("read Go install product version: %w", productVersionError)
+	}
+	currentProductVersion := strings.TrimSpace(string(productVersionData))
+	if currentProductVersion != decision.PreviousVersion {
+		return VersionDecision{}, fmt.Errorf("go install product version must match release boundary %q: found %q", decision.PreviousVersion, currentProductVersion)
+	}
+	goInstallVersion, versionError := releaseversion.NextGoInstallVersion(tags)
+	if versionError != nil {
+		return VersionDecision{}, versionError
+	}
+	if goInstallVersion == decision.NextVersion {
+		return VersionDecision{}, fmt.Errorf("go install transport version conflicts with product version %s", decision.NextVersion)
+	}
+	decision.GoInstall = &GoInstallDecision{
+		ModulePath:         configuration.GoInstall.ModulePath,
+		Version:            goInstallVersion,
+		ProductVersionFile: configuration.GoInstall.ProductVersionFile,
+	}
+	return decision, nil
 }
 
 func (builder NextCommandBuilder) decideSemVer(command *cobra.Command, gitExecutor shared.GitExecutor, repositoryRoot string, sourceCommit string, tags []string) (VersionDecision, error) {

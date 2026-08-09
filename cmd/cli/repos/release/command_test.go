@@ -11,11 +11,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	workflowcmd "github.com/tyemirov/gix/v5/cmd/cli/workflow"
-	"github.com/tyemirov/gix/v5/internal/execshell"
-	"github.com/tyemirov/gix/v5/internal/utils"
-	flagutils "github.com/tyemirov/gix/v5/internal/utils/flags"
-	"github.com/tyemirov/gix/v5/internal/workflow"
+	workflowcmd "github.com/tyemirov/gix/cmd/cli/workflow"
+	"github.com/tyemirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/utils"
+	flagutils "github.com/tyemirov/gix/internal/utils/flags"
+	"github.com/tyemirov/gix/internal/workflow"
 )
 
 type stubGitExecutor struct {

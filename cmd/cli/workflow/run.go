@@ -8,12 +8,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tyemirov/gix/v5/internal/repos/shared"
-	"github.com/tyemirov/gix/v5/internal/utils"
-	flagutils "github.com/tyemirov/gix/v5/internal/utils/flags"
-	rootutils "github.com/tyemirov/gix/v5/internal/utils/roots"
-	"github.com/tyemirov/gix/v5/internal/workflow"
-	"github.com/tyemirov/gix/v5/pkg/taskrunner"
+	"github.com/tyemirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/internal/utils"
+	flagutils "github.com/tyemirov/gix/internal/utils/flags"
+	rootutils "github.com/tyemirov/gix/internal/utils/roots"
+	"github.com/tyemirov/gix/internal/workflow"
+	"github.com/tyemirov/gix/pkg/taskrunner"
 )
 
 const (

@@ -3,8 +3,8 @@ package migrate
 import (
 	"context"
 
-	"github.com/tyemirov/gix/v5/internal/execshell"
-	"github.com/tyemirov/gix/v5/internal/githubcli"
+	"github.com/tyemirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/githubcli"
 )
 
 const (

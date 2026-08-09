@@ -7,11 +7,11 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
-	"github.com/tyemirov/gix/v5/internal/audit"
-	"github.com/tyemirov/gix/v5/internal/utils"
-	flagutils "github.com/tyemirov/gix/v5/internal/utils/flags"
-	"github.com/tyemirov/gix/v5/internal/workflow"
-	"github.com/tyemirov/gix/v5/pkg/taskrunner"
+	"github.com/tyemirov/gix/internal/audit"
+	"github.com/tyemirov/gix/internal/utils"
+	flagutils "github.com/tyemirov/gix/internal/utils/flags"
+	"github.com/tyemirov/gix/internal/workflow"
+	"github.com/tyemirov/gix/pkg/taskrunner"
 )
 
 const (

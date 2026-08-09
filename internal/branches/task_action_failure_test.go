@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tyemirov/gix/v5/internal/workflow"
+	"github.com/tyemirov/gix/internal/workflow"
 )
 
 func TestWriteBranchCleanupFailureDetailsRedactsHTTPSCredentials(testInstance *testing.T) {

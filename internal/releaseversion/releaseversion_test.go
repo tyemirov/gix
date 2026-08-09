@@ -18,6 +18,24 @@ func TestParseConfigurationRequiresCanonicalContract(t *testing.T) {
 	require.Error(t, schemeError)
 }
 
+func TestParseConfigurationAcceptsRootGoInstallContract(t *testing.T) {
+	configuration, parseError := ParseConfiguration([]byte("schema_version: 1\nscheme: semver\ngo_install:\n  module_path: github.com/tyemirov/gix\n  product_version_file: internal/version/product-version.txt\n"))
+
+	require.NoError(t, parseError)
+	require.Equal(t, "github.com/tyemirov/gix", configuration.GoInstall.ModulePath)
+	require.Equal(t, "internal/version/product-version.txt", configuration.GoInstall.ProductVersionFile)
+}
+
+func TestParseConfigurationRejectsPartialOrUnsafeRootGoInstallContract(t *testing.T) {
+	for _, configuration := range []string{
+		"schema_version: 1\nscheme: semver\ngo_install:\n  module_path: github.com/tyemirov/gix\n",
+		"schema_version: 1\nscheme: semver\ngo_install:\n  module_path: github.com/tyemirov/gix\n  product_version_file: ../VERSION\n",
+	} {
+		_, parseError := ParseConfiguration([]byte(configuration))
+		require.Error(t, parseError)
+	}
+}
+
 func TestNextSemVerUsesArbitraryPrecisionCanonicalMath(t *testing.T) {
 	next, nextError := NextSemVer("v999999999999999999999.4.8", BumpMajor)
 	require.NoError(t, nextError)
@@ -34,6 +52,13 @@ func TestNextSemVerUsesArbitraryPrecisionCanonicalMath(t *testing.T) {
 
 func TestLatestSemVerIgnoresNonCanonicalTags(t *testing.T) {
 	require.Equal(t, "v10.0.0", LatestSemVer([]string{"1.2.3", "v2.8.9", "v10.0.0", "v11.0.0-rc.1"}))
+}
+
+func TestNextGoInstallVersionAdvancesOnlyTheRootTransportLine(t *testing.T) {
+	next, nextError := NextGoInstallVersion([]string{"v1.1.24", "v6.0.0", "v1.1.25", "26.809.120000"})
+
+	require.NoError(t, nextError)
+	require.Equal(t, "v1.1.26", next)
 }
 
 func TestNextCalVerUsesCanonicalUTCSecond(t *testing.T) {

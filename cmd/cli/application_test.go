@@ -14,15 +14,15 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
-	"github.com/tyemirov/gix/v5/cmd/cli"
-	repos "github.com/tyemirov/gix/v5/cmd/cli/repos"
-	workflowcmd "github.com/tyemirov/gix/v5/cmd/cli/workflow"
-	"github.com/tyemirov/gix/v5/internal/audit"
-	"github.com/tyemirov/gix/v5/internal/branches"
-	"github.com/tyemirov/gix/v5/internal/migrate"
-	"github.com/tyemirov/gix/v5/internal/packages"
-	"github.com/tyemirov/gix/v5/internal/utils"
-	workflowpkg "github.com/tyemirov/gix/v5/internal/workflow"
+	"github.com/tyemirov/gix/cmd/cli"
+	repos "github.com/tyemirov/gix/cmd/cli/repos"
+	workflowcmd "github.com/tyemirov/gix/cmd/cli/workflow"
+	"github.com/tyemirov/gix/internal/audit"
+	"github.com/tyemirov/gix/internal/branches"
+	"github.com/tyemirov/gix/internal/migrate"
+	"github.com/tyemirov/gix/internal/packages"
+	"github.com/tyemirov/gix/internal/utils"
+	workflowpkg "github.com/tyemirov/gix/internal/workflow"
 )
 
 const (

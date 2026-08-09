@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tyemirov/gix/v5/internal/web"
+	"github.com/tyemirov/gix/internal/web"
 )
 
 func TestWebWorkflowPrimitiveCatalogIncludesAllBuiltInActions(t *testing.T) {
