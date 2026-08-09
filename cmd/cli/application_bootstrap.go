@@ -21,6 +21,7 @@ import (
 	commitcmd "github.com/tyemirov/gix/v5/cmd/cli/commit"
 	"github.com/tyemirov/gix/v5/cmd/cli/repos"
 	releasecmd "github.com/tyemirov/gix/v5/cmd/cli/repos/release"
+	semvercmd "github.com/tyemirov/gix/v5/cmd/cli/semver"
 	workflowcmd "github.com/tyemirov/gix/v5/cmd/cli/workflow"
 	"github.com/tyemirov/gix/v5/internal/audit"
 	"github.com/tyemirov/gix/v5/internal/branches"
@@ -56,6 +57,9 @@ var commandOperationRequirements = map[string][]string{
 	branchSyncTopLevelUseNameConstant:     {branchSyncOperationNameConstant},
 	commitMessageCommandPathKeyConstant:   {commitMessageOperationNameConstant},
 	changelogMessageCommandPathKeyConstant: {
+		changelogMessageOperationNameConstant,
+	},
+	semverDecisionCommandPathKeyConstant: {
 		changelogMessageOperationNameConstant,
 	},
 }
@@ -687,6 +691,17 @@ func (application *Application) changelogMessageConfiguration() changelogcmd.Mes
 	application.decodeChangelogMessageOperationConfigurationIfPresent(application.configuredOperationConfigurations, changelogMessageOperationNameConstant, &configuration)
 	configuration.ConnectionProfiles = application.configuration.LLM.connectionProfiles()
 	return configuration.Sanitize()
+}
+
+func (application *Application) semverDecisionConfiguration() semvercmd.Configuration {
+	changelogConfiguration := application.changelogMessageConfiguration()
+	return semvercmd.Configuration{
+		LLMProxy:           changelogConfiguration.LLMProxy,
+		Effort:             changelogConfiguration.Effort,
+		MaxTokens:          changelogConfiguration.MaxTokens,
+		TimeoutSeconds:     changelogConfiguration.TimeoutSeconds,
+		ConnectionProfiles: changelogConfiguration.ConnectionProfiles,
+	}.Sanitize()
 }
 
 func (application *Application) commitMessageConfiguration() commitcmd.MessageConfiguration {
