@@ -131,6 +131,39 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v6.0.0] - 2026-08-09
+
+- Merge pull request #423 from tyemirov/gix/automate-semver-bump-selection
+- feat(semver): classify complete evidence in ordered packets
+- fix(release): resolve and validate SemVer tag boundaries
+- fix(semver): bound evidence to resolved commit range
+- docs: update release lifecycle architecture
+- docs: document bounded release evidence selection
+- chore(release): add semver release configuration
+- test: update release fixtures for version decision contract
+- refactor(release): delegate version selection to release next
+- feat(release): centralize version schemes and decision evidence
+- feat(release): add next version selection command
+- feat(release): add config-driven next version selection
+- feat: add LLM-backed SemVer decision generator
+- feat(release): automate SemVer version selection
+- feat(release): automate SemVer bump selection
+- feat(cli): add hidden SemVer release decision command
+- feat(release): select SemVer bumps with LLM decision node
+- feat(release): add semver-aware release command
+- feat(release): automate SemVer decisions for zero-input lifecycle targets
+- feat(release): derive SemVer bumps from committed changes
+- docs: record automated SemVer release decision resolution
+- Merge pull request #422 from tyemirov/gix/accept-inherited-whitespace-in-resolved-merges
+- test(sync): cover remote ref advancement during semantic merge
+- fix(syncflow): resolve merge parent before validating staged changes
+- test: cover inherited whitespace in semantic sync merge
+- fix(sync): allow inherited whitespace in merge resolutions
+- docs: clarify merge whitespace validation and rollback behavior
+- docs: clarify merge whitespace validation against both parents
+- docs: update agent governance references
+- docs: add specialized agent guidance
+
 ## [v5.0.1] - 2026-08-08
 
 - Merge pull request #421 from tyemirov/bugfix/B056-isolate-release-ci-intent
