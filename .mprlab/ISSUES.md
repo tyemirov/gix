@@ -446,6 +446,23 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make format`, focused tests, `make ci`, `make build`, and `git diff --check`.
   Resolution:
   Resolved merge validation now checks each staged path against the current parent and the incoming parent. Exact whitespace from either parent can pass. Whitespace that is new to both parents still fails and uses operation-owned rollback. The public CLI regression preserves the incoming blank line, completes the semantic merge, pushes, and leaves a clean checkout. `make format`, `make test-fast`, `make test-slow`, `make ci`, `make build`, and `git diff --check` passed on 2026-08-08.
+- [x] [B058] (P0) Automate SemVer release decisions.
+  Requested on 2026-08-08 after bare `make release` required an operator-supplied bump.
+  Goal:
+  Make release preparation, publication, and deployment self-contained while retaining Semantic Versioning.
+  Requirements:
+  - Give `make release`, `make publish`, and `make deploy` no release flags, arguments, or lifecycle-variable inputs.
+  - Detect the existing version scheme from repository tags. Start an untagged repository at `v1.0.0` and retain timestamp-derived CalVer for an established CalVer line.
+  - For an established SemVer line, use an LLM decision node to inspect the complete committed range since the latest SemVer tag through commit messages, the diff summary, the Unreleased changelog, and a bounded diff excerpt.
+  - Require exactly one closed `major`, `minor`, or `patch` decision with a concise reason. Fail closed when the model is unavailable or its output is invalid.
+  - Enforce a deterministic `major` floor for Conventional Commit `!` or `BREAKING CHANGE` evidence and a `minor` floor for `feat` evidence. Permit the model to raise the floor but never lower it.
+  - Preserve exact-tag receipt reuse and recovery, candidate isolation, release-owned rollback, canonical publication, fixed Pages activation, and public-marker verification.
+  Validation:
+  - Add focused decision-node coverage for every SemVer level, complete-range floors, invalid output, provider failure, and strict JSON output.
+  - Add public Make and release-script coverage for zero-argument target dispatch, autonomous patch, minor, and major selection, decision failure, initial SemVer, CalVer, exact-tag reuse, receipt preservation, and Pages reconciliation.
+  - Run `make format`, focused tests, shell and Python syntax checks, `go mod verify`, `go mod tidy -diff`, `make build`, `make ci`, and `git diff --check`.
+  Resolution:
+  The lifecycle Make targets now call fixed repository-owned helpers with zero arguments and expose no release-selection or deployment inputs. New SemVer releases invoke a hidden LLM decision node through the configured changelog connection policy. The node evaluates the committed tag-to-HEAD range and emits one strict JSON decision; a complete-range Conventional Commit scan supplies the non-lowerable floor. Selection failures stop before candidate creation, and autonomous selection remains stable across artifact preparation. Untagged repositories select `v1.0.0`, established CalVer lines remain timestamp-derived, and exact-tag reconciliation is unchanged. Publication uses the sealed release through canonical `origin`; deployment uses the fixed `gh-pages` and `https://gix.mprlab.com/` contract. Focused decision, CLI, release, and Pages tests, shell and Python syntax checks, module verification, `make format`, `make build`, `make ci`, and `git diff --check` passed on 2026-08-08.
 
 
 
