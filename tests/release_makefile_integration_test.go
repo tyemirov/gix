@@ -1435,12 +1435,12 @@ timestamp = dt.datetime.fromisoformat(sys.argv[1])
 timestamp = timestamp.astimezone(dt.timezone.utc)
 print(f"{timestamp.year % 100}.{timestamp.month * 100 + timestamp.day}.{timestamp.hour * 10000 + timestamp.minute * 100 + timestamp.second}")
 ' "$8")"
-  printf '{"contract":"mprlab.version-decision/v2","scheme":"calver","source_commit":"%s","boundary_tag":"%s","previous_version":"%s","next_version":"%s","reason":"Fixture selected the CalVer release version.","release_timestamp":"%s"}\n' "${source_commit}" "${latest_calver}" "${latest_calver}" "${next_version}" "$8"
+  printf '{"contract":"mprlab.version-decision/v1","scheme":"calver","source_commit":"%s","boundary_tag":"%s","previous_version":"%s","next_version":"%s","reason":"Fixture selected the CalVer release version.","release_timestamp":"%s"}\n' "${source_commit}" "${latest_calver}" "${latest_calver}" "${next_version}" "$8"
   exit 0
 fi
 latest_semver="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -1)"
 if [[ -z "${latest_semver}" ]]; then
-  printf '{"contract":"mprlab.version-decision/v2","scheme":"semver","source_commit":"%s","next_version":"v1.0.0","reason":"Fixture selected the initial SemVer release."}\n' "${source_commit}"
+  printf '{"contract":"mprlab.version-decision/v1","scheme":"semver","source_commit":"%s","next_version":"v1.0.0","reason":"Fixture selected the initial SemVer release."}\n' "${source_commit}"
   exit 0
 fi
 next_version="$(python3 -c '
@@ -1454,7 +1454,7 @@ else:
     patch += 1
 print(f"v{major}.{minor}.{patch}")
 ' "${latest_semver}" "${bump}")"
-printf '{"contract":"mprlab.version-decision/v2","scheme":"semver","source_commit":"%s","boundary_tag":"%s","previous_version":"%s","next_version":"%s","bump":"%s","deterministic_floor":"patch","reason":"Fixture selected the %s release level.","evidence_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}\n' "${source_commit}" "${latest_semver}" "${latest_semver}" "${next_version}" "${bump}" "${bump}"
+printf '{"contract":"mprlab.version-decision/v1","scheme":"semver","source_commit":"%s","boundary_tag":"%s","previous_version":"%s","next_version":"%s","bump":"%s","deterministic_floor":"patch","reason":"Fixture selected the %s release level.","evidence_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}\n' "${source_commit}" "${latest_semver}" "${latest_semver}" "${next_version}" "${bump}" "${bump}"
 `
 
 const releaseFakeGHRecoveryScript = `#!/usr/bin/env bash
