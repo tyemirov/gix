@@ -16,19 +16,19 @@ import (
 )
 
 const (
-	goInstallModulePath       = "github.com/tyemirov/gix"
-	goInstallTransportVersion = "v1.1.26"
+	goInstallModulePath = "github.com/tyemirov/gix"
+	goInstallVersion    = "v1.2.0"
 )
 
-func TestGoInstallLatestReportsCurrentProductVersion(testInstance *testing.T) {
+func TestGoInstallLatestReportsInstalledVersion(testInstance *testing.T) {
 	repositoryRoot := releaseRepositoryRoot(testInstance)
 	moduleSource := copyTrackedModuleSource(testInstance, repositoryRoot)
 	proxyRoot := testInstance.TempDir()
-	writeGoModuleProxyVersion(testInstance, proxyRoot, moduleSource, goInstallTransportVersion)
+	writeGoModuleProxyVersion(testInstance, proxyRoot, moduleSource, goInstallVersion)
 	writeReleaseFixtureFile(
 		testInstance,
 		filepath.Join(proxyRoot, "github.com", "tyemirov", "gix", "@v", "list"),
-		"v1.1.25\n"+goInstallTransportVersion+"\n",
+		"v1.1.26\n"+goInstallVersion+"\n",
 	)
 
 	installRoot := testInstance.TempDir()
@@ -68,8 +68,7 @@ func TestGoInstallLatestReportsCurrentProductVersion(testInstance *testing.T) {
 	)
 	versionOutput, versionError := versionCommand.CombinedOutput()
 	require.NoError(testInstance, versionError, string(versionOutput))
-	productVersion := strings.TrimSpace(readTextFile(testInstance, filepath.Join(repositoryRoot, "internal", "version", "product-version.txt")))
-	require.Equal(testInstance, "gix version: "+productVersion+"\n", string(versionOutput))
+	require.Equal(testInstance, "gix version: "+goInstallVersion+"\n", string(versionOutput))
 }
 
 func copyTrackedModuleSource(testInstance *testing.T, repositoryRoot string) string {
@@ -82,6 +81,9 @@ func copyTrackedModuleSource(testInstance *testing.T, repositoryRoot string) str
 	for _, relativePath := range strings.Split(strings.TrimSuffix(string(listOutput), "\x00"), "\x00") {
 		sourcePath := filepath.Join(repositoryRoot, relativePath)
 		fileInformation, statError := os.Stat(sourcePath)
+		if os.IsNotExist(statError) {
+			continue
+		}
 		require.NoError(testInstance, statError)
 		if !fileInformation.Mode().IsRegular() {
 			continue
