@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	ContractVersion     = "mprlab.version-decision/v2"
+	ContractVersion     = "mprlab.version-decision/v1"
 	ConfigurationPath   = ".mprlab/release.yml"
 	ConfigurationSchema = 1
 )
