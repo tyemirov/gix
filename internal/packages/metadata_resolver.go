@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tyemirov/gix/v5/internal/ghcr"
-	"github.com/tyemirov/gix/v5/internal/gitrepo"
-	"github.com/tyemirov/gix/v5/internal/repos/shared"
+	"github.com/tyemirov/gix/internal/ghcr"
+	"github.com/tyemirov/gix/internal/gitrepo"
+	"github.com/tyemirov/gix/internal/repos/shared"
 )
 
 const (

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/tyemirov/gix/v5/internal/audit"
+	"github.com/tyemirov/gix/internal/audit"
 )
 
 const (

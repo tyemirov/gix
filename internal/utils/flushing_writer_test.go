@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tyemirov/gix/v5/internal/utils"
+	"github.com/tyemirov/gix/internal/utils"
 )
 
 type recordingFlushWriter struct {

@@ -5,8 +5,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tyemirov/gix/v5/internal/audit"
-	"github.com/tyemirov/gix/v5/internal/repos/shared"
+	"github.com/tyemirov/gix/internal/audit"
+	"github.com/tyemirov/gix/internal/repos/shared"
 )
 
 func TestActionOptionBuildersSerializeWorkflowContracts(testingInstance *testing.T) {

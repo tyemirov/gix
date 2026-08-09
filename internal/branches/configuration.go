@@ -3,7 +3,7 @@ package branches
 import (
 	"strings"
 
-	pathutils "github.com/tyemirov/gix/v5/internal/utils/path"
+	pathutils "github.com/tyemirov/gix/internal/utils/path"
 )
 
 var branchConfigurationRepositoryPathSanitizer = pathutils.NewRepositoryPathSanitizerWithConfiguration(nil, pathutils.RepositoryPathSanitizerConfiguration{PruneNestedPaths: true})

@@ -45,6 +45,9 @@ const (
 	releaseMissingArtifactErrorFragment   = "missing release artifact"
 	releaseManifestMismatchFragment       = "published release manifest does not match the locally prepared release"
 	releaseFixtureVersion                 = "v9.8.7"
+	releaseFixtureGoInstallVersion        = "v1.1.25"
+	releaseFixtureNextGoInstallVersion    = "v1.1.26"
+	releaseFixtureProductVersionFile      = "internal/version/product-version.txt"
 	releaseFixtureURL                     = "https://gix.mprlab.com/"
 	releaseFixtureReleaseCommit           = "1111111111111111111111111111111111111111"
 	releaseFixtureSourceCommit            = "2222222222222222222222222222222222222222"
@@ -354,8 +357,68 @@ func TestReleaseNewSemVerUsesAutonomousDecision(testInstance *testing.T) {
 			require.Contains(t, outputText, "version_reason=Fixture selected the "+testCase.bump+" release level.")
 			require.Contains(t, outputText, "next_version="+testCase.expectedVersion)
 			require.Contains(t, outputText, "changelog_boundary="+releaseFixtureVersion)
-			require.Contains(t, runGit(t, fixture.repositoryPath, "tag", "--points-at", "HEAD"), testCase.expectedVersion)
+			headTags := runGit(t, fixture.repositoryPath, "tag", "--points-at", "HEAD")
+			require.Contains(t, headTags, testCase.expectedVersion)
+			require.Contains(t, headTags, releaseFixtureNextGoInstallVersion)
+			require.Equal(
+				t,
+				testCase.expectedVersion+"\n",
+				readReleaseFixtureFile(t, filepath.Join(fixture.repositoryPath, releaseFixtureProductVersionFile)),
+			)
 		})
+	}
+}
+
+func TestReleasePublishPushesGoInstallTransportTag(testInstance *testing.T) {
+	fixture := newExactReleaseFixture(testInstance)
+	fixture.commitNextSource(testInstance)
+	runGit(testInstance, fixture.repositoryPath, "push", "origin", "master")
+	preparePath := buildReleaseStubbedExecutablePath(testInstance, map[string]string{
+		"go":   releaseFakeSemVerGoScript,
+		"make": releaseFakeMakeScript,
+	})
+	prepareOutput, prepareError := runReleasePrepareReleaseScript(
+		testInstance,
+		fixture.repositoryRoot,
+		fixture.repositoryPath,
+		integrationCommandOptions{PathVariable: preparePath},
+	)
+	require.NoError(testInstance, prepareError, prepareOutput)
+	releaseCommit := strings.TrimSpace(runGit(testInstance, fixture.repositoryPath, "rev-parse", "HEAD"))
+
+	publishedDirectory := testInstance.TempDir()
+	releaseViewPath := filepath.Join(testInstance.TempDir(), "release-view.json")
+	publishPath := buildReleaseStubbedExecutablePath(testInstance, map[string]string{
+		"gh": releaseFakeGHPublishScript,
+	})
+	publishOutput, publishError := runReleasePublishScript(
+		testInstance,
+		fixture.repositoryRoot,
+		fixture.repositoryPath,
+		integrationCommandOptions{
+			PathVariable: publishPath,
+			EnvironmentOverrides: map[string]string{
+				releaseFakePublishedDirectoryVariable: publishedDirectory,
+				releaseFakeReleaseViewVariable:        releaseViewPath,
+			},
+		},
+	)
+	require.NoError(testInstance, publishError, publishOutput)
+	require.Equal(
+		testInstance,
+		releaseCommit,
+		strings.TrimSpace(runGit(testInstance, fixture.repositoryPath, "rev-parse", "refs/remotes/origin/master")),
+	)
+	for _, version := range []string{"v9.8.8", releaseFixtureNextGoInstallVersion} {
+		remoteTag := strings.TrimSpace(runGit(
+			testInstance,
+			fixture.repositoryPath,
+			"ls-remote",
+			"--tags",
+			"origin",
+			"refs/tags/"+version+"^{}",
+		))
+		require.True(testInstance, strings.HasPrefix(remoteTag, releaseCommit+"\t"), remoteTag)
 	}
 }
 
@@ -384,12 +447,17 @@ func TestReleaseFailsClosedWhenAutonomousSemVerDecisionFails(testInstance *testi
 	require.Contains(testInstance, outputText, "fixture SemVer decision failure")
 	require.Contains(testInstance, outputText, "autonomous release version decision failed")
 	require.Equal(testInstance, receiptBeforeRelease, readReleaseArtifactTree(testInstance, fixture.artifactDirectory))
-	require.Equal(testInstance, releaseFixtureVersion+"\n", runGit(testInstance, fixture.repositoryPath, "tag", "--list"))
+	require.Equal(
+		testInstance,
+		releaseFixtureGoInstallVersion+"\n"+releaseFixtureVersion+"\n",
+		runGit(testInstance, fixture.repositoryPath, "tag", "--list"),
+	)
 }
 
 func TestReleaseInitialSemVerIsAutonomous(testInstance *testing.T) {
 	fixture := newExactReleaseFixture(testInstance)
 	runGit(testInstance, fixture.repositoryPath, "tag", "--delete", fixture.version)
+	runGit(testInstance, fixture.repositoryPath, "tag", "--delete", releaseFixtureGoInstallVersion)
 	fixture.commitNextSource(testInstance)
 	pathVariable := buildReleaseStubbedExecutablePath(testInstance, map[string]string{"go": releaseFakeSemVerGoScript, "make": releaseFakeMakeScript})
 
@@ -525,6 +593,15 @@ func TestReleaseSealingFailureRestoresSourceState(testInstance *testing.T) {
 	tagCommand.Dir = fixture.repositoryPath
 	tagOutput, tagError := tagCommand.CombinedOutput()
 	require.Error(testInstance, tagError, string(tagOutput))
+	goInstallTagCommand := exec.Command("git", "rev-parse", "--verify", "refs/tags/"+releaseFixtureNextGoInstallVersion)
+	goInstallTagCommand.Dir = fixture.repositoryPath
+	goInstallTagOutput, goInstallTagError := goInstallTagCommand.CombinedOutput()
+	require.Error(testInstance, goInstallTagError, string(goInstallTagOutput))
+	require.Equal(
+		testInstance,
+		releaseFixtureVersion+"\n",
+		readReleaseFixtureFile(testInstance, filepath.Join(fixture.repositoryPath, releaseFixtureProductVersionFile)),
+	)
 	candidatePaths, candidateGlobError := filepath.Glob(filepath.Join(filepath.Dir(fixture.artifactDirectory), "mprlab-release-candidate.*"))
 	require.NoError(testInstance, candidateGlobError)
 	require.Empty(testInstance, candidatePaths)
@@ -560,17 +637,31 @@ func newExactReleaseFixture(testInstance *testing.T) exactReleaseFixture {
 	configureGitIdentity(testInstance, repositoryPath)
 	writeReleaseFixtureFile(testInstance, filepath.Join(repositoryPath, "README.md"), "fixture\n")
 	writeReleaseFixtureFile(testInstance, filepath.Join(repositoryPath, "CHANGELOG.md"), "# Changelog\n\n")
-	runGit(testInstance, repositoryPath, "add", "README.md", "CHANGELOG.md")
+	writeReleaseFixtureFile(testInstance, filepath.Join(repositoryPath, "go.mod"), "module example.com/gix-fixture\n\ngo 1.25.0\n")
+	writeReleaseFixtureFile(
+		testInstance,
+		filepath.Join(repositoryPath, ".mprlab", "release.yml"),
+		"schema_version: 1\nscheme: semver\ngo_install:\n  module_path: example.com/gix-fixture\n  product_version_file: "+releaseFixtureProductVersionFile+"\n",
+	)
+	writeReleaseFixtureFile(
+		testInstance,
+		filepath.Join(repositoryPath, releaseFixtureProductVersionFile),
+		"v9.8.6\n",
+	)
+	runGit(testInstance, repositoryPath, "add", "README.md", "CHANGELOG.md", "go.mod", ".mprlab/release.yml", releaseFixtureProductVersionFile)
 	runGit(testInstance, repositoryPath, "commit", "-m", "feat: fixture source")
 	sourceCommit := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD"))
 	notes := "## [" + releaseFixtureVersion + "] - 2026-08-06\n\n- feat: fixture source\n"
 	writeReleaseFixtureFile(testInstance, filepath.Join(repositoryPath, "CHANGELOG.md"), "# Changelog\n\n"+notes)
-	runGit(testInstance, repositoryPath, "add", "CHANGELOG.md")
+	writeReleaseFixtureFile(testInstance, filepath.Join(repositoryPath, releaseFixtureProductVersionFile), releaseFixtureVersion+"\n")
+	runGit(testInstance, repositoryPath, "add", "CHANGELOG.md", releaseFixtureProductVersionFile)
 	runGit(testInstance, repositoryPath, "commit", "-m", "Release "+releaseFixtureVersion)
 	releaseCommit := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD"))
 	runGit(testInstance, repositoryPath, "tag", "-a", releaseFixtureVersion, "-m", "Release "+releaseFixtureVersion)
+	runGit(testInstance, repositoryPath, "tag", "-a", releaseFixtureGoInstallVersion, "-m", "Go install transport for "+releaseFixtureVersion)
 	runGit(testInstance, repositoryPath, "push", "-u", "origin", "master")
 	runGit(testInstance, repositoryPath, "push", "origin", "refs/tags/"+releaseFixtureVersion)
+	runGit(testInstance, repositoryPath, "push", "origin", "refs/tags/"+releaseFixtureGoInstallVersion)
 	runGit(testInstance, repositoryPath, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/master")
 
 	artifactDirectory := filepath.Join(repositoryPath, ".git", "mprlab-release")
@@ -581,7 +672,7 @@ func newExactReleaseFixture(testInstance *testing.T) exactReleaseFixture {
 	notesHash := fmt.Sprintf("%x", sha256.Sum256([]byte(notes)))
 	payloadHash := fmt.Sprintf("%x", sha256.Sum256(payloadContents))
 	manifestValue := map[string]any{
-		"schema_version":    2,
+		"schema_version":    3,
 		"artifact_kind":     "mprlab.release",
 		"version":           releaseFixtureVersion,
 		"source_commit":     sourceCommit,
@@ -594,6 +685,11 @@ func newExactReleaseFixture(testInstance *testing.T) exactReleaseFixture {
 			"size":   len(payloadContents),
 			"sha256": payloadHash,
 		}},
+		"go_install": map[string]any{
+			"module_path":          "example.com/gix-fixture",
+			"version":              releaseFixtureGoInstallVersion,
+			"product_version_file": releaseFixtureProductVersionFile,
+		},
 	}
 	manifestBytes, manifestMarshalError := json.MarshalIndent(manifestValue, "", "  ")
 	require.NoError(testInstance, manifestMarshalError)
@@ -1213,6 +1309,24 @@ func runReleasePrepareReleaseScript(
 	return string(outputBytes), runError
 }
 
+func runReleasePublishScript(
+	testInstance *testing.T,
+	repositoryRoot string,
+	workingDirectory string,
+	commandOptions integrationCommandOptions,
+) (string, error) {
+	testInstance.Helper()
+	executionContext, cancelFunction := context.WithTimeout(context.Background(), releaseMakeCommandTimeout)
+	defer cancelFunction()
+
+	scriptPath := filepath.Join(repositoryRoot, releaseToolDirectoryRelativePath, "publish_release.sh")
+	command := exec.CommandContext(executionContext, "bash", scriptPath)
+	command.Dir = workingDirectory
+	command.Env = buildCommandEnvironment(commandOptions)
+	outputBytes, runError := command.CombinedOutput()
+	return string(outputBytes), runError
+}
+
 func buildReleaseStubbedExecutablePath(testInstance *testing.T, scripts map[string]string) string {
 	testInstance.Helper()
 	stubDirectory := testInstance.TempDir()
@@ -1240,6 +1354,13 @@ func writeReleaseFixtureFile(testInstance *testing.T, path string, contents stri
 	testInstance.Helper()
 	require.NoError(testInstance, os.MkdirAll(filepath.Dir(path), 0o755))
 	require.NoError(testInstance, os.WriteFile(path, []byte(contents), 0o644))
+}
+
+func readReleaseFixtureFile(testInstance *testing.T, path string) string {
+	testInstance.Helper()
+	contents, readError := os.ReadFile(path)
+	require.NoError(testInstance, readError)
+	return string(contents)
 }
 
 const releaseFakeGoScript = `#!/usr/bin/env bash
@@ -1326,7 +1447,7 @@ timestamp = dt.datetime.fromisoformat(sys.argv[1])
 timestamp = timestamp.astimezone(dt.timezone.utc)
 print(f"{timestamp.year % 100}.{timestamp.month * 100 + timestamp.day}.{timestamp.hour * 10000 + timestamp.minute * 100 + timestamp.second}")
 ' "$8")"
-  printf '{"contract":"mprlab.version-decision/v1","scheme":"calver","source_commit":"%s","boundary_tag":"%s","previous_version":"%s","next_version":"%s","reason":"Fixture selected the CalVer release version.","release_timestamp":"%s"}\n' "${source_commit}" "${latest_calver}" "${latest_calver}" "${next_version}" "$8"
+  printf '{"contract":"mprlab.version-decision/v1","scheme":"calver","source_commit":"%s","boundary_tag":"%s","previous_version":"%s","next_version":"%s","reason":"Fixture selected the CalVer release version.","release_timestamp":"%s","go_install":{"module_path":"example.com/gix-fixture","version":"v1.1.26","product_version_file":"internal/version/product-version.txt"}}\n' "${source_commit}" "${latest_calver}" "${latest_calver}" "${next_version}" "$8"
   exit 0
 fi
 latest_semver="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -1)"
@@ -1345,7 +1466,7 @@ else:
     patch += 1
 print(f"v{major}.{minor}.{patch}")
 ' "${latest_semver}" "${bump}")"
-printf '{"contract":"mprlab.version-decision/v1","scheme":"semver","source_commit":"%s","boundary_tag":"%s","previous_version":"%s","next_version":"%s","bump":"%s","deterministic_floor":"patch","reason":"Fixture selected the %s release level.","evidence_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}\n' "${source_commit}" "${latest_semver}" "${latest_semver}" "${next_version}" "${bump}" "${bump}"
+printf '{"contract":"mprlab.version-decision/v1","scheme":"semver","source_commit":"%s","boundary_tag":"%s","previous_version":"%s","next_version":"%s","bump":"%s","deterministic_floor":"patch","reason":"Fixture selected the %s release level.","evidence_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","go_install":{"module_path":"example.com/gix-fixture","version":"v1.1.26","product_version_file":"internal/version/product-version.txt"}}\n' "${source_commit}" "${latest_semver}" "${latest_semver}" "${next_version}" "${bump}" "${bump}"
 `
 
 const releaseFakeGHRecoveryScript = `#!/usr/bin/env bash
@@ -1380,6 +1501,77 @@ case "${2:-}" in
 esac
 `
 
+const releaseFakeGHPublishScript = `#!/usr/bin/env bash
+set -euo pipefail
+
+case "${1:-} ${2:-}" in
+  "pr list")
+    printf '[]\n'
+    ;;
+  "run list")
+    printf '[]\n'
+    ;;
+  "release view")
+    [[ -f "${GIX_RELEASE_FAKE_RELEASE_VIEW}" ]] || exit 1
+    cat "${GIX_RELEASE_FAKE_RELEASE_VIEW}"
+    ;;
+  "release create")
+    version="$3"
+    shift 3
+    notes_file=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --notes-file) notes_file="$2"; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+    python3 - "${version}" "${notes_file}" "${GIX_RELEASE_FAKE_RELEASE_VIEW}" <<'PY'
+import json
+import pathlib
+import sys
+
+version, notes_path, output_path = sys.argv[1:]
+pathlib.Path(output_path).write_text(json.dumps({
+    "tagName": version,
+    "name": "Release " + version,
+    "body": pathlib.Path(notes_path).read_text(encoding="utf-8"),
+    "publishedAt": "2026-08-09T20:00:00Z",
+    "isDraft": False,
+    "isPrerelease": False,
+    "targetCommitish": "master",
+    "url": "https://example.invalid/releases/" + version,
+}) + "\n", encoding="utf-8")
+PY
+    ;;
+  "release upload")
+    shift 3
+    mkdir -p "${GIX_RELEASE_FAKE_PUBLISHED_DIRECTORY}"
+    while [[ $# -gt 0 ]]; do
+      [[ "$1" == "--clobber" ]] && { shift; continue; }
+      cp "$1" "${GIX_RELEASE_FAKE_PUBLISHED_DIRECTORY}/"
+      shift
+    done
+    ;;
+  "release download")
+    shift 3
+    pattern=""
+    download_directory=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --pattern) pattern="$2"; shift 2 ;;
+        --dir) download_directory="$2"; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+    cp "${GIX_RELEASE_FAKE_PUBLISHED_DIRECTORY}/${pattern}" "${download_directory}/${pattern}"
+    ;;
+  *)
+    echo "unexpected gh invocation: $*" >&2
+    exit 41
+    ;;
+esac
+`
+
 const (
 	releasePreparedPagesHash       = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	releaseReplacementPagesHash    = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
@@ -1396,7 +1588,7 @@ const (
   ],
   "release_commit": "1111111111111111111111111111111111111111",
   "release_timestamp": "2026-07-09T12:00:00-07:00",
-  "schema_version": 2,
+  "schema_version": 3,
   "source_commit": "2222222222222222222222222222222222222222",
   "version": "v9.8.7"
 }

@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tyemirov/gix/v5/internal/llmclient"
+	"github.com/tyemirov/gix/internal/llmclient"
 	"github.com/tyemirov/utils/llm"
 )
 

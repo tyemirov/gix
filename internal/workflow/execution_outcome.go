@@ -3,7 +3,7 @@ package workflow
 import (
 	"time"
 
-	"github.com/tyemirov/gix/v5/internal/repos/shared"
+	"github.com/tyemirov/gix/internal/repos/shared"
 )
 
 // ExecutionOutcome captures aggregated workflow execution metrics.

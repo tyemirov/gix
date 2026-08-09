@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/tyemirov/gix/v5/internal/repos/worktree"
+	"github.com/tyemirov/gix/internal/repos/worktree"
 )
 
 var (

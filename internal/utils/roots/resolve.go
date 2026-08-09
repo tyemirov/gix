@@ -5,8 +5,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	flagutils "github.com/tyemirov/gix/v5/internal/utils/flags"
-	pathutils "github.com/tyemirov/gix/v5/internal/utils/path"
+	flagutils "github.com/tyemirov/gix/internal/utils/flags"
+	pathutils "github.com/tyemirov/gix/internal/utils/path"
 )
 
 const (

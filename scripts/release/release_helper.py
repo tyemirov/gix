@@ -35,6 +35,8 @@ RELEASE_HEADING_RE = re.compile(
     re.MULTILINE,
 )
 RELEASE_REMOTE = "origin"
+RELEASE_MANIFEST_SCHEMA = 3
+GO_INSTALL_TRANSPORT_RE = re.compile(r"^v1\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$")
 
 
 class HelperError(Exception):
@@ -227,17 +229,33 @@ def version_info(cwd: Path) -> dict[str, Any]:
         for tag in run(["git", "tag", "--points-at", "HEAD", "--sort=-version:refname"], cwd=cwd).stdout.splitlines()
         if tag_scheme(tag)
     ]
+    exact_head_go_install_tag = None
     if len(exact_head_version_tags) > 1:
-        raise HelperError(
-            "HEAD has multiple release version tags",
-            {"exact_head_version_tags": exact_head_version_tags},
+        release_configuration = cwd / ".mprlab" / "release.yml"
+        release_configuration_text = (
+            release_configuration.read_text(encoding="utf-8") if release_configuration.is_file() else ""
         )
-    exact_head_version_tag = exact_head_version_tags[0] if exact_head_version_tags else None
+        transport_tags = [tag for tag in exact_head_version_tags if GO_INSTALL_TRANSPORT_RE.match(tag)]
+        product_tags = [tag for tag in exact_head_version_tags if tag not in transport_tags]
+        if (
+            not re.search(r"(?m)^go_install:\s*$", release_configuration_text)
+            or len(transport_tags) != 1
+            or len(product_tags) != 1
+        ):
+            raise HelperError(
+                "HEAD has multiple release version tags",
+                {"exact_head_version_tags": exact_head_version_tags},
+            )
+        exact_head_go_install_tag = transport_tags[0]
+        exact_head_version_tag = product_tags[0]
+    else:
+        exact_head_version_tag = exact_head_version_tags[0] if exact_head_version_tags else None
     version_tags = [tag for tag in tags if tag_scheme(tag)]
 
     return {
         "exact_head_version_tag": exact_head_version_tag,
         "exact_head_version_scheme": tag_scheme(exact_head_version_tag) if exact_head_version_tag else None,
+        "exact_head_go_install_tag": exact_head_go_install_tag,
         "version_tags": version_tags[:20],
     }
 
@@ -346,6 +364,99 @@ def resolve_commit(cwd: Path, revision: str, label: str) -> str:
     return result.stdout.strip()
 
 
+def repository_file(cwd: Path, relative_path: str, label: str) -> Path:
+    canonical = PurePosixPath(relative_path)
+    if canonical.is_absolute() or canonical.as_posix() != relative_path or ".." in canonical.parts:
+        raise HelperError(f"{label} must be a canonical repository-relative path", {label: relative_path})
+    resolved = (cwd / relative_path).resolve()
+    if cwd not in resolved.parents:
+        raise HelperError(f"{label} resolves outside the repository", {label: relative_path})
+    return resolved
+
+
+def read_module_path(cwd: Path) -> str:
+    go_mod = cwd / "go.mod"
+    if not go_mod.is_file():
+        raise HelperError("Go install module file is missing", {"path": str(go_mod)})
+    module_lines = [
+        line.split()
+        for line in go_mod.read_text(encoding="utf-8").splitlines()
+        if line.strip().startswith("module ")
+    ]
+    if len(module_lines) != 1 or len(module_lines[0]) != 2:
+        raise HelperError("Go install module path is invalid", {"path": str(go_mod)})
+    return module_lines[0][1]
+
+
+def validate_go_install_contract(
+    cwd: Path,
+    value: Any,
+    product_version: str,
+    release_commit: str,
+    verify_remote: bool = False,
+) -> dict[str, str] | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict) or set(value) != {"module_path", "version", "product_version_file"}:
+        raise HelperError("Go install release contract is invalid", {"go_install": value})
+    normalized = {key: str(value.get(key) or "").strip() for key in value}
+    if not all(normalized.values()):
+        raise HelperError("Go install release contract is incomplete", {"go_install": normalized})
+    if read_module_path(cwd) != normalized["module_path"]:
+        raise HelperError(
+            "Go install module path does not match the release contract",
+            {"expected": normalized["module_path"], "actual": read_module_path(cwd)},
+        )
+    if not GO_INSTALL_TRANSPORT_RE.match(normalized["version"]):
+        raise HelperError("Go install transport version must use the v1 module line", {"version": normalized["version"]})
+    if normalized["version"] == product_version:
+        raise HelperError("Go install transport version conflicts with the product version", {"version": product_version})
+    product_version_path = repository_file(
+        cwd,
+        normalized["product_version_file"],
+        "product_version_file",
+    )
+    if not product_version_path.is_file():
+        raise HelperError("Go install product version file is missing", {"path": str(product_version_path)})
+    actual_product_version = product_version_path.read_text(encoding="utf-8").strip()
+    if actual_product_version != product_version:
+        raise HelperError(
+            "Go install product version file does not match the release",
+            {"expected": product_version, "actual": actual_product_version},
+        )
+    if resolve_commit(cwd, normalized["version"], "go_install_version") != release_commit:
+        raise HelperError(
+            "Go install transport tag does not point at the release commit",
+            {"version": normalized["version"], "release_commit": release_commit},
+        )
+    tag_object_type = run(
+        ["git", "cat-file", "-t", f"refs/tags/{normalized['version']}"], cwd=cwd
+    ).stdout.strip()
+    if tag_object_type != "tag":
+        raise HelperError(
+            "Go install transport tag is not annotated",
+            {"version": normalized["version"], "object_type": tag_object_type},
+        )
+    if verify_remote:
+        remote_commit = ls_remote_tag_commit(cwd, normalized["version"])
+        if remote_commit != release_commit:
+            raise HelperError(
+                "remote Go install transport tag does not match the release commit",
+                {"version": normalized["version"], "remote_commit": remote_commit, "release_commit": release_commit},
+            )
+    return normalized
+
+
+def command_write_product_version(args: argparse.Namespace) -> int:
+    cwd = repo_root()
+    product_version_path = repository_file(cwd, args.path, "product_version_file")
+    if not product_version_path.is_file():
+        fail("Go install product version file is missing", {"path": str(product_version_path)})
+    product_version_path.write_text(args.version.strip() + "\n", encoding="utf-8")
+    emit({"ok": True, "path": str(product_version_path), "version": args.version.strip()})
+    return 0
+
+
 def command_initialize_release_artifact(args: argparse.Namespace) -> int:
     cwd = repo_root()
     artifact_path = release_artifact_dir(cwd, args.artifact_dir)
@@ -359,12 +470,29 @@ def command_initialize_release_artifact(args: argparse.Namespace) -> int:
         "source_commit": resolve_commit(cwd, args.source_commit, "source_commit"),
         "release_timestamp": parse_release_timestamp(args.release_timestamp).isoformat(),
     }
+    go_install = go_install_from_args(args)
+    if go_install is not None:
+        staging["go_install"] = go_install
     (artifact_path / "staging.json").write_text(
         json.dumps(staging, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
     emit({"ok": True, "artifact_dir": str(artifact_path), "staging": staging})
     return 0
+
+
+def go_install_from_args(args: argparse.Namespace) -> dict[str, str] | None:
+    values = {
+        "module_path": getattr(args, "go_install_module", None),
+        "version": getattr(args, "go_install_version", None),
+        "product_version_file": getattr(args, "product_version_file", None),
+    }
+    supplied = {key: str(value).strip() for key, value in values.items() if value is not None}
+    if not supplied:
+        return None
+    if set(supplied) != set(values) or not all(supplied.values()):
+        raise HelperError("Go install release arguments are incomplete", {"go_install": supplied})
+    return supplied
 
 
 def inventory_payloads(artifact_path: Path) -> list[dict[str, Any]]:
@@ -450,11 +578,24 @@ def command_write_release_artifact(args: argparse.Namespace) -> int:
             {"source_commit": source_commit, "release_parent": parent_commit},
         )
 
-    changed_files = run(
+    go_install = go_install_from_args(args)
+    validated_go_install = validate_go_install_contract(
+        cwd,
+        go_install,
+        args.version,
+        release_commit,
+    )
+    changed_files = sorted(run(
         ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", release_commit], cwd=cwd
-    ).stdout.splitlines()
-    if changed_files != ["CHANGELOG.md"]:
-        fail("release commit must contain only CHANGELOG.md", {"changed_files": changed_files})
+    ).stdout.splitlines())
+    expected_changed_files = ["CHANGELOG.md"]
+    if validated_go_install is not None:
+        expected_changed_files.append(validated_go_install["product_version_file"])
+    if changed_files != sorted(expected_changed_files):
+        fail(
+            "release commit does not contain the exact release metadata files",
+            {"expected_changed_files": sorted(expected_changed_files), "changed_files": changed_files},
+        )
 
     notes_source = Path(args.notes_file)
     notes = notes_source.read_text(encoding="utf-8").strip()
@@ -470,6 +611,7 @@ def command_write_release_artifact(args: argparse.Namespace) -> int:
         "artifact_kind": "mprlab.release.staging",
         "version": args.version,
         "source_commit": source_commit,
+        "go_install": validated_go_install,
     }
     for key, expected_value in expected_staging.items():
         if staging.get(key) != expected_value:
@@ -482,7 +624,7 @@ def command_write_release_artifact(args: argparse.Namespace) -> int:
     notes_path.write_text(notes + "\n", encoding="utf-8")
     payloads = inventory_payloads(artifact_path)
     manifest = {
-        "schema_version": 2,
+        "schema_version": RELEASE_MANIFEST_SCHEMA,
         "artifact_kind": "mprlab.release",
         "version": args.version,
         "source_commit": source_commit,
@@ -492,6 +634,8 @@ def command_write_release_artifact(args: argparse.Namespace) -> int:
         "notes_sha256": sha256_file(notes_path),
         "payloads": payloads,
     }
+    if validated_go_install is not None:
+        manifest["go_install"] = validated_go_install
     manifest_path = artifact_path / "manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     staging_path.unlink()
@@ -509,7 +653,7 @@ def load_release_artifact(cwd: Path, override: str | None = None) -> tuple[Path,
             {"artifact_dir": str(artifact_path)},
         )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if manifest.get("schema_version") != 2 or manifest.get("artifact_kind") != "mprlab.release":
+    if manifest.get("schema_version") != RELEASE_MANIFEST_SCHEMA or manifest.get("artifact_kind") != "mprlab.release":
         raise HelperError("prepared release manifest has an invalid contract", {"manifest": str(manifest_path)})
     actual_notes_sha256 = sha256_file(notes_path)
     if manifest.get("notes_sha256") != actual_notes_sha256:
@@ -542,7 +686,7 @@ def validate_exact_release_manifest(
     version: str,
     default_branch: str,
 ) -> None:
-    if manifest.get("schema_version") != 2 or manifest.get("artifact_kind") != "mprlab.release":
+    if manifest.get("schema_version") != RELEASE_MANIFEST_SCHEMA or manifest.get("artifact_kind") != "mprlab.release":
         raise HelperError("published release manifest has an invalid contract", {"version": version})
     release_commit = str(manifest.get("release_commit") or "")
     source_commit = str(manifest.get("source_commit") or "")
@@ -568,13 +712,26 @@ def validate_exact_release_manifest(
     tag_object_type = run(["git", "cat-file", "-t", f"refs/tags/{version}"], cwd=cwd).stdout.strip()
     if tag_object_type != "tag":
         raise HelperError("exact release tag is not annotated", {"version": version, "object_type": tag_object_type})
-    changed_files = run(
+    go_install = validate_go_install_contract(
+        cwd,
+        manifest.get("go_install"),
+        version,
+        release_commit,
+    )
+    changed_files = sorted(run(
         ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", release_commit], cwd=cwd
-    ).stdout.splitlines()
-    if changed_files != ["CHANGELOG.md"]:
+    ).stdout.splitlines())
+    expected_changed_files = ["CHANGELOG.md"]
+    if go_install is not None:
+        expected_changed_files.append(go_install["product_version_file"])
+    if changed_files != sorted(expected_changed_files):
         raise HelperError(
-            "exact release commit must contain only CHANGELOG.md",
-            {"version": version, "changed_files": changed_files},
+            "exact release commit does not contain the exact release metadata files",
+            {
+                "version": version,
+                "expected_changed_files": sorted(expected_changed_files),
+                "changed_files": changed_files,
+            },
         )
     release_timestamp = manifest.get("release_timestamp")
     if not isinstance(release_timestamp, str) or not release_timestamp:
@@ -743,6 +900,13 @@ def recover_published_exact_release(
             raise HelperError("published release manifest is not an object", {"version": version})
         notes = str(release.get("body") or "").strip() + "\n"
         validate_exact_release_manifest(cwd, manifest, notes, version, default_branch)
+        validate_go_install_contract(
+            cwd,
+            manifest.get("go_install"),
+            version,
+            head_commit,
+            verify_remote=True,
+        )
         expected_asset_names = published_release_asset_names(manifest)
         actual_asset_names = sorted(
             asset.get("name")
@@ -932,6 +1096,12 @@ def command_publish_prepared_release(args: argparse.Namespace) -> int:
     release_assets = release_asset_paths(artifact_path, manifest)
     if not all((version, default_branch, release_commit, source_commit)):
         fail("prepared release manifest is incomplete", {"artifact_dir": str(artifact_path)})
+    go_install = validate_go_install_contract(
+        cwd,
+        manifest.get("go_install"),
+        version,
+        release_commit,
+    )
 
     current_branch = run(["git", "branch", "--show-current"], cwd=cwd).stdout.strip()
     dirty_status = run(["git", "status", "--short"], cwd=cwd).stdout.splitlines()
@@ -984,10 +1154,21 @@ def command_publish_prepared_release(args: argparse.Namespace) -> int:
             "remote release tag points at a different commit",
             {"version": version, "remote_tag_commit": remote_tag_commit, "release_commit": release_commit},
         )
+    remote_go_install_commit = ls_remote_tag_commit(cwd, go_install["version"]) if go_install else ""
+    if remote_go_install_commit and remote_go_install_commit != release_commit:
+        fail(
+            "remote Go install transport tag points at a different commit",
+            {
+                "version": go_install["version"],
+                "remote_tag_commit": remote_go_install_commit,
+                "release_commit": release_commit,
+            },
+        )
 
     plan = {
         "push_branch": remote_branch_commit != release_commit,
         "push_tag": not remote_tag_commit,
+        "push_go_install_tag": bool(go_install and not remote_go_install_commit),
         "publish_github_release": True,
         "release_assets": [path.name for path in release_assets],
     }
@@ -1009,6 +1190,18 @@ def command_publish_prepared_release(args: argparse.Namespace) -> int:
         run(["git", "push", RELEASE_REMOTE, f"HEAD:refs/heads/{default_branch}"], cwd=cwd)
     if plan["push_tag"]:
         run(["git", "push", RELEASE_REMOTE, f"refs/tags/{version}:refs/tags/{version}"], cwd=cwd)
+    if go_install and plan["push_go_install_tag"]:
+        run(
+            [
+                "git",
+                "push",
+                RELEASE_REMOTE,
+                f"refs/tags/{go_install['version']}:refs/tags/{go_install['version']}",
+            ],
+            cwd=cwd,
+        )
+    if go_install:
+        validate_go_install_contract(cwd, go_install, version, release_commit, verify_remote=True)
 
     publish_args = argparse.Namespace(version=version, notes_file=str(notes_path), title=None)
     if command_publish_release(publish_args) != 0:
@@ -1397,6 +1590,14 @@ def build_parser() -> argparse.ArgumentParser:
     changelog.add_argument("--changelog", default="CHANGELOG.md")
     changelog.set_defaults(func=command_insert_changelog)
 
+    product_version = subparsers.add_parser(
+        "write-product-version",
+        help="Write the product version embedded in a root Go module release.",
+    )
+    product_version.add_argument("--path", required=True)
+    product_version.add_argument("--version", required=True)
+    product_version.set_defaults(func=command_write_product_version)
+
     publish = subparsers.add_parser("publish-release", help="Create or update the GitHub Release object.")
     publish.add_argument("--version", required=True)
     publish.add_argument("--notes-file", required=True)
@@ -1411,6 +1612,9 @@ def build_parser() -> argparse.ArgumentParser:
     initialize_artifact.add_argument("--source-commit", required=True)
     initialize_artifact.add_argument("--release-timestamp", required=True)
     initialize_artifact.add_argument("--artifact-dir")
+    initialize_artifact.add_argument("--go-install-module")
+    initialize_artifact.add_argument("--go-install-version")
+    initialize_artifact.add_argument("--product-version-file")
     initialize_artifact.set_defaults(func=command_initialize_release_artifact)
 
     artifact = subparsers.add_parser(
@@ -1424,6 +1628,9 @@ def build_parser() -> argparse.ArgumentParser:
     artifact.add_argument("--default-branch", required=True)
     artifact.add_argument("--release-timestamp", required=True)
     artifact.add_argument("--artifact-dir")
+    artifact.add_argument("--go-install-module")
+    artifact.add_argument("--go-install-version")
+    artifact.add_argument("--product-version-file")
     artifact.set_defaults(func=command_write_release_artifact)
 
     verify_artifact = subparsers.add_parser(

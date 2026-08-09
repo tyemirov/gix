@@ -13,14 +13,14 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/tyemirov/gix/v5/internal/audit"
-	"github.com/tyemirov/gix/v5/internal/execshell"
-	"github.com/tyemirov/gix/v5/internal/githubcli"
-	"github.com/tyemirov/gix/v5/internal/gitrepo"
-	repoerrors "github.com/tyemirov/gix/v5/internal/repos/errors"
-	"github.com/tyemirov/gix/v5/internal/repos/prompt"
-	"github.com/tyemirov/gix/v5/internal/repos/shared"
-	pathutils "github.com/tyemirov/gix/v5/internal/utils/path"
+	"github.com/tyemirov/gix/internal/audit"
+	"github.com/tyemirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/githubcli"
+	"github.com/tyemirov/gix/internal/gitrepo"
+	repoerrors "github.com/tyemirov/gix/internal/repos/errors"
+	"github.com/tyemirov/gix/internal/repos/prompt"
+	"github.com/tyemirov/gix/internal/repos/shared"
+	pathutils "github.com/tyemirov/gix/internal/utils/path"
 )
 
 const (

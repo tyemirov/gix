@@ -3,8 +3,8 @@ package syncflow
 import (
 	"strings"
 
-	"github.com/tyemirov/gix/v5/internal/llmclient"
-	pathutils "github.com/tyemirov/gix/v5/internal/utils/path"
+	"github.com/tyemirov/gix/internal/llmclient"
+	pathutils "github.com/tyemirov/gix/internal/utils/path"
 )
 
 var commandConfigurationRepositorySanitizer = pathutils.NewRepositoryPathSanitizerWithConfiguration(nil, pathutils.RepositoryPathSanitizerConfiguration{PruneNestedPaths: true})

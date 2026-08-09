@@ -9,8 +9,8 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 
-	"github.com/tyemirov/gix/v5/internal/ghcr"
-	packages "github.com/tyemirov/gix/v5/internal/packages"
+	"github.com/tyemirov/gix/internal/ghcr"
+	packages "github.com/tyemirov/gix/internal/packages"
 )
 
 func TestRetentionServiceValidatesOptions(testingInstance *testing.T) {

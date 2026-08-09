@@ -12,7 +12,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tyemirov/gix/v5/cmd/cli"
+	"github.com/tyemirov/gix/cmd/cli"
 )
 
 const (

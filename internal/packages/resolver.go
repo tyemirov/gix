@@ -1,7 +1,7 @@
 package packages
 
 import (
-	"github.com/tyemirov/gix/v5/internal/ghcr"
+	"github.com/tyemirov/gix/internal/ghcr"
 	"go.uber.org/zap"
 )
 

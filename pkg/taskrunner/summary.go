@@ -1,6 +1,6 @@
 package taskrunner
 
-import "github.com/tyemirov/gix/v5/internal/repos/shared"
+import "github.com/tyemirov/gix/internal/repos/shared"
 
 // RenderSummaryLine returns the summary line printed after multi-repository runs.
 func RenderSummaryLine(data shared.SummaryData, roots []string) string {

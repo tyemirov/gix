@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tyemirov/gix/v5/internal/githubauth"
+	"github.com/tyemirov/gix/internal/githubauth"
 )
 
 func TestResolveTokenUsesConcreteInputsOnly(t *testing.T) {

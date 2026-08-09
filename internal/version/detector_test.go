@@ -8,9 +8,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tyemirov/gix/v5/internal/execshell"
-	"github.com/tyemirov/gix/v5/internal/repos/shared"
-	"github.com/tyemirov/gix/v5/internal/version"
+	"github.com/tyemirov/gix/internal/execshell"
+	"github.com/tyemirov/gix/internal/repos/shared"
+	"github.com/tyemirov/gix/internal/version"
 )
 
 type stubBuildInfoProvider struct {
@@ -61,6 +61,18 @@ func TestVersionUsesBuildInfoWhenAvailable(t *testing.T) {
 
 	versionString := detector.Version(context.Background())
 	require.Equal(t, "v1.2.3", versionString)
+}
+
+func TestVersionMapsRootGoInstallTransportToProductVersion(t *testing.T) {
+	provider := stubBuildInfoProvider{info: &debug.BuildInfo{Main: debug.Module{
+		Path:    "github.com/tyemirov/gix",
+		Version: "v1.1.26",
+	}}, available: true}
+	detector, creationError := version.NewDetector(version.Dependencies{BuildInfoProvider: provider})
+	require.NoError(t, creationError)
+
+	versionString := detector.Version(context.Background())
+	require.Equal(t, version.ProductVersion(), versionString)
 }
 
 func TestVersionFallsBackToExactDescribe(t *testing.T) {

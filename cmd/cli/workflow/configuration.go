@@ -1,9 +1,9 @@
 package workflow
 
 import (
-	"github.com/tyemirov/gix/v5/internal/llmclient"
-	pathutils "github.com/tyemirov/gix/v5/internal/utils/path"
-	workflowpkg "github.com/tyemirov/gix/v5/internal/workflow"
+	"github.com/tyemirov/gix/internal/llmclient"
+	pathutils "github.com/tyemirov/gix/internal/utils/path"
+	workflowpkg "github.com/tyemirov/gix/internal/workflow"
 )
 
 var workflowConfigurationRepositoryPathSanitizer = pathutils.NewRepositoryPathSanitizerWithConfiguration(nil, pathutils.RepositoryPathSanitizerConfiguration{PruneNestedPaths: true})

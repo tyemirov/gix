@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/tyemirov/gix/v5/internal/repos/worktree"
+	"github.com/tyemirov/gix/internal/repos/worktree"
 )
 
 func newCleanWorktreeGuard() actionGuard {
