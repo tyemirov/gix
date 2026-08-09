@@ -46,7 +46,7 @@ for line in sys.stdin.read().splitlines():
         value = json.loads(line)
     except json.JSONDecodeError:
         continue
-    if isinstance(value, dict) and value.get("contract") == "mprlab.version-decision/v2":
+    if isinstance(value, dict) and value.get("contract") == "mprlab.version-decision/v1":
         matches.append(value)
 if len(matches) != 1:
     raise SystemExit("release decision command did not return exactly one decision")
