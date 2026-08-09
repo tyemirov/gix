@@ -598,10 +598,10 @@ func TestApplicationCommandHierarchyAndAliases(t *testing.T) {
 	require.NotNil(t, changelogMessageCommand.Parent().Parent())
 	require.Equal(t, applicationNameConstant, changelogMessageCommand.Parent().Parent().Name())
 
-	semverDecisionCommand, _, semverDecisionError := rootCommand.Find([]string{"message", "semver"})
-	require.NoError(t, semverDecisionError)
-	require.Equal(t, "semver", semverDecisionCommand.Name())
-	require.True(t, semverDecisionCommand.Hidden)
+	releaseNextCommand, _, releaseNextError := rootCommand.Find([]string{"release", "next"})
+	require.NoError(t, releaseNextError)
+	require.Equal(t, "next", releaseNextCommand.Name())
+	require.False(t, releaseNextCommand.Hidden)
 
 	_, _, legacyRenameError := rootCommand.Find([]string{"repo-folders-rename"})
 	require.Error(t, legacyRenameError)
@@ -660,9 +660,9 @@ func TestApplicationHierarchicalCommandsLoadExpectedOperations(t *testing.T) {
 	require.NoError(t, changelogMessageError)
 	require.Equal(t, []string{changelogMessageOperationNameConstant}, application.operationsRequiredForCommand(changelogMessageCommand))
 
-	semverDecisionCommand, _, semverDecisionError := rootCommand.Find([]string{"message", "semver"})
-	require.NoError(t, semverDecisionError)
-	require.Equal(t, []string{changelogMessageOperationNameConstant}, application.operationsRequiredForCommand(semverDecisionCommand))
+	releaseNextCommand, _, releaseNextError := rootCommand.Find([]string{"release", "next"})
+	require.NoError(t, releaseNextError)
+	require.Equal(t, []string{changelogMessageOperationNameConstant}, application.operationsRequiredForCommand(releaseNextCommand))
 }
 
 func TestReleaseCommandUsageIncludesTagPlaceholder(t *testing.T) {

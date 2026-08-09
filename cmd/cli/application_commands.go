@@ -11,7 +11,6 @@ import (
 	commitcmd "github.com/tyemirov/gix/v5/cmd/cli/commit"
 	"github.com/tyemirov/gix/v5/cmd/cli/repos"
 	releasecmd "github.com/tyemirov/gix/v5/cmd/cli/repos/release"
-	semvercmd "github.com/tyemirov/gix/v5/cmd/cli/semver"
 	workflowcmd "github.com/tyemirov/gix/v5/cmd/cli/workflow"
 	auditcli "github.com/tyemirov/gix/v5/internal/audit/cli"
 	"github.com/tyemirov/gix/v5/internal/branches"
@@ -95,6 +94,15 @@ func (application *Application) registerCommands(cobraCommand *cobra.Command) {
 		ConfigurationProvider:        application.repoReleaseConfiguration,
 	}
 
+	nextReleaseBuilder := releasecmd.NextCommandBuilder{
+		LoggerProvider: func() *zap.Logger {
+			return application.logger
+		},
+		HumanReadableLoggingProvider: application.humanReadableLoggingEnabled,
+		ConfigurationProvider:        application.nextReleaseConfiguration,
+		ClientFactory:                application.llmClientFactory,
+	}
+
 	renameBuilder := repos.RenameCommandBuilder{
 		LoggerProvider: func() *zap.Logger {
 			return application.logger
@@ -173,18 +181,6 @@ func (application *Application) registerCommands(cobraCommand *cobra.Command) {
 	if changelogMessageBuildError == nil {
 		configureCommandMetadata(changelogMessageCommand, changelogMessageUseNameConstant, changelogMessageCommand.Short, changelogMessageLongDescriptionConstant, changelogMessageAliasConstant)
 		messageNamespaceCommand.AddCommand(changelogMessageCommand)
-	}
-	semverDecisionBuilder := semvercmd.CommandBuilder{
-		LoggerProvider: func() *zap.Logger {
-			return application.logger
-		},
-		HumanReadableLoggingProvider: application.humanReadableLoggingEnabled,
-		ConfigurationProvider:        application.semverDecisionConfiguration,
-		ClientFactory:                application.llmClientFactory,
-	}
-	semverDecisionCommand, semverDecisionBuildError := semverDecisionBuilder.Build()
-	if semverDecisionBuildError == nil {
-		messageNamespaceCommand.AddCommand(semverDecisionCommand)
 	}
 	commitMessageBuilder := commitcmd.MessageCommandBuilder{
 		LoggerProvider: func() *zap.Logger {
@@ -268,6 +264,13 @@ func (application *Application) registerCommands(cobraCommand *cobra.Command) {
 			releaseCommand.AddCommand(retagCommand)
 		} else {
 			cobraCommand.AddCommand(retagCommand)
+		}
+	}
+	if nextReleaseCommand, nextReleaseBuildError := nextReleaseBuilder.Build(); nextReleaseBuildError == nil {
+		if releaseCommand != nil {
+			releaseCommand.AddCommand(nextReleaseCommand)
+		} else {
+			cobraCommand.AddCommand(nextReleaseCommand)
 		}
 	}
 	if releaseCommand != nil {

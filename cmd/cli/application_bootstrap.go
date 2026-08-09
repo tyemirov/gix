@@ -21,7 +21,6 @@ import (
 	commitcmd "github.com/tyemirov/gix/v5/cmd/cli/commit"
 	"github.com/tyemirov/gix/v5/cmd/cli/repos"
 	releasecmd "github.com/tyemirov/gix/v5/cmd/cli/repos/release"
-	semvercmd "github.com/tyemirov/gix/v5/cmd/cli/semver"
 	workflowcmd "github.com/tyemirov/gix/v5/cmd/cli/workflow"
 	"github.com/tyemirov/gix/v5/internal/audit"
 	"github.com/tyemirov/gix/v5/internal/branches"
@@ -59,7 +58,7 @@ var commandOperationRequirements = map[string][]string{
 	changelogMessageCommandPathKeyConstant: {
 		changelogMessageOperationNameConstant,
 	},
-	semverDecisionCommandPathKeyConstant: {
+	releaseNextCommandPathKeyConstant: {
 		changelogMessageOperationNameConstant,
 	},
 }
@@ -693,9 +692,9 @@ func (application *Application) changelogMessageConfiguration() changelogcmd.Mes
 	return configuration.Sanitize()
 }
 
-func (application *Application) semverDecisionConfiguration() semvercmd.Configuration {
+func (application *Application) nextReleaseConfiguration() releasecmd.NextConfiguration {
 	changelogConfiguration := application.changelogMessageConfiguration()
-	return semvercmd.Configuration{
+	return releasecmd.NextConfiguration{
 		LLMProxy:           changelogConfiguration.LLMProxy,
 		Effort:             changelogConfiguration.Effort,
 		MaxTokens:          changelogConfiguration.MaxTokens,

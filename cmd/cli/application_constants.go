@@ -126,7 +126,7 @@ const (
 	changelogMessageUseNameConstant                               = "changelog"
 	changelogMessageAliasConstant                                 = "section"
 	changelogMessageLongDescriptionConstant                       = "changelog message summarizes recent history into Markdown release notes using the configured language model."
-	semverDecisionUseNameConstant                                 = "semver"
+	releaseNextCommandUseNameConstant                             = "next"
 	folderRenameCommandPathKeyConstant                            = repoFolderNamespaceUseNameConstant + "/" + renameCommandUseNameConstant
 	remoteCanonicalCommandPathKeyConstant                         = repoRemoteNamespaceUseNameConstant + "/" + updateRemoteCanonicalUseNameConstant
 	remoteProtocolCommandPathKeyConstant                          = repoRemoteNamespaceUseNameConstant + "/" + updateProtocolCommandUseNameConstant
@@ -136,9 +136,9 @@ const (
 	filesAddCommandPathKeyConstant                                = repoFilesNamespaceUseNameConstant + "/" + filesAddCommandUseNameConstant
 	filesRemoveCommandPathKeyConstant                             = repoFilesNamespaceUseNameConstant + "/" + removeCommandUseNameConstant
 	releaseRetagCommandPathKeyConstant                            = repoReleaseCommandUseNameConstant + "/" + releaseRetagCommandUseNameConstant
+	releaseNextCommandPathKeyConstant                             = repoReleaseCommandUseNameConstant + "/" + releaseNextCommandUseNameConstant
 	commitMessageCommandPathKeyConstant                           = messageNamespaceUseNameConstant + "/" + commitMessageUseNameConstant
 	changelogMessageCommandPathKeyConstant                        = messageNamespaceUseNameConstant + "/" + changelogMessageUseNameConstant
-	semverDecisionCommandPathKeyConstant                          = messageNamespaceUseNameConstant + "/" + semverDecisionUseNameConstant
 	commitMessageConfigurationKeyConstant                         = messageNamespaceUseNameConstant + " " + commitMessageUseNameConstant
 	changelogMessageConfigurationKeyConstant                      = messageNamespaceUseNameConstant + " " + changelogMessageUseNameConstant
 	renameNestedLongDescriptionConstant                           = "folder rename normalizes repository directory names to match canonical GitHub repositories."
