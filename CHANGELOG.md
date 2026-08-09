@@ -9,7 +9,8 @@
 - Added explicit GHCR retention to `gix packages delete --keep <count>`, preserving the newest requested versions and deleting every older tagged or untagged version.
 
 ### Improvements ⚙️
-- Made `make release`, `make publish`, and `make deploy` self-contained zero-input lifecycle boundaries. Established SemVer lines now use an LLM decision node over the complete committed range, with Conventional Commit breaking and feature markers as non-lowerable major and minor floors; invalid or unavailable decisions fail closed.
+- Added a fixed `v1` major policy for Gix only. Gix public contract changes select a minor release, compatible changes select a patch release, and other repositories retain standard SemVer or their declared CalVer policy.
+- Made `make release`, `make publish`, and `make deploy` self-contained zero-input lifecycle boundaries. Established SemVer lines use an LLM decision node over the complete committed range. Supported public contract effects determine the release level, and invalid or unavailable decisions fail closed.
 - Replaced the application loader's generic YAML-map and mapstructure schema pass with one strict typed YAML decode, while preserving post-decode process-environment placeholder expansion.
 - Made `gix audit` terminal-readable by default with a table and added strict `--format csv` and `--format html` exports.
 - Replaced layered implicit configuration with one strict `config.yml`: explicit path, system file, then user file, with interactive user-file creation when none exists.
@@ -25,9 +26,9 @@
 
 ### Bug Fixes 🐛
 - Made SemVer selection depend on supported public contract effects instead of commit labels or internal implementation changes.
-- Restored the root `github.com/tyemirov/gix` module.
-- Paired each product release with a v1 Go transport tag on the same commit.
-- Made the canonical `go install github.com/tyemirov/gix@latest` command install a binary that reports the latest product version.
+- Made each Gix release use one version in its decision, tag, receipt, manifest, binary, and GitHub Release.
+- Retracted the superseded root-module versions through `v1.1.26` and excluded other major tags from the Gix release boundary.
+- Made `go install github.com/tyemirov/gix@latest` install a binary that reports its authoritative module version.
 - Bound SemVer evidence to resolved source and boundary commits and classified complete commit, diff summary, and Unreleased evidence through bounded packets.
 - Required a positive top-level `llm.max_completion_tokens` value during startup and removed generated provider and command token defaults, keeping completion-token policy in `config.yml` while preserving the command-to-provider-to-global hierarchy.
 - Recovered direct OpenAI from reasoning-only empty completions by repeating the resolved configured request for one bounded recovery cycle after normal empty-response retries are exhausted, while ordinary connection failures and cancellation retain their existing behavior.
@@ -72,8 +73,8 @@
 - Kept the syncflow builder description as the canonical text shown by `gix sync --help`.
 
 ### Testing 🧪
-- Added compiled root-module installation coverage.
-- Added public release coverage for product-version updates, paired tags, sealed receipts, rollback, publication, and remote tag verification.
+- Added compiled root-module installation coverage for the single authoritative Gix version.
+- Added public release coverage for standard SemVer, the Gix fixed-major boundary, one-tag sealed receipts, rollback, publication, and remote tag verification.
 - Added public Make and release-script coverage for zero-argument lifecycle targets, autonomous patch, minor, and major SemVer decisions, fail-closed decision errors, initial SemVer, timestamp-derived CalVer, and exact-tag reuse.
 - Added direct YAML-tag loader coverage and compiled-CLI coverage that rejects the removed `temperature` key through the strict typed schema.
 - Added public compiled-CLI coverage for LLM Proxy failure at the inherited global token budget followed by three reasoning-budget-exhausted direct OpenAI responses and a successful recovery at the provider budget, plus focused precedence, error, and cancellation guardrails.
