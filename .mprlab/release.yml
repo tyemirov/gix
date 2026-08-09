@@ -1,5 +1,4 @@
 schema_version: 1
 scheme: semver
-go_install:
-  module_path: github.com/tyemirov/gix
-  product_version_file: internal/version/product-version.txt
+semver:
+  fixed_major: 1

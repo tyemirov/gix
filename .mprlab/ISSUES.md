@@ -516,6 +516,34 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## Improvements
 
+- [x] [I011] (P0) Use one fixed-major version for Gix releases.
+  Requested on 2026-08-09.
+  Goal:
+  Gix uses one fixed major version for its releases. Other repositories retain their declared SemVer or CalVer policy.
+  Requirements:
+  - Declare the fixed `v1` policy in the Gix release config only.
+  - Select a minor Gix release for each intentional Gix public contract change.
+  - Select a patch Gix release for compatible fixes and internal changes.
+  - Keep standard major, minor, and patch analysis for other SemVer repositories.
+  - Keep one version in the decision, Git tag, receipt, manifest, binary, and GitHub Release.
+  - Make `go install github.com/tyemirov/gix@latest` install that version.
+  - Retract the valid historical root-module versions through `v1.1.26`.
+  - Exclude the invalid `v2` through `v7` tags from release selection.
+  - Remove the obsolete Go install version contract without a compatibility path.
+  - Keep the current CalVer selection contract.
+  Validation:
+  - Add public CLI coverage for fixed-major minor and patch selection.
+  - Add release lifecycle coverage for one tag and one version identity.
+  - Add compiled installation coverage for the canonical Go install command.
+  - Run focused tests, module checks, `make ci`, Governor checks, and `git diff --check`.
+  Resolution:
+  Gix now declares the fixed `v1` policy in its release config. Other repositories retain standard SemVer or their declared CalVer policy.
+  Gix public contract changes select minor releases. Compatible and internal changes select patch releases.
+  The decision, tag, receipt, manifest, binary, and GitHub Release use one version.
+  The release lifecycle no longer has a separate Go install version. The Gix module retracts prior root-module versions through `v1.1.26`.
+  Fixed-major selection excludes other major tags. Standard SemVer still supports major, minor, and patch releases.
+  Compiled installation coverage proves that `go install github.com/tyemirov/gix@latest` selects and reports the authoritative version.
+  Focused tests, module checks, `make build`, `make ci`, Governor checks, and `git diff --check` passed on 2026-08-09.
 - [x] [I010] (P1) Remove the redundant generic configuration decode.
   Goal:
   Use one strict YAML decoder for the application configuration schema.
