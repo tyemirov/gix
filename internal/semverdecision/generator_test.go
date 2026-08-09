@@ -28,6 +28,7 @@ func TestGenerateUsesLLMDecisionAndRepositoryEvidence(t *testing.T) {
 	require.Equal(t, BumpMajor, result.Bump)
 	require.Equal(t, BumpPatch, result.DeterministicFloor)
 	require.Contains(t, result.Reason, "configuration key removal")
+	require.Len(t, result.EvidenceSHA256, 64)
 	require.NotNil(t, client.request)
 	require.Contains(t, client.request.Messages[0].Content, "Semantic Versioning 2.0.0")
 	require.Contains(t, client.request.Messages[1].Content, "config.yml")

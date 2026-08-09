@@ -2,6 +2,7 @@ package semverdecision
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/tyemirov/gix/v5/internal/execshell"
+	"github.com/tyemirov/gix/v5/internal/releaseversion"
 	"github.com/tyemirov/gix/v5/internal/repos/shared"
 	"github.com/tyemirov/utils/llm"
 )
@@ -26,13 +28,12 @@ var (
 	breakingFooterPattern     = regexp.MustCompile(`(?m)^BREAKING(?: CHANGE|-CHANGE):[ \t]+\S`)
 )
 
-// Bump is one closed SemVer successor level.
-type Bump string
+type Bump = releaseversion.Bump
 
 const (
-	BumpPatch Bump = "patch"
-	BumpMinor Bump = "minor"
-	BumpMajor Bump = "major"
+	BumpPatch = releaseversion.BumpPatch
+	BumpMinor = releaseversion.BumpMinor
+	BumpMajor = releaseversion.BumpMajor
 )
 
 // Result contains the final decision and its evidence.
@@ -41,6 +42,7 @@ type Result struct {
 	Reason             string
 	DeterministicFloor Bump
 	Request            llm.ChatRequest
+	EvidenceSHA256     string
 }
 
 // Options configure one repository release decision.
@@ -86,10 +88,14 @@ func (generator Generator) Generate(ctx context.Context, options Options) (Resul
 		return Result{}, parseError
 	}
 
-	finalBump := maximumBump(payload.Bump, floor)
+	finalBump := releaseversion.MaximumBump(payload.Bump, floor)
 	reason := payload.Reason
 	if finalBump != payload.Bump {
 		reason = fmt.Sprintf("%s Conventional Commit evidence requires at least a %s release.", reason, floor)
+	}
+	evidenceDigest, digestError := requestDigest(request)
+	if digestError != nil {
+		return Result{}, digestError
 	}
 
 	return Result{
@@ -97,6 +103,7 @@ func (generator Generator) Generate(ctx context.Context, options Options) (Resul
 		Reason:             reason,
 		DeterministicFloor: floor,
 		Request:            request,
+		EvidenceSHA256:     evidenceDigest,
 	}, nil
 }
 
@@ -223,7 +230,7 @@ func parseDecision(response string) (decisionPayload, error) {
 	if trailingError := decoder.Decode(&trailingValue); !errors.Is(trailingError, io.EOF) {
 		return decisionPayload{}, errors.New("semver decision response contains extra JSON values")
 	}
-	if !payload.Bump.valid() {
+	if !payload.Bump.Valid() {
 		return decisionPayload{}, fmt.Errorf("semver decision response has invalid bump %q", payload.Bump)
 	}
 	payload.Reason = strings.Join(strings.Fields(payload.Reason), " ")
@@ -248,28 +255,12 @@ func deterministicFloor(commitLog string) Bump {
 	return BumpPatch
 }
 
-func maximumBump(first Bump, second Bump) Bump {
-	if first.rank() >= second.rank() {
-		return first
+func requestDigest(request llm.ChatRequest) (string, error) {
+	encoded, encodeError := json.Marshal(request)
+	if encodeError != nil {
+		return "", fmt.Errorf("encode SemVer decision evidence: %w", encodeError)
 	}
-	return second
-}
-
-func (bump Bump) valid() bool {
-	return bump == BumpPatch || bump == BumpMinor || bump == BumpMajor
-}
-
-func (bump Bump) rank() int {
-	switch bump {
-	case BumpMajor:
-		return 3
-	case BumpMinor:
-		return 2
-	case BumpPatch:
-		return 1
-	default:
-		return 0
-	}
+	return fmt.Sprintf("%x", sha256.Sum256(encoded)), nil
 }
 
 func extractUnreleasedNotes(changelog string) string {
