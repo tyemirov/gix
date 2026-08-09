@@ -216,6 +216,17 @@ func (builder NextCommandBuilder) decideSemVer(command *cobra.Command, gitExecut
 		decision.Reason = "The repository has no canonical SemVer release, so the release starts at v1.0.0."
 		return decision, nil
 	}
+	boundaryCommit, boundaryError := executeGit(command.Context(), gitExecutor, repositoryRoot, "rev-parse", "--verify", previous+"^{commit}")
+	if boundaryError != nil {
+		return VersionDecision{}, fmt.Errorf("resolve SemVer boundary %s: %w", previous, boundaryError)
+	}
+	boundaryCommit = strings.TrimSpace(boundaryCommit)
+	if boundaryCommit == "" {
+		return VersionDecision{}, fmt.Errorf("resolved SemVer boundary %s is empty", previous)
+	}
+	if _, ancestorError := executeGit(command.Context(), gitExecutor, repositoryRoot, "merge-base", "--is-ancestor", boundaryCommit, sourceCommit); ancestorError != nil {
+		return VersionDecision{}, fmt.Errorf("SemVer boundary %s is not an ancestor of source commit %s: %w", previous, sourceCommit, ancestorError)
+	}
 
 	configuration := NextConfiguration{}
 	if builder.ConfigurationProvider != nil {
@@ -238,9 +249,11 @@ func (builder NextCommandBuilder) decideSemVer(command *cobra.Command, gitExecut
 		GitExecutor: gitExecutor,
 		Client:      client,
 	}).Generate(command.Context(), semverdecision.Options{
-		RepositoryPath: repositoryRoot,
-		SinceReference: previous,
-		MaxTokens:      configuration.MaxTokens,
+		RepositoryPath:  repositoryRoot,
+		SinceReference:  boundaryCommit,
+		SourceReference: sourceCommit,
+		BoundaryLabel:   previous,
+		MaxTokens:       configuration.MaxTokens,
 	})
 	if semverError != nil {
 		return VersionDecision{}, semverError

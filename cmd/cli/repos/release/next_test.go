@@ -16,13 +16,15 @@ import (
 
 func TestNextCommandSelectsEstablishedSemVer(t *testing.T) {
 	executor := &nextGitExecutor{responses: map[string]string{
-		"rev-parse --show-toplevel": "/repo\n",
-		"rev-parse HEAD":            "abc123\n",
-		"tag --list":                "v1.2.3\nv1.9.0-rc.1\n",
-		"log --pretty=format:%s%n%b%x1e v1.2.3..HEAD": "feat: add reports\n\x1e",
-		"diff --stat v1.2.3..HEAD":                    " report.go | 4 ++++\n",
-		"diff --unified=3 v1.2.3..HEAD":               "diff --git a/report.go b/report.go\n",
-		"show HEAD:CHANGELOG.md":                      "# Changelog\n\n## [Unreleased]\n\n- Added reports.\n",
+		"rev-parse --show-toplevel":                      "/repo\n",
+		"rev-parse HEAD":                                 "abc123\n",
+		"rev-parse --verify v1.2.3^{commit}":             "base123\n",
+		"merge-base --is-ancestor base123 abc123":        "",
+		"tag --list":                                     "v1.2.3\nv1.9.0-rc.1\n",
+		"log --pretty=format:%s%n%b%x1e base123..abc123": "feat: add reports\n\x1e",
+		"diff --stat base123..abc123":                    " report.go | 4 ++++\n",
+		"diff --unified=3 base123..abc123":               "diff --git a/report.go b/report.go\n",
+		"show abc123:CHANGELOG.md":                       "# Changelog\n\n## [Unreleased]\n\n- Added reports.\n",
 	}}
 	client := &nextChatClient{response: `{"bump":"minor","reason":"The release adds reporting."}`}
 	builder := nextTestBuilder(executor, client, []byte("schema_version: 1\nscheme: semver\n"))
@@ -42,6 +44,10 @@ func TestNextCommandSelectsEstablishedSemVer(t *testing.T) {
 		"evidence_sha256":"`+strings.Repeat("0", 64)+`"
 	}`, replaceDigest(output))
 	require.Equal(t, 1, client.calls)
+	require.Contains(t, executor.calls, "rev-parse --verify v1.2.3^{commit}")
+	require.Contains(t, executor.calls, "merge-base --is-ancestor base123 abc123")
+	require.Contains(t, executor.calls, "log --pretty=format:%s%n%b%x1e base123..abc123")
+	require.NotContains(t, executor.calls, "log --pretty=format:%s%n%b%x1e v1.2.3..HEAD")
 }
 
 func TestNextCommandStartsSemVerWithoutLLM(t *testing.T) {
@@ -61,13 +67,15 @@ func TestNextCommandStartsSemVerWithoutLLM(t *testing.T) {
 
 func TestNextCommandExcludesRetiredTags(t *testing.T) {
 	executor := &nextGitExecutor{responses: map[string]string{
-		"rev-parse --show-toplevel": "/repo\n",
-		"rev-parse HEAD":            "abc123\n",
-		"tag --list":                "v1.2.3\nv2.0.0\n",
-		"log --pretty=format:%s%n%b%x1e v1.2.3..HEAD": "fix: preserve behavior\n\x1e",
-		"diff --stat v1.2.3..HEAD":                    " report.go | 1 +\n",
-		"diff --unified=3 v1.2.3..HEAD":               "diff --git a/report.go b/report.go\n",
-		"show HEAD:CHANGELOG.md":                      "# Changelog\n\n## [Unreleased]\n\n- Fixed reports.\n",
+		"rev-parse --show-toplevel":                      "/repo\n",
+		"rev-parse HEAD":                                 "abc123\n",
+		"rev-parse --verify v1.2.3^{commit}":             "base123\n",
+		"merge-base --is-ancestor base123 abc123":        "",
+		"tag --list":                                     "v1.2.3\nv2.0.0\n",
+		"log --pretty=format:%s%n%b%x1e base123..abc123": "fix: preserve behavior\n\x1e",
+		"diff --stat base123..abc123":                    " report.go | 1 +\n",
+		"diff --unified=3 base123..abc123":               "diff --git a/report.go b/report.go\n",
+		"show abc123:CHANGELOG.md":                       "# Changelog\n\n## [Unreleased]\n\n- Fixed reports.\n",
 	}}
 	client := &nextChatClient{response: `{"bump":"patch","reason":"The release fixes reporting."}`}
 	builder := nextTestBuilder(executor, client, []byte("schema_version: 1\nscheme: semver\n"))
@@ -160,10 +168,13 @@ func replaceDigest(value string) string {
 
 type nextGitExecutor struct {
 	responses map[string]string
+	calls     []string
 }
 
 func (executor *nextGitExecutor) ExecuteGit(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
-	return execshell.ExecutionResult{StandardOutput: executor.responses[strings.Join(details.Arguments, " ")]}, nil
+	key := strings.Join(details.Arguments, " ")
+	executor.calls = append(executor.calls, key)
+	return execshell.ExecutionResult{StandardOutput: executor.responses[key]}, nil
 }
 
 func (executor *nextGitExecutor) ExecuteGitHubCLI(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
