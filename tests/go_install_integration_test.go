@@ -58,7 +58,14 @@ func TestGoInstallLatestReportsCurrentProductVersion(testInstance *testing.T) {
 	installOutput, installError := installCommand.CombinedOutput()
 	require.NoError(testInstance, installError, string(installOutput))
 
-	versionCommand := exec.CommandContext(executionContext, filepath.Join(installRoot, "bin", "gix"), "version")
+	configurationPath := writeCanonicalIntegrationConfiguration(testInstance)
+	versionCommand := exec.CommandContext(
+		executionContext,
+		filepath.Join(installRoot, "bin", "gix"),
+		"--config",
+		configurationPath,
+		"version",
+	)
 	versionOutput, versionError := versionCommand.CombinedOutput()
 	require.NoError(testInstance, versionError, string(versionOutput))
 	productVersion := strings.TrimSpace(readTextFile(testInstance, filepath.Join(repositoryRoot, "internal", "version", "product-version.txt")))
