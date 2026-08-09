@@ -136,6 +136,12 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v7.0.0] - 2026-08-09
+
+- Merge pull request #424 from tyemirov/tyemirov/bugfix/B059-root-go-install-latest
+- test: provide config to go install version integration test
+- fix(release): restore root Go install channel
+
 ## [v6.0.0] - 2026-08-09
 
 - Merge pull request #423 from tyemirov/gix/automate-semver-bump-selection
