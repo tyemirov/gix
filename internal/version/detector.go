@@ -7,11 +7,9 @@ import (
 	"runtime/debug"
 	"strings"
 
-	"go.uber.org/zap"
-	"golang.org/x/mod/semver"
-
 	"github.com/tyemirov/gix/internal/execshell"
 	"github.com/tyemirov/gix/internal/repos/shared"
+	"go.uber.org/zap"
 )
 
 const (
@@ -27,7 +25,6 @@ const (
 	gitTerminalPromptEnvironmentNameConstant  = "GIT_TERMINAL_PROMPT"
 	gitTerminalPromptEnvironmentValueConstant = "0"
 	gitExecutorMissingMessageConstant         = "git executor not configured"
-	rootGoInstallModulePathConstant           = "github.com/tyemirov/gix"
 )
 
 // BuildInfoProvider exposes runtime build metadata.
@@ -95,7 +92,7 @@ func (detector *Detector) Version(executionContext context.Context) string {
 		return unknownVersionFallbackConstant
 	}
 
-	if linked := strings.TrimSpace(linkedProductVersion); linked != "" {
+	if linked := strings.TrimSpace(linkedVersion); linked != "" {
 		return linked
 	}
 	if buildVersion := detector.versionFromBuildInfo(); len(buildVersion) > 0 {
@@ -133,10 +130,6 @@ func (detector *Detector) versionFromBuildInfo() string {
 	if strings.EqualFold(trimmedVersion, buildInfoDevelVersionValue) {
 		return ""
 	}
-	if buildInfo.Main.Path == rootGoInstallModulePathConstant && semver.Major(trimmedVersion) == "v1" {
-		return ProductVersion()
-	}
-
 	return trimmedVersion
 }
 

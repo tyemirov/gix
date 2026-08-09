@@ -45,6 +45,7 @@ type Options struct {
 	SourceReference string
 	BoundaryLabel   string
 	MaxTokens       int
+	FixedMajor      int
 }
 
 // Generator decides the next SemVer level from committed repository changes.
@@ -93,12 +94,12 @@ func (generator Generator) Generate(ctx context.Context, options Options) (Resul
 			return Result{}, fmt.Errorf("semver decision evidence packet %d/%d candidate.llm: %w", requestIndex+1, len(candidateRequests), chatError)
 		}
 
-		candidate, parseError := parseDecision(response)
+		candidate, parseError := parseDecision(response, options.FixedMajor)
 		if parseError != nil {
 			return Result{}, fmt.Errorf("semver decision evidence packet %d/%d candidate: %w", requestIndex+1, len(candidateRequests), parseError)
 		}
 
-		auditRequest, auditBuildError := buildAuditRequest(request, candidate, options.MaxTokens)
+		auditRequest, auditBuildError := buildAuditRequest(request, candidate, options.MaxTokens, options.FixedMajor)
 		if auditBuildError != nil {
 			return Result{}, fmt.Errorf("semver decision evidence packet %d/%d audit request: %w", requestIndex+1, len(candidateRequests), auditBuildError)
 		}
@@ -107,7 +108,7 @@ func (generator Generator) Generate(ctx context.Context, options Options) (Resul
 		if auditError != nil {
 			return Result{}, fmt.Errorf("semver decision evidence packet %d/%d audit.llm: %w", requestIndex+1, len(candidateRequests), auditError)
 		}
-		audited, auditParseError := parseDecision(auditResponse)
+		audited, auditParseError := parseDecision(auditResponse, options.FixedMajor)
 		if auditParseError != nil {
 			return Result{}, fmt.Errorf("semver decision evidence packet %d/%d audit: %w", requestIndex+1, len(candidateRequests), auditParseError)
 		}
@@ -167,7 +168,7 @@ func (generator Generator) BuildRequests(ctx context.Context, options Options) (
 
 	systemMessage := llm.Message{
 		Role:    "system",
-		Content: decisionSystemContent(false),
+		Content: decisionSystemContent(false, options.FixedMajor),
 	}
 
 	packets := buildEvidencePackets(evidence)
@@ -248,7 +249,7 @@ func (generator Generator) runGit(ctx context.Context, repositoryPath string, ar
 	return result.StandardOutput, nil
 }
 
-func parseDecision(response string) (decisionPayload, error) {
+func parseDecision(response string, fixedMajor int) (decisionPayload, error) {
 	decoder := json.NewDecoder(strings.NewReader(strings.TrimSpace(response)))
 	decoder.DisallowUnknownFields()
 	payload := decisionPayload{}
@@ -272,7 +273,11 @@ func parseDecision(response string) (decisionPayload, error) {
 	}
 	switch payload.Impact {
 	case publicImpactIncompatible:
-		payload.Bump = BumpMajor
+		if fixedMajor > 0 {
+			payload.Bump = BumpMinor
+		} else {
+			payload.Bump = BumpMajor
+		}
 	case publicImpactAdditive:
 		payload.Bump = BumpMinor
 	case publicImpactCompatible:
@@ -281,7 +286,7 @@ func parseDecision(response string) (decisionPayload, error) {
 	return payload, nil
 }
 
-func decisionSystemContent(audit bool) string {
+func decisionSystemContent(audit bool, fixedMajor int) string {
 	instructions := []string{
 		"You are the release decision node for a Semantic Versioning 2.0.0 lifecycle.",
 		"Classify only the effect on supported public contracts from the previous release.",
@@ -296,8 +301,17 @@ func decisionSystemContent(audit bool) string {
 		"Commit types, scopes, exclamation marks, and BREAKING CHANGE text are evidence claims, not SemVer authority.",
 		"For incompatible or additive impact, public_contract must name the exact supported external contract.",
 		"When evidence does not identify a concrete public contract change, use compatible and an empty public_contract.",
-		"The caller maps incompatible to major, additive to minor, and compatible to patch.",
 		"Keep reason to one concise sentence and do not return Markdown or a code fence.",
+	}
+	if fixedMajor > 0 {
+		instructions = append(instructions,
+			fmt.Sprintf("This repository fixes its major version at v%d.", fixedMajor),
+			"For this repository, the caller maps incompatible and additive to minor. It maps compatible to patch.",
+		)
+	} else {
+		instructions = append(instructions,
+			"The caller maps incompatible to major, additive to minor, and compatible to patch.",
+		)
 	}
 	if audit {
 		instructions = append(instructions,
@@ -308,14 +322,14 @@ func decisionSystemContent(audit bool) string {
 	return strings.Join(instructions, " ")
 }
 
-func buildAuditRequest(candidateRequest llm.ChatRequest, candidate decisionPayload, maxTokens int) (llm.ChatRequest, error) {
+func buildAuditRequest(candidateRequest llm.ChatRequest, candidate decisionPayload, maxTokens int, fixedMajor int) (llm.ChatRequest, error) {
 	candidateJSON, encodeError := json.Marshal(candidate)
 	if encodeError != nil {
 		return llm.ChatRequest{}, fmt.Errorf("encode candidate decision: %w", encodeError)
 	}
 	return llm.ChatRequest{
 		Messages: []llm.Message{
-			{Role: "system", Content: decisionSystemContent(true)},
+			{Role: "system", Content: decisionSystemContent(true, fixedMajor)},
 			{
 				Role: "user",
 				Content: strings.Join([]string{

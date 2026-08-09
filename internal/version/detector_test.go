@@ -63,7 +63,7 @@ func TestVersionUsesBuildInfoWhenAvailable(t *testing.T) {
 	require.Equal(t, "v1.2.3", versionString)
 }
 
-func TestVersionMapsRootGoInstallTransportToProductVersion(t *testing.T) {
+func TestVersionUsesRootGoInstallVersion(t *testing.T) {
 	provider := stubBuildInfoProvider{info: &debug.BuildInfo{Main: debug.Module{
 		Path:    "github.com/tyemirov/gix",
 		Version: "v1.1.26",
@@ -72,7 +72,7 @@ func TestVersionMapsRootGoInstallTransportToProductVersion(t *testing.T) {
 	require.NoError(t, creationError)
 
 	versionString := detector.Version(context.Background())
-	require.Equal(t, version.ProductVersion(), versionString)
+	require.Equal(t, "v1.1.26", versionString)
 }
 
 func TestVersionFallsBackToExactDescribe(t *testing.T) {

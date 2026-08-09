@@ -7,18 +7,16 @@ import (
 	"fmt"
 	"io"
 	"math/big"
-	"path"
 	"regexp"
 	"sort"
 	"strings"
 	"time"
 
-	"golang.org/x/mod/module"
 	"gopkg.in/yaml.v3"
 )
 
 const (
-	ContractVersion     = "mprlab.version-decision/v1"
+	ContractVersion     = "mprlab.version-decision/v2"
 	ConfigurationPath   = ".mprlab/release.yml"
 	ConfigurationSchema = 1
 )
@@ -42,15 +40,14 @@ const (
 
 // Configuration is the source-controlled release version contract.
 type Configuration struct {
-	SchemaVersion int                     `yaml:"schema_version"`
-	Scheme        Scheme                  `yaml:"scheme"`
-	GoInstall     *GoInstallConfiguration `yaml:"go_install,omitempty"`
+	SchemaVersion int                  `yaml:"schema_version"`
+	Scheme        Scheme               `yaml:"scheme"`
+	SemVer        *SemVerConfiguration `yaml:"semver,omitempty"`
 }
 
-// GoInstallConfiguration defines one root-module installation channel.
-type GoInstallConfiguration struct {
-	ModulePath         string `yaml:"module_path"`
-	ProductVersionFile string `yaml:"product_version_file"`
+// SemVerConfiguration defines an optional fixed-major policy.
+type SemVerConfiguration struct {
+	FixedMajor int `yaml:"fixed_major"`
 }
 
 var (
@@ -79,20 +76,11 @@ func ParseConfiguration(data []byte) (Configuration, error) {
 	if configuration.Scheme != SchemeSemVer && configuration.Scheme != SchemeCalVer {
 		return Configuration{}, fmt.Errorf("release configuration scheme must be %q or %q", SchemeSemVer, SchemeCalVer)
 	}
-	if configuration.GoInstall != nil {
-		configuration.GoInstall.ModulePath = strings.TrimSpace(configuration.GoInstall.ModulePath)
-		if moduleError := module.CheckPath(configuration.GoInstall.ModulePath); moduleError != nil {
-			return Configuration{}, fmt.Errorf("release configuration go_install.module_path is invalid: %w", moduleError)
-		}
-		configuration.GoInstall.ProductVersionFile = strings.TrimSpace(configuration.GoInstall.ProductVersionFile)
-		if configuration.GoInstall.ProductVersionFile == "" ||
-			path.Clean(configuration.GoInstall.ProductVersionFile) != configuration.GoInstall.ProductVersionFile ||
-			strings.Contains(configuration.GoInstall.ProductVersionFile, "\\") ||
-			strings.HasPrefix(configuration.GoInstall.ProductVersionFile, "/") ||
-			configuration.GoInstall.ProductVersionFile == ".." ||
-			strings.HasPrefix(configuration.GoInstall.ProductVersionFile, "../") {
-			return Configuration{}, errors.New("release configuration go_install.product_version_file must be a canonical repository-relative path")
-		}
+	if configuration.Scheme == SchemeCalVer && configuration.SemVer != nil {
+		return Configuration{}, errors.New("release configuration semver is valid only for the semver scheme")
+	}
+	if configuration.SemVer != nil && configuration.SemVer.FixedMajor < 1 {
+		return Configuration{}, errors.New("release configuration semver.fixed_major must be positive")
 	}
 	return configuration, nil
 }
@@ -157,25 +145,37 @@ func NextSemVer(previous string, bump Bump) (string, error) {
 	return fmt.Sprintf("v%s.%s.%s", parsed.major.String(), parsed.minor.String(), parsed.patch.String()), nil
 }
 
-// NextGoInstallVersion returns the next patch on the root module's v1
-// transport line.
-func NextGoInstallVersion(tags []string) (string, error) {
-	latest := semverValue{}
-	found := false
+// LatestFixedMajorSemVer returns the greatest tag on one configured major.
+func LatestFixedMajorSemVer(tags []string, fixedMajor int) string {
+	versions := make([]semverValue, 0, len(tags))
+	configuredMajor := big.NewInt(int64(fixedMajor))
 	for _, tag := range tags {
-		parsed, parseError := parseSemVer(tag)
-		if parseError != nil || parsed.major.Cmp(big.NewInt(1)) != 0 {
-			continue
-		}
-		if !found || parsed.compare(latest) > 0 {
-			latest = parsed
-			found = true
+		if parsed, parseError := parseSemVer(tag); parseError == nil && parsed.major.Cmp(configuredMajor) == 0 {
+			versions = append(versions, parsed)
 		}
 	}
-	if !found {
-		return "v1.0.0", nil
+	if len(versions) == 0 {
+		return ""
 	}
-	return NextSemVer(latest.raw, BumpPatch)
+	sort.Slice(versions, func(first int, second int) bool {
+		return versions[first].compare(versions[second]) > 0
+	})
+	return versions[0].raw
+}
+
+// NextFixedMajorSemVer applies a minor or patch bump on one configured major.
+func NextFixedMajorSemVer(previous string, bump Bump, fixedMajor int) (string, error) {
+	if bump != BumpPatch && bump != BumpMinor {
+		return "", fmt.Errorf("fixed-major version bump must be patch or minor: %q", bump)
+	}
+	parsed, parseError := parseSemVer(previous)
+	if parseError != nil {
+		return "", parseError
+	}
+	if parsed.major.Cmp(big.NewInt(int64(fixedMajor))) != 0 {
+		return "", fmt.Errorf("fixed-major version must use v%d: %q", fixedMajor, previous)
+	}
+	return NextSemVer(previous, bump)
 }
 
 // LatestCalVer returns the greatest canonical CalVer tag.

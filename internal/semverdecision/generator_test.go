@@ -41,6 +41,25 @@ func TestGenerateUsesLLMDecisionAndRepositoryEvidence(t *testing.T) {
 	require.Contains(t, client.requests[1].Messages[1].Content, "Candidate decision:")
 }
 
+func TestGenerateMapsIncompatibleGixContractToFixedMajorMinor(t *testing.T) {
+	client := &decisionChatClient{response: `{"impact":"incompatible","public_contract":"gix release version policy","reason":"The release changes the Gix version policy."}`}
+	result, generateError := (Generator{
+		GitExecutor: newDecisionGitExecutor("refactor(release): use one version\n\x1e"),
+		Client:      client,
+	}).Generate(context.Background(), Options{
+		RepositoryPath:  "/tmp/repo",
+		SinceReference:  "base123",
+		SourceReference: "source456",
+		BoundaryLabel:   "v1.1.26",
+		FixedMajor:      1,
+	})
+
+	require.NoError(t, generateError)
+	require.Equal(t, BumpMinor, result.Bump)
+	require.Contains(t, client.requests[0].Messages[0].Content, "fixes its major version at v1")
+	require.Contains(t, client.requests[1].Messages[0].Content, "incompatible and additive to minor")
+}
+
 func TestGenerateDoesNotTreatConventionalCommitLabelsAsPublicContractEvidence(t *testing.T) {
 	testCases := []struct {
 		name      string
