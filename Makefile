@@ -70,7 +70,7 @@ release-artifacts:
 		if [ "$$os" = "windows" ]; then extension=".exe"; fi; \
 		output_path="$$asset_dir/bin/$(RELEASE_BINARY_NAME)_$${os}_$${arch}$${extension}"; \
 		echo "Building $$output_path"; \
-		if ! CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags="-s -w -X github.com/tyemirov/gix/internal/version.linkedProductVersion=$(RELEASE_VERSION)" -o "$$output_path" .; then \
+		if ! CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags="-s -w -X github.com/tyemirov/gix/internal/version.linkedVersion=$(RELEASE_VERSION)" -o "$$output_path" .; then \
 			echo "error: failed to build release artifact for $$target" >&2; \
 			exit 1; \
 		fi; \
