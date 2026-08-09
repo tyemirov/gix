@@ -41,15 +41,17 @@ type Result struct {
 	Bump               Bump
 	Reason             string
 	DeterministicFloor Bump
-	Request            llm.ChatRequest
+	Requests           []llm.ChatRequest
 	EvidenceSHA256     string
 }
 
 // Options configure one repository release decision.
 type Options struct {
-	RepositoryPath string
-	SinceReference string
-	MaxTokens      int
+	RepositoryPath  string
+	SinceReference  string
+	SourceReference string
+	BoundaryLabel   string
+	MaxTokens       int
 }
 
 // Generator decides the next SemVer level from committed repository changes.
@@ -70,30 +72,37 @@ type repositoryEvidence struct {
 	unreleasedNotes string
 }
 
-// Generate asks the configured LLM for one closed decision and enforces the
-// minimum level declared by Conventional Commit evidence.
+// Generate asks the configured LLM for closed packet decisions and enforces
+// the highest model result and Conventional Commit floor.
 func (generator Generator) Generate(ctx context.Context, options Options) (Result, error) {
-	request, floor, buildError := generator.BuildRequest(ctx, options)
+	requests, floor, buildError := generator.BuildRequests(ctx, options)
 	if buildError != nil {
 		return Result{}, buildError
 	}
 
-	response, chatError := generator.Client.Chat(ctx, request)
-	if chatError != nil {
-		return Result{}, fmt.Errorf("semver decision.llm: %w", chatError)
+	modelBump := Bump("")
+	reason := ""
+	for requestIndex, request := range requests {
+		response, chatError := generator.Client.Chat(ctx, request)
+		if chatError != nil {
+			return Result{}, fmt.Errorf("semver decision evidence packet %d/%d.llm: %w", requestIndex+1, len(requests), chatError)
+		}
+
+		payload, parseError := parseDecision(response)
+		if parseError != nil {
+			return Result{}, fmt.Errorf("semver decision evidence packet %d/%d: %w", requestIndex+1, len(requests), parseError)
+		}
+		if reason == "" || payload.Bump.Rank() > modelBump.Rank() {
+			modelBump = payload.Bump
+			reason = payload.Reason
+		}
 	}
 
-	payload, parseError := parseDecision(response)
-	if parseError != nil {
-		return Result{}, parseError
-	}
-
-	finalBump := releaseversion.MaximumBump(payload.Bump, floor)
-	reason := payload.Reason
-	if finalBump != payload.Bump {
+	finalBump := releaseversion.MaximumBump(modelBump, floor)
+	if finalBump != modelBump {
 		reason = fmt.Sprintf("%s Conventional Commit evidence requires at least a %s release.", reason, floor)
 	}
-	evidenceDigest, digestError := requestDigest(request)
+	evidenceDigest, digestError := requestDigest(requests)
 	if digestError != nil {
 		return Result{}, digestError
 	}
@@ -102,33 +111,41 @@ func (generator Generator) Generate(ctx context.Context, options Options) (Resul
 		Bump:               finalBump,
 		Reason:             reason,
 		DeterministicFloor: floor,
-		Request:            request,
+		Requests:           requests,
 		EvidenceSHA256:     evidenceDigest,
 	}, nil
 }
 
-// BuildRequest collects the exact committed range and defines the SemVer
-// decision protocol for the model.
-func (generator Generator) BuildRequest(ctx context.Context, options Options) (llm.ChatRequest, Bump, error) {
+// BuildRequests collects the exact committed range and defines the complete
+// SemVer evidence packets for the model.
+func (generator Generator) BuildRequests(ctx context.Context, options Options) ([]llm.ChatRequest, Bump, error) {
 	if generator.GitExecutor == nil {
-		return llm.ChatRequest{}, "", errors.New("semver decision git executor is not configured")
+		return nil, "", errors.New("semver decision git executor is not configured")
 	}
 	if generator.Client == nil {
-		return llm.ChatRequest{}, "", errors.New("semver decision llm client is not configured")
+		return nil, "", errors.New("semver decision llm client is not configured")
 	}
 
 	repositoryPath := strings.TrimSpace(options.RepositoryPath)
 	if repositoryPath == "" {
-		return llm.ChatRequest{}, "", errors.New("semver decision repository path is required")
+		return nil, "", errors.New("semver decision repository path is required")
 	}
 	boundary := strings.TrimSpace(options.SinceReference)
 	if boundary == "" {
-		return llm.ChatRequest{}, "", errors.New("semver decision boundary is required")
+		return nil, "", errors.New("semver decision boundary is required")
+	}
+	source := strings.TrimSpace(options.SourceReference)
+	if source == "" {
+		return nil, "", errors.New("semver decision source is required")
+	}
+	boundaryLabel := strings.TrimSpace(options.BoundaryLabel)
+	if boundaryLabel == "" {
+		boundaryLabel = boundary
 	}
 
-	evidence, evidenceError := generator.collectEvidence(ctx, repositoryPath, boundary)
+	evidence, evidenceError := generator.collectEvidence(ctx, repositoryPath, boundary, source)
 	if evidenceError != nil {
-		return llm.ChatRequest{}, "", evidenceError
+		return nil, "", evidenceError
 	}
 	floor := deterministicFloor(evidence.commitLog)
 
@@ -136,6 +153,7 @@ func (generator Generator) BuildRequest(ctx context.Context, options Options) (l
 		Role: "system",
 		Content: strings.Join([]string{
 			"You are the release decision node for a Semantic Versioning 2.0.0 lifecycle.",
+			"The caller divides complete release evidence into ordered packets and uses the highest bump from every packet.",
 			"Return exactly one JSON object with two string fields: bump and reason.",
 			"bump must be exactly major, minor, or patch.",
 			"Select major when any committed change is incompatible with a current public contract, including removed or renamed APIs, CLI behavior, configuration keys, schemas, persisted data, protocols, or required operator behavior.",
@@ -147,36 +165,42 @@ func (generator Generator) BuildRequest(ctx context.Context, options Options) (l
 		}, " "),
 	}
 
-	userMessage := llm.Message{
-		Role: "user",
-		Content: strings.Join([]string{
-			fmt.Sprintf("Release range: %s..HEAD", boundary),
-			fmt.Sprintf("Deterministic Conventional Commit floor: %s", floor),
-			"",
-			"Commit messages:",
-			fallbackText(truncateText(evidence.commitLog, commitLogCharacterLimit), "No commit messages."),
-			"",
-			"Diff summary:",
-			fallbackText(evidence.diffSummary, "No diff summary."),
-			"",
-			"Unreleased changelog notes:",
-			fallbackText(evidence.unreleasedNotes, "No Unreleased changelog notes."),
-			"",
-			"Diff excerpt:",
-			fallbackText(evidence.diffExcerpt, "No diff excerpt."),
-			"",
-			"Decide the required SemVer bump now.",
-		}, "\n"),
+	packets := buildEvidencePackets(evidence)
+	requests := make([]llm.ChatRequest, 0, len(packets))
+	for packetIndex, packet := range packets {
+		userMessage := llm.Message{
+			Role: "user",
+			Content: strings.Join([]string{
+				fmt.Sprintf("Release range: %s..%s", boundaryLabel, source),
+				fmt.Sprintf("Evidence packet: %d/%d", packetIndex+1, len(packets)),
+				fmt.Sprintf("Deterministic Conventional Commit floor: %s", floor),
+				"",
+				"Commit messages:",
+				fallbackText(packet.commitLog, "No commit messages in this evidence packet."),
+				"",
+				"Diff summary:",
+				fallbackText(packet.diffSummary, "No diff summary in this evidence packet."),
+				"",
+				"Unreleased changelog notes:",
+				fallbackText(packet.unreleasedNotes, "No Unreleased changelog notes in this evidence packet."),
+				"",
+				"Diff excerpt:",
+				fallbackText(packet.diffExcerpt, "The bounded diff excerpt is in evidence packet 1."),
+				"",
+				"Decide the required SemVer bump for this evidence packet now.",
+			}, "\n"),
+		}
+		requests = append(requests, llm.ChatRequest{
+			Messages:  []llm.Message{systemMessage, userMessage},
+			MaxTokens: options.MaxTokens,
+		})
 	}
 
-	return llm.ChatRequest{
-		Messages:  []llm.Message{systemMessage, userMessage},
-		MaxTokens: options.MaxTokens,
-	}, floor, nil
+	return requests, floor, nil
 }
 
-func (generator Generator) collectEvidence(ctx context.Context, repositoryPath string, boundary string) (repositoryEvidence, error) {
-	rangeExpression := boundary + "..HEAD"
+func (generator Generator) collectEvidence(ctx context.Context, repositoryPath string, boundary string, source string) (repositoryEvidence, error) {
+	rangeExpression := boundary + ".." + source
 	commitLog, commitError := generator.runGit(ctx, repositoryPath, []string{
 		"log", "--pretty=format:%s%n%b%x1e", rangeExpression,
 	})
@@ -191,7 +215,7 @@ func (generator Generator) collectEvidence(ctx context.Context, repositoryPath s
 	if diffError != nil {
 		return repositoryEvidence{}, fmt.Errorf("semver decision diff: %w", diffError)
 	}
-	changelog, changelogError := generator.runGit(ctx, repositoryPath, []string{"show", "HEAD:CHANGELOG.md"})
+	changelog, changelogError := generator.runGit(ctx, repositoryPath, []string{"show", source + ":CHANGELOG.md"})
 	if changelogError != nil {
 		return repositoryEvidence{}, fmt.Errorf("semver decision changelog: %w", changelogError)
 	}
@@ -202,7 +226,7 @@ func (generator Generator) collectEvidence(ctx context.Context, repositoryPath s
 
 	return repositoryEvidence{
 		commitLog:       commitLog,
-		diffSummary:     truncateText(diffSummary, diffSummaryCharacterLimit),
+		diffSummary:     diffSummary,
 		diffExcerpt:     truncateText(diffExcerpt, diffCharacterLimit),
 		unreleasedNotes: extractUnreleasedNotes(changelog),
 	}, nil
@@ -255,8 +279,8 @@ func deterministicFloor(commitLog string) Bump {
 	return BumpPatch
 }
 
-func requestDigest(request llm.ChatRequest) (string, error) {
-	encoded, encodeError := json.Marshal(request)
+func requestDigest(requests []llm.ChatRequest) (string, error) {
+	encoded, encodeError := json.Marshal(requests)
 	if encodeError != nil {
 		return "", fmt.Errorf("encode SemVer decision evidence: %w", encodeError)
 	}
@@ -282,7 +306,81 @@ func extractUnreleasedNotes(changelog string) string {
 			break
 		}
 	}
-	return truncateText(strings.Join(lines[start:end], "\n"), diffSummaryCharacterLimit)
+	return strings.TrimSpace(strings.Join(lines[start:end], "\n"))
+}
+
+type evidencePacket struct {
+	commitLog       string
+	diffSummary     string
+	unreleasedNotes string
+	diffExcerpt     string
+}
+
+func buildEvidencePackets(evidence repositoryEvidence) []evidencePacket {
+	commitChunks := chunkEvidence(evidence.commitLog, commitLogCharacterLimit, "\x1e")
+	diffSummaryChunks := chunkEvidence(evidence.diffSummary, diffSummaryCharacterLimit, "\n")
+	unreleasedChunks := chunkEvidence(evidence.unreleasedNotes, diffSummaryCharacterLimit, "\n")
+	packetCount := maxInt(1, len(commitChunks), len(diffSummaryChunks), len(unreleasedChunks))
+	packets := make([]evidencePacket, packetCount)
+	for packetIndex := range packets {
+		packets[packetIndex].commitLog = chunkAt(commitChunks, packetIndex)
+		packets[packetIndex].diffSummary = chunkAt(diffSummaryChunks, packetIndex)
+		packets[packetIndex].unreleasedNotes = chunkAt(unreleasedChunks, packetIndex)
+		if packetIndex == 0 {
+			packets[packetIndex].diffExcerpt = evidence.diffExcerpt
+		}
+	}
+	return packets
+}
+
+func chunkEvidence(value string, limit int, separator string) []string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	units := strings.SplitAfter(trimmed, separator)
+	chunks := make([]string, 0, len(units))
+	current := &strings.Builder{}
+	currentLength := 0
+	for _, unit := range units {
+		unitRunes := []rune(unit)
+		if currentLength+len(unitRunes) <= limit {
+			current.WriteString(unit)
+			currentLength += len(unitRunes)
+			continue
+		}
+		if strings.TrimSpace(current.String()) != "" {
+			chunks = append(chunks, strings.TrimSpace(current.String()))
+			current.Reset()
+		}
+		for len(unitRunes) > limit {
+			chunks = append(chunks, strings.TrimSpace(string(unitRunes[:limit])))
+			unitRunes = unitRunes[limit:]
+		}
+		current.WriteString(string(unitRunes))
+		currentLength = len(unitRunes)
+	}
+	if strings.TrimSpace(current.String()) != "" {
+		chunks = append(chunks, strings.TrimSpace(current.String()))
+	}
+	return chunks
+}
+
+func chunkAt(chunks []string, index int) string {
+	if index >= len(chunks) {
+		return ""
+	}
+	return chunks[index]
+}
+
+func maxInt(values ...int) int {
+	maximum := 0
+	for _, value := range values {
+		if value > maximum {
+			maximum = value
+		}
+	}
+	return maximum
 }
 
 func truncateText(value string, limit int) string {
