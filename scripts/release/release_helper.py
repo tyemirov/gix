@@ -220,103 +220,7 @@ def parse_release_date(value: str) -> dt.date:
         raise HelperError("release date must use YYYY-MM-DD format", {"release_date": value}) from exc
 
 
-def calver_sort_key(tag: str) -> tuple[int, int, int, int, int]:
-    match = calver_match(tag)
-    if match:
-        month_day = int(match.group("month_day"))
-        hhmmss = f"{int(match.group('hhmmss')):06d}"
-        seconds = (int(hhmmss[:2]) * 3600) + (int(hhmmss[2:4]) * 60) + int(hhmmss[4:6])
-        return (
-            2000 + int(match.group("year")),
-            month_day // 100,
-            month_day % 100,
-            seconds,
-            0,
-        )
-
-    match = legacy_calver_minute_match(tag)
-    if match:
-        return (
-            int(match.group("year")),
-            int(match.group("month")),
-            int(match.group("day")),
-            int(match.group("minutes")) * 60,
-            -1,
-        )
-
-    match = legacy_calver_match(tag)
-    if not match:
-        raise ValueError(f"not a CalVer tag: {tag}")
-    hour = int(match.group("hour")) if match.group("hour") is not None else 0
-    minute = int(match.group("minute")) if match.group("minute") is not None else 0
-    second = int(match.group("second")) if match.group("second") is not None else 0
-    precision_rank = 0 if match.group("second") is not None else -1
-    return (
-        int(match.group("year")),
-        int(match.group("month")),
-        int(match.group("day")),
-        (hour * 3600) + (minute * 60) + second,
-        precision_rank,
-    )
-
-
-def calver_year(timestamp: dt.datetime) -> int:
-    year = timestamp.year % 100
-    if not 10 <= year <= 99:
-        raise HelperError(
-            "CalVer YY component must be a two-digit SemVer-compatible integer",
-            {"release_year": timestamp.year, "yy": year},
-        )
-    return year
-
-
-def calver_month_day(timestamp: dt.datetime) -> int:
-    return (timestamp.month * 100) + timestamp.day
-
-
-def calver_hhmmss(timestamp: dt.datetime) -> int:
-    return (timestamp.hour * 10000) + (timestamp.minute * 100) + timestamp.second
-
-
-def calver_seconds_since_midnight(timestamp: dt.datetime) -> int:
-    return (timestamp.hour * 3600) + (timestamp.minute * 60) + timestamp.second
-
-
-def calver_from_timestamp(timestamp: dt.datetime) -> str:
-    parts = [calver_year(timestamp), calver_month_day(timestamp), calver_hhmmss(timestamp)]
-    return ".".join(str(part) for part in parts)
-
-
-def calver_candidate(tags: list[str], release_timestamp: dt.datetime) -> dict[str, Any]:
-    existing = set(tags)
-    chosen = calver_from_timestamp(release_timestamp)
-    collision_chain = [chosen] if chosen in existing or f"v{chosen}" in existing else []
-    calver_tags = [tag for tag in tags if tag_scheme(tag) == "calver"]
-    latest_calver = sorted(calver_tags, key=calver_sort_key, reverse=True)[0] if calver_tags else None
-    candidate_key = calver_sort_key(chosen)
-    latest_key = calver_sort_key(latest_calver) if latest_calver else None
-    errors: list[str] = []
-    if chosen in existing or f"v{chosen}" in existing:
-        errors.append("CalVer second candidate already exists")
-    if latest_key and candidate_key <= latest_key:
-        errors.append("CalVer timestamp is not later than the latest CalVer tag")
-
-    return {
-        "ok": not errors,
-        "candidate": chosen,
-        "precision": "second",
-        "year": calver_year(release_timestamp),
-        "month_day": calver_month_day(release_timestamp),
-        "hhmmss": calver_hhmmss(release_timestamp),
-        "seconds_since_midnight": calver_seconds_since_midnight(release_timestamp),
-        "release_timestamp": release_timestamp.isoformat(),
-        "latest_calver_tag": latest_calver,
-        "collision_chain": collision_chain,
-        "errors": errors,
-    }
-
-
-def version_info(cwd: Path, release_timestamp: dt.datetime) -> dict[str, Any]:
+def version_info(cwd: Path) -> dict[str, Any]:
     tags = all_tags(cwd)
     exact_head_version_tags = [
         tag
@@ -329,42 +233,12 @@ def version_info(cwd: Path, release_timestamp: dt.datetime) -> dict[str, Any]:
             {"exact_head_version_tags": exact_head_version_tags},
         )
     exact_head_version_tag = exact_head_version_tags[0] if exact_head_version_tags else None
-    semver_tags = [tag for tag in tags if tag_scheme(tag) == "semver"]
-    calver_tags = sorted((tag for tag in tags if tag_scheme(tag) == "calver"), key=calver_sort_key, reverse=True)
     version_tags = [tag for tag in tags if tag_scheme(tag)]
-    calver = calver_candidate(tags, release_timestamp)
-
-    if semver_tags and calver_tags:
-        scheme_guess = "mixed"
-    elif calver_tags:
-        scheme_guess = "calver"
-    elif semver_tags:
-        scheme_guess = "semver"
-    else:
-        scheme_guess = "none"
-
-    latest_by_guess = None
-    if scheme_guess == "calver":
-        latest_by_guess = calver_tags[0]
-    elif scheme_guess == "semver":
-        latest_by_guess = semver_tags[0]
-    elif version_tags:
-        latest_by_guess = version_tags[0]
 
     return {
-        "scheme_guess": scheme_guess,
         "exact_head_version_tag": exact_head_version_tag,
         "exact_head_version_scheme": tag_scheme(exact_head_version_tag) if exact_head_version_tag else None,
-        "latest_tag": latest_by_guess,
-        "latest_any_version_tag": version_tags[0] if version_tags else None,
-        "latest_semver_tag": semver_tags[0] if semver_tags else None,
-        "latest_calver_tag": calver_tags[0] if calver_tags else None,
         "version_tags": version_tags[:20],
-        "next_calver": calver["candidate"],
-        "calver_candidate": calver,
-        "release_date": release_timestamp.date().isoformat(),
-        "release_timestamp": release_timestamp.isoformat(),
-        "calver_format": "YY.MDD.HHMMSS",
     }
 
 
@@ -408,7 +282,7 @@ def command_preflight(args: argparse.Namespace) -> int:
         if args.local
         else resolve_default_branch(cwd, args.default_branch)
     )
-    versions = version_info(cwd, parse_release_timestamp(args.release_timestamp, args.release_date))
+    versions = version_info(cwd)
     status_lines = run(["git", "status", "--short"], cwd=cwd).stdout.splitlines()
     current_branch = run(["git", "branch", "--show-current"], cwd=cwd).stdout.strip()
     open_prs = []
@@ -425,7 +299,7 @@ def command_preflight(args: argparse.Namespace) -> int:
         "current_branch": current_branch,
         "dirty_status": status_lines,
         "open_prs": open_prs,
-        "latest_tag": versions["latest_tag"],
+        "latest_tag": versions["version_tags"][0] if versions["version_tags"] else None,
         "version_info": versions,
         "validation_candidates": detect_validation_candidates(cwd),
     }

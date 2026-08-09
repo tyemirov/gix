@@ -3,18 +3,7 @@ FAST_TEST_PACKAGES := $(shell go list ./... | grep -v '/tests$$')
 RELEASE_TARGETS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64
 RELEASE_BINARY_NAME := gix
 RELEASE_ARTIFACT_NAMES := gix_linux_amd64 gix_linux_arm64 gix_darwin_amd64 gix_darwin_arm64 gix_windows_amd64.exe
-RELEASE_ARGS ?=
-RELEASE_BUMP ?=
-RELEASE_SCHEME ?=
-RELEASE_VERSION ?=
-RELEASE_HELPER ?=
-PUBLISH_RELEASE_ARGS ?=
-RELEASE_ARTIFACT_TARGETS ?= release-artifacts pages-artifact
 RELEASE_TOOL_DIR := $(CURDIR)/scripts/release
-PAGES_URL ?= https://gix.mprlab.com/
-PAGES_BRANCH ?= gh-pages
-PAGES_VERSION ?=
-PAGES_DEPLOY_ARGS ?=
 STATICCHECK_MODULE := honnef.co/go/tools/cmd/staticcheck@master
 INEFFASSIGN_MODULE := github.com/gordonklaus/ineffassign@latest
 LICENSE_ROLLOUT_SCRIPT := scripts/licensing/license_rollout.py
@@ -66,7 +55,7 @@ license-rollout-apply: build
 	timeout -k 350s -s SIGKILL 350s python3 "$(LICENSE_ROLLOUT_SCRIPT)" apply --manifest "$(LICENSE_ROLLOUT_MANIFEST)" --workflow "$(LICENSE_ROLLOUT_WORKFLOW)" --gix bin/gix
 
 release:
-	@RELEASE_BUMP="$(RELEASE_BUMP)" RELEASE_SCHEME="$(RELEASE_SCHEME)" RELEASE_VERSION="$(RELEASE_VERSION)" RELEASE_HELPER="$(RELEASE_HELPER)" RELEASE_ARTIFACT_TARGETS="$(RELEASE_ARTIFACT_TARGETS)" "$(RELEASE_TOOL_DIR)/prepare_release.sh" $(RELEASE_ARGS)
+	@"$(RELEASE_TOOL_DIR)/prepare_release.sh"
 
 release-artifacts:
 	@test -n "$(RELEASE_ARTIFACT_DIR)" || { echo "error: RELEASE_ARTIFACT_DIR is required" >&2; exit 1; }
@@ -106,13 +95,13 @@ pages-artifact:
 	@"$(RELEASE_TOOL_DIR)/prepare_pages_artifact.sh" --source docs --domain gix.mprlab.com --exclude GX-412-refactor-plan.md --exclude policy_refactor_plan.md --exclude readme_config_test.go
 
 publish-release:
-	@RELEASE_HELPER="$(RELEASE_HELPER)" "$(RELEASE_TOOL_DIR)/publish_release.sh" $(PUBLISH_RELEASE_ARGS)
+	@"$(RELEASE_TOOL_DIR)/publish_release.sh"
 
 publish: publish-release
 
 deploy: pages-deploy
 
 pages-deploy:
-	@"$(RELEASE_TOOL_DIR)/deploy_pages_artifact.sh" --branch "$(PAGES_BRANCH)" --url "$(PAGES_URL)" $(if $(PAGES_VERSION),--version "$(PAGES_VERSION)") $(PAGES_DEPLOY_ARGS)
+	@"$(RELEASE_TOOL_DIR)/deploy_pages_artifact.sh"
 
 ci: check-format lint test-fast test-slow

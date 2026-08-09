@@ -598,6 +598,11 @@ func TestApplicationCommandHierarchyAndAliases(t *testing.T) {
 	require.NotNil(t, changelogMessageCommand.Parent().Parent())
 	require.Equal(t, applicationNameConstant, changelogMessageCommand.Parent().Parent().Name())
 
+	releaseNextCommand, _, releaseNextError := rootCommand.Find([]string{"release", "next"})
+	require.NoError(t, releaseNextError)
+	require.Equal(t, "next", releaseNextCommand.Name())
+	require.False(t, releaseNextCommand.Hidden)
+
 	_, _, legacyRenameError := rootCommand.Find([]string{"repo-folders-rename"})
 	require.Error(t, legacyRenameError)
 	require.Contains(t, legacyRenameError.Error(), "unknown command")
@@ -654,6 +659,10 @@ func TestApplicationHierarchicalCommandsLoadExpectedOperations(t *testing.T) {
 	changelogMessageCommand, _, changelogMessageError := rootCommand.Find([]string{"message", "changelog"})
 	require.NoError(t, changelogMessageError)
 	require.Equal(t, []string{changelogMessageOperationNameConstant}, application.operationsRequiredForCommand(changelogMessageCommand))
+
+	releaseNextCommand, _, releaseNextError := rootCommand.Find([]string{"release", "next"})
+	require.NoError(t, releaseNextError)
+	require.Equal(t, []string{changelogMessageOperationNameConstant}, application.operationsRequiredForCommand(releaseNextCommand))
 }
 
 func TestReleaseCommandUsageIncludesTagPlaceholder(t *testing.T) {

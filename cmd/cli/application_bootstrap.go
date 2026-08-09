@@ -58,6 +58,9 @@ var commandOperationRequirements = map[string][]string{
 	changelogMessageCommandPathKeyConstant: {
 		changelogMessageOperationNameConstant,
 	},
+	releaseNextCommandPathKeyConstant: {
+		changelogMessageOperationNameConstant,
+	},
 }
 
 var requiredOperationConfigurationNames = collectRequiredOperationConfigurationNames()
@@ -687,6 +690,17 @@ func (application *Application) changelogMessageConfiguration() changelogcmd.Mes
 	application.decodeChangelogMessageOperationConfigurationIfPresent(application.configuredOperationConfigurations, changelogMessageOperationNameConstant, &configuration)
 	configuration.ConnectionProfiles = application.configuration.LLM.connectionProfiles()
 	return configuration.Sanitize()
+}
+
+func (application *Application) nextReleaseConfiguration() releasecmd.NextConfiguration {
+	changelogConfiguration := application.changelogMessageConfiguration()
+	return releasecmd.NextConfiguration{
+		LLMProxy:           changelogConfiguration.LLMProxy,
+		Effort:             changelogConfiguration.Effort,
+		MaxTokens:          changelogConfiguration.MaxTokens,
+		TimeoutSeconds:     changelogConfiguration.TimeoutSeconds,
+		ConnectionProfiles: changelogConfiguration.ConnectionProfiles,
+	}.Sanitize()
 }
 
 func (application *Application) commitMessageConfiguration() commitcmd.MessageConfiguration {

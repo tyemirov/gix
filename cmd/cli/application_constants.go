@@ -126,6 +126,7 @@ const (
 	changelogMessageUseNameConstant                               = "changelog"
 	changelogMessageAliasConstant                                 = "section"
 	changelogMessageLongDescriptionConstant                       = "changelog message summarizes recent history into Markdown release notes using the configured language model."
+	releaseNextCommandUseNameConstant                             = "next"
 	folderRenameCommandPathKeyConstant                            = repoFolderNamespaceUseNameConstant + "/" + renameCommandUseNameConstant
 	remoteCanonicalCommandPathKeyConstant                         = repoRemoteNamespaceUseNameConstant + "/" + updateRemoteCanonicalUseNameConstant
 	remoteProtocolCommandPathKeyConstant                          = repoRemoteNamespaceUseNameConstant + "/" + updateProtocolCommandUseNameConstant
@@ -135,6 +136,7 @@ const (
 	filesAddCommandPathKeyConstant                                = repoFilesNamespaceUseNameConstant + "/" + filesAddCommandUseNameConstant
 	filesRemoveCommandPathKeyConstant                             = repoFilesNamespaceUseNameConstant + "/" + removeCommandUseNameConstant
 	releaseRetagCommandPathKeyConstant                            = repoReleaseCommandUseNameConstant + "/" + releaseRetagCommandUseNameConstant
+	releaseNextCommandPathKeyConstant                             = repoReleaseCommandUseNameConstant + "/" + releaseNextCommandUseNameConstant
 	commitMessageCommandPathKeyConstant                           = messageNamespaceUseNameConstant + "/" + commitMessageUseNameConstant
 	changelogMessageCommandPathKeyConstant                        = messageNamespaceUseNameConstant + "/" + changelogMessageUseNameConstant
 	commitMessageConfigurationKeyConstant                         = messageNamespaceUseNameConstant + " " + commitMessageUseNameConstant

@@ -1,107 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-usage() {
-  cat <<'USAGE'
-Usage:
-  prepare_release.sh [options]
+[[ $# -eq 0 ]] || { echo "error: make release accepts no arguments" >&2; exit 1; }
 
-Prepares a new release entirely from local repository state. The command
-validates the worktree, runs make ci, creates the changelog commit and annotated
-tag, and writes the release manifest and notes under .git/mprlab-release. At an
-exact release tag, it verifies and reuses the sealed local receipt or recovers
-that receipt from the matching published GitHub Release.
-
-It never fetches, pushes, publishes an image/store build, updates GitHub Pages,
-or deploys production.
-
-Options:
-  --bump <patch|minor|major>  Required intent for a new SemVer release unless --version is supplied
-  --version <value>           Exact local release tag/version to prepare; cannot be combined with --bump
-  --scheme <semver|calver>    Override the locally detected versioning scheme
-  --dry-run                   Validate and report the selected version without changing files
-  --help                      Show this help text
-USAGE
-}
-
-if [[ -v RELEASE_HELPER ]]; then
-  helper="${RELEASE_HELPER}"
-else
-  helper=""
-fi
-if [[ -v RELEASE_BUMP ]]; then
-  bump="${RELEASE_BUMP}"
-else
-  bump=""
-fi
-if [[ -v RELEASE_VERSION ]]; then
-  version="${RELEASE_VERSION}"
-else
-  version=""
-fi
-if [[ -v RELEASE_SCHEME ]]; then
-  scheme="${RELEASE_SCHEME}"
-else
-  scheme=""
-fi
-if [[ -v RELEASE_CI_TIMEOUT ]] && [[ -n "${RELEASE_CI_TIMEOUT}" ]]; then
-  ci_timeout="${RELEASE_CI_TIMEOUT}"
-else
-  ci_timeout="350"
-fi
-dry_run="false"
-if [[ -v RELEASE_ARTIFACT_TARGETS ]]; then
-  artifact_targets="${RELEASE_ARTIFACT_TARGETS}"
-else
-  artifact_targets=""
-fi
-
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --bump)
-      [[ $# -ge 2 ]] || { echo "error: --bump requires a value" >&2; exit 1; }
-      bump="$2"
-      shift 2
-      ;;
-    --version)
-      [[ $# -ge 2 ]] || { echo "error: --version requires a value" >&2; exit 1; }
-      version="$2"
-      shift 2
-      ;;
-    --scheme)
-      [[ $# -ge 2 ]] || { echo "error: --scheme requires a value" >&2; exit 1; }
-      scheme="$2"
-      shift 2
-      ;;
-    --dry-run)
-      dry_run="true"
-      shift
-      ;;
-    --help|-h)
-      usage
-      exit 0
-      ;;
-    *)
-      echo "error: unknown argument: $1" >&2
-      usage
-      exit 1
-      ;;
-  esac
-done
-
-case "${bump}" in
-  ""|patch|minor|major) ;;
-  *) echo "error: --bump must be patch, minor, or major" >&2; exit 1 ;;
-esac
-if [[ -n "${version}" && -n "${bump}" ]]; then
-  echo "error: --version and --bump cannot be combined" >&2
-  exit 1
-fi
-case "${scheme}" in
-  ""|semver|calver) ;;
-  *) echo "error: --scheme must be semver or calver" >&2; exit 1 ;;
-esac
-[[ "${ci_timeout}" =~ ^[1-9][0-9]*$ ]] || { echo "error: RELEASE_CI_TIMEOUT must be a positive integer" >&2; exit 1; }
+helper="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/release_helper.py"
+ci_timeout="350"
+artifact_targets="release-artifacts pages-artifact"
 
 command -v git >/dev/null 2>&1 || { echo "error: git is required" >&2; exit 1; }
 command -v python3 >/dev/null 2>&1 || { echo "error: python3 is required" >&2; exit 1; }
@@ -109,9 +13,6 @@ command -v python3 >/dev/null 2>&1 || { echo "error: python3 is required" >&2; e
 repo_root="$(git rev-parse --show-toplevel)"
 cd "${repo_root}"
 
-if [[ -z "${helper}" ]]; then
-  helper="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/release_helper.py"
-fi
 [[ -x "${helper}" ]] || { echo "error: release helper is not executable: ${helper}" >&2; exit 1; }
 
 json_value() {
@@ -127,67 +28,46 @@ print("" if value is None else value)
 PY
 }
 
-select_release() {
-  python3 -c '
+decide_release_version() {
+  local release_timestamp="$1"
+  local source_commit="$2"
+  local decision_output decision_values
+  if ! decision_output="$(go run . release next --format json --release-timestamp "${release_timestamp}")"; then
+    echo "error: autonomous release version decision failed" >&2
+    exit 1
+  fi
+  decision_values="$(printf '%s\n' "${decision_output}" | python3 -c '
 import json
-import re
 import sys
 
-with open(sys.argv[1], "r", encoding="utf-8") as handle:
-    data = json.load(handle)
-explicit_version, bump, requested_scheme = sys.argv[2], sys.argv[3], sys.argv[4]
-info = data.get("version_info") or {}
-effective_scheme = requested_scheme or info.get("scheme_guess") or "none"
-if effective_scheme == "none":
-    effective_scheme = "semver"
-
-if effective_scheme == "calver" and bump:
-    raise SystemExit("--bump is only valid for SemVer releases")
-if effective_scheme in ("semver", "mixed") and not explicit_version and not bump:
-    raise SystemExit("new SemVer release requires --bump patch, --bump minor, --bump major, or --version")
-
-def semver_bump(latest):
-    if not latest:
-        return "v1.0.0"
-    match = re.match(r"^(v?)(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$", latest)
-    if not match:
-        raise SystemExit(f"latest SemVer tag is invalid: {latest}")
-    prefix, major, minor, patch = match.groups()
-    major, minor, patch = int(major), int(minor), int(patch)
-    if bump == "major":
-        major, minor, patch = major + 1, 0, 0
-    elif bump == "minor":
-        minor, patch = minor + 1, 0
-    else:
-        patch += 1
-    selected_prefix = prefix or "v"
-    return f"{selected_prefix}{major}.{minor}.{patch}"
-
-if explicit_version:
-    selected = explicit_version
-elif effective_scheme in ("semver", "mixed"):
-    selected = semver_bump(info.get("latest_semver_tag") or "")
-elif effective_scheme == "calver":
-    candidate = info.get("calver_candidate") or {}
-    if candidate.get("ok") is not True:
-        raise SystemExit("CalVer candidate is not valid for this release timestamp")
-    selected = info.get("next_calver") or ""
-else:
-    selected = semver_bump("")
-
-if effective_scheme == "calver":
-    boundary = info.get("latest_calver_tag") or ""
-elif effective_scheme in ("semver", "mixed"):
-    boundary = info.get("latest_semver_tag") or ""
-else:
-    boundary = info.get("latest_tag") or ""
-
-if not selected:
-    raise SystemExit("release version selection returned an empty version")
-print(selected)
-print(boundary)
-print(effective_scheme)
-' "$1" "${version}" "${bump}" "${scheme}"
+matches = []
+for line in sys.stdin.read().splitlines():
+    try:
+        value = json.loads(line)
+    except json.JSONDecodeError:
+        continue
+    if isinstance(value, dict) and value.get("contract") == "mprlab.version-decision/v1":
+        matches.append(value)
+if len(matches) != 1:
+    raise SystemExit("release decision command did not return exactly one decision")
+decision = matches[0]
+if decision.get("scheme") not in ("semver", "calver"):
+    raise SystemExit("release decision command returned an invalid scheme")
+if decision.get("source_commit") != sys.argv[1]:
+    raise SystemExit("release decision command returned a different source commit")
+if not isinstance(decision.get("next_version"), str) or not decision["next_version"]:
+    raise SystemExit("release decision command returned an empty next version")
+if not isinstance(decision["reason"], str) or not decision["reason"].strip():
+    raise SystemExit("release decision command returned an empty reason")
+print(decision["next_version"])
+print(decision.get("boundary_tag") or "")
+print(decision["scheme"])
+print(decision["reason"].strip())
+' "${source_commit}")" || {
+    echo "error: autonomous release version decision output is invalid" >&2
+    exit 1
+  }
+  printf '%s\n' "${decision_values}"
 }
 
 preflight_json="$(mktemp)"
@@ -258,60 +138,30 @@ run_local_preflight
 default_branch="$(json_value "${preflight_json}" "default_branch")"
 source_commit="$(git rev-parse HEAD)"
 exact_release_version="$(json_value "${preflight_json}" "version_info.exact_head_version_tag")"
-exact_release_scheme="$(json_value "${preflight_json}" "version_info.exact_head_version_scheme")"
 if [[ -n "${exact_release_version}" ]]; then
-  [[ -z "${version}" || "${version}" == "${exact_release_version}" ]] || {
-    echo "error: HEAD is already exact release ${exact_release_version}; requested ${version}" >&2
-    exit 1
-  }
-  [[ -z "${scheme}" || "${scheme}" == "${exact_release_scheme}" ]] || {
-    echo "error: exact release ${exact_release_version} uses ${exact_release_scheme}, not ${scheme}" >&2
-    exit 1
-  }
-  [[ -z "${bump}" || "${exact_release_scheme}" == "semver" ]] || {
-    echo "error: --bump is only valid for SemVer releases" >&2
-    exit 1
-  }
-  reuse_args=(reuse-exact-release --version "${exact_release_version}" --default-branch "${default_branch}")
-  if [[ "${dry_run}" == "true" ]]; then
-    reuse_args+=(--dry-run)
-  fi
-  "${helper}" "${reuse_args[@]}"
-  if [[ "${dry_run}" == "true" ]]; then
-    echo "Verified exact release ${exact_release_version}; no new version will be prepared."
-  fi
-  exit 0
-fi
-selection="$(select_release "${preflight_json}")"
-next_version="$(sed -n '1p' <<<"${selection}")"
-boundary_tag="$(sed -n '2p' <<<"${selection}")"
-effective_scheme="$(sed -n '3p' <<<"${selection}")"
-
-if [[ "${dry_run}" == "true" ]]; then
-  echo "release_dry_run=true"
-  echo "release_scope=local"
-  echo "default_branch=${default_branch}"
-  echo "version_scheme=${effective_scheme}"
-  echo "next_version=${next_version}"
-  echo "changelog_boundary=${boundary_tag:-<none>}"
+  "${helper}" reuse-exact-release --version "${exact_release_version}" --default-branch "${default_branch}"
   exit 0
 fi
 
 echo "==> [release] Running make ci"
 (
   unset MAKEFLAGS MAKELEVEL MAKEOVERRIDES MFLAGS
-  unset PAGES_DEPLOY_ARGS PAGES_VERSION PUBLISH_RELEASE_ARGS
-  unset RELEASE_ARGS RELEASE_ARTIFACT_TARGETS RELEASE_BUMP RELEASE_CI_TIMEOUT RELEASE_HELPER RELEASE_SCHEME RELEASE_VERSION
   timeout -k "${ci_timeout}s" -s SIGKILL "${ci_timeout}s" make ci
 )
 
 echo "==> [release] Rechecking local state after CI"
 run_local_preflight
 [[ "$(git rev-parse HEAD)" == "${source_commit}" ]] || { echo "error: HEAD changed while make ci was running" >&2; exit 1; }
-selection="$(select_release "${preflight_json}")"
-next_version="$(sed -n '1p' <<<"${selection}")"
-boundary_tag="$(sed -n '2p' <<<"${selection}")"
-effective_scheme="$(sed -n '3p' <<<"${selection}")"
+echo "==> [release] Deciding the release version"
+decision_values="$(decide_release_version "${release_timestamp}" "${source_commit}")"
+next_version="$(sed -n '1p' <<<"${decision_values}")"
+boundary_tag="$(sed -n '2p' <<<"${decision_values}")"
+effective_scheme="$(sed -n '3p' <<<"${decision_values}")"
+release_reason="$(sed -n '4p' <<<"${decision_values}")"
+echo "version_scheme=${effective_scheme}"
+echo "next_version=${next_version}"
+echo "changelog_boundary=${boundary_tag:-<none>}"
+echo "version_reason=${release_reason}"
 
 artifact_dir="$(git rev-parse --git-path mprlab-release)"
 if [[ "${artifact_dir}" != /* ]]; then
@@ -325,18 +175,16 @@ candidate_artifact_dir="$(mktemp -d "$(dirname "${artifact_dir}")/mprlab-release
   --release-timestamp "${release_timestamp}" \
   --artifact-dir "${candidate_artifact_dir}"
 
-if [[ -n "${artifact_targets}" ]]; then
-  read -r -a artifact_target_list <<<"${artifact_targets}"
-  echo "==> [release] Preparing local artifacts: ${artifact_targets}"
-    RELEASE_VERSION="${next_version}" \
-    RELEASE_TIMESTAMP="${release_timestamp}" \
-    MOBILE_RELEASE_TIMESTAMP="${release_timestamp}" \
-    RELEASE_ARTIFACT_DIR="${candidate_artifact_dir}" \
-    make --no-print-directory "${artifact_target_list[@]}"
-  echo "==> [release] Rechecking local state after artifact preparation"
-  run_local_preflight
-  [[ "$(git rev-parse HEAD)" == "${source_commit}" ]] || { echo "error: HEAD changed while preparing release artifacts" >&2; exit 1; }
-fi
+read -r -a artifact_target_list <<<"${artifact_targets}"
+echo "==> [release] Preparing local artifacts: ${artifact_targets}"
+RELEASE_VERSION="${next_version}" \
+RELEASE_TIMESTAMP="${release_timestamp}" \
+MOBILE_RELEASE_TIMESTAMP="${release_timestamp}" \
+RELEASE_ARTIFACT_DIR="${candidate_artifact_dir}" \
+make --no-print-directory "${artifact_target_list[@]}"
+echo "==> [release] Rechecking local state after artifact preparation"
+run_local_preflight
+[[ "$(git rev-parse HEAD)" == "${source_commit}" ]] || { echo "error: HEAD changed while preparing release artifacts" >&2; exit 1; }
 
 echo "==> [release] Preparing ${next_version} from local Git history"
 notes_args=(generate-notes --version "${next_version}" --release-date "${release_date}")

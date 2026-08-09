@@ -94,6 +94,15 @@ func (application *Application) registerCommands(cobraCommand *cobra.Command) {
 		ConfigurationProvider:        application.repoReleaseConfiguration,
 	}
 
+	nextReleaseBuilder := releasecmd.NextCommandBuilder{
+		LoggerProvider: func() *zap.Logger {
+			return application.logger
+		},
+		HumanReadableLoggingProvider: application.humanReadableLoggingEnabled,
+		ConfigurationProvider:        application.nextReleaseConfiguration,
+		ClientFactory:                application.llmClientFactory,
+	}
+
 	renameBuilder := repos.RenameCommandBuilder{
 		LoggerProvider: func() *zap.Logger {
 			return application.logger
@@ -255,6 +264,13 @@ func (application *Application) registerCommands(cobraCommand *cobra.Command) {
 			releaseCommand.AddCommand(retagCommand)
 		} else {
 			cobraCommand.AddCommand(retagCommand)
+		}
+	}
+	if nextReleaseCommand, nextReleaseBuildError := nextReleaseBuilder.Build(); nextReleaseBuildError == nil {
+		if releaseCommand != nil {
+			releaseCommand.AddCommand(nextReleaseCommand)
+		} else {
+			cobraCommand.AddCommand(nextReleaseCommand)
 		}
 	}
 	if releaseCommand != nil {
