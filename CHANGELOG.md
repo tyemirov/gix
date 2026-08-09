@@ -24,6 +24,7 @@
 - Updated the LLM Proxy Go client from v0.2.21 to v0.2.46, moved Gix's configured proxy work budget to the current per-request timeout header, and raised the Go module floor to 1.25.12 with the dependency graph required by that client.
 
 ### Bug Fixes 🐛
+- Made SemVer selection depend on supported public contract effects instead of commit labels or internal implementation changes.
 - Restored the root `github.com/tyemirov/gix` module.
 - Paired each product release with a v1 Go transport tag on the same commit.
 - Made the canonical `go install github.com/tyemirov/gix@latest` command install a binary that reports the latest product version.

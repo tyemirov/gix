@@ -488,6 +488,29 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Compiled installation coverage runs the canonical command. Public release tests cover paired tags, rollback, recovery, publication, and remote verification.
   `make format`, `make build`, `make ci`, module checks, syntax checks, and `git diff --check` passed on 2026-08-09.
   The Governor normalizer and changed-line language review also passed.
+- [x] [B060] (P0) Classify SemVer from supported public contracts.
+  Reported on 2026-08-09 after Gix selected `v7.0.0` for a root Go installation repair.
+  Expected result:
+  Internal implementation changes select a patch release unless they change a supported public contract.
+  Actual result:
+  Commit labels and a Go module-path change caused Gix to select a major release.
+  Requirements:
+  - Treat Conventional Commit labels as evidence only.
+  - Require an exact supported public contract for a major or minor classification.
+  - Select `major` only when a supported external use becomes incompatible.
+  - Select `minor` only when a release adds optional public functionality.
+  - Select `patch` for compatible repairs and internal implementation changes.
+  - Audit each candidate against the same complete evidence packet.
+  Validation:
+  - Add regression coverage for feature labels and breaking markers on internal changes.
+  - Add regression coverage for a repaired root Go installation route.
+  - Run focused tests, `make ci`, Governor checks, and `git diff --check`.
+  Resolution:
+  Gix now treats commit syntax as evidence only. Each evidence packet gets one candidate and one independent audit.
+  Gix maps incompatible, additive, and compatible public effects to `major`, `minor`, and `patch`.
+  Major and minor results must name the exact supported public contract.
+  Regression coverage includes internal feature labels, breaking markers, and the repaired root Go installation route.
+  Focused tests, `make ci`, Governor checks, changed-line language review, and `git diff --check` passed on 2026-08-09.
 
 
 

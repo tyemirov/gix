@@ -26,7 +26,7 @@ func TestNextCommandSelectsEstablishedSemVer(t *testing.T) {
 		"diff --unified=3 base123..abc123":               "diff --git a/report.go b/report.go\n",
 		"show abc123:CHANGELOG.md":                       "# Changelog\n\n## [Unreleased]\n\n- Added reports.\n",
 	}}
-	client := &nextChatClient{response: `{"bump":"minor","reason":"The release adds reporting."}`}
+	client := &nextChatClient{response: `{"impact":"additive","public_contract":"CLI reporting","reason":"The release adds reporting."}`}
 	builder := nextTestBuilder(executor, client, []byte("schema_version: 1\nscheme: semver\n"))
 
 	output := executeNextCommand(t, builder, "--format", "json")
@@ -39,11 +39,11 @@ func TestNextCommandSelectsEstablishedSemVer(t *testing.T) {
 		"previous_version":"v1.2.3",
 		"next_version":"v1.3.0",
 		"bump":"minor",
-		"deterministic_floor":"minor",
+		"deterministic_floor":"patch",
 		"reason":"The release adds reporting.",
 		"evidence_sha256":"`+strings.Repeat("0", 64)+`"
 	}`, replaceDigest(output))
-	require.Equal(t, 1, client.calls)
+	require.Equal(t, 2, client.calls)
 	require.Contains(t, executor.calls, "rev-parse --verify v1.2.3^{commit}")
 	require.Contains(t, executor.calls, "merge-base --is-ancestor base123 abc123")
 	require.Contains(t, executor.calls, "log --pretty=format:%s%n%b%x1e base123..abc123")
@@ -77,7 +77,7 @@ func TestNextCommandExcludesRetiredTags(t *testing.T) {
 		"diff --unified=3 base123..abc123":               "diff --git a/report.go b/report.go\n",
 		"show abc123:CHANGELOG.md":                       "# Changelog\n\n## [Unreleased]\n\n- Fixed reports.\n",
 	}}
-	client := &nextChatClient{response: `{"bump":"patch","reason":"The release fixes reporting."}`}
+	client := &nextChatClient{response: `{"impact":"compatible","public_contract":"CLI reporting","reason":"The release fixes reporting."}`}
 	builder := nextTestBuilder(executor, client, []byte("schema_version: 1\nscheme: semver\n"))
 
 	output := executeNextCommand(t, builder, "--format", "json", "--exclude-tag", "v2.0.0")
@@ -98,7 +98,7 @@ func TestNextCommandSelectsRootGoInstallTransportVersion(t *testing.T) {
 		"diff --unified=3 base600..source600":               "diff --git a/go.mod b/go.mod\n",
 		"show source600:CHANGELOG.md":                       "# Changelog\n\n## [Unreleased]\n\n- Fixed root installation.\n",
 	}}
-	client := &nextChatClient{response: `{"bump":"patch","reason":"The release repairs root installation."}`}
+	client := &nextChatClient{response: `{"impact":"compatible","public_contract":"root Go installation","reason":"The release repairs root installation."}`}
 	builder := nextTestBuilder(executor, client, []byte("schema_version: 1\nscheme: semver\ngo_install:\n  module_path: github.com/tyemirov/gix\n  product_version_file: internal/version/product-version.txt\n"))
 
 	output := executeNextCommand(t, builder, "--format", "json")

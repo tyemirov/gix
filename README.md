@@ -31,7 +31,7 @@ make deploy
 
 These three targets accept no release flags, arguments, or lifecycle overrides. Each repository declares its release scheme in `.mprlab/release.yml`. `gix release next` validates this config and selects the next version.
 
-For an established SemVer sequence, the command uses an LLM to examine all committed changes after the latest SemVer tag. The evidence includes commit messages, the diff summary, the Unreleased changelog, and a bounded diff excerpt. The command selects `major`, `minor`, or `patch` from the public contract effect of the complete range. A Conventional Commit `!` or `BREAKING CHANGE` marker sets a `major` floor. A `feat` marker sets a `minor` floor. The model can increase the floor but cannot decrease it.
+For an established SemVer sequence, the command uses an LLM to examine all committed changes after the latest SemVer tag. The evidence includes commit messages, the diff summary, the Unreleased changelog, and a bounded diff excerpt. The model classifies each packet by its effect on a supported public contract. A second model call audits each candidate against the same evidence. Gix maps an incompatible contract change to `major`, an additive contract change to `minor`, and a compatible change to `patch`. Commit labels and implementation changes cannot set a higher release level by themselves.
 
 Invalid or unavailable model output stops the release before version selection. A SemVer repository without tags starts at `v1.0.0`. A CalVer repository uses the canonical UTC release timestamp. At an exact release tag, `make release` is the idempotent retry command.
 

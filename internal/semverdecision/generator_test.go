@@ -16,7 +16,7 @@ const testRange = "base123..source456"
 
 func TestGenerateUsesLLMDecisionAndRepositoryEvidence(t *testing.T) {
 	executor := newDecisionGitExecutor("fix: preserve behavior\n\x1e")
-	client := &decisionChatClient{response: `{"bump":"major","reason":"The configuration key removal breaks the public contract."}`}
+	client := &decisionChatClient{response: `{"impact":"incompatible","public_contract":"config.yml old_key","reason":"The release removes the supported old_key configuration key."}`}
 	generator := Generator{GitExecutor: executor, Client: client}
 
 	result, generateError := generator.Generate(context.Background(), Options{
@@ -29,28 +29,29 @@ func TestGenerateUsesLLMDecisionAndRepositoryEvidence(t *testing.T) {
 	require.NoError(t, generateError)
 	require.Equal(t, BumpMajor, result.Bump)
 	require.Equal(t, BumpPatch, result.DeterministicFloor)
-	require.Contains(t, result.Reason, "configuration key removal")
+	require.Contains(t, result.Reason, "supported old_key configuration key")
 	require.Len(t, result.EvidenceSHA256, 64)
-	require.Len(t, client.requests, 1)
+	require.Len(t, client.requests, 2)
 	require.Contains(t, client.requests[0].Messages[0].Content, "Semantic Versioning 2.0.0")
+	require.Contains(t, client.requests[0].Messages[0].Content, "Commit types, scopes, exclamation marks")
 	require.Contains(t, client.requests[0].Messages[1].Content, "config.yml")
 	require.Contains(t, client.requests[0].Messages[1].Content, "Removed the old key")
 	require.Contains(t, client.requests[0].Messages[1].Content, "Release range: v1.2.3..source456")
+	require.Contains(t, client.requests[1].Messages[0].Content, "Independently audit")
+	require.Contains(t, client.requests[1].Messages[1].Content, "Candidate decision:")
 }
 
-func TestGenerateEnforcesConventionalCommitFloor(t *testing.T) {
+func TestGenerateDoesNotTreatConventionalCommitLabelsAsPublicContractEvidence(t *testing.T) {
 	testCases := []struct {
-		name          string
-		commitLog     string
-		expectedFloor Bump
+		name      string
+		commitLog string
 	}{
-		{name: "feature", commitLog: "feat(api): add endpoint\n\x1e", expectedFloor: BumpMinor},
-		{name: "breaking_header", commitLog: "feat(config)!: remove key\n\x1e", expectedFloor: BumpMajor},
-		{name: "breaking_footer", commitLog: "fix: update config\n\nBREAKING CHANGE: remove key\n\x1e", expectedFloor: BumpMajor},
+		{name: "feature", commitLog: "feat(internal): reorganize packages\n\x1e"},
+		{name: "breaking_header", commitLog: "refactor(build)!: reorganize packages\n\x1e"},
+		{name: "breaking_footer", commitLog: "refactor: reorganize packages\n\nBREAKING CHANGE: update internal imports\n\x1e"},
 		{
-			name:          "breaking_footer_beyond_model_excerpt",
-			commitLog:     strings.Repeat("fix: routine maintenance\n\x1e", 1200) + "fix: update config\n\nBREAKING CHANGE: remove key\n\x1e",
-			expectedFloor: BumpMajor,
+			name:      "breaking_footer_beyond_model_excerpt",
+			commitLog: strings.Repeat("fix: routine maintenance\n\x1e", 1200) + "refactor: reorganize packages\n\nBREAKING CHANGE: update internal imports\n\x1e",
 		},
 	}
 
@@ -58,7 +59,7 @@ func TestGenerateEnforcesConventionalCommitFloor(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			generator := Generator{
 				GitExecutor: newDecisionGitExecutor(testCase.commitLog),
-				Client:      &decisionChatClient{response: `{"bump":"patch","reason":"The change appears compatible."}`},
+				Client:      &decisionChatClient{response: `{"impact":"compatible","public_contract":"","reason":"The release changes implementation details only."}`},
 			}
 
 			result, generateError := generator.Generate(context.Background(), Options{
@@ -69,11 +70,38 @@ func TestGenerateEnforcesConventionalCommitFloor(t *testing.T) {
 			})
 
 			require.NoError(t, generateError)
-			require.Equal(t, testCase.expectedFloor, result.Bump)
-			require.Equal(t, testCase.expectedFloor, result.DeterministicFloor)
-			require.Contains(t, result.Reason, "requires at least")
+			require.Equal(t, BumpPatch, result.Bump)
+			require.Equal(t, BumpPatch, result.DeterministicFloor)
+			require.Contains(t, result.Reason, "implementation details")
 		})
 	}
+}
+
+func TestGenerateAuditCorrectsModulePathImplementationCandidate(t *testing.T) {
+	executor := newDecisionGitExecutor("fix(release): restore root Go install channel\n\x1e")
+	executor.responses["diff --stat "+testRange] = " go.mod | 2 +-\n internal/version/product.go | 4 ++++\n"
+	executor.responses["diff --unified=3 "+testRange] = "diff --git a/go.mod b/go.mod\n-module example.com/tool/v5\n+module example.com/tool\n"
+	executor.responses["show source456:CHANGELOG.md"] = "# Changelog\n\n## [Unreleased]\n\n- Restored the canonical root Go installation command.\n"
+	client := &decisionChatClient{responseForRequest: func(request llm.ChatRequest) string {
+		if strings.Contains(request.Messages[0].Content, "Independently audit") {
+			return `{"impact":"compatible","public_contract":"go install example.com/tool@latest","reason":"The release restores the canonical installation route."}`
+		}
+		return `{"impact":"incompatible","public_contract":"Go module path","reason":"The module path changes."}`
+	}}
+
+	result, generateError := (Generator{GitExecutor: executor, Client: client}).Generate(context.Background(), Options{
+		RepositoryPath:  "/tmp/repo",
+		SinceReference:  "base123",
+		SourceReference: "source456",
+		BoundaryLabel:   "v6.0.0",
+	})
+
+	require.NoError(t, generateError)
+	require.Equal(t, BumpPatch, result.Bump)
+	require.Equal(t, BumpPatch, result.DeterministicFloor)
+	require.Contains(t, result.Reason, "restores")
+	require.Len(t, client.requests, 2)
+	require.Contains(t, client.requests[1].Messages[0].Content, "Go module paths")
 }
 
 func TestGenerateRejectsInvalidLLMDecision(t *testing.T) {
@@ -81,11 +109,12 @@ func TestGenerateRejectsInvalidLLMDecision(t *testing.T) {
 		name     string
 		response string
 	}{
-		{name: "markdown", response: "```json\n{\"bump\":\"minor\",\"reason\":\"feature\"}\n```"},
-		{name: "unknown_bump", response: `{"bump":"automatic","reason":"unspecified"}`},
-		{name: "empty_reason", response: `{"bump":"patch","reason":""}`},
-		{name: "extra_field", response: `{"bump":"patch","reason":"compatible","version":"v1.2.4"}`},
-		{name: "extra_value", response: `{"bump":"patch","reason":"compatible"} {"bump":"major","reason":"extra"}`},
+		{name: "markdown", response: "```json\n{\"impact\":\"additive\",\"public_contract\":\"CLI reports\",\"reason\":\"feature\"}\n```"},
+		{name: "unknown_impact", response: `{"impact":"automatic","public_contract":"","reason":"unspecified"}`},
+		{name: "empty_reason", response: `{"impact":"compatible","public_contract":"","reason":""}`},
+		{name: "missing_public_contract", response: `{"impact":"incompatible","public_contract":"","reason":"removed behavior"}`},
+		{name: "extra_field", response: `{"impact":"compatible","public_contract":"","reason":"compatible","version":"v1.2.4"}`},
+		{name: "extra_value", response: `{"impact":"compatible","public_contract":"","reason":"compatible"} {"impact":"incompatible","public_contract":"config","reason":"extra"}`},
 	}
 
 	for _, testCase := range testCases {
@@ -122,7 +151,7 @@ func TestGeneratePreservesLLMFailure(t *testing.T) {
 	})
 
 	require.Error(t, generateError)
-	require.Contains(t, generateError.Error(), "semver decision evidence packet 1/1.llm")
+	require.Contains(t, generateError.Error(), "semver decision evidence packet 1/1 candidate.llm")
 	require.Contains(t, generateError.Error(), "provider unavailable")
 }
 
@@ -135,9 +164,9 @@ func TestGenerateClassifiesEveryCompleteRangeEvidencePacket(t *testing.T) {
 	executor.responses["show source456:CHANGELOG.md"] = "# Changelog\n\n## [Unreleased]\n\n" + strings.Repeat("- Fixed internal behavior.\n", 700) + changelogSentinel + "\n\n## [v1.2.3]\n"
 	client := &decisionChatClient{responseForRequest: func(request llm.ChatRequest) string {
 		if strings.Contains(request.Messages[1].Content, commitSentinel) {
-			return `{"bump":"major","reason":"The release removes a public compatibility contract."}`
+			return `{"impact":"incompatible","public_contract":"public compatibility contract","reason":"The release removes a public compatibility contract."}`
 		}
-		return `{"bump":"patch","reason":"This evidence packet contains compatible maintenance."}`
+		return `{"impact":"compatible","public_contract":"","reason":"This evidence packet contains compatible maintenance."}`
 	}}
 
 	result, generateError := (Generator{GitExecutor: executor, Client: client}).Generate(context.Background(), Options{

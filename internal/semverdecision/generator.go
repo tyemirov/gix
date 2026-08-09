@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"regexp"
 	"strings"
 
 	"github.com/tyemirov/gix/internal/execshell"
@@ -20,12 +19,6 @@ const (
 	commitLogCharacterLimit   = 24000
 	diffSummaryCharacterLimit = 12000
 	diffCharacterLimit        = 60000
-)
-
-var (
-	conventionalHeaderPattern = regexp.MustCompile(`(?m)^[a-z][a-z0-9-]*(?:\([^\r\n)]+\))?(!)?:[ \t]+\S`)
-	featureHeaderPattern      = regexp.MustCompile(`(?m)^feat(?:\([^\r\n)]+\))?!?:[ \t]+\S`)
-	breakingFooterPattern     = regexp.MustCompile(`(?m)^BREAKING(?: CHANGE|-CHANGE):[ \t]+\S`)
 )
 
 type Bump = releaseversion.Bump
@@ -60,9 +53,19 @@ type Generator struct {
 	Client      llm.ChatClient
 }
 
+type publicImpact string
+
+const (
+	publicImpactCompatible   publicImpact = "compatible"
+	publicImpactAdditive     publicImpact = "additive"
+	publicImpactIncompatible publicImpact = "incompatible"
+)
+
 type decisionPayload struct {
-	Bump   Bump   `json:"bump"`
-	Reason string `json:"reason"`
+	Impact         publicImpact `json:"impact"`
+	PublicContract string       `json:"public_contract"`
+	Reason         string       `json:"reason"`
+	Bump           Bump         `json:"-"`
 }
 
 type repositoryEvidence struct {
@@ -72,43 +75,56 @@ type repositoryEvidence struct {
 	unreleasedNotes string
 }
 
-// Generate asks the configured LLM for closed packet decisions and enforces
-// the highest model result and Conventional Commit floor.
+// Generate asks the configured LLM for candidate and audit decisions for each
+// evidence packet. It returns the highest audited public-contract impact.
 func (generator Generator) Generate(ctx context.Context, options Options) (Result, error) {
-	requests, floor, buildError := generator.BuildRequests(ctx, options)
+	candidateRequests, floor, buildError := generator.BuildRequests(ctx, options)
 	if buildError != nil {
 		return Result{}, buildError
 	}
 
+	requests := make([]llm.ChatRequest, 0, len(candidateRequests)*2)
 	modelBump := Bump("")
 	reason := ""
-	for requestIndex, request := range requests {
+	for requestIndex, request := range candidateRequests {
+		requests = append(requests, request)
 		response, chatError := generator.Client.Chat(ctx, request)
 		if chatError != nil {
-			return Result{}, fmt.Errorf("semver decision evidence packet %d/%d.llm: %w", requestIndex+1, len(requests), chatError)
+			return Result{}, fmt.Errorf("semver decision evidence packet %d/%d candidate.llm: %w", requestIndex+1, len(candidateRequests), chatError)
 		}
 
-		payload, parseError := parseDecision(response)
+		candidate, parseError := parseDecision(response)
 		if parseError != nil {
-			return Result{}, fmt.Errorf("semver decision evidence packet %d/%d: %w", requestIndex+1, len(requests), parseError)
+			return Result{}, fmt.Errorf("semver decision evidence packet %d/%d candidate: %w", requestIndex+1, len(candidateRequests), parseError)
 		}
-		if reason == "" || payload.Bump.Rank() > modelBump.Rank() {
-			modelBump = payload.Bump
-			reason = payload.Reason
+
+		auditRequest, auditBuildError := buildAuditRequest(request, candidate, options.MaxTokens)
+		if auditBuildError != nil {
+			return Result{}, fmt.Errorf("semver decision evidence packet %d/%d audit request: %w", requestIndex+1, len(candidateRequests), auditBuildError)
+		}
+		requests = append(requests, auditRequest)
+		auditResponse, auditError := generator.Client.Chat(ctx, auditRequest)
+		if auditError != nil {
+			return Result{}, fmt.Errorf("semver decision evidence packet %d/%d audit.llm: %w", requestIndex+1, len(candidateRequests), auditError)
+		}
+		audited, auditParseError := parseDecision(auditResponse)
+		if auditParseError != nil {
+			return Result{}, fmt.Errorf("semver decision evidence packet %d/%d audit: %w", requestIndex+1, len(candidateRequests), auditParseError)
+		}
+		packetBump := audited.Bump
+		if reason == "" || packetBump.Rank() > modelBump.Rank() {
+			modelBump = packetBump
+			reason = audited.Reason
 		}
 	}
 
-	finalBump := releaseversion.MaximumBump(modelBump, floor)
-	if finalBump != modelBump {
-		reason = fmt.Sprintf("%s Conventional Commit evidence requires at least a %s release.", reason, floor)
-	}
 	evidenceDigest, digestError := requestDigest(requests)
 	if digestError != nil {
 		return Result{}, digestError
 	}
 
 	return Result{
-		Bump:               finalBump,
+		Bump:               modelBump,
 		Reason:             reason,
 		DeterministicFloor: floor,
 		Requests:           requests,
@@ -147,22 +163,11 @@ func (generator Generator) BuildRequests(ctx context.Context, options Options) (
 	if evidenceError != nil {
 		return nil, "", evidenceError
 	}
-	floor := deterministicFloor(evidence.commitLog)
+	floor := BumpPatch
 
 	systemMessage := llm.Message{
-		Role: "system",
-		Content: strings.Join([]string{
-			"You are the release decision node for a Semantic Versioning 2.0.0 lifecycle.",
-			"The caller divides complete release evidence into ordered packets and uses the highest bump from every packet.",
-			"Return exactly one JSON object with two string fields: bump and reason.",
-			"bump must be exactly major, minor, or patch.",
-			"Select major when any committed change is incompatible with a current public contract, including removed or renamed APIs, CLI behavior, configuration keys, schemas, persisted data, protocols, or required operator behavior.",
-			"Select minor when the release adds backward-compatible public functionality without any incompatible change.",
-			"Select patch when all changes are backward-compatible fixes, performance work, internal refactoring, tests, or documentation and add no public functionality.",
-			"Use the highest level required by any change in the complete range.",
-			"Inspect behavior and diffs instead of trusting commit type labels alone.",
-			"Keep reason to one concise sentence and do not return Markdown or a code fence.",
-		}, " "),
+		Role:    "system",
+		Content: decisionSystemContent(false),
 	}
 
 	packets := buildEvidencePackets(evidence)
@@ -173,7 +178,7 @@ func (generator Generator) BuildRequests(ctx context.Context, options Options) (
 			Content: strings.Join([]string{
 				fmt.Sprintf("Release range: %s..%s", boundaryLabel, source),
 				fmt.Sprintf("Evidence packet: %d/%d", packetIndex+1, len(packets)),
-				fmt.Sprintf("Deterministic Conventional Commit floor: %s", floor),
+				fmt.Sprintf("Deterministic minimum: %s", floor),
 				"",
 				"Commit messages:",
 				fallbackText(packet.commitLog, "No commit messages in this evidence packet."),
@@ -254,29 +259,81 @@ func parseDecision(response string) (decisionPayload, error) {
 	if trailingError := decoder.Decode(&trailingValue); !errors.Is(trailingError, io.EOF) {
 		return decisionPayload{}, errors.New("semver decision response contains extra JSON values")
 	}
-	if !payload.Bump.Valid() {
-		return decisionPayload{}, fmt.Errorf("semver decision response has invalid bump %q", payload.Bump)
+	if !payload.Impact.valid() {
+		return decisionPayload{}, fmt.Errorf("semver decision response has invalid impact %q", payload.Impact)
 	}
+	payload.PublicContract = strings.Join(strings.Fields(payload.PublicContract), " ")
 	payload.Reason = strings.Join(strings.Fields(payload.Reason), " ")
 	if payload.Reason == "" {
 		return decisionPayload{}, errors.New("semver decision response has an empty reason")
 	}
+	if payload.Impact != publicImpactCompatible && payload.PublicContract == "" {
+		return decisionPayload{}, errors.New("semver decision response has no public contract for a non-patch impact")
+	}
+	switch payload.Impact {
+	case publicImpactIncompatible:
+		payload.Bump = BumpMajor
+	case publicImpactAdditive:
+		payload.Bump = BumpMinor
+	case publicImpactCompatible:
+		payload.Bump = BumpPatch
+	}
 	return payload, nil
 }
 
-func deterministicFloor(commitLog string) Bump {
-	if breakingFooterPattern.MatchString(commitLog) {
-		return BumpMajor
+func decisionSystemContent(audit bool) string {
+	instructions := []string{
+		"You are the release decision node for a Semantic Versioning 2.0.0 lifecycle.",
+		"Classify only the effect on supported public contracts from the previous release.",
+		"Return exactly one JSON object with three string fields: impact, public_contract, and reason.",
+		"impact must be exactly incompatible, additive, or compatible.",
+		"Use incompatible only when a previously supported external use stops working or requires user migration.",
+		"Use additive only when the release adds optional public functionality for users or external consumers.",
+		"Use compatible for fixes, restored behavior, performance work, internal refactoring, tests, documentation, and release implementation changes.",
+		"A public contract includes supported CLI behavior, documented configuration, persisted user data, network protocols, and explicitly supported library APIs.",
+		"For an executable product, Go module paths, package paths, and internal imports are implementation details unless evidence proves a supported library API.",
+		"A repaired installation route is compatible when the change restores the canonical documented command.",
+		"Commit types, scopes, exclamation marks, and BREAKING CHANGE text are evidence claims, not SemVer authority.",
+		"For incompatible or additive impact, public_contract must name the exact supported external contract.",
+		"When evidence does not identify a concrete public contract change, use compatible and an empty public_contract.",
+		"The caller maps incompatible to major, additive to minor, and compatible to patch.",
+		"Keep reason to one concise sentence and do not return Markdown or a code fence.",
 	}
-	for _, match := range conventionalHeaderPattern.FindAllStringSubmatch(commitLog, -1) {
-		if len(match) > 1 && match[1] == "!" {
-			return BumpMajor
-		}
+	if audit {
+		instructions = append(instructions,
+			"Independently audit the candidate against the complete packet evidence.",
+			"Correct any classification that treats implementation structure or commit syntax as a public contract.",
+		)
 	}
-	if featureHeaderPattern.MatchString(commitLog) {
-		return BumpMinor
+	return strings.Join(instructions, " ")
+}
+
+func buildAuditRequest(candidateRequest llm.ChatRequest, candidate decisionPayload, maxTokens int) (llm.ChatRequest, error) {
+	candidateJSON, encodeError := json.Marshal(candidate)
+	if encodeError != nil {
+		return llm.ChatRequest{}, fmt.Errorf("encode candidate decision: %w", encodeError)
 	}
-	return BumpPatch
+	return llm.ChatRequest{
+		Messages: []llm.Message{
+			{Role: "system", Content: decisionSystemContent(true)},
+			{
+				Role: "user",
+				Content: strings.Join([]string{
+					candidateRequest.Messages[1].Content,
+					"",
+					"Candidate decision:",
+					string(candidateJSON),
+					"",
+					"Return the audited decision now.",
+				}, "\n"),
+			},
+		},
+		MaxTokens: maxTokens,
+	}, nil
+}
+
+func (impact publicImpact) valid() bool {
+	return impact == publicImpactCompatible || impact == publicImpactAdditive || impact == publicImpactIncompatible
 }
 
 func requestDigest(requests []llm.ChatRequest) (string, error) {

@@ -116,14 +116,6 @@ func (bump Bump) Rank() int {
 	}
 }
 
-// MaximumBump returns the higher of two valid SemVer levels.
-func MaximumBump(first Bump, second Bump) Bump {
-	if first.Rank() >= second.Rank() {
-		return first
-	}
-	return second
-}
-
 // LatestSemVer returns the greatest stable canonical SemVer tag.
 func LatestSemVer(tags []string) string {
 	versions := make([]semverValue, 0, len(tags))
