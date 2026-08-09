@@ -351,7 +351,7 @@ func TestReleaseNewSemVerUsesAutonomousDecision(testInstance *testing.T) {
 
 			require.NoError(t, runError, outputText)
 			require.Contains(t, outputText, "version_scheme=semver")
-			require.Contains(t, outputText, "semver_decision="+testCase.bump)
+			require.Contains(t, outputText, "version_reason=Fixture selected the "+testCase.bump+" release level.")
 			require.Contains(t, outputText, "next_version="+testCase.expectedVersion)
 			require.Contains(t, outputText, "changelog_boundary="+releaseFixtureVersion)
 			require.Contains(t, runGit(t, fixture.repositoryPath, "tag", "--points-at", "HEAD"), testCase.expectedVersion)
@@ -382,7 +382,7 @@ func TestReleaseFailsClosedWhenAutonomousSemVerDecisionFails(testInstance *testi
 
 	require.Error(testInstance, runError, outputText)
 	require.Contains(testInstance, outputText, "fixture SemVer decision failure")
-	require.Contains(testInstance, outputText, "autonomous SemVer decision failed")
+	require.Contains(testInstance, outputText, "autonomous release version decision failed")
 	require.Equal(testInstance, receiptBeforeRelease, readReleaseArtifactTree(testInstance, fixture.artifactDirectory))
 	require.Equal(testInstance, releaseFixtureVersion+"\n", runGit(testInstance, fixture.repositoryPath, "tag", "--list"))
 }
@@ -391,7 +391,7 @@ func TestReleaseInitialSemVerIsAutonomous(testInstance *testing.T) {
 	fixture := newExactReleaseFixture(testInstance)
 	runGit(testInstance, fixture.repositoryPath, "tag", "--delete", fixture.version)
 	fixture.commitNextSource(testInstance)
-	pathVariable := buildReleaseStubbedExecutablePath(testInstance, map[string]string{"make": releaseFakeMakeScript})
+	pathVariable := buildReleaseStubbedExecutablePath(testInstance, map[string]string{"go": releaseFakeSemVerGoScript, "make": releaseFakeMakeScript})
 
 	outputText, runError := runReleasePrepareReleaseScript(
 		testInstance,
@@ -411,7 +411,7 @@ func TestReleaseCIReceivesNoOuterReleaseOrMakeIntent(testInstance *testing.T) {
 	fixture := newExactReleaseFixture(testInstance)
 	fixture.commitNextSource(testInstance)
 	environmentLogPath := filepath.Join(testInstance.TempDir(), "make-environment.log")
-	pathVariable := buildReleaseStubbedExecutablePath(testInstance, map[string]string{"make": releaseFakeMakeScript})
+	pathVariable := buildReleaseStubbedExecutablePath(testInstance, map[string]string{"go": releaseFakeSemVerGoScript, "make": releaseFakeMakeScript})
 
 	outputText, runError := runReleasePrepareReleaseScript(
 		testInstance,
@@ -449,7 +449,7 @@ func TestReleaseCalVerRemainsTimestampDerived(testInstance *testing.T) {
 	runGit(testInstance, fixture.repositoryPath, "tag", "--delete", fixture.version)
 	runGit(testInstance, fixture.repositoryPath, "tag", "-a", "26.807.120000", "-m", "Release 26.807.120000", fixture.releaseCommit)
 	fixture.commitNextSource(testInstance)
-	pathVariable := buildReleaseStubbedExecutablePath(testInstance, map[string]string{"make": releaseFakeMakeScript})
+	pathVariable := buildReleaseStubbedExecutablePath(testInstance, map[string]string{"go": releaseFakeSemVerGoScript, "make": releaseFakeMakeScript})
 
 	outputText, runError := runReleasePrepareReleaseScript(
 		testInstance,
@@ -461,7 +461,7 @@ func TestReleaseCalVerRemainsTimestampDerived(testInstance *testing.T) {
 	require.NoError(testInstance, runError, outputText)
 	require.Contains(testInstance, outputText, "version_scheme=calver")
 	require.Contains(testInstance, outputText, "next_version=")
-	require.NotContains(testInstance, outputText, "semver_decision=")
+	require.Contains(testInstance, outputText, "version_reason=Fixture selected the CalVer release version.")
 }
 
 func TestReleaseCandidateFailurePreservesCanonicalReceipt(testInstance *testing.T) {
@@ -1307,7 +1307,7 @@ fi
 const releaseFakeSemVerGoScript = `#!/usr/bin/env bash
 set -euo pipefail
 
-[[ "${1:-}" == "run" && "${2:-}" == "." && "${3:-}" == "message" && "${4:-}" == "semver" ]] || {
+[[ "${1:-}" == "run" && "${2:-}" == "." && "${3:-}" == "release" && "${4:-}" == "next" && "${5:-}" == "--format" && "${6:-}" == "json" && "${7:-}" == "--release-timestamp" ]] || {
   echo "unexpected go invocation: $*" >&2
   exit 41
 }
@@ -1316,7 +1316,36 @@ if [[ "${GIX_RELEASE_FAKE_SEMVER_FAILURE:-}" == "true" ]]; then
   exit 42
 fi
 bump="${GIX_RELEASE_FAKE_SEMVER_BUMP:-patch}"
-printf '{"bump":"%s","reason":"Fixture selected the %s release level.","deterministic_floor":"patch"}\n' "${bump}" "${bump}"
+source_commit="$(git rev-parse HEAD)"
+latest_calver="$(git tag --list | awk '/^[0-9][0-9]\.[0-9]+\.[0-9]+$/ { print }' | sort -V | tail -1)"
+if [[ -n "${latest_calver}" ]]; then
+  next_version="$(python3 -c '
+import datetime as dt
+import sys
+timestamp = dt.datetime.fromisoformat(sys.argv[1])
+timestamp = timestamp.astimezone(dt.timezone.utc)
+print(f"{timestamp.year % 100}.{timestamp.month * 100 + timestamp.day}.{timestamp.hour * 10000 + timestamp.minute * 100 + timestamp.second}")
+' "$8")"
+  printf '{"contract":"mprlab.version-decision/v1","scheme":"calver","source_commit":"%s","boundary_tag":"%s","previous_version":"%s","next_version":"%s","reason":"Fixture selected the CalVer release version.","release_timestamp":"%s"}\n' "${source_commit}" "${latest_calver}" "${latest_calver}" "${next_version}" "$8"
+  exit 0
+fi
+latest_semver="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -1)"
+if [[ -z "${latest_semver}" ]]; then
+  printf '{"contract":"mprlab.version-decision/v1","scheme":"semver","source_commit":"%s","next_version":"v1.0.0","reason":"Fixture selected the initial SemVer release."}\n' "${source_commit}"
+  exit 0
+fi
+next_version="$(python3 -c '
+import sys
+major, minor, patch = map(int, sys.argv[1][1:].split("."))
+if sys.argv[2] == "major":
+    major, minor, patch = major + 1, 0, 0
+elif sys.argv[2] == "minor":
+    minor, patch = minor + 1, 0
+else:
+    patch += 1
+print(f"v{major}.{minor}.{patch}")
+' "${latest_semver}" "${bump}")"
+printf '{"contract":"mprlab.version-decision/v1","scheme":"semver","source_commit":"%s","boundary_tag":"%s","previous_version":"%s","next_version":"%s","bump":"%s","deterministic_floor":"patch","reason":"Fixture selected the %s release level.","evidence_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}\n' "${source_commit}" "${latest_semver}" "${latest_semver}" "${next_version}" "${bump}" "${bump}"
 `
 
 const releaseFakeGHRecoveryScript = `#!/usr/bin/env bash
