@@ -53,6 +53,7 @@ const (
 	mergeConflictResolutionDeleteTemplate       = "stage deleted merge file %s: %w"
 	mergeConflictResolutionIndexCheckTemplate   = "validate resolved merge index: %w"
 	mergeConflictResolutionIndexPathsTemplate   = "inspect resolved merge index paths: %w"
+	mergeConflictParentResolveTemplate          = "resolve incoming merge parent %s: %w"
 	mergeConflictResolutionParentCheckTemplate  = "validate resolved merge path %s against incoming parent %s: %w"
 	mergeConflictResolutionCommitTemplate       = "complete resolved merge commit: %w"
 	mergeConflictResolutionPathTemplate         = "invalid conflicted path %q"
@@ -201,6 +202,10 @@ func (service mergeConflictResolutionService) Resolve(ctx context.Context, optio
 		return false, nil
 	}
 	service.reportConflictDetected(paths, options, timeout)
+	incomingParentCommit, incomingParentErr := service.resolveIncomingParentCommit(ctx, options)
+	if incomingParentErr != nil {
+		return true, service.normalizeResolutionError(ctx, incomingParentErr)
+	}
 
 	var client llm.ChatClient
 	clientProvider := func() (llm.ChatClient, error) {
@@ -245,7 +250,7 @@ func (service mergeConflictResolutionService) Resolve(ctx context.Context, optio
 	if len(remainingPaths) > 0 {
 		return true, fmt.Errorf("unresolved merge conflicts remain: %s", strings.Join(remainingPaths, ", "))
 	}
-	if indexCheckErr := service.validateResolvedMergeIndex(ctx, options.SourceReference); indexCheckErr != nil {
+	if indexCheckErr := service.validateResolvedMergeIndex(ctx, options.SourceReference, incomingParentCommit); indexCheckErr != nil {
 		return true, service.normalizeResolutionError(ctx, indexCheckErr)
 	}
 
@@ -267,7 +272,31 @@ func (service mergeConflictResolutionService) Resolve(ctx context.Context, optio
 	return true, nil
 }
 
-func (service mergeConflictResolutionService) validateResolvedMergeIndex(ctx context.Context, sourceReference string) error {
+func (service mergeConflictResolutionService) resolveIncomingParentCommit(ctx context.Context, options mergeConflictResolutionOptions) (string, error) {
+	incomingParentReference := strings.TrimSpace(options.SourceReference)
+	if options.Completion == mergeConflictCompletionCommit {
+		incomingParentReference = gitMergeHeadReferenceConstant
+	}
+	result, resolveErr := service.executor.ExecuteGit(ctx, execshell.CommandDetails{
+		Arguments: []string{
+			gitRevParseSubcommandConstant,
+			gitVerifyFlagConstant,
+			gitEndOfOptionsFlagConstant,
+			incomingParentReference + gitCommitPeelSuffixConstant,
+		},
+		WorkingDirectory: service.repositoryPath,
+	})
+	if resolveErr != nil {
+		return "", fmt.Errorf(mergeConflictParentResolveTemplate, incomingParentReference, resolveErr)
+	}
+	incomingParentCommit := strings.TrimSpace(result.StandardOutput)
+	if incomingParentCommit == "" {
+		return "", fmt.Errorf(mergeConflictParentResolveTemplate, incomingParentReference, errors.New("git returned an empty commit identifier"))
+	}
+	return incomingParentCommit, nil
+}
+
+func (service mergeConflictResolutionService) validateResolvedMergeIndex(ctx context.Context, sourceReference string, incomingParentCommit string) error {
 	indexCheckErr := executeGit(ctx, service.executor, service.repositoryPath, []string{
 		gitDiffSubcommandConstant,
 		gitDiffCachedFlagConstant,
@@ -322,7 +351,7 @@ func (service mergeConflictResolutionService) validateResolvedMergeIndex(ctx con
 			gitDiffSubcommandConstant,
 			gitDiffCachedFlagConstant,
 			gitDiffCheckFlagConstant,
-			strings.TrimSpace(sourceReference),
+			incomingParentCommit,
 			gitPathspecSeparatorConstant,
 			path,
 		})

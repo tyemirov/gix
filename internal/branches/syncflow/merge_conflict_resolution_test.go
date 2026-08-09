@@ -42,13 +42,15 @@ func (executor *mergeConflictIndexCheckExecutor) ExecuteGit(_ context.Context, d
 	case "add -- .mprlab/ISSUES.md":
 		executor.conflictsResolved = true
 		return execshell.ExecutionResult{}, nil
+	case "rev-parse --verify --end-of-options MERGE_HEAD^{commit}":
+		return execshell.ExecutionResult{StandardOutput: "dddddddddddddddddddddddddddddddddddddddd\n"}, nil
 	case "diff --cached --check":
 		return execshell.ExecutionResult{}, errors.New("trailing whitespace in staged resolution")
 	case "diff --cached --name-only --no-renames -z --":
 		return execshell.ExecutionResult{StandardOutput: ".mprlab/ISSUES.md\x00"}, nil
 	case "diff --cached --check -- .mprlab/ISSUES.md":
 		return execshell.ExecutionResult{}, errors.New("trailing whitespace in staged resolution")
-	case "diff --cached --check origin/master -- .mprlab/ISSUES.md":
+	case "diff --cached --check dddddddddddddddddddddddddddddddddddddddd -- .mprlab/ISSUES.md":
 		return execshell.ExecutionResult{}, errors.New("trailing whitespace added by merge resolution")
 	case "commit --no-edit":
 		return execshell.ExecutionResult{}, errors.New("commit must not run after failed cached diff validation")
@@ -312,6 +314,8 @@ func TestResolveRejectsCachedDiffCheckBeforeMergeCommit(t *testing.T) {
 		recordedCommands = append(recordedCommands, strings.Join(command.Arguments, " "))
 	}
 	require.Contains(t, recordedCommands, "diff --cached --check")
-	require.Contains(t, recordedCommands, "diff --cached --check origin/master -- .mprlab/ISSUES.md")
+	require.Contains(t, recordedCommands, "rev-parse --verify --end-of-options MERGE_HEAD^{commit}")
+	require.Contains(t, recordedCommands, "diff --cached --check dddddddddddddddddddddddddddddddddddddddd -- .mprlab/ISSUES.md")
+	require.NotContains(t, recordedCommands, "diff --cached --check origin/master -- .mprlab/ISSUES.md")
 	require.NotContains(t, recordedCommands, "commit --no-edit")
 }
