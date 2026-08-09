@@ -9,6 +9,7 @@
 - Added explicit GHCR retention to `gix packages delete --keep <count>`, preserving the newest requested versions and deleting every older tagged or untagged version.
 
 ### Improvements ⚙️
+- Made `make release`, `make publish`, and `make deploy` self-contained zero-input lifecycle boundaries. Established SemVer lines now use an LLM decision node over the complete committed range, with Conventional Commit breaking and feature markers as non-lowerable major and minor floors; invalid or unavailable decisions fail closed.
 - Replaced the application loader's generic YAML-map and mapstructure schema pass with one strict typed YAML decode, while preserving post-decode process-environment placeholder expansion.
 - Made `gix audit` terminal-readable by default with a table and added strict `--format csv` and `--format html` exports.
 - Replaced layered implicit configuration with one strict `config.yml`: explicit path, system file, then user file, with interactive user-file creation when none exists.
@@ -23,7 +24,6 @@
 - Updated the LLM Proxy Go client from v0.2.21 to v0.2.46, moved Gix's configured proxy work budget to the current per-request timeout header, and raised the Go module floor to 1.25.12 with the dependency graph required by that client.
 
 ### Bug Fixes 🐛
-- Required explicit patch, minor, major, or exact-version intent before preparing a new SemVer release, preventing bare `make release` from silently selecting another patch while preserving zero-argument exact-tag reuse and timestamp-derived CalVer.
 - Required a positive top-level `llm.max_completion_tokens` value during startup and removed generated provider and command token defaults, keeping completion-token policy in `config.yml` while preserving the command-to-provider-to-global hierarchy.
 - Recovered direct OpenAI from reasoning-only empty completions by repeating the resolved configured request for one bounded recovery cycle after normal empty-response retries are exhausted, while ordinary connection failures and cancellation retain their existing behavior.
 - Made exact-tag release retries idempotent by reusing verified sealed receipts, recovering missing or incomplete receipts from matching published GitHub Release state, preserving the prior canonical receipt until a new candidate verifies completely, and rolling back release-owned changelog refs when sealing fails.
@@ -67,7 +67,7 @@
 - Kept the syncflow builder description as the canonical text shown by `gix sync --help`.
 
 ### Testing 🧪
-- Added public Make and release-script coverage for missing, patch, minor, major, exact, conflicting, CalVer, and exact-tag release-version intent paths.
+- Added public Make and release-script coverage for zero-argument lifecycle targets, autonomous patch, minor, and major SemVer decisions, fail-closed decision errors, initial SemVer, timestamp-derived CalVer, and exact-tag reuse.
 - Added direct YAML-tag loader coverage and compiled-CLI coverage that rejects the removed `temperature` key through the strict typed schema.
 - Added public compiled-CLI coverage for LLM Proxy failure at the inherited global token budget followed by three reasoning-budget-exhausted direct OpenAI responses and a successful recovery at the provider budget, plus focused precedence, error, and cancellation guardrails.
 - Added public release-script coverage for exact-tag local reuse, published recovery from missing and partial receipts, conflicting local and published state, failed new-release preparation that leaves the prior receipt unchanged, and post-tag sealing failure that restores the source branch.
