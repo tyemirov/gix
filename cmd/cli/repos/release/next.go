@@ -12,7 +12,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
-	"golang.org/x/mod/modfile"
 
 	"github.com/tyemirov/gix/internal/execshell"
 	"github.com/tyemirov/gix/internal/llmclient"
@@ -64,14 +63,6 @@ type VersionDecision struct {
 	Reason             string                `json:"reason"`
 	EvidenceSHA256     string                `json:"evidence_sha256,omitempty"`
 	ReleaseTimestamp   string                `json:"release_timestamp,omitempty"`
-	GoInstall          *GoInstallDecision    `json:"go_install,omitempty"`
-}
-
-// GoInstallDecision binds one root Go module tag to a product release.
-type GoInstallDecision struct {
-	ModulePath         string `json:"module_path"`
-	Version            string `json:"version"`
-	ProductVersionFile string `json:"product_version_file"`
 }
 
 // NextCommandBuilder assembles the release successor command.
@@ -205,7 +196,11 @@ func (builder NextCommandBuilder) decide(command *cobra.Command) (VersionDecisio
 	var decisionError error
 	switch releaseConfiguration.Scheme {
 	case releaseversion.SchemeSemVer:
-		decision, decisionError = builder.decideSemVer(command, dependencies.GitExecutor, repositoryRoot, sourceCommit, tags)
+		fixedMajor := 0
+		if releaseConfiguration.SemVer != nil {
+			fixedMajor = releaseConfiguration.SemVer.FixedMajor
+		}
+		decision, decisionError = builder.decideSemVer(command, dependencies.GitExecutor, repositoryRoot, sourceCommit, tags, fixedMajor)
 	case releaseversion.SchemeCalVer:
 		decision, decisionError = builder.decideCalVer(command, sourceCommit, tags)
 	default:
@@ -214,50 +209,14 @@ func (builder NextCommandBuilder) decide(command *cobra.Command) (VersionDecisio
 	if decisionError != nil {
 		return VersionDecision{}, decisionError
 	}
-	return builder.attachGoInstallDecision(repositoryRoot, releaseConfiguration, tags, decision)
-}
-
-func (builder NextCommandBuilder) attachGoInstallDecision(repositoryRoot string, configuration releaseversion.Configuration, tags []string, decision VersionDecision) (VersionDecision, error) {
-	if configuration.GoInstall == nil {
-		return decision, nil
-	}
-	readFile := builder.ReadFile
-	if readFile == nil {
-		readFile = os.ReadFile
-	}
-	moduleData, readError := readFile(filepath.Join(repositoryRoot, "go.mod"))
-	if readError != nil {
-		return VersionDecision{}, fmt.Errorf("read Go module contract: %w", readError)
-	}
-	actualModulePath := strings.TrimSpace(modfile.ModulePath(moduleData))
-	if actualModulePath != configuration.GoInstall.ModulePath {
-		return VersionDecision{}, fmt.Errorf("go install module path must be %q: found %q", configuration.GoInstall.ModulePath, actualModulePath)
-	}
-	productVersionData, productVersionError := readFile(filepath.Join(repositoryRoot, configuration.GoInstall.ProductVersionFile))
-	if productVersionError != nil {
-		return VersionDecision{}, fmt.Errorf("read Go install product version: %w", productVersionError)
-	}
-	currentProductVersion := strings.TrimSpace(string(productVersionData))
-	if currentProductVersion != decision.PreviousVersion {
-		return VersionDecision{}, fmt.Errorf("go install product version must match release boundary %q: found %q", decision.PreviousVersion, currentProductVersion)
-	}
-	goInstallVersion, versionError := releaseversion.NextGoInstallVersion(tags)
-	if versionError != nil {
-		return VersionDecision{}, versionError
-	}
-	if goInstallVersion == decision.NextVersion {
-		return VersionDecision{}, fmt.Errorf("go install transport version conflicts with product version %s", decision.NextVersion)
-	}
-	decision.GoInstall = &GoInstallDecision{
-		ModulePath:         configuration.GoInstall.ModulePath,
-		Version:            goInstallVersion,
-		ProductVersionFile: configuration.GoInstall.ProductVersionFile,
-	}
 	return decision, nil
 }
 
-func (builder NextCommandBuilder) decideSemVer(command *cobra.Command, gitExecutor shared.GitExecutor, repositoryRoot string, sourceCommit string, tags []string) (VersionDecision, error) {
+func (builder NextCommandBuilder) decideSemVer(command *cobra.Command, gitExecutor shared.GitExecutor, repositoryRoot string, sourceCommit string, tags []string, fixedMajor int) (VersionDecision, error) {
 	previous := releaseversion.LatestSemVer(tags)
+	if fixedMajor > 0 {
+		previous = releaseversion.LatestFixedMajorSemVer(tags, fixedMajor)
+	}
 	decision := VersionDecision{
 		Contract:        releaseversion.ContractVersion,
 		Scheme:          releaseversion.SchemeSemVer,
@@ -266,8 +225,12 @@ func (builder NextCommandBuilder) decideSemVer(command *cobra.Command, gitExecut
 		PreviousVersion: previous,
 	}
 	if previous == "" {
-		decision.NextVersion = "v1.0.0"
-		decision.Reason = "The repository has no canonical SemVer release, so the release starts at v1.0.0."
+		initialMajor := 1
+		if fixedMajor > 0 {
+			initialMajor = fixedMajor
+		}
+		decision.NextVersion = fmt.Sprintf("v%d.0.0", initialMajor)
+		decision.Reason = fmt.Sprintf("The repository has no canonical SemVer release, so the release starts at v%d.0.0.", initialMajor)
 		return decision, nil
 	}
 	boundaryCommit, boundaryError := executeGit(command.Context(), gitExecutor, repositoryRoot, "rev-parse", "--verify", previous+"^{commit}")
@@ -308,11 +271,18 @@ func (builder NextCommandBuilder) decideSemVer(command *cobra.Command, gitExecut
 		SourceReference: sourceCommit,
 		BoundaryLabel:   previous,
 		MaxTokens:       configuration.MaxTokens,
+		FixedMajor:      fixedMajor,
 	})
 	if semverError != nil {
 		return VersionDecision{}, semverError
 	}
-	next, nextError := releaseversion.NextSemVer(previous, semverResult.Bump)
+	var next string
+	var nextError error
+	if fixedMajor > 0 {
+		next, nextError = releaseversion.NextFixedMajorSemVer(previous, semverResult.Bump, fixedMajor)
+	} else {
+		next, nextError = releaseversion.NextSemVer(previous, semverResult.Bump)
+	}
 	if nextError != nil {
 		return VersionDecision{}, nextError
 	}

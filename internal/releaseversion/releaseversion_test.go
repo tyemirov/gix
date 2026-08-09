@@ -18,22 +18,15 @@ func TestParseConfigurationRequiresCanonicalContract(t *testing.T) {
 	require.Error(t, schemeError)
 }
 
-func TestParseConfigurationAcceptsRootGoInstallContract(t *testing.T) {
-	configuration, parseError := ParseConfiguration([]byte("schema_version: 1\nscheme: semver\ngo_install:\n  module_path: github.com/tyemirov/gix\n  product_version_file: internal/version/product-version.txt\n"))
-
+func TestParseConfigurationAcceptsFixedMajorSemVer(t *testing.T) {
+	configuration, parseError := ParseConfiguration([]byte("schema_version: 1\nscheme: semver\nsemver:\n  fixed_major: 1\n"))
 	require.NoError(t, parseError)
-	require.Equal(t, "github.com/tyemirov/gix", configuration.GoInstall.ModulePath)
-	require.Equal(t, "internal/version/product-version.txt", configuration.GoInstall.ProductVersionFile)
-}
+	require.Equal(t, 1, configuration.SemVer.FixedMajor)
 
-func TestParseConfigurationRejectsPartialOrUnsafeRootGoInstallContract(t *testing.T) {
-	for _, configuration := range []string{
-		"schema_version: 1\nscheme: semver\ngo_install:\n  module_path: github.com/tyemirov/gix\n",
-		"schema_version: 1\nscheme: semver\ngo_install:\n  module_path: github.com/tyemirov/gix\n  product_version_file: ../VERSION\n",
-	} {
-		_, parseError := ParseConfiguration([]byte(configuration))
-		require.Error(t, parseError)
-	}
+	_, goInstallError := ParseConfiguration([]byte("schema_version: 1\nscheme: semver\ngo_install:\n  module_path: github.com/tyemirov/gix\n"))
+	require.Error(t, goInstallError)
+	_, calVerPolicyError := ParseConfiguration([]byte("schema_version: 1\nscheme: calver\nsemver:\n  fixed_major: 1\n"))
+	require.Error(t, calVerPolicyError)
 }
 
 func TestNextSemVerUsesArbitraryPrecisionCanonicalMath(t *testing.T) {
@@ -50,15 +43,18 @@ func TestNextSemVerUsesArbitraryPrecisionCanonicalMath(t *testing.T) {
 	require.Equal(t, "v2.9.8", patch)
 }
 
-func TestLatestSemVerIgnoresNonCanonicalTags(t *testing.T) {
-	require.Equal(t, "v10.0.0", LatestSemVer([]string{"1.2.3", "v2.8.9", "v10.0.0", "v11.0.0-rc.1"}))
-}
+func TestFixedMajorSemVerUsesOnlyConfiguredMajor(t *testing.T) {
+	tags := []string{"1.2.3", "v0.9.9", "v1.2.3", "v1.9.8", "v2.8.9", "v7.0.0", "v1.10.0-rc.1"}
+	require.Equal(t, "v7.0.0", LatestSemVer(tags))
+	require.Equal(t, "v1.9.8", LatestFixedMajorSemVer(tags, 1))
 
-func TestNextGoInstallVersionAdvancesOnlyTheRootTransportLine(t *testing.T) {
-	next, nextError := NextGoInstallVersion([]string{"v1.1.24", "v6.0.0", "v1.1.25", "26.809.120000"})
-
+	next, nextError := NextFixedMajorSemVer("v1.9.8", BumpMinor, 1)
 	require.NoError(t, nextError)
-	require.Equal(t, "v1.1.26", next)
+	require.Equal(t, "v1.10.0", next)
+	_, majorError := NextFixedMajorSemVer("v1.9.8", BumpMajor, 1)
+	require.Error(t, majorError)
+	_, wrongLineError := NextFixedMajorSemVer("v2.9.8", BumpMinor, 1)
+	require.Error(t, wrongLineError)
 }
 
 func TestNextCalVerUsesCanonicalUTCSecond(t *testing.T) {

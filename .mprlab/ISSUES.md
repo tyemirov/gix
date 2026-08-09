@@ -488,11 +488,63 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Compiled installation coverage runs the canonical command. Public release tests cover paired tags, rollback, recovery, publication, and remote verification.
   `make format`, `make build`, `make ci`, module checks, syntax checks, and `git diff --check` passed on 2026-08-09.
   The Governor normalizer and changed-line language review also passed.
+- [x] [B060] (P0) Classify SemVer from supported public contracts.
+  Reported on 2026-08-09 after Gix selected `v7.0.0` for a root Go installation repair.
+  Expected result:
+  Internal implementation changes select a patch release unless they change a supported public contract.
+  Actual result:
+  Commit labels and a Go module-path change caused Gix to select a major release.
+  Requirements:
+  - Treat Conventional Commit labels as evidence only.
+  - Require an exact supported public contract for a major or minor classification.
+  - Select `major` only when a supported external use becomes incompatible.
+  - Select `minor` only when a release adds optional public functionality.
+  - Select `patch` for compatible repairs and internal implementation changes.
+  - Audit each candidate against the same complete evidence packet.
+  Validation:
+  - Add regression coverage for feature labels and breaking markers on internal changes.
+  - Add regression coverage for a repaired root Go installation route.
+  - Run focused tests, `make ci`, Governor checks, and `git diff --check`.
+  Resolution:
+  Gix now treats commit syntax as evidence only. Each evidence packet gets one candidate and one independent audit.
+  Gix maps incompatible, additive, and compatible public effects to `major`, `minor`, and `patch`.
+  Major and minor results must name the exact supported public contract.
+  Regression coverage includes internal feature labels, breaking markers, and the repaired root Go installation route.
+  Focused tests, `make ci`, Governor checks, changed-line language review, and `git diff --check` passed on 2026-08-09.
 
 
 
 ## Improvements
 
+- [x] [I011] (P0) Use one fixed-major version for Gix releases.
+  Requested on 2026-08-09.
+  Goal:
+  Gix uses one fixed major version for its releases. Other repositories retain their declared SemVer or CalVer policy.
+  Requirements:
+  - Declare the fixed `v1` policy in the Gix release config only.
+  - Select a minor Gix release for each intentional Gix public contract change.
+  - Select a patch Gix release for compatible fixes and internal changes.
+  - Keep standard major, minor, and patch analysis for other SemVer repositories.
+  - Keep one version in the decision, Git tag, receipt, manifest, binary, and GitHub Release.
+  - Make `go install github.com/tyemirov/gix@latest` install that version.
+  - Retract the valid historical root-module versions through `v1.1.26`.
+  - Exclude the invalid `v2` through `v7` tags from release selection.
+  - Remove the obsolete Go install version contract without a compatibility path.
+  - Keep the current CalVer selection contract.
+  Validation:
+  - Add public CLI coverage for fixed-major minor and patch selection.
+  - Add release lifecycle coverage for one tag and one version identity.
+  - Add compiled installation coverage for the canonical Go install command.
+  - Run focused tests, module checks, `make ci`, Governor checks, and `git diff --check`.
+  Resolution:
+  Gix now declares the fixed `v1` policy in its release config. Other repositories retain standard SemVer or their declared CalVer policy.
+  Gix public contract changes select minor releases. Compatible and internal changes select patch releases.
+  The decision, tag, receipt, manifest, binary, and GitHub Release use one version.
+  The release lifecycle no longer has a separate Go install version. The Gix module retracts prior root-module versions through `v1.1.26`.
+  Fixed-major selection excludes other major tags. Standard SemVer still supports major, minor, and patch releases.
+  The fixed-major policy remains internal to Gix. The shared version-decision contract remains `mprlab.version-decision/v1` for Gateway release consumers.
+  Compiled installation coverage proves that `go install github.com/tyemirov/gix@latest` selects and reports the authoritative version.
+  Focused tests, module checks, `make build`, `make ci`, Governor checks, and `git diff --check` passed on 2026-08-09.
 - [x] [I010] (P1) Remove the redundant generic configuration decode.
   Goal:
   Use one strict YAML decoder for the application configuration schema.

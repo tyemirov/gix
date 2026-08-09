@@ -79,9 +79,10 @@ Give each term one meaning. Use the same term for the same concept in all docume
 
 Add repository-specific technical nouns below this line.
 
-```text
-- `term`: Definition with one meaning.
-```
+- `CalVer`: A release version that derives its numeric fields from a release timestamp.
+- `fixed-major policy`: A SemVer policy that keeps one configured major value.
+- `SemVer`: A release version with major, minor, and patch fields.
+- `version decision`: The Gix result that selects one release version from repository evidence and policy.
 
 ## MPR Lab Technical Verbs
 

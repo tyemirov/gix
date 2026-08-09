@@ -31,19 +31,19 @@ make deploy
 
 These three targets accept no release flags, arguments, or lifecycle overrides. Each repository declares its release scheme in `.mprlab/release.yml`. `gix release next` validates this config and selects the next version.
 
-For an established SemVer sequence, the command uses an LLM to examine all committed changes after the latest SemVer tag. The evidence includes commit messages, the diff summary, the Unreleased changelog, and a bounded diff excerpt. The command selects `major`, `minor`, or `patch` from the public contract effect of the complete range. A Conventional Commit `!` or `BREAKING CHANGE` marker sets a `major` floor. A `feat` marker sets a `minor` floor. The model can increase the floor but cannot decrease it.
+For an established SemVer sequence, the command uses an LLM to examine all committed changes after the latest SemVer tag. The evidence includes commit messages, the diff summary, the Unreleased changelog, and a bounded diff excerpt. The model classifies each packet by its effect on a supported public contract. A second model call audits each candidate against the same evidence. Standard SemVer maps incompatible, additive, and compatible effects to `major`, `minor`, and `patch`. Commit labels and implementation changes cannot set a higher release level by themselves.
 
 Invalid or unavailable model output stops the release before version selection. A SemVer repository without tags starts at `v1.0.0`. A CalVer repository uses the canonical UTC release timestamp. At an exact release tag, `make release` is the idempotent retry command.
 
-Gix uses product SemVer for its public releases. Each Gix release also advances a root-module v1 transport tag so `go install github.com/tyemirov/gix@latest` resolves the same release commit. The installed command reports the product version, not the transport tag. `.mprlab/release.yml` declares this install channel, and `gix release next` includes both versions in one decision.
+Gix alone declares `semver.fixed_major: 1` in `.mprlab/release.yml`. Under this policy, incompatible and additive Gix public contract changes select a minor release. Compatible fixes and internal changes select a patch release. Version selection uses only `v1` tags. Other repositories keep standard SemVer or their declared CalVer policy.
 
-`make release` runs CI. It prepares the binaries, checksums, Pages archive, release metadata commit, two annotated tags, and release manifest. The local `.git/mprlab-release` directory contains the sealed receipt. New release preparation does not write to a remote repository.
+`make release` runs CI. It prepares the binaries, checksums, Pages archive, release metadata commit, one annotated tag, and release manifest. The local `.git/mprlab-release` directory contains the sealed receipt. New release preparation does not write to a remote repository.
 
-At an exact release tag, the command verifies and reuses the complete local receipt without another CI run. If the receipt is incomplete, the command reconstructs it from the matching GitHub Release. Reconstruction verifies the manifest, notes, hashes, both annotated tags, source parent, and exact release metadata files.
+At an exact release tag, the command verifies and reuses the complete local receipt without another CI run. If the receipt is incomplete, the command reconstructs it from the matching GitHub Release. Reconstruction verifies the manifest, notes, hashes, annotated tag, source parent, and exact release metadata files.
 
 New release preparation uses a separate candidate receipt. A preparation failure preserves the prior receipt and rolls back the transaction-owned commit and tags. `make publish` pushes the exact prepared Git refs and GitHub Release assets through canonical `origin`. `make deploy` activates the published Pages archive only when the downloaded manifest matches the prepared release. The CLI has no runtime rollout.
 
-The release manifest records two revisions. `source_commit` identifies the source that builds the Pages archive. `release_commit` identifies the release metadata commit and its tags. The optional `go_install` object binds its module path, transport version, and product-version file to that commit. Pages deployment verifies the public archive marker against `source_commit`. It verifies the published product tag against `release_commit`. These identities are not interchangeable.
+The release manifest records two revisions and one version. `source_commit` identifies the source that builds the Pages archive. `release_commit` identifies the release metadata commit and its tag. The decision, tag, manifest, binary, and GitHub Release use the same version. Pages deployment verifies the public archive marker against `source_commit` and the published tag against `release_commit`.
 
 Pages remains configured through GitHub's legacy branch publishing contract at `gh-pages:/`; the repository does not own a Pages Actions workflow. Deployment reconciles that configuration only when it is missing or different, then follows the GitHub Pages build for the exact deployed branch commit. A changed branch or configuration is the build trigger. An unchanged retry reuses a built, queued, or building record and requests one rebuild only when the matching build is absent or terminally errored. Public marker verification begins after that build succeeds, and failures report the Pages build status, error, commit, and URL.
 
@@ -648,7 +648,7 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
 - `gix release <tag> [--message <text>] [--remote <name>] [--roots <dir>...] [-y]` (alias `rel`)
  - Creates and pushes an annotated tag for each repository root.
 - `gix release next [--format text|json] [--release-timestamp <RFC3339>] [--exclude-tag <tag>...]`
- - Reads `.mprlab/release.yml` and selects the next canonical SemVer or CalVer version. A configured root Go channel receives its next v1 transport version.
+ - Reads `.mprlab/release.yml` and selects the next canonical SemVer or CalVer version. The optional SemVer fixed-major policy applies only when the repository declares it.
 - `gix release retag --map <tag=ref> [--map <tag=ref>...] [--message-template <text>] [--remote <name>] [--roots <dir>...] [-y]` (alias `fix`)
  - Reassigns existing release tags to provided commits and force-pushes updates.
 - `gix message changelog [--version <v>] [--release-date YYYY-MM-DD] [--since-tag <ref>] [--since-date <ts>] [--max-tokens <N>] [--effort <low|medium|high>] [--provider <provider>] [--model <id>] [--timeout-seconds <N>] [--roots <dir>...]` (aliases `section`)

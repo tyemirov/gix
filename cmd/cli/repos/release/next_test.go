@@ -26,7 +26,7 @@ func TestNextCommandSelectsEstablishedSemVer(t *testing.T) {
 		"diff --unified=3 base123..abc123":               "diff --git a/report.go b/report.go\n",
 		"show abc123:CHANGELOG.md":                       "# Changelog\n\n## [Unreleased]\n\n- Added reports.\n",
 	}}
-	client := &nextChatClient{response: `{"bump":"minor","reason":"The release adds reporting."}`}
+	client := &nextChatClient{response: `{"impact":"additive","public_contract":"CLI reporting","reason":"The release adds reporting."}`}
 	builder := nextTestBuilder(executor, client, []byte("schema_version: 1\nscheme: semver\n"))
 
 	output := executeNextCommand(t, builder, "--format", "json")
@@ -39,11 +39,11 @@ func TestNextCommandSelectsEstablishedSemVer(t *testing.T) {
 		"previous_version":"v1.2.3",
 		"next_version":"v1.3.0",
 		"bump":"minor",
-		"deterministic_floor":"minor",
+		"deterministic_floor":"patch",
 		"reason":"The release adds reporting.",
 		"evidence_sha256":"`+strings.Repeat("0", 64)+`"
 	}`, replaceDigest(output))
-	require.Equal(t, 1, client.calls)
+	require.Equal(t, 2, client.calls)
 	require.Contains(t, executor.calls, "rev-parse --verify v1.2.3^{commit}")
 	require.Contains(t, executor.calls, "merge-base --is-ancestor base123 abc123")
 	require.Contains(t, executor.calls, "log --pretty=format:%s%n%b%x1e base123..abc123")
@@ -77,7 +77,7 @@ func TestNextCommandExcludesRetiredTags(t *testing.T) {
 		"diff --unified=3 base123..abc123":               "diff --git a/report.go b/report.go\n",
 		"show abc123:CHANGELOG.md":                       "# Changelog\n\n## [Unreleased]\n\n- Fixed reports.\n",
 	}}
-	client := &nextChatClient{response: `{"bump":"patch","reason":"The release fixes reporting."}`}
+	client := &nextChatClient{response: `{"impact":"compatible","public_contract":"CLI reporting","reason":"The release fixes reporting."}`}
 	builder := nextTestBuilder(executor, client, []byte("schema_version: 1\nscheme: semver\n"))
 
 	output := executeNextCommand(t, builder, "--format", "json", "--exclude-tag", "v2.0.0")
@@ -86,11 +86,11 @@ func TestNextCommandExcludesRetiredTags(t *testing.T) {
 	require.Contains(t, output, `"next_version":"v1.2.4"`)
 }
 
-func TestNextCommandSelectsRootGoInstallTransportVersion(t *testing.T) {
+func TestNextCommandIgnoresInvalidHistoricalMajorTags(t *testing.T) {
 	executor := &nextGitExecutor{responses: map[string]string{
 		"rev-parse --show-toplevel":                         "/repo\n",
 		"rev-parse HEAD":                                    "source600\n",
-		"rev-parse --verify v6.0.0^{commit}":                "base600\n",
+		"rev-parse --verify v1.1.25^{commit}":               "base600\n",
 		"merge-base --is-ancestor base600 source600":        "",
 		"tag --list":                                        "v1.1.25\nv6.0.0\n",
 		"log --pretty=format:%s%n%b%x1e base600..source600": "fix: repair root installation\n\x1e",
@@ -98,13 +98,38 @@ func TestNextCommandSelectsRootGoInstallTransportVersion(t *testing.T) {
 		"diff --unified=3 base600..source600":               "diff --git a/go.mod b/go.mod\n",
 		"show source600:CHANGELOG.md":                       "# Changelog\n\n## [Unreleased]\n\n- Fixed root installation.\n",
 	}}
-	client := &nextChatClient{response: `{"bump":"patch","reason":"The release repairs root installation."}`}
-	builder := nextTestBuilder(executor, client, []byte("schema_version: 1\nscheme: semver\ngo_install:\n  module_path: github.com/tyemirov/gix\n  product_version_file: internal/version/product-version.txt\n"))
+	client := &nextChatClient{response: `{"impact":"compatible","public_contract":"root Go installation","reason":"The release repairs root installation."}`}
+	builder := nextTestBuilder(executor, client, []byte("schema_version: 1\nscheme: semver\nsemver:\n  fixed_major: 1\n"))
 
 	output := executeNextCommand(t, builder, "--format", "json")
 
-	require.Contains(t, output, `"next_version":"v6.0.1"`)
-	require.Contains(t, output, `"go_install":{"module_path":"github.com/tyemirov/gix","version":"v1.1.26","product_version_file":"internal/version/product-version.txt"}`)
+	require.Contains(t, output, `"contract":"mprlab.version-decision/v1"`)
+	require.Contains(t, output, `"previous_version":"v1.1.25"`)
+	require.Contains(t, output, `"next_version":"v1.1.26"`)
+	require.NotContains(t, output, "fixed_major")
+	require.NotContains(t, output, "go_install")
+}
+
+func TestNextCommandMapsFixedMajorIncompatibilityToMinor(t *testing.T) {
+	executor := &nextGitExecutor{responses: map[string]string{
+		"rev-parse --show-toplevel":                         "/repo\n",
+		"rev-parse HEAD":                                    "source601\n",
+		"rev-parse --verify v1.1.26^{commit}":               "base601\n",
+		"merge-base --is-ancestor base601 source601":        "",
+		"tag --list":                                        "v1.1.26\nv7.0.1\n",
+		"log --pretty=format:%s%n%b%x1e base601..source601": "change the release contract\n\x1e",
+		"diff --stat base601..source601":                    "README.md | 2 +-\n",
+		"diff --no-ext-diff --unified=1 base601..source601": "diff --git a/README.md b/README.md\n",
+		"show source601:CHANGELOG.md":                       "# Changelog\n\n## [Unreleased]\n\n- Changed the release contract.\n",
+	}}
+	client := &nextChatClient{response: `{"impact":"incompatible","public_contract":"Gix release versions","reason":"The release changes the Gix version contract."}`}
+	builder := nextTestBuilder(executor, client, []byte("schema_version: 1\nscheme: semver\nsemver:\n  fixed_major: 1\n"))
+
+	output := executeNextCommand(t, builder, "--format", "json")
+
+	require.Contains(t, output, `"previous_version":"v1.1.26"`)
+	require.Contains(t, output, `"next_version":"v1.2.0"`)
+	require.Contains(t, output, `"bump":"minor"`)
 }
 
 func TestNextCommandSelectsCalVerWithoutLLM(t *testing.T) {
@@ -138,12 +163,6 @@ func nextTestBuilder(executor *nextGitExecutor, client *nextChatClient, configur
 			return "/repo", nil
 		},
 		ReadFile: func(path string) ([]byte, error) {
-			if strings.HasSuffix(path, "go.mod") {
-				return []byte("module github.com/tyemirov/gix\n"), nil
-			}
-			if strings.HasSuffix(path, "product-version.txt") {
-				return []byte("v6.0.0\n"), nil
-			}
 			return configuration, nil
 		},
 		ConfigurationProvider: func() NextConfiguration {
