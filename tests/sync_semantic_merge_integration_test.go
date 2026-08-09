@@ -45,8 +45,8 @@ func TestSyncAuditsLargeAdditiveIssueAndChangelogConflictsBySemanticRegion(testI
 
 	baseIssues := issuePrefix + stableIssueSuffix
 	oursIssues := issuePrefix + oursIssueBlock + stableIssueSuffix
-	theirsIssues := issuePrefix + theirsIssueBlock + stableIssueSuffix
-	expectedIssues := issuePrefix + oursIssueBlock + theirsIssueBlock + stableIssueSuffix
+	theirsIssues := issuePrefix + theirsIssueBlock + stableIssueSuffix + "\n"
+	expectedIssues := issuePrefix + oursIssueBlock + theirsIssueBlock + stableIssueSuffix + "\n"
 	baseChangelog := changelogPrefix + changelogSuffix
 	oursChangelog := changelogPrefix + oursChangelogBlock + changelogSuffix
 	theirsChangelog := changelogPrefix + theirsChangelogBlock + changelogSuffix
@@ -183,6 +183,7 @@ operations:
 	require.Contains(testInstance, output, "derived .mprlab/ISSUES.md conflict region 1/1 candidate using concurrent insertions; requesting semantic audit")
 	require.Contains(testInstance, output, "derived CHANGELOG.md conflict region 1/1 candidate using concurrent insertions; requesting semantic audit")
 	require.Equal(testInstance, 2, strings.Count(output, "semantic audit approved"))
+	require.Contains(testInstance, output, "accepted inherited whitespace for .mprlab/ISSUES.md from incoming parent origin/"+baseBranchName)
 	require.Contains(testInstance, output, "merge conflict resolution completed")
 	require.NotContains(testInstance, output, "AI_MERGE_ROLLBACK")
 	require.NotContains(testInstance, output, "AI_MERGE_HANDOFF")
