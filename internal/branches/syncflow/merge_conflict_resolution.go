@@ -52,6 +52,8 @@ const (
 	mergeConflictResolutionStageTemplate        = "stage resolved merge file %s: %w"
 	mergeConflictResolutionDeleteTemplate       = "stage deleted merge file %s: %w"
 	mergeConflictResolutionIndexCheckTemplate   = "validate resolved merge index: %w"
+	mergeConflictResolutionIndexPathsTemplate   = "inspect resolved merge index paths: %w"
+	mergeConflictResolutionParentCheckTemplate  = "validate resolved merge path %s against incoming parent %s: %w"
 	mergeConflictResolutionCommitTemplate       = "complete resolved merge commit: %w"
 	mergeConflictResolutionPathTemplate         = "invalid conflicted path %q"
 	mergeConflictResolutionTimeoutTemplate      = "AI merge resolution timed out after %s"
@@ -243,8 +245,8 @@ func (service mergeConflictResolutionService) Resolve(ctx context.Context, optio
 	if len(remainingPaths) > 0 {
 		return true, fmt.Errorf("unresolved merge conflicts remain: %s", strings.Join(remainingPaths, ", "))
 	}
-	if indexCheckErr := executeGit(ctx, service.executor, service.repositoryPath, []string{gitDiffSubcommandConstant, gitDiffCachedFlagConstant, gitDiffCheckFlagConstant}); indexCheckErr != nil {
-		return true, service.normalizeResolutionError(ctx, fmt.Errorf(mergeConflictResolutionIndexCheckTemplate, indexCheckErr))
+	if indexCheckErr := service.validateResolvedMergeIndex(ctx, options.SourceReference); indexCheckErr != nil {
+		return true, service.normalizeResolutionError(ctx, indexCheckErr)
 	}
 
 	if options.Completion == mergeConflictCompletionPreserveIndex {
@@ -263,6 +265,88 @@ func (service mergeConflictResolutionService) Resolve(ctx context.Context, optio
 		"paths": strings.Join(paths, ", "),
 	})
 	return true, nil
+}
+
+func (service mergeConflictResolutionService) validateResolvedMergeIndex(ctx context.Context, sourceReference string) error {
+	indexCheckErr := executeGit(ctx, service.executor, service.repositoryPath, []string{
+		gitDiffSubcommandConstant,
+		gitDiffCachedFlagConstant,
+		gitDiffCheckFlagConstant,
+	})
+	if indexCheckErr == nil {
+		return nil
+	}
+
+	stagedPathsResult, stagedPathsErr := service.executor.ExecuteGit(ctx, execshell.CommandDetails{
+		Arguments: []string{
+			gitDiffSubcommandConstant,
+			gitDiffCachedFlagConstant,
+			gitDiffNameOnlyFlagConstant,
+			gitDiffNoRenamesFlagConstant,
+			gitNullOutputFlagConstant,
+			gitPathspecSeparatorConstant,
+		},
+		WorkingDirectory: service.repositoryPath,
+	})
+	if stagedPathsErr != nil {
+		return fmt.Errorf(
+			mergeConflictResolutionIndexCheckTemplate,
+			errors.Join(indexCheckErr, fmt.Errorf(mergeConflictResolutionIndexPathsTemplate, stagedPathsErr)),
+		)
+	}
+	stagedPaths, stagedPathsParseErr := parseStrictSyncNULTerminatedPaths(stagedPathsResult.StandardOutput)
+	if stagedPathsParseErr != nil {
+		return fmt.Errorf(
+			mergeConflictResolutionIndexCheckTemplate,
+			errors.Join(indexCheckErr, fmt.Errorf(mergeConflictResolutionIndexPathsTemplate, stagedPathsParseErr)),
+		)
+	}
+	if len(stagedPaths) == 0 {
+		return fmt.Errorf(mergeConflictResolutionIndexCheckTemplate, indexCheckErr)
+	}
+
+	for pathIndex := range stagedPaths {
+		path := stagedPaths[pathIndex]
+		currentParentCheckErr := executeGit(ctx, service.executor, service.repositoryPath, []string{
+			gitDiffSubcommandConstant,
+			gitDiffCachedFlagConstant,
+			gitDiffCheckFlagConstant,
+			gitPathspecSeparatorConstant,
+			path,
+		})
+		if currentParentCheckErr == nil {
+			continue
+		}
+
+		incomingParentCheckErr := executeGit(ctx, service.executor, service.repositoryPath, []string{
+			gitDiffSubcommandConstant,
+			gitDiffCachedFlagConstant,
+			gitDiffCheckFlagConstant,
+			strings.TrimSpace(sourceReference),
+			gitPathspecSeparatorConstant,
+			path,
+		})
+		if incomingParentCheckErr != nil {
+			return fmt.Errorf(
+				mergeConflictResolutionIndexCheckTemplate,
+				errors.Join(
+					currentParentCheckErr,
+					fmt.Errorf(mergeConflictResolutionParentCheckTemplate, path, strings.TrimSpace(sourceReference), incomingParentCheckErr),
+				),
+			)
+		}
+
+		service.report(
+			shared.EventLevelInfo,
+			shared.EventCodeAIMergeValidation,
+			fmt.Sprintf("accepted inherited whitespace for %s from incoming parent %s", path, strings.TrimSpace(sourceReference)),
+			map[string]string{
+				"path":             path,
+				"source_reference": strings.TrimSpace(sourceReference),
+			},
+		)
+	}
+	return nil
 }
 
 func (service mergeConflictResolutionService) normalizeResolutionError(ctx context.Context, resolutionErr error) error {
