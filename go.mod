@@ -2,6 +2,11 @@ module github.com/tyemirov/gix
 
 go 1.25.12
 
+retract (
+	[v1.0.0, v1.1.26] // Superseded by the version reset at v1.2.0.
+	[v0.0.0-0, v0.8.1] // Superseded by the fixed-major version contract.
+)
+
 require (
 	github.com/chromedp/cdproto v0.0.0-20250724212937-08a3db8b4327
 	github.com/chromedp/chromedp v0.14.2
