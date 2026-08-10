@@ -142,6 +142,11 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.3.1] - 2026-08-10
+
+- Merge pull request #429 from tyemirov/bugfix/B062-scope-release-changelog-evidence
+- fix(release): scope changelog evidence to selected range
+
 ## [v1.3.0] - 2026-08-10
 
 - Merge pull request #428 from tyemirov/bugfix/B061-consistent-audit-branch-snapshot
