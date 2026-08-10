@@ -529,6 +529,25 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Audit now compares relative and absolute roots through canonical paths. It keeps the containing parent and removes redundant nested repository roots.
   The nested checkout retains `.codex-deps/llm-proxy`, while the primary checkout retains `llm-proxy`.
   Focused tests, `make build`, `make ci`, the live fleet audit, and `git diff --check` passed on 2026-08-10.
+- [x] [B062] (P0) Keep compatible bugfix releases on the patch line.
+  Reported on 2026-08-10 after the B061 audit repair was published as `v1.3.0` instead of `v1.2.1`.
+  Expected result:
+  A compatible Gix bugfix increments the patch version under the fixed `v1` policy.
+  Actual result:
+  SemVer evidence included historical feature entries that were already present at `v1.2.0`, so the model selected a minor release for the B061-only range.
+  Requirements:
+  - Collect changelog evidence from the exact boundary-to-source range.
+  - Exclude unchanged historical Unreleased entries from every model request.
+  - Preserve complete bounded evidence for new changelog changes.
+  - Select a patch for the B061-shaped compatible audit repair.
+  Validation:
+  - Reproduce the stale historical feature entry with a new compatible bugfix entry.
+  - Verify model requests contain the new bugfix and omit the historical feature.
+  - Run focused tests, `make ci`, and `git diff --check`.
+  Resolution:
+  SemVer selection now excludes `CHANGELOG.md` from the general diff excerpt and supplies one no-context changelog diff for the exact boundary-to-source range.
+  The compiled CLI regression reproduces the `v1.2.0` historical feature entry and the B061-compatible audit fix, verifies the old feature is absent from both model requests, and selects `v1.2.1`.
+  `make format`, `make test-fast`, `make test-slow`, `make ci`, and `git diff --check` passed on 2026-08-10.
 
 
 

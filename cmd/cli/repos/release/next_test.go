@@ -16,15 +16,15 @@ import (
 
 func TestNextCommandSelectsEstablishedSemVer(t *testing.T) {
 	executor := &nextGitExecutor{responses: map[string]string{
-		"rev-parse --show-toplevel":                      "/repo\n",
-		"rev-parse HEAD":                                 "abc123\n",
-		"rev-parse --verify v1.2.3^{commit}":             "base123\n",
-		"merge-base --is-ancestor base123 abc123":        "",
-		"tag --list":                                     "v1.2.3\nv1.9.0-rc.1\n",
-		"log --pretty=format:%s%n%b%x1e base123..abc123": "feat: add reports\n\x1e",
-		"diff --stat base123..abc123":                    " report.go | 4 ++++\n",
-		"diff --unified=3 base123..abc123":               "diff --git a/report.go b/report.go\n",
-		"show abc123:CHANGELOG.md":                       "# Changelog\n\n## [Unreleased]\n\n- Added reports.\n",
+		"rev-parse --show-toplevel":                                    "/repo\n",
+		"rev-parse HEAD":                                               "abc123\n",
+		"rev-parse --verify v1.2.3^{commit}":                           "base123\n",
+		"merge-base --is-ancestor base123 abc123":                      "",
+		"tag --list":                                                   "v1.2.3\nv1.9.0-rc.1\n",
+		"log --pretty=format:%s%n%b%x1e base123..abc123":               "feat: add reports\n\x1e",
+		"diff --stat base123..abc123":                                  " report.go | 4 ++++\n",
+		"diff --unified=3 base123..abc123 -- . :(exclude)CHANGELOG.md": "diff --git a/report.go b/report.go\n",
+		"diff --unified=0 base123..abc123 -- CHANGELOG.md":             "@@ -4,0 +5 @@\n+- Added reports.\n",
 	}}
 	client := &nextChatClient{response: `{"impact":"additive","public_contract":"CLI reporting","reason":"The release adds reporting."}`}
 	builder := nextTestBuilder(executor, client, []byte("schema_version: 1\nscheme: semver\n"))
@@ -67,15 +67,15 @@ func TestNextCommandStartsSemVerWithoutLLM(t *testing.T) {
 
 func TestNextCommandExcludesRetiredTags(t *testing.T) {
 	executor := &nextGitExecutor{responses: map[string]string{
-		"rev-parse --show-toplevel":                      "/repo\n",
-		"rev-parse HEAD":                                 "abc123\n",
-		"rev-parse --verify v1.2.3^{commit}":             "base123\n",
-		"merge-base --is-ancestor base123 abc123":        "",
-		"tag --list":                                     "v1.2.3\nv2.0.0\n",
-		"log --pretty=format:%s%n%b%x1e base123..abc123": "fix: preserve behavior\n\x1e",
-		"diff --stat base123..abc123":                    " report.go | 1 +\n",
-		"diff --unified=3 base123..abc123":               "diff --git a/report.go b/report.go\n",
-		"show abc123:CHANGELOG.md":                       "# Changelog\n\n## [Unreleased]\n\n- Fixed reports.\n",
+		"rev-parse --show-toplevel":                                    "/repo\n",
+		"rev-parse HEAD":                                               "abc123\n",
+		"rev-parse --verify v1.2.3^{commit}":                           "base123\n",
+		"merge-base --is-ancestor base123 abc123":                      "",
+		"tag --list":                                                   "v1.2.3\nv2.0.0\n",
+		"log --pretty=format:%s%n%b%x1e base123..abc123":               "fix: preserve behavior\n\x1e",
+		"diff --stat base123..abc123":                                  " report.go | 1 +\n",
+		"diff --unified=3 base123..abc123 -- . :(exclude)CHANGELOG.md": "diff --git a/report.go b/report.go\n",
+		"diff --unified=0 base123..abc123 -- CHANGELOG.md":             "@@ -4,0 +5 @@\n+- Fixed reports.\n",
 	}}
 	client := &nextChatClient{response: `{"impact":"compatible","public_contract":"CLI reporting","reason":"The release fixes reporting."}`}
 	builder := nextTestBuilder(executor, client, []byte("schema_version: 1\nscheme: semver\n"))
@@ -88,15 +88,15 @@ func TestNextCommandExcludesRetiredTags(t *testing.T) {
 
 func TestNextCommandIgnoresInvalidHistoricalMajorTags(t *testing.T) {
 	executor := &nextGitExecutor{responses: map[string]string{
-		"rev-parse --show-toplevel":                         "/repo\n",
-		"rev-parse HEAD":                                    "source600\n",
-		"rev-parse --verify v1.1.25^{commit}":               "base600\n",
-		"merge-base --is-ancestor base600 source600":        "",
-		"tag --list":                                        "v1.1.25\nv6.0.0\n",
-		"log --pretty=format:%s%n%b%x1e base600..source600": "fix: repair root installation\n\x1e",
-		"diff --stat base600..source600":                    " go.mod | 2 +-\n",
-		"diff --unified=3 base600..source600":               "diff --git a/go.mod b/go.mod\n",
-		"show source600:CHANGELOG.md":                       "# Changelog\n\n## [Unreleased]\n\n- Fixed root installation.\n",
+		"rev-parse --show-toplevel":                                       "/repo\n",
+		"rev-parse HEAD":                                                  "source600\n",
+		"rev-parse --verify v1.1.25^{commit}":                             "base600\n",
+		"merge-base --is-ancestor base600 source600":                      "",
+		"tag --list":                                                      "v1.1.25\nv6.0.0\n",
+		"log --pretty=format:%s%n%b%x1e base600..source600":               "fix: repair root installation\n\x1e",
+		"diff --stat base600..source600":                                  " go.mod | 2 +-\n",
+		"diff --unified=3 base600..source600 -- . :(exclude)CHANGELOG.md": "diff --git a/go.mod b/go.mod\n",
+		"diff --unified=0 base600..source600 -- CHANGELOG.md":             "@@ -4,0 +5 @@\n+- Fixed root installation.\n",
 	}}
 	client := &nextChatClient{response: `{"impact":"compatible","public_contract":"root Go installation","reason":"The release repairs root installation."}`}
 	builder := nextTestBuilder(executor, client, []byte("schema_version: 1\nscheme: semver\nsemver:\n  fixed_major: 1\n"))
@@ -112,15 +112,15 @@ func TestNextCommandIgnoresInvalidHistoricalMajorTags(t *testing.T) {
 
 func TestNextCommandMapsFixedMajorIncompatibilityToMinor(t *testing.T) {
 	executor := &nextGitExecutor{responses: map[string]string{
-		"rev-parse --show-toplevel":                         "/repo\n",
-		"rev-parse HEAD":                                    "source601\n",
-		"rev-parse --verify v1.1.26^{commit}":               "base601\n",
-		"merge-base --is-ancestor base601 source601":        "",
-		"tag --list":                                        "v1.1.26\nv7.0.1\n",
-		"log --pretty=format:%s%n%b%x1e base601..source601": "change the release contract\n\x1e",
-		"diff --stat base601..source601":                    "README.md | 2 +-\n",
-		"diff --no-ext-diff --unified=1 base601..source601": "diff --git a/README.md b/README.md\n",
-		"show source601:CHANGELOG.md":                       "# Changelog\n\n## [Unreleased]\n\n- Changed the release contract.\n",
+		"rev-parse --show-toplevel":                                       "/repo\n",
+		"rev-parse HEAD":                                                  "source601\n",
+		"rev-parse --verify v1.1.26^{commit}":                             "base601\n",
+		"merge-base --is-ancestor base601 source601":                      "",
+		"tag --list":                                                      "v1.1.26\nv7.0.1\n",
+		"log --pretty=format:%s%n%b%x1e base601..source601":               "change the release contract\n\x1e",
+		"diff --stat base601..source601":                                  "README.md | 2 +-\n",
+		"diff --unified=3 base601..source601 -- . :(exclude)CHANGELOG.md": "diff --git a/README.md b/README.md\n",
+		"diff --unified=0 base601..source601 -- CHANGELOG.md":             "@@ -4,0 +5 @@\n+- Changed the release contract.\n",
 	}}
 	client := &nextChatClient{response: `{"impact":"incompatible","public_contract":"Gix release versions","reason":"The release changes the Gix version contract."}`}
 	builder := nextTestBuilder(executor, client, []byte("schema_version: 1\nscheme: semver\nsemver:\n  fixed_major: 1\n"))

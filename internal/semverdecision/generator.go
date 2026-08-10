@@ -70,10 +70,10 @@ type decisionPayload struct {
 }
 
 type repositoryEvidence struct {
-	commitLog       string
-	diffSummary     string
-	diffExcerpt     string
-	unreleasedNotes string
+	commitLog        string
+	diffSummary      string
+	diffExcerpt      string
+	changelogChanges string
 }
 
 // Generate asks the configured LLM for candidate and audit decisions for each
@@ -187,8 +187,8 @@ func (generator Generator) BuildRequests(ctx context.Context, options Options) (
 				"Diff summary:",
 				fallbackText(packet.diffSummary, "No diff summary in this evidence packet."),
 				"",
-				"Unreleased changelog notes:",
-				fallbackText(packet.unreleasedNotes, "No Unreleased changelog notes in this evidence packet."),
+				"Changelog changes in the release range:",
+				fallbackText(packet.changelogChanges, "No changelog changes in this evidence packet."),
 				"",
 				"Diff excerpt:",
 				fallbackText(packet.diffExcerpt, "The bounded diff excerpt is in evidence packet 1."),
@@ -217,13 +217,17 @@ func (generator Generator) collectEvidence(ctx context.Context, repositoryPath s
 	if summaryError != nil {
 		return repositoryEvidence{}, fmt.Errorf("semver decision diff summary: %w", summaryError)
 	}
-	diffExcerpt, diffError := generator.runGit(ctx, repositoryPath, []string{"diff", "--unified=3", rangeExpression})
+	diffExcerpt, diffError := generator.runGit(ctx, repositoryPath, []string{
+		"diff", "--unified=3", rangeExpression, "--", ".", ":(exclude)CHANGELOG.md",
+	})
 	if diffError != nil {
 		return repositoryEvidence{}, fmt.Errorf("semver decision diff: %w", diffError)
 	}
-	changelog, changelogError := generator.runGit(ctx, repositoryPath, []string{"show", source + ":CHANGELOG.md"})
+	changelogChanges, changelogError := generator.runGit(ctx, repositoryPath, []string{
+		"diff", "--unified=0", rangeExpression, "--", "CHANGELOG.md",
+	})
 	if changelogError != nil {
-		return repositoryEvidence{}, fmt.Errorf("semver decision changelog: %w", changelogError)
+		return repositoryEvidence{}, fmt.Errorf("semver decision changelog changes: %w", changelogError)
 	}
 
 	if strings.TrimSpace(commitLog) == "" || strings.TrimSpace(diffSummary) == "" {
@@ -231,10 +235,10 @@ func (generator Generator) collectEvidence(ctx context.Context, repositoryPath s
 	}
 
 	return repositoryEvidence{
-		commitLog:       commitLog,
-		diffSummary:     diffSummary,
-		diffExcerpt:     truncateText(diffExcerpt, diffCharacterLimit),
-		unreleasedNotes: extractUnreleasedNotes(changelog),
+		commitLog:        commitLog,
+		diffSummary:      diffSummary,
+		diffExcerpt:      truncateText(diffExcerpt, diffCharacterLimit),
+		changelogChanges: changelogChanges,
 	}, nil
 }
 
@@ -358,45 +362,23 @@ func requestDigest(requests []llm.ChatRequest) (string, error) {
 	return fmt.Sprintf("%x", sha256.Sum256(encoded)), nil
 }
 
-func extractUnreleasedNotes(changelog string) string {
-	lines := strings.Split(changelog, "\n")
-	start := -1
-	for index, line := range lines {
-		if strings.TrimSpace(line) == "## [Unreleased]" {
-			start = index + 1
-			break
-		}
-	}
-	if start < 0 {
-		return ""
-	}
-	end := len(lines)
-	for index := start; index < len(lines); index++ {
-		if strings.HasPrefix(strings.TrimSpace(lines[index]), "## ") {
-			end = index
-			break
-		}
-	}
-	return strings.TrimSpace(strings.Join(lines[start:end], "\n"))
-}
-
 type evidencePacket struct {
-	commitLog       string
-	diffSummary     string
-	unreleasedNotes string
-	diffExcerpt     string
+	commitLog        string
+	diffSummary      string
+	changelogChanges string
+	diffExcerpt      string
 }
 
 func buildEvidencePackets(evidence repositoryEvidence) []evidencePacket {
 	commitChunks := chunkEvidence(evidence.commitLog, commitLogCharacterLimit, "\x1e")
 	diffSummaryChunks := chunkEvidence(evidence.diffSummary, diffSummaryCharacterLimit, "\n")
-	unreleasedChunks := chunkEvidence(evidence.unreleasedNotes, diffSummaryCharacterLimit, "\n")
-	packetCount := maxInt(1, len(commitChunks), len(diffSummaryChunks), len(unreleasedChunks))
+	changelogChunks := chunkEvidence(evidence.changelogChanges, diffSummaryCharacterLimit, "\n")
+	packetCount := maxInt(1, len(commitChunks), len(diffSummaryChunks), len(changelogChunks))
 	packets := make([]evidencePacket, packetCount)
 	for packetIndex := range packets {
 		packets[packetIndex].commitLog = chunkAt(commitChunks, packetIndex)
 		packets[packetIndex].diffSummary = chunkAt(diffSummaryChunks, packetIndex)
-		packets[packetIndex].unreleasedNotes = chunkAt(unreleasedChunks, packetIndex)
+		packets[packetIndex].changelogChanges = chunkAt(changelogChunks, packetIndex)
 		if packetIndex == 0 {
 			packets[packetIndex].diffExcerpt = evidence.diffExcerpt
 		}
