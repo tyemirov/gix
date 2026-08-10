@@ -3,6 +3,7 @@ package workflow
 import (
 	"bytes"
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -140,4 +141,18 @@ func TestHandleAuditReportActionFallsBackToStateRoots(testInstance *testing.T) {
 	require.NoError(testInstance, executionError)
 	require.Len(testInstance, discoverer.recordedRoots, 1)
 	require.Equal(testInstance, []string{stateRoot}, discoverer.recordedRoots[0])
+}
+
+func TestCollectAuditRootsPreservesContainingRelativeRoot(testInstance *testing.T) {
+	workingDirectory, workingDirectoryError := os.Getwd()
+	require.NoError(testInstance, workingDirectoryError)
+
+	state := &State{
+		Roots: []string{"."},
+		Repositories: []*RepositoryState{
+			{Path: filepath.Join(workingDirectory, "nested", "llm-proxy")},
+		},
+	}
+
+	require.Equal(testInstance, []string{"."}, collectAuditRoots(state, nil))
 }

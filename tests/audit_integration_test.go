@@ -360,6 +360,62 @@ func TestAuditRunCommandIntegration(testInstance *testing.T) {
 	require.Contains(testInstance, filterStructuredOutput(invalidFormatOutput), "unsupported audit report format \"json\"")
 }
 
+func TestAuditDistinguishesDetachedNestedWorktreeFromPrimaryCheckout(testInstance *testing.T) {
+	workingDirectory, workingDirectoryError := os.Getwd()
+	require.NoError(testInstance, workingDirectoryError)
+	repositoryRoot := filepath.Dir(workingDirectory)
+
+	auditRoot := testInstance.TempDir()
+	primaryRepositoryPath := createGitRepository(testInstance, gitRepositoryOptions{
+		Path:          filepath.Join(auditRoot, "llm-proxy"),
+		RemoteURL:     auditIntegrationOriginURL,
+		InitialBranch: "master",
+	})
+	configureGitIdentity(testInstance, primaryRepositoryPath)
+	require.NoError(testInstance, os.WriteFile(filepath.Join(primaryRepositoryPath, "README.md"), []byte("# fixture\n"), 0o644))
+	runGit(testInstance, primaryRepositoryPath, "add", "README.md")
+	runGit(testInstance, primaryRepositoryPath, "commit", "-m", "test: initialize audit fixture")
+
+	detachedWorktreePath := filepath.Join(auditRoot, ".codex-deps", "llm-proxy")
+	runGit(testInstance, primaryRepositoryPath, "worktree", "add", "--detach", detachedWorktreePath, "HEAD")
+
+	pathWithStub := buildStubbedExecutablePath(testInstance, auditIntegrationStubExecutableName, auditIntegrationStubScript)
+	auditOutput := runIntegrationCommand(
+		testInstance,
+		repositoryRoot,
+		integrationCommandOptions{
+			PathVariable: pathWithStub,
+			EnvironmentOverrides: map[string]string{
+				auditIntegrationColumnsEnvironmentVariable: auditIntegrationDisabledColumnsWidth,
+			},
+		},
+		auditIntegrationTimeout,
+		[]string{
+			auditIntegrationRunSubcommand,
+			auditIntegrationModulePathConstant,
+			auditIntegrationLogLevelFlag,
+			auditIntegrationErrorLevel,
+			auditIntegrationAuditCommandName,
+			auditIntegrationRootFlag,
+			auditRoot,
+			auditIntegrationFormatFlag,
+			"csv",
+		},
+	)
+
+	filteredOutput := filterStructuredOutput(auditOutput)
+	require.Contains(
+		testInstance,
+		filteredOutput,
+		".codex-deps/llm-proxy,canonical/example,configured,no,main,DETACHED,n/a,ssh,no,no,",
+	)
+	require.Contains(
+		testInstance,
+		filteredOutput,
+		"llm-proxy,canonical/example,configured,no,main,master,n/a,ssh,no,no,",
+	)
+}
+
 func requireAuditTableFitsTerminal(testInstance *testing.T, table string, terminalWidth int) {
 	testInstance.Helper()
 	for _, line := range strings.Split(strings.TrimSpace(table), "\n") {
