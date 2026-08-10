@@ -140,6 +140,11 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.3.0] - 2026-08-10
+
+- Merge pull request #428 from tyemirov/bugfix/B061-consistent-audit-branch-snapshot
+- fix(audit): preserve nested checkout folder identity
+
 ## [v1.2.0] - 2026-08-09
 
 - Merge pull request #426 from tyemirov/tyemirov/improvement/I011-fixed-major-versioning
