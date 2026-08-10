@@ -511,6 +511,24 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Major and minor results must name the exact supported public contract.
   Regression coverage includes internal feature labels, breaking markers, and the repaired root Go installation route.
   Focused tests, `make ci`, Governor checks, changed-line language review, and `git diff --check` passed on 2026-08-09.
+- [x] [B061] (P1) Distinguish detached linked checkouts in audit reports.
+  Reported on 2026-08-10.
+  Observation:
+  - The primary `llm-proxy` checkout is on `master`.
+  - The registered `.codex-deps/llm-proxy` checkout is detached.
+  - The audit labels both checkouts as `llm-proxy`, so the detached row appears to describe the primary checkout.
+  Requirements:
+  - Keep a parent audit root when it contains discovered repository paths.
+  - Use the relative checkout path to identify each nested linked checkout.
+  - Preserve current paths for repositories that moved outside their original roots.
+  - Report the actual branch state for each checkout.
+  Validation:
+  - Add compiled CLI coverage for an attached primary checkout and a detached nested linked checkout with the same folder name.
+  - Run focused tests, `make ci`, and `git diff --check`.
+  Resolution:
+  Audit now compares relative and absolute roots through canonical paths. It keeps the containing parent and removes redundant nested repository roots.
+  The nested checkout retains `.codex-deps/llm-proxy`, while the primary checkout retains `llm-proxy`.
+  Focused tests, `make build`, `make ci`, the live fleet audit, and `git diff --check` passed on 2026-08-10.
 
 
 

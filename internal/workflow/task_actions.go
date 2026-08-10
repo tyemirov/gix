@@ -455,8 +455,17 @@ func collectAuditRoots(state *State, repository *RepositoryState) []string {
 				continue
 			}
 
+			absoluteRoot, rootError := filepath.Abs(sanitizedRoot)
+			if rootError != nil {
+				continue
+			}
+
 			for _, repositoryPath := range repositoryPaths {
-				relative, relativeError := filepath.Rel(sanitizedRoot, repositoryPath)
+				absoluteRepositoryPath, repositoryPathError := filepath.Abs(repositoryPath)
+				if repositoryPathError != nil {
+					continue
+				}
+				relative, relativeError := filepath.Rel(absoluteRoot, absoluteRepositoryPath)
 				if relativeError != nil {
 					continue
 				}
@@ -472,7 +481,7 @@ func collectAuditRoots(state *State, repository *RepositoryState) []string {
 		appendRoot(repository.Path)
 	}
 
-	return roots
+	return audit.CommandConfiguration{Roots: roots}.Sanitize().Roots
 }
 
 func handleHistoryPurgeAction(ctx context.Context, environment *Environment, repository *RepositoryState, parameters map[string]any) error {

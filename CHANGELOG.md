@@ -25,6 +25,7 @@
 - Updated the LLM Proxy Go client from v0.2.21 to v0.2.46, moved Gix's configured proxy work budget to the current per-request timeout header, and raised the Go module floor to 1.25.12 with the dependency graph required by that client.
 
 ### Bug Fixes 🐛
+- Preserved containing audit roots, so nested linked checkouts keep relative paths and cannot share a folder label with primary checkouts.
 - Made SemVer selection depend on supported public contract effects instead of commit labels or internal implementation changes.
 - Made each Gix release use one version in its decision, tag, receipt, manifest, binary, and GitHub Release.
 - Retracted the superseded root-module versions through `v1.1.26` and excluded other major tags from the Gix release boundary.
@@ -73,6 +74,7 @@
 - Kept the syncflow builder description as the canonical text shown by `gix sync --help`.
 
 ### Testing 🧪
+- Added compiled CLI coverage for an attached primary checkout and a detached nested linked checkout with the same folder name.
 - Added compiled root-module installation coverage for the single authoritative Gix version.
 - Added public release coverage for standard SemVer, the Gix fixed-major boundary, one-tag sealed receipts, rollback, publication, and remote tag verification.
 - Added public Make and release-script coverage for zero-argument lifecycle targets, autonomous patch, minor, and major SemVer decisions, fail-closed decision errors, initial SemVer, timestamp-derived CalVer, and exact-tag reuse.
