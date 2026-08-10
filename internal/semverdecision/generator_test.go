@@ -96,11 +96,52 @@ func TestGenerateDoesNotTreatConventionalCommitLabelsAsPublicContractEvidence(t 
 	}
 }
 
+func TestGenerateExcludesHistoricalUnreleasedEntriesFromChangelogEvidence(t *testing.T) {
+	executor := newDecisionGitExecutor("fix(audit): preserve nested checkout folder identity\n\x1e")
+	executor.responses["show source456:CHANGELOG.md"] = strings.Join([]string{
+		"# Changelog",
+		"",
+		"## [Unreleased]",
+		"",
+		"### Features",
+		"- Added historical public feature.",
+		"",
+		"### Bug Fixes",
+		"- Preserved containing audit roots for nested linked checkouts.",
+	}, "\n")
+	executor.responses["diff --unified=0 "+testRange+" -- CHANGELOG.md"] = strings.Join([]string{
+		"diff --git a/CHANGELOG.md b/CHANGELOG.md",
+		"@@ -27,0 +28 @@",
+		"+- Preserved containing audit roots for nested linked checkouts.",
+	}, "\n")
+	client := &decisionChatClient{responseForRequest: func(request llm.ChatRequest) string {
+		if strings.Contains(request.Messages[1].Content, "Added historical public feature") {
+			return `{"impact":"additive","public_contract":"historical feature","reason":"The evidence includes an additive feature."}`
+		}
+		return `{"impact":"compatible","public_contract":"gix audit folder labels","reason":"The release repairs nested checkout labels."}`
+	}}
+
+	result, generateError := (Generator{GitExecutor: executor, Client: client}).Generate(context.Background(), Options{
+		RepositoryPath:  "/tmp/repo",
+		SinceReference:  "base123",
+		SourceReference: "source456",
+		BoundaryLabel:   "v1.2.0",
+		FixedMajor:      1,
+	})
+
+	require.NoError(t, generateError)
+	require.Equal(t, BumpPatch, result.Bump)
+	require.Contains(t, requestContents(client.requests), "Preserved containing audit roots")
+	require.NotContains(t, requestContents(client.requests), "Added historical public feature")
+	require.Contains(t, executor.calls, "diff --unified=0 "+testRange+" -- CHANGELOG.md")
+	require.NotContains(t, executor.calls, "show source456:CHANGELOG.md")
+}
+
 func TestGenerateAuditCorrectsModulePathImplementationCandidate(t *testing.T) {
 	executor := newDecisionGitExecutor("fix(release): restore root Go install channel\n\x1e")
 	executor.responses["diff --stat "+testRange] = " go.mod | 2 +-\n internal/version/product.go | 4 ++++\n"
-	executor.responses["diff --unified=3 "+testRange] = "diff --git a/go.mod b/go.mod\n-module example.com/tool/v5\n+module example.com/tool\n"
-	executor.responses["show source456:CHANGELOG.md"] = "# Changelog\n\n## [Unreleased]\n\n- Restored the canonical root Go installation command.\n"
+	executor.responses["diff --unified=3 "+testRange+" -- . :(exclude)CHANGELOG.md"] = "diff --git a/go.mod b/go.mod\n-module example.com/tool/v5\n+module example.com/tool\n"
+	executor.responses["diff --unified=0 "+testRange+" -- CHANGELOG.md"] = "@@ -4,0 +5 @@\n+- Restored the canonical root Go installation command.\n"
 	client := &decisionChatClient{responseForRequest: func(request llm.ChatRequest) string {
 		if strings.Contains(request.Messages[0].Content, "Independently audit") {
 			return `{"impact":"compatible","public_contract":"go install example.com/tool@latest","reason":"The release restores the canonical installation route."}`
@@ -180,7 +221,7 @@ func TestGenerateClassifiesEveryCompleteRangeEvidencePacket(t *testing.T) {
 	changelogSentinel := "- Removed the public compatibility contract."
 	executor := newDecisionGitExecutor(strings.Repeat("fix: routine maintenance\n\x1e", 1200) + commitSentinel + "\n\x1e")
 	executor.responses["diff --stat "+testRange] = strings.Repeat("internal_file.go | 1 +\n", 700) + diffSummarySentinel + "\n"
-	executor.responses["show source456:CHANGELOG.md"] = "# Changelog\n\n## [Unreleased]\n\n" + strings.Repeat("- Fixed internal behavior.\n", 700) + changelogSentinel + "\n\n## [v1.2.3]\n"
+	executor.responses["diff --unified=0 "+testRange+" -- CHANGELOG.md"] = strings.Repeat("+- Fixed internal behavior.\n", 700) + "+" + changelogSentinel + "\n"
 	client := &decisionChatClient{responseForRequest: func(request llm.ChatRequest) string {
 		if strings.Contains(request.Messages[1].Content, commitSentinel) {
 			return `{"impact":"incompatible","public_contract":"public compatibility contract","reason":"The release removes a public compatibility contract."}`
@@ -203,8 +244,8 @@ func TestGenerateClassifiesEveryCompleteRangeEvidencePacket(t *testing.T) {
 	require.Contains(t, allRequests, diffSummarySentinel)
 	require.Contains(t, allRequests, changelogSentinel)
 	require.Contains(t, executor.calls, "log --pretty=format:%s%n%b%x1e "+testRange)
-	require.Contains(t, executor.calls, "show source456:CHANGELOG.md")
-	require.NotContains(t, executor.calls, "show HEAD:CHANGELOG.md")
+	require.Contains(t, executor.calls, "diff --unified=0 "+testRange+" -- CHANGELOG.md")
+	require.NotContains(t, executor.calls, "show source456:CHANGELOG.md")
 }
 
 type decisionGitExecutor struct {
@@ -214,10 +255,10 @@ type decisionGitExecutor struct {
 
 func newDecisionGitExecutor(commitLog string) *decisionGitExecutor {
 	return &decisionGitExecutor{responses: map[string]string{
-		"log --pretty=format:%s%n%b%x1e " + testRange: commitLog,
-		"diff --stat " + testRange:                    " config.yml | 1 -\n",
-		"diff --unified=3 " + testRange:               "diff --git a/config.yml b/config.yml\n-old_key: true\n",
-		"show source456:CHANGELOG.md":                 "# Changelog\n\n## [Unreleased]\n\n- Removed the old key.\n\n## [v1.2.3]\n",
+		"log --pretty=format:%s%n%b%x1e " + testRange:                    commitLog,
+		"diff --stat " + testRange:                                       " config.yml | 1 -\n",
+		"diff --unified=3 " + testRange + " -- . :(exclude)CHANGELOG.md": "diff --git a/config.yml b/config.yml\n-old_key: true\n",
+		"diff --unified=0 " + testRange + " -- CHANGELOG.md":             "@@ -4,0 +5 @@\n+- Removed the old key.\n",
 	}}
 }
 

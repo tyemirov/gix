@@ -25,12 +25,13 @@
 - Updated the LLM Proxy Go client from v0.2.21 to v0.2.46, moved Gix's configured proxy work budget to the current per-request timeout header, and raised the Go module floor to 1.25.12 with the dependency graph required by that client.
 
 ### Bug Fixes 🐛
+- Limited SemVer changelog evidence to the selected tag-to-source range, so historical Unreleased entries cannot raise a compatible fix from patch to minor.
 - Preserved containing audit roots, so nested linked checkouts keep relative paths and cannot share a folder label with primary checkouts.
 - Made SemVer selection depend on supported public contract effects instead of commit labels or internal implementation changes.
 - Made each Gix release use one version in its decision, tag, receipt, manifest, binary, and GitHub Release.
 - Retracted the superseded root-module versions through `v1.1.26` and excluded other major tags from the Gix release boundary.
 - Made `go install github.com/tyemirov/gix@latest` install a binary that reports its authoritative module version.
-- Bound SemVer evidence to resolved source and boundary commits and classified complete commit, diff summary, and Unreleased evidence through bounded packets.
+- Bound SemVer evidence to resolved source and boundary commits and classified complete commit, diff summary, and range-scoped changelog evidence through bounded packets.
 - Required a positive top-level `llm.max_completion_tokens` value during startup and removed generated provider and command token defaults, keeping completion-token policy in `config.yml` while preserving the command-to-provider-to-global hierarchy.
 - Recovered direct OpenAI from reasoning-only empty completions by repeating the resolved configured request for one bounded recovery cycle after normal empty-response retries are exhausted, while ordinary connection failures and cancellation retain their existing behavior.
 - Made exact-tag release retries idempotent by reusing verified sealed receipts, recovering missing or incomplete receipts from matching published GitHub Release state, preserving the prior canonical receipt until a new candidate verifies completely, and rolling back release-owned changelog refs when sealing fails.
@@ -74,6 +75,7 @@
 - Kept the syncflow builder description as the canonical text shown by `gix sync --help`.
 
 ### Testing 🧪
+- Added regression coverage for a historical feature note at `v1.2.0` followed by a compatible audit fix, proving the fixed-major selector returns a patch.
 - Added compiled CLI coverage for an attached primary checkout and a detached nested linked checkout with the same folder name.
 - Added compiled root-module installation coverage for the single authoritative Gix version.
 - Added public release coverage for standard SemVer, the Gix fixed-major boundary, one-tag sealed receipts, rollback, publication, and remote tag verification.
