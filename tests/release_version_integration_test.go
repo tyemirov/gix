@@ -46,12 +46,6 @@ func TestReleaseNextKeepsHistoricalUnreleasedFeatureOutOfBugfixDecision(testInst
 		InitialBranch: "master",
 	})
 	configureGitIdentity(testInstance, repositoryPath)
-	require.NoError(testInstance, os.MkdirAll(filepath.Join(repositoryPath, ".mprlab"), 0o755))
-	require.NoError(testInstance, os.WriteFile(
-		filepath.Join(repositoryPath, ".mprlab", "release.yml"),
-		[]byte("schema_version: 1\nscheme: semver\nsemver:\n  fixed_major: 1\n"),
-		0o644,
-	))
 	baselineChangelog := strings.Join([]string{
 		"# Changelog",
 		"",
@@ -71,7 +65,7 @@ func TestReleaseNextKeepsHistoricalUnreleasedFeatureOutOfBugfixDecision(testInst
 	}, "\n")
 	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "CHANGELOG.md"), []byte(baselineChangelog), 0o644))
 	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "audit.go"), []byte("package fixture\n"), 0o644))
-	runGit(testInstance, repositoryPath, "add", ".mprlab/release.yml", "CHANGELOG.md", "audit.go")
+	runGit(testInstance, repositoryPath, "add", "CHANGELOG.md", "audit.go")
 	runGit(testInstance, repositoryPath, "commit", "-m", "feat: add historical public feature")
 	runGit(testInstance, repositoryPath, "tag", "v1.2.0")
 
@@ -107,7 +101,7 @@ workflow: []
 `, decisionServer.URL)
 	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
 
-	outputText, runError := runBinaryIntegrationCommand(
+	missingPolicyOutput, missingPolicyError := runBinaryIntegrationCommand(
 		testInstance,
 		binaryPath,
 		repositoryPath,
@@ -115,11 +109,36 @@ workflow: []
 		20*time.Second,
 		[]string{"--config", configurationPath, "release", "next", "--format", "json"},
 	)
+	require.Error(testInstance, missingPolicyError, missingPolicyOutput)
+	require.Contains(testInstance, missingPolicyOutput, "release policy must be semver or calver")
+
+	outputText, runError := runBinaryIntegrationCommand(
+		testInstance,
+		binaryPath,
+		repositoryPath,
+		map[string]string{},
+		20*time.Second,
+		[]string{"--config", configurationPath, "release", "next", "semver", "--fixed-major", "1", "--format", "json"},
+	)
 
 	require.NoError(testInstance, runError, outputText)
 	require.Contains(testInstance, outputText, `"previous_version":"v1.2.0"`)
 	require.Contains(testInstance, outputText, `"next_version":"v1.2.1"`)
 	require.Contains(testInstance, outputText, `"bump":"patch"`)
+	require.Contains(testInstance, outputText, `"contract":"mprlab.version-decision/v2"`)
+	require.Contains(testInstance, outputText, `"policy":{"scheme":"semver","fixed_major":1}`)
+	calVerOutput, calVerError := runBinaryIntegrationCommand(
+		testInstance,
+		binaryPath,
+		repositoryPath,
+		map[string]string{},
+		20*time.Second,
+		[]string{"--config", configurationPath, "release", "next", "calver", "--release-timestamp", "2026-08-10T12:34:56Z", "--format", "json"},
+	)
+	require.NoError(testInstance, calVerError, calVerOutput)
+	require.Contains(testInstance, calVerOutput, `"contract":"mprlab.version-decision/v2"`)
+	require.Contains(testInstance, calVerOutput, `"policy":{"scheme":"calver"}`)
+	require.Contains(testInstance, calVerOutput, `"next_version":"26.810.123456"`)
 	requestsMutex.Lock()
 	capturedRequests := strings.Join(requests, "\n")
 	capturedRequestCount := len(requests)

@@ -44,6 +44,7 @@ const (
 	releaseExpectedFailureTarget          = "linux/arm64"
 	releaseMissingArtifactErrorFragment   = "missing release artifact"
 	releaseManifestMismatchFragment       = "published release manifest does not match the locally prepared release"
+	releaseLifecycleFixtureVersion        = "v1.8.7"
 	releaseFixtureVersion                 = "v9.8.7"
 	releaseFixtureURL                     = "https://gix.mprlab.com/"
 	releaseFixtureReleaseCommit           = "1111111111111111111111111111111111111111"
@@ -111,15 +112,9 @@ func TestReleaseLifecycleScriptsRejectArguments(testInstance *testing.T) {
 	}
 }
 
-func TestReleasePreflightAppliesFixedMajorOnlyWhenConfigured(testInstance *testing.T) {
+func TestReleasePreflightAppliesInvocationFixedMajor(testInstance *testing.T) {
 	fixture := newExactReleaseFixture(testInstance)
-	writeReleaseFixtureFile(
-		testInstance,
-		filepath.Join(fixture.repositoryPath, ".mprlab", "release.yml"),
-		"schema_version: 1\nscheme: semver\nsemver:\n  fixed_major: 1\n",
-	)
-	runGit(testInstance, fixture.repositoryPath, "add", ".mprlab/release.yml")
-	runGit(testInstance, fixture.repositoryPath, "commit", "-m", "configure fixed major")
+	runGit(testInstance, fixture.repositoryPath, "tag", "--delete", fixture.version)
 	runGit(testInstance, fixture.repositoryPath, "tag", "-a", "v1.1.26", "-m", "Fixed-major release")
 	runGit(testInstance, fixture.repositoryPath, "tag", "-a", "v7.0.1", "-m", "Obsolete major release")
 
@@ -128,6 +123,10 @@ func TestReleasePreflightAppliesFixedMajorOnlyWhenConfigured(testInstance *testi
 		filepath.Join(fixture.repositoryRoot, releaseToolDirectoryRelativePath, "release_helper.py"),
 		"preflight",
 		"--local",
+		"--scheme",
+		"semver",
+		"--fixed-major",
+		"1",
 	)
 	command.Dir = fixture.repositoryPath
 	outputBytes, runError := command.CombinedOutput()
@@ -232,18 +231,18 @@ func TestReleaseExactTagRecoversPublishedReceiptAndRejectsConflict(testInstance 
 		{
 			name:           "matching-published-release-from-staging",
 			localState:     "staging",
-			expectedOutput: "Recovered and reused sealed release " + releaseFixtureVersion,
+			expectedOutput: "Recovered and reused sealed release " + releaseLifecycleFixtureVersion,
 		},
 		{
 			name:           "matching-published-release-with-missing-payload",
 			localState:     "missing-payload",
-			expectedOutput: "Recovered and reused sealed release " + releaseFixtureVersion,
+			expectedOutput: "Recovered and reused sealed release " + releaseLifecycleFixtureVersion,
 		},
 		{
 			name:       "conflicting-published-manifest",
 			localState: "staging",
 			mutateManifest: func(manifest string) string {
-				return strings.Replace(manifest, `"version": "`+releaseFixtureVersion+`"`, `"version": "v9.8.6"`, 1)
+				return strings.Replace(manifest, `"version": "`+releaseLifecycleFixtureVersion+`"`, `"version": "v1.8.6"`, 1)
 			},
 			expectError:    true,
 			expectedOutput: "published release manifest does not match exact tag",
@@ -271,7 +270,7 @@ func TestReleaseExactTagRecoversPublishedReceiptAndRejectsConflict(testInstance 
 			switch testCase.localState {
 			case "staging":
 				require.NoError(t, os.RemoveAll(fixture.artifactDirectory))
-				writeReleaseFixtureFile(t, filepath.Join(fixture.artifactDirectory, "staging.json"), `{"artifact_kind":"mprlab.release.staging","version":"v9.8.8"}`+"\n")
+				writeReleaseFixtureFile(t, filepath.Join(fixture.artifactDirectory, "staging.json"), `{"artifact_kind":"mprlab.release.staging","version":"v1.8.8"}`+"\n")
 			case "missing-payload":
 				require.NoError(t, os.Remove(filepath.Join(fixture.artifactDirectory, "payloads", "release-assets", "pages.tar.gz")))
 			default:
@@ -351,9 +350,8 @@ func TestReleaseNewSemVerUsesAutonomousDecision(testInstance *testing.T) {
 		bump            string
 		expectedVersion string
 	}{
-		{name: "patch", bump: "patch", expectedVersion: "v9.8.8"},
-		{name: "minor", bump: "minor", expectedVersion: "v9.9.0"},
-		{name: "major", bump: "major", expectedVersion: "v10.0.0"},
+		{name: "patch", bump: "patch", expectedVersion: "v1.8.8"},
+		{name: "minor", bump: "minor", expectedVersion: "v1.9.0"},
 	}
 
 	for _, testCase := range testCases {
@@ -382,7 +380,7 @@ func TestReleaseNewSemVerUsesAutonomousDecision(testInstance *testing.T) {
 			require.Contains(t, outputText, "version_scheme=semver")
 			require.Contains(t, outputText, "version_reason=Fixture selected the "+testCase.bump+" release level.")
 			require.Contains(t, outputText, "next_version="+testCase.expectedVersion)
-			require.Contains(t, outputText, "changelog_boundary="+releaseFixtureVersion)
+			require.Contains(t, outputText, "changelog_boundary="+releaseLifecycleFixtureVersion)
 			headTags := runGit(t, fixture.repositoryPath, "tag", "--points-at", "HEAD")
 			require.Equal(t, testCase.expectedVersion+"\n", headTags)
 		})
@@ -435,7 +433,7 @@ func TestReleasePublishPushesOneAuthoritativeTag(testInstance *testing.T) {
 		"ls-remote",
 		"--tags",
 		"origin",
-		"refs/tags/v9.8.8^{}",
+		"refs/tags/v1.8.8^{}",
 	))
 	require.True(testInstance, strings.HasPrefix(remoteTag, releaseCommit+"\t"), remoteTag)
 }
@@ -467,7 +465,7 @@ func TestReleaseFailsClosedWhenAutonomousSemVerDecisionFails(testInstance *testi
 	require.Equal(testInstance, receiptBeforeRelease, readReleaseArtifactTree(testInstance, fixture.artifactDirectory))
 	require.Equal(
 		testInstance,
-		releaseFixtureVersion+"\n",
+		releaseLifecycleFixtureVersion+"\n",
 		runGit(testInstance, fixture.repositoryPath, "tag", "--list"),
 	)
 }
@@ -529,9 +527,8 @@ func TestReleaseCIReceivesNoOuterReleaseOrMakeIntent(testInstance *testing.T) {
 	)
 }
 
-func TestReleaseCalVerRemainsTimestampDerived(testInstance *testing.T) {
+func TestReleasePolicyIgnoresForeignCalVerTags(testInstance *testing.T) {
 	fixture := newExactReleaseFixture(testInstance)
-	runGit(testInstance, fixture.repositoryPath, "tag", "--delete", fixture.version)
 	runGit(testInstance, fixture.repositoryPath, "tag", "-a", "26.807.120000", "-m", "Release 26.807.120000", fixture.releaseCommit)
 	fixture.commitNextSource(testInstance)
 	pathVariable := buildReleaseStubbedExecutablePath(testInstance, map[string]string{"go": releaseFakeSemVerGoScript, "make": releaseFakeMakeScript})
@@ -544,9 +541,9 @@ func TestReleaseCalVerRemainsTimestampDerived(testInstance *testing.T) {
 	)
 
 	require.NoError(testInstance, runError, outputText)
-	require.Contains(testInstance, outputText, "version_scheme=calver")
-	require.Contains(testInstance, outputText, "next_version=")
-	require.Contains(testInstance, outputText, "version_reason=Fixture selected the CalVer release version.")
+	require.Contains(testInstance, outputText, "version_scheme=semver")
+	require.Contains(testInstance, outputText, "next_version=v1.8.8")
+	require.Contains(testInstance, outputText, "version_reason=Fixture selected the patch release level.")
 }
 
 func TestReleaseCandidateFailurePreservesCanonicalReceipt(testInstance *testing.T) {
@@ -606,7 +603,7 @@ func TestReleaseSealingFailureRestoresSourceState(testInstance *testing.T) {
 	require.Equal(testInstance, sourceHead, strings.TrimSpace(runGit(testInstance, fixture.repositoryPath, "rev-parse", "HEAD")))
 	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, fixture.repositoryPath, "status", "--short")))
 	require.Equal(testInstance, before, readReleaseArtifactTree(testInstance, fixture.artifactDirectory))
-	tagCommand := exec.Command("git", "rev-parse", "--verify", "refs/tags/v9.8.8")
+	tagCommand := exec.Command("git", "rev-parse", "--verify", "refs/tags/v1.8.8")
 	tagCommand.Dir = fixture.repositoryPath
 	tagOutput, tagError := tagCommand.CombinedOutput()
 	require.Error(testInstance, tagError, string(tagOutput))
@@ -646,22 +643,17 @@ func newExactReleaseFixture(testInstance *testing.T) exactReleaseFixture {
 	writeReleaseFixtureFile(testInstance, filepath.Join(repositoryPath, "README.md"), "fixture\n")
 	writeReleaseFixtureFile(testInstance, filepath.Join(repositoryPath, "CHANGELOG.md"), "# Changelog\n\n")
 	writeReleaseFixtureFile(testInstance, filepath.Join(repositoryPath, "go.mod"), "module example.com/gix-fixture\n\ngo 1.25.0\n")
-	writeReleaseFixtureFile(
-		testInstance,
-		filepath.Join(repositoryPath, ".mprlab", "release.yml"),
-		"schema_version: 1\nscheme: semver\n",
-	)
-	runGit(testInstance, repositoryPath, "add", "README.md", "CHANGELOG.md", "go.mod", ".mprlab/release.yml")
+	runGit(testInstance, repositoryPath, "add", "README.md", "CHANGELOG.md", "go.mod")
 	runGit(testInstance, repositoryPath, "commit", "-m", "feat: fixture source")
 	sourceCommit := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD"))
-	notes := "## [" + releaseFixtureVersion + "] - 2026-08-06\n\n- feat: fixture source\n"
+	notes := "## [" + releaseLifecycleFixtureVersion + "] - 2026-08-06\n\n- feat: fixture source\n"
 	writeReleaseFixtureFile(testInstance, filepath.Join(repositoryPath, "CHANGELOG.md"), "# Changelog\n\n"+notes)
 	runGit(testInstance, repositoryPath, "add", "CHANGELOG.md")
-	runGit(testInstance, repositoryPath, "commit", "-m", "Release "+releaseFixtureVersion)
+	runGit(testInstance, repositoryPath, "commit", "-m", "Release "+releaseLifecycleFixtureVersion)
 	releaseCommit := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD"))
-	runGit(testInstance, repositoryPath, "tag", "-a", releaseFixtureVersion, "-m", "Release "+releaseFixtureVersion)
+	runGit(testInstance, repositoryPath, "tag", "-a", releaseLifecycleFixtureVersion, "-m", "Release "+releaseLifecycleFixtureVersion)
 	runGit(testInstance, repositoryPath, "push", "-u", "origin", "master")
-	runGit(testInstance, repositoryPath, "push", "origin", "refs/tags/"+releaseFixtureVersion)
+	runGit(testInstance, repositoryPath, "push", "origin", "refs/tags/"+releaseLifecycleFixtureVersion)
 	runGit(testInstance, repositoryPath, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/master")
 
 	artifactDirectory := filepath.Join(repositoryPath, ".git", "mprlab-release")
@@ -674,7 +666,7 @@ func newExactReleaseFixture(testInstance *testing.T) exactReleaseFixture {
 	manifestValue := map[string]any{
 		"schema_version":    4,
 		"artifact_kind":     "mprlab.release",
-		"version":           releaseFixtureVersion,
+		"version":           releaseLifecycleFixtureVersion,
 		"source_commit":     sourceCommit,
 		"release_commit":    releaseCommit,
 		"default_branch":    "master",
@@ -696,7 +688,7 @@ func newExactReleaseFixture(testInstance *testing.T) exactReleaseFixture {
 		repositoryPath:    repositoryPath,
 		artifactDirectory: artifactDirectory,
 		remoteDirectory:   remoteDirectory,
-		version:           releaseFixtureVersion,
+		version:           releaseLifecycleFixtureVersion,
 		releaseCommit:     releaseCommit,
 		sourceCommit:      sourceCommit,
 		notes:             notes,
@@ -1416,7 +1408,7 @@ fi
 const releaseFakeSemVerGoScript = `#!/usr/bin/env bash
 set -euo pipefail
 
-[[ "${1:-}" == "run" && "${2:-}" == "." && "${3:-}" == "release" && "${4:-}" == "next" && "${5:-}" == "--format" && "${6:-}" == "json" && "${7:-}" == "--release-timestamp" ]] || {
+[[ "$#" == "9" && "${1:-}" == "run" && "${2:-}" == "." && "${3:-}" == "release" && "${4:-}" == "next" && "${5:-}" == "semver" && "${6:-}" == "--fixed-major" && "${7:-}" == "1" && "${8:-}" == "--format" && "${9:-}" == "json" ]] || {
   echo "unexpected go invocation: $*" >&2
   exit 41
 }
@@ -1426,21 +1418,9 @@ if [[ "${GIX_RELEASE_FAKE_SEMVER_FAILURE:-}" == "true" ]]; then
 fi
 bump="${GIX_RELEASE_FAKE_SEMVER_BUMP:-patch}"
 source_commit="$(git rev-parse HEAD)"
-latest_calver="$(git tag --list | awk '/^[0-9][0-9]\.[0-9]+\.[0-9]+$/ { print }' | sort -V | tail -1)"
-if [[ -n "${latest_calver}" ]]; then
-  next_version="$(python3 -c '
-import datetime as dt
-import sys
-timestamp = dt.datetime.fromisoformat(sys.argv[1])
-timestamp = timestamp.astimezone(dt.timezone.utc)
-print(f"{timestamp.year % 100}.{timestamp.month * 100 + timestamp.day}.{timestamp.hour * 10000 + timestamp.minute * 100 + timestamp.second}")
-' "$8")"
-  printf '{"contract":"mprlab.version-decision/v1","scheme":"calver","source_commit":"%s","boundary_tag":"%s","previous_version":"%s","next_version":"%s","reason":"Fixture selected the CalVer release version.","release_timestamp":"%s"}\n' "${source_commit}" "${latest_calver}" "${latest_calver}" "${next_version}" "$8"
-  exit 0
-fi
-latest_semver="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -1)"
+latest_semver="$(git tag --list 'v1.*.*' | sort -V | tail -1)"
 if [[ -z "${latest_semver}" ]]; then
-  printf '{"contract":"mprlab.version-decision/v1","scheme":"semver","source_commit":"%s","next_version":"v1.0.0","reason":"Fixture selected the initial SemVer release."}\n' "${source_commit}"
+  printf '{"contract":"mprlab.version-decision/v2","policy":{"scheme":"semver","fixed_major":1},"source_commit":"%s","next_version":"v1.0.0","reason":"Fixture selected the initial SemVer release."}\n' "${source_commit}"
   exit 0
 fi
 next_version="$(python3 -c '
@@ -1454,7 +1434,7 @@ else:
     patch += 1
 print(f"v{major}.{minor}.{patch}")
 ' "${latest_semver}" "${bump}")"
-printf '{"contract":"mprlab.version-decision/v1","scheme":"semver","source_commit":"%s","boundary_tag":"%s","previous_version":"%s","next_version":"%s","bump":"%s","deterministic_floor":"patch","reason":"Fixture selected the %s release level.","evidence_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}\n' "${source_commit}" "${latest_semver}" "${latest_semver}" "${next_version}" "${bump}" "${bump}"
+printf '{"contract":"mprlab.version-decision/v2","policy":{"scheme":"semver","fixed_major":1},"source_commit":"%s","boundary_tag":"%s","previous_version":"%s","next_version":"%s","bump":"%s","deterministic_floor":"patch","reason":"Fixture selected the %s release level.","evidence_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}\n' "${source_commit}" "${latest_semver}" "${latest_semver}" "${next_version}" "${bump}" "${bump}"
 `
 
 const releaseFakeGHRecoveryScript = `#!/usr/bin/env bash
