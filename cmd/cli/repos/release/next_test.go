@@ -27,13 +27,13 @@ func TestNextCommandSelectsEstablishedSemVer(t *testing.T) {
 		"diff --unified=0 base123..abc123 -- CHANGELOG.md":             "@@ -4,0 +5 @@\n+- Added reports.\n",
 	}}
 	client := &nextChatClient{response: `{"impact":"additive","public_contract":"CLI reporting","reason":"The release adds reporting."}`}
-	builder := nextTestBuilder(executor, client, []byte("schema_version: 1\nscheme: semver\n"))
+	builder := nextTestBuilder(executor, client)
 
-	output := executeNextCommand(t, builder, "--format", "json")
+	output := executeNextCommand(t, builder, "semver", "--format", "json")
 
 	require.JSONEq(t, `{
-		"contract":"mprlab.version-decision/v1",
-		"scheme":"semver",
+			"contract":"mprlab.version-decision/v2",
+			"policy":{"scheme":"semver"},
 		"source_commit":"abc123",
 		"boundary_tag":"v1.2.3",
 		"previous_version":"v1.2.3",
@@ -57,9 +57,9 @@ func TestNextCommandStartsSemVerWithoutLLM(t *testing.T) {
 		"tag --list":                "docs-archive\n",
 	}}
 	client := &nextChatClient{}
-	builder := nextTestBuilder(executor, client, []byte("schema_version: 1\nscheme: semver\n"))
+	builder := nextTestBuilder(executor, client)
 
-	output := executeNextCommand(t, builder)
+	output := executeNextCommand(t, builder, "semver")
 
 	require.Equal(t, "v1.0.0\n", output)
 	require.Zero(t, client.calls)
@@ -78,9 +78,9 @@ func TestNextCommandExcludesRetiredTags(t *testing.T) {
 		"diff --unified=0 base123..abc123 -- CHANGELOG.md":             "@@ -4,0 +5 @@\n+- Fixed reports.\n",
 	}}
 	client := &nextChatClient{response: `{"impact":"compatible","public_contract":"CLI reporting","reason":"The release fixes reporting."}`}
-	builder := nextTestBuilder(executor, client, []byte("schema_version: 1\nscheme: semver\n"))
+	builder := nextTestBuilder(executor, client)
 
-	output := executeNextCommand(t, builder, "--format", "json", "--exclude-tag", "v2.0.0")
+	output := executeNextCommand(t, builder, "semver", "--format", "json", "--exclude-tag", "v2.0.0")
 
 	require.Contains(t, output, `"boundary_tag":"v1.2.3"`)
 	require.Contains(t, output, `"next_version":"v1.2.4"`)
@@ -99,14 +99,14 @@ func TestNextCommandIgnoresInvalidHistoricalMajorTags(t *testing.T) {
 		"diff --unified=0 base600..source600 -- CHANGELOG.md":             "@@ -4,0 +5 @@\n+- Fixed root installation.\n",
 	}}
 	client := &nextChatClient{response: `{"impact":"compatible","public_contract":"root Go installation","reason":"The release repairs root installation."}`}
-	builder := nextTestBuilder(executor, client, []byte("schema_version: 1\nscheme: semver\nsemver:\n  fixed_major: 1\n"))
+	builder := nextTestBuilder(executor, client)
 
-	output := executeNextCommand(t, builder, "--format", "json")
+	output := executeNextCommand(t, builder, "semver", "--fixed-major", "1", "--format", "json")
 
-	require.Contains(t, output, `"contract":"mprlab.version-decision/v1"`)
+	require.Contains(t, output, `"contract":"mprlab.version-decision/v2"`)
 	require.Contains(t, output, `"previous_version":"v1.1.25"`)
 	require.Contains(t, output, `"next_version":"v1.1.26"`)
-	require.NotContains(t, output, "fixed_major")
+	require.Contains(t, output, `"policy":{"scheme":"semver","fixed_major":1}`)
 	require.NotContains(t, output, "go_install")
 }
 
@@ -123,9 +123,9 @@ func TestNextCommandMapsFixedMajorIncompatibilityToMinor(t *testing.T) {
 		"diff --unified=0 base601..source601 -- CHANGELOG.md":             "@@ -4,0 +5 @@\n+- Changed the release contract.\n",
 	}}
 	client := &nextChatClient{response: `{"impact":"incompatible","public_contract":"Gix release versions","reason":"The release changes the Gix version contract."}`}
-	builder := nextTestBuilder(executor, client, []byte("schema_version: 1\nscheme: semver\nsemver:\n  fixed_major: 1\n"))
+	builder := nextTestBuilder(executor, client)
 
-	output := executeNextCommand(t, builder, "--format", "json")
+	output := executeNextCommand(t, builder, "semver", "--fixed-major", "1", "--format", "json")
 
 	require.Contains(t, output, `"previous_version":"v1.1.26"`)
 	require.Contains(t, output, `"next_version":"v1.2.0"`)
@@ -139,13 +139,13 @@ func TestNextCommandSelectsCalVerWithoutLLM(t *testing.T) {
 		"tag --list":                "26.808.235959\n",
 	}}
 	client := &nextChatClient{}
-	builder := nextTestBuilder(executor, client, []byte("schema_version: 1\nscheme: calver\n"))
+	builder := nextTestBuilder(executor, client)
 
-	output := executeNextCommand(t, builder, "--format", "json", "--release-timestamp", "2026-08-09T00:00:00Z")
+	output := executeNextCommand(t, builder, "calver", "--format", "json", "--release-timestamp", "2026-08-09T00:00:00Z")
 
 	require.JSONEq(t, `{
-		"contract":"mprlab.version-decision/v1",
-		"scheme":"calver",
+			"contract":"mprlab.version-decision/v2",
+			"policy":{"scheme":"calver"},
 		"source_commit":"abc123",
 		"boundary_tag":"26.808.235959",
 		"previous_version":"26.808.235959",
@@ -156,14 +156,35 @@ func TestNextCommandSelectsCalVerWithoutLLM(t *testing.T) {
 	require.Zero(t, client.calls)
 }
 
-func nextTestBuilder(executor *nextGitExecutor, client *nextChatClient, configuration []byte) NextCommandBuilder {
+func TestNextCommandRejectsInvalidInvocationPolicy(t *testing.T) {
+	testCases := []struct {
+		name      string
+		arguments []string
+		expected  string
+	}{
+		{name: "missing", arguments: nil, expected: "release policy must be semver or calver"},
+		{name: "unknown", arguments: []string{"automatic"}, expected: "release policy must be semver or calver"},
+		{name: "semver_timestamp", arguments: []string{"semver", "--release-timestamp", "2026-08-09T00:00:00Z"}, expected: "release timestamp is valid only for calver policy"},
+		{name: "calver_fixed_major", arguments: []string{"calver", "--fixed-major", "1"}, expected: "release fixed major is valid only for semver policy"},
+		{name: "zero_fixed_major", arguments: []string{"semver", "--fixed-major", "0"}, expected: "release fixed major must be positive"},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			command, buildError := (NextCommandBuilder{}).Build()
+			require.NoError(t, buildError)
+			command.SetArgs(testCase.arguments)
+			command.SetContext(context.Background())
+			executionError := command.Execute()
+			require.ErrorContains(t, executionError, testCase.expected)
+		})
+	}
+}
+
+func nextTestBuilder(executor *nextGitExecutor, client *nextChatClient) NextCommandBuilder {
 	return NextCommandBuilder{
 		GitExecutor: executor,
 		WorkingDirectoryProvider: func() (string, error) {
 			return "/repo", nil
-		},
-		ReadFile: func(path string) ([]byte, error) {
-			return configuration, nil
 		},
 		ConfigurationProvider: func() NextConfiguration {
 			return NextConfiguration{
