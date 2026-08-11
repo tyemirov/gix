@@ -211,26 +211,15 @@ def semver_major(tag: str) -> int | None:
     return int(tag[1:].split(".", 1)[0]) if match else None
 
 
-def tag_scheme(tag: str, fixed_major: int | None = None) -> str | None:
-    if calver_match(tag) or legacy_calver_minute_match(tag) or legacy_calver_match(tag):
-        return "calver"
-    major = semver_major(tag)
-    if major is not None and (fixed_major is None or major == fixed_major):
-        return "semver"
-    return None
-
-
-def configured_fixed_semver_major(cwd: Path) -> int | None:
-    configuration_path = cwd / ".mprlab" / "release.yml"
-    if not configuration_path.is_file():
+def tag_scheme(tag: str, scheme: str, fixed_major: int | None = None) -> str | None:
+    if scheme == "calver":
+        if calver_match(tag) or legacy_calver_minute_match(tag) or legacy_calver_match(tag):
+            return scheme
         return None
-    matches = re.findall(
-        r"(?m)^  fixed_major:\s*((?:0|[1-9]\d*))\s*$",
-        configuration_path.read_text(encoding="utf-8"),
-    )
-    if len(matches) > 1:
-        raise HelperError("release configuration has multiple fixed major values")
-    return int(matches[0]) if matches else None
+    major = semver_major(tag)
+    if scheme == "semver" and major is not None and (fixed_major is None or major == fixed_major):
+        return scheme
+    return None
 
 
 def parse_release_timestamp(value: str | None, release_date: str | None = None) -> dt.datetime:
@@ -258,13 +247,12 @@ def parse_release_date(value: str) -> dt.date:
         raise HelperError("release date must use YYYY-MM-DD format", {"release_date": value}) from exc
 
 
-def version_info(cwd: Path) -> dict[str, Any]:
+def version_info(cwd: Path, scheme: str, fixed_major: int | None) -> dict[str, Any]:
     tags = all_tags(cwd)
-    fixed_major = configured_fixed_semver_major(cwd)
     exact_head_version_tags = [
         tag
         for tag in run(["git", "tag", "--points-at", "HEAD", "--sort=-version:refname"], cwd=cwd).stdout.splitlines()
-        if tag_scheme(tag, fixed_major)
+        if tag_scheme(tag, scheme, fixed_major)
     ]
     if len(exact_head_version_tags) > 1:
         raise HelperError(
@@ -273,11 +261,11 @@ def version_info(cwd: Path) -> dict[str, Any]:
         )
     else:
         exact_head_version_tag = exact_head_version_tags[0] if exact_head_version_tags else None
-    version_tags = [tag for tag in tags if tag_scheme(tag, fixed_major)]
+    version_tags = [tag for tag in tags if tag_scheme(tag, scheme, fixed_major)]
 
     return {
         "exact_head_version_tag": exact_head_version_tag,
-        "exact_head_version_scheme": tag_scheme(exact_head_version_tag, fixed_major) if exact_head_version_tag else None,
+        "exact_head_version_scheme": tag_scheme(exact_head_version_tag, scheme, fixed_major) if exact_head_version_tag else None,
         "version_tags": version_tags[:20],
     }
 
@@ -316,13 +304,18 @@ def command_preflight(args: argparse.Namespace) -> int:
     if missing:
         fail("required tools are missing", {"missing_tools": missing})
 
+    if args.fixed_major is not None and args.fixed_major < 1:
+        fail("release fixed major must be positive", {"fixed_major": args.fixed_major})
+    if args.scheme == "calver" and args.fixed_major is not None:
+        fail("release fixed major is valid only for semver policy", {"fixed_major": args.fixed_major})
+
     cwd = repo_root()
     default_branch = (
         resolve_default_branch_local(cwd, args.default_branch)
         if args.local
         else resolve_default_branch(cwd, args.default_branch)
     )
-    versions = version_info(cwd)
+    versions = version_info(cwd, args.scheme, args.fixed_major)
     status_lines = run(["git", "status", "--short"], cwd=cwd).stdout.splitlines()
     current_branch = run(["git", "branch", "--show-current"], cwd=cwd).stdout.strip()
     open_prs = []
@@ -1433,6 +1426,8 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     preflight = subparsers.add_parser("preflight", help="Check deterministic release preconditions.")
+    preflight.add_argument("--scheme", choices=("semver", "calver"), required=True)
+    preflight.add_argument("--fixed-major", type=int)
     preflight.add_argument("--default-branch")
     preflight.add_argument("--release-date", help="Release date in YYYY-MM-DD format. Used as midnight if no timestamp is provided.")
     preflight.add_argument(

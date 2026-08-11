@@ -6,6 +6,7 @@ set -euo pipefail
 helper="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/release_helper.py"
 ci_timeout="350"
 artifact_targets="release-artifacts pages-artifact"
+release_policy=(semver --fixed-major 1)
 
 command -v git >/dev/null 2>&1 || { echo "error: git is required" >&2; exit 1; }
 command -v python3 >/dev/null 2>&1 || { echo "error: python3 is required" >&2; exit 1; }
@@ -29,10 +30,9 @@ PY
 }
 
 decide_release_version() {
-  local release_timestamp="$1"
-  local source_commit="$2"
+  local source_commit="$1"
   local decision_output decision_values
-  if ! decision_output="$(go run . release next --format json --release-timestamp "${release_timestamp}")"; then
+  if ! decision_output="$(go run . release next "${release_policy[@]}" --format json)"; then
     echo "error: autonomous release version decision failed" >&2
     exit 1
   fi
@@ -46,13 +46,14 @@ for line in sys.stdin.read().splitlines():
         value = json.loads(line)
     except json.JSONDecodeError:
         continue
-    if isinstance(value, dict) and value.get("contract") == "mprlab.version-decision/v1":
+    if isinstance(value, dict) and value.get("contract") == "mprlab.version-decision/v2":
         matches.append(value)
 if len(matches) != 1:
     raise SystemExit("release decision command did not return exactly one decision")
 decision = matches[0]
-if decision.get("scheme") not in ("semver", "calver"):
-    raise SystemExit("release decision command returned an invalid scheme")
+policy = decision.get("policy")
+if policy != {"scheme": "semver", "fixed_major": 1}:
+    raise SystemExit("release decision command returned a different release policy")
 if decision.get("source_commit") != sys.argv[1]:
     raise SystemExit("release decision command returned a different source commit")
 if not isinstance(decision.get("next_version"), str) or not decision["next_version"]:
@@ -61,7 +62,7 @@ if not isinstance(decision["reason"], str) or not decision["reason"].strip():
     raise SystemExit("release decision command returned an empty reason")
 print(decision["next_version"])
 print(decision.get("boundary_tag") or "")
-print(decision["scheme"])
+print(policy["scheme"])
 print(decision["reason"].strip())
 ' "${source_commit}")" || {
     echo "error: autonomous release version decision output is invalid" >&2
@@ -125,7 +126,7 @@ release_timestamp="$(date +%Y-%m-%dT%H:%M:%S%z)"
 release_date="${release_timestamp%%T*}"
 
 run_local_preflight() {
-  if ! "${helper}" preflight --local --release-timestamp "${release_timestamp}" >"${preflight_json}"; then
+  if ! "${helper}" preflight --local --scheme semver --fixed-major 1 >"${preflight_json}"; then
     cat "${preflight_json}"
     echo "error: local release preflight failed" >&2
     exit 1
@@ -153,7 +154,7 @@ echo "==> [release] Rechecking local state after CI"
 run_local_preflight
 [[ "$(git rev-parse HEAD)" == "${source_commit}" ]] || { echo "error: HEAD changed while make ci was running" >&2; exit 1; }
 echo "==> [release] Deciding the release version"
-decision_values="$(decide_release_version "${release_timestamp}" "${source_commit}")"
+decision_values="$(decide_release_version "${source_commit}")"
 next_version="$(sed -n '1p' <<<"${decision_values}")"
 boundary_tag="$(sed -n '2p' <<<"${decision_values}")"
 effective_scheme="$(sed -n '3p' <<<"${decision_values}")"
