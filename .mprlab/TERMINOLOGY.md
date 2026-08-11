@@ -81,6 +81,7 @@ Add repository-specific technical nouns below this line.
 
 - `CalVer`: A release version that derives its numeric fields from a release timestamp.
 - `fixed-major policy`: A SemVer policy that keeps one configured major value.
+- `release policy`: The invocation input that selects one release version scheme and its scheme-specific options.
 - `SemVer`: A release version with major, minor, and patch fields.
 - `version decision`: The Gix result that selects one release version from repository evidence and policy.
 

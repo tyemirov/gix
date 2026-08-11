@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -22,11 +21,12 @@ import (
 )
 
 const (
-	nextCommandUse              = "next"
+	nextCommandUse              = "next <semver|calver>"
 	nextCommandShortDescription = "Select the next release version"
 	nextFormatFlagName          = "format"
 	nextTimestampFlagName       = "release-timestamp"
 	nextExcludeTagFlagName      = "exclude-tag"
+	nextFixedMajorFlagName      = "fixed-major"
 )
 
 // NextConfiguration contains the LLM policy used for established SemVer histories.
@@ -53,7 +53,7 @@ func (configuration NextConfiguration) Sanitize() NextConfiguration {
 // VersionDecision is the canonical machine-readable successor contract.
 type VersionDecision struct {
 	Contract           string                `json:"contract"`
-	Scheme             releaseversion.Scheme `json:"scheme"`
+	Policy             releaseversion.Policy `json:"policy"`
 	SourceCommit       string                `json:"source_commit"`
 	BoundaryTag        string                `json:"boundary_tag,omitempty"`
 	PreviousVersion    string                `json:"previous_version,omitempty"`
@@ -73,7 +73,6 @@ type NextCommandBuilder struct {
 	ConfigurationProvider        func() NextConfiguration
 	ClientFactory                llmclient.ClientFactory
 	WorkingDirectoryProvider     func() (string, error)
-	ReadFile                     func(string) ([]byte, error)
 	Now                          func() time.Time
 }
 
@@ -82,16 +81,21 @@ func (builder NextCommandBuilder) Build() (*cobra.Command, error) {
 	command := &cobra.Command{
 		Use:   nextCommandUse,
 		Short: nextCommandShortDescription,
-		Args:  cobra.NoArgs,
+		Args:  cobra.ArbitraryArgs,
 		RunE:  builder.run,
 	}
 	command.Flags().String(nextFormatFlagName, "text", "Output format: text or json")
 	command.Flags().String(nextTimestampFlagName, "", "Release timestamp for CalVer in RFC3339 format")
 	command.Flags().StringSlice(nextExcludeTagFlagName, nil, "Exclude a local tag from successor selection (repeatable)")
+	command.Flags().Int(nextFixedMajorFlagName, 0, "Keep SemVer releases on one positive major")
 	return command, nil
 }
 
-func (builder NextCommandBuilder) run(command *cobra.Command, _ []string) error {
+func (builder NextCommandBuilder) run(command *cobra.Command, arguments []string) error {
+	policy, policyError := invocationPolicy(command, arguments)
+	if policyError != nil {
+		return policyError
+	}
 	format, formatError := command.Flags().GetString(nextFormatFlagName)
 	if formatError != nil {
 		return formatError
@@ -100,7 +104,7 @@ func (builder NextCommandBuilder) run(command *cobra.Command, _ []string) error 
 		return fmt.Errorf("release next format must be text or json: %q", format)
 	}
 
-	decision, decisionError := builder.decide(command)
+	decision, decisionError := builder.decide(command, policy)
 	if decisionError != nil {
 		return decisionError
 	}
@@ -111,7 +115,28 @@ func (builder NextCommandBuilder) run(command *cobra.Command, _ []string) error 
 	return writeError
 }
 
-func (builder NextCommandBuilder) decide(command *cobra.Command) (VersionDecision, error) {
+func invocationPolicy(command *cobra.Command, arguments []string) (releaseversion.Policy, error) {
+	if len(arguments) != 1 {
+		return releaseversion.NewPolicy("", 0)
+	}
+	fixedMajor, fixedMajorError := command.Flags().GetInt(nextFixedMajorFlagName)
+	if fixedMajorError != nil {
+		return releaseversion.Policy{}, fixedMajorError
+	}
+	if command.Flags().Changed(nextFixedMajorFlagName) && fixedMajor < 1 {
+		return releaseversion.Policy{}, fmt.Errorf("release fixed major must be positive: %d", fixedMajor)
+	}
+	policy, policyError := releaseversion.NewPolicy(arguments[0], fixedMajor)
+	if policyError != nil {
+		return releaseversion.Policy{}, policyError
+	}
+	if policy.Scheme() == releaseversion.SchemeSemVer && command.Flags().Changed(nextTimestampFlagName) {
+		return releaseversion.Policy{}, errors.New("release timestamp is valid only for calver policy")
+	}
+	return policy, nil
+}
+
+func (builder NextCommandBuilder) decide(command *cobra.Command, policy releaseversion.Policy) (VersionDecision, error) {
 	workingDirectoryProvider := builder.WorkingDirectoryProvider
 	if workingDirectoryProvider == nil {
 		workingDirectoryProvider = os.Getwd
@@ -148,19 +173,6 @@ func (builder NextCommandBuilder) decide(command *cobra.Command) (VersionDecisio
 		return VersionDecision{}, errors.New("release repository root is empty")
 	}
 
-	readFile := builder.ReadFile
-	if readFile == nil {
-		readFile = os.ReadFile
-	}
-	configurationData, readError := readFile(filepath.Join(repositoryRoot, releaseversion.ConfigurationPath))
-	if readError != nil {
-		return VersionDecision{}, fmt.Errorf("read %s: %w", releaseversion.ConfigurationPath, readError)
-	}
-	releaseConfiguration, configurationError := releaseversion.ParseConfiguration(configurationData)
-	if configurationError != nil {
-		return VersionDecision{}, configurationError
-	}
-
 	sourceCommit, commitError := executeGit(command.Context(), dependencies.GitExecutor, repositoryRoot, "rev-parse", "HEAD")
 	if commitError != nil {
 		return VersionDecision{}, fmt.Errorf("resolve release source commit: %w", commitError)
@@ -194,17 +206,13 @@ func (builder NextCommandBuilder) decide(command *cobra.Command) (VersionDecisio
 
 	var decision VersionDecision
 	var decisionError error
-	switch releaseConfiguration.Scheme {
+	switch policy.Scheme() {
 	case releaseversion.SchemeSemVer:
-		fixedMajor := 0
-		if releaseConfiguration.SemVer != nil {
-			fixedMajor = releaseConfiguration.SemVer.FixedMajor
-		}
-		decision, decisionError = builder.decideSemVer(command, dependencies.GitExecutor, repositoryRoot, sourceCommit, tags, fixedMajor)
+		decision, decisionError = builder.decideSemVer(command, dependencies.GitExecutor, repositoryRoot, sourceCommit, tags, policy)
 	case releaseversion.SchemeCalVer:
-		decision, decisionError = builder.decideCalVer(command, sourceCommit, tags)
+		decision, decisionError = builder.decideCalVer(command, sourceCommit, tags, policy)
 	default:
-		return VersionDecision{}, fmt.Errorf("unsupported release scheme %q", releaseConfiguration.Scheme)
+		return VersionDecision{}, fmt.Errorf("unsupported release scheme %q", policy.Scheme())
 	}
 	if decisionError != nil {
 		return VersionDecision{}, decisionError
@@ -212,14 +220,15 @@ func (builder NextCommandBuilder) decide(command *cobra.Command) (VersionDecisio
 	return decision, nil
 }
 
-func (builder NextCommandBuilder) decideSemVer(command *cobra.Command, gitExecutor shared.GitExecutor, repositoryRoot string, sourceCommit string, tags []string, fixedMajor int) (VersionDecision, error) {
+func (builder NextCommandBuilder) decideSemVer(command *cobra.Command, gitExecutor shared.GitExecutor, repositoryRoot string, sourceCommit string, tags []string, policy releaseversion.Policy) (VersionDecision, error) {
+	fixedMajor := policy.FixedMajor()
 	previous := releaseversion.LatestSemVer(tags)
 	if fixedMajor > 0 {
 		previous = releaseversion.LatestFixedMajorSemVer(tags, fixedMajor)
 	}
 	decision := VersionDecision{
 		Contract:        releaseversion.ContractVersion,
-		Scheme:          releaseversion.SchemeSemVer,
+		Policy:          policy,
 		SourceCommit:    sourceCommit,
 		BoundaryTag:     previous,
 		PreviousVersion: previous,
@@ -294,7 +303,7 @@ func (builder NextCommandBuilder) decideSemVer(command *cobra.Command, gitExecut
 	return decision, nil
 }
 
-func (builder NextCommandBuilder) decideCalVer(command *cobra.Command, sourceCommit string, tags []string) (VersionDecision, error) {
+func (builder NextCommandBuilder) decideCalVer(command *cobra.Command, sourceCommit string, tags []string, policy releaseversion.Policy) (VersionDecision, error) {
 	releaseTime := time.Time{}
 	rawTimestamp, timestampFlagError := command.Flags().GetString(nextTimestampFlagName)
 	if timestampFlagError != nil {
@@ -320,7 +329,7 @@ func (builder NextCommandBuilder) decideCalVer(command *cobra.Command, sourceCom
 	}
 	return VersionDecision{
 		Contract:         releaseversion.ContractVersion,
-		Scheme:           releaseversion.SchemeCalVer,
+		Policy:           policy,
 		SourceCommit:     sourceCommit,
 		BoundaryTag:      previous,
 		PreviousVersion:  previous,

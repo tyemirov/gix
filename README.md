@@ -29,13 +29,13 @@ make publish
 make deploy
 ```
 
-These three targets accept no release flags, arguments, or lifecycle overrides. Each repository declares its release scheme in `.mprlab/release.yml`. `gix release next` validates this config and selects the next version.
+These three targets accept no release flags, arguments, or lifecycle overrides. The repository release helper supplies its release policy when it calls `gix release next`. The command validates that invocation policy and selects the next version without reading MPR Lab repository files.
 
 For an established SemVer sequence, the command uses an LLM to examine all committed changes after the latest SemVer tag. The evidence includes commit messages, the diff summary, range-scoped changelog changes, and a bounded diff excerpt. The model classifies each packet by its effect on a supported public contract. A second model call audits each candidate against the same evidence. Standard SemVer maps incompatible, additive, and compatible effects to `major`, `minor`, and `patch`. Commit labels and implementation changes cannot set a higher release level by themselves.
 
 Invalid or unavailable model output stops the release before version selection. A SemVer repository without tags starts at `v1.0.0`. A CalVer repository uses the canonical UTC release timestamp. At an exact release tag, `make release` is the idempotent retry command.
 
-Gix alone declares `semver.fixed_major: 1` in `.mprlab/release.yml`. Under this policy, incompatible and additive Gix public contract changes select a minor release. Compatible fixes and internal changes select a patch release. Version selection uses only `v1` tags. Other repositories keep standard SemVer or their declared CalVer policy.
+The Gix release helper invokes `gix release next semver --fixed-major 1`. Under this policy, incompatible and additive Gix public contract changes select a minor release. Compatible fixes and internal changes select a patch release. Version selection uses only `v1` tags. Other callers can select standard SemVer or CalVer explicitly.
 
 `make release` runs CI. It prepares the binaries, checksums, Pages archive, release metadata commit, one annotated tag, and release manifest. The local `.git/mprlab-release` directory contains the sealed receipt. New release preparation does not write to a remote repository.
 
@@ -647,8 +647,8 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
  - Purges paths from history using git-filter-repo and optionally force-pushes updates.
 - `gix release <tag> [--message <text>] [--remote <name>] [--roots <dir>...] [-y]` (alias `rel`)
  - Creates and pushes an annotated tag for each repository root.
-- `gix release next [--format text|json] [--release-timestamp <RFC3339>] [--exclude-tag <tag>...]`
- - Reads `.mprlab/release.yml` and selects the next canonical SemVer or CalVer version. The optional SemVer fixed-major policy applies only when the repository declares it.
+- `gix release next <semver|calver> [--fixed-major <major>] [--format text|json] [--release-timestamp <RFC3339>] [--exclude-tag <tag>...]`
+ - Selects the next canonical version from the explicit invocation policy. `--fixed-major` applies only to SemVer. `--release-timestamp` applies only to CalVer. JSON output records the complete applied policy in `mprlab.version-decision/v2`.
 - `gix release retag --map <tag=ref> [--map <tag=ref>...] [--message-template <text>] [--remote <name>] [--roots <dir>...] [-y]` (alias `fix`)
  - Reassigns existing release tags to provided commits and force-pushes updates.
 - `gix message changelog [--version <v>] [--release-date YYYY-MM-DD] [--since-tag <ref>] [--since-date <ts>] [--max-tokens <N>] [--effort <low|medium|high>] [--provider <provider>] [--model <id>] [--timeout-seconds <N>] [--roots <dir>...]` (aliases `section`)

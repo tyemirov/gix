@@ -7,26 +7,25 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestParseConfigurationRequiresCanonicalContract(t *testing.T) {
-	configuration, parseError := ParseConfiguration([]byte("schema_version: 1\nscheme: semver\n"))
-	require.NoError(t, parseError)
-	require.Equal(t, SchemeSemVer, configuration.Scheme)
+func TestPolicyRequiresCanonicalInvocationValues(t *testing.T) {
+	standard, standardError := NewPolicy("semver", 0)
+	require.NoError(t, standardError)
+	require.Equal(t, SchemeSemVer, standard.Scheme())
+	require.Zero(t, standard.FixedMajor())
 
-	_, unknownError := ParseConfiguration([]byte("schema_version: 1\nscheme: semver\nlegacy: true\n"))
-	require.Error(t, unknownError)
-	_, schemeError := ParseConfiguration([]byte("schema_version: 1\nscheme: automatic\n"))
+	fixed, fixedError := NewPolicy("semver", 1)
+	require.NoError(t, fixedError)
+	require.Equal(t, 1, fixed.FixedMajor())
+	fixedJSON, marshalError := fixed.MarshalJSON()
+	require.NoError(t, marshalError)
+	require.JSONEq(t, `{"scheme":"semver","fixed_major":1}`, string(fixedJSON))
+
+	_, schemeError := NewPolicy("automatic", 0)
 	require.Error(t, schemeError)
-}
-
-func TestParseConfigurationAcceptsFixedMajorSemVer(t *testing.T) {
-	configuration, parseError := ParseConfiguration([]byte("schema_version: 1\nscheme: semver\nsemver:\n  fixed_major: 1\n"))
-	require.NoError(t, parseError)
-	require.Equal(t, 1, configuration.SemVer.FixedMajor)
-
-	_, goInstallError := ParseConfiguration([]byte("schema_version: 1\nscheme: semver\ngo_install:\n  module_path: github.com/tyemirov/gix\n"))
-	require.Error(t, goInstallError)
-	_, calVerPolicyError := ParseConfiguration([]byte("schema_version: 1\nscheme: calver\nsemver:\n  fixed_major: 1\n"))
+	_, calVerPolicyError := NewPolicy("calver", 1)
 	require.Error(t, calVerPolicyError)
+	_, fixedMajorError := NewPolicy("semver", -1)
+	require.Error(t, fixedMajorError)
 }
 
 func TestNextSemVerUsesArbitraryPrecisionCanonicalMath(t *testing.T) {
