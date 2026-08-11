@@ -596,6 +596,25 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run the complete post-change `make ci` gate and `git diff --check`.
   Resolution:
   The application loader now performs one strict YAML decode directly into the typed target and rejects unknown fields through that decoder. Environment placeholders expand afterward in decoded string values, preserving literal substituted characters, optional credential placeholders, and required-placeholder errors without reparsing a generic YAML map. The loader no longer imports `mapstructure` or constructs `map[string]any`; command-specific operation option maps retain their separate typed decode after the application schema is loaded. Focused loader, documentation, and compiled-CLI regressions pass, including rejection of the removed `temperature` key. The complete pre-change and post-change `make ci` gates, `make format`, the live user-configuration version command, and `git diff --check` passed on 2026-08-08.
+- [-] [I012] (P0) Make release policy invocation-owned.
+  Requested on 2026-08-10.
+  Goal:
+  Keep Gix independent from MPR Lab repository files while it remains the release version authority.
+  Requirements:
+  - Require one explicit `semver` or `calver` policy for `gix release next`.
+  - Accept a fixed major only for the SemVer policy.
+  - Record the complete applied policy in version decision contract v2.
+  - Make Gateway obtain application policy from the selected schema-v4 manifest.
+  - Keep `make release`, `make publish`, and `make deploy` free of operator inputs.
+  - Delete the obsolete `.mprlab/release.yml` contract after the fleet migration.
+  Deliverables:
+  - Typed CLI policy parsing and black-box release decision coverage.
+  - Updated Gix and Gateway release preparation boundaries.
+  - Migrated MPR application manifests and current technical documentation.
+  Validation:
+  - Run the focused Gix and Gateway lifecycle tests.
+  - Run the final repository CI gates after the last application change.
+  - Run the Governor, STE, and Git checks on changed technical documents.
 
 ## Maintenance
 
