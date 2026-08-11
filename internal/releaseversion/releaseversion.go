@@ -2,23 +2,17 @@
 package releaseversion
 
 import (
-	"bytes"
-	"errors"
+	"encoding/json"
 	"fmt"
-	"io"
 	"math/big"
 	"regexp"
 	"sort"
 	"strings"
 	"time"
-
-	"gopkg.in/yaml.v3"
 )
 
 const (
-	ContractVersion     = "mprlab.version-decision/v1"
-	ConfigurationPath   = ".mprlab/release.yml"
-	ConfigurationSchema = 1
+	ContractVersion = "mprlab.version-decision/v2"
 )
 
 // Scheme is one configured release version scheme.
@@ -38,16 +32,10 @@ const (
 	BumpMajor Bump = "major"
 )
 
-// Configuration is the source-controlled release version contract.
-type Configuration struct {
-	SchemaVersion int                  `yaml:"schema_version"`
-	Scheme        Scheme               `yaml:"scheme"`
-	SemVer        *SemVerConfiguration `yaml:"semver,omitempty"`
-}
-
-// SemVerConfiguration defines an optional fixed-major policy.
-type SemVerConfiguration struct {
-	FixedMajor int `yaml:"fixed_major"`
+// Policy is one validated invocation-owned release policy.
+type Policy struct {
+	scheme     Scheme
+	fixedMajor int
 }
 
 var (
@@ -55,34 +43,40 @@ var (
 	calverPattern = regexp.MustCompile(`^(1[0-9]|[2-9][0-9])\.(0|[1-9][0-9]{0,3})\.(0|[1-9][0-9]{0,5})$`)
 )
 
-// ParseConfiguration decodes the strict repository release contract.
-func ParseConfiguration(data []byte) (Configuration, error) {
-	decoder := yaml.NewDecoder(bytes.NewReader(data))
-	decoder.KnownFields(true)
-	configuration := Configuration{}
-	if decodeError := decoder.Decode(&configuration); decodeError != nil {
-		return Configuration{}, fmt.Errorf("decode release configuration: %w", decodeError)
+// NewPolicy validates one invocation-owned release policy.
+func NewPolicy(rawScheme string, fixedMajor int) (Policy, error) {
+	scheme := Scheme(strings.TrimSpace(rawScheme))
+	if scheme != SchemeSemVer && scheme != SchemeCalVer {
+		return Policy{}, fmt.Errorf("release policy must be semver or calver: %q", rawScheme)
 	}
-	var trailing any
-	if trailingError := decoder.Decode(&trailing); !errors.Is(trailingError, io.EOF) {
-		if trailingError != nil {
-			return Configuration{}, fmt.Errorf("decode trailing release configuration: %w", trailingError)
-		}
-		return Configuration{}, errors.New("release configuration contains multiple YAML documents")
+	if fixedMajor < 0 {
+		return Policy{}, fmt.Errorf("release fixed major must be positive: %d", fixedMajor)
 	}
-	if configuration.SchemaVersion != ConfigurationSchema {
-		return Configuration{}, fmt.Errorf("release configuration schema_version must be %d", ConfigurationSchema)
+	if scheme == SchemeCalVer && fixedMajor != 0 {
+		return Policy{}, fmt.Errorf("release fixed major is valid only for semver policy: %d", fixedMajor)
 	}
-	if configuration.Scheme != SchemeSemVer && configuration.Scheme != SchemeCalVer {
-		return Configuration{}, fmt.Errorf("release configuration scheme must be %q or %q", SchemeSemVer, SchemeCalVer)
-	}
-	if configuration.Scheme == SchemeCalVer && configuration.SemVer != nil {
-		return Configuration{}, errors.New("release configuration semver is valid only for the semver scheme")
-	}
-	if configuration.SemVer != nil && configuration.SemVer.FixedMajor < 1 {
-		return Configuration{}, errors.New("release configuration semver.fixed_major must be positive")
-	}
-	return configuration, nil
+	return Policy{scheme: scheme, fixedMajor: fixedMajor}, nil
+}
+
+// Scheme returns the selected version scheme.
+func (policy Policy) Scheme() Scheme {
+	return policy.scheme
+}
+
+// FixedMajor returns the selected SemVer major or zero for standard SemVer.
+func (policy Policy) FixedMajor() int {
+	return policy.fixedMajor
+}
+
+// MarshalJSON writes the complete applied release policy.
+func (policy Policy) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		Scheme     Scheme `json:"scheme"`
+		FixedMajor int    `json:"fixed_major,omitempty"`
+	}{
+		Scheme:     policy.scheme,
+		FixedMajor: policy.fixedMajor,
+	})
 }
 
 // Valid reports whether a bump belongs to the closed SemVer set.
