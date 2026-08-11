@@ -143,6 +143,18 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.4.0] - 2026-08-10
+
+- Merge pull request #430 from tyemirov/improvement/I012-invocation-owned-release-policy
+- test: align release integration fixtures with invocation policy
+- fix(release): require explicit semver policy for preflight
+- refactor(release): replace YAML configuration with invocation policy
+- feat(release): require explicit version policy for next releases
+- refactor(release): require explicit versioning policy
+- docs(changelog): document explicit release policy input
+- refactor(release): pass version policy through release helper
+- chore: remove obsolete release policy config
+
 ## [v1.3.1] - 2026-08-10
 
 - Merge pull request #429 from tyemirov/bugfix/B062-scope-release-changelog-evidence
