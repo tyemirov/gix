@@ -11,6 +11,30 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B064] (P1) Fetch a deleted pull request head before chain validation.
+  Reported on 2026-08-11 during review of merged pull request chain handling.
+  Observation:
+  - GitHub can retain a merged pull request after branch deletion.
+  - A repository can lack the final pull request head commit.
+  - The ancestry check then fails before sync reaches the next merged base.
+  Requirements:
+  - Fetch the exact GitHub pull request head when the recorded commit is absent.
+  - Verify the fetched commit against the GitHub head identity.
+  - Preserve exact matching for an existing remote branch.
+  - Preserve the branch reuse guard for local commits.
+  - Fail with operation context when the head is unavailable or different.
+  Validation:
+  - Add compiled CLI coverage with a deleted branch and an absent local head commit.
+  - Prove that sync follows the merged chain to `master`.
+  - Run focused tests and complete CI.
+
+  Resolution:
+  - Sync now resolves the recorded head commit before the ancestry check.
+  - If the commit is absent, sync fetches `refs/pull/<number>/head` without tags.
+  - Sync verifies `FETCH_HEAD` against the GitHub head identity before chain traversal.
+  - Compiled CLI coverage proves that sync fetches an absent head and reaches `master`.
+  - `make test-fast`, `make test-slow`, and `make ci` passed on 2026-08-11.
+
 - [x] [B063] (P0) An artifact successor rejects an empty SemVer range.
   Goal:
   Select one patch successor when a release system changes sealed outputs for
@@ -43,6 +67,14 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Bound same-commit patch selection to deterministic transition evidence.
   - Preserved rejection of ordinary empty SemVer ranges.
   - Passed focused release tests and `make ci`.
+
+  Review follow-up:
+  Transition input could select an initial SemVer release when no eligible tag existed.
+
+  Follow-up resolution:
+  Transition mode now rejects an untagged, excluded-tag, or fixed-major history before initial version selection.
+  Unit coverage verifies all three cases. The compiled CLI verifies the untagged case.
+  `make test-fast`, `make test-slow`, and `make ci` passed on 2026-08-11.
 
 - [ ] [B020] (P0) Investigate missing GitHub PR for branch after gix sync operation.
   Goal:
