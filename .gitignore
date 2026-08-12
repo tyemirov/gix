@@ -35,7 +35,9 @@ Icon?
 /.playwright-cli/
 
 # Ephemeral local planning scratch
-/PLAN.md
-/.mprlab/PLAN.md
 __pycache__/
 *.pyc
+
+# BEGIN MPRLAB-GOVERNANCE
+/.mprlab/*-PLAN.md
+# END MPRLAB-GOVERNANCE

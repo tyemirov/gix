@@ -2,10 +2,12 @@ package release
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -27,7 +29,20 @@ const (
 	nextTimestampFlagName       = "release-timestamp"
 	nextExcludeTagFlagName      = "exclude-tag"
 	nextFixedMajorFlagName      = "fixed-major"
+	nextPreviousOutputFlagName  = "previous-release-output"
+	nextCandidateOutputFlagName = "candidate-release-output"
+	releaseOutputTransitionV1   = "mprlab.release-output-transition/v1"
+	artifactSuccessorReason     = "The sealed release output changed for the same source commit, so the release is compatible."
+	artifactSuccessorTagError   = "release output transition requires the latest SemVer tag at the source commit"
 )
+
+var releaseOutputIdentityPattern = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+
+type releaseOutputTransition struct {
+	Previous       string
+	Candidate      string
+	EvidenceSHA256 string
+}
 
 // NextConfiguration contains the LLM policy used for established SemVer histories.
 type NextConfiguration struct {
@@ -88,6 +103,8 @@ func (builder NextCommandBuilder) Build() (*cobra.Command, error) {
 	command.Flags().String(nextTimestampFlagName, "", "Release timestamp for CalVer in RFC3339 format")
 	command.Flags().StringSlice(nextExcludeTagFlagName, nil, "Exclude a local tag from successor selection (repeatable)")
 	command.Flags().Int(nextFixedMajorFlagName, 0, "Keep SemVer releases on one positive major")
+	command.Flags().String(nextPreviousOutputFlagName, "", "Set the previous sealed release output SHA-256 identity")
+	command.Flags().String(nextCandidateOutputFlagName, "", "Set the candidate sealed release output SHA-256 identity")
 	return command, nil
 }
 
@@ -103,8 +120,12 @@ func (builder NextCommandBuilder) run(command *cobra.Command, arguments []string
 	if format != "text" && format != "json" {
 		return fmt.Errorf("release next format must be text or json: %q", format)
 	}
+	outputTransition, outputTransitionError := releaseOutputTransitionFromCommand(command, policy)
+	if outputTransitionError != nil {
+		return outputTransitionError
+	}
 
-	decision, decisionError := builder.decide(command, policy)
+	decision, decisionError := builder.decide(command, policy, outputTransition)
 	if decisionError != nil {
 		return decisionError
 	}
@@ -113,6 +134,51 @@ func (builder NextCommandBuilder) run(command *cobra.Command, arguments []string
 	}
 	_, writeError := fmt.Fprintln(command.OutOrStdout(), decision.NextVersion)
 	return writeError
+}
+
+func releaseOutputTransitionFromCommand(command *cobra.Command, policy releaseversion.Policy) (*releaseOutputTransition, error) {
+	previousSet := command.Flags().Changed(nextPreviousOutputFlagName)
+	candidateSet := command.Flags().Changed(nextCandidateOutputFlagName)
+	if !previousSet && !candidateSet {
+		return nil, nil
+	}
+	if policy.Scheme() != releaseversion.SchemeSemVer {
+		return nil, errors.New("release output transition is valid only for semver policy")
+	}
+	if !previousSet || !candidateSet {
+		return nil, errors.New("release output transition requires previous and candidate identities")
+	}
+	previous, previousError := command.Flags().GetString(nextPreviousOutputFlagName)
+	if previousError != nil {
+		return nil, previousError
+	}
+	candidate, candidateError := command.Flags().GetString(nextCandidateOutputFlagName)
+	if candidateError != nil {
+		return nil, candidateError
+	}
+	return newReleaseOutputTransition(previous, candidate)
+}
+
+func newReleaseOutputTransition(previous string, candidate string) (*releaseOutputTransition, error) {
+	previous = strings.TrimSpace(previous)
+	candidate = strings.TrimSpace(candidate)
+	if !releaseOutputIdentityPattern.MatchString(previous) || !releaseOutputIdentityPattern.MatchString(candidate) {
+		return nil, errors.New("release output transition identities must be canonical SHA-256 values")
+	}
+	if previous == candidate {
+		return nil, errors.New("release output transition identities must differ")
+	}
+	evidence := sha256.Sum256([]byte(strings.Join([]string{
+		releaseOutputTransitionV1,
+		previous,
+		candidate,
+		"",
+	}, "\n")))
+	return &releaseOutputTransition{
+		Previous:       previous,
+		Candidate:      candidate,
+		EvidenceSHA256: fmt.Sprintf("%x", evidence),
+	}, nil
 }
 
 func invocationPolicy(command *cobra.Command, arguments []string) (releaseversion.Policy, error) {
@@ -136,7 +202,7 @@ func invocationPolicy(command *cobra.Command, arguments []string) (releaseversio
 	return policy, nil
 }
 
-func (builder NextCommandBuilder) decide(command *cobra.Command, policy releaseversion.Policy) (VersionDecision, error) {
+func (builder NextCommandBuilder) decide(command *cobra.Command, policy releaseversion.Policy, outputTransition *releaseOutputTransition) (VersionDecision, error) {
 	workingDirectoryProvider := builder.WorkingDirectoryProvider
 	if workingDirectoryProvider == nil {
 		workingDirectoryProvider = os.Getwd
@@ -208,7 +274,7 @@ func (builder NextCommandBuilder) decide(command *cobra.Command, policy releasev
 	var decisionError error
 	switch policy.Scheme() {
 	case releaseversion.SchemeSemVer:
-		decision, decisionError = builder.decideSemVer(command, dependencies.GitExecutor, repositoryRoot, sourceCommit, tags, policy)
+		decision, decisionError = builder.decideSemVer(command, dependencies.GitExecutor, repositoryRoot, sourceCommit, tags, policy, outputTransition)
 	case releaseversion.SchemeCalVer:
 		decision, decisionError = builder.decideCalVer(command, sourceCommit, tags, policy)
 	default:
@@ -220,7 +286,7 @@ func (builder NextCommandBuilder) decide(command *cobra.Command, policy releasev
 	return decision, nil
 }
 
-func (builder NextCommandBuilder) decideSemVer(command *cobra.Command, gitExecutor shared.GitExecutor, repositoryRoot string, sourceCommit string, tags []string, policy releaseversion.Policy) (VersionDecision, error) {
+func (builder NextCommandBuilder) decideSemVer(command *cobra.Command, gitExecutor shared.GitExecutor, repositoryRoot string, sourceCommit string, tags []string, policy releaseversion.Policy, outputTransition *releaseOutputTransition) (VersionDecision, error) {
 	fixedMajor := policy.FixedMajor()
 	previous := releaseversion.LatestSemVer(tags)
 	if fixedMajor > 0 {
@@ -234,6 +300,9 @@ func (builder NextCommandBuilder) decideSemVer(command *cobra.Command, gitExecut
 		PreviousVersion: previous,
 	}
 	if previous == "" {
+		if outputTransition != nil {
+			return VersionDecision{}, errors.New(artifactSuccessorTagError)
+		}
 		initialMajor := 1
 		if fixedMajor > 0 {
 			initialMajor = fixedMajor
@@ -252,6 +321,24 @@ func (builder NextCommandBuilder) decideSemVer(command *cobra.Command, gitExecut
 	}
 	if _, ancestorError := executeGit(command.Context(), gitExecutor, repositoryRoot, "merge-base", "--is-ancestor", boundaryCommit, sourceCommit); ancestorError != nil {
 		return VersionDecision{}, fmt.Errorf("SemVer boundary %s is not an ancestor of source commit %s: %w", previous, sourceCommit, ancestorError)
+	}
+	if outputTransition != nil {
+		if boundaryCommit != sourceCommit {
+			return VersionDecision{}, errors.New(artifactSuccessorTagError)
+		}
+		next, nextError := releaseversion.NextSemVer(previous, releaseversion.BumpPatch)
+		if fixedMajor > 0 {
+			next, nextError = releaseversion.NextFixedMajorSemVer(previous, releaseversion.BumpPatch, fixedMajor)
+		}
+		if nextError != nil {
+			return VersionDecision{}, nextError
+		}
+		decision.NextVersion = next
+		decision.Bump = releaseversion.BumpPatch
+		decision.DeterministicFloor = releaseversion.BumpPatch
+		decision.Reason = artifactSuccessorReason
+		decision.EvidenceSHA256 = outputTransition.EvidenceSHA256
+		return decision, nil
 	}
 
 	configuration := NextConfiguration{}

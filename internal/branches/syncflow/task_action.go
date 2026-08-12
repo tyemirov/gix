@@ -57,6 +57,11 @@ const (
 	gitAddAllFlagConstant                        = "--all"
 	gitCommitSubcommandConstant                  = "commit"
 	gitCommitMessageFlagConstant                 = "-m"
+	gitMergeBaseSubcommandConstant               = "merge-base"
+	gitMergeBaseIsAncestorFlagConstant           = "--is-ancestor"
+	gitFetchNoTagsFlagConstant                   = "--no-tags"
+	gitFetchHeadReferenceConstant                = "FETCH_HEAD"
+	gitPullRequestHeadReferenceTemplateConstant  = "refs/pull/%d/head"
 	gitSwitchTrackFlagConstant                   = "--track"
 	stashTrackedChangesFailureTemplateConstant   = "failed to stash tracked changes before switching: %w"
 	restoreStashedChangesFailureTemplateConstant = "failed to restore stashed changes after switching: %w"
@@ -739,6 +744,7 @@ type mergedPullRequestSyncResult struct {
 type strictSyncBranchTip struct {
 	CommitID            string
 	Exists              bool
+	RemoteExists        bool
 	HasLocalOnlyCommits bool
 }
 
@@ -1160,6 +1166,7 @@ func mergedPullRequestForCurrentBranchTip(ctx context.Context, environment *work
 	if branchTipErr != nil {
 		return nil, branchTipErr
 	}
+	matchingPullRequests := make([]githubcli.PullRequest, 0, len(pullRequests))
 	for _, pullRequest := range pullRequests {
 		if strings.TrimSpace(pullRequest.HeadRefName) != branchName {
 			continue
@@ -1168,12 +1175,84 @@ func mergedPullRequestForCurrentBranchTip(ctx context.Context, environment *work
 		if headRefOID == "" {
 			return nil, fmt.Errorf(strictSyncMissingPullRequestHeadOIDTemplate, branchName)
 		}
+		matchingPullRequests = append(matchingPullRequests, pullRequest)
 		if !branchTip.Exists || (!branchTip.HasLocalOnlyCommits && headRefOID == branchTip.CommitID) {
 			matchedPullRequest := pullRequest
 			return &matchedPullRequest, nil
 		}
 	}
+	if branchTip.HasLocalOnlyCommits || branchTip.RemoteExists {
+		return nil, nil
+	}
+	for _, pullRequest := range matchingPullRequests {
+		headCommit, headCommitErr := ensureStrictSyncPullRequestHeadCommit(ctx, environment.GitExecutor, repository.Path, remoteName, pullRequest)
+		if headCommitErr != nil {
+			return nil, headCommitErr
+		}
+		isAncestor, ancestryErr := strictSyncCommitIsAncestor(ctx, environment.GitExecutor, repository.Path, branchTip.CommitID, headCommit)
+		if ancestryErr != nil {
+			return nil, ancestryErr
+		}
+		if isAncestor {
+			matchedPullRequest := pullRequest
+			return &matchedPullRequest, nil
+		}
+	}
 	return nil, nil
+}
+
+func ensureStrictSyncPullRequestHeadCommit(ctx context.Context, executor shared.GitExecutor, repositoryPath string, remoteName string, pullRequest githubcli.PullRequest) (string, error) {
+	headRefOID := strings.TrimSpace(pullRequest.HeadRefOID)
+	headCommit, headExists, headCommitErr := strictSyncReferenceCommit(ctx, executor, repositoryPath, headRefOID+gitCommitPeelSuffixConstant)
+	if headCommitErr != nil {
+		return "", fmt.Errorf("resolve merged pull request %d head commit %q: %w", pullRequest.Number, headRefOID, headCommitErr)
+	}
+	if headExists {
+		if headCommit != headRefOID {
+			return "", fmt.Errorf("merged pull request %d head resolved to %q instead of %q", pullRequest.Number, headCommit, headRefOID)
+		}
+		return headCommit, nil
+	}
+	pullRequestHeadReference := fmt.Sprintf(gitPullRequestHeadReferenceTemplateConstant, pullRequest.Number)
+	if fetchErr := executeGit(ctx, executor, repositoryPath, []string{
+		gitFetchSubcommandConstant,
+		gitFetchNoTagsFlagConstant,
+		remoteName,
+		pullRequestHeadReference,
+	}); fetchErr != nil {
+		return "", fmt.Errorf("fetch merged pull request %d head %q from %q: %w", pullRequest.Number, pullRequestHeadReference, remoteName, fetchErr)
+	}
+	fetchedHead, fetchedHeadExists, fetchedHeadErr := strictSyncReferenceCommit(ctx, executor, repositoryPath, gitFetchHeadReferenceConstant+gitCommitPeelSuffixConstant)
+	if fetchedHeadErr != nil {
+		return "", fmt.Errorf("resolve fetched pull request %d head: %w", pullRequest.Number, fetchedHeadErr)
+	}
+	if !fetchedHeadExists {
+		return "", fmt.Errorf("fetched pull request %d head did not resolve to a commit", pullRequest.Number)
+	}
+	if fetchedHead != headRefOID {
+		return "", fmt.Errorf("fetched pull request %d head resolved to %q instead of %q", pullRequest.Number, fetchedHead, headRefOID)
+	}
+	return fetchedHead, nil
+}
+
+func strictSyncCommitIsAncestor(ctx context.Context, executor shared.GitExecutor, repositoryPath string, ancestorCommit string, descendantCommit string) (bool, error) {
+	_, ancestryErr := executor.ExecuteGit(ctx, execshell.CommandDetails{
+		Arguments: []string{
+			gitMergeBaseSubcommandConstant,
+			gitMergeBaseIsAncestorFlagConstant,
+			ancestorCommit,
+			descendantCommit,
+		},
+		WorkingDirectory: repositoryPath,
+	})
+	if ancestryErr == nil {
+		return true, nil
+	}
+	var commandFailure execshell.CommandFailedError
+	if errors.As(ancestryErr, &commandFailure) && commandFailure.Result.ExitCode == 1 {
+		return false, nil
+	}
+	return false, fmt.Errorf("verify commit %q is an ancestor of merged pull request head %q: %w", ancestorCommit, descendantCommit, ancestryErr)
 }
 
 func currentStrictSyncBranchTip(ctx context.Context, executor shared.GitExecutor, repositoryPath string, remoteName string, branchName string) (strictSyncBranchTip, error) {
@@ -1191,7 +1270,7 @@ func currentStrictSyncBranchTip(ctx context.Context, executor shared.GitExecutor
 		return strictSyncBranchTip{CommitID: localCommit, Exists: localExists}, nil
 	}
 	if !localExists {
-		return strictSyncBranchTip{CommitID: remoteCommit, Exists: true}, nil
+		return strictSyncBranchTip{CommitID: remoteCommit, Exists: true, RemoteExists: true}, nil
 	}
 	localAheadCount, localAheadErr := commitCount(ctx, executor, repositoryPath, fmt.Sprintf("%s..%s", remoteReference, localReference))
 	if localAheadErr != nil {
@@ -1200,6 +1279,7 @@ func currentStrictSyncBranchTip(ctx context.Context, executor shared.GitExecutor
 	return strictSyncBranchTip{
 		CommitID:            remoteCommit,
 		Exists:              true,
+		RemoteExists:        true,
 		HasLocalOnlyCommits: localAheadCount > 0,
 	}, nil
 }

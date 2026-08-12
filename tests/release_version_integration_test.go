@@ -147,3 +147,99 @@ workflow: []
 	require.Contains(testInstance, capturedRequests, "Preserved containing audit roots")
 	require.NotContains(testInstance, capturedRequests, "Added historical public feature")
 }
+
+func TestReleaseNextSelectsSameCommitArtifactSuccessor(testInstance *testing.T) {
+	currentWorkingDirectory, workingDirectoryError := os.Getwd()
+	require.NoError(testInstance, workingDirectoryError)
+	repositoryRoot := filepath.Dir(currentWorkingDirectory)
+	binaryPath := buildIntegrationBinary(testInstance, repositoryRoot)
+
+	repositoryPath := createGitRepository(testInstance, gitRepositoryOptions{
+		DirectoryName: "release-artifact-successor-fixture",
+		InitialBranch: "master",
+	})
+	configureGitIdentity(testInstance, repositoryPath)
+	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "application.txt"), []byte("sealed source\n"), 0o644))
+	runGit(testInstance, repositoryPath, "add", "application.txt")
+	runGit(testInstance, repositoryPath, "commit", "-m", "fixture release source")
+	runGit(testInstance, repositoryPath, "tag", "v1.2.3")
+
+	configurationPath := filepath.Join(testInstance.TempDir(), "config.yml")
+	configurationContent := `common:
+  log_level: error
+  log_format: console
+github:
+  credential: ""
+llm:
+  openai:
+    priority: 2
+    model: gpt-5.6-terra
+    base_url: https://api.openai.com/v1
+    credential: ""
+  llm_proxy:
+    priority: 1
+    provider: meta
+    model: muse-spark-1.1
+    base_url: http://127.0.0.1:1
+    credential: unused
+  max_completion_tokens: 1200
+  effort: high
+  timeout_seconds: 5
+operations: []
+workflow: []
+`
+	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
+
+	ordinaryOutput, ordinaryError := runBinaryIntegrationCommand(
+		testInstance,
+		binaryPath,
+		repositoryPath,
+		map[string]string{},
+		20*time.Second,
+		[]string{"--config", configurationPath, "release", "next", "semver", "--format", "json"},
+	)
+	require.Error(testInstance, ordinaryError, ordinaryOutput)
+	require.Contains(testInstance, ordinaryOutput, "semver decision range contains no committed changes")
+
+	previousOutput := "sha256:" + strings.Repeat("a", 64)
+	candidateOutput := "sha256:" + strings.Repeat("b", 64)
+	outputText, runError := runBinaryIntegrationCommand(
+		testInstance,
+		binaryPath,
+		repositoryPath,
+		map[string]string{},
+		20*time.Second,
+		[]string{
+			"--config", configurationPath,
+			"release", "next", "semver",
+			"--format", "json",
+			"--previous-release-output", previousOutput,
+			"--candidate-release-output", candidateOutput,
+		},
+	)
+
+	require.NoError(testInstance, runError, outputText)
+	require.Contains(testInstance, outputText, `"previous_version":"v1.2.3"`)
+	require.Contains(testInstance, outputText, `"next_version":"v1.2.4"`)
+	require.Contains(testInstance, outputText, `"bump":"patch"`)
+	require.Contains(testInstance, outputText, `"deterministic_floor":"patch"`)
+	require.Contains(testInstance, outputText, "The sealed release output changed for the same source commit")
+
+	runGit(testInstance, repositoryPath, "tag", "--delete", "v1.2.3")
+	untaggedOutput, untaggedError := runBinaryIntegrationCommand(
+		testInstance,
+		binaryPath,
+		repositoryPath,
+		map[string]string{},
+		20*time.Second,
+		[]string{
+			"--config", configurationPath,
+			"release", "next", "semver",
+			"--format", "json",
+			"--previous-release-output", previousOutput,
+			"--candidate-release-output", candidateOutput,
+		},
+	)
+	require.Error(testInstance, untaggedError, untaggedOutput)
+	require.Contains(testInstance, untaggedOutput, "release output transition requires the latest SemVer tag at the source commit")
+}

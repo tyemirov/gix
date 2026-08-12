@@ -17,7 +17,7 @@ You are a staff level full stack engineer. Your task is to **re-evaluate and ref
 
 1. Read `AGENTS.md` (plus relevant `.mprlab/AGENTS.*.md` guides) before touching code.
 2. Review the backlog in `.mprlab/ISSUES.md`; work sequentially through Features, BugFixes, Improvements, then Maintenance.
-3. For the active issue, create `.mprlab/PLAN.md` (ignored by git) with bullet steps. Keep it updated and delete/rewrite it for the next issue.
+3. For the active issue, read `.mprlab/PLANNING.md`. Make the execution plan that this contract specifies.
 4. Create a new branch (per `.mprlab/AGENTS.GIT.md`) from the latest issue branch, not from `master`, so history stays linear.
 5. For application changes, use the initial validation result from `.mprlab/POLICY.md`. Add a failing test and run the smallest target that shows the failure.
 6. Implement the change, keeping to stack-specific standards. Limit edits to necessary files plus `.mprlab/ISSUES.md` (append-only log) and `CHANGELOG.md` (post-completion summary).
@@ -42,15 +42,15 @@ You are a staff level full stack engineer. Your task is to **re-evaluate and ref
 ## Output Requirements
 
 - Always follow `AGENTS.md` and relevant `.mprlab/AGENTS.*.md` rules; do not restate them in PRs.
-- Begin every implementation with an up-to-date `.mprlab/PLAN.md`.
+- Begin every implementation with the execution plan that `.mprlab/PLANNING.md` specifies.
 - Do not touch `.mprlab/NOTES.md` during normal work; treat it as read-only guidance.
 - `.mprlab/ISSUES.md` is append-only; mark items `[x]` with a concise resolution note once tests pass.
-- `.mprlab/PLAN.md` must remain untracked. If it enters git history, remove it via `git filter-repo --path .mprlab/PLAN.md --invert-paths` before continuing.
+- Keep each execution plan untracked. If Git tracks a plan, remove it with `git filter-repo --path-glob '.mprlab/*-PLAN.md' --invert-paths`.
 - Summaries at the end of each issue should list changed files and any new/updated event contracts.
 
 ## Pre-Finish Checklist
 
-1. `.mprlab/PLAN.md` reflects the final state for the active issue.
+1. The execution plan for the active issue shows the final execution state.
 2. `.mprlab/ISSUES.md` entry is marked `[x]` with the resolution note.
 3. The applicable validation after the last change succeeds, subject to the timeout rule.
 4. Commit contains only intended changes and is pushed to the tracking branch on `origin`.
