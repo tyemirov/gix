@@ -11,6 +11,26 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B065] (P0) Keep required repair inputs on the patch line.
+  Reported on 2026-08-12 after B063 and B064 were published as `v1.5.0` instead of `v1.4.1`.
+  Expected result:
+  A compatible release repair increments the patch version under the fixed `v1` policy.
+  Actual result:
+  The model treated required CLI inputs for the repair as optional public functionality and selected a minor release.
+  Requirements:
+  - Classify a required repair input by the restored operation, not by its new interface shape.
+  - Keep optional new user functionality on the minor line.
+  - Preserve incompatible and additive public contract classification.
+  Validation:
+  - Reproduce the B063 release-input repair from `v1.4.0`.
+  - Verify `gix release next semver --fixed-major 1` selects `v1.4.1`.
+  - Run focused tests and complete CI.
+
+  Resolution:
+  - The version decision now keeps required repair inputs in the compatible repair.
+  - The compiled CLI test reproduced `v1.5.0` and now selects `v1.4.1`.
+  - `make test-slow`, `make format`, and `make ci` passed on 2026-08-12.
+
 - [x] [B064] (P1) Fetch a deleted pull request head before chain validation.
   Reported on 2026-08-11 during review of merged pull request chain handling.
   Observation:
