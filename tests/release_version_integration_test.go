@@ -148,6 +148,125 @@ workflow: []
 	require.NotContains(testInstance, capturedRequests, "Added historical public feature")
 }
 
+func TestReleaseNextKeepsRequiredRepairInputsOnPatchLine(testInstance *testing.T) {
+	currentWorkingDirectory, workingDirectoryError := os.Getwd()
+	require.NoError(testInstance, workingDirectoryError)
+	repositoryRoot := filepath.Dir(currentWorkingDirectory)
+	binaryPath := buildIntegrationBinary(testInstance, repositoryRoot)
+
+	const repairClassificationRule = "Treat required inputs that only enable a compatible repair as part of the repair, not as optional new functionality."
+	var requestsMutex sync.Mutex
+	requests := make([]string, 0, 2)
+	decisionServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/v2" {
+			http.NotFound(responseWriter, request)
+			return
+		}
+		requestBody, _ := io.ReadAll(request.Body)
+		requestText := string(requestBody)
+		requestsMutex.Lock()
+		requests = append(requests, requestText)
+		requestsMutex.Unlock()
+		if strings.Contains(requestText, repairClassificationRule) {
+			_, _ = responseWriter.Write([]byte(`{"impact":"compatible","public_contract":"gix release next artifact successor","reason":"The release repairs artifact successor selection."}`))
+			return
+		}
+		_, _ = responseWriter.Write([]byte(`{"impact":"additive","public_contract":"gix release next output identity flags","reason":"The release adds optional output identity flags."}`))
+	}))
+	testInstance.Cleanup(decisionServer.Close)
+
+	repositoryPath := createGitRepository(testInstance, gitRepositoryOptions{
+		DirectoryName: "release-repair-input-fixture",
+		InitialBranch: "master",
+	})
+	configureGitIdentity(testInstance, repositoryPath)
+	require.NoError(testInstance, os.MkdirAll(filepath.Join(repositoryPath, ".mprlab"), 0o755))
+	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "release.go"), []byte("package fixture\n"), 0o644))
+	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "README.md"), []byte("The release command selects the next SemVer version.\n"), 0o644))
+	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, ".mprlab", "ISSUES.md"), []byte("# ISSUES\n\n## BugFixes\n"), 0o644))
+	runGit(testInstance, repositoryPath, "add", ".")
+	runGit(testInstance, repositoryPath, "commit", "-m", "fixture release baseline")
+	runGit(testInstance, repositoryPath, "tag", "v1.4.0")
+
+	repairSource := strings.Join([]string{
+		"package fixture",
+		"",
+		"var previousReleaseOutput string",
+		"var candidateReleaseOutput string",
+		"",
+	}, "\n")
+	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "release.go"), []byte(repairSource), 0o644))
+	repairDocumentation := strings.Join([]string{
+		"The release command selects the next SemVer version.",
+		"Artifact producers provide previous and candidate output identities for a same-commit patch successor.",
+		"",
+	}, "\n")
+	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "README.md"), []byte(repairDocumentation), 0o644))
+	repairIssue := strings.Join([]string{
+		"# ISSUES",
+		"",
+		"## BugFixes",
+		"",
+		"- [x] [B063] An artifact successor rejects an empty SemVer range.",
+		"  Goal:",
+		"  Select one patch successor when a release system changes sealed outputs for the same source commit.",
+		"  Requirements:",
+		"  - Accept exact previous and candidate output identities at the CLI boundary.",
+		"  - Select a patch successor without an LLM request.",
+		"",
+	}, "\n")
+	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, ".mprlab", "ISSUES.md"), []byte(repairIssue), 0o644))
+	runGit(testInstance, repositoryPath, "add", ".")
+	runGit(testInstance, repositoryPath, "commit", "-m", "fix(release): select same-commit artifact successors")
+
+	configurationPath := filepath.Join(testInstance.TempDir(), "config.yml")
+	configurationContent := fmt.Sprintf(`common:
+  log_level: error
+  log_format: console
+github:
+  credential: ""
+llm:
+  openai:
+    priority: 2
+    model: gpt-5.6-terra
+    base_url: https://api.openai.com/v1
+    credential: ""
+  llm_proxy:
+    priority: 1
+    provider: meta
+    model: muse-spark-1.1
+    base_url: %q
+    credential: proxy-secret
+  max_completion_tokens: 1200
+  effort: high
+  timeout_seconds: 5
+operations: []
+workflow: []
+`, decisionServer.URL)
+	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
+
+	outputText, runError := runBinaryIntegrationCommand(
+		testInstance,
+		binaryPath,
+		repositoryPath,
+		map[string]string{},
+		20*time.Second,
+		[]string{"--config", configurationPath, "release", "next", "semver", "--fixed-major", "1", "--format", "json"},
+	)
+
+	require.NoError(testInstance, runError, outputText)
+	require.Contains(testInstance, outputText, `"previous_version":"v1.4.0"`)
+	require.Contains(testInstance, outputText, `"next_version":"v1.4.1"`)
+	require.Contains(testInstance, outputText, `"bump":"patch"`)
+	requestsMutex.Lock()
+	capturedRequests := strings.Join(requests, "\n")
+	capturedRequestCount := len(requests)
+	requestsMutex.Unlock()
+	require.Equal(testInstance, 2, capturedRequestCount)
+	require.Contains(testInstance, capturedRequests, repairClassificationRule)
+	require.Contains(testInstance, capturedRequests, "Select one patch successor")
+}
+
 func TestReleaseNextSelectsSameCommitArtifactSuccessor(testInstance *testing.T) {
 	currentWorkingDirectory, workingDirectoryError := os.Getwd()
 	require.NoError(testInstance, workingDirectoryError)
