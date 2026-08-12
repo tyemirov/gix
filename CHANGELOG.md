@@ -143,6 +143,20 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.5.0] - 2026-08-12
+
+- Merge pull request #431 from tyemirov/bugfix/B063-artifact-successor-evidence
+- test: cover release tag and deleted parent fetch scenarios
+- fix(sync): fetch missing pull request head commits
+- fix(release): require eligible SemVer tag for output transitions
+- fix: resolve deleted PR heads and reject invalid release transitions
+- test: cover sync of deleted parent from stale local branch
+- fix(sync): match merged PRs from locally surviving branches
+- docs: clarify temporary plan file naming
+- docs: define unique temporary execution plan naming
+- chore(gitignore): ignore MPRLAB plan files by pattern
+- fix(release): select same-commit artifact successors
+
 ## [v1.4.0] - 2026-08-10
 
 - Merge pull request #430 from tyemirov/improvement/I012-invocation-owned-release-policy
