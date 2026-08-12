@@ -224,4 +224,22 @@ workflow: []
 	require.Contains(testInstance, outputText, `"bump":"patch"`)
 	require.Contains(testInstance, outputText, `"deterministic_floor":"patch"`)
 	require.Contains(testInstance, outputText, "The sealed release output changed for the same source commit")
+
+	runGit(testInstance, repositoryPath, "tag", "--delete", "v1.2.3")
+	untaggedOutput, untaggedError := runBinaryIntegrationCommand(
+		testInstance,
+		binaryPath,
+		repositoryPath,
+		map[string]string{},
+		20*time.Second,
+		[]string{
+			"--config", configurationPath,
+			"release", "next", "semver",
+			"--format", "json",
+			"--previous-release-output", previousOutput,
+			"--candidate-release-output", candidateOutput,
+		},
+	)
+	require.Error(testInstance, untaggedError, untaggedOutput)
+	require.Contains(testInstance, untaggedOutput, "release output transition requires the latest SemVer tag at the source commit")
 }

@@ -142,41 +142,54 @@ func TestSyncTransitivelyMergedBranchFollowsDeletedParentFromStaleLocalTip(testI
 	parentBranchName := "feature/deleted-stack-parent"
 	workspacePath := syncHomeWorkspace(testInstance)
 	remotePath := filepath.Join(workspacePath, "remote.git")
-	repositoryPath := filepath.Join(workspacePath, "project")
-	createSyncGitHubBackedRepository(testInstance, remotePath, repositoryPath)
+	publisherPath := filepath.Join(workspacePath, "publisher")
+	repositoryRootPath := filepath.Join(workspacePath, "roots")
+	repositoryPath := filepath.Join(repositoryRootPath, "project")
+	createSyncGitHubBackedRepository(testInstance, remotePath, publisherPath)
 
-	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "README.md"), []byte("initial\n"), 0o644))
-	runGit(testInstance, repositoryPath, "add", "README.md")
-	runGit(testInstance, repositoryPath, "commit", "-m", "initial commit")
-	runGit(testInstance, repositoryPath, "push", "-u", "origin", "master")
+	require.NoError(testInstance, os.WriteFile(filepath.Join(publisherPath, "README.md"), []byte("initial\n"), 0o644))
+	runGit(testInstance, publisherPath, "add", "README.md")
+	runGit(testInstance, publisherPath, "commit", "-m", "initial commit")
+	runGit(testInstance, publisherPath, "push", "-u", "origin", "master")
 
-	runGit(testInstance, repositoryPath, "switch", "-c", parentBranchName)
-	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "parent.txt"), []byte("parent review\n"), 0o644))
-	runGit(testInstance, repositoryPath, "add", "parent.txt")
-	runGit(testInstance, repositoryPath, "commit", "-m", "parent branch commit")
-	runGit(testInstance, repositoryPath, "push", "-u", "origin", parentBranchName)
-	staleParentHeadOID := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", parentBranchName))
+	runGit(testInstance, publisherPath, "switch", "-c", parentBranchName)
+	require.NoError(testInstance, os.WriteFile(filepath.Join(publisherPath, "parent.txt"), []byte("parent review\n"), 0o644))
+	runGit(testInstance, publisherPath, "add", "parent.txt")
+	runGit(testInstance, publisherPath, "commit", "-m", "parent branch commit")
+	runGit(testInstance, publisherPath, "push", "-u", "origin", parentBranchName)
+	staleParentHeadOID := strings.TrimSpace(runGit(testInstance, publisherPath, "rev-parse", parentBranchName))
 
-	runGit(testInstance, repositoryPath, "switch", "-c", branchName)
-	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "child.txt"), []byte("child review\n"), 0o644))
-	runGit(testInstance, repositoryPath, "add", "child.txt")
-	runGit(testInstance, repositoryPath, "commit", "-m", "child branch commit")
-	runGit(testInstance, repositoryPath, "push", "-u", "origin", branchName)
-	branchMergedHeadOID := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", branchName))
+	runGit(testInstance, publisherPath, "switch", "-c", branchName)
+	require.NoError(testInstance, os.WriteFile(filepath.Join(publisherPath, "child.txt"), []byte("child review\n"), 0o644))
+	runGit(testInstance, publisherPath, "add", "child.txt")
+	runGit(testInstance, publisherPath, "commit", "-m", "child branch commit")
+	runGit(testInstance, publisherPath, "push", "-u", "origin", branchName)
+	branchMergedHeadOID := strings.TrimSpace(runGit(testInstance, publisherPath, "rev-parse", branchName))
 
-	runGit(testInstance, repositoryPath, "switch", parentBranchName)
-	runGit(testInstance, repositoryPath, "merge", "--no-ff", branchName, "-m", "merge child review")
-	runGit(testInstance, repositoryPath, "push", "origin", parentBranchName)
-	parentMergedHeadOID := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", parentBranchName))
-	runGit(testInstance, repositoryPath, "switch", "master")
-	runGit(testInstance, repositoryPath, "merge", "--no-ff", parentBranchName, "-m", "merge parent review")
-	runGit(testInstance, repositoryPath, "push", "origin", "master")
-	runGit(testInstance, repositoryPath, "branch", "--force", parentBranchName, staleParentHeadOID)
-	runGit(testInstance, repositoryPath, "push", "origin", "--delete", branchName, parentBranchName)
+	require.NoError(testInstance, os.MkdirAll(repositoryRootPath, 0o755))
+	runGitWithDir(testInstance, "", "clone", localFileURL(remotePath), repositoryPath)
+	configureGitIdentity(testInstance, repositoryPath)
+	runGit(testInstance, repositoryPath, "switch", "-c", parentBranchName, "--track", "origin/"+parentBranchName)
+	runGit(testInstance, repositoryPath, "switch", "-c", branchName, "--track", "origin/"+branchName)
+
+	runGit(testInstance, publisherPath, "switch", parentBranchName)
+	runGit(testInstance, publisherPath, "merge", "--no-ff", branchName, "-m", "merge child review")
+	runGit(testInstance, publisherPath, "push", "origin", parentBranchName)
+	parentMergedHeadOID := strings.TrimSpace(runGit(testInstance, publisherPath, "rev-parse", parentBranchName))
+	runGitWithDir(testInstance, "", "--git-dir", remotePath, "update-ref", "refs/pull/9/head", parentMergedHeadOID)
+	runGit(testInstance, publisherPath, "switch", "master")
+	runGit(testInstance, publisherPath, "merge", "--no-ff", branchName, "-m", "merge reviewed stack")
+	runGit(testInstance, publisherPath, "push", "origin", "master")
+	runGit(testInstance, publisherPath, "push", "origin", "--delete", branchName, parentBranchName)
+
+	missingHeadCommand := exec.Command("git", "-C", repositoryPath, "cat-file", "-e", parentMergedHeadOID+"^{commit}")
+	missingHeadCommand.Env = buildGitCommandEnvironment(nil)
+	require.Error(testInstance, missingHeadCommand.Run())
 	runGit(testInstance, repositoryPath, "switch", branchName)
 
 	configurationPath := writeSyncMergedBranchConfiguration(testInstance)
 	githubLogPath := filepath.Join(testInstance.TempDir(), "gh.log")
+	gitLogPath := filepath.Join(testInstance.TempDir(), "git.log")
 	reviewChain := fmt.Sprintf(
 		"merged-pr --base %s --head %s --oid %s\nmerged-pr --base master --head %s --oid %s\n",
 		parentBranchName,
@@ -194,6 +207,7 @@ func TestSyncTransitivelyMergedBranchFollowsDeletedParentFromStaleLocalTip(testI
 		integrationCommandOptions{
 			PathVariable: pathVariable,
 			EnvironmentOverrides: map[string]string{
+				syncMergedBranchGitLogVariable:    gitLogPath,
 				syncMergedBranchGitHubLogVariable: githubLogPath,
 				syncMergedBranchNameVariable:      branchName,
 				syncMergedBranchMergedVariable:    "false",
@@ -210,12 +224,14 @@ func TestSyncTransitivelyMergedBranchFollowsDeletedParentFromStaleLocalTip(testI
 	require.NotContains(testInstance, output, "SYNC_SWITCH_ROLLBACK")
 	require.Equal(testInstance, "master", strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
 	require.Equal(testInstance, staleParentHeadOID, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", parentBranchName)))
+	require.Equal(testInstance, parentMergedHeadOID, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", parentMergedHeadOID+"^{commit}")))
 	require.Equal(testInstance, "child review\n", readTextFile(testInstance, filepath.Join(repositoryPath, "child.txt")))
 
 	githubLog := readTextFile(testInstance, githubLogPath)
 	require.Contains(testInstance, githubLog, "pr list --repo owner/project --state merged --head "+branchName)
 	require.Contains(testInstance, githubLog, "pr list --repo owner/project --state merged --head "+parentBranchName)
 	require.NotContains(testInstance, githubLog, "pr create")
+	require.Contains(testInstance, readTextFile(testInstance, gitLogPath), "fetch --no-tags origin refs/pull/9/head")
 }
 
 func TestSyncReusedMergedBranchHeadCreatesNewPullRequestInsteadOfHandoff(testInstance *testing.T) {
