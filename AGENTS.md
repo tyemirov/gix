@@ -17,7 +17,7 @@ gix keeps large fleets of Git repositories in a healthy state. It bundles the da
 - `.mprlab/NOTES.md`: Read-only process playbook maintained by leads. Agents never edit it during implementation cycles.
 - `.mprlab/ISSUES.md`: Append-only log of newly discovered requests and changes. No instructive sections live here; each entry records what changed or what was discovered.
 - `.mprlab/ARCHIVE.md`: Resolved issue history preserved during backlog cleanup.
-- `.mprlab/PLAN.md`: Working plan for one concrete change/issue; ephemeral and replaced per change.
+- `.mprlab/<PLAN-ID>-PLAN.md`: Temporary execution plan. Use `.mprlab/PLANNING.md` for the plan ID.
 
 ### Document Precedence
 
