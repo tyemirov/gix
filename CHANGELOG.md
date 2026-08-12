@@ -144,6 +144,14 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.5.1] - 2026-08-12
+
+- Merge pull request #432 from tyemirov/bugfix/B065-keep-repair-inputs-on-patch-line
+- test(release): cover repair inputs on patch line
+- fix(semver): classify required repair inputs as compatible
+- fix(release): keep repair-only inputs on patch line
+- docs: document B065 patch release classification fix
+
 ## [v1.5.0] - 2026-08-12
 
 - Merge pull request #431 from tyemirov/bugfix/B063-artifact-successor-evidence
