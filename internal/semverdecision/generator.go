@@ -298,6 +298,7 @@ func decisionSystemContent(audit bool, fixedMajor int) string {
 		"impact must be exactly incompatible, additive, or compatible.",
 		"Use incompatible only when a previously supported external use stops working or requires user migration.",
 		"Use additive only when the release adds optional public functionality for users or external consumers.",
+		"Treat required inputs that only enable a compatible repair as part of the repair, not as optional new functionality.",
 		"Use compatible for fixes, restored behavior, performance work, internal refactoring, tests, documentation, and release implementation changes.",
 		"A public contract includes supported CLI behavior, documented configuration, persisted user data, network protocols, and explicitly supported library APIs.",
 		"For an executable product, Go module paths, package paths, and internal imports are implementation details unless evidence proves a supported library API.",

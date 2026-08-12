@@ -26,6 +26,7 @@
 - Updated the LLM Proxy Go client from v0.2.21 to v0.2.46, moved Gix's configured proxy work budget to the current per-request timeout header, and raised the Go module floor to 1.25.12 with the dependency graph required by that client.
 
 ### Bug Fixes 🐛
+- Kept required repair-only release inputs on the patch line and selected `v1.4.1` for the B063-shaped fixture.
 - Limited SemVer changelog evidence to the selected tag-to-source range, so historical Unreleased entries cannot raise a compatible fix from patch to minor.
 - Preserved containing audit roots, so nested linked checkouts keep relative paths and cannot share a folder label with primary checkouts.
 - Made SemVer selection depend on supported public contract effects instead of commit labels or internal implementation changes.
