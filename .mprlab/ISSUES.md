@@ -11,6 +11,39 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B063] (P0) An artifact successor rejects an empty SemVer range.
+  Goal:
+  Select one patch successor when a release system changes sealed outputs for
+  the same source commit.
+
+  Evidence:
+  - Gateway published one LoopAware release from the current application commit.
+  - Current release behavior produced different sealed output identities.
+  - `gix release next semver` rejected the empty commit range.
+
+  Requirements:
+  - Accept exact previous and candidate output identities at the CLI boundary.
+  - Require both identities and require different SHA-256 values.
+  - Permit the output transition only when the latest SemVer tag identifies `HEAD`.
+  - Select a patch successor without an LLM request.
+  - Keep ordinary empty-range selection invalid.
+
+  Deliverables:
+  - Add one typed output-transition input to `gix release next semver`.
+  - Record deterministic transition evidence in version decision contract v2.
+  - Add compiled CLI coverage for the same-commit successor.
+
+  Validation:
+  - Prove the transition selects the next patch version.
+  - Prove invalid transitions fail before an LLM request.
+  - Run focused release tests and complete CI.
+
+  Resolution:
+  - Added paired canonical release output inputs for SemVer decisions.
+  - Bound same-commit patch selection to deterministic transition evidence.
+  - Preserved rejection of ordinary empty SemVer ranges.
+  - Passed focused release tests and `make ci`.
+
 - [ ] [B020] (P0) Investigate missing GitHub PR for branch after gix sync operation.
   Goal:
   Determine why `gh pr view -w` reports no pull requests for branch `gix/publish-seo-resource-hub-45-resource-pages-sitemap-and` in the SummerCan repo and ensure the correct PR exists or can be created without confusion.

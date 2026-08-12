@@ -35,6 +35,8 @@ For an established SemVer sequence, the command uses an LLM to examine all commi
 
 Invalid or unavailable model output stops the release before version selection. A SemVer repository without tags starts at `v1.0.0`. A CalVer repository uses the canonical UTC release timestamp. At an exact release tag, `make release` is the idempotent retry command.
 
+An artifact producer can supply different previous and candidate release output identities for the same tagged source commit. Gix binds both SHA-256 identities into deterministic evidence and selects the next patch version without an LLM request. An ordinary SemVer decision with an empty commit range remains invalid.
+
 The Gix release helper invokes `gix release next semver --fixed-major 1`. Under this policy, incompatible and additive Gix public contract changes select a minor release. Compatible fixes and internal changes select a patch release. Version selection uses only `v1` tags. Other callers can select standard SemVer or CalVer explicitly.
 
 `make release` runs CI. It prepares the binaries, checksums, Pages archive, release metadata commit, one annotated tag, and release manifest. The local `.git/mprlab-release` directory contains the sealed receipt. New release preparation does not write to a remote repository.
@@ -647,8 +649,8 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
  - Purges paths from history using git-filter-repo and optionally force-pushes updates.
 - `gix release <tag> [--message <text>] [--remote <name>] [--roots <dir>...] [-y]` (alias `rel`)
  - Creates and pushes an annotated tag for each repository root.
-- `gix release next <semver|calver> [--fixed-major <major>] [--format text|json] [--release-timestamp <RFC3339>] [--exclude-tag <tag>...]`
- - Selects the next canonical version from the explicit invocation policy. `--fixed-major` applies only to SemVer. `--release-timestamp` applies only to CalVer. JSON output records the complete applied policy in `mprlab.version-decision/v2`.
+- `gix release next <semver|calver> [--fixed-major <major>] [--format text|json] [--release-timestamp <RFC3339>] [--exclude-tag <tag>...] [--previous-release-output <sha256>] [--candidate-release-output <sha256>]`
+ - Selects the next canonical version from the explicit invocation policy. The release output flags require SemVer, different SHA-256 identities, and the latest tag at `HEAD`. `--fixed-major` applies only to SemVer. `--release-timestamp` applies only to CalVer. JSON output records the complete applied policy in `mprlab.version-decision/v2`.
 - `gix release retag --map <tag=ref> [--map <tag=ref>...] [--message-template <text>] [--remote <name>] [--roots <dir>...] [-y]` (alias `fix`)
  - Reassigns existing release tags to provided commits and force-pushes updates.
 - `gix message changelog [--version <v>] [--release-date YYYY-MM-DD] [--since-tag <ref>] [--since-date <ts>] [--max-tokens <N>] [--effort <low|medium|high>] [--provider <provider>] [--model <id>] [--timeout-seconds <N>] [--roots <dir>...]` (aliases `section`)

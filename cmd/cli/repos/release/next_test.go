@@ -3,6 +3,8 @@ package release
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -48,6 +50,53 @@ func TestNextCommandSelectsEstablishedSemVer(t *testing.T) {
 	require.Contains(t, executor.calls, "merge-base --is-ancestor base123 abc123")
 	require.Contains(t, executor.calls, "log --pretty=format:%s%n%b%x1e base123..abc123")
 	require.NotContains(t, executor.calls, "log --pretty=format:%s%n%b%x1e v1.2.3..HEAD")
+}
+
+func TestNextCommandSelectsSameCommitArtifactSuccessor(t *testing.T) {
+	previousOutput := "sha256:" + strings.Repeat("a", 64)
+	candidateOutput := "sha256:" + strings.Repeat("b", 64)
+	executor := &nextGitExecutor{responses: map[string]string{
+		"rev-parse --show-toplevel":                    "/repo\n",
+		"rev-parse HEAD":                               "source123\n",
+		"rev-parse --verify v1.2.3^{commit}":           "source123\n",
+		"merge-base --is-ancestor source123 source123": "",
+		"tag --list":                                   "v1.2.3\n",
+	}}
+	client := &nextChatClient{}
+	builder := nextTestBuilder(executor, client)
+
+	output := executeNextCommand(
+		t,
+		builder,
+		"semver",
+		"--format",
+		"json",
+		"--previous-release-output",
+		previousOutput,
+		"--candidate-release-output",
+		candidateOutput,
+	)
+
+	evidence := sha256.Sum256([]byte(strings.Join([]string{
+		releaseOutputTransitionV1,
+		previousOutput,
+		candidateOutput,
+		"",
+	}, "\n")))
+	require.JSONEq(t, fmt.Sprintf(`{
+		"contract":"mprlab.version-decision/v2",
+		"policy":{"scheme":"semver"},
+		"source_commit":"source123",
+		"boundary_tag":"v1.2.3",
+		"previous_version":"v1.2.3",
+		"next_version":"v1.2.4",
+		"bump":"patch",
+		"deterministic_floor":"patch",
+		"reason":%q,
+		"evidence_sha256":"%x"
+	}`, artifactSuccessorReason, evidence), output)
+	require.Zero(t, client.calls)
+	require.NotContains(t, executor.calls, "log --pretty=format:%s%n%b%x1e source123..source123")
 }
 
 func TestNextCommandStartsSemVerWithoutLLM(t *testing.T) {
@@ -167,6 +216,10 @@ func TestNextCommandRejectsInvalidInvocationPolicy(t *testing.T) {
 		{name: "semver_timestamp", arguments: []string{"semver", "--release-timestamp", "2026-08-09T00:00:00Z"}, expected: "release timestamp is valid only for calver policy"},
 		{name: "calver_fixed_major", arguments: []string{"calver", "--fixed-major", "1"}, expected: "release fixed major is valid only for semver policy"},
 		{name: "zero_fixed_major", arguments: []string{"semver", "--fixed-major", "0"}, expected: "release fixed major must be positive"},
+		{name: "incomplete_output_transition", arguments: []string{"semver", "--previous-release-output", "sha256:" + strings.Repeat("a", 64)}, expected: "release output transition requires previous and candidate identities"},
+		{name: "malformed_output_transition", arguments: []string{"semver", "--previous-release-output", "sha256:invalid", "--candidate-release-output", "sha256:" + strings.Repeat("b", 64)}, expected: "release output transition identities must be canonical SHA-256 values"},
+		{name: "equal_output_transition", arguments: []string{"semver", "--previous-release-output", "sha256:" + strings.Repeat("a", 64), "--candidate-release-output", "sha256:" + strings.Repeat("a", 64)}, expected: "release output transition identities must differ"},
+		{name: "calver_output_transition", arguments: []string{"calver", "--previous-release-output", "sha256:" + strings.Repeat("a", 64), "--candidate-release-output", "sha256:" + strings.Repeat("b", 64)}, expected: "release output transition is valid only for semver policy"},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
