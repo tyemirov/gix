@@ -33,6 +33,7 @@ const (
 	nextCandidateOutputFlagName = "candidate-release-output"
 	releaseOutputTransitionV1   = "mprlab.release-output-transition/v1"
 	artifactSuccessorReason     = "The sealed release output changed for the same source commit, so the release is compatible."
+	artifactSuccessorTagError   = "release output transition requires the latest SemVer tag at the source commit"
 )
 
 var releaseOutputIdentityPattern = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
@@ -299,6 +300,9 @@ func (builder NextCommandBuilder) decideSemVer(command *cobra.Command, gitExecut
 		PreviousVersion: previous,
 	}
 	if previous == "" {
+		if outputTransition != nil {
+			return VersionDecision{}, errors.New(artifactSuccessorTagError)
+		}
 		initialMajor := 1
 		if fixedMajor > 0 {
 			initialMajor = fixedMajor
@@ -320,7 +324,7 @@ func (builder NextCommandBuilder) decideSemVer(command *cobra.Command, gitExecut
 	}
 	if outputTransition != nil {
 		if boundaryCommit != sourceCommit {
-			return VersionDecision{}, errors.New("release output transition requires the latest SemVer tag at the source commit")
+			return VersionDecision{}, errors.New(artifactSuccessorTagError)
 		}
 		next, nextError := releaseversion.NextSemVer(previous, releaseversion.BumpPatch)
 		if fixedMajor > 0 {

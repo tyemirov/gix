@@ -114,6 +114,49 @@ func TestNextCommandStartsSemVerWithoutLLM(t *testing.T) {
 	require.Zero(t, client.calls)
 }
 
+func TestNextCommandRejectsArtifactSuccessorWithoutEligibleSemVerTag(t *testing.T) {
+	previousOutput := "sha256:" + strings.Repeat("a", 64)
+	candidateOutput := "sha256:" + strings.Repeat("b", 64)
+	testCases := []struct {
+		name      string
+		tags      string
+		arguments []string
+	}{
+		{name: "untagged", tags: "docs-archive\n"},
+		{name: "excluded", tags: "v1.2.3\n", arguments: []string{"--exclude-tag", "v1.2.3"}},
+		{name: "fixed major has no tag", tags: "v1.2.3\n", arguments: []string{"--fixed-major", "2"}},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			executor := &nextGitExecutor{responses: map[string]string{
+				"rev-parse --show-toplevel": "/repo\n",
+				"rev-parse HEAD":            "abc123\n",
+				"tag --list":                testCase.tags,
+			}}
+			client := &nextChatClient{}
+			builder := nextTestBuilder(executor, client)
+			command, buildError := builder.Build()
+			require.NoError(t, buildError)
+			output := &bytes.Buffer{}
+			command.SetOut(output)
+			command.SetErr(output)
+			arguments := []string{
+				"semver",
+				"--previous-release-output", previousOutput,
+				"--candidate-release-output", candidateOutput,
+			}
+			command.SetArgs(append(arguments, testCase.arguments...))
+			command.SetContext(context.Background())
+
+			executionError := command.Execute()
+
+			require.ErrorContains(t, executionError, "release output transition requires the latest SemVer tag at the source commit")
+			require.Zero(t, client.calls)
+			require.NotContains(t, executor.calls, "rev-parse --verify v1.2.3^{commit}")
+		})
+	}
+}
+
 func TestNextCommandExcludesRetiredTags(t *testing.T) {
 	executor := &nextGitExecutor{responses: map[string]string{
 		"rev-parse --show-toplevel":                                    "/repo\n",
