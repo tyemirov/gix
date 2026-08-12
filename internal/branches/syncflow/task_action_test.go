@@ -1397,7 +1397,7 @@ func TestCurrentStrictSyncBranchTip(t *testing.T) {
 				"origin/feature/review":     remoteCommit,
 				"refs/heads/feature/review": remoteCommit,
 			},
-			expected: strictSyncBranchTip{CommitID: remoteCommit, Exists: true},
+			expected: strictSyncBranchTip{CommitID: remoteCommit, Exists: true, RemoteExists: true},
 		},
 		{
 			name: "local commits beyond remote",
@@ -1409,6 +1409,7 @@ func TestCurrentStrictSyncBranchTip(t *testing.T) {
 			expected: strictSyncBranchTip{
 				CommitID:            remoteCommit,
 				Exists:              true,
+				RemoteExists:        true,
 				HasLocalOnlyCommits: true,
 			},
 		},
@@ -1418,7 +1419,7 @@ func TestCurrentStrictSyncBranchTip(t *testing.T) {
 				"origin/feature/review": remoteCommit,
 			},
 			missingReferences: map[string]bool{"refs/heads/feature/review": true},
-			expected:          strictSyncBranchTip{CommitID: remoteCommit, Exists: true},
+			expected:          strictSyncBranchTip{CommitID: remoteCommit, Exists: true, RemoteExists: true},
 		},
 		{
 			name: "only local survives",

@@ -57,6 +57,8 @@ const (
 	gitAddAllFlagConstant                        = "--all"
 	gitCommitSubcommandConstant                  = "commit"
 	gitCommitMessageFlagConstant                 = "-m"
+	gitMergeBaseSubcommandConstant               = "merge-base"
+	gitMergeBaseIsAncestorFlagConstant           = "--is-ancestor"
 	gitSwitchTrackFlagConstant                   = "--track"
 	stashTrackedChangesFailureTemplateConstant   = "failed to stash tracked changes before switching: %w"
 	restoreStashedChangesFailureTemplateConstant = "failed to restore stashed changes after switching: %w"
@@ -739,6 +741,7 @@ type mergedPullRequestSyncResult struct {
 type strictSyncBranchTip struct {
 	CommitID            string
 	Exists              bool
+	RemoteExists        bool
 	HasLocalOnlyCommits bool
 }
 
@@ -1160,6 +1163,7 @@ func mergedPullRequestForCurrentBranchTip(ctx context.Context, environment *work
 	if branchTipErr != nil {
 		return nil, branchTipErr
 	}
+	matchingPullRequests := make([]githubcli.PullRequest, 0, len(pullRequests))
 	for _, pullRequest := range pullRequests {
 		if strings.TrimSpace(pullRequest.HeadRefName) != branchName {
 			continue
@@ -1168,12 +1172,47 @@ func mergedPullRequestForCurrentBranchTip(ctx context.Context, environment *work
 		if headRefOID == "" {
 			return nil, fmt.Errorf(strictSyncMissingPullRequestHeadOIDTemplate, branchName)
 		}
+		matchingPullRequests = append(matchingPullRequests, pullRequest)
 		if !branchTip.Exists || (!branchTip.HasLocalOnlyCommits && headRefOID == branchTip.CommitID) {
 			matchedPullRequest := pullRequest
 			return &matchedPullRequest, nil
 		}
 	}
+	if branchTip.HasLocalOnlyCommits || branchTip.RemoteExists {
+		return nil, nil
+	}
+	for _, pullRequest := range matchingPullRequests {
+		headRefOID := strings.TrimSpace(pullRequest.HeadRefOID)
+		isAncestor, ancestryErr := strictSyncCommitIsAncestor(ctx, environment.GitExecutor, repository.Path, branchTip.CommitID, headRefOID)
+		if ancestryErr != nil {
+			return nil, ancestryErr
+		}
+		if isAncestor {
+			matchedPullRequest := pullRequest
+			return &matchedPullRequest, nil
+		}
+	}
 	return nil, nil
+}
+
+func strictSyncCommitIsAncestor(ctx context.Context, executor shared.GitExecutor, repositoryPath string, ancestorCommit string, descendantCommit string) (bool, error) {
+	_, ancestryErr := executor.ExecuteGit(ctx, execshell.CommandDetails{
+		Arguments: []string{
+			gitMergeBaseSubcommandConstant,
+			gitMergeBaseIsAncestorFlagConstant,
+			ancestorCommit,
+			descendantCommit,
+		},
+		WorkingDirectory: repositoryPath,
+	})
+	if ancestryErr == nil {
+		return true, nil
+	}
+	var commandFailure execshell.CommandFailedError
+	if errors.As(ancestryErr, &commandFailure) && commandFailure.Result.ExitCode == 1 {
+		return false, nil
+	}
+	return false, fmt.Errorf("verify commit %q is an ancestor of merged pull request head %q: %w", ancestorCommit, descendantCommit, ancestryErr)
 }
 
 func currentStrictSyncBranchTip(ctx context.Context, executor shared.GitExecutor, repositoryPath string, remoteName string, branchName string) (strictSyncBranchTip, error) {
@@ -1191,7 +1230,7 @@ func currentStrictSyncBranchTip(ctx context.Context, executor shared.GitExecutor
 		return strictSyncBranchTip{CommitID: localCommit, Exists: localExists}, nil
 	}
 	if !localExists {
-		return strictSyncBranchTip{CommitID: remoteCommit, Exists: true}, nil
+		return strictSyncBranchTip{CommitID: remoteCommit, Exists: true, RemoteExists: true}, nil
 	}
 	localAheadCount, localAheadErr := commitCount(ctx, executor, repositoryPath, fmt.Sprintf("%s..%s", remoteReference, localReference))
 	if localAheadErr != nil {
@@ -1200,6 +1239,7 @@ func currentStrictSyncBranchTip(ctx context.Context, executor shared.GitExecutor
 	return strictSyncBranchTip{
 		CommitID:            remoteCommit,
 		Exists:              true,
+		RemoteExists:        true,
 		HasLocalOnlyCommits: localAheadCount > 0,
 	}, nil
 }
