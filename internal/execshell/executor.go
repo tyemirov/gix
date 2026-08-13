@@ -27,6 +27,7 @@ const (
 	workingDirectoryFieldNameConstant         = "working_directory"
 	exitCodeFieldNameConstant                 = "exit_code"
 	standardErrorFieldNameConstant            = "stderr"
+	canceledCommandExitCodeConstant           = -1
 )
 
 // CommandName identifies a supported executable name.
@@ -143,6 +144,27 @@ func (executionError CommandExecutionError) Unwrap() error {
 	return executionError.Cause
 }
 
+func commandCancellationCause(
+	executionContext context.Context,
+	executionResult ExecutionResult,
+	runnerError error,
+) error {
+	cancellationError := context.Cause(executionContext)
+	if cancellationError == nil {
+		return nil
+	}
+	if runnerError != nil {
+		if errors.Is(runnerError, cancellationError) {
+			return cancellationError
+		}
+		return nil
+	}
+	if executionResult.ExitCode == canceledCommandExitCodeConstant {
+		return cancellationError
+	}
+	return nil
+}
+
 // NewShellExecutor builds an executor for the provided runner and logger.
 func NewShellExecutor(logger *zap.Logger, commandRunner CommandRunner, humanReadableLogging bool) (*ShellExecutor, error) {
 	if logger == nil {
@@ -187,13 +209,10 @@ func (executor *ShellExecutor) Execute(executionContext context.Context, command
 	}
 
 	executionResult, runnerError := executor.commandRunner.Run(executionContext, command)
-	if cancellationError := context.Cause(executionContext); cancellationError != nil {
+	if cancellationError := commandCancellationCause(executionContext, executionResult, runnerError); cancellationError != nil {
 		return ExecutionResult{}, cancellationError
 	}
 	if runnerError != nil {
-		if errors.Is(runnerError, context.Canceled) || errors.Is(runnerError, context.DeadlineExceeded) {
-			return ExecutionResult{}, runnerError
-		}
 		if executor.humanReadableLogging {
 			executor.logger.Error(executor.messageFormatter.BuildExecutionFailureMessage(command, runnerError))
 		} else {

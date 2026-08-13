@@ -333,6 +333,59 @@ func TestExecutorRecordsStageAndOperationOutcomes(testInstance *testing.T) {
 	require.Equal(testInstance, 1, outcome.ReporterSummaryData.TotalRepositories)
 }
 
+func TestExecutorPreservesCompletedRepositoryOutcomeAfterCancellation(testInstance *testing.T) {
+	tempDirectory := testInstance.TempDir()
+	repositoryPath := filepath.Join(tempDirectory, "sample")
+	require.NoError(testInstance, os.Mkdir(repositoryPath, 0o755))
+
+	gitExecutor := newStubWorkflowGitExecutor()
+	repositoryManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
+	require.NoError(testInstance, managerError)
+
+	githubClient, clientError := githubcli.NewClient(gitExecutor)
+	require.NoError(testInstance, clientError)
+
+	dependencies := humanReadableDependencies(Dependencies{
+		RepositoryDiscoverer: executorStubRepositoryDiscoverer{repositories: []string{repositoryPath}},
+		GitExecutor:          gitExecutor,
+		RepositoryManager:    repositoryManager,
+		GitHubClient:         githubClient,
+		Output:               &bytes.Buffer{},
+		Errors:               &bytes.Buffer{},
+	})
+
+	executionContext, cancelExecution := context.WithCancel(context.Background())
+	completedOperation := &stubRepositoryOperation{name: "completed-step"}
+	canceledOperation := &stubRepositoryOperation{
+		name: "canceled-step",
+		executeFunc: func(context.Context, *Environment, *RepositoryState) error {
+			cancelExecution()
+			return context.Canceled
+		},
+	}
+	executor := NewExecutorFromNodes([]*OperationNode{
+		{Name: "completed-step", Operation: completedOperation},
+		{Name: "canceled-step", Operation: canceledOperation},
+	}, dependencies)
+
+	outcome, executionError := executor.Execute(
+		executionContext,
+		[]string{repositoryPath},
+		RuntimeOptions{SkipRepositoryMetadata: true},
+	)
+
+	require.ErrorIs(testInstance, executionError, context.Canceled)
+	require.Len(testInstance, outcome.StageOutcomes, 1)
+	require.Equal(
+		testInstance,
+		[]string{"canonical/example:completed-step"},
+		outcome.StageOutcomes[0].Operations,
+	)
+	require.Len(testInstance, outcome.OperationOutcomes, 1)
+	require.Equal(testInstance, "canonical/example:completed-step", outcome.OperationOutcomes[0].Name)
+	require.False(testInstance, outcome.OperationOutcomes[0].Failed)
+}
+
 func TestRepositorySkipPreventsSubsequentOperations(testInstance *testing.T) {
 	tempDirectory := testInstance.TempDir()
 	repositoryPath := filepath.Join(tempDirectory, "sample")
