@@ -11,6 +11,30 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B066] (P1) Stop repository cleanup after an operator interrupt.
+  Reported on 2026-08-13 after an interrupt to `gix prs delete`.
+  Expected result:
+  An operator interrupt stops repository dispatch. The CLI exits without a repeated operation failure list.
+  Actual result:
+  The runner starts cleanup for queued repositories with a canceled context. It reports one failure for each repository and prints the list twice.
+  Requirements:
+  - Stop repository dispatch when the caller context is canceled.
+  - Do not record cancellation as a repository failure.
+  - Do not write shell execution errors for caller cancellation.
+  - Exit with the standard interrupt status and no cancellation error text.
+  - Preserve completed repository results and genuine operation failures.
+  Validation:
+  - Add compiled CLI coverage that interrupts branch cleanup during `git ls-remote`.
+  - Verify the CLI starts no queued repository after cancellation.
+  - Verify stderr has no internal cancellation failure.
+  - Run focused tests and complete CI.
+  Resolution:
+  - The workflow starts no queued repository operation after caller cancellation.
+  - Shell execution returns caller cancellation without an error log.
+  - The CLI exits with status 130 and no cancellation error text.
+  - Compiled CLI coverage interrupts branch cleanup during `git ls-remote`.
+  - Focused tests and `make ci` passed on 2026-08-13.
+
 - [x] [B065] (P0) Keep required repair inputs on the patch line.
   Reported on 2026-08-12 after B063 and B064 were published as `v1.5.0` instead of `v1.4.1`.
   Expected result:
@@ -700,6 +724,22 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run the focused Gix and Gateway lifecycle tests.
   - Run the final repository CI gates after the last application change.
   - Run the Governor, STE, and Git checks on changed technical documents.
+
+- [x] [I013] (P2) Normalize managed policy content.
+  Requested on 2026-08-13.
+  Goal:
+  The repository policy matches the current MPR Lab Governor contract.
+  Requirements:
+  - Add the current managed `Credential Discovery` section to `.mprlab/POLICY.md`.
+  - Preserve application files and repository-owned governance text.
+  Validation:
+  - Run the Governor check.
+  - Run `git diff --check`.
+  Resolution:
+  The Governor added the current `Credential Discovery` rules to `.mprlab/POLICY.md`.
+  The update preserved application files and other governance text.
+  The Governor check, policy STE check, and `git diff --check` passed on 2026-08-13.
+  The full issue tracker retained 275 pre-existing mechanical STE findings. The new I013 text added none.
 
 ## Maintenance
 
