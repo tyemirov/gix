@@ -23,10 +23,15 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Do not write shell execution errors for caller cancellation.
   - Exit with the standard interrupt status and no cancellation error text.
   - Preserve completed repository results and genuine operation failures.
+  - Preserve a runner failure when cancellation and command completion occur at the same time.
+  - Preserve an operation failure when a peer operation cancels the shared context.
+  - Preserve operation outcomes completed before stage cancellation.
   Validation:
   - Add compiled CLI coverage that interrupts branch cleanup during `git ls-remote`.
   - Verify the CLI starts no queued repository after cancellation.
   - Verify stderr has no internal cancellation failure.
+  - Add focused coverage for simultaneous cancellation and completion failures.
+  - Add focused coverage for a partially completed canceled stage.
   - Run focused tests and complete CI.
   Resolution:
   - The workflow starts no queued repository operation after caller cancellation.
@@ -34,6 +39,10 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - The CLI exits with status 130 and no cancellation error text.
   - Compiled CLI coverage interrupts branch cleanup during `git ls-remote`.
   - Focused tests and `make ci` passed on 2026-08-13.
+  - Shell execution preserves completed results and errors during simultaneous cancellation.
+  - Workflow stages suppress only errors that match the context cancellation cause.
+  - Partially completed stages retain completed operations in the public execution outcome.
+  - Focused cancellation tests and `make ci` passed on 2026-08-13.
 
 - [x] [B065] (P0) Keep required repair inputs on the patch line.
   Reported on 2026-08-12 after B063 and B064 were published as `v1.5.0` instead of `v1.4.1`.
