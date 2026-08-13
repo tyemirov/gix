@@ -144,6 +144,16 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.5.2] - 2026-08-13
+
+- Merge pull request #433 from tyemirov/gix/stop-repository-cleanup-after-operator-interrupts
+- fix: preserve completed outcomes during cancellation races
+- fix(workflow): preserve failures during cancellation
+- test: cover interrupted PR cleanup without failure output
+- fix(cli): exit with 130 when execution is canceled
+- fix(workflow): stop execution cleanly on cancellation
+- docs(policy): add credential discovery guidance
+
 ## [v1.5.1] - 2026-08-12
 
 - Merge pull request #432 from tyemirov/bugfix/B065-keep-repair-inputs-on-patch-line
