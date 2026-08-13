@@ -370,10 +370,6 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 	outcome.EndTime = time.Now()
 	outcome.Duration = outcome.EndTime.Sub(outcome.StartTime)
 
-	if len(stageFailures) == 0 {
-		return outcome, nil
-	}
-
 	distinctErrors := make([]error, 0, len(stageFailures))
 	failuresExport := make([]OperationFailure, 0, len(stageFailures))
 	for _, failure := range stageFailures {
@@ -385,6 +381,12 @@ func (executor *Executor) Execute(executionContext context.Context, roots []stri
 		})
 	}
 	outcome.Failures = failuresExport
+	if cancellationError := context.Cause(executionContext); cancellationError != nil {
+		return outcome, cancellationError
+	}
+	if len(stageFailures) == 0 {
+		return outcome, nil
+	}
 
 	failureMessages := make([]string, 0, len(stageFailures))
 	for _, failure := range stageFailures {

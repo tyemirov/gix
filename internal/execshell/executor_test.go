@@ -40,11 +40,15 @@ const (
 type recordingCommandRunner struct {
 	executionResult  execshell.ExecutionResult
 	executionError   error
+	beforeReturn     func()
 	recordedCommands []execshell.ShellCommand
 }
 
 func (runner *recordingCommandRunner) Run(executionContext context.Context, command execshell.ShellCommand) (execshell.ExecutionResult, error) {
 	runner.recordedCommands = append(runner.recordedCommands, command)
+	if runner.beforeReturn != nil {
+		runner.beforeReturn()
+	}
 	return runner.executionResult, runner.executionError
 }
 
@@ -159,6 +163,29 @@ func TestShellExecutorExecuteBehavior(testInstance *testing.T) {
 			}
 		})
 	}
+}
+
+func TestShellExecutorDoesNotLogCallerCancellation(testInstance *testing.T) {
+	observerCore, observerLogs := observer.New(zap.DebugLevel)
+	logger := zap.New(observerCore)
+	executionContext, cancelExecution := context.WithCancel(context.Background())
+
+	recordingRunner := &recordingCommandRunner{
+		executionError: context.Canceled,
+		beforeReturn:   cancelExecution,
+	}
+
+	shellExecutor, creationError := execshell.NewShellExecutor(logger, recordingRunner, true)
+	require.NoError(testInstance, creationError)
+
+	_, executionError := shellExecutor.ExecuteGit(executionContext, execshell.CommandDetails{
+		Arguments:        []string{"ls-remote", "--heads", "origin"},
+		WorkingDirectory: testWorkingDirectoryConstant,
+	})
+
+	require.ErrorIs(testInstance, executionError, context.Canceled)
+	require.Len(testInstance, observerLogs.All(), 1)
+	require.Equal(testInstance, zap.InfoLevel, observerLogs.All()[0].Level)
 }
 
 func TestShellExecutorHumanReadableLogging(testInstance *testing.T) {

@@ -1,7 +1,9 @@
 package workflow
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -186,6 +188,75 @@ func TestRunOperationStagesSupportsParallelRepositories(t *testing.T) {
 		[]string{fmt.Sprintf("%s:%s", repositoryLabel(repositoryTwo), "parallel-step")},
 		result.stageOutcomes[1].Operations,
 	)
+}
+
+func TestRunOperationStagesStopsRepositoryDispatchAfterCancellation(t *testing.T) {
+	repositories := []*RepositoryState{
+		NewRepositoryState(audit.RepositoryInspection{Path: "/repositories/one", FinalOwnerRepo: "octocat/one"}),
+		NewRepositoryState(audit.RepositoryInspection{Path: "/repositories/two", FinalOwnerRepo: "octocat/two"}),
+		NewRepositoryState(audit.RepositoryInspection{Path: "/repositories/three", FinalOwnerRepo: "octocat/three"}),
+	}
+
+	executionContext, cancelExecution := context.WithCancel(context.Background())
+	errorOutput := &bytes.Buffer{}
+	environment := &Environment{Errors: errorOutput}
+	state := &State{Repositories: repositories}
+
+	executionCount := 0
+	operation := &stubRepositoryOperation{
+		name: "cancel-step",
+		executeFunc: func(context.Context, *Environment, *RepositoryState) error {
+			executionCount++
+			cancelExecution()
+			return context.Canceled
+		},
+	}
+
+	stages := []OperationStage{{
+		Operations: []*OperationNode{{Name: "cancel-step", Operation: operation}},
+	}}
+
+	result := runOperationStages(executionContext, stages, environment, state, nil, 1)
+
+	require.Equal(t, 1, executionCount)
+	require.Empty(t, result.failures)
+	require.Empty(t, errorOutput.String())
+}
+
+func TestRunOperationStagesPreservesFailureBeforeCancellation(t *testing.T) {
+	repositories := []*RepositoryState{
+		NewRepositoryState(audit.RepositoryInspection{Path: "/repositories/one", FinalOwnerRepo: "octocat/one"}),
+		NewRepositoryState(audit.RepositoryInspection{Path: "/repositories/two", FinalOwnerRepo: "octocat/two"}),
+		NewRepositoryState(audit.RepositoryInspection{Path: "/repositories/three", FinalOwnerRepo: "octocat/three"}),
+	}
+
+	executionContext, cancelExecution := context.WithCancel(context.Background())
+	errorOutput := &bytes.Buffer{}
+	environment := &Environment{Errors: errorOutput}
+	state := &State{Repositories: repositories}
+
+	executionCount := 0
+	operation := &stubRepositoryOperation{
+		name: "cleanup-step",
+		executeFunc: func(context.Context, *Environment, *RepositoryState) error {
+			executionCount++
+			if executionCount == 1 {
+				return errors.New("remote unavailable")
+			}
+			cancelExecution()
+			return context.Canceled
+		},
+	}
+
+	stages := []OperationStage{{
+		Operations: []*OperationNode{{Name: "cleanup-step", Operation: operation}},
+	}}
+
+	result := runOperationStages(executionContext, stages, environment, state, nil, 1)
+
+	require.Equal(t, 2, executionCount)
+	require.Len(t, result.failures, 1)
+	require.Equal(t, "cleanup-step: remote unavailable\n", errorOutput.String())
 }
 
 func TestRunOperationStagesExecutesFullPipelinePerRepository(t *testing.T) {

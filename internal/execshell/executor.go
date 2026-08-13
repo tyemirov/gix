@@ -170,6 +170,9 @@ func (executor *ShellExecutor) Execute(executionContext context.Context, command
 	if preparationError != nil {
 		return ExecutionResult{}, preparationError
 	}
+	if cancellationError := context.Cause(executionContext); cancellationError != nil {
+		return ExecutionResult{}, cancellationError
+	}
 
 	if executor.humanReadableLogging {
 		if executor.messageFormatter.shouldLogStartMessage(command) {
@@ -184,7 +187,13 @@ func (executor *ShellExecutor) Execute(executionContext context.Context, command
 	}
 
 	executionResult, runnerError := executor.commandRunner.Run(executionContext, command)
+	if cancellationError := context.Cause(executionContext); cancellationError != nil {
+		return ExecutionResult{}, cancellationError
+	}
 	if runnerError != nil {
+		if errors.Is(runnerError, context.Canceled) || errors.Is(runnerError, context.DeadlineExceeded) {
+			return ExecutionResult{}, runnerError
+		}
 		if executor.humanReadableLogging {
 			executor.logger.Error(executor.messageFormatter.BuildExecutionFailureMessage(command, runnerError))
 		} else {
