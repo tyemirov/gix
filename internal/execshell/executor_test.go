@@ -40,11 +40,15 @@ const (
 type recordingCommandRunner struct {
 	executionResult  execshell.ExecutionResult
 	executionError   error
+	beforeReturn     func()
 	recordedCommands []execshell.ShellCommand
 }
 
 func (runner *recordingCommandRunner) Run(executionContext context.Context, command execshell.ShellCommand) (execshell.ExecutionResult, error) {
 	runner.recordedCommands = append(runner.recordedCommands, command)
+	if runner.beforeReturn != nil {
+		runner.beforeReturn()
+	}
 	return runner.executionResult, runner.executionError
 }
 
@@ -125,6 +129,13 @@ func TestShellExecutorExecuteBehavior(testInstance *testing.T) {
 			expectedLogCount: 2,
 			expectedLevels:   []zapcore.Level{zap.InfoLevel, zap.ErrorLevel},
 		},
+		{
+			name:             "uncanceled_runner_context_error",
+			runnerError:      context.Canceled,
+			expectErrorType:  execshell.CommandExecutionError{},
+			expectedLogCount: 2,
+			expectedLevels:   []zapcore.Level{zap.InfoLevel, zap.ErrorLevel},
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -157,6 +168,110 @@ func TestShellExecutorExecuteBehavior(testInstance *testing.T) {
 			for logIndex := range capturedLogs {
 				require.Equal(testInstance, testCase.expectedLevels[logIndex], capturedLogs[logIndex].Level)
 			}
+		})
+	}
+}
+
+func TestShellExecutorDoesNotLogCallerCancellation(testInstance *testing.T) {
+	testCases := []struct {
+		name        string
+		result      execshell.ExecutionResult
+		runnerError error
+	}{
+		{name: "runner_error", runnerError: context.Canceled},
+		{name: "signaled_result", result: execshell.ExecutionResult{ExitCode: -1}},
+	}
+
+	for _, testCase := range testCases {
+		testInstance.Run(testCase.name, func(testInstance *testing.T) {
+			observerCore, observerLogs := observer.New(zap.DebugLevel)
+			logger := zap.New(observerCore)
+			executionContext, cancelExecution := context.WithCancel(context.Background())
+
+			recordingRunner := &recordingCommandRunner{
+				executionResult: testCase.result,
+				executionError:  testCase.runnerError,
+				beforeReturn:    cancelExecution,
+			}
+
+			shellExecutor, creationError := execshell.NewShellExecutor(logger, recordingRunner, true)
+			require.NoError(testInstance, creationError)
+
+			_, executionError := shellExecutor.ExecuteGit(executionContext, execshell.CommandDetails{
+				Arguments:        []string{"ls-remote", "--heads", "origin"},
+				WorkingDirectory: testWorkingDirectoryConstant,
+			})
+
+			require.ErrorIs(testInstance, executionError, context.Canceled)
+			require.Len(testInstance, observerLogs.All(), 1)
+			require.Equal(testInstance, zap.InfoLevel, observerLogs.All()[0].Level)
+		})
+	}
+}
+
+func TestShellExecutorPreservesCompletedOutcomeWhenCancellationRacesReturn(testInstance *testing.T) {
+	testCases := []struct {
+		name             string
+		result           execshell.ExecutionResult
+		runnerError      error
+		expectedLogLevel zapcore.Level
+		assertOutcome    func(*testing.T, execshell.ExecutionResult, error)
+	}{
+		{
+			name:             "success",
+			result:           execshell.ExecutionResult{StandardOutput: "ok"},
+			expectedLogLevel: zap.InfoLevel,
+			assertOutcome: func(testInstance *testing.T, result execshell.ExecutionResult, executionError error) {
+				require.NoError(testInstance, executionError)
+				require.Equal(testInstance, "ok", result.StandardOutput)
+			},
+		},
+		{
+			name:             "failure_exit_code",
+			result:           execshell.ExecutionResult{StandardError: "fatal: remote unavailable", ExitCode: 128},
+			expectedLogLevel: zap.WarnLevel,
+			assertOutcome: func(testInstance *testing.T, _ execshell.ExecutionResult, executionError error) {
+				var commandError execshell.CommandFailedError
+				require.ErrorAs(testInstance, executionError, &commandError)
+				require.Equal(testInstance, 128, commandError.Result.ExitCode)
+				require.NotErrorIs(testInstance, executionError, context.Canceled)
+			},
+		},
+		{
+			name:             "runner_error",
+			runnerError:      errors.New("runner completed with an error"),
+			expectedLogLevel: zap.ErrorLevel,
+			assertOutcome: func(testInstance *testing.T, _ execshell.ExecutionResult, executionError error) {
+				var commandError execshell.CommandExecutionError
+				require.ErrorAs(testInstance, executionError, &commandError)
+				require.EqualError(testInstance, commandError.Cause, "runner completed with an error")
+				require.NotErrorIs(testInstance, executionError, context.Canceled)
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		testInstance.Run(testCase.name, func(testInstance *testing.T) {
+			observerCore, observerLogs := observer.New(zap.DebugLevel)
+			logger := zap.New(observerCore)
+			executionContext, cancelExecution := context.WithCancel(context.Background())
+			recordingRunner := &recordingCommandRunner{
+				executionResult: testCase.result,
+				executionError:  testCase.runnerError,
+				beforeReturn:    cancelExecution,
+			}
+
+			shellExecutor, creationError := execshell.NewShellExecutor(logger, recordingRunner, false)
+			require.NoError(testInstance, creationError)
+
+			result, executionError := shellExecutor.ExecuteGit(executionContext, execshell.CommandDetails{
+				Arguments:        []string{"ls-remote", "--heads", "origin"},
+				WorkingDirectory: testWorkingDirectoryConstant,
+			})
+
+			testCase.assertOutcome(testInstance, result, executionError)
+			require.Len(testInstance, observerLogs.All(), 2)
+			require.Equal(testInstance, testCase.expectedLogLevel, observerLogs.All()[1].Level)
 		})
 	}
 }

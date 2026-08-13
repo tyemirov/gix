@@ -59,6 +59,10 @@ func runOperationStages(
 	repositoryStageIndices := make([]int, 0)
 
 	for stageIndex := range stages {
+		if ctx.Err() != nil {
+			break
+		}
+
 		stage := stages[stageIndex]
 		if len(stage.Operations) == 0 {
 			continue
@@ -96,6 +100,9 @@ func runOperationStages(
 			}
 			repositoryStages = repositoryStages[:0]
 			repositoryStageIndices = repositoryStageIndices[:0]
+			if ctx.Err() != nil {
+				break
+			}
 		}
 
 		environment.State = state
@@ -118,7 +125,7 @@ func runOperationStages(
 		result.failures = append(result.failures, stageFailures...)
 	}
 
-	if len(repositoryStages) > 0 {
+	if len(repositoryStages) > 0 && ctx.Err() == nil {
 		repositoryResults := runRepositoryPipelines(
 			ctx,
 			repositoryStages,
@@ -176,6 +183,10 @@ func runRepositoryPipelines(
 		go func() {
 			defer wg.Done()
 			for assignment := range workChannel {
+				if ctx.Err() != nil {
+					return
+				}
+
 				repoEnvironment := cloneEnvironmentForRepository(environment, assignment.item.state)
 				repoResult := repositoryPipelineResult{
 					stageOutcomes:     make([]*StageOutcome, 0, len(stages)),
@@ -185,7 +196,7 @@ func runRepositoryPipelines(
 				repositoryFailed := false
 
 				for stagePosition := range stages {
-					if repositoryFailed {
+					if repositoryFailed || ctx.Err() != nil {
 						break
 					}
 
@@ -219,10 +230,15 @@ func runRepositoryPipelines(
 		}()
 	}
 
+dispatchingRepositories:
 	for repoIndex := range workItems {
-		workChannel <- repositoryWorkAssignment{
+		select {
+		case <-ctx.Done():
+			break dispatchingRepositories
+		case workChannel <- repositoryWorkAssignment{
 			index: repoIndex,
 			item:  workItems[repoIndex],
+		}:
 		}
 	}
 	close(workChannel)
@@ -297,6 +313,30 @@ func sanitizeRepositoryParallelism(requested int, repositoryCount int) int {
 	return parallelism
 }
 
+func operationMatchesContextCancellation(ctx context.Context, operationError error) bool {
+	cancellationError := context.Cause(ctx)
+	return cancellationError != nil && errors.Is(operationError, cancellationError)
+}
+
+func completedStageOutcome(
+	stageStart time.Time,
+	operationNames []string,
+	reporter shared.SummaryReporter,
+	reporterStageName string,
+) *StageOutcome {
+	if len(operationNames) == 0 {
+		return nil
+	}
+	stageDuration := time.Since(stageStart)
+	if reporter != nil {
+		reporter.RecordStageDuration(reporterStageName, stageDuration)
+	}
+	return &StageOutcome{
+		Duration:   stageDuration,
+		Operations: operationNames,
+	}
+}
+
 func executeRepositoryStageForRepository(
 	ctx context.Context,
 	stage OperationStage,
@@ -317,8 +357,15 @@ func executeRepositoryStageForRepository(
 	repositoryFailed := false
 	operationOutcomes := make(map[string]OperationOutcome)
 	previousStepName := environment.currentStepName
+	defer func() {
+		environment.currentStepName = previousStepName
+	}()
 
 	for _, node := range stage.Operations {
+		if ctx.Err() != nil {
+			break
+		}
+
 		if node == nil || node.Operation == nil {
 			continue
 		}
@@ -342,10 +389,18 @@ func executeRepositoryStageForRepository(
 		environment.beginStep(repository.Path, operationName)
 
 		compositeName := fmt.Sprintf("%s:%s", repoLabel, operationName)
-		stageOperationNames = append(stageOperationNames, compositeName)
 
 		startTime := time.Now()
 		executeError := repoOperation.ExecuteForRepository(ctx, environment, repository)
+		if operationMatchesContextCancellation(ctx, executeError) {
+			return completedStageOutcome(
+				stageStart,
+				stageOperationNames,
+				reporter,
+				fmt.Sprintf("%s-stage-%d", repoLabel, stageIndex+1),
+			), operationOutcomes, failures, repositoryFailed
+		}
+		stageOperationNames = append(stageOperationNames, compositeName)
 		skipRepository := errors.Is(executeError, errRepositorySkipped)
 		environment.reportStepSummary(repository, operationName, executeError, skipRepository)
 		if skipRepository {
@@ -366,7 +421,7 @@ func executeRepositoryStageForRepository(
 			executeError = nil
 		}
 
-		operationOutcomes[fmt.Sprintf("%s@%s", node.Name, repoLabel)] = OperationOutcome{
+		operationOutcomes[compositeName] = OperationOutcome{
 			Name:     compositeName,
 			Duration: executionDuration,
 			Failed:   executeError != nil,
@@ -401,21 +456,12 @@ func executeRepositoryStageForRepository(
 		repositoryFailed = true
 	}
 
-	environment.currentStepName = previousStepName
-
-	if len(stageOperationNames) == 0 {
-		return nil, operationOutcomes, failures, repositoryFailed
-	}
-
-	stageDuration := time.Since(stageStart)
-	if reporter != nil {
-		reporter.RecordStageDuration(fmt.Sprintf("%s-stage-%d", repoLabel, stageIndex+1), stageDuration)
-	}
-
-	return &StageOutcome{
-		Duration:   stageDuration,
-		Operations: stageOperationNames,
-	}, operationOutcomes, failures, repositoryFailed
+	return completedStageOutcome(
+		stageStart,
+		stageOperationNames,
+		reporter,
+		fmt.Sprintf("%s-stage-%d", repoLabel, stageIndex+1),
+	), operationOutcomes, failures, repositoryFailed
 }
 
 func executeGlobalStage(
@@ -434,6 +480,10 @@ func executeGlobalStage(
 	operationOutcomes := make(map[string]OperationOutcome)
 
 	for _, node := range stage.Operations {
+		if ctx.Err() != nil {
+			break
+		}
+
 		if node == nil || node.Operation == nil {
 			continue
 		}
@@ -445,10 +495,12 @@ func executeGlobalStage(
 		if len(operationName) == 0 {
 			operationName = "operation"
 		}
-		stageOperationNames = append(stageOperationNames, operationName)
-
 		startTime := time.Now()
 		executeError := node.Operation.Execute(ctx, environment, state)
+		if operationMatchesContextCancellation(ctx, executeError) {
+			break
+		}
+		stageOperationNames = append(stageOperationNames, operationName)
 		executionDuration := time.Since(startTime)
 
 		if reporter != nil {
@@ -495,15 +547,12 @@ func executeGlobalStage(
 		}
 	}
 
-	stageDuration := time.Since(stageStart)
-	if reporter != nil {
-		reporter.RecordStageDuration(fmt.Sprintf("stage-%d", stageIndex+1), stageDuration)
-	}
-
-	return &StageOutcome{
-		Duration:   stageDuration,
-		Operations: stageOperationNames,
-	}, operationOutcomes, failures
+	return completedStageOutcome(
+		stageStart,
+		stageOperationNames,
+		reporter,
+		fmt.Sprintf("stage-%d", stageIndex+1),
+	), operationOutcomes, failures
 }
 
 func stageIsRepositoryScoped(stage OperationStage) bool {
