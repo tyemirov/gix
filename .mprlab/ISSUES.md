@@ -11,6 +11,38 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B067] (P1) Use the repository default branch during strict sync.
+  Reported on 2026-08-15 after `gix sync master` ran from a dirty `main` branch.
+  Expected result:
+  `gix sync master` treats `master` as an ordinary target when the repository default branch is `main`.
+  Actual result:
+  Sync treats `master` as the base branch, compares `main` with absent `origin/master`, and restores `main` without creating `master`.
+  Requirements:
+  - Resolve strict sync behavior from the repository default branch.
+  - Do not use a branch name to select default-branch behavior.
+  - Treat `main`, `master`, and all other branch names as ordinary names.
+  - Get the default-branch identity only from repository or remote data.
+  - Create a missing ordinary target from the current checkout when dirty work exists.
+  - Commit the dirty work to the requested target and push that target.
+  - Open the target pull request against the repository default branch.
+  - Preserve rollback before publication and handoff after publication.
+  Validation:
+  - Reproduce dirty default branch `main` with no local or remote `master`.
+  - Verify that sync creates and pushes `master` with the committed dirty work.
+  - Verify that sync opens the `master` pull request against `main`.
+  - Verify that sync does not compare `main` against absent `origin/master`.
+  - Exchange the `main` and `master` roles and verify the same behavior.
+  - Preserve direct synchronization when the requested branch is the repository default branch.
+  - Run focused tests and complete CI.
+  Resolution:
+  - Strict sync uses repository metadata or the remote symbolic `HEAD` to identify the default branch.
+  - Strict sync has no independent base-branch option or named branch default.
+  - Default-branch promotion requires an explicit target branch.
+  - Production Go logic has no `main` or `master` branch-name literals.
+  - Compiled CLI tests exchange `main` and `master` as the default and target branches.
+  - Both cases create and push the target and open its pull request against the reported default branch.
+  - Focused tests and `make ci` passed on 2026-08-15.
+
 - [x] [B066] (P1) Stop repository cleanup after an operator interrupt.
   Reported on 2026-08-13 after an interrupt to `gix prs delete`.
   Expected result:
