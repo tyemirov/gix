@@ -20,6 +20,7 @@ const (
 	taskOptionBranchRemote            = "remote"
 	taskOptionBranchCreate            = "create_if_missing"
 	taskOptionConfiguredDefaultBranch = "default_branch"
+	taskOptionObsoleteBaseBranch      = "base_branch"
 	taskOptionRefreshEnabled          = "refresh"
 	taskOptionRequireClean            = "require_clean"
 	taskOptionStashChanges            = "stash"
@@ -62,6 +63,7 @@ const (
 	gitLSRemoteSubcommandConstant                = "ls-remote"
 	gitLSRemoteSymrefFlagConstant                = "--symref"
 	gitRemoteHeadSymrefPrefixConstant            = "ref: refs/heads/"
+	gitFetchRemoteBranchRefspecTemplateConstant  = "+refs/heads/%s:refs/remotes/%s/%s"
 	gitPullRequestHeadReferenceTemplateConstant  = "refs/pull/%d/head"
 	gitSwitchTrackFlagConstant                   = "--track"
 	stashTrackedChangesFailureTemplateConstant   = "failed to stash tracked changes before switching: %w"
@@ -72,6 +74,8 @@ const (
 	strictSyncMissingDefaultBranchMessage        = "strict sync requires a repository default branch"
 	strictSyncDefaultBranchResolutionTemplate    = "resolve default branch for remote %q: %w"
 	strictSyncDefaultBranchMissingTemplate       = "remote %q did not report a default branch"
+	strictSyncDefaultBranchFetchTemplate         = "fetch default branch %q from remote %q: %w"
+	strictSyncObsoleteOptionTemplate             = "branch.sync option %q is obsolete; remove it"
 	strictSyncDirtyWorktreeTemplate              = "worktree is dirty; remove --require-clean or use --stash before syncing"
 	strictSyncLocalOnlyCommitTemplate            = "local branch %q has commits not on %s/%s"
 	strictSyncEmptyLocalBranchTemplate           = "local branch %q has no commits beyond %s/%s and no merged pull request handoff"
@@ -91,6 +95,9 @@ func init() {
 func handleBranchSyncAction(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, parameters map[string]any) (err error) {
 	if environment == nil || repository == nil {
 		return nil
+	}
+	if _, obsoleteBaseBranchConfigured := parameters[taskOptionObsoleteBaseBranch]; obsoleteBaseBranchConfigured {
+		return fmt.Errorf(strictSyncObsoleteOptionTemplate, taskOptionObsoleteBaseBranch)
 	}
 
 	stashRestorationEnabled := false
@@ -476,6 +483,19 @@ func resolveStrictSyncRemoteDefaultBranch(ctx context.Context, executor shared.G
 	return "", fmt.Errorf(strictSyncDefaultBranchMissingTemplate, remoteName)
 }
 
+func fetchStrictSyncRemoteDefaultBranch(ctx context.Context, executor shared.GitExecutor, repositoryPath string, remoteName string, branchName string) error {
+	refspec := fmt.Sprintf(gitFetchRemoteBranchRefspecTemplateConstant, branchName, remoteName, branchName)
+	if fetchErr := executeGit(ctx, executor, repositoryPath, []string{
+		gitFetchSubcommandConstant,
+		gitFetchNoTagsFlagConstant,
+		remoteName,
+		refspec,
+	}); fetchErr != nil {
+		return fmt.Errorf(strictSyncDefaultBranchFetchTemplate, branchName, remoteName, fetchErr)
+	}
+	return nil
+}
+
 type strictSyncCompletion struct {
 	BranchName string
 	Created    bool
@@ -551,6 +571,9 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 	defaultBranch, defaultBranchErr := resolveStrictSyncRemoteDefaultBranch(ctx, environment.GitExecutor, repository.Path, remoteName)
 	if defaultBranchErr != nil {
 		return defaultBranchErr
+	}
+	if defaultBranchFetchErr := fetchStrictSyncRemoteDefaultBranch(ctx, environment.GitExecutor, repository.Path, remoteName, defaultBranch); defaultBranchFetchErr != nil {
+		return defaultBranchFetchErr
 	}
 	if dirty && syncStatusEntriesHaveConflicts(statusEntries) {
 		return errors.New(strictSyncConflictWorktreeMessage)

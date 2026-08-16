@@ -505,6 +505,21 @@ func TestHandleBranchSyncActionUsesRepositoryDefault(t *testing.T) {
 	require.Equal(t, branchResolutionSourceRemoteDefault, reporter.events[0].Details["source"])
 }
 
+func TestHandleBranchSyncActionRejectsObsoleteBaseBranchOption(t *testing.T) {
+	executor := &stubGitExecutor{}
+	environment := &workflow.Environment{GitExecutor: executor}
+	repository := &workflow.RepositoryState{Path: "/tmp/project"}
+
+	executionErr := handleBranchSyncAction(context.Background(), environment, repository, map[string]any{
+		taskOptionBranchName:         "feature/review",
+		taskOptionRequirePullRequest: true,
+		taskOptionObsoleteBaseBranch: "develop",
+	})
+
+	require.EqualError(t, executionErr, `branch.sync option "base_branch" is obsolete; remove it`)
+	require.Empty(t, executor.recorded)
+}
+
 func TestHandleBranchSyncActionUsesConfiguredFallback(t *testing.T) {
 	executor := &stubGitExecutor{
 		responses: []stubGitResponse{
@@ -603,6 +618,41 @@ func TestResolveStrictSyncRemoteDefaultBranch(t *testing.T) {
 				require.EqualError(t, branchErr, testCase.expectedError)
 			}
 			require.Equal(t, []string{"ls-remote", "--symref", "origin", "HEAD"}, executor.recorded[0].Arguments)
+		})
+	}
+}
+
+func TestFetchStrictSyncRemoteDefaultBranch(t *testing.T) {
+	testCases := []struct {
+		name          string
+		response      stubGitResponse
+		expectedError string
+	}{
+		{name: "fetches remote default branch", response: stubGitResponse{}},
+		{
+			name:          "reports fetch failure",
+			response:      stubGitResponse{err: errors.New("remote unavailable")},
+			expectedError: `fetch default branch "main" from remote "origin": remote unavailable`,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			executor := &stubGitExecutor{responses: []stubGitResponse{testCase.response}}
+
+			fetchErr := fetchStrictSyncRemoteDefaultBranch(context.Background(), executor, "/tmp/project", "origin", "main")
+
+			if testCase.expectedError == "" {
+				require.NoError(t, fetchErr)
+			} else {
+				require.EqualError(t, fetchErr, testCase.expectedError)
+			}
+			require.Equal(t, []string{
+				"fetch",
+				"--no-tags",
+				"origin",
+				"+refs/heads/main:refs/remotes/origin/main",
+			}, executor.recorded[0].Arguments)
 		})
 	}
 }
