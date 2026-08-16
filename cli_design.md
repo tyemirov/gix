@@ -43,8 +43,8 @@ The following tables document each script. "Inputs" include both positional argu
 | Inputs & flags | Required target branch as a positional argument plus the shared command flags. The command detects the current default branch from repository data. |
 | Environment variables | Relies on Git configuration for remote URLs and GitHub CLI authentication context. |
 | External dependencies | `git`, `gh`, `jq`, `sed`, `find`, standard GNU coreutils. Requires authenticated `gh` session. |
-| Network/API usage | Extensive `gh api` usage: fetch repository metadata, GitHub Pages config, branch protection checks, open PRs. Uses `gh pr list`/`gh pr edit`. Pushes branches via `git push`. |
-| Side effects | Creates or updates the requested target branch, edits workflow files, updates GitHub Pages, changes pull-request bases, and changes the repository default branch. It can delete the old default branch when the operator selects that option. |
+| Network/API usage | Extensive `gh api` usage: fetch repository metadata, GitHub Pages config, branch protection checks, open PRs. Uses `gh pr list`, `gh pr close`, and `gh pr edit`. Pushes branches via `git push`. |
+| Side effects | Creates or updates the target branch, edits workflow files, updates GitHub Pages, and changes the default branch. Closes a pull request only when its head repository and head branch match the target repository and branch. Changes the base of other pull requests. It can delete the old default branch when the operator selects that option. |
 | Outputs | Logs the promoted source and target branches and reports whether the source branch is safe to delete. |
 
 ### 2.4 `gix packages delete`
