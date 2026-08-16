@@ -231,6 +231,9 @@ func (service *Service) Execute(executionContext context.Context, options Migrat
 	if tokenError := service.ensureGitHubTokenAvailable(executionContext, options); tokenError != nil {
 		return MigrationResult{}, tokenError
 	}
+	if preparationError := prepareTargetBranch(executionContext, service.repositoryManager, service.gitExecutor, options); preparationError != nil {
+		return MigrationResult{}, preparationError
+	}
 
 	workflowOutcome, rewriteError := service.workflowRewriter.Rewrite(executionContext, WorkflowRewriteConfig{
 		RepositoryPath:     options.RepositoryPath,

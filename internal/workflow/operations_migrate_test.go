@@ -326,29 +326,6 @@ func TestBranchMigrationOperationCreatesRemoteBranchWhenMissing(testInstance *te
 	require.Contains(testInstance, outputBuffer.String(), "WORKFLOW-DEFAULT: /repository (main → master)")
 }
 
-func TestEnsureRemoteBranchPushesWhenMissing(testInstance *testing.T) {
-	executor := newScriptedExecutor()
-	executor.gitHandlers["ls-remote --heads origin master"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
-		return execshell.ExecutionResult{StandardOutput: ""}, nil
-	}
-	executor.gitHandlers["push origin master:master"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
-		return execshell.ExecutionResult{}, nil
-	}
-
-	executionError := ensureRemoteBranch(context.Background(), executor, "/repository", "origin", "master")
-
-	require.NoError(testInstance, executionError)
-
-	recordedPush := false
-	for _, commandDetails := range executor.gitCommands {
-		if strings.Join(commandDetails.Arguments, " ") == "push origin master:master" {
-			recordedPush = true
-			break
-		}
-	}
-	require.True(testInstance, recordedPush)
-}
-
 func TestBranchMigrationOperationInfersIdentifierFromRemote(testInstance *testing.T) {
 	executor := newScriptedExecutor()
 	executor.gitHandlers["remote"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {
