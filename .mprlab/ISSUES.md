@@ -48,12 +48,19 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Review finding on 2026-08-15:
   Audit can report the local branch as `RemoteDefaultBranch` when metadata and the remote-tracking symbolic `HEAD` are absent.
   Strict sync trusts this value and can push an ordinary branch without a pull request.
+  Review findings on 2026-08-16:
+  A task-defined strict sync can contain the obsolete `base_branch` option.
+  The action gives no error and uses the remote default branch.
+  A single-branch clone can exclude the remote default branch from its fetch refspec.
+  Strict sync resolves that default branch but does not create its remote-tracking ref.
   Requirements:
   - Resolve strict sync behavior from the repository default branch.
   - Do not use a branch name to select default-branch behavior.
   - Treat `main`, `master`, and all other branch names as ordinary names.
   - Get the strict-sync default-branch identity from the remote symbolic `HEAD`.
   - Do not use audit fallback data to select default-branch behavior.
+  - Reject the obsolete `base_branch` task option.
+  - Fetch the resolved remote default branch into its remote-tracking ref.
   - Create a missing ordinary target from the current checkout when dirty work exists.
   - Commit the dirty work to the requested target and push that target.
   - Open the target pull request against the repository default branch.
@@ -67,6 +74,10 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Make metadata lookup fail on a dirty remote-backed ordinary branch.
   - Remove the remote-tracking symbolic `HEAD` before inspection.
   - Verify that sync opens a pull request against the remote default branch.
+  - Run a task-defined strict sync with the obsolete `base_branch` option.
+  - Verify that the action rejects the option before Git or GitHub mutation.
+  - Clone only a nondefault branch from a repository whose default branch is different.
+  - Verify that strict sync fetches and uses the remote default branch.
   - Preserve direct synchronization when the requested branch is the repository default branch.
   - Run focused tests and complete CI.
   Resolution:
@@ -80,6 +91,11 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - A compiled CLI regression makes metadata lookup fail while audit reports an ordinary local branch.
   - The regression updates and pushes that branch and opens its pull request against the remote default branch.
   - Focused tests and `make ci` passed on 2026-08-16.
+  - The `branch.sync` action rejects `base_branch` before it runs a Git or GitHub operation.
+  - Strict sync explicitly fetches the resolved default branch into its remote-tracking ref.
+  - The explicit fetch does not change the configured fetch refspec.
+  - Compiled CLI tests cover obsolete task configuration and a single-branch feature clone.
+  - `make test-fast`, `make test-slow`, and `make ci` passed on 2026-08-16.
 
 - [x] [B066] (P1) Stop repository cleanup after an operator interrupt.
   Reported on 2026-08-13 after an interrupt to `gix prs delete`.
