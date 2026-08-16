@@ -151,6 +151,30 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.6.0] - 2026-08-16
+
+- Merge pull request #434 from tyemirov/gix/resolve-strict-sync-against-repository-default-branch
+- test: cover single-branch sync and obsolete base option
+- fix(sync): fetch remote default branch before strict sync
+- fix(sync): fetch remote default ref for strict sync
+- fix(sync): reject base_branch and fetch remote default branch
+- test: cover dirty worktree rejection before branch migration
+- fix: prepare target branch within migration service
+- fix(migrate): reject dirty default branch before target preparation
+- fix(migrate): reject dirty worktrees before branch promotion
+- test: cover sync remote default branch fallback
+- fix(sync): resolve remote default branch after fetching
+- fix(sync): resolve default branch from remote HEAD after fetch
+- fix(sync): resolve default branch from remote HEAD
+- test: cover sync behavior for main and master branch targets
+- fix: resolve sync and migration bases from repository default branch
+- docs: document gix default branch promotion command
+- fix(cli): require explicit default branch target
+- feat: replace master assumptions with repository default branches
+- fix(sync): resolve default branches from repository metadata
+- docs: update architecture example target branch
+- fix(sync): resolve strict sync base from repository default branch
+
 ## [v1.5.2] - 2026-08-13
 
 - Merge pull request #433 from tyemirov/gix/stop-repository-cleanup-after-operator-interrupts
