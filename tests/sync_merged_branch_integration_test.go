@@ -34,6 +34,7 @@ const (
 	syncMergedBranchNameVariable                = "GIX_SYNC_TEST_BRANCH"
 	syncMergedBranchMergedVariable              = "GIX_SYNC_TEST_MERGED"
 	syncMergedBranchMergedHeadOIDVariable       = "GIX_SYNC_TEST_MERGED_HEAD_OID"
+	syncMergedBranchDefaultBranchVariable       = "GIX_SYNC_TEST_DEFAULT_BRANCH"
 	syncMergedBranchAPIKeyVariable              = "GIX_SYNC_TEST_LLM_KEY"
 )
 
@@ -822,7 +823,8 @@ if [ -n "$GIX_SYNC_TEST_OPERATION_LOG" ]; then
 fi
 
 if [ "$1" = "repo" ] && [ "$2" = "view" ]; then
-  printf '%s\n' '{"nameWithOwner":"owner/project","description":"","defaultBranchRef":{"name":"master"},"isInOrganization":false}'
+  default_branch="${GIX_SYNC_TEST_DEFAULT_BRANCH:-master}"
+  printf '{"nameWithOwner":"owner/project","description":"","defaultBranchRef":{"name":"%s"},"isInOrganization":false}\n' "$default_branch"
   exit 0
 fi
 
