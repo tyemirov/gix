@@ -76,8 +76,8 @@ func TestWorkflowRewriterScenarios(testInstance *testing.T) {
 			outcome, rewriteError := rewriter.Rewrite(context.Background(), migrate.WorkflowRewriteConfig{
 				RepositoryPath:     repositoryDirectory,
 				WorkflowsDirectory: testRepositoryRelativeWorkflowsConstant,
-				SourceBranch:       migrate.BranchMain,
-				TargetBranch:       migrate.BranchMaster,
+				SourceBranch:       migrate.BranchName("main"),
+				TargetBranch:       migrate.BranchName("master"),
 			})
 			require.NoError(testInstance, rewriteError)
 
@@ -102,8 +102,8 @@ func TestWorkflowRewriterMissingDirectory(testInstance *testing.T) {
 	outcome, rewriteError := rewriter.Rewrite(context.Background(), migrate.WorkflowRewriteConfig{
 		RepositoryPath:     testInstance.TempDir(),
 		WorkflowsDirectory: testRepositoryRelativeWorkflowsConstant,
-		SourceBranch:       migrate.BranchMain,
-		TargetBranch:       migrate.BranchMaster,
+		SourceBranch:       migrate.BranchName("main"),
+		TargetBranch:       migrate.BranchName("master"),
 	})
 	require.NoError(testInstance, rewriteError)
 	require.Empty(testInstance, outcome.UpdatedFiles)

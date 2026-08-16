@@ -121,6 +121,12 @@ func TestWebWorkflowPrimitiveDefinitionsBuildOptions(t *testing.T) {
 			},
 			expectedError: `workflow primitive repo.files.replace requires "find"`,
 		},
+		{
+			name:          "default branch promotion requires target",
+			primitiveID:   webWorkflowPrimitiveDefaultBranchConstant,
+			parameters:    map[string]any{},
+			expectedError: `workflow primitive branch.default requires "target"`,
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -138,6 +144,23 @@ func TestWebWorkflowPrimitiveDefinitionsBuildOptions(t *testing.T) {
 			require.Equal(t, testCase.expectedOptions, options)
 		})
 	}
+}
+
+func TestWebWorkflowDefaultBranchTargetHasNoNamedDefault(t *testing.T) {
+	application := NewApplication()
+	definitions := workflowPrimitiveDefinitionIndex(application.webWorkflowPrimitiveDefinitions())
+	definition := definitions[webWorkflowPrimitiveDefaultBranchConstant]
+
+	for _, parameter := range definition.descriptor.Parameters {
+		if parameter.Key != webWorkflowPrimitiveParameterTargetConstant {
+			continue
+		}
+		require.True(t, parameter.Required)
+		require.Empty(t, parameter.DefaultValue)
+		return
+	}
+
+	t.Fatal("target branch parameter missing")
 }
 
 func TestWebWorkflowPrimitiveExecutorAppliesFileReplace(t *testing.T) {

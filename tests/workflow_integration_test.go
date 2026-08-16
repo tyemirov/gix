@@ -537,6 +537,62 @@ func TestWorkflowRunDisplaysHelpWhenConfigurationMissing(testInstance *testing.T
 	}
 }
 
+func TestWorkflowRejectsObsoleteBranchSyncBaseOption(testInstance *testing.T) {
+	repositoryRoot := integrationRepositoryRoot(testInstance)
+	temporaryDirectory := testInstance.TempDir()
+	repositoryPath := filepath.Join(temporaryDirectory, "repository")
+	initializeWorkflowRepository(testInstance, repositoryPath)
+	runGit(testInstance, repositoryPath, "remote", "remove", workflowIntegrationOriginRemoteName)
+
+	configurationPath := filepath.Join(temporaryDirectory, "obsolete-base-branch.yml")
+	configurationContent := `workflow:
+  - step:
+      name: obsolete-base-branch
+      command: ["tasks", "apply"]
+      with:
+        tasks:
+          - name: reject-obsolete-base-branch
+            actions:
+              - type: branch.sync
+                options:
+                  branch: feature/review
+                  remote: origin
+                  require_pull_request: true
+                  base_branch: develop
+`
+	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
+
+	startingBranch := runGit(testInstance, repositoryPath, "branch", "--show-current")
+	startingCommit := runGit(testInstance, repositoryPath, "rev-parse", "HEAD")
+	startingStatus := runGit(testInstance, repositoryPath, "status", "--porcelain=v1", "-z")
+	startingRefs := runGit(testInstance, repositoryPath, "for-each-ref", "--format=%(refname) %(objectname)", "refs/")
+
+	output, runError := runFailingIntegrationCommand(
+		testInstance,
+		repositoryRoot,
+		integrationCommandOptions{},
+		workflowIntegrationTimeout,
+		[]string{
+			workflowIntegrationRunSubcommand,
+			workflowIntegrationModulePathConstant,
+			workflowIntegrationLogLevelFlag,
+			workflowIntegrationErrorLevel,
+			workflowIntegrationCommand,
+			configurationPath,
+			workflowIntegrationRootsFlag,
+			repositoryPath,
+			workflowIntegrationYesFlag,
+		},
+	)
+
+	require.Error(testInstance, runError)
+	require.Contains(testInstance, output, `branch.sync option "base_branch" is obsolete; remove it`)
+	require.Equal(testInstance, startingBranch, runGit(testInstance, repositoryPath, "branch", "--show-current"))
+	require.Equal(testInstance, startingCommit, runGit(testInstance, repositoryPath, "rev-parse", "HEAD"))
+	require.Equal(testInstance, startingStatus, runGit(testInstance, repositoryPath, "status", "--porcelain=v1", "-z"))
+	require.Equal(testInstance, startingRefs, runGit(testInstance, repositoryPath, "for-each-ref", "--format=%(refname) %(objectname)", "refs/"))
+}
+
 func initializeWorkflowRepository(testInstance *testing.T, repositoryPath string) {
 	initCommand := exec.Command(workflowIntegrationGitExecutable, workflowIntegrationInitFlag, workflowIntegrationInitialBranchFlag, repositoryPath)
 	initCommand.Env = buildGitCommandEnvironment(nil)

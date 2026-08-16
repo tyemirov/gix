@@ -41,7 +41,8 @@ const (
 	webWorkflowPrimitiveParameterTypeStringConstant   = "a string"
 	webWorkflowPrimitiveParameterTypeBooleanConstant  = "a boolean"
 	webWorkflowPrimitiveOwnerPlaceholderConstant      = "owner"
-	webWorkflowPrimitiveBranchPlaceholderConstant     = "master"
+	webWorkflowPrimitiveSourceBranchPlaceholderConst  = "source-branch"
+	webWorkflowPrimitiveTargetBranchPlaceholderConst  = "target-branch"
 	webWorkflowPrimitiveRemotePlaceholderConstant     = "origin"
 	webWorkflowPrimitiveTagPlaceholderConstant        = "v1.2.3"
 	webWorkflowPrimitiveOutputPlaceholderConstant     = "./audit-report.csv"
@@ -54,7 +55,7 @@ const (
 	webWorkflowPrimitiveNamespaceNewPlaceholderConst  = "github.com/new/module"
 	webWorkflowPrimitiveBranchPrefixPlaceholderConst  = "rewrite/namespace"
 	webWorkflowPrimitiveCommitMessagePlaceholderConst = "Rewrite module namespace"
-	webWorkflowPrimitiveMappingsPlaceholderConstant   = "v1.2.3,main,Retag v1.2.3"
+	webWorkflowPrimitiveMappingsPlaceholderConstant   = "v1.2.3,release,Retag v1.2.3"
 
 	webWorkflowPrimitiveParameterOwnerConstant              = "owner"
 	webWorkflowPrimitiveParameterFromConstant               = "from"
@@ -348,15 +349,15 @@ func (application *Application) webWorkflowPrimitiveDefinitions() []webWorkflowP
 						"Leave blank to detect the current default branch source automatically.",
 						false,
 						"",
-						"main",
+						webWorkflowPrimitiveSourceBranchPlaceholderConst,
 					),
 					textWorkflowPrimitiveParameter(
 						webWorkflowPrimitiveParameterTargetConstant,
 						"Target branch",
 						"The branch that should become the default.",
 						true,
-						webWorkflowPrimitiveBranchPlaceholderConstant,
-						webWorkflowPrimitiveBranchPlaceholderConstant,
+						"",
+						webWorkflowPrimitiveTargetBranchPlaceholderConst,
 					),
 					textWorkflowPrimitiveParameter(
 						webWorkflowPrimitiveParameterRemoteConstant,
@@ -385,7 +386,7 @@ func (application *Application) webWorkflowPrimitiveDefinitions() []webWorkflowP
 				if sourceError != nil {
 					return nil, sourceError
 				}
-				targetBranch, targetError := readWebWorkflowStringParameter(parameters, webWorkflowPrimitiveDefaultBranchConstant, webWorkflowPrimitiveParameterTargetConstant, true, webWorkflowPrimitiveBranchPlaceholderConstant)
+				targetBranch, targetError := readWebWorkflowStringParameter(parameters, webWorkflowPrimitiveDefaultBranchConstant, webWorkflowPrimitiveParameterTargetConstant, true, "")
 				if targetError != nil {
 					return nil, targetError
 				}

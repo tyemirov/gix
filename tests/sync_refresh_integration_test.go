@@ -352,7 +352,7 @@ operations:
 	require.NotContains(testInstance, readTextFile(testInstance, githubLogPath), "pr create ")
 }
 
-func TestSyncExplicitMasterRejectsMissingRemoteBaseBeforeCommitting(testInstance *testing.T) {
+func TestSyncRejectsRemoteWithoutDefaultBeforeCommitting(testInstance *testing.T) {
 	testInstance.Helper()
 
 	repositoryRoot := integrationRepositoryRoot(testInstance)
@@ -402,10 +402,319 @@ func TestSyncExplicitMasterRejectsMissingRemoteBaseBeforeCommitting(testInstance
 		},
 	)
 	require.Error(testInstance, runError)
-	require.Contains(testInstance, output, `remote base branch "origin/master" does not exist`)
+	require.Contains(testInstance, output, `remote "origin" did not report a default branch`)
 	require.Zero(testInstance, requestCount.Load())
 	require.Equal(testInstance, baseCommit, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD")))
 	require.Equal(testInstance, "M README.md", strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
+}
+
+func TestSyncTreatsMainAndMasterAsOrdinaryBranchNames(testInstance *testing.T) {
+	testCases := []struct {
+		name          string
+		defaultBranch string
+		targetBranch  string
+	}{
+		{name: "main default and master target", defaultBranch: "main", targetBranch: "master"},
+		{name: "master default and main target", defaultBranch: "master", targetBranch: "main"},
+	}
+
+	for _, testCase := range testCases {
+		testInstance.Run(testCase.name, func(testInstance *testing.T) {
+			repositoryRoot := integrationRepositoryRoot(testInstance)
+			workspacePath := syncHomeWorkspace(testInstance)
+			remotePath := filepath.Join(workspacePath, "remote.git")
+			repositoryPath := filepath.Join(workspacePath, "project")
+			runGitWithDir(testInstance, "", "init", "--bare", remotePath)
+			runGitWithDir(testInstance, "", "init", "--initial-branch="+testCase.defaultBranch, repositoryPath)
+			configureGitIdentity(testInstance, repositoryPath)
+			runGit(testInstance, repositoryPath, "remote", "add", "origin", localFileURL(remotePath))
+
+			readmePath := filepath.Join(repositoryPath, "README.md")
+			require.NoError(testInstance, os.WriteFile(readmePath, []byte("initial\n"), 0o644))
+			runGit(testInstance, repositoryPath, "add", "README.md")
+			runGit(testInstance, repositoryPath, "commit", "-m", "initial commit")
+			runGit(testInstance, repositoryPath, "push", "-u", "origin", testCase.defaultBranch)
+			runGit(testInstance, remotePath, "symbolic-ref", "HEAD", "refs/heads/"+testCase.defaultBranch)
+			baseCommit := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD"))
+			require.NoError(testInstance, os.WriteFile(readmePath, []byte("initial\ndirty work\n"), 0o644))
+
+			responses := []string{
+				"docs: commit work to requested branch",
+				"Publish the requested branch for review.",
+			}
+			var responseIndex atomic.Int64
+			llmServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+				if request.URL.Path != "/chat/completions" {
+					http.NotFound(responseWriter, request)
+					return
+				}
+				currentResponseIndex := int(responseIndex.Add(1) - 1)
+				if currentResponseIndex >= len(responses) {
+					http.Error(responseWriter, "unexpected LLM request", http.StatusBadRequest)
+					return
+				}
+				responseWriter.Header().Set("Content-Type", "application/json")
+				_, _ = fmt.Fprintf(responseWriter, `{"choices":[{"message":{"role":"assistant","content":%q}}]}`, responses[currentResponseIndex])
+			}))
+			testInstance.Cleanup(llmServer.Close)
+
+			configurationPath := writeDirtySyncMergedBranchConfiguration(testInstance, llmServer.URL)
+			gitLogPath := filepath.Join(testInstance.TempDir(), "git.log")
+			githubLogPath := filepath.Join(testInstance.TempDir(), "gh.log")
+			output, runError := runIntegrationCommandWithInput(
+				testInstance,
+				repositoryRoot,
+				integrationCommandOptions{
+					PathVariable: buildSyncMergedBranchExecutablePath(testInstance),
+					EnvironmentOverrides: map[string]string{
+						syncMergedBranchAPIKeyVariable:        "test-key",
+						syncMergedBranchDefaultBranchVariable: testCase.defaultBranch,
+						syncMergedBranchGitLogVariable:        gitLogPath,
+						syncMergedBranchGitHubLogVariable:     githubLogPath,
+						syncMergedBranchMergedVariable:        "false",
+					},
+				},
+				syncMergedBranchIntegrationTimeout,
+				"",
+				[]string{
+					syncRefreshIntegrationRunCommand,
+					syncRefreshIntegrationModulePath,
+					"--config",
+					configurationPath,
+					syncRefreshIntegrationLogLevelFlag,
+					syncRefreshIntegrationErrorLogLevel,
+					"sync",
+					testCase.targetBranch,
+					"--roots",
+					repositoryPath,
+				},
+			)
+			require.NoError(testInstance, runError, output)
+
+			require.Contains(testInstance, output, fmt.Sprintf("SYNCED: %s (%s)", repositoryPath, testCase.targetBranch))
+			require.Equal(testInstance, testCase.targetBranch, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
+			require.Equal(testInstance, "1", strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-list", "--count", baseCommit+".."+testCase.targetBranch)))
+			require.Equal(testInstance, baseCommit, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", testCase.defaultBranch)))
+			require.Equal(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", testCase.targetBranch)), strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "origin/"+testCase.targetBranch)))
+			require.Equal(testInstance, "origin/"+testCase.targetBranch, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")))
+			require.Equal(testInstance, "initial\ndirty work\n", readTextFile(testInstance, readmePath))
+			require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
+			require.Equal(testInstance, int64(len(responses)), responseIndex.Load())
+
+			gitLog := readTextFile(testInstance, gitLogPath)
+			require.Contains(testInstance, gitLog, "switch -c "+testCase.targetBranch)
+			require.Contains(testInstance, gitLog, "commit -m "+responses[0])
+			require.Contains(testInstance, gitLog, "merge --no-edit origin/"+testCase.defaultBranch)
+			require.Contains(testInstance, gitLog, "push -u origin "+testCase.targetBranch)
+			require.NotContains(testInstance, gitLog, "origin/"+testCase.targetBranch+".."+testCase.defaultBranch)
+			require.NotContains(testInstance, gitLog, "merge --no-edit origin/"+testCase.targetBranch)
+
+			githubLog := readTextFile(testInstance, githubLogPath)
+			require.Contains(testInstance, githubLog, "pr create --repo owner/project --base "+testCase.defaultBranch+" --head "+testCase.targetBranch)
+		})
+	}
+}
+
+func TestSyncFetchesRemoteDefaultBranchForSingleBranchClone(testInstance *testing.T) {
+	const (
+		defaultBranch = "main"
+		cloneBranch   = "feature/narrow-clone"
+	)
+
+	repositoryRoot := integrationRepositoryRoot(testInstance)
+	workspacePath := syncHomeWorkspace(testInstance)
+	remotePath := filepath.Join(workspacePath, "remote.git")
+	sourcePath := filepath.Join(workspacePath, "source")
+	repositoryPath := filepath.Join(workspacePath, "single-branch-clone")
+	runGitWithDir(testInstance, "", "init", "--bare", remotePath)
+	runGitWithDir(testInstance, "", "init", "--initial-branch="+defaultBranch, sourcePath)
+	configureGitIdentity(testInstance, sourcePath)
+	runGit(testInstance, sourcePath, "remote", "add", "origin", localFileURL(remotePath))
+
+	readmePath := filepath.Join(sourcePath, "README.md")
+	require.NoError(testInstance, os.WriteFile(readmePath, []byte("default branch\n"), 0o644))
+	runGit(testInstance, sourcePath, "add", "README.md")
+	runGit(testInstance, sourcePath, "commit", "-m", "default branch commit")
+	runGit(testInstance, sourcePath, "push", "-u", "origin", defaultBranch)
+	defaultCommit := strings.TrimSpace(runGit(testInstance, sourcePath, "rev-parse", defaultBranch))
+	runGit(testInstance, remotePath, "symbolic-ref", "HEAD", "refs/heads/"+defaultBranch)
+
+	runGit(testInstance, sourcePath, "switch", "-c", cloneBranch)
+	featurePath := filepath.Join(sourcePath, "feature.txt")
+	require.NoError(testInstance, os.WriteFile(featurePath, []byte("feature branch\n"), 0o644))
+	runGit(testInstance, sourcePath, "add", "feature.txt")
+	runGit(testInstance, sourcePath, "commit", "-m", "feature branch commit")
+	runGit(testInstance, sourcePath, "push", "-u", "origin", cloneBranch)
+	featureCommit := strings.TrimSpace(runGit(testInstance, sourcePath, "rev-parse", cloneBranch))
+
+	runGitWithDir(testInstance, workspacePath, "clone", "--single-branch", "--branch", cloneBranch, localFileURL(remotePath), repositoryPath)
+	configureGitIdentity(testInstance, repositoryPath)
+	require.Equal(
+		testInstance,
+		"+refs/heads/"+cloneBranch+":refs/remotes/origin/"+cloneBranch,
+		strings.TrimSpace(runGit(testInstance, repositoryPath, "config", "--get", "remote.origin.fetch")),
+	)
+	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "for-each-ref", "--format=%(refname)", "refs/remotes/origin/"+defaultBranch)))
+
+	configurationPath := writeSyncMergedBranchConfiguration(testInstance)
+	gitLogPath := filepath.Join(testInstance.TempDir(), "git.log")
+	githubLogPath := filepath.Join(testInstance.TempDir(), "gh.log")
+	require.NoError(
+		testInstance,
+		os.WriteFile(githubLogPath, []byte("created-pr --base "+defaultBranch+" --head "+cloneBranch+"\n"), 0o600),
+	)
+	output, runError := runIntegrationCommandWithInput(
+		testInstance,
+		repositoryRoot,
+		integrationCommandOptions{
+			PathVariable: buildSyncMergedBranchExecutablePath(testInstance),
+			EnvironmentOverrides: map[string]string{
+				syncMergedBranchDefaultBranchVariable: defaultBranch,
+				syncMergedBranchGitLogVariable:        gitLogPath,
+				syncMergedBranchGitHubLogVariable:     githubLogPath,
+				syncMergedBranchMergedVariable:        "false",
+				syncMergedBranchNameVariable:          cloneBranch,
+			},
+		},
+		syncMergedBranchIntegrationTimeout,
+		"",
+		[]string{
+			syncRefreshIntegrationRunCommand,
+			syncRefreshIntegrationModulePath,
+			"--config",
+			configurationPath,
+			syncRefreshIntegrationLogLevelFlag,
+			syncRefreshIntegrationErrorLogLevel,
+			"sync",
+			cloneBranch,
+			"--roots",
+			repositoryPath,
+		},
+	)
+
+	require.NoError(testInstance, runError, output)
+	require.Contains(testInstance, output, fmt.Sprintf("SYNCED: %s (%s)", repositoryPath, cloneBranch))
+	require.Equal(testInstance, cloneBranch, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
+	require.Equal(testInstance, defaultCommit, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "origin/"+defaultBranch)))
+	require.Equal(testInstance, featureCommit, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", cloneBranch)))
+	require.Equal(
+		testInstance,
+		"+refs/heads/"+cloneBranch+":refs/remotes/origin/"+cloneBranch,
+		strings.TrimSpace(runGit(testInstance, repositoryPath, "config", "--get", "remote.origin.fetch")),
+	)
+	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
+
+	gitLog := readTextFile(testInstance, gitLogPath)
+	require.Contains(testInstance, gitLog, "fetch --prune origin")
+	require.Contains(testInstance, gitLog, "ls-remote --symref origin HEAD")
+	require.Contains(testInstance, gitLog, "fetch --no-tags origin +refs/heads/"+defaultBranch+":refs/remotes/origin/"+defaultBranch)
+	require.Contains(testInstance, gitLog, "merge --no-edit origin/"+defaultBranch)
+
+	githubLog := readTextFile(testInstance, githubLogPath)
+	require.NotContains(testInstance, githubLog, "pr create")
+	require.Equal(testInstance, 1, strings.Count(githubLog, "created-pr --base "+defaultBranch+" --head "+cloneBranch))
+}
+
+func TestSyncUsesRemoteDefaultWhenAuditFallsBackToCurrentBranch(testInstance *testing.T) {
+	const (
+		defaultBranch = "trunk"
+		targetBranch  = "feature/review"
+	)
+
+	repositoryRoot := integrationRepositoryRoot(testInstance)
+	workspacePath := syncHomeWorkspace(testInstance)
+	remotePath := filepath.Join(workspacePath, "remote.git")
+	repositoryPath := filepath.Join(workspacePath, "project")
+	runGitWithDir(testInstance, "", "init", "--bare", remotePath)
+	runGitWithDir(testInstance, "", "init", "--initial-branch="+defaultBranch, repositoryPath)
+	configureGitIdentity(testInstance, repositoryPath)
+	runGit(testInstance, repositoryPath, "remote", "add", "origin", localFileURL(remotePath))
+
+	readmePath := filepath.Join(repositoryPath, "README.md")
+	require.NoError(testInstance, os.WriteFile(readmePath, []byte("initial\n"), 0o644))
+	runGit(testInstance, repositoryPath, "add", "README.md")
+	runGit(testInstance, repositoryPath, "commit", "-m", "initial commit")
+	runGit(testInstance, repositoryPath, "push", "-u", "origin", defaultBranch)
+	runGit(testInstance, remotePath, "symbolic-ref", "HEAD", "refs/heads/"+defaultBranch)
+
+	runGit(testInstance, repositoryPath, "switch", "-c", targetBranch)
+	reviewPath := filepath.Join(repositoryPath, "review.txt")
+	require.NoError(testInstance, os.WriteFile(reviewPath, []byte("review work\n"), 0o644))
+	runGit(testInstance, repositoryPath, "add", "review.txt")
+	runGit(testInstance, repositoryPath, "commit", "-m", "review work")
+	runGit(testInstance, repositoryPath, "push", "-u", "origin", targetBranch)
+	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "for-each-ref", "--format=%(refname)", "refs/remotes/origin/HEAD")))
+	require.NoError(testInstance, os.WriteFile(readmePath, []byte("initial\ndirty review update\n"), 0o644))
+
+	responses := []string{
+		"docs: save review update",
+		"Publish the review update.",
+	}
+	var responseIndex atomic.Int64
+	llmServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/chat/completions" {
+			http.NotFound(responseWriter, request)
+			return
+		}
+		currentResponseIndex := int(responseIndex.Add(1) - 1)
+		if currentResponseIndex >= len(responses) {
+			http.Error(responseWriter, "unexpected LLM request", http.StatusBadRequest)
+			return
+		}
+		responseWriter.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(responseWriter, `{"choices":[{"message":{"role":"assistant","content":%q}}]}`, responses[currentResponseIndex])
+	}))
+	testInstance.Cleanup(llmServer.Close)
+
+	configurationPath := writeDirtySyncMergedBranchConfiguration(testInstance, llmServer.URL)
+	gitLogPath := filepath.Join(testInstance.TempDir(), "git.log")
+	githubLogPath := filepath.Join(testInstance.TempDir(), "gh.log")
+	output, runError := runIntegrationCommandWithInput(
+		testInstance,
+		repositoryRoot,
+		integrationCommandOptions{
+			PathVariable: buildSyncMergedBranchExecutablePath(testInstance),
+			EnvironmentOverrides: map[string]string{
+				syncMergedBranchAPIKeyVariable:       "test-key",
+				syncMergedBranchFailRepoViewVariable: "true",
+				syncMergedBranchGitLogVariable:       gitLogPath,
+				syncMergedBranchGitHubLogVariable:    githubLogPath,
+				syncMergedBranchMergedVariable:       "false",
+				syncMergedBranchNameVariable:         targetBranch,
+			},
+		},
+		syncMergedBranchIntegrationTimeout,
+		"",
+		[]string{
+			syncRefreshIntegrationRunCommand,
+			syncRefreshIntegrationModulePath,
+			"--config",
+			configurationPath,
+			syncRefreshIntegrationLogLevelFlag,
+			syncRefreshIntegrationErrorLogLevel,
+			"sync",
+			targetBranch,
+			"--roots",
+			repositoryPath,
+		},
+	)
+	require.NoError(testInstance, runError, output)
+
+	require.Contains(testInstance, output, fmt.Sprintf("SYNCED: %s (%s)", repositoryPath, targetBranch))
+	require.Equal(testInstance, targetBranch, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
+	require.Equal(testInstance, "initial\ndirty review update\n", readTextFile(testInstance, readmePath))
+	require.Equal(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", targetBranch)), strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "origin/"+targetBranch)))
+	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
+	require.Equal(testInstance, int64(len(responses)), responseIndex.Load())
+
+	gitLog := readTextFile(testInstance, gitLogPath)
+	require.Contains(testInstance, gitLog, "ls-remote --symref origin HEAD")
+	require.Contains(testInstance, gitLog, "merge --no-edit origin/"+defaultBranch)
+	require.Contains(testInstance, gitLog, "push -u origin "+targetBranch+" --porcelain")
+
+	githubLog := readTextFile(testInstance, githubLogPath)
+	require.Contains(testInstance, githubLog, "repo view owner/project")
+	require.Contains(testInstance, githubLog, "pr create --repo owner/project --base "+defaultBranch+" --head "+targetBranch)
 }
 
 func TestSyncExplicitNewBranchCreatesStackedPullRequestsAndCommitsDirtyWorkInClusters(testInstance *testing.T) {

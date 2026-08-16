@@ -11,6 +11,92 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B068] (P1) Reject a dirty default-branch promotion before mutation.
+  Reported on 2026-08-16 after `gix default master` ran from a dirty `main` branch.
+  Expected result:
+  The command rejects the dirty worktree before it creates a branch, changes the checkout, pushes a branch, or updates GitHub.
+  Actual result:
+  `BranchMigrationOperation.Execute` creates the target branch and checks it out.
+  The operation also pushed `origin/master` at the `main` commit before the clean-worktree check.
+  `Service.Execute` then rejects the dirty worktree and leaves the earlier mutations in place.
+  Requirements:
+  - Make sure that the worktree is clean before target branch creation, checkout, or remote push.
+  - Run all nonmutating preflight checks before the first mutation.
+  - If preflight fails, preserve the starting checkout, local refs, remote refs, worktree contents, and index.
+  - Do not change workflows, Pages settings, the GitHub default branch, or pull requests after a dirty-worktree rejection.
+  Validation:
+  - Create a dirty `main` branch with no local or remote `master` branch.
+  - Run the compiled CLI command `gix default master`.
+  - Verify that the command fails with the clean-worktree error.
+  - Verify that `main` stays active and that local and remote `master` refs remain absent.
+  - Verify that the worktree contents and index stay unchanged.
+  - Verify that Git and GitHub logs contain no mutating command.
+  Resolution:
+  - `migrate.Service` now owns target branch creation, checkout, and remote publication.
+  - Option validation, the clean-worktree check, and credential validation complete before target preparation.
+  - A service test verifies that dirty-worktree preflight runs only `git status`.
+  - A compiled CLI regression covers staged, unstaged, and untracked changes with no local or remote `master` branch.
+  - The regression verifies exact preservation of the checkout, commit, index, repository refs, remote refs, file contents, workflow, and GitHub state.
+  - `make test-fast`, `make test-slow`, and `make ci` passed on 2026-08-16.
+
+- [x] [B067] (P1) Use the repository default branch during strict sync.
+  Reported on 2026-08-15 after `gix sync master` ran from a dirty `main` branch.
+  Expected result:
+  `gix sync master` treats `master` as an ordinary target when the repository default branch is `main`.
+  Actual result:
+  Sync treats `master` as the base branch, compares `main` with absent `origin/master`, and restores `main` without creating `master`.
+  Review finding on 2026-08-15:
+  Audit can report the local branch as `RemoteDefaultBranch` when metadata and the remote-tracking symbolic `HEAD` are absent.
+  Strict sync trusts this value and can push an ordinary branch without a pull request.
+  Review findings on 2026-08-16:
+  A task-defined strict sync can contain the obsolete `base_branch` option.
+  The action gives no error and uses the remote default branch.
+  A single-branch clone can exclude the remote default branch from its fetch refspec.
+  Strict sync resolves that default branch but does not create its remote-tracking ref.
+  Requirements:
+  - Resolve strict sync behavior from the repository default branch.
+  - Do not use a branch name to select default-branch behavior.
+  - Treat `main`, `master`, and all other branch names as ordinary names.
+  - Get the strict-sync default-branch identity from the remote symbolic `HEAD`.
+  - Do not use audit fallback data to select default-branch behavior.
+  - Reject the obsolete `base_branch` task option.
+  - Fetch the resolved remote default branch into its remote-tracking ref.
+  - Create a missing ordinary target from the current checkout when dirty work exists.
+  - Commit the dirty work to the requested target and push that target.
+  - Open the target pull request against the repository default branch.
+  - Preserve rollback before publication and handoff after publication.
+  Validation:
+  - Reproduce dirty default branch `main` with no local or remote `master`.
+  - Verify that sync creates and pushes `master` with the committed dirty work.
+  - Verify that sync opens the `master` pull request against `main`.
+  - Verify that sync does not compare `main` against absent `origin/master`.
+  - Exchange the `main` and `master` roles and verify the same behavior.
+  - Make metadata lookup fail on a dirty remote-backed ordinary branch.
+  - Remove the remote-tracking symbolic `HEAD` before inspection.
+  - Verify that sync opens a pull request against the remote default branch.
+  - Run a task-defined strict sync with the obsolete `base_branch` option.
+  - Verify that the action rejects the option before Git or GitHub mutation.
+  - Clone only a nondefault branch from a repository whose default branch is different.
+  - Verify that strict sync fetches and uses the remote default branch.
+  - Preserve direct synchronization when the requested branch is the repository default branch.
+  - Run focused tests and complete CI.
+  Resolution:
+  - Strict sync resolves the default branch from the remote symbolic `HEAD` after fetch.
+  - Strict sync does not use audit fallback data to select default-branch behavior.
+  - A remote that does not report a default branch stops sync before commit generation or publication.
+  - Strict sync has no independent base-branch option or named branch default.
+  - Default-branch promotion requires an explicit target branch.
+  - Production Go logic has no `main` or `master` branch-name literals.
+  - Compiled CLI tests exchange `main` and `master` as the default and target branches.
+  - A compiled CLI regression makes metadata lookup fail while audit reports an ordinary local branch.
+  - The regression updates and pushes that branch and opens its pull request against the remote default branch.
+  - Focused tests and `make ci` passed on 2026-08-16.
+  - The `branch.sync` action rejects `base_branch` before it runs a Git or GitHub operation.
+  - Strict sync explicitly fetches the resolved default branch into its remote-tracking ref.
+  - The explicit fetch does not change the configured fetch refspec.
+  - Compiled CLI tests cover obsolete task configuration and a single-branch feature clone.
+  - `make test-fast`, `make test-slow`, and `make ci` passed on 2026-08-16.
+
 - [x] [B066] (P1) Stop repository cleanup after an operator interrupt.
   Reported on 2026-08-13 after an interrupt to `gix prs delete`.
   Expected result:

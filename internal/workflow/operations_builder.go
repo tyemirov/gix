@@ -14,6 +14,7 @@ const (
 	protocolConversionInvalidToMessageConstant    = "remote update-protocol step requires a valid 'to' protocol"
 	protocolConversionSameProtocolMessageConstant = "remote update-protocol step requires distinct source and target protocols"
 	branchMigrationTargetsRequiredMessageConstant = "default step requires at least one target"
+	branchMigrationTargetRequiredMessageConstant  = "default step requires a target branch"
 )
 
 // BuildOperations converts the declarative configuration into executable operations with dependency metadata.
@@ -263,6 +264,9 @@ func buildBranchMigrationOperation(options map[string]any) (Operation, error) {
 		if targetError != nil {
 			return nil, targetError
 		}
+		if !targetExists || len(strings.TrimSpace(targetBranchValue)) == 0 {
+			return nil, errors.New(branchMigrationTargetRequiredMessageConstant)
+		}
 		pushToRemoteValue, pushToRemoteExists, pushToRemoteError := targetReader.boolValue(optionPushToRemoteKeyConstant)
 		if pushToRemoteError != nil {
 			return nil, pushToRemoteError
@@ -275,7 +279,7 @@ func buildBranchMigrationOperation(options map[string]any) (Operation, error) {
 		targets = append(targets, BranchMigrationTarget{
 			RemoteName:         defaultRemoteName(remoteNameExists, remoteNameValue),
 			SourceBranch:       defaultSourceBranch(sourceExists, sourceBranchValue),
-			TargetBranch:       defaultTargetBranch(targetExists, targetBranchValue),
+			TargetBranch:       strings.TrimSpace(targetBranchValue),
 			PushToRemote:       defaultPushToRemote(pushToRemoteExists, pushToRemoteValue),
 			DeleteSourceBranch: defaultDeleteSourceBranch(deleteSourceBranchExists, deleteSourceBranchValue),
 		})
@@ -335,16 +339,6 @@ func defaultSourceBranch(explicit bool, value string) string {
 		}
 	}
 	return ""
-}
-
-func defaultTargetBranch(explicit bool, value string) string {
-	if explicit {
-		trimmed := strings.TrimSpace(value)
-		if len(trimmed) > 0 {
-			return trimmed
-		}
-	}
-	return defaultMigrationTargetBranchConstant
 }
 
 func defaultPushToRemote(explicit bool, value bool) bool {

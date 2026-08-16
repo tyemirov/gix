@@ -235,8 +235,8 @@ func TestMigrationIntegration(testInstance *testing.T) {
 				RepositoryRemoteName: "origin",
 				RepositoryIdentifier: integrationRepositoryIdentifierConstant,
 				WorkflowsDirectory:   integrationWorkflowDirectoryConstant,
-				SourceBranch:         migrate.BranchMain,
-				TargetBranch:         migrate.BranchMaster,
+				SourceBranch:         migrate.BranchName("main"),
+				TargetBranch:         migrate.BranchName("master"),
 				PushUpdates:          false,
 				DeleteSourceBranch:   testCase.deleteSourceBranch,
 			}
@@ -270,9 +270,9 @@ func TestMigrationIntegration(testInstance *testing.T) {
 			require.Equal(subtest, "", statusOutput)
 
 			require.NotNil(subtest, githubOperations.updatedPagesConfig)
-			require.Equal(subtest, string(migrate.BranchMaster), githubOperations.updatedPagesConfig.SourceBranch)
+			require.Equal(subtest, string(migrate.BranchName("master")), githubOperations.updatedPagesConfig.SourceBranch)
 			require.ElementsMatch(subtest, testCase.expectedRetargeted, githubOperations.retargetedPullRequests)
-			require.Equal(subtest, string(migrate.BranchMaster), githubOperations.defaultBranchTarget)
+			require.Equal(subtest, string(migrate.BranchName("master")), githubOperations.defaultBranchTarget)
 
 			require.Equal(subtest, testCase.expectLocalBranch, branchExists(subtest, repositoryDirectory, "main"))
 			require.Equal(subtest, testCase.expectRemoteBranch, remoteBranchExists(subtest, remotePath, "main"))

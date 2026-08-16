@@ -36,16 +36,16 @@ The following tables document each script. "Inputs" include both positional argu
 | Side effects | Deletes remote branches via `git push origin --delete`; deletes local branches via `git branch -D`. Writes progress messages to stdout. |
 | Outputs | Logs deletions or skips to stdout. Errors from Git commands surface on stderr but are guarded with `|| true` to continue processing. |
 
-### 2.3 `main_to_master.sh`
+### 2.3 `gix default <target-branch>`
 | Aspect | Details |
 | --- | --- |
-| Primary purpose | Safely migrate a repository’s default branch from `main` to `master`, updating workflows, GitHub Pages, PR targets, local branches, and remote settings. |
-| Inputs & flags | Target branch as positional argument (for example, `master`) plus optional `--debug` flag (enables shell tracing). Must run inside target repository. |
+| Primary purpose | Promote an explicit branch to the repository default branch. Update workflows, GitHub Pages, pull-request targets, local branches, and remote settings. |
+| Inputs & flags | Required target branch as a positional argument plus the shared command flags. The command detects the current default branch from repository data. |
 | Environment variables | Relies on Git configuration for remote URLs and GitHub CLI authentication context. |
 | External dependencies | `git`, `gh`, `jq`, `sed`, `find`, standard GNU coreutils. Requires authenticated `gh` session. |
 | Network/API usage | Extensive `gh api` usage: fetch repository metadata, GitHub Pages config, branch protection checks, open PRs. Uses `gh pr list`/`gh pr edit`. Pushes branches via `git push`. |
-| Side effects | Alters Git history (creates/fast-forwards `master`, rebases branches, force-pushes); edits workflow files and commits/pushes changes; updates GitHub Pages default branch; retargets PRs; flips default branch via API; deletes `main` when safe. |
-| Outputs | Logs progress with `▶` prefix on stdout; warnings/errors to stderr; aborts with `ERROR:` prefix. |
+| Side effects | Creates or updates the requested target branch, edits workflow files, updates GitHub Pages, changes pull-request bases, and changes the repository default branch. It can delete the old default branch when the operator selects that option. |
+| Outputs | Logs the promoted source and target branches and reports whether the source branch is safe to delete. |
 
 ### 2.4 `gix packages delete`
 | Aspect | Details |

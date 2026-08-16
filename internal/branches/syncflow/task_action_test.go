@@ -144,9 +144,10 @@ type strictSyncGitExecutor struct {
 }
 
 const (
-	strictSyncGitAbbrevRefFlag = "--abbrev-ref"
-	strictSyncGitHeadReference = "HEAD"
-	strictSyncGitTestCommit    = "0123456789abcdef0123456789abcdef01234567"
+	strictSyncTestDefaultBranch = "master"
+	strictSyncGitAbbrevRefFlag  = "--abbrev-ref"
+	strictSyncGitHeadReference  = "HEAD"
+	strictSyncGitTestCommit     = "0123456789abcdef0123456789abcdef01234567"
 )
 
 func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
@@ -160,6 +161,8 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 		}
 	}
 	switch details.Arguments[0] {
+	case gitLSRemoteSubcommandConstant:
+		return execshell.ExecutionResult{StandardOutput: fmt.Sprintf("ref: refs/heads/%s\tHEAD\n%s\tHEAD\n", strictSyncTestDefaultBranch, strictSyncGitTestCommit)}, nil
 	case "config":
 		if len(details.Arguments) < 3 || (!strings.HasSuffix(details.Arguments[1], ".gix-review-base") && !strings.HasSuffix(details.Arguments[2], ".gix-review-base")) {
 			return execshell.ExecutionResult{}, nil
@@ -232,7 +235,7 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 		if len(details.Arguments) > 2 && details.Arguments[1] == strictSyncGitAbbrevRefFlag && details.Arguments[2] == strictSyncGitHeadReference {
 			currentBranch := executor.currentBranch
 			if currentBranch == "" {
-				currentBranch = defaultSyncBaseBranch
+				currentBranch = strictSyncTestDefaultBranch
 			}
 			return execshell.ExecutionResult{StandardOutput: currentBranch + "\n"}, nil
 		}
@@ -271,7 +274,7 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 	case "for-each-ref":
 		currentBranch := executor.currentBranch
 		if currentBranch == "" {
-			currentBranch = defaultSyncBaseBranch
+			currentBranch = strictSyncTestDefaultBranch
 		}
 		return execshell.ExecutionResult{StandardOutput: fmt.Sprintf("refs/heads/%s %s\n", currentBranch, strictSyncGitTestCommit)}, nil
 	case "push":
@@ -312,7 +315,7 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 		if len(details.Arguments) > 2 && details.Arguments[1] == gitWorktreeListSubcommandConstant {
 			currentBranch := executor.currentBranch
 			if currentBranch == "" {
-				currentBranch = defaultSyncBaseBranch
+				currentBranch = strictSyncTestDefaultBranch
 			}
 			output := fmt.Sprintf("worktree %s\nHEAD %s\nbranch refs/heads/%s\n", details.WorkingDirectory, strictSyncGitTestCommit, currentBranch)
 			if executor.blockedWorktree != "" {
@@ -502,6 +505,21 @@ func TestHandleBranchSyncActionUsesRepositoryDefault(t *testing.T) {
 	require.Equal(t, branchResolutionSourceRemoteDefault, reporter.events[0].Details["source"])
 }
 
+func TestHandleBranchSyncActionRejectsObsoleteBaseBranchOption(t *testing.T) {
+	executor := &stubGitExecutor{}
+	environment := &workflow.Environment{GitExecutor: executor}
+	repository := &workflow.RepositoryState{Path: "/tmp/project"}
+
+	executionErr := handleBranchSyncAction(context.Background(), environment, repository, map[string]any{
+		taskOptionBranchName:         "feature/review",
+		taskOptionRequirePullRequest: true,
+		taskOptionObsoleteBaseBranch: "develop",
+	})
+
+	require.EqualError(t, executionErr, `branch.sync option "base_branch" is obsolete; remove it`)
+	require.Empty(t, executor.recorded)
+}
+
 func TestHandleBranchSyncActionUsesConfiguredFallback(t *testing.T) {
 	executor := &stubGitExecutor{
 		responses: []stubGitResponse{
@@ -561,6 +579,82 @@ func TestHandleBranchSyncActionErrorsWhenBranchCannotBeResolved(t *testing.T) {
 
 func execShellOutput(output string) execshell.ExecutionResult {
 	return execshell.ExecutionResult{StandardOutput: output}
+}
+
+func TestResolveStrictSyncRemoteDefaultBranch(t *testing.T) {
+	testCases := []struct {
+		name          string
+		response      stubGitResponse
+		expected      string
+		expectedError string
+	}{
+		{
+			name:     "symbolic remote head",
+			response: stubGitResponse{result: execShellOutput("ref: refs/heads/main\tHEAD\n0123456789abcdef\tHEAD\n")},
+			expected: "main",
+		},
+		{
+			name:          "missing symbolic remote head",
+			response:      stubGitResponse{result: execShellOutput("0123456789abcdef\tHEAD\n")},
+			expectedError: `remote "origin" did not report a default branch`,
+		},
+		{
+			name:          "remote query failure",
+			response:      stubGitResponse{err: errors.New("remote unavailable")},
+			expectedError: `resolve default branch for remote "origin": remote unavailable`,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			executor := &stubGitExecutor{responses: []stubGitResponse{testCase.response}}
+
+			branch, branchErr := resolveStrictSyncRemoteDefaultBranch(context.Background(), executor, "/tmp/project", "origin")
+
+			require.Equal(t, testCase.expected, branch)
+			if testCase.expectedError == "" {
+				require.NoError(t, branchErr)
+			} else {
+				require.EqualError(t, branchErr, testCase.expectedError)
+			}
+			require.Equal(t, []string{"ls-remote", "--symref", "origin", "HEAD"}, executor.recorded[0].Arguments)
+		})
+	}
+}
+
+func TestFetchStrictSyncRemoteDefaultBranch(t *testing.T) {
+	testCases := []struct {
+		name          string
+		response      stubGitResponse
+		expectedError string
+	}{
+		{name: "fetches remote default branch", response: stubGitResponse{}},
+		{
+			name:          "reports fetch failure",
+			response:      stubGitResponse{err: errors.New("remote unavailable")},
+			expectedError: `fetch default branch "main" from remote "origin": remote unavailable`,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			executor := &stubGitExecutor{responses: []stubGitResponse{testCase.response}}
+
+			fetchErr := fetchStrictSyncRemoteDefaultBranch(context.Background(), executor, "/tmp/project", "origin", "main")
+
+			if testCase.expectedError == "" {
+				require.NoError(t, fetchErr)
+			} else {
+				require.EqualError(t, fetchErr, testCase.expectedError)
+			}
+			require.Equal(t, []string{
+				"fetch",
+				"--no-tags",
+				"origin",
+				"+refs/heads/main:refs/remotes/origin/main",
+			}, executor.recorded[0].Arguments)
+		})
+	}
 }
 
 func TestHandleBranchSyncActionRefreshesBranch(t *testing.T) {
@@ -626,15 +720,15 @@ func TestHandleBranchSyncActionStrictPRBranchMergesBaseAndPushes(t *testing.T) {
 	repository := &workflow.RepositoryState{
 		Path: "/tmp/project",
 		Inspection: audit.RepositoryInspection{
-			LocalBranch:    "master",
-			FinalOwnerRepo: "owner/project",
+			LocalBranch:         "master",
+			FinalOwnerRepo:      "owner/project",
+			RemoteDefaultBranch: strictSyncTestDefaultBranch,
 		},
 	}
 	parameters := map[string]any{
 		taskOptionBranchName:         "feature/foo",
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
-		taskOptionBaseBranch:         "master",
 		taskOptionRequireClean:       true,
 	}
 
@@ -670,15 +764,15 @@ func TestHandleBranchSyncActionStrictPRBranchUsesOpenPullRequestBase(t *testing.
 	repository := &workflow.RepositoryState{
 		Path: "/tmp/project",
 		Inspection: audit.RepositoryInspection{
-			LocalBranch:    "master",
-			FinalOwnerRepo: "owner/project",
+			LocalBranch:         "master",
+			FinalOwnerRepo:      "owner/project",
+			RemoteDefaultBranch: strictSyncTestDefaultBranch,
 		},
 	}
 	parameters := map[string]any{
 		taskOptionBranchName:         "feature/foo",
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
-		taskOptionBaseBranch:         "master",
 		taskOptionRequireClean:       true,
 	}
 
@@ -715,15 +809,15 @@ func TestHandleBranchSyncActionStrictPRBranchPushesLocalAheadOpenPullRequest(t *
 	repository := &workflow.RepositoryState{
 		Path: "/tmp/project",
 		Inspection: audit.RepositoryInspection{
-			LocalBranch:    "feature/foo",
-			FinalOwnerRepo: "owner/project",
+			LocalBranch:         "feature/foo",
+			FinalOwnerRepo:      "owner/project",
+			RemoteDefaultBranch: strictSyncTestDefaultBranch,
 		},
 	}
 	parameters := map[string]any{
 		taskOptionBranchName:         "feature/foo",
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
-		taskOptionBaseBranch:         "master",
 		taskOptionRequireClean:       true,
 	}
 
@@ -756,15 +850,15 @@ func TestHandleBranchSyncActionStrictPRBranchRejectsOpenPullRequestWithoutBase(t
 	repository := &workflow.RepositoryState{
 		Path: "/tmp/project",
 		Inspection: audit.RepositoryInspection{
-			LocalBranch:    "master",
-			FinalOwnerRepo: "owner/project",
+			LocalBranch:         "master",
+			FinalOwnerRepo:      "owner/project",
+			RemoteDefaultBranch: strictSyncTestDefaultBranch,
 		},
 	}
 	parameters := map[string]any{
 		taskOptionBranchName:         "feature/foo",
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
-		taskOptionBaseBranch:         "master",
 		taskOptionRequireClean:       true,
 	}
 
@@ -798,15 +892,15 @@ func TestHandleBranchSyncActionStrictPRBranchAutoCommitsDirtySameBranch(t *testi
 	repository := &workflow.RepositoryState{
 		Path: "/tmp/project",
 		Inspection: audit.RepositoryInspection{
-			LocalBranch:    "feature/foo",
-			FinalOwnerRepo: "owner/project",
+			LocalBranch:         "feature/foo",
+			FinalOwnerRepo:      "owner/project",
+			RemoteDefaultBranch: strictSyncTestDefaultBranch,
 		},
 	}
 	parameters := map[string]any{
 		taskOptionBranchName:         "feature/foo",
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
-		taskOptionBaseBranch:         "master",
 		taskOptionRequireClean:       false,
 		taskOptionWorktreeCommitMessage: worktreeAdoptionCommitMessageOptions{
 			Client: chatClient,
@@ -852,15 +946,15 @@ func TestHandleBranchSyncActionStrictPRBranchStagesTrackedPathsMatchedByIgnoreRu
 	repository := &workflow.RepositoryState{
 		Path: "/tmp/project",
 		Inspection: audit.RepositoryInspection{
-			LocalBranch:    "feature/foo",
-			FinalOwnerRepo: "owner/project",
+			LocalBranch:         "feature/foo",
+			FinalOwnerRepo:      "owner/project",
+			RemoteDefaultBranch: strictSyncTestDefaultBranch,
 		},
 	}
 	parameters := map[string]any{
 		taskOptionBranchName:         "feature/foo",
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
-		taskOptionBaseBranch:         "master",
 		taskOptionRequireClean:       false,
 		taskOptionWorktreeCommitMessage: worktreeAdoptionCommitMessageOptions{
 			Client: chatClient,
@@ -903,15 +997,15 @@ func TestHandleBranchSyncActionStrictPRBranchTreatsIgnoredOnlyStatusAsClean(t *t
 	repository := &workflow.RepositoryState{
 		Path: "/tmp/project",
 		Inspection: audit.RepositoryInspection{
-			LocalBranch:    "master",
-			FinalOwnerRepo: "owner/project",
+			LocalBranch:         "master",
+			FinalOwnerRepo:      "owner/project",
+			RemoteDefaultBranch: strictSyncTestDefaultBranch,
 		},
 	}
 	parameters := map[string]any{
 		taskOptionBranchName:         "master",
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
-		taskOptionBaseBranch:         "master",
 		taskOptionRequireClean:       false,
 		taskOptionWorktreeCommitMessage: worktreeAdoptionCommitMessageOptions{
 			Client: chatClient,
@@ -954,15 +1048,15 @@ func TestHandleBranchSyncActionStrictPRBranchAdoptsDirtySiblingWorktree(t *testi
 	repository := &workflow.RepositoryState{
 		Path: "/tmp/project",
 		Inspection: audit.RepositoryInspection{
-			LocalBranch:    "master",
-			FinalOwnerRepo: "owner/project",
+			LocalBranch:         "master",
+			FinalOwnerRepo:      "owner/project",
+			RemoteDefaultBranch: strictSyncTestDefaultBranch,
 		},
 	}
 	parameters := map[string]any{
 		taskOptionBranchName:         "feature/foo",
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
-		taskOptionBaseBranch:         "master",
 		taskOptionRequireClean:       true,
 		taskOptionWorktreeCommitMessage: worktreeAdoptionCommitMessageOptions{
 			Client: chatClient,
@@ -1009,15 +1103,15 @@ func TestHandleBranchSyncActionStrictPRBranchRequireCleanRejectsDirtyWorktree(t 
 	repository := &workflow.RepositoryState{
 		Path: "/tmp/project",
 		Inspection: audit.RepositoryInspection{
-			LocalBranch:    "feature/foo",
-			FinalOwnerRepo: "owner/project",
+			LocalBranch:         "feature/foo",
+			FinalOwnerRepo:      "owner/project",
+			RemoteDefaultBranch: strictSyncTestDefaultBranch,
 		},
 	}
 	parameters := map[string]any{
 		taskOptionBranchName:         "feature/foo",
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
-		taskOptionBaseBranch:         "master",
 		taskOptionRequireClean:       true,
 		taskOptionWorktreeCommitMessage: worktreeAdoptionCommitMessageOptions{
 			Client: chatClient,
@@ -1050,15 +1144,15 @@ func TestHandleBranchSyncActionStrictPRBranchRejectsMissingPullRequest(t *testin
 	repository := &workflow.RepositoryState{
 		Path: "/tmp/project",
 		Inspection: audit.RepositoryInspection{
-			LocalBranch:    "master",
-			FinalOwnerRepo: "owner/project",
+			LocalBranch:         "master",
+			FinalOwnerRepo:      "owner/project",
+			RemoteDefaultBranch: strictSyncTestDefaultBranch,
 		},
 	}
 	parameters := map[string]any{
 		taskOptionBranchName:         "feature/foo",
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
-		taskOptionBaseBranch:         "master",
 		taskOptionRequireClean:       true,
 	}
 
@@ -1095,15 +1189,15 @@ func TestHandleBranchSyncActionStrictPRBranchPromptsToSyncMasterWhenPullRequestM
 	repository := &workflow.RepositoryState{
 		Path: "/tmp/project",
 		Inspection: audit.RepositoryInspection{
-			LocalBranch:    "feature/foo",
-			FinalOwnerRepo: "owner/project",
+			LocalBranch:         "feature/foo",
+			FinalOwnerRepo:      "owner/project",
+			RemoteDefaultBranch: strictSyncTestDefaultBranch,
 		},
 	}
 	parameters := map[string]any{
 		taskOptionBranchName:         "feature/foo",
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
-		taskOptionBaseBranch:         "master",
 		taskOptionRequireClean:       true,
 	}
 
@@ -1147,15 +1241,15 @@ func TestHandleBranchSyncActionStrictPRBranchPromptsToSyncMasterWhenMergedPullRe
 	repository := &workflow.RepositoryState{
 		Path: "/tmp/project",
 		Inspection: audit.RepositoryInspection{
-			LocalBranch:    "feature/foo",
-			FinalOwnerRepo: "owner/project",
+			LocalBranch:         "feature/foo",
+			FinalOwnerRepo:      "owner/project",
+			RemoteDefaultBranch: strictSyncTestDefaultBranch,
 		},
 	}
 	parameters := map[string]any{
 		taskOptionBranchName:         "feature/foo",
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
-		taskOptionBaseBranch:         "master",
 		taskOptionRequireClean:       true,
 	}
 
@@ -1196,15 +1290,15 @@ func TestHandleBranchSyncActionStrictPRBranchKeepsMissingPullRequestErrorWhenMer
 	repository := &workflow.RepositoryState{
 		Path: "/tmp/project",
 		Inspection: audit.RepositoryInspection{
-			LocalBranch:    "feature/foo",
-			FinalOwnerRepo: "owner/project",
+			LocalBranch:         "feature/foo",
+			FinalOwnerRepo:      "owner/project",
+			RemoteDefaultBranch: strictSyncTestDefaultBranch,
 		},
 	}
 	parameters := map[string]any{
 		taskOptionBranchName:         "feature/foo",
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
-		taskOptionBaseBranch:         "master",
 		taskOptionRequireClean:       true,
 	}
 
@@ -1240,15 +1334,15 @@ func TestHandleBranchSyncActionStrictPRBranchAssumeYesSyncsMasterForMergedPullRe
 	repository := &workflow.RepositoryState{
 		Path: "/tmp/project",
 		Inspection: audit.RepositoryInspection{
-			LocalBranch:    "feature/foo",
-			FinalOwnerRepo: "owner/project",
+			LocalBranch:         "feature/foo",
+			FinalOwnerRepo:      "owner/project",
+			RemoteDefaultBranch: strictSyncTestDefaultBranch,
 		},
 	}
 	parameters := map[string]any{
 		taskOptionBranchName:         "feature/foo",
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
-		taskOptionBaseBranch:         "master",
 		taskOptionRequireClean:       true,
 	}
 
@@ -1274,7 +1368,7 @@ func TestResolveMergedPullRequestBaseTargetPrefersActiveOpenPullRequest(t *testi
 		"owner/project",
 		shared.OriginRemoteNameConstant,
 		"feature/parent",
-		defaultSyncBaseBranch,
+		strictSyncTestDefaultBranch,
 		map[string]struct{}{"feature/child": {}},
 	)
 
@@ -1305,7 +1399,7 @@ func TestResolveMergedPullRequestBaseTargetRejectsMergedReviewCycle(t *testing.T
 		"owner/project",
 		shared.OriginRemoteNameConstant,
 		"feature/parent",
-		defaultSyncBaseBranch,
+		strictSyncTestDefaultBranch,
 		map[string]struct{}{"feature/child": {}},
 	)
 
@@ -1339,7 +1433,7 @@ func TestResolveMergedPullRequestBaseTargetStopsAtAdvancedMergedParent(t *testin
 		"owner/project",
 		shared.OriginRemoteNameConstant,
 		"feature/parent",
-		defaultSyncBaseBranch,
+		strictSyncTestDefaultBranch,
 		map[string]struct{}{"feature/child": {}},
 	)
 
@@ -1484,15 +1578,15 @@ func TestHandleBranchSyncActionStrictPRBranchCommitFlagUsesDirtySyncCommitWithRe
 	repository := &workflow.RepositoryState{
 		Path: "/tmp/project",
 		Inspection: audit.RepositoryInspection{
-			LocalBranch:    "feature/foo",
-			FinalOwnerRepo: "owner/project",
+			LocalBranch:         "feature/foo",
+			FinalOwnerRepo:      "owner/project",
+			RemoteDefaultBranch: strictSyncTestDefaultBranch,
 		},
 	}
 	parameters := map[string]any{
 		taskOptionBranchName:         "feature/foo",
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
-		taskOptionBaseBranch:         "master",
 		taskOptionRequireClean:       true,
 		taskOptionCommitChanges:      true,
 		taskOptionWorktreeCommitMessage: worktreeAdoptionCommitMessageOptions{
@@ -1538,15 +1632,15 @@ func TestHandleBranchSyncActionStrictPRBranchCreatesMissingRemoteBranchAndPullRe
 	repository := &workflow.RepositoryState{
 		Path: "/tmp/project",
 		Inspection: audit.RepositoryInspection{
-			LocalBranch:    "master",
-			FinalOwnerRepo: "owner/project",
+			LocalBranch:         "master",
+			FinalOwnerRepo:      "owner/project",
+			RemoteDefaultBranch: strictSyncTestDefaultBranch,
 		},
 	}
 	parameters := map[string]any{
 		taskOptionBranchName:         "feature/foo",
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
-		taskOptionBaseBranch:         "master",
 		taskOptionRequireClean:       true,
 		taskOptionCommitChanges:      true,
 		taskOptionWorktreeCommitMessage: worktreeAdoptionCommitMessageOptions{
@@ -1599,15 +1693,15 @@ func TestHandleBranchSyncActionStrictPRBranchPushesLocalAheadMissingRemoteBranch
 	repository := &workflow.RepositoryState{
 		Path: "/tmp/project",
 		Inspection: audit.RepositoryInspection{
-			LocalBranch:    "feature/foo",
-			FinalOwnerRepo: "owner/project",
+			LocalBranch:         "feature/foo",
+			FinalOwnerRepo:      "owner/project",
+			RemoteDefaultBranch: strictSyncTestDefaultBranch,
 		},
 	}
 	parameters := map[string]any{
 		taskOptionBranchName:         "feature/foo",
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
-		taskOptionBaseBranch:         "master",
 		taskOptionRequireClean:       true,
 		taskOptionWorktreeCommitMessage: worktreeAdoptionCommitMessageOptions{
 			Client: chatClient,
@@ -1651,15 +1745,15 @@ func TestHandleBranchSyncActionStrictPRBranchRejectsEmptyLocalMissingRemoteBranc
 	repository := &workflow.RepositoryState{
 		Path: "/tmp/project",
 		Inspection: audit.RepositoryInspection{
-			LocalBranch:    "feature/foo",
-			FinalOwnerRepo: "owner/project",
+			LocalBranch:         "feature/foo",
+			FinalOwnerRepo:      "owner/project",
+			RemoteDefaultBranch: strictSyncTestDefaultBranch,
 		},
 	}
 	parameters := map[string]any{
 		taskOptionBranchName:         "feature/foo",
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
-		taskOptionBaseBranch:         "master",
 		taskOptionRequireClean:       true,
 	}
 
@@ -1701,15 +1795,15 @@ func TestHandleBranchSyncActionStrictPRBranchUsesExplicitPullRequestMetadata(t *
 	repository := &workflow.RepositoryState{
 		Path: "/tmp/project",
 		Inspection: audit.RepositoryInspection{
-			LocalBranch:    "master",
-			FinalOwnerRepo: "owner/project",
+			LocalBranch:         "master",
+			FinalOwnerRepo:      "owner/project",
+			RemoteDefaultBranch: strictSyncTestDefaultBranch,
 		},
 	}
 	parameters := map[string]any{
 		taskOptionBranchName:         "feature/foo",
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
-		taskOptionBaseBranch:         "master",
 		taskOptionRequireClean:       true,
 		taskOptionCommitChanges:      true,
 		taskOptionPullRequestTitle:   "docs: explain sync",
@@ -1761,14 +1855,14 @@ func TestHandleBranchSyncActionStrictPRBranchCreatesGeneratedBranchFromCurrentDi
 	repository := &workflow.RepositoryState{
 		Path: "/tmp/project",
 		Inspection: audit.RepositoryInspection{
-			LocalBranch:    "master",
-			FinalOwnerRepo: "owner/project",
+			LocalBranch:         "master",
+			FinalOwnerRepo:      "owner/project",
+			RemoteDefaultBranch: strictSyncTestDefaultBranch,
 		},
 	}
 	parameters := map[string]any{
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
-		taskOptionBaseBranch:         "master",
 		taskOptionRequireClean:       false,
 		taskOptionWorktreeCommitMessage: worktreeAdoptionCommitMessageOptions{
 			Client: chatClient,
@@ -1865,14 +1959,14 @@ func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedCurrentDirtyMaster
 	repository := &workflow.RepositoryState{
 		Path: repositoryPath,
 		Inspection: audit.RepositoryInspection{
-			LocalBranch:    "master",
-			FinalOwnerRepo: "owner/project",
+			LocalBranch:         "master",
+			FinalOwnerRepo:      "owner/project",
+			RemoteDefaultBranch: strictSyncTestDefaultBranch,
 		},
 	}
 	parameters := map[string]any{
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
-		taskOptionBaseBranch:         "master",
 		taskOptionRequireClean:       false,
 		taskOptionWorktreeCommitMessage: worktreeAdoptionCommitMessageOptions{
 			Client: chatClient,
@@ -1951,14 +2045,14 @@ func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedCurrentDirtyMaster
 	repository := &workflow.RepositoryState{
 		Path: repositoryPath,
 		Inspection: audit.RepositoryInspection{
-			LocalBranch:    "master",
-			FinalOwnerRepo: "owner/project",
+			LocalBranch:         "master",
+			FinalOwnerRepo:      "owner/project",
+			RemoteDefaultBranch: strictSyncTestDefaultBranch,
 		},
 	}
 	parameters := map[string]any{
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
-		taskOptionBaseBranch:         "master",
 		taskOptionRequireClean:       false,
 		taskOptionWorktreeCommitMessage: worktreeAdoptionCommitMessageOptions{
 			Client: chatClient,
@@ -2014,14 +2108,14 @@ func TestHandleBranchSyncActionStrictPRBranchCreatesGeneratedBranchFromCurrentDi
 	repository := &workflow.RepositoryState{
 		Path: "/tmp/project",
 		Inspection: audit.RepositoryInspection{
-			LocalBranch:    "master",
-			FinalOwnerRepo: "owner/project",
+			LocalBranch:         "master",
+			FinalOwnerRepo:      "owner/project",
+			RemoteDefaultBranch: strictSyncTestDefaultBranch,
 		},
 	}
 	parameters := map[string]any{
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
-		taskOptionBaseBranch:         "master",
 		taskOptionRequireClean:       false,
 		taskOptionWorktreeCommitMessage: worktreeAdoptionCommitMessageOptions{
 			Client: chatClient,
@@ -2073,14 +2167,14 @@ func TestHandleBranchSyncActionStrictPRBranchSkipsStaleGeneratedRemoteBranchForC
 	repository := &workflow.RepositoryState{
 		Path: "/tmp/project",
 		Inspection: audit.RepositoryInspection{
-			LocalBranch:    "master",
-			FinalOwnerRepo: "owner/project",
+			LocalBranch:         "master",
+			FinalOwnerRepo:      "owner/project",
+			RemoteDefaultBranch: strictSyncTestDefaultBranch,
 		},
 	}
 	parameters := map[string]any{
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
-		taskOptionBaseBranch:         "master",
 		taskOptionRequireClean:       false,
 		taskOptionWorktreeCommitMessage: worktreeAdoptionCommitMessageOptions{
 			Client: chatClient,
@@ -2122,15 +2216,15 @@ func TestHandleBranchSyncActionStrictPRBranchCommitsDirtyWorkToExplicitMaster(t 
 	repository := &workflow.RepositoryState{
 		Path: "/tmp/project",
 		Inspection: audit.RepositoryInspection{
-			LocalBranch:    "feature/source-work",
-			FinalOwnerRepo: "owner/project",
+			LocalBranch:         "feature/source-work",
+			FinalOwnerRepo:      "owner/project",
+			RemoteDefaultBranch: strictSyncTestDefaultBranch,
 		},
 	}
 	parameters := map[string]any{
 		taskOptionBranchName:         "master",
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
-		taskOptionBaseBranch:         "master",
 		taskOptionRequireClean:       false,
 		taskOptionWorktreeCommitMessage: worktreeAdoptionCommitMessageOptions{
 			Client: chatClient,
@@ -2197,15 +2291,15 @@ func TestHandleBranchSyncActionStrictPRBranchDoesNotPushWhenPullRequestBodyGener
 	repository := &workflow.RepositoryState{
 		Path: "/tmp/project",
 		Inspection: audit.RepositoryInspection{
-			LocalBranch:    "master",
-			FinalOwnerRepo: "owner/project",
+			LocalBranch:         "master",
+			FinalOwnerRepo:      "owner/project",
+			RemoteDefaultBranch: strictSyncTestDefaultBranch,
 		},
 	}
 	parameters := map[string]any{
 		taskOptionBranchName:         "feature/foo",
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
-		taskOptionBaseBranch:         "master",
 		taskOptionRequireClean:       true,
 		taskOptionCommitChanges:      true,
 		taskOptionWorktreeCommitMessage: worktreeAdoptionCommitMessageOptions{
@@ -2244,15 +2338,15 @@ func TestHandleBranchSyncActionStrictPRBranchStopsBeforePushOnMergeConflict(t *t
 	repository := &workflow.RepositoryState{
 		Path: "/tmp/project",
 		Inspection: audit.RepositoryInspection{
-			LocalBranch:    "master",
-			FinalOwnerRepo: "owner/project",
+			LocalBranch:         "master",
+			FinalOwnerRepo:      "owner/project",
+			RemoteDefaultBranch: strictSyncTestDefaultBranch,
 		},
 	}
 	parameters := map[string]any{
 		taskOptionBranchName:         "feature/foo",
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
-		taskOptionBaseBranch:         "master",
 		taskOptionRequireClean:       true,
 	}
 
@@ -2380,7 +2474,7 @@ func TestCreatePullRequestMarksStrictSyncPublished(testInstance *testing.T) {
 
 	createErr := createPullRequest(ctx, environment, strictPullRequestCreateOptions{
 		RepositoryIdentifier: "owner/repository",
-		BaseBranch:           defaultSyncBaseBranch,
+		BaseBranch:           strictSyncTestDefaultBranch,
 		BranchName:           "feature/review",
 		Title:                "Review",
 		Body:                 "Body",
@@ -2923,15 +3017,15 @@ func TestHandleBranchSyncAction_RollbackAndSanitizationOnPRDescriptionFailure(t 
 	repository := &workflow.RepositoryState{
 		Path: "/tmp/project",
 		Inspection: audit.RepositoryInspection{
-			LocalBranch:    "feature",
-			FinalOwnerRepo: "owner/project",
+			LocalBranch:         "feature",
+			FinalOwnerRepo:      "owner/project",
+			RemoteDefaultBranch: strictSyncTestDefaultBranch,
 		},
 	}
 	parameters := map[string]any{
 		taskOptionBranchName:         "feature",
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
-		taskOptionBaseBranch:         "master",
 		taskOptionRequireClean:       false,
 		taskOptionWorktreeCommitMessage: worktreeAdoptionCommitMessageOptions{
 			Client: failingChatClient,

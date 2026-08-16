@@ -20,12 +20,12 @@ import (
 const (
 	commandUseNameConstant          = "sync"
 	commandUsageTemplateConstant    = commandUseNameConstant + " [remote-url|branch]"
-	commandExampleTemplateConstant  = "gix sync\ngix sync master\ngix sync feature/new-branch"
+	commandExampleTemplateConstant  = "gix sync\ngix sync trunk\ngix sync feature/new-branch"
 	commandShortDescriptionConstant = "Synchronize the current workspace through the Gix PR workflow"
 	commandLongDescriptionConstant  = "sync keeps a workspace aligned with explicitly targeted branches and PR-backed work branches. " +
-		"An explicit branch target is binding: dirty work is committed to that named branch. Explicit gix sync master commits to master, merges origin/master, and pushes master directly. " +
-		"With no branch argument, sync updates the current branch; dirty current master keeps the generated PR rescue flow. Existing PR branches sync against their current PR base branch. When no open pull request remains, sync follows the branch's actual merged base through every merged parent, regardless of retained remote refs, and offers one standard handoff at the first active parent or configured base. " +
-		"A missing explicit branch with dirty work is created on top of the current branch. If the current branch is not master, sync first ensures that its committed HEAD is remote-backed and has an open pull request, then opens the child pull request against that branch. The selected parent base is retained for retries after child push or pull-request failure. A clean or stashed missing branch is rejected because it would have no child pull request delta. " +
+		"An explicit branch target is binding: dirty work is committed to that named branch. When the target is the repository default branch, sync merges its remote counterpart and pushes it directly. " +
+		"With no branch argument, sync updates the current branch; a dirty current default branch keeps the generated PR rescue flow. Existing PR branches sync against their current PR base branch. When no open pull request remains, sync follows the branch's actual merged base through every merged parent, regardless of retained remote refs, and offers one standard handoff at the first active parent or repository default branch. " +
+		"A missing explicit branch with dirty work is created on top of the current branch. If the current branch is not the repository default branch, sync first ensures that its committed HEAD is remote-backed and has an open pull request, then opens the child pull request against that branch. The selected parent base is retained for retries after child push or pull-request failure. A clean or stashed missing branch is rejected because it would have no child pull request delta. " +
 		"Dirty work is clustered and described with the configured LLM provider. Each dirty-cluster request checkpoints the active checkout, HEAD, staged paths, and exact semantic index state, including ownership flags and intent-to-add entries, before waiting for the model. After the model returns, Gix holds the exact worktree index lock while rechecking ownership and commits only a private copy of that validated index. A concurrent checkout or index change stops before commit and preserves the outside state plus transaction snapshots under SYNC_SWITCH_HANDOFF; stop the other writer before retrying. Dirty auto-commit is rejected on a known-merged branch; use --stash to preserve that work through the merged handoff before creating a new review branch. " +
 		"Before fetch or content, index, ref, or checkout mutation, strict sync validates live worktree ownership, repairs only missing canonical Git links, then resolves exact per-worktree administrative paths and rejects operator-owned merge, revert, cherry-pick, rebase, apply-mailbox, bisect, sequencer, or unmerged-index state; ordinary refs with administrative names do not count. " +
 		"The strict-sync transaction snapshots the caller and target sibling checkout, commit, index, tracked files, untracked files, stashes, and topology, then journals only refs and worktrees it mutates. A failure before publication restores that owned state without rewinding unrelated refs; an up-to-date push remains rollback-capable. An actual remote ref update or pull-request creation marks publication, after which failure preserves the published recovery state and reports a handoff. Invocation-owned stashes are restored with their index and validated before SYNCED is reported. " +
@@ -173,7 +173,6 @@ func (builder *CommandBuilder) run(command *cobra.Command, arguments []string) e
 		taskOptionBranchRemote:       remoteName,
 		taskOptionBranchCreate:       configuration.CreateIfMissing,
 		taskOptionRequirePullRequest: true,
-		taskOptionBaseBranch:         "master",
 		taskOptionRequireClean:       requireClean,
 	}
 	if len(explicitBranch) > 0 {

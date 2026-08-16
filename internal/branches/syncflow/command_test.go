@@ -92,7 +92,7 @@ func TestCommandExecutesAcrossRoots(t *testing.T) {
 	require.Equal(t, "feature/foo", action.Options[taskOptionBranchName])
 	require.Equal(t, "origin", action.Options[taskOptionBranchRemote])
 	require.Equal(t, true, action.Options[taskOptionRequirePullRequest])
-	require.Equal(t, "master", action.Options[taskOptionBaseBranch])
+	require.NotContains(t, action.Options, "base_branch")
 }
 
 func TestCommandSuppressesWorkflowFailureEcho(t *testing.T) {

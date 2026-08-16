@@ -22,12 +22,12 @@ func TestSyncHelpDescribesMissingBranchCurrentHeadContract(testInstance *testing
 	require.Contains(
 		testInstance,
 		output,
-		"An explicit branch target is binding: dirty work is committed to that named branch. Explicit gix sync master commits to master, merges origin/master, and pushes master directly.",
+		"An explicit branch target is binding: dirty work is committed to that named branch. When the target is the repository default branch, sync merges its remote counterpart and pushes it directly.",
 	)
 	require.Contains(
 		testInstance,
 		output,
-		"A missing explicit branch with dirty work is created on top of the current branch. If the current branch is not master, sync first ensures that its committed HEAD is remote-backed and has an open pull request, then opens the child pull request against that branch.",
+		"A missing explicit branch with dirty work is created on top of the current branch. If the current branch is not the repository default branch, sync first ensures that its committed HEAD is remote-backed and has an open pull request, then opens the child pull request against that branch.",
 	)
 	require.Contains(testInstance, output, "The selected parent base is retained for retries after child push or pull-request failure.")
 	require.Contains(testInstance, output, "A clean or stashed missing branch is rejected because it would have no child pull request delta.")

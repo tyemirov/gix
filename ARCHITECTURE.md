@@ -262,7 +262,7 @@ workflow:
         <<: *branch_default_defaults
         targets:
           - remote_name: origin
-            target_branch: master
+            target_branch: release
             push_to_remote: true
             delete_source_branch: false
 

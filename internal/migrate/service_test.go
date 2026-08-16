@@ -33,6 +33,52 @@ func (stubGitCommandExecutor) ExecuteGit(context.Context, execshell.CommandDetai
 	return execshell.ExecutionResult{}, nil
 }
 
+type dirtyPreflightExecutor struct {
+	gitCommands []string
+}
+
+func (executor *dirtyPreflightExecutor) ExecuteGit(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
+	executor.gitCommands = append(executor.gitCommands, strings.Join(details.Arguments, " "))
+	if len(details.Arguments) > 0 && details.Arguments[0] == "status" {
+		return execshell.ExecutionResult{StandardOutput: " M README.md\x00"}, nil
+	}
+	return execshell.ExecutionResult{}, nil
+}
+
+func (*dirtyPreflightExecutor) ExecuteGitHubCLI(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
+	panic("GitHub CLI mutation reached after dirty preflight")
+}
+
+type dirtyPreflightGitHubOperations struct{}
+
+func (dirtyPreflightGitHubOperations) ResolveRepoMetadata(context.Context, string) (githubcli.RepositoryMetadata, error) {
+	panic("metadata resolution reached after dirty preflight")
+}
+
+func (dirtyPreflightGitHubOperations) GetPagesConfig(context.Context, string) (githubcli.PagesStatus, error) {
+	panic("Pages lookup reached after dirty preflight")
+}
+
+func (dirtyPreflightGitHubOperations) UpdatePagesConfig(context.Context, string, githubcli.PagesConfiguration) error {
+	panic("Pages mutation reached after dirty preflight")
+}
+
+func (dirtyPreflightGitHubOperations) ListPullRequests(context.Context, string, githubcli.PullRequestListOptions) ([]githubcli.PullRequest, error) {
+	panic("pull-request lookup reached after dirty preflight")
+}
+
+func (dirtyPreflightGitHubOperations) UpdatePullRequestBase(context.Context, string, int, string) error {
+	panic("pull-request mutation reached after dirty preflight")
+}
+
+func (dirtyPreflightGitHubOperations) SetDefaultBranch(context.Context, string, string) error {
+	panic("default-branch mutation reached after dirty preflight")
+}
+
+func (dirtyPreflightGitHubOperations) CheckBranchProtection(context.Context, string, string) (bool, error) {
+	panic("branch-protection lookup reached after dirty preflight")
+}
+
 type recordingGitHubOperations struct {
 	pagesError         error
 	listError          error
@@ -107,6 +153,33 @@ func testGitHubContext() context.Context {
 	return githubauth.WithCredential(context.Background(), testGitHubTokenValue)
 }
 
+func TestServiceExecuteRejectsDirtyWorktreeBeforeTargetPreparation(testInstance *testing.T) {
+	executor := &dirtyPreflightExecutor{}
+	repositoryManager, managerError := gitrepo.NewRepositoryManager(executor)
+	require.NoError(testInstance, managerError)
+
+	service, serviceError := NewService(ServiceDependencies{
+		Logger:            zap.NewNop(),
+		RepositoryManager: repositoryManager,
+		GitHubClient:      dirtyPreflightGitHubOperations{},
+		GitExecutor:       executor,
+	})
+	require.NoError(testInstance, serviceError)
+
+	_, executionError := service.Execute(testGitHubContext(), MigrationOptions{
+		RepositoryPath:       testInstance.TempDir(),
+		RepositoryRemoteName: "origin",
+		RepositoryIdentifier: "owner/example",
+		WorkflowsDirectory:   ".github/workflows",
+		SourceBranch:         BranchName("main"),
+		TargetBranch:         BranchName("master"),
+		PushUpdates:          true,
+	})
+
+	require.ErrorIs(testInstance, executionError, errCleanWorktreeRequired)
+	require.Equal(testInstance, []string{"status --porcelain=v1 -z"}, executor.gitCommands)
+}
+
 func TestServiceExecuteContinuesWhenPagesLookupFails(testInstance *testing.T) {
 	repositoryExecutor := stubGitCommandExecutor{}
 	repositoryManager, managerError := gitrepo.NewRepositoryManager(repositoryExecutor)
@@ -132,8 +205,8 @@ func TestServiceExecuteContinuesWhenPagesLookupFails(testInstance *testing.T) {
 		RepositoryRemoteName: "origin",
 		RepositoryIdentifier: "owner/example",
 		WorkflowsDirectory:   ".github/workflows",
-		SourceBranch:         BranchMain,
-		TargetBranch:         BranchMaster,
+		SourceBranch:         BranchName("main"),
+		TargetBranch:         BranchName("master"),
 		PushUpdates:          false,
 		DeleteSourceBranch:   false,
 	}
@@ -172,8 +245,8 @@ func TestServiceExecuteWarnsWhenRetargetFails(testInstance *testing.T) {
 		RepositoryRemoteName: "origin",
 		RepositoryIdentifier: "owner/example",
 		WorkflowsDirectory:   ".github/workflows",
-		SourceBranch:         BranchMain,
-		TargetBranch:         BranchMaster,
+		SourceBranch:         BranchName("main"),
+		TargetBranch:         BranchName("master"),
 		PushUpdates:          false,
 		DeleteSourceBranch:   false,
 	}
@@ -205,8 +278,8 @@ func TestServiceExecuteWarnsWhenBranchProtectionFails(testInstance *testing.T) {
 		RepositoryRemoteName: "origin",
 		RepositoryIdentifier: "owner/example",
 		WorkflowsDirectory:   ".github/workflows",
-		SourceBranch:         BranchMain,
-		TargetBranch:         BranchMaster,
+		SourceBranch:         BranchName("main"),
+		TargetBranch:         BranchName("master"),
 		PushUpdates:          false,
 		DeleteSourceBranch:   false,
 	}
@@ -254,8 +327,8 @@ func TestServiceExecuteReturnsActionableDefaultBranchError(testInstance *testing
 		RepositoryRemoteName: "origin",
 		RepositoryIdentifier: "owner/example",
 		WorkflowsDirectory:   ".github/workflows",
-		SourceBranch:         BranchMain,
-		TargetBranch:         BranchMaster,
+		SourceBranch:         BranchName("main"),
+		TargetBranch:         BranchName("master"),
 		PushUpdates:          false,
 		DeleteSourceBranch:   false,
 	}
@@ -312,8 +385,8 @@ func TestServiceExecuteSkipsDefaultBranchWhenRepositoryMissing(testInstance *tes
 		RepositoryRemoteName: "origin",
 		RepositoryIdentifier: "owner/example",
 		WorkflowsDirectory:   ".github/workflows",
-		SourceBranch:         BranchMain,
-		TargetBranch:         BranchMaster,
+		SourceBranch:         BranchName("main"),
+		TargetBranch:         BranchName("master"),
 		PushUpdates:          false,
 		DeleteSourceBranch:   false,
 	}
@@ -348,8 +421,8 @@ func TestServiceExecuteSkipsRemoteOperationsWhenIdentifierMissing(testInstance *
 		RepositoryRemoteName: "origin",
 		RepositoryIdentifier: "",
 		WorkflowsDirectory:   ".github/workflows",
-		SourceBranch:         BranchMain,
-		TargetBranch:         BranchMaster,
+		SourceBranch:         BranchName("main"),
+		TargetBranch:         BranchName("master"),
 		PushUpdates:          false,
 		DeleteSourceBranch:   false,
 	}
@@ -391,8 +464,8 @@ func TestServiceExecuteFailsWhenGitHubTokenMissing(testInstance *testing.T) {
 		RepositoryRemoteName: "origin",
 		RepositoryIdentifier: "owner/example",
 		WorkflowsDirectory:   ".github/workflows",
-		SourceBranch:         BranchMain,
-		TargetBranch:         BranchMaster,
+		SourceBranch:         BranchName("main"),
+		TargetBranch:         BranchName("master"),
 		PushUpdates:          true,
 		DeleteSourceBranch:   false,
 	}
