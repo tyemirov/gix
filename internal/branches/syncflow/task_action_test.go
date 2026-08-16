@@ -161,6 +161,8 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 		}
 	}
 	switch details.Arguments[0] {
+	case gitLSRemoteSubcommandConstant:
+		return execshell.ExecutionResult{StandardOutput: fmt.Sprintf("ref: refs/heads/%s\tHEAD\n%s\tHEAD\n", strictSyncTestDefaultBranch, strictSyncGitTestCommit)}, nil
 	case "config":
 		if len(details.Arguments) < 3 || (!strings.HasSuffix(details.Arguments[1], ".gix-review-base") && !strings.HasSuffix(details.Arguments[2], ".gix-review-base")) {
 			return execshell.ExecutionResult{}, nil

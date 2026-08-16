@@ -221,7 +221,6 @@ func handleBranchSyncAction(ctx context.Context, environment *workflow.Environme
 		return handleStrictSyncAction(ctx, environment, repository, strictSyncOptions{
 			BranchName:       resolvedBranchName,
 			RemoteName:       remoteName,
-			DefaultBranch:    strings.TrimSpace(repository.Inspection.RemoteDefaultBranch),
 			RequireClean:     requireClean,
 			StashChanges:     stashChanges,
 			CommitChanges:    commitChanges,
@@ -442,7 +441,6 @@ func handleBranchSyncAction(ctx context.Context, environment *workflow.Environme
 type strictSyncOptions struct {
 	BranchName       string
 	RemoteName       string
-	DefaultBranch    string
 	RequireClean     bool
 	StashChanges     bool
 	CommitChanges    bool
@@ -496,7 +494,6 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 	}
 
 	branchName := strings.TrimSpace(options.BranchName)
-	defaultBranch := strings.TrimSpace(options.DefaultBranch)
 	remoteName := strings.TrimSpace(options.RemoteName)
 	if remoteName == "" {
 		remoteName = defaultRemoteNameConstant
@@ -551,12 +548,9 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 	if fetchErr := executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitFetchSubcommandConstant, gitFetchPruneFlagConstant, remoteName}); fetchErr != nil {
 		return fmt.Errorf(gitFetchFailureTemplateConstant, fetchErr)
 	}
-	if defaultBranch == "" {
-		resolvedBaseBranch, resolvedBaseBranchErr := resolveStrictSyncRemoteDefaultBranch(ctx, environment.GitExecutor, repository.Path, remoteName)
-		if resolvedBaseBranchErr != nil {
-			return resolvedBaseBranchErr
-		}
-		defaultBranch = resolvedBaseBranch
+	defaultBranch, defaultBranchErr := resolveStrictSyncRemoteDefaultBranch(ctx, environment.GitExecutor, repository.Path, remoteName)
+	if defaultBranchErr != nil {
+		return defaultBranchErr
 	}
 	if dirty && syncStatusEntriesHaveConflicts(statusEntries) {
 		return errors.New(strictSyncConflictWorktreeMessage)
