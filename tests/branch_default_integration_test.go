@@ -26,8 +26,10 @@ const (
 	branchDefaultGitWrapperExecutableName      = "git"
 	branchDefaultParentRemoteRepository        = "example/parent"
 	branchDefaultChildRemoteRepository         = "example/remote-child"
+	branchDefaultDirtyRemoteRepository         = "example/dirty-default"
 	branchDefaultParentRemoteURL               = "https://github.com/" + branchDefaultParentRemoteRepository + ".git"
 	branchDefaultChildRemoteURL                = "https://github.com/" + branchDefaultChildRemoteRepository + ".git"
+	branchDefaultDirtyRemoteURL                = "https://github.com/" + branchDefaultDirtyRemoteRepository + ".git"
 	branchDefaultGitIgnoreContents             = "tools/\n"
 	branchDefaultStubStateDirectoryEnvironment = "BRANCH_DEFAULT_STATE_DIR"
 	branchDefaultStubDefaultBranchPlaceholder  = "main"
@@ -137,6 +139,106 @@ func TestBranchDefaultHandlesNestedRepositoriesWithMixedRemotes(testInstance *te
 
 	assertStateFileBranch(testInstance, stateDirectory, branchDefaultParentRemoteRepository, branchDefaultTargetBranch)
 	assertStateFileBranch(testInstance, stateDirectory, branchDefaultChildRemoteRepository, branchDefaultInitialBranch)
+}
+
+func TestBranchDefaultRejectsDirtyWorktreeBeforeLocalOrRemoteMutation(testInstance *testing.T) {
+	workspaceDirectory := testInstance.TempDir()
+	remotePath := filepath.Join(workspaceDirectory, "remote.git")
+	repositoryPath := filepath.Join(workspaceDirectory, "repository")
+	runGitWithDir(testInstance, workspaceDirectory, "init", "--bare", remotePath)
+	runGitWithDir(testInstance, workspaceDirectory, "init", "--initial-branch="+branchDefaultInitialBranch, repositoryPath)
+	configureGitIdentity(testInstance, repositoryPath)
+
+	readmePath := filepath.Join(repositoryPath, "README.md")
+	unstagedPath := filepath.Join(repositoryPath, "unstaged.txt")
+	untrackedPath := filepath.Join(repositoryPath, "untracked.txt")
+	workflowPath := filepath.Join(repositoryPath, branchDefaultWorkflowRelativePath)
+	require.NoError(testInstance, os.WriteFile(readmePath, []byte("initial\n"), 0o644))
+	require.NoError(testInstance, os.WriteFile(unstagedPath, []byte("initial unstaged file\n"), 0o644))
+	require.NoError(testInstance, os.MkdirAll(filepath.Dir(workflowPath), 0o755))
+	require.NoError(testInstance, os.WriteFile(workflowPath, []byte(fmt.Sprintf(branchDefaultWorkflowTemplate, branchDefaultInitialBranch)), 0o644))
+	runGit(testInstance, repositoryPath, "add", "README.md", "unstaged.txt", branchDefaultWorkflowRelativePath)
+	runGit(testInstance, repositoryPath, "commit", "-m", branchDefaultInitialCommitMessage)
+	runGit(testInstance, repositoryPath, "remote", "add", "origin", remotePath)
+	runGit(testInstance, repositoryPath, "push", "-u", "origin", branchDefaultInitialBranch)
+	runGit(testInstance, remotePath, "symbolic-ref", "HEAD", "refs/heads/"+branchDefaultInitialBranch)
+	runGit(testInstance, repositoryPath, "remote", "set-url", "origin", branchDefaultDirtyRemoteURL)
+
+	require.NoError(testInstance, os.WriteFile(readmePath, []byte("staged change\n"), 0o644))
+	runGit(testInstance, repositoryPath, "add", "README.md")
+	require.NoError(testInstance, os.WriteFile(unstagedPath, []byte("unstaged change\n"), 0o644))
+	require.NoError(testInstance, os.WriteFile(untrackedPath, []byte("untracked change\n"), 0o644))
+
+	startingBranch := runGit(testInstance, repositoryPath, "symbolic-ref", "--short", "HEAD")
+	startingCommit := runGit(testInstance, repositoryPath, "rev-parse", "HEAD")
+	startingStatus := runGit(testInstance, repositoryPath, "status", "--porcelain=v1", "-z")
+	startingIndex := runGit(testInstance, repositoryPath, "ls-files", "--stage", "-v", "-z")
+	startingRepositoryRefs := runGit(testInstance, repositoryPath, "for-each-ref", "--format=%(refname) %(objectname)", "refs/")
+	startingRemoteRefs := runGit(testInstance, remotePath, "for-each-ref", "--format=%(refname) %(objectname)", "refs/heads/")
+	startingReadme := readTextFile(testInstance, readmePath)
+	startingUnstaged := readTextFile(testInstance, unstagedPath)
+	startingUntracked := readTextFile(testInstance, untrackedPath)
+	startingWorkflow := readTextFile(testInstance, workflowPath)
+
+	stateDirectory := testInstance.TempDir()
+	initializeStubStateFile(testInstance, stateDirectory, branchDefaultDirtyRemoteRepository, branchDefaultInitialBranch)
+	stubDirectory := filepath.Join(testInstance.TempDir(), "bin")
+	require.NoError(testInstance, os.MkdirAll(stubDirectory, 0o755))
+	realGitBinary, lookupError := exec.LookPath(branchDefaultGitExecutable)
+	require.NoError(testInstance, lookupError)
+	require.NoError(testInstance, os.WriteFile(filepath.Join(stubDirectory, branchDefaultStubExecutableName), []byte(buildBranchDefaultStubScript(stateDirectory)), 0o755))
+	require.NoError(testInstance, os.WriteFile(filepath.Join(stubDirectory, branchDefaultGitWrapperExecutableName), []byte(buildBranchDefaultDelegatingGitWrapper(realGitBinary, stateDirectory, remotePath)), 0o755))
+
+	output, runError := runFailingIntegrationCommand(
+		testInstance,
+		integrationRepositoryRoot(testInstance),
+		integrationCommandOptions{
+			PathVariable: stubDirectory + string(os.PathListSeparator) + os.Getenv(pathEnvironmentVariableNameConstant),
+			EnvironmentOverrides: map[string]string{
+				branchDefaultStubStateDirectoryEnvironment: stateDirectory,
+				githubauth.EnvGitHubToken:                  "test-token",
+				githubauth.EnvGitHubCLIToken:               "test-token",
+				githubauth.EnvGitHubAPIToken:               "test-token",
+			},
+		},
+		branchDefaultIntegrationTimeout,
+		[]string{
+			"run",
+			".",
+			"--log-level",
+			"error",
+			"default",
+			branchDefaultTargetBranch,
+			"--roots",
+			repositoryPath,
+			"--yes",
+		},
+	)
+	require.Error(testInstance, runError)
+	require.Contains(testInstance, output, "repository worktree must be clean before migration")
+
+	require.Equal(testInstance, startingBranch, runGit(testInstance, repositoryPath, "symbolic-ref", "--short", "HEAD"))
+	require.Equal(testInstance, startingCommit, runGit(testInstance, repositoryPath, "rev-parse", "HEAD"))
+	require.Equal(testInstance, startingStatus, runGit(testInstance, repositoryPath, "status", "--porcelain=v1", "-z"))
+	require.Equal(testInstance, startingIndex, runGit(testInstance, repositoryPath, "ls-files", "--stage", "-v", "-z"))
+	require.Equal(testInstance, startingRepositoryRefs, runGit(testInstance, repositoryPath, "for-each-ref", "--format=%(refname) %(objectname)", "refs/"))
+	require.Equal(testInstance, startingRemoteRefs, runGit(testInstance, remotePath, "for-each-ref", "--format=%(refname) %(objectname)", "refs/heads/"))
+	require.Equal(testInstance, startingReadme, readTextFile(testInstance, readmePath))
+	require.Equal(testInstance, startingUnstaged, readTextFile(testInstance, unstagedPath))
+	require.Equal(testInstance, startingUntracked, readTextFile(testInstance, untrackedPath))
+	require.Equal(testInstance, startingWorkflow, readTextFile(testInstance, workflowPath))
+	assertStateFileBranch(testInstance, stateDirectory, branchDefaultDirtyRemoteRepository, branchDefaultInitialBranch)
+
+	gitLog := readTextFile(testInstance, filepath.Join(stateDirectory, "git.log"))
+	require.NotContains(testInstance, gitLog, "branch "+branchDefaultTargetBranch+" "+branchDefaultInitialBranch)
+	require.NotContains(testInstance, gitLog, "checkout "+branchDefaultTargetBranch)
+	require.NotContains(testInstance, gitLog, "push origin "+branchDefaultTargetBranch+":"+branchDefaultTargetBranch)
+	require.NotContains(testInstance, gitLog, "commit ")
+
+	githubLog := readTextFile(testInstance, filepath.Join(stateDirectory, "gh.log"))
+	require.NotContains(testInstance, githubLog, " -X PUT ")
+	require.NotContains(testInstance, githubLog, " -X PATCH ")
+	require.NotContains(testInstance, githubLog, "pr edit ")
 }
 
 func initializeRepositoryWithFiles(testInstance *testing.T, repositoryPath string, remoteURL string, files map[string]string) {
@@ -292,6 +394,26 @@ if [ "$1" = "push" ]; then
 fi
 exec "$REAL_GIT" "$@"
 `, realGitPath, stateDirectory)
+}
+
+func buildBranchDefaultDelegatingGitWrapper(realGitPath string, stateDirectory string, remotePath string) string {
+	return fmt.Sprintf(`#!/bin/sh
+REAL_GIT=%q
+STATE_DIR=%q
+REMOTE_PATH=%q
+printf '%%s\n' "$*" >>"$STATE_DIR/git.log"
+if [ "$1" = "ls-remote" ] && [ "$2" = "--heads" ] && [ "$3" = "origin" ]; then
+  exec "$REAL_GIT" ls-remote --heads "$REMOTE_PATH" "$4"
+fi
+if [ "$1" = "ls-remote" ] && [ "$2" = "--symref" ] && [ "$3" = "origin" ]; then
+  exec "$REAL_GIT" ls-remote --symref "$REMOTE_PATH" "$4"
+fi
+if [ "$1" = "push" ] && [ "$2" = "origin" ]; then
+  shift 2
+  exec "$REAL_GIT" push "$REMOTE_PATH" "$@"
+fi
+exec "$REAL_GIT" "$@"
+`, realGitPath, stateDirectory, remotePath)
 }
 
 func initializeStubStateFile(testInstance *testing.T, stateDirectory string, repository string, branch string) {
