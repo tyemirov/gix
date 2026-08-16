@@ -152,6 +152,12 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.6.1] - 2026-08-16
+
+- Merge pull request #435 from tyemirov/bugfix/B069-close-obsolete-target-pr
+- fix(migrate): verify pull request head repository
+- fix(migrate): close obsolete target pull requests
+
 ## [v1.6.0] - 2026-08-16
 
 - Merge pull request #434 from tyemirov/gix/resolve-strict-sync-against-repository-default-branch
