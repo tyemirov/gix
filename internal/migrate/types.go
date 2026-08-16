@@ -29,6 +29,7 @@ type GitHubOperations interface {
 	UpdatePagesConfig(executionContext context.Context, repository string, configuration githubcli.PagesConfiguration) error
 	ListPullRequests(executionContext context.Context, repository string, options githubcli.PullRequestListOptions) ([]githubcli.PullRequest, error)
 	UpdatePullRequestBase(executionContext context.Context, repository string, pullRequestNumber int, baseBranch string) error
+	ClosePullRequest(executionContext context.Context, repository string, pullRequestNumber int) error
 	SetDefaultBranch(executionContext context.Context, repository string, branchName string) error
 	CheckBranchProtection(executionContext context.Context, repository string, branchName string) (bool, error)
 }

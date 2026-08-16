@@ -18,6 +18,7 @@ const (
 	pullRequestSubcommandConstant              = "pr"
 	listSubcommandConstant                     = "list"
 	editSubcommandConstant                     = "edit"
+	closeSubcommandConstant                    = "close"
 	createSubcommandConstant                   = "create"
 	apiSubcommandConstant                      = "api"
 	jsonFlagConstant                           = "--json"
@@ -64,6 +65,7 @@ const (
 	getPagesOperationNameConstant              = OperationName("GetPagesConfig")
 	updateDefaultBranchOperationNameConstant   = OperationName("UpdateDefaultBranch")
 	updatePullRequestOperationNameConstant     = OperationName("UpdatePullRequestBase")
+	closePullRequestOperationNameConstant      = OperationName("ClosePullRequest")
 	checkBranchProtectionOperationNameConstant = OperationName("CheckBranchProtection")
 	createPullRequestOperationNameConstant     = OperationName("CreatePullRequest")
 	httpNotFoundIndicatorConstant              = "http 404"
@@ -571,6 +573,36 @@ func (client *Client) UpdatePullRequestBase(executionContext context.Context, re
 	_, executionError := client.executor.ExecuteGitHubCLI(executionContext, commandDetails)
 	if executionError != nil {
 		return OperationError{Operation: updatePullRequestOperationNameConstant, Cause: executionError}
+	}
+
+	return nil
+}
+
+// ClosePullRequest closes an open pull request.
+func (client *Client) ClosePullRequest(executionContext context.Context, repository string, pullRequestNumber int) error {
+	repositoryIdentifier := strings.TrimSpace(repository)
+	if len(repositoryIdentifier) == 0 {
+		return InvalidInputError{FieldName: repositoryFieldNameConstant, Message: requiredValueMessageConstant}
+	}
+
+	if pullRequestNumber <= 0 {
+		return InvalidInputError{FieldName: pullRequestNumberFieldNameConstant, Message: requiredValueMessageConstant}
+	}
+
+	commandDetails := execshell.CommandDetails{
+		Arguments: []string{
+			pullRequestSubcommandConstant,
+			closeSubcommandConstant,
+			strconv.Itoa(pullRequestNumber),
+			repoFlagConstant,
+			repositoryIdentifier,
+		},
+		GitHubTokenRequirement: githubauth.TokenOptional,
+	}
+
+	_, executionError := client.executor.ExecuteGitHubCLI(executionContext, commandDetails)
+	if executionError != nil {
+		return OperationError{Operation: closePullRequestOperationNameConstant, Cause: executionError}
 	}
 
 	return nil

@@ -47,6 +47,7 @@ const (
 	pullRequestListWarningTemplateConstant          = "PR-LIST-SKIP: %s (%s)"
 	pullRequestRetargetErrorTemplateConstant        = "unable to retarget pull request #%d: %w"
 	pullRequestRetargetWarningTemplateConstant      = "PR-RETARGET-SKIP: #%d (%s)"
+	pullRequestCloseWarningTemplateConstant         = "PR-CLOSE-SKIP: #%d (%s)"
 	branchProtectionCheckErrorTemplateConstant      = "unable to determine branch protection: %w"
 	branchProtectionWarningTemplateConstant         = "PROTECTION-SKIP: %s"
 	localBranchDeleteErrorTemplateConstant          = "unable to delete local source branch: %w"
@@ -99,8 +100,15 @@ type MigrationResult struct {
 	PagesConfigurationUpdated bool
 	DefaultBranchUpdated      bool
 	RetargetedPullRequests    []int
+	ClosedPullRequests        []int
 	SafetyStatus              SafetyStatus
 	Warnings                  []string
+}
+
+type pullRequestTransitionOutcome struct {
+	retargeted []int
+	closed     []int
+	warnings   []string
 }
 
 // DefaultBranchUpdateError describes default-branch update failures with context.
@@ -325,11 +333,10 @@ func (service *Service) Execute(executionContext context.Context, options Migrat
 		}
 	}
 
-	retargeted := make([]int, 0)
+	pullRequestOutcome := pullRequestTransitionOutcome{}
 	if remoteOperationsEnabled {
-		var retargetWarnings []string
-		retargeted, retargetWarnings = service.retargetPullRequests(executionContext, options, pullRequests)
-		service.warnings = append(service.warnings, retargetWarnings...)
+		pullRequestOutcome = service.transitionPullRequests(executionContext, options, pullRequests)
+		service.warnings = append(service.warnings, pullRequestOutcome.warnings...)
 	}
 
 	branchProtected := true
@@ -349,7 +356,7 @@ func (service *Service) Execute(executionContext context.Context, options Migrat
 	}
 
 	safetyStatus := service.safetyEvaluator.Evaluate(SafetyInputs{
-		OpenPullRequestCount: len(pullRequests),
+		OpenPullRequestCount: len(pullRequests) - len(pullRequestOutcome.closed),
 		BranchProtected:      branchProtected,
 		WorkflowMentions:     workflowOutcome.RemainingMainReferences,
 	})
@@ -358,7 +365,8 @@ func (service *Service) Execute(executionContext context.Context, options Migrat
 		WorkflowOutcome:           workflowOutcome,
 		PagesConfigurationUpdated: pagesUpdated,
 		DefaultBranchUpdated:      defaultBranchUpdated,
-		RetargetedPullRequests:    retargeted,
+		RetargetedPullRequests:    pullRequestOutcome.retargeted,
+		ClosedPullRequests:        pullRequestOutcome.closed,
 		SafetyStatus:              safetyStatus,
 		Warnings:                  append([]string(nil), service.warnings...),
 	}
@@ -479,14 +487,34 @@ func (service *Service) deleteSourceBranch(executionContext context.Context, opt
 	return nil
 }
 
-func (service *Service) retargetPullRequests(executionContext context.Context, options MigrationOptions, pullRequests []githubcli.PullRequest) ([]int, []string) {
-	retargeted := make([]int, 0, len(pullRequests))
-	warnings := make([]string, 0)
+func (service *Service) transitionPullRequests(executionContext context.Context, options MigrationOptions, pullRequests []githubcli.PullRequest) pullRequestTransitionOutcome {
+	outcome := pullRequestTransitionOutcome{
+		retargeted: make([]int, 0, len(pullRequests)),
+		closed:     make([]int, 0, len(pullRequests)),
+		warnings:   make([]string, 0),
+	}
+	targetBranch := strings.TrimSpace(string(options.TargetBranch))
 	for _, pullRequest := range pullRequests {
+		if strings.TrimSpace(pullRequest.HeadRefName) == targetBranch {
+			closeError := service.gitHubClient.ClosePullRequest(executionContext, options.RepositoryIdentifier, pullRequest.Number)
+			if closeError != nil {
+				warning := fmt.Sprintf(pullRequestCloseWarningTemplateConstant, pullRequest.Number, summarizeCommandError(closeError))
+				outcome.warnings = append(outcome.warnings, warning)
+				service.logger.Warn(
+					"Promotion pull request close failed",
+					zap.Int("pull_request", pullRequest.Number),
+					zap.String(repositoryIdentifierFieldNameConstant, options.RepositoryIdentifier),
+					zap.Error(closeError),
+				)
+				continue
+			}
+			outcome.closed = append(outcome.closed, pullRequest.Number)
+			continue
+		}
 		retargetError := service.gitHubClient.UpdatePullRequestBase(executionContext, options.RepositoryIdentifier, pullRequest.Number, string(options.TargetBranch))
 		if retargetError != nil {
 			warning := fmt.Sprintf(pullRequestRetargetWarningTemplateConstant, pullRequest.Number, summarizeCommandError(retargetError))
-			warnings = append(warnings, warning)
+			outcome.warnings = append(outcome.warnings, warning)
 			service.logger.Warn(
 				"Pull request retarget failed",
 				zap.Int("pull_request", pullRequest.Number),
@@ -495,9 +523,9 @@ func (service *Service) retargetPullRequests(executionContext context.Context, o
 			)
 			continue
 		}
-		retargeted = append(retargeted, pullRequest.Number)
+		outcome.retargeted = append(outcome.retargeted, pullRequest.Number)
 	}
-	return retargeted, warnings
+	return outcome
 }
 
 func summarizeCommandError(err error) string {
