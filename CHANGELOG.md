@@ -26,6 +26,7 @@
 - Updated the LLM Proxy Go client from v0.2.21 to v0.2.46, moved Gix's configured proxy work budget to the current per-request timeout header, and raised the Go module floor to 1.25.12 with the dependency graph required by that client.
 
 ### Bug Fixes 🐛
+- Resolved strict sync behavior from each repository's default-branch identity. Branch spelling no longer selects default-branch behavior, and default-branch promotion now requires an explicit target.
 - Kept required repair-only release inputs on the patch line and selected `v1.4.1` for the B063-shaped fixture.
 - Limited SemVer changelog evidence to the selected tag-to-source range, so historical Unreleased entries cannot raise a compatible fix from patch to minor.
 - Preserved containing audit roots, so nested linked checkouts keep relative paths and cannot share a folder label with primary checkouts.
@@ -77,6 +78,7 @@
 - Kept the syncflow builder description as the canonical text shown by `gix sync --help`.
 
 ### Testing 🧪
+- Added compiled CLI coverage that exchanges `main` and `master` as the default and target branches. Both cases create the target and open its pull request against the reported default branch.
 - Added regression coverage for a historical feature note at `v1.2.0` followed by a compatible audit fix, proving the fixed-major selector returns a patch.
 - Added compiled CLI coverage for an attached primary checkout and a detached nested linked checkout with the same folder name.
 - Added compiled root-module installation coverage for the single authoritative Gix version.
