@@ -674,7 +674,7 @@ func TestCanonicalConfigurationTemplateProvidesCompleteCommandConfigurations(tes
 
 				assertions := require.New(assertionTarget)
 				assertions.Equal([]string{embeddedDefaultRootPathConstant}, sanitized.RepositoryRoots)
-				assertions.Equal(migrate.BranchMaster, migrate.BranchName(sanitized.TargetBranch))
+				assertions.Empty(sanitized.TargetBranch)
 			},
 		},
 		{
