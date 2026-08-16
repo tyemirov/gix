@@ -30,6 +30,10 @@ const (
 	branchDefaultParentRemoteURL               = "https://github.com/" + branchDefaultParentRemoteRepository + ".git"
 	branchDefaultChildRemoteURL                = "https://github.com/" + branchDefaultChildRemoteRepository + ".git"
 	branchDefaultDirtyRemoteURL                = "https://github.com/" + branchDefaultDirtyRemoteRepository + ".git"
+	branchDefaultPromotionRemoteRepository     = "example/promotion"
+	branchDefaultPromotionRemoteURL            = "https://github.com/" + branchDefaultPromotionRemoteRepository + ".git"
+	branchDefaultPullRequestsStateFile         = "pull-requests.json"
+	branchDefaultClosedPullRequestsLogFile     = "closed-pull-requests.log"
 	branchDefaultGitIgnoreContents             = "tools/\n"
 	branchDefaultStubStateDirectoryEnvironment = "BRANCH_DEFAULT_STATE_DIR"
 	branchDefaultStubDefaultBranchPlaceholder  = "main"
@@ -139,6 +143,165 @@ func TestBranchDefaultHandlesNestedRepositoriesWithMixedRemotes(testInstance *te
 
 	assertStateFileBranch(testInstance, stateDirectory, branchDefaultParentRemoteRepository, branchDefaultTargetBranch)
 	assertStateFileBranch(testInstance, stateDirectory, branchDefaultChildRemoteRepository, branchDefaultInitialBranch)
+}
+
+func TestBranchDefaultClosesPullRequestFromPromotedBranch(testInstance *testing.T) {
+	workspaceDirectory := testInstance.TempDir()
+	repositoryPath := filepath.Join(workspaceDirectory, "promotion")
+	initializeRepositoryWithFiles(
+		testInstance,
+		repositoryPath,
+		branchDefaultPromotionRemoteURL,
+		map[string]string{
+			"README.md":                       "promotion repository\n",
+			branchDefaultWorkflowRelativePath: fmt.Sprintf(branchDefaultWorkflowTemplate, branchDefaultInitialBranch),
+		},
+	)
+
+	stateDirectory := testInstance.TempDir()
+	initializeStubStateFile(testInstance, stateDirectory, branchDefaultPromotionRemoteRepository, branchDefaultInitialBranch)
+	require.NoError(testInstance, os.WriteFile(
+		filepath.Join(stateDirectory, branchDefaultPullRequestsStateFile),
+		[]byte(`[{"number":1,"title":"Promote master","headRefName":"master","headRefOid":"target-commit","headRepository":{"nameWithOwner":"example/promotion"},"baseRefName":"main"}]`),
+		0o644,
+	))
+
+	stubDirectory := filepath.Join(testInstance.TempDir(), "bin")
+	require.NoError(testInstance, os.MkdirAll(stubDirectory, 0o755))
+	require.NoError(testInstance, os.WriteFile(
+		filepath.Join(stubDirectory, branchDefaultStubExecutableName),
+		[]byte(buildBranchDefaultStubScript(stateDirectory)),
+		0o755,
+	))
+	realGitBinary, lookupError := exec.LookPath(branchDefaultGitExecutable)
+	require.NoError(testInstance, lookupError)
+	require.NoError(testInstance, os.WriteFile(
+		filepath.Join(stubDirectory, branchDefaultGitWrapperExecutableName),
+		[]byte(buildBranchDefaultGitWrapper(realGitBinary, stateDirectory)),
+		0o755,
+	))
+
+	output := runIntegrationCommand(
+		testInstance,
+		integrationRepositoryRoot(testInstance),
+		integrationCommandOptions{
+			PathVariable: stubDirectory + string(os.PathListSeparator) + os.Getenv(pathEnvironmentVariableNameConstant),
+			EnvironmentOverrides: map[string]string{
+				branchDefaultStubStateDirectoryEnvironment: stateDirectory,
+				githubauth.EnvGitHubToken:                  "test-token",
+				githubauth.EnvGitHubCLIToken:               "test-token",
+				githubauth.EnvGitHubAPIToken:               "test-token",
+			},
+		},
+		branchDefaultIntegrationTimeout,
+		[]string{
+			"run",
+			".",
+			"--log-level",
+			"error",
+			"default",
+			branchDefaultTargetBranch,
+			"--roots",
+			repositoryPath,
+			"--yes",
+		},
+	)
+
+	require.Contains(testInstance, output, fmt.Sprintf(
+		"WORKFLOW-DEFAULT: %s (main → master) safe_to_delete=true",
+		repositoryPath,
+	))
+	require.NotContains(testInstance, output, "PR-RETARGET-SKIP")
+	githubLog := readTextFile(testInstance, filepath.Join(stateDirectory, "gh.log"))
+	require.Contains(testInstance, githubLog, "pr close 1 --repo "+branchDefaultPromotionRemoteRepository)
+	require.NotContains(testInstance, githubLog, "pr edit 1")
+	require.Equal(testInstance, "1", strings.TrimSpace(readTextFile(
+		testInstance,
+		filepath.Join(stateDirectory, branchDefaultClosedPullRequestsLogFile),
+	)))
+	require.Equal(testInstance, "[]", strings.TrimSpace(readTextFile(
+		testInstance,
+		filepath.Join(stateDirectory, branchDefaultPullRequestsStateFile),
+	)))
+}
+
+func TestBranchDefaultRetargetsSameNamedForkPullRequest(testInstance *testing.T) {
+	workspaceDirectory := testInstance.TempDir()
+	repositoryPath := filepath.Join(workspaceDirectory, "promotion")
+	initializeRepositoryWithFiles(
+		testInstance,
+		repositoryPath,
+		branchDefaultPromotionRemoteURL,
+		map[string]string{
+			"README.md":                       "promotion repository\n",
+			branchDefaultWorkflowRelativePath: fmt.Sprintf(branchDefaultWorkflowTemplate, branchDefaultInitialBranch),
+		},
+	)
+
+	stateDirectory := testInstance.TempDir()
+	initializeStubStateFile(testInstance, stateDirectory, branchDefaultPromotionRemoteRepository, branchDefaultInitialBranch)
+	pullRequestState := `[{"number":2,"title":"Fork master","headRefName":"master","headRefOid":"fork-commit","headRepository":{"nameWithOwner":"contributor/promotion"},"baseRefName":"main"}]`
+	require.NoError(testInstance, os.WriteFile(
+		filepath.Join(stateDirectory, branchDefaultPullRequestsStateFile),
+		[]byte(pullRequestState),
+		0o644,
+	))
+
+	stubDirectory := filepath.Join(testInstance.TempDir(), "bin")
+	require.NoError(testInstance, os.MkdirAll(stubDirectory, 0o755))
+	require.NoError(testInstance, os.WriteFile(
+		filepath.Join(stubDirectory, branchDefaultStubExecutableName),
+		[]byte(buildBranchDefaultStubScript(stateDirectory)),
+		0o755,
+	))
+	realGitBinary, lookupError := exec.LookPath(branchDefaultGitExecutable)
+	require.NoError(testInstance, lookupError)
+	require.NoError(testInstance, os.WriteFile(
+		filepath.Join(stubDirectory, branchDefaultGitWrapperExecutableName),
+		[]byte(buildBranchDefaultGitWrapper(realGitBinary, stateDirectory)),
+		0o755,
+	))
+
+	output := runIntegrationCommand(
+		testInstance,
+		integrationRepositoryRoot(testInstance),
+		integrationCommandOptions{
+			PathVariable: stubDirectory + string(os.PathListSeparator) + os.Getenv(pathEnvironmentVariableNameConstant),
+			EnvironmentOverrides: map[string]string{
+				branchDefaultStubStateDirectoryEnvironment: stateDirectory,
+				githubauth.EnvGitHubToken:                  "test-token",
+				githubauth.EnvGitHubCLIToken:               "test-token",
+				githubauth.EnvGitHubAPIToken:               "test-token",
+			},
+		},
+		branchDefaultIntegrationTimeout,
+		[]string{
+			"run",
+			".",
+			"--log-level",
+			"error",
+			"default",
+			branchDefaultTargetBranch,
+			"--roots",
+			repositoryPath,
+			"--yes",
+		},
+	)
+
+	require.Contains(testInstance, output, fmt.Sprintf(
+		"WORKFLOW-DEFAULT: %s (main → master) safe_to_delete=false",
+		repositoryPath,
+	))
+	require.NotContains(testInstance, output, "PR-CLOSE-SKIP")
+	require.NotContains(testInstance, output, "PR-RETARGET-SKIP")
+	githubLog := readTextFile(testInstance, filepath.Join(stateDirectory, "gh.log"))
+	require.Contains(testInstance, githubLog, "pr edit 2 --repo "+branchDefaultPromotionRemoteRepository+" --base master")
+	require.NotContains(testInstance, githubLog, "pr close 2")
+	require.NoFileExists(testInstance, filepath.Join(stateDirectory, branchDefaultClosedPullRequestsLogFile))
+	require.JSONEq(testInstance, pullRequestState, readTextFile(
+		testInstance,
+		filepath.Join(stateDirectory, branchDefaultPullRequestsStateFile),
+	))
 }
 
 func TestBranchDefaultRejectsDirtyWorktreeBeforeLocalOrRemoteMutation(testInstance *testing.T) {
@@ -291,6 +454,8 @@ func buildBranchDefaultStubScript(stateDirectory string) string {
 	return fmt.Sprintf(`#!/bin/sh
 STATE_DIR=%[1]q
 DEFAULT_BRANCH=%[2]q
+PULL_REQUESTS_PATH="$STATE_DIR/%[3]s"
+CLOSED_PULL_REQUESTS_PATH="$STATE_DIR/%[4]s"
 
 state_path() {
   repo="$1"
@@ -334,11 +499,25 @@ if [ "$1" = "repo" ] && [ "$2" = "view" ]; then
 fi
 
 if [ "$1" = "pr" ] && [ "$2" = "list" ]; then
+	if [ -f "$PULL_REQUESTS_PATH" ]; then
+		cat "$PULL_REQUESTS_PATH"
+		exit 0
+	fi
   echo '[]'
   exit 0
 fi
 
 if [ "$1" = "pr" ] && [ "$2" = "edit" ]; then
+	if [ "$3" = "1" ]; then
+		echo "GraphQL: There are no new commits between base branch 'master' and head branch 'master' (updatePullRequest)" >&2
+		exit 1
+	fi
+	exit 0
+fi
+
+if [ "$1" = "pr" ] && [ "$2" = "close" ]; then
+	printf '%%s\n' "$3" >>"$CLOSED_PULL_REQUESTS_PATH"
+	printf '[]\n' >"$PULL_REQUESTS_PATH"
   exit 0
 fi
 
@@ -378,7 +557,7 @@ if [ "$1" = "api" ]; then
 fi
 
 exit 0
-`, stateDirectory, branchDefaultStubDefaultBranchPlaceholder)
+`, stateDirectory, branchDefaultStubDefaultBranchPlaceholder, branchDefaultPullRequestsStateFile, branchDefaultClosedPullRequestsLogFile)
 }
 
 func buildBranchDefaultGitWrapper(realGitPath string, stateDirectory string) string {

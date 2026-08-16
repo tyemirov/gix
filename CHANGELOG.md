@@ -26,6 +26,7 @@
 - Updated the LLM Proxy Go client from v0.2.21 to v0.2.46, moved Gix's configured proxy work budget to the current per-request timeout header, and raised the Go module floor to 1.25.12 with the dependency graph required by that client.
 
 ### Bug Fixes 🐛
+- Limited automatic pull request closure to the target repository. Pull requests from other repositories keep the base-change flow.
 - Rejected the obsolete `base_branch` task option before strict sync selected a different pull request base.
 - Fetched the authoritative remote default ref explicitly. Strict sync used this ref in a clone with a narrow fetch refspec.
 - Rejected dirty default-branch promotion before local branch creation, checkout, or remote publication. The migration service now owns preflight and target preparation.

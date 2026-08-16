@@ -54,6 +54,10 @@ func (stub *stubGitHubOperations) UpdatePullRequestBase(context.Context, string,
 	return nil
 }
 
+func (stub *stubGitHubOperations) ClosePullRequest(context.Context, string, int) error {
+	return nil
+}
+
 func (stub *stubGitHubOperations) SetDefaultBranch(context.Context, string, string) error {
 	return nil
 }

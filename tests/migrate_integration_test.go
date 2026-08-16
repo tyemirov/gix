@@ -76,6 +76,12 @@ func (operations *recordingGitHubOperations) UpdatePullRequestBase(_ context.Con
 	return nil
 }
 
+func (operations *recordingGitHubOperations) ClosePullRequest(_ context.Context, repository string, pullRequestNumber int) error {
+	_ = repository
+	_ = pullRequestNumber
+	return nil
+}
+
 func (operations *recordingGitHubOperations) SetDefaultBranch(_ context.Context, repository string, branchName string) error {
 	_ = repository
 	operations.defaultBranchTarget = branchName

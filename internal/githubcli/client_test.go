@@ -46,6 +46,9 @@ const (
 	testUpdatePullRequestSuccessCaseNameConstant         = "update_pull_request_success"
 	testUpdatePullRequestCommandFailureCaseNameConstant  = "update_pull_request_command_failure"
 	testUpdatePullRequestValidationCaseNameConstant      = "update_pull_request_validation"
+	testClosePullRequestSuccessCaseNameConstant          = "close_pull_request_success"
+	testClosePullRequestCommandFailureCaseNameConstant   = "close_pull_request_command_failure"
+	testClosePullRequestValidationCaseNameConstant       = "close_pull_request_validation"
 	testCreatePullRequestSuccessCaseNameConstant         = "create_pull_request_success"
 	testCreatePullRequestCommandFailureCaseNameConstant  = "create_pull_request_command_failure"
 	testCreatePullRequestValidationCaseNameConstant      = "create_pull_request_validation"
@@ -171,7 +174,7 @@ func TestListPullRequests(testInstance *testing.T) {
 				ResultLimit: 50,
 			},
 			executor: &stubGitHubExecutor{executeFunc: func(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
-				return execshell.ExecutionResult{StandardOutput: `[{"number":42,"title":"Example","headRefName":"feature/example","headRefOid":"0123456789abcdef0123456789abcdef01234567","baseRefName":"main"}]`}, nil
+				return execshell.ExecutionResult{StandardOutput: `[{"number":42,"title":"Example","headRefName":"feature/example","headRefOid":"0123456789abcdef0123456789abcdef01234567","headRepository":{"nameWithOwner":"owner/example"},"baseRefName":"main"}]`}, nil
 			}},
 			verify: func(testInstance *testing.T, pullRequests []githubcli.PullRequest, executor *stubGitHubExecutor) {
 				require.Len(testInstance, pullRequests, 1)
@@ -179,13 +182,14 @@ func TestListPullRequests(testInstance *testing.T) {
 				require.Equal(testInstance, testPullRequestTitleConstant, pullRequests[0].Title)
 				require.Equal(testInstance, testPullRequestHeadConstant, pullRequests[0].HeadRefName)
 				require.Equal(testInstance, "0123456789abcdef0123456789abcdef01234567", pullRequests[0].HeadRefOID)
+				require.Equal(testInstance, testRepositoryIdentifierConstant, pullRequests[0].HeadRepositoryNameWithOwner)
 				require.Equal(testInstance, testBaseBranchConstant, pullRequests[0].BaseRefName)
 				require.Len(testInstance, executor.recordedDetails, 1)
 				require.Contains(testInstance, executor.recordedDetails[0].Arguments, testRepositoryIdentifierConstant)
 				require.Contains(testInstance, executor.recordedDetails[0].Arguments, testBaseBranchConstant)
 				require.Contains(testInstance, executor.recordedDetails[0].Arguments, "--head")
 				require.Contains(testInstance, executor.recordedDetails[0].Arguments, testPullRequestHeadConstant)
-				require.Contains(testInstance, executor.recordedDetails[0].Arguments, "number,title,headRefName,headRefOid,baseRefName")
+				require.Contains(testInstance, executor.recordedDetails[0].Arguments, "number,title,headRefName,headRefOid,headRepository,baseRefName")
 			},
 		},
 		{
@@ -522,6 +526,70 @@ func TestUpdatePullRequestBase(testInstance *testing.T) {
 			require.NoError(testInstance, creationError)
 
 			executionError := client.UpdatePullRequestBase(context.Background(), testCase.repository, testCase.number, testCase.branchName)
+			if testCase.expectError {
+				require.Error(testInstance, executionError)
+				require.IsType(testInstance, testCase.errorType, executionError)
+			} else {
+				require.NoError(testInstance, executionError)
+				require.NotNil(testInstance, testCase.verify)
+				testCase.verify(testInstance, testCase.executor)
+			}
+		})
+	}
+}
+
+func TestClosePullRequest(testInstance *testing.T) {
+	testCases := []struct {
+		name        string
+		repository  string
+		number      int
+		executor    *stubGitHubExecutor
+		expectError bool
+		errorType   any
+		verify      func(testInstance *testing.T, executor *stubGitHubExecutor)
+	}{
+		{
+			name:       testClosePullRequestSuccessCaseNameConstant,
+			repository: testRepositoryIdentifierConstant,
+			number:     42,
+			executor:   &stubGitHubExecutor{},
+			verify: func(testInstance *testing.T, executor *stubGitHubExecutor) {
+				require.Len(testInstance, executor.recordedDetails, 1)
+				require.Equal(testInstance, []string{
+					"pr",
+					"close",
+					strconv.Itoa(42),
+					"--repo",
+					testRepositoryIdentifierConstant,
+				}, executor.recordedDetails[0].Arguments)
+			},
+		},
+		{
+			name:       testClosePullRequestCommandFailureCaseNameConstant,
+			repository: testRepositoryIdentifierConstant,
+			number:     7,
+			executor: &stubGitHubExecutor{executeFunc: func(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
+				return execshell.ExecutionResult{}, execshell.CommandExecutionError{Command: execshell.ShellCommand{Name: execshell.CommandGitHub}, Cause: errors.New("failed")}
+			}},
+			expectError: true,
+			errorType:   githubcli.OperationError{},
+		},
+		{
+			name:        testClosePullRequestValidationCaseNameConstant,
+			repository:  "",
+			number:      0,
+			executor:    &stubGitHubExecutor{},
+			expectError: true,
+			errorType:   githubcli.InvalidInputError{},
+		},
+	}
+
+	for _, testCase := range testCases {
+		testInstance.Run(testCase.name, func(testInstance *testing.T) {
+			client, creationError := githubcli.NewClient(testCase.executor)
+			require.NoError(testInstance, creationError)
+
+			executionError := client.ClosePullRequest(context.Background(), testCase.repository, testCase.number)
 			if testCase.expectError {
 				require.Error(testInstance, executionError)
 				require.IsType(testInstance, testCase.errorType, executionError)

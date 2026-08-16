@@ -11,6 +11,53 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B069] (P1) Close the obsolete pull request from the target branch.
+  Reported on 2026-08-16 after `gix sync` created a `master` pull request against `main`.
+  Expected result:
+  `gix default master` closes the obsolete pull request after `master` becomes the default branch.
+  Actual result:
+  The command tries to change the pull request base from `main` to `master`.
+  GitHub rejects the `master` to `master` pull request because the two branches have no different commits.
+  Gix reports `PR-RETARGET-SKIP` and keeps `safe_to_delete=false`.
+  Requirements:
+  - Identify each open pull request whose head is the new default branch.
+  - Close each obsolete pull request from the new default branch.
+  - Do not try to change the base of that pull request to its head branch.
+  - Keep other pull requests on the current retarget flow.
+  - If closure fails, keep the pull request as a source-branch deletion blocker and report the exact warning.
+  Validation:
+  - Create an open `master` to `main` pull request.
+  - Run the compiled CLI command `gix default master`.
+  - Verify that the command closes the obsolete pull request.
+  - Verify that the command does not change the base of the obsolete pull request.
+  - Verify that successful closure removes that pull request from the source-branch safety gate.
+  - Run focused tests and complete CI.
+  Resolution:
+  - Default migration closes each open pull request whose head is the new default branch.
+  - Other pull requests keep the base-change flow.
+  - A close failure reports `PR-CLOSE-SKIP` and keeps the pull request as a safety blocker.
+  - The compiled CLI regression verifies closure, no base change, remote state, and `safe_to_delete=true`.
+  - `make test-fast`, `make test-slow`, and `make ci` passed on 2026-08-16.
+  Review finding:
+  A pull request from another repository can use the same head branch name as the new default branch.
+  The `headRefName` field does not include the head repository identity.
+  A branch-only match can close an unrelated contributor pull request.
+  Additional requirements:
+  - Retain `headRepository.nameWithOwner` from `gh pr list`.
+  - Close the pull request only when its head branch and head repository match the target repository.
+  - Change the base of a same-named pull request from another repository.
+  Additional validation:
+  - Create a pull request from another repository with the new default branch name.
+  - Run the compiled CLI command `gix default master`.
+  - Verify that the command changes the base of that pull request.
+  - Verify that the command does not close that pull request.
+  Follow-up resolution:
+  - The GitHub client retains `headRepository.nameWithOwner` for each listed pull request.
+  - Default migration closes a target-named pull request only when its head repository matches the target repository.
+  - Pull requests from other repositories keep the base-change flow and remain safety blockers.
+  - Service tests and compiled CLI tests verify both repository identities.
+  - `make test-fast`, `make test-slow`, and `make ci` passed on 2026-08-16.
+
 - [x] [B068] (P1) Reject a dirty default-branch promotion before mutation.
   Reported on 2026-08-16 after `gix default master` ran from a dirty `main` branch.
   Expected result:

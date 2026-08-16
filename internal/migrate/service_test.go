@@ -71,6 +71,10 @@ func (dirtyPreflightGitHubOperations) UpdatePullRequestBase(context.Context, str
 	panic("pull-request mutation reached after dirty preflight")
 }
 
+func (dirtyPreflightGitHubOperations) ClosePullRequest(context.Context, string, int) error {
+	panic("pull-request mutation reached after dirty preflight")
+}
+
 func (dirtyPreflightGitHubOperations) SetDefaultBranch(context.Context, string, string) error {
 	panic("default-branch mutation reached after dirty preflight")
 }
@@ -83,11 +87,13 @@ type recordingGitHubOperations struct {
 	pagesError         error
 	listError          error
 	retargetErrors     map[int]error
+	closeErrors        map[int]error
 	protectionError    error
 	defaultBranchError error
 	defaultBranchSet   bool
 	pullRequests       []githubcli.PullRequest
 	retargetedNumbers  []int
+	closedNumbers      []int
 }
 
 func (operations *recordingGitHubOperations) ResolveRepoMetadata(context.Context, string) (githubcli.RepositoryMetadata, error) {
@@ -116,6 +122,16 @@ func (operations *recordingGitHubOperations) UpdatePullRequestBase(_ context.Con
 	operations.retargetedNumbers = append(operations.retargetedNumbers, pullRequestNumber)
 	if operations.retargetErrors != nil {
 		if err, exists := operations.retargetErrors[pullRequestNumber]; exists {
+			return err
+		}
+	}
+	return nil
+}
+
+func (operations *recordingGitHubOperations) ClosePullRequest(_ context.Context, _ string, pullRequestNumber int) error {
+	operations.closedNumbers = append(operations.closedNumbers, pullRequestNumber)
+	if operations.closeErrors != nil {
+		if err, exists := operations.closeErrors[pullRequestNumber]; exists {
 			return err
 		}
 	}
@@ -254,6 +270,85 @@ func TestServiceExecuteWarnsWhenRetargetFails(testInstance *testing.T) {
 	result, executionError := service.Execute(testGitHubContext(), options)
 	require.NoError(testInstance, executionError)
 	require.Contains(testInstance, strings.Join(result.Warnings, " "), "PR-RETARGET-SKIP")
+}
+
+func TestServiceExecuteClosesSameRepositoryTargetPullRequest(testInstance *testing.T) {
+	repositoryExecutor := stubGitCommandExecutor{}
+	repositoryManager, managerError := gitrepo.NewRepositoryManager(repositoryExecutor)
+	require.NoError(testInstance, managerError)
+
+	githubOperations := &recordingGitHubOperations{
+		pullRequests: []githubcli.PullRequest{
+			{Number: 1, HeadRefName: "master", HeadRepositoryNameWithOwner: "OWNER/EXAMPLE", BaseRefName: "main"},
+			{Number: 2, HeadRefName: "master", HeadRepositoryNameWithOwner: "contributor/example", BaseRefName: "main"},
+			{Number: 3, HeadRefName: "feature/example", HeadRepositoryNameWithOwner: "owner/example", BaseRefName: "main"},
+		},
+	}
+	service, serviceError := NewService(ServiceDependencies{
+		Logger:            zap.NewNop(),
+		RepositoryManager: repositoryManager,
+		GitHubClient:      githubOperations,
+		GitExecutor:       stubCommandExecutor{},
+	})
+	require.NoError(testInstance, serviceError)
+
+	result, executionError := service.Execute(testGitHubContext(), MigrationOptions{
+		RepositoryPath:       testInstance.TempDir(),
+		RepositoryRemoteName: "origin",
+		RepositoryIdentifier: "owner/example",
+		WorkflowsDirectory:   ".github/workflows",
+		SourceBranch:         BranchName("main"),
+		TargetBranch:         BranchName("master"),
+	})
+
+	require.NoError(testInstance, executionError)
+	require.Equal(testInstance, []int{1}, result.ClosedPullRequests)
+	require.Equal(testInstance, []int{2, 3}, result.RetargetedPullRequests)
+	require.Equal(testInstance, []int{1}, githubOperations.closedNumbers)
+	require.Equal(testInstance, []int{2, 3}, githubOperations.retargetedNumbers)
+	require.False(testInstance, result.SafetyStatus.SafeToDelete)
+	require.Empty(testInstance, result.Warnings)
+}
+
+func TestServiceExecuteKeepsFailedPromotionCloseAsSafetyBlocker(testInstance *testing.T) {
+	repositoryExecutor := stubGitCommandExecutor{}
+	repositoryManager, managerError := gitrepo.NewRepositoryManager(repositoryExecutor)
+	require.NoError(testInstance, managerError)
+
+	closeError := makeCommandFailedError("fatal: cannot close PR")
+	githubOperations := &recordingGitHubOperations{
+		pullRequests: []githubcli.PullRequest{{
+			Number:                      1,
+			HeadRefName:                 "master",
+			HeadRepositoryNameWithOwner: "owner/example",
+			BaseRefName:                 "main",
+		}},
+		closeErrors: map[int]error{1: closeError},
+	}
+	service, serviceError := NewService(ServiceDependencies{
+		Logger:            zap.NewNop(),
+		RepositoryManager: repositoryManager,
+		GitHubClient:      githubOperations,
+		GitExecutor:       stubCommandExecutor{},
+	})
+	require.NoError(testInstance, serviceError)
+
+	result, executionError := service.Execute(testGitHubContext(), MigrationOptions{
+		RepositoryPath:       testInstance.TempDir(),
+		RepositoryRemoteName: "origin",
+		RepositoryIdentifier: "owner/example",
+		WorkflowsDirectory:   ".github/workflows",
+		SourceBranch:         BranchName("main"),
+		TargetBranch:         BranchName("master"),
+	})
+
+	require.NoError(testInstance, executionError)
+	require.Empty(testInstance, result.ClosedPullRequests)
+	require.Empty(testInstance, result.RetargetedPullRequests)
+	require.Equal(testInstance, []int{1}, githubOperations.closedNumbers)
+	require.Empty(testInstance, githubOperations.retargetedNumbers)
+	require.False(testInstance, result.SafetyStatus.SafeToDelete)
+	require.Contains(testInstance, strings.Join(result.Warnings, " "), "PR-CLOSE-SKIP: #1")
 }
 
 func TestServiceExecuteWarnsWhenBranchProtectionFails(testInstance *testing.T) {
