@@ -515,6 +515,106 @@ func TestSyncTreatsMainAndMasterAsOrdinaryBranchNames(testInstance *testing.T) {
 	}
 }
 
+func TestSyncFetchesRemoteDefaultBranchForSingleBranchClone(testInstance *testing.T) {
+	const (
+		defaultBranch = "main"
+		cloneBranch   = "feature/narrow-clone"
+	)
+
+	repositoryRoot := integrationRepositoryRoot(testInstance)
+	workspacePath := syncHomeWorkspace(testInstance)
+	remotePath := filepath.Join(workspacePath, "remote.git")
+	sourcePath := filepath.Join(workspacePath, "source")
+	repositoryPath := filepath.Join(workspacePath, "single-branch-clone")
+	runGitWithDir(testInstance, "", "init", "--bare", remotePath)
+	runGitWithDir(testInstance, "", "init", "--initial-branch="+defaultBranch, sourcePath)
+	configureGitIdentity(testInstance, sourcePath)
+	runGit(testInstance, sourcePath, "remote", "add", "origin", localFileURL(remotePath))
+
+	readmePath := filepath.Join(sourcePath, "README.md")
+	require.NoError(testInstance, os.WriteFile(readmePath, []byte("default branch\n"), 0o644))
+	runGit(testInstance, sourcePath, "add", "README.md")
+	runGit(testInstance, sourcePath, "commit", "-m", "default branch commit")
+	runGit(testInstance, sourcePath, "push", "-u", "origin", defaultBranch)
+	defaultCommit := strings.TrimSpace(runGit(testInstance, sourcePath, "rev-parse", defaultBranch))
+	runGit(testInstance, remotePath, "symbolic-ref", "HEAD", "refs/heads/"+defaultBranch)
+
+	runGit(testInstance, sourcePath, "switch", "-c", cloneBranch)
+	featurePath := filepath.Join(sourcePath, "feature.txt")
+	require.NoError(testInstance, os.WriteFile(featurePath, []byte("feature branch\n"), 0o644))
+	runGit(testInstance, sourcePath, "add", "feature.txt")
+	runGit(testInstance, sourcePath, "commit", "-m", "feature branch commit")
+	runGit(testInstance, sourcePath, "push", "-u", "origin", cloneBranch)
+	featureCommit := strings.TrimSpace(runGit(testInstance, sourcePath, "rev-parse", cloneBranch))
+
+	runGitWithDir(testInstance, workspacePath, "clone", "--single-branch", "--branch", cloneBranch, localFileURL(remotePath), repositoryPath)
+	configureGitIdentity(testInstance, repositoryPath)
+	require.Equal(
+		testInstance,
+		"+refs/heads/"+cloneBranch+":refs/remotes/origin/"+cloneBranch,
+		strings.TrimSpace(runGit(testInstance, repositoryPath, "config", "--get", "remote.origin.fetch")),
+	)
+	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "for-each-ref", "--format=%(refname)", "refs/remotes/origin/"+defaultBranch)))
+
+	configurationPath := writeSyncMergedBranchConfiguration(testInstance)
+	gitLogPath := filepath.Join(testInstance.TempDir(), "git.log")
+	githubLogPath := filepath.Join(testInstance.TempDir(), "gh.log")
+	require.NoError(
+		testInstance,
+		os.WriteFile(githubLogPath, []byte("created-pr --base "+defaultBranch+" --head "+cloneBranch+"\n"), 0o600),
+	)
+	output, runError := runIntegrationCommandWithInput(
+		testInstance,
+		repositoryRoot,
+		integrationCommandOptions{
+			PathVariable: buildSyncMergedBranchExecutablePath(testInstance),
+			EnvironmentOverrides: map[string]string{
+				syncMergedBranchDefaultBranchVariable: defaultBranch,
+				syncMergedBranchGitLogVariable:        gitLogPath,
+				syncMergedBranchGitHubLogVariable:     githubLogPath,
+				syncMergedBranchMergedVariable:        "false",
+				syncMergedBranchNameVariable:          cloneBranch,
+			},
+		},
+		syncMergedBranchIntegrationTimeout,
+		"",
+		[]string{
+			syncRefreshIntegrationRunCommand,
+			syncRefreshIntegrationModulePath,
+			"--config",
+			configurationPath,
+			syncRefreshIntegrationLogLevelFlag,
+			syncRefreshIntegrationErrorLogLevel,
+			"sync",
+			cloneBranch,
+			"--roots",
+			repositoryPath,
+		},
+	)
+
+	require.NoError(testInstance, runError, output)
+	require.Contains(testInstance, output, fmt.Sprintf("SYNCED: %s (%s)", repositoryPath, cloneBranch))
+	require.Equal(testInstance, cloneBranch, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
+	require.Equal(testInstance, defaultCommit, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "origin/"+defaultBranch)))
+	require.Equal(testInstance, featureCommit, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", cloneBranch)))
+	require.Equal(
+		testInstance,
+		"+refs/heads/"+cloneBranch+":refs/remotes/origin/"+cloneBranch,
+		strings.TrimSpace(runGit(testInstance, repositoryPath, "config", "--get", "remote.origin.fetch")),
+	)
+	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
+
+	gitLog := readTextFile(testInstance, gitLogPath)
+	require.Contains(testInstance, gitLog, "fetch --prune origin")
+	require.Contains(testInstance, gitLog, "ls-remote --symref origin HEAD")
+	require.Contains(testInstance, gitLog, "fetch --no-tags origin +refs/heads/"+defaultBranch+":refs/remotes/origin/"+defaultBranch)
+	require.Contains(testInstance, gitLog, "merge --no-edit origin/"+defaultBranch)
+
+	githubLog := readTextFile(testInstance, githubLogPath)
+	require.NotContains(testInstance, githubLog, "pr create")
+	require.Equal(testInstance, 1, strings.Count(githubLog, "created-pr --base "+defaultBranch+" --head "+cloneBranch))
+}
+
 func TestSyncUsesRemoteDefaultWhenAuditFallsBackToCurrentBranch(testInstance *testing.T) {
 	const (
 		defaultBranch = "trunk"
