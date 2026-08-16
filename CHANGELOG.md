@@ -26,6 +26,8 @@
 - Updated the LLM Proxy Go client from v0.2.21 to v0.2.46, moved Gix's configured proxy work budget to the current per-request timeout header, and raised the Go module floor to 1.25.12 with the dependency graph required by that client.
 
 ### Bug Fixes 🐛
+- Rejected the obsolete `base_branch` task option before strict sync selected a different pull request base.
+- Fetched the authoritative remote default ref explicitly. Strict sync used this ref in a clone with a narrow fetch refspec.
 - Rejected dirty default-branch promotion before local branch creation, checkout, or remote publication. The migration service now owns preflight and target preparation.
 - Resolved strict sync behavior from the remote symbolic `HEAD` after fetch. Audit fallback data and branch spelling no longer select default-branch behavior, and default-branch promotion requires an explicit target.
 - Kept required repair-only release inputs on the patch line and selected `v1.4.1` for the B063-shaped fixture.
@@ -79,6 +81,7 @@
 - Kept the syncflow builder description as the canonical text shown by `gix sync --help`.
 
 ### Testing 🧪
+- Added compiled CLI coverage for obsolete task configuration and a narrow single-branch feature clone. The clone's fetch refspec excluded the remote default branch.
 - Added compiled CLI coverage for `gix default master` from a dirty `main` branch with no `master` ref. The test verifies exact preservation of the checkout, commit, index, repository and remote refs, workflow, dirty files, and GitHub state.
 - Added compiled CLI coverage that exchanges `main` and `master` as the default and target branches. A metadata-failure regression makes audit report the ordinary local branch. Each case creates or updates the target and opens its pull request against the remote default branch.
 - Added regression coverage for a historical feature note at `v1.2.0` followed by a compatible audit fix, proving the fixed-major selector returns a patch.
