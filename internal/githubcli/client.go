@@ -45,7 +45,7 @@ const (
 	requiredValueMessageConstant               = "value required"
 	executorNotConfiguredMessageConstant       = "github cli executor not configured"
 	pullRequestLimitDefaultValueConstant       = 100
-	pullRequestJSONFieldsConstant              = "number,title,headRefName,headRefOid,baseRefName"
+	pullRequestJSONFieldsConstant              = "number,title,headRefName,headRefOid,headRepository,baseRefName"
 	repoViewJSONFieldsConstant                 = "defaultBranchRef,nameWithOwner,description,isInOrganization"
 	operationErrorMessageTemplateConstant      = "%s operation failed"
 	operationErrorWithCauseTemplateConstant    = "%s operation failed: %s"
@@ -95,11 +95,12 @@ type RepositoryMetadata struct {
 
 // PullRequest represents minimal PR details returned by GitHub CLI.
 type PullRequest struct {
-	Number      int
-	Title       string
-	HeadRefName string
-	HeadRefOID  string
-	BaseRefName string
+	Number                      int
+	Title                       string
+	HeadRefName                 string
+	HeadRefOID                  string
+	HeadRepositoryNameWithOwner string
+	BaseRefName                 string
 }
 
 // PullRequestListOptions configures ListPullRequests queries.
@@ -323,10 +324,13 @@ func (client *Client) ListPullRequests(executionContext context.Context, reposit
 	}
 
 	var response []struct {
-		Number      int    `json:"number"`
-		Title       string `json:"title"`
-		HeadRefName string `json:"headRefName"`
-		HeadRefOID  string `json:"headRefOid"`
+		Number         int    `json:"number"`
+		Title          string `json:"title"`
+		HeadRefName    string `json:"headRefName"`
+		HeadRefOID     string `json:"headRefOid"`
+		HeadRepository struct {
+			NameWithOwner string `json:"nameWithOwner"`
+		} `json:"headRepository"`
 		BaseRefName string `json:"baseRefName"`
 	}
 
@@ -338,11 +342,12 @@ func (client *Client) ListPullRequests(executionContext context.Context, reposit
 	pullRequests := make([]PullRequest, 0, len(response))
 	for _, pullRequestEntry := range response {
 		pullRequests = append(pullRequests, PullRequest{
-			Number:      pullRequestEntry.Number,
-			Title:       pullRequestEntry.Title,
-			HeadRefName: pullRequestEntry.HeadRefName,
-			HeadRefOID:  pullRequestEntry.HeadRefOID,
-			BaseRefName: pullRequestEntry.BaseRefName,
+			Number:                      pullRequestEntry.Number,
+			Title:                       pullRequestEntry.Title,
+			HeadRefName:                 pullRequestEntry.HeadRefName,
+			HeadRefOID:                  pullRequestEntry.HeadRefOID,
+			HeadRepositoryNameWithOwner: pullRequestEntry.HeadRepository.NameWithOwner,
+			BaseRefName:                 pullRequestEntry.BaseRefName,
 		})
 	}
 

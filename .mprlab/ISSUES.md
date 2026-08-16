@@ -38,6 +38,25 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - A close failure reports `PR-CLOSE-SKIP` and keeps the pull request as a safety blocker.
   - The compiled CLI regression verifies closure, no base change, remote state, and `safe_to_delete=true`.
   - `make test-fast`, `make test-slow`, and `make ci` passed on 2026-08-16.
+  Review finding:
+  A pull request from another repository can use the same head branch name as the new default branch.
+  The `headRefName` field does not include the head repository identity.
+  A branch-only match can close an unrelated contributor pull request.
+  Additional requirements:
+  - Retain `headRepository.nameWithOwner` from `gh pr list`.
+  - Close the pull request only when its head branch and head repository match the target repository.
+  - Change the base of a same-named pull request from another repository.
+  Additional validation:
+  - Create a pull request from another repository with the new default branch name.
+  - Run the compiled CLI command `gix default master`.
+  - Verify that the command changes the base of that pull request.
+  - Verify that the command does not close that pull request.
+  Follow-up resolution:
+  - The GitHub client retains `headRepository.nameWithOwner` for each listed pull request.
+  - Default migration closes a target-named pull request only when its head repository matches the target repository.
+  - Pull requests from other repositories keep the base-change flow and remain safety blockers.
+  - Service tests and compiled CLI tests verify both repository identities.
+  - `make test-fast`, `make test-slow`, and `make ci` passed on 2026-08-16.
 
 - [x] [B068] (P1) Reject a dirty default-branch promotion before mutation.
   Reported on 2026-08-16 after `gix default master` ran from a dirty `main` branch.

@@ -494,8 +494,13 @@ func (service *Service) transitionPullRequests(executionContext context.Context,
 		warnings:   make([]string, 0),
 	}
 	targetBranch := strings.TrimSpace(string(options.TargetBranch))
+	targetRepository := strings.TrimSpace(options.RepositoryIdentifier)
 	for _, pullRequest := range pullRequests {
-		if strings.TrimSpace(pullRequest.HeadRefName) == targetBranch {
+		pullRequestFromTargetRepository := strings.EqualFold(
+			strings.TrimSpace(pullRequest.HeadRepositoryNameWithOwner),
+			targetRepository,
+		)
+		if strings.TrimSpace(pullRequest.HeadRefName) == targetBranch && pullRequestFromTargetRepository {
 			closeError := service.gitHubClient.ClosePullRequest(executionContext, options.RepositoryIdentifier, pullRequest.Number)
 			if closeError != nil {
 				warning := fmt.Sprintf(pullRequestCloseWarningTemplateConstant, pullRequest.Number, summarizeCommandError(closeError))

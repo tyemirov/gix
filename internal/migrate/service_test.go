@@ -272,15 +272,16 @@ func TestServiceExecuteWarnsWhenRetargetFails(testInstance *testing.T) {
 	require.Contains(testInstance, strings.Join(result.Warnings, " "), "PR-RETARGET-SKIP")
 }
 
-func TestServiceExecuteClosesPullRequestFromTargetBranch(testInstance *testing.T) {
+func TestServiceExecuteClosesSameRepositoryTargetPullRequest(testInstance *testing.T) {
 	repositoryExecutor := stubGitCommandExecutor{}
 	repositoryManager, managerError := gitrepo.NewRepositoryManager(repositoryExecutor)
 	require.NoError(testInstance, managerError)
 
 	githubOperations := &recordingGitHubOperations{
 		pullRequests: []githubcli.PullRequest{
-			{Number: 1, HeadRefName: "master", BaseRefName: "main"},
-			{Number: 2, HeadRefName: "feature/example", BaseRefName: "main"},
+			{Number: 1, HeadRefName: "master", HeadRepositoryNameWithOwner: "OWNER/EXAMPLE", BaseRefName: "main"},
+			{Number: 2, HeadRefName: "master", HeadRepositoryNameWithOwner: "contributor/example", BaseRefName: "main"},
+			{Number: 3, HeadRefName: "feature/example", HeadRepositoryNameWithOwner: "owner/example", BaseRefName: "main"},
 		},
 	}
 	service, serviceError := NewService(ServiceDependencies{
@@ -302,9 +303,9 @@ func TestServiceExecuteClosesPullRequestFromTargetBranch(testInstance *testing.T
 
 	require.NoError(testInstance, executionError)
 	require.Equal(testInstance, []int{1}, result.ClosedPullRequests)
-	require.Equal(testInstance, []int{2}, result.RetargetedPullRequests)
+	require.Equal(testInstance, []int{2, 3}, result.RetargetedPullRequests)
 	require.Equal(testInstance, []int{1}, githubOperations.closedNumbers)
-	require.Equal(testInstance, []int{2}, githubOperations.retargetedNumbers)
+	require.Equal(testInstance, []int{2, 3}, githubOperations.retargetedNumbers)
 	require.False(testInstance, result.SafetyStatus.SafeToDelete)
 	require.Empty(testInstance, result.Warnings)
 }
@@ -316,8 +317,13 @@ func TestServiceExecuteKeepsFailedPromotionCloseAsSafetyBlocker(testInstance *te
 
 	closeError := makeCommandFailedError("fatal: cannot close PR")
 	githubOperations := &recordingGitHubOperations{
-		pullRequests: []githubcli.PullRequest{{Number: 1, HeadRefName: "master", BaseRefName: "main"}},
-		closeErrors:  map[int]error{1: closeError},
+		pullRequests: []githubcli.PullRequest{{
+			Number:                      1,
+			HeadRefName:                 "master",
+			HeadRepositoryNameWithOwner: "owner/example",
+			BaseRefName:                 "main",
+		}},
+		closeErrors: map[int]error{1: closeError},
 	}
 	service, serviceError := NewService(ServiceDependencies{
 		Logger:            zap.NewNop(),
