@@ -11,6 +11,34 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B068] (P1) Reject a dirty default-branch promotion before mutation.
+  Reported on 2026-08-16 after `gix default master` ran from a dirty `main` branch.
+  Expected result:
+  The command rejects the dirty worktree before it creates a branch, changes the checkout, pushes a branch, or updates GitHub.
+  Actual result:
+  `BranchMigrationOperation.Execute` creates the target branch and checks it out.
+  The operation also pushed `origin/master` at the `main` commit before the clean-worktree check.
+  `Service.Execute` then rejects the dirty worktree and leaves the earlier mutations in place.
+  Requirements:
+  - Make sure that the worktree is clean before target branch creation, checkout, or remote push.
+  - Run all nonmutating preflight checks before the first mutation.
+  - If preflight fails, preserve the starting checkout, local refs, remote refs, worktree contents, and index.
+  - Do not change workflows, Pages settings, the GitHub default branch, or pull requests after a dirty-worktree rejection.
+  Validation:
+  - Create a dirty `main` branch with no local or remote `master` branch.
+  - Run the compiled CLI command `gix default master`.
+  - Verify that the command fails with the clean-worktree error.
+  - Verify that `main` stays active and that local and remote `master` refs remain absent.
+  - Verify that the worktree contents and index stay unchanged.
+  - Verify that Git and GitHub logs contain no mutating command.
+  Resolution:
+  - `migrate.Service` now owns target branch creation, checkout, and remote publication.
+  - Option validation, the clean-worktree check, and credential validation complete before target preparation.
+  - A service test verifies that dirty-worktree preflight runs only `git status`.
+  - A compiled CLI regression covers staged, unstaged, and untracked changes with no local or remote `master` branch.
+  - The regression verifies exact preservation of the checkout, commit, index, repository refs, remote refs, file contents, workflow, and GitHub state.
+  - `make test-fast`, `make test-slow`, and `make ci` passed on 2026-08-16.
+
 - [x] [B067] (P1) Use the repository default branch during strict sync.
   Reported on 2026-08-15 after `gix sync master` ran from a dirty `main` branch.
   Expected result:
