@@ -127,6 +127,20 @@ func TestBranchMigrationOperationRequiresSingleTarget(testInstance *testing.T) {
 	require.EqualError(testInstance, executionError, migrationMultipleTargetsUnsupportedMessageConstant)
 }
 
+func TestBranchMigrationOperationRequiresTargetBranch(testInstance *testing.T) {
+	executor := newScriptedExecutor()
+	repositoryManager, managerError := gitrepo.NewRepositoryManager(executor)
+	require.NoError(testInstance, managerError)
+	githubClient, clientError := githubcli.NewClient(executor)
+	require.NoError(testInstance, clientError)
+	operation := &BranchMigrationOperation{Targets: []BranchMigrationTarget{{SourceBranch: "trunk"}}}
+	environment := &Environment{RepositoryManager: repositoryManager, GitExecutor: executor, GitHubClient: githubClient}
+
+	executionError := operation.Execute(context.Background(), environment, &State{})
+
+	require.EqualError(testInstance, executionError, branchMigrationTargetRequiredMessageConstant)
+}
+
 func TestBranchMigrationOperationReturnsActionableDefaultBranchError(testInstance *testing.T) {
 	executor := newScriptedExecutor()
 	executor.gitHandlers["remote"] = func(execshell.CommandDetails) (execshell.ExecutionResult, error) {

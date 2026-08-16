@@ -37,17 +37,17 @@ type strictSyncStackPlan struct {
 type strictSyncStackPlanningOptions struct {
 	RemoteName       string
 	ChildBranch      string
-	BaseBranch       string
+	DefaultBranch    string
 	ResolutionSource string
 	Dirty            bool
 	StashChanges     bool
 }
 
 type strictSyncStackParentOptions struct {
-	RemoteName           string
-	ConfiguredBaseBranch string
-	Plan                 strictSyncStackPlan
-	CommitMessages       worktreeAdoptionCommitMessageOptions
+	RemoteName     string
+	DefaultBranch  string
+	Plan           strictSyncStackPlan
+	CommitMessages worktreeAdoptionCommitMessageOptions
 }
 
 func planStrictSyncStack(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, options strictSyncStackPlanningOptions) (*strictSyncStackPlan, error) {
@@ -69,7 +69,7 @@ func planStrictSyncStack(ctx context.Context, environment *workflow.Environment,
 			return nil, fmt.Errorf(strictSyncStackedReviewBaseCycleTemplate, options.ChildBranch)
 		}
 	}
-	inspectMergedStateBeforeCommit := options.Dirty && options.ChildBranch != options.BaseBranch
+	inspectMergedStateBeforeCommit := options.Dirty && options.ChildBranch != options.DefaultBranch
 	if (remoteExists || localExists) && (storedParentBranch != "" || inspectMergedStateBeforeCommit) {
 		repositoryIdentifier := strictSyncRepositoryIdentifier(repository)
 		if repositoryIdentifier != "" && environment.GitHubClient != nil {
@@ -175,7 +175,7 @@ func ensureStrictSyncStackParent(ctx context.Context, environment *workflow.Envi
 }
 
 func ensureStrictSyncStackParentChain(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, options strictSyncStackParentOptions, visitedBranches map[string]struct{}) error {
-	if options.Plan.ParentBranch == options.ConfiguredBaseBranch {
+	if options.Plan.ParentBranch == options.DefaultBranch {
 		return nil
 	}
 	if _, visited := visitedBranches[options.Plan.ParentBranch]; visited {
@@ -217,7 +217,7 @@ func ensureStrictSyncStackParentChain(ctx context.Context, environment *workflow
 		return fmt.Errorf(strictSyncStackedParentMergedTemplate, options.Plan.ChildBranch, options.Plan.ParentBranch)
 	}
 
-	parentReviewBase := options.ConfiguredBaseBranch
+	parentReviewBase := options.DefaultBranch
 	storedParentReviewBase, storedParentReviewBaseErr := strictSyncStackReviewBase(ctx, environment.GitExecutor, repository.Path, options.Plan.ParentBranch)
 	if storedParentReviewBaseErr != nil {
 		return storedParentReviewBaseErr
@@ -239,10 +239,10 @@ func ensureStrictSyncStackParentChain(ctx context.Context, environment *workflow
 	if remoteStateErr := validateStrictSyncStackParentRemoteState(ctx, environment.GitExecutor, repository.Path, options.RemoteName, options.Plan); remoteStateErr != nil {
 		return remoteStateErr
 	}
-	if parentReviewBase != options.ConfiguredBaseBranch {
+	if parentReviewBase != options.DefaultBranch {
 		if parentErr := ensureStrictSyncStackParentChain(ctx, environment, repository, strictSyncStackParentOptions{
-			RemoteName:           options.RemoteName,
-			ConfiguredBaseBranch: options.ConfiguredBaseBranch,
+			RemoteName:    options.RemoteName,
+			DefaultBranch: options.DefaultBranch,
 			Plan: strictSyncStackPlan{
 				ChildBranch:  options.Plan.ParentBranch,
 				ParentBranch: parentReviewBase,

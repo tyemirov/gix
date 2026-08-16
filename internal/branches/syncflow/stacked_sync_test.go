@@ -181,7 +181,7 @@ func TestPlanStrictSyncStackDiscoversMergedChildPullRequestBeforeDirtyCommitWith
 	plan, planErr := planStrictSyncStack(context.Background(), environment, repository, strictSyncStackPlanningOptions{
 		RemoteName:       shared.OriginRemoteNameConstant,
 		ChildBranch:      "feature/child",
-		BaseBranch:       defaultSyncBaseBranch,
+		DefaultBranch:    strictSyncTestDefaultBranch,
 		ResolutionSource: syncCurrentBranchSource,
 		Dirty:            true,
 	})
@@ -203,8 +203,8 @@ func TestEnsureStrictSyncStackParentUsesExistingOpenPullRequest(t *testing.T) {
 	environment, repository := strictSyncStackTestContext(t, gitExecutor, githubExecutor)
 
 	parentErr := ensureStrictSyncStackParent(context.Background(), environment, repository, strictSyncStackParentOptions{
-		RemoteName:           shared.OriginRemoteNameConstant,
-		ConfiguredBaseBranch: defaultSyncBaseBranch,
+		RemoteName:    shared.OriginRemoteNameConstant,
+		DefaultBranch: strictSyncTestDefaultBranch,
 		Plan: strictSyncStackPlan{
 			ChildBranch:  "feature/child",
 			ParentBranch: "feature/parent",
@@ -226,8 +226,8 @@ func TestEnsureStrictSyncStackParentAcceptsOpenRemoteAncestorWithoutLocalBranch(
 	environment, repository := strictSyncStackTestContext(t, gitExecutor, githubExecutor)
 
 	parentErr := ensureStrictSyncStackParent(context.Background(), environment, repository, strictSyncStackParentOptions{
-		RemoteName:           shared.OriginRemoteNameConstant,
-		ConfiguredBaseBranch: defaultSyncBaseBranch,
+		RemoteName:    shared.OriginRemoteNameConstant,
+		DefaultBranch: strictSyncTestDefaultBranch,
 		Plan: strictSyncStackPlan{
 			ChildBranch:  "feature/parent",
 			ParentBranch: "feature/grandparent",
@@ -261,8 +261,8 @@ func TestEnsureStrictSyncStackParentPreservesRecordedParentBase(t *testing.T) {
 	environment, repository := strictSyncStackTestContext(t, gitExecutor, githubExecutor)
 
 	parentErr := ensureStrictSyncStackParent(context.Background(), environment, repository, strictSyncStackParentOptions{
-		RemoteName:           shared.OriginRemoteNameConstant,
-		ConfiguredBaseBranch: defaultSyncBaseBranch,
+		RemoteName:    shared.OriginRemoteNameConstant,
+		DefaultBranch: strictSyncTestDefaultBranch,
 		Plan: strictSyncStackPlan{
 			ChildBranch:  "feature/child",
 			ParentBranch: "feature/parent",
@@ -301,8 +301,8 @@ func TestEnsureStrictSyncStackParentRejectsRecordedReviewBaseCycle(t *testing.T)
 	environment, repository := strictSyncStackTestContext(t, gitExecutor, githubExecutor)
 
 	parentErr := ensureStrictSyncStackParent(context.Background(), environment, repository, strictSyncStackParentOptions{
-		RemoteName:           shared.OriginRemoteNameConstant,
-		ConfiguredBaseBranch: defaultSyncBaseBranch,
+		RemoteName:    shared.OriginRemoteNameConstant,
+		DefaultBranch: strictSyncTestDefaultBranch,
 		Plan: strictSyncStackPlan{
 			ChildBranch:  "feature/child",
 			ParentBranch: "feature/parent",
@@ -348,8 +348,8 @@ func TestEnsureStrictSyncStackParentRejectsInvalidReviewState(t *testing.T) {
 			environment, repository := strictSyncStackTestContext(t, gitExecutor, githubExecutor)
 
 			parentErr := ensureStrictSyncStackParent(context.Background(), environment, repository, strictSyncStackParentOptions{
-				RemoteName:           shared.OriginRemoteNameConstant,
-				ConfiguredBaseBranch: defaultSyncBaseBranch,
+				RemoteName:    shared.OriginRemoteNameConstant,
+				DefaultBranch: strictSyncTestDefaultBranch,
 				Plan: strictSyncStackPlan{
 					ChildBranch:  "feature/child",
 					ParentBranch: "feature/parent",
@@ -386,8 +386,9 @@ func TestHandleStrictSyncRejectsConflictsBeforePublishingStackParent(t *testing.
 	repository := &workflow.RepositoryState{
 		Path: "/tmp/project",
 		Inspection: audit.RepositoryInspection{
-			LocalBranch:    "feature/parent",
-			FinalOwnerRepo: "owner/project",
+			LocalBranch:         "feature/parent",
+			FinalOwnerRepo:      "owner/project",
+			RemoteDefaultBranch: strictSyncTestDefaultBranch,
 		},
 	}
 
@@ -395,7 +396,6 @@ func TestHandleStrictSyncRejectsConflictsBeforePublishingStackParent(t *testing.
 		taskOptionBranchName:         "feature/child",
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
-		taskOptionBaseBranch:         defaultSyncBaseBranch,
 		taskOptionCommitChanges:      true,
 		taskOptionWorktreeCommitMessage: worktreeAdoptionCommitMessageOptions{
 			Client: &strictSyncChatClient{response: "fix: resolve conflict"},
@@ -431,7 +431,8 @@ func TestHandleStrictSyncRemovesReviewBaseWhenChildCreationFails(t *testing.T) {
 	repository := &workflow.RepositoryState{
 		Path: "/tmp/project",
 		Inspection: audit.RepositoryInspection{
-			LocalBranch: "master",
+			LocalBranch:         "master",
+			RemoteDefaultBranch: strictSyncTestDefaultBranch,
 		},
 	}
 
@@ -439,7 +440,6 @@ func TestHandleStrictSyncRemovesReviewBaseWhenChildCreationFails(t *testing.T) {
 		taskOptionBranchName:         "feature/child",
 		taskOptionBranchRemote:       shared.OriginRemoteNameConstant,
 		taskOptionRequirePullRequest: true,
-		taskOptionBaseBranch:         defaultSyncBaseBranch,
 		taskOptionCommitChanges:      true,
 		taskOptionWorktreeCommitMessage: worktreeAdoptionCommitMessageOptions{
 			Client: &strictSyncChatClient{response: "feat: create child"},
@@ -471,8 +471,9 @@ func strictSyncStackTestContext(t *testing.T, gitExecutor *strictSyncGitExecutor
 		}, &workflow.RepositoryState{
 			Path: "/tmp/project",
 			Inspection: audit.RepositoryInspection{
-				LocalBranch:    "feature/parent",
-				FinalOwnerRepo: "owner/project",
+				LocalBranch:         "feature/parent",
+				FinalOwnerRepo:      "owner/project",
+				RemoteDefaultBranch: strictSyncTestDefaultBranch,
 			},
 		}
 }

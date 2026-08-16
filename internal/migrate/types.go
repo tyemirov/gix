@@ -35,9 +35,3 @@ type GitHubOperations interface {
 
 // BranchName describes a git branch identifier.
 type BranchName string
-
-// Supported branch name constants.
-const (
-	BranchMain   BranchName = BranchName("main")
-	BranchMaster BranchName = BranchName("master")
-)

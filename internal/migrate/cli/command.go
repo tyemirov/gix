@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -25,6 +26,7 @@ const (
 	taskNameTemplateConstant            = "Promote default branch to %s"
 	taskActionBranchDefaultTypeConstant = "branch.default"
 	taskOptionTargetBranchKeyConstant   = "target"
+	targetBranchRequiredMessageConstant = "default requires a target branch"
 )
 
 type commandOptions struct {
@@ -149,7 +151,7 @@ func (builder *CommandBuilder) parseOptions(command *cobra.Command, arguments []
 	}
 
 	if len(targetBranchName) == 0 {
-		targetBranchName = string(migrate.BranchMaster)
+		return commandOptions{}, errors.New(targetBranchRequiredMessageConstant)
 	}
 
 	targetBranch := migrate.BranchName(targetBranchName)

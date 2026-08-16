@@ -133,8 +133,8 @@ func TestPagesManagerScenarios(testInstance *testing.T) {
 			manager := migrate.NewPagesManager(zap.NewNop(), operationsStub)
 			updated, executionError := manager.EnsureLegacyBranch(context.Background(), migrate.PagesUpdateConfig{
 				RepositoryIdentifier: pagesTestRepositoryIdentifier,
-				SourceBranch:         migrate.BranchMain,
-				TargetBranch:         migrate.BranchMaster,
+				SourceBranch:         migrate.BranchName("main"),
+				TargetBranch:         migrate.BranchName("master"),
 			})
 
 			if testCase.updateError != nil {
@@ -145,7 +145,7 @@ func TestPagesManagerScenarios(testInstance *testing.T) {
 			require.NoError(testInstance, executionError)
 			require.Equal(testInstance, testCase.expectUpdated, updated)
 			if testCase.expectUpdated {
-				require.Equal(testInstance, string(migrate.BranchMaster), capturedConfiguration.SourceBranch)
+				require.Equal(testInstance, string(migrate.BranchName("master")), capturedConfiguration.SourceBranch)
 				require.Equal(testInstance, testCase.status.SourcePath, capturedConfiguration.SourcePath)
 			}
 		})

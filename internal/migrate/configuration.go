@@ -20,7 +20,7 @@ func DefaultCommandConfiguration() CommandConfiguration {
 	return CommandConfiguration{
 		EnableDebugLogging: false,
 		RepositoryRoots:    nil,
-		TargetBranch:       string(BranchMaster),
+		TargetBranch:       "",
 	}
 }
 
@@ -29,8 +29,5 @@ func (configuration CommandConfiguration) Sanitize() CommandConfiguration {
 	sanitized := configuration
 	sanitized.RepositoryRoots = migrateConfigurationRepositoryPathSanitizer.Sanitize(configuration.RepositoryRoots)
 	sanitized.TargetBranch = strings.TrimSpace(configuration.TargetBranch)
-	if len(sanitized.TargetBranch) == 0 {
-		sanitized.TargetBranch = string(BranchMaster)
-	}
 	return sanitized
 }

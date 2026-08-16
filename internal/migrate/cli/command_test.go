@@ -110,6 +110,25 @@ func TestCommandFlagsOverrideConfiguration(t *testing.T) {
 	require.True(t, runner.runtimeOptions.AssumeYes)
 }
 
+func TestCommandRequiresTargetBranch(t *testing.T) {
+	root := "/tmp/migrate-root"
+	builder := cli.CommandBuilder{
+		LoggerProvider: func() *zap.Logger { return zap.NewNop() },
+		ConfigurationProvider: func() migrate.CommandConfiguration {
+			return migrate.CommandConfiguration{RepositoryRoots: []string{root}}
+		},
+	}
+
+	command, buildError := builder.Build()
+	require.NoError(t, buildError)
+	bindRootAndExecutionFlags(command)
+	command.SetContext(context.Background())
+	command.SetArgs([]string{})
+
+	executionError := command.Execute()
+	require.EqualError(t, executionError, "default requires a target branch")
+}
+
 func TestCommandDisplaysHelpWhenRootsMissing(t *testing.T) {
 	t.Helper()
 

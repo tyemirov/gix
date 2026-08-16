@@ -15,7 +15,6 @@ import (
 
 const (
 	defaultMigrationRemoteNameConstant                 = "origin"
-	defaultMigrationTargetBranchConstant               = "master"
 	defaultMigrationWorkflowsDirectoryConstant         = ".github/workflows"
 	migrationSuccessMessageTemplateConstant            = "WORKFLOW-DEFAULT: %s (%s → %s) safe_to_delete=%t\n"
 	migrationIdentifierMissingMessageConstant          = "repository identifier unavailable for default-branch target"
@@ -96,6 +95,10 @@ func (operation *BranchMigrationOperation) Execute(executionContext context.Cont
 	}
 
 	target := operation.Targets[0]
+	targetBranchValue := strings.TrimSpace(target.TargetBranch)
+	if len(targetBranchValue) == 0 {
+		return errors.New(branchMigrationTargetRequiredMessageConstant)
+	}
 
 	repositories := state.CloneRepositories()
 
@@ -170,11 +173,6 @@ func (operation *BranchMigrationOperation) Execute(executionContext context.Cont
 
 		if len(sourceBranchValue) == 0 {
 			return errors.New(sourceBranchMissingMessageConstant)
-		}
-
-		targetBranchValue := strings.TrimSpace(target.TargetBranch)
-		if len(targetBranchValue) == 0 {
-			targetBranchValue = defaultMigrationTargetBranchConstant
 		}
 
 		sourceBranch := migrate.BranchName(sourceBranchValue)

@@ -212,6 +212,22 @@ func TestBuildOperationsMissingCommand(testInstance *testing.T) {
 	require.ErrorContains(testInstance, buildError, "workflow step missing command path")
 }
 
+func TestBuildOperationsRequiresDefaultBranchTarget(testInstance *testing.T) {
+	configuration := workflow.Configuration{
+		Steps: []workflow.StepConfiguration{
+			{
+				Command: []string{"default"},
+				Options: map[string]any{
+					"targets": []any{map[string]any{"source_branch": "trunk"}},
+				},
+			},
+		},
+	}
+
+	_, buildError := workflow.BuildOperations(configuration)
+	require.EqualError(testInstance, buildError, "default step requires a target branch")
+}
+
 func TestBuildOperationsApplyTasksValidation(testInstance *testing.T) {
 	configuration := workflow.Configuration{
 		Steps: []workflow.StepConfiguration{
