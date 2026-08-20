@@ -760,6 +760,10 @@ func (service mergeConflictResolutionService) resolveSemanticConflictRegion(ctx 
 			conflictFile.Path,
 			attemptTimeout,
 		)
+		resolvedContent := strings.TrimSpace(response)
+		if responseErr == nil && resolvedContent == "" {
+			responseErr = fmt.Errorf(mergeConflictResolutionEmptyResponse, conflictFile.Path)
+		}
 		if responseErr != nil {
 			if ctx.Err() != nil {
 				return "", responseErr
@@ -776,7 +780,26 @@ func (service mergeConflictResolutionService) resolveSemanticConflictRegion(ctx 
 			return "", providerRoundErr
 		}
 
-		if reviewing && strings.TrimSpace(response) == mergeConflictResolutionReviewApproved {
+		service.report(
+			shared.EventLevelInfo,
+			shared.EventCodeAIMergeValidation,
+			fmt.Sprintf("validating AI resolution for %s", subject),
+			map[string]string{"path": conflictFile.Path},
+		)
+		if containsConflictMarker(resolvedContent) {
+			attemptErr := fmt.Errorf(
+				"%s attempt %d: %w",
+				strategy,
+				attempt,
+				fmt.Errorf(mergeConflictResolutionConflictMarkers, conflictFile.Path),
+			)
+			attemptErrors = append(attemptErrors, attemptErr)
+			feedback = attemptErr.Error()
+			service.reportSemanticAttemptRejected(conflictFile.Path, regionIndex, regionCount, attempt, strategy, feedback, candidate != "")
+			continue
+		}
+
+		if reviewing && resolvedContent == mergeConflictResolutionReviewApproved {
 			service.report(
 				shared.EventLevelInfo,
 				shared.EventCodeAIMergeValidation,
@@ -930,19 +953,6 @@ func (service mergeConflictResolutionService) requestMergeConflictResolution(ctx
 			return "", fmt.Errorf(mergeConflictResolutionCanceledMessage+": %w", responseErr)
 		}
 		return "", responseErr
-	}
-	service.report(
-		shared.EventLevelInfo,
-		shared.EventCodeAIMergeValidation,
-		fmt.Sprintf("validating AI resolution for %s", subject),
-		map[string]string{"path": path},
-	)
-	resolvedContent := strings.TrimSpace(response)
-	if resolvedContent == "" {
-		return "", fmt.Errorf(mergeConflictResolutionEmptyResponse, path)
-	}
-	if containsConflictMarker(resolvedContent) {
-		return "", fmt.Errorf(mergeConflictResolutionConflictMarkers, path)
 	}
 	return response, nil
 }
