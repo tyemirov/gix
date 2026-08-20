@@ -211,7 +211,8 @@ operations:
 	require.Equal(testInstance, int32(1), llmProxyAttempts.Load())
 	require.Positive(testInstance, openAIAttempts.Load())
 	require.Contains(testInstance, outputText, "all llm connections failed")
-	require.Contains(testInstance, outputText, `llm_proxy: send llm proxy request: llm_proxy_client_http_failure: status=503 body="proxy unavailable"`)
+	require.Contains(testInstance, outputText, "llm_proxy: send llm proxy request: llm_proxy_client_http_failure: status=503")
+	require.NotContains(testInstance, outputText, "proxy unavailable")
 	require.Contains(testInstance, outputText, "openai: llm chat failed after 3 attempts: llm http error 429: openai unavailable")
 	require.NotContains(testInstance, outputText, "(and 1 more failures)")
 }

@@ -1376,7 +1376,7 @@ operations:
 	}
 }
 
-func TestSyncExhaustsSemanticTimeoutAttemptsBeforeRollback(testInstance *testing.T) {
+func TestSyncStopsSemanticRepairAfterProviderTimeoutAndRollsBack(testInstance *testing.T) {
 	testInstance.Helper()
 
 	const (
@@ -1510,10 +1510,11 @@ operations:
 	require.Contains(testInstance, output, "still resolving "+conflictedFileName+" conflict region 1/1 semantic candidate attempt")
 	require.Contains(testInstance, output, "AI_MERGE_ROLLBACK")
 	require.Contains(testInstance, output, "AI merge resolution timed out after 2s")
-	require.Contains(testInstance, output, "all semantic attempts exhausted")
+	require.Contains(testInstance, output, "stopping semantic repair")
+	require.NotContains(testInstance, output, "requesting validation-guided repair")
 	require.Contains(testInstance, output, "failed merge was aborted")
 	require.NotContains(testInstance, output, "AI_MERGE_HANDOFF")
-	require.Equal(testInstance, int64(1+mergeConflictResolutionAttemptCountForTest), responseIndex.Load())
+	require.Equal(testInstance, int64(2), responseIndex.Load())
 
 	select {
 	case <-resolutionStarted:
