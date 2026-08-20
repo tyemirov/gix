@@ -11,6 +11,64 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B071] (P1) Delete the safe source branch after default migration.
+  Reported on 2026-08-20 after `gix default master` ran for `tyemirov/QwenOC`.
+  Expected result:
+  The direct command deletes the local and remote source branches after all safety gates pass.
+  Actual result:
+  The command reports `safe_to_delete=true` but does not request source branch deletion.
+  GitHub keeps the source branch and offers a pull request for its obsolete merge commit.
+  Requirements:
+  - Make the direct `gix default` command request source branch deletion.
+  - Verify that the target contains the source changes before deletion.
+  - Accept an ancestor source or equal source and target file content.
+  - Retain a source branch that contains changes absent from the target branch.
+  - Keep `delete_source_branch` as the explicit reusable workflow option.
+  - Report both the safety result and the deletion result.
+  Validation:
+  - Reproduce the merged `main` and `master` branch graph through the compiled CLI.
+  - Verify that the command deletes local and remote `main` when both branches have equal file content.
+  - Reproduce source changes that are absent from the target branch.
+  - Verify that the command retains the source branch and reports `source_deleted=false`.
+  - Run focused tests and complete CI.
+  Resolution:
+  - The direct command requests source branch deletion.
+  - The safety gate accepts an ancestor source or equal branch file content.
+  - The safety gate retains a source branch with changes absent from the target branch.
+  - The result reports `safe_to_delete` and `source_deleted` independently.
+  - Compiled CLI tests reproduce equal merged branches and divergent branches.
+  - `make test-fast`, `make test-slow`, and `make ci` passed on 2026-08-20.
+
+- [x] [B070] (P1) Treat an absent Pages site as a valid migration state.
+  Reported on 2026-08-20 after `gix default master` ran for `tyemirov/QwenOC`.
+  Expected result:
+  The command treats an absent Pages site as a valid state and completes without a Pages warning.
+  Actual result:
+  The Pages endpoint returns `404` when the repository has no Pages site.
+  Gix reports `PAGES-SKIP` because the GitHub adapter treats this state as an operation error.
+  Gix also treats all Pages operation and response errors as noncritical warnings.
+  Requirements:
+  - Map a Pages endpoint `404` response to the disabled Pages state.
+  - Reject empty, `null`, malformed, or unsupported successful Pages responses.
+  - Stop migration when Gix cannot determine the Pages state.
+  - Do not change the default branch after a genuine Pages state error.
+  - Remove the obsolete `PAGES-SKIP` warning path.
+  Validation:
+  - Reproduce an absent Pages site through the GitHub adapter.
+  - Run the compiled CLI command `gix default master` with that response.
+  - Verify that the command changes the default branch without a Pages warning.
+  - Reproduce a genuine Pages lookup failure through the compiled CLI.
+  - Verify that the command fails before the default branch changes.
+  - Run focused tests and complete CI.
+  Resolution:
+  - The GitHub adapter maps a Pages endpoint `404` response to the disabled Pages state.
+  - The adapter rejects invalid successful Pages responses.
+  - Default migration stops when a Pages operation or response error occurs.
+  - The service no longer emits `PAGES-SKIP` for an unknown Pages state.
+  - Adapter, service, and compiled CLI tests cover absent Pages sites and genuine lookup failures.
+  - `make test-fast` and `make test-slow` passed on 2026-08-20.
+  - Final `make ci` passed on 2026-08-20.
+
 - [x] [B069] (P1) Close the obsolete pull request from the target branch.
   Reported on 2026-08-16 after `gix sync` created a `master` pull request against `main`.
   Expected result:
