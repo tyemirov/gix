@@ -156,6 +156,36 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.7.0] - 2026-08-20
+
+- Merge pull request #437 from tyemirov/bugfix/B072-stop-semantic-repair-after-provider-failure
+- test: cover conflict marker repair in semantic merge flow
+- fix(sync): retry semantic resolutions with conflict markers
+- docs(changelog): clarify semantic repair rejection handling
+- fix(sync): retain marker-bearing candidates for repair
+- test(sync): cover rollback after semantic provider failures
+- fix(sync): stop semantic repair on provider request failures
+- chore(deps): update llm-proxy and transitive dependencies
+- build: upgrade Go and dependency versions
+- docs: clarify semantic sync rollback and LLM error handling
+- fix: stop semantic repair after failed provider round
+- fix(sync): stop semantic repair after provider round failure
+- fix: stop semantic repair after provider request failures
+- ci: upgrade Go version to 1.26.5
+- Merge pull request #436 from tyemirov/bugfix/B070-model-pages-absence
+- test: cover safe deletion of remotely advanced source branches
+- fix(migrate): guard source deletion with remote lease verification
+- docs: document verified source commit for branch deletion
+- docs: document verified remote branch deletion safety
+- fix(migrate): verify source commit before deleting old default branch
+- docs: record remote branch deletion safety resolution
+- test: cover default branch Pages and source deletion flows
+- feat(migrate): prevent unsafe source branch deletion
+- feat(migrate): delete old default branch after safety checks
+- docs: document source branch deletion after default promotion
+- fix(migrate): safely delete old default branches
+- fix(migrate): delete safe source branches and handle absent Pages
+
 ## [v1.6.1] - 2026-08-16
 
 - Merge pull request #435 from tyemirov/bugfix/B069-close-obsolete-target-pr
