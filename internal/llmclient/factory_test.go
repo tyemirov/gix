@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/tyemirov/llm-proxy/pkg/llmproxyclient"
 	"github.com/tyemirov/llm-proxy/pkg/llmproxycontract"
 	"github.com/tyemirov/utils/llm"
 )
@@ -102,6 +103,33 @@ func TestNewFactoryUsesLLMProxyV2ForInternalRouteAndProvider(t *testing.T) {
 	require.Equal(t, "Return a commit message.", capturedBody.Messages[0].Content)
 	require.Equal(t, "user", capturedBody.Messages[1].Role)
 	require.Equal(t, "Diff", capturedBody.Messages[1].Content)
+}
+
+func TestProxyChatClientPreservesTypedHTTPFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, _ *http.Request) {
+		responseWriter.WriteHeader(http.StatusForbidden)
+		_, _ = responseWriter.Write([]byte("private authentication detail"))
+	}))
+	t.Cleanup(server.Close)
+
+	client, clientError := NewFactory(Config{
+		Transport:      TransportLLMProxy,
+		Provider:       "meta",
+		BaseURL:        server.URL,
+		APIKey:         "rejected-secret",
+		RequestTimeout: time.Second,
+	})
+	require.NoError(t, clientError)
+
+	response, responseError := client.Chat(context.Background(), llm.ChatRequest{
+		Messages: []llm.Message{{Role: "user", Content: "Resolve the conflict."}},
+	})
+
+	require.Empty(t, response)
+	var httpFailure *llmproxyclient.HTTPFailure
+	require.ErrorAs(t, responseError, &httpFailure)
+	require.Equal(t, http.StatusForbidden, httpFailure.StatusCode())
+	require.NotContains(t, responseError.Error(), "private authentication detail")
 }
 
 func TestNewFactoryOmitsLLMProxyModelForProviderDefault(t *testing.T) {

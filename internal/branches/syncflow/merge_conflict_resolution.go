@@ -764,11 +764,16 @@ func (service mergeConflictResolutionService) resolveSemanticConflictRegion(ctx 
 			if ctx.Err() != nil {
 				return "", responseErr
 			}
-			attemptErr := fmt.Errorf("%s attempt %d: %w", strategy, attempt, responseErr)
-			attemptErrors = append(attemptErrors, attemptErr)
-			feedback = attemptErr.Error()
-			service.reportSemanticAttemptRejected(conflictFile.Path, regionIndex, regionCount, attempt, strategy, feedback, candidate != "")
-			continue
+			providerRoundErr := fmt.Errorf("%s attempt %d provider request failed: %w", strategy, attempt, responseErr)
+			service.reportSemanticProviderRoundFailed(
+				conflictFile.Path,
+				regionIndex,
+				regionCount,
+				attempt,
+				strategy,
+				providerRoundErr,
+			)
+			return "", providerRoundErr
 		}
 
 		if reviewing && strings.TrimSpace(response) == mergeConflictResolutionReviewApproved {
@@ -841,6 +846,30 @@ func (service mergeConflictResolutionService) resolveSemanticConflictRegion(ctx 
 		regionIndex+1,
 		mergeConflictResolutionMaxSemanticAttempts,
 		errors.Join(attemptErrors...),
+	)
+}
+
+func (service mergeConflictResolutionService) reportSemanticProviderRoundFailed(path string, regionIndex int, regionCount int, attempt int, strategy string, providerRoundErr error) {
+	service.report(
+		shared.EventLevelWarn,
+		shared.EventCodeAIMergeResolution,
+		fmt.Sprintf(
+			"%s provider round failed for %s conflict region %d/%d on attempt %d/%d; stopping semantic repair: %s",
+			strategy,
+			path,
+			regionIndex+1,
+			regionCount,
+			attempt,
+			mergeConflictResolutionMaxSemanticAttempts,
+			strings.ReplaceAll(strings.TrimSpace(providerRoundErr.Error()), "\n", "; "),
+		),
+		map[string]string{
+			"path":     path,
+			"region":   strconv.Itoa(regionIndex + 1),
+			"attempt":  strconv.Itoa(attempt),
+			"strategy": strategy,
+			"reason":   providerRoundErr.Error(),
+		},
 	)
 }
 
