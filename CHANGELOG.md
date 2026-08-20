@@ -26,6 +26,7 @@
 - Updated the LLM Proxy Go client from v0.2.21 to v0.2.46, moved Gix's configured proxy work budget to the current per-request timeout header, and raised the Go module floor to 1.25.12 with the dependency graph required by that client.
 
 ### Bug Fixes 🐛
+- Stopped semantic repair after one failed provider round. Kept validation feedback for returned candidate rejection. Preserved typed LLM Proxy HTTP status and exact rollback.
 - Deleted the old default branch after all safety gates passed. Fetched remote branch commits before each deletion safety check. Made deletion conditional on the verified source commit.
 - Mapped GitHub Pages `404` responses to the disabled state. Other Pages lookup and response failures now stop default-branch migration.
 - Limited automatic pull request closure to the target repository. Pull requests from other repositories keep the base-change flow.
