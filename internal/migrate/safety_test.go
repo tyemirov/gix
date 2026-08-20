@@ -64,6 +64,14 @@ func TestSafetyEvaluatorScenarios(testInstance *testing.T) {
 				"workflow files still reference source branch",
 			},
 		},
+		{
+			name: "source_changes_missing",
+			inputs: migrate.SafetyInputs{
+				SourceChangesMissing: true,
+			},
+			expectedSafe:    false,
+			expectedReasons: []string{"source branch contains changes absent from target branch"},
+		},
 	}
 
 	evaluator := migrate.SafetyEvaluator{}

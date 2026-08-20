@@ -196,7 +196,7 @@ func TestServiceExecuteRejectsDirtyWorktreeBeforeTargetPreparation(testInstance 
 	require.Equal(testInstance, []string{"status --porcelain=v1 -z"}, executor.gitCommands)
 }
 
-func TestServiceExecuteContinuesWhenPagesLookupFails(testInstance *testing.T) {
+func TestServiceExecuteStopsWhenPagesLookupFails(testInstance *testing.T) {
 	repositoryExecutor := stubGitCommandExecutor{}
 	repositoryManager, managerError := gitrepo.NewRepositoryManager(repositoryExecutor)
 	require.NoError(testInstance, managerError)
@@ -228,12 +228,10 @@ func TestServiceExecuteContinuesWhenPagesLookupFails(testInstance *testing.T) {
 	}
 
 	result, executionError := service.Execute(testGitHubContext(), options)
-	require.NoError(testInstance, executionError)
-	require.False(testInstance, result.PagesConfigurationUpdated)
-	require.True(testInstance, result.DefaultBranchUpdated)
-	require.True(testInstance, githubOperations.defaultBranchSet)
-	require.Len(testInstance, result.Warnings, 1)
-	require.Contains(testInstance, result.Warnings[0], "PAGES-SKIP")
+	require.Error(testInstance, executionError)
+	require.Contains(testInstance, executionError.Error(), "GitHub Pages update failed")
+	require.Equal(testInstance, MigrationResult{}, result)
+	require.False(testInstance, githubOperations.defaultBranchSet)
 }
 
 func TestServiceExecuteWarnsWhenRetargetFails(testInstance *testing.T) {

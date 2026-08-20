@@ -26,6 +26,8 @@
 - Updated the LLM Proxy Go client from v0.2.21 to v0.2.46, moved Gix's configured proxy work budget to the current per-request timeout header, and raised the Go module floor to 1.25.12 with the dependency graph required by that client.
 
 ### Bug Fixes 🐛
+- Deleted the old default branch after all safety gates passed. Fetched remote branch commits before each deletion safety check. Made deletion conditional on the verified source commit.
+- Mapped GitHub Pages `404` responses to the disabled state. Other Pages lookup and response failures now stop default-branch migration.
 - Limited automatic pull request closure to the target repository. Pull requests from other repositories keep the base-change flow.
 - Rejected the obsolete `base_branch` task option before strict sync selected a different pull request base.
 - Fetched the authoritative remote default ref explicitly. Strict sync used this ref in a clone with a narrow fetch refspec.
@@ -82,6 +84,7 @@
 - Kept the syncflow builder description as the canonical text shown by `gix sync --help`.
 
 ### Testing 🧪
+- Added adapter, service, and compiled CLI coverage for absent Pages sites and genuine Pages lookup failures.
 - Added compiled CLI coverage for obsolete task configuration and a narrow single-branch feature clone. The clone's fetch refspec excluded the remote default branch.
 - Added compiled CLI coverage for `gix default master` from a dirty `main` branch with no `master` ref. The test verifies exact preservation of the checkout, commit, index, repository and remote refs, workflow, dirty files, and GitHub state.
 - Added compiled CLI coverage that exchanges `main` and `master` as the default and target branches. A metadata-failure regression makes audit report the ordinary local branch. Each case creates or updates the target and opens its pull request against the remote default branch.

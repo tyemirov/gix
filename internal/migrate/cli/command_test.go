@@ -62,6 +62,7 @@ func TestCommandUsesConfigurationRootsAndTargetBranch(t *testing.T) {
 	action := runner.definitions[0].Actions[0]
 	require.Equal(t, "branch.default", action.Type)
 	require.Equal(t, "master", action.Options["target"])
+	require.Equal(t, true, action.Options["delete_source_branch"])
 
 	require.False(t, runner.runtimeOptions.AssumeYes)
 }

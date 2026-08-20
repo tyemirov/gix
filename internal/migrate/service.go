@@ -30,6 +30,7 @@ const (
 	gitBranchCommandNameConstant                    = "branch"
 	gitDeleteForceFlagConstant                      = "-D"
 	gitPushDeleteFlagConstant                       = "--delete"
+	gitPushForceWithLeaseTemplateConstant           = "--force-with-lease=refs/heads/%s:%s"
 	workflowCommitMessageTemplateConstant           = "CI: switch workflow branch filters to %s"
 	cleanWorktreeRequiredMessageConstant            = "repository worktree must be clean before migration"
 	repositoryManagerMissingMessageConstant         = "repository manager not configured"
@@ -40,8 +41,6 @@ const (
 	workflowCommitErrorTemplateConstant             = "unable to commit workflow updates: %w"
 	workflowPushErrorTemplateConstant               = "unable to push workflow updates: %w"
 	pagesUpdateErrorTemplateConstant                = "GitHub Pages update failed: %w"
-	pagesUpdateWarningMessageConstant               = "GitHub Pages update skipped"
-	pagesUpdateWarningTemplateConstant              = "PAGES-SKIP: %s (%s)"
 	defaultBranchUpdateErrorMessageTemplateConstant = "DEFAULT-BRANCH-UPDATE repository=%s path=%s source=%s target=%s"
 	pullRequestListErrorTemplateConstant            = "unable to list pull requests: %w"
 	pullRequestListWarningTemplateConstant          = "PR-LIST-SKIP: %s (%s)"
@@ -99,6 +98,7 @@ type MigrationResult struct {
 	WorkflowOutcome           WorkflowOutcome
 	PagesConfigurationUpdated bool
 	DefaultBranchUpdated      bool
+	SourceBranchDeleted       bool
 	RetargetedPullRequests    []int
 	ClosedPullRequests        []int
 	SafetyStatus              SafetyStatus
@@ -242,6 +242,26 @@ func (service *Service) Execute(executionContext context.Context, options Migrat
 	if preparationError := prepareTargetBranch(executionContext, service.repositoryManager, service.gitExecutor, options); preparationError != nil {
 		return MigrationResult{}, preparationError
 	}
+	deletionSafety := sourceDeletionSafety{}
+	if options.DeleteSourceBranch {
+		var deletionSafetyError error
+		deletionSafety, deletionSafetyError = verifyRemoteSourceDeletionSafety(executionContext, service.gitExecutor, options)
+		if deletionSafetyError != nil {
+			return MigrationResult{}, deletionSafetyError
+		}
+	} else {
+		var sourceChangesError error
+		deletionSafety.SourceChangesMissing, sourceChangesError = sourceChangesMissingBetweenReferences(
+			executionContext,
+			service.gitExecutor,
+			options.RepositoryPath,
+			string(options.SourceBranch),
+			string(options.TargetBranch),
+		)
+		if sourceChangesError != nil {
+			return MigrationResult{}, sourceChangesError
+		}
+	}
 
 	workflowOutcome, rewriteError := service.workflowRewriter.Rewrite(executionContext, WorkflowRewriteConfig{
 		RepositoryPath:     options.RepositoryPath,
@@ -275,19 +295,7 @@ func (service *Service) Execute(executionContext context.Context, options Migrat
 			TargetBranch:         options.TargetBranch,
 		})
 		if pagesError != nil {
-			if isNonCriticalPagesError(pagesError) {
-				service.logger.Warn(
-					pagesUpdateWarningMessageConstant,
-					zap.String(repositoryPathFieldNameConstant, options.RepositoryPath),
-					zap.String(repositoryIdentifierFieldNameConstant, options.RepositoryIdentifier),
-					zap.Error(pagesError),
-				)
-				warning := fmt.Sprintf(pagesUpdateWarningTemplateConstant, options.RepositoryIdentifier, summarizeCommandError(pagesError))
-				service.warnings = append(service.warnings, warning)
-				pagesUpdated = false
-			} else {
-				return MigrationResult{}, fmt.Errorf(pagesUpdateErrorTemplateConstant, pagesError)
-			}
+			return MigrationResult{}, fmt.Errorf(pagesUpdateErrorTemplateConstant, pagesError)
 		}
 	}
 
@@ -359,6 +367,7 @@ func (service *Service) Execute(executionContext context.Context, options Migrat
 		OpenPullRequestCount: len(pullRequests) - len(pullRequestOutcome.closed),
 		BranchProtected:      branchProtected,
 		WorkflowMentions:     workflowOutcome.RemainingMainReferences,
+		SourceChangesMissing: deletionSafety.SourceChangesMissing,
 	})
 
 	result := MigrationResult{
@@ -379,7 +388,7 @@ func (service *Service) Execute(executionContext context.Context, options Migrat
 				zap.String(sourceBranchFieldNameConstant, string(options.SourceBranch)),
 			)
 		} else {
-			if deletionError := service.deleteSourceBranch(executionContext, options); deletionError != nil {
+			if deletionError := service.deleteSourceBranch(executionContext, options, deletionSafety.SourceCommit); deletionError != nil {
 				service.logger.Warn(
 					"Source branch deletion failed",
 					zap.String(repositoryPathFieldNameConstant, options.RepositoryPath),
@@ -387,24 +396,13 @@ func (service *Service) Execute(executionContext context.Context, options Migrat
 				)
 				warning := fmt.Sprintf(branchDeletionWarningTemplateConstant, summarizeCommandError(deletionError))
 				result.Warnings = append(result.Warnings, warning)
+			} else {
+				result.SourceBranchDeleted = true
 			}
 		}
 	}
 
 	return result, nil
-}
-
-func isNonCriticalPagesError(err error) bool {
-	var operationError githubcli.OperationError
-	if errors.As(err, &operationError) {
-		return true
-	}
-	var decodingError githubcli.ResponseDecodingError
-	if errors.As(err, &decodingError) {
-		return true
-	}
-	var missingToken githubauth.MissingTokenError
-	return errors.As(err, &missingToken) && !missingToken.CriticalRequirement()
 }
 
 func (service *Service) validateOptions(options MigrationOptions) error {
@@ -467,21 +465,27 @@ func (service *Service) pushWorkflowChanges(executionContext context.Context, op
 	return nil
 }
 
-func (service *Service) deleteSourceBranch(executionContext context.Context, options MigrationOptions) error {
+func (service *Service) deleteSourceBranch(executionContext context.Context, options MigrationOptions, verifiedSourceCommit commitOID) error {
+	deleteRemoteArguments := []string{
+		gitPushCommandNameConstant,
+		fmt.Sprintf(gitPushForceWithLeaseTemplateConstant, options.SourceBranch, verifiedSourceCommit),
+		options.RepositoryRemoteName,
+		gitPushDeleteFlagConstant,
+		string(options.SourceBranch),
+	}
+	if _, deleteRemoteError := service.gitExecutor.ExecuteGit(executionContext, execshell.CommandDetails{
+		Arguments:        deleteRemoteArguments,
+		WorkingDirectory: options.RepositoryPath,
+	}); deleteRemoteError != nil {
+		return fmt.Errorf(remoteBranchDeleteErrorTemplateConstant, deleteRemoteError)
+	}
+
 	deleteLocalArguments := []string{gitBranchCommandNameConstant, gitDeleteForceFlagConstant, string(options.SourceBranch)}
 	if _, deleteLocalError := service.gitExecutor.ExecuteGit(executionContext, execshell.CommandDetails{
 		Arguments:        deleteLocalArguments,
 		WorkingDirectory: options.RepositoryPath,
 	}); deleteLocalError != nil {
 		return fmt.Errorf(localBranchDeleteErrorTemplateConstant, deleteLocalError)
-	}
-
-	deleteRemoteArguments := []string{gitPushCommandNameConstant, options.RepositoryRemoteName, gitPushDeleteFlagConstant, string(options.SourceBranch)}
-	if _, deleteRemoteError := service.gitExecutor.ExecuteGit(executionContext, execshell.CommandDetails{
-		Arguments:        deleteRemoteArguments,
-		WorkingDirectory: options.RepositoryPath,
-	}); deleteRemoteError != nil {
-		return fmt.Errorf(remoteBranchDeleteErrorTemplateConstant, deleteRemoteError)
 	}
 
 	return nil

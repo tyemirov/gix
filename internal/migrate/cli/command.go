@@ -19,14 +19,15 @@ import (
 )
 
 const (
-	commandUseConstant                  = "default"
-	commandUseTemplateConstant          = commandUseConstant + " <target-branch>"
-	commandShortDescriptionConstant     = "Set the repository default branch"
-	commandLongDescriptionConstant      = "default retargets workflows, updates GitHub configuration, and evaluates safety gates before promoting the requested branch, automatically detecting the current default branch."
-	taskNameTemplateConstant            = "Promote default branch to %s"
-	taskActionBranchDefaultTypeConstant = "branch.default"
-	taskOptionTargetBranchKeyConstant   = "target"
-	targetBranchRequiredMessageConstant = "default requires a target branch"
+	commandUseConstant                   = "default"
+	commandUseTemplateConstant           = commandUseConstant + " <target-branch>"
+	commandShortDescriptionConstant      = "Set the repository default branch"
+	commandLongDescriptionConstant       = "default retargets workflows, updates GitHub configuration, and evaluates safety gates before promoting the requested branch, automatically detecting the current default branch."
+	taskNameTemplateConstant             = "Promote default branch to %s"
+	taskActionBranchDefaultTypeConstant  = "branch.default"
+	taskOptionTargetBranchKeyConstant    = "target"
+	taskOptionDeleteSourceBranchConstant = "delete_source_branch"
+	targetBranchRequiredMessageConstant  = "default requires a target branch"
 )
 
 type commandOptions struct {
@@ -108,7 +109,8 @@ func (builder *CommandBuilder) runDefault(command *cobra.Command, arguments []st
 	taskRunner := resolveTaskRunner(builder.TaskRunnerFactory, dependencyResult.Workflow)
 
 	actionOptions := map[string]any{
-		taskOptionTargetBranchKeyConstant: string(options.targetBranch),
+		taskOptionTargetBranchKeyConstant:    string(options.targetBranch),
+		taskOptionDeleteSourceBranchConstant: true,
 	}
 
 	taskDefinition := workflow.TaskDefinition{

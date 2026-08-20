@@ -14,7 +14,7 @@ import (
 const (
 	defaultMigrationRemoteNameConstant                 = "origin"
 	defaultMigrationWorkflowsDirectoryConstant         = ".github/workflows"
-	migrationSuccessMessageTemplateConstant            = "WORKFLOW-DEFAULT: %s (%s → %s) safe_to_delete=%t\n"
+	migrationSuccessMessageTemplateConstant            = "WORKFLOW-DEFAULT: %s (%s → %s) safe_to_delete=%t source_deleted=%t\n"
 	migrationIdentifierMissingMessageConstant          = "repository identifier unavailable for default-branch target"
 	migrationExecutionErrorTemplateConstant            = "default branch update failed: %w"
 	migrationRefreshErrorTemplateConstant              = "failed to refresh repository after default branch update: %w"
@@ -195,7 +195,7 @@ func (operation *BranchMigrationOperation) Execute(executionContext context.Cont
 		}
 
 		if environment.Output != nil {
-			fmt.Fprintf(environment.Output, migrationSuccessMessageTemplateConstant, repositoryState.Path, sourceBranchValue, targetBranchValue, result.SafetyStatus.SafeToDelete)
+			fmt.Fprintf(environment.Output, migrationSuccessMessageTemplateConstant, repositoryState.Path, sourceBranchValue, targetBranchValue, result.SafetyStatus.SafeToDelete, result.SourceBranchDeleted)
 			for _, warning := range result.Warnings {
 				fmt.Fprintln(environment.Output, warning)
 			}
