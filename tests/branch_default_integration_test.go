@@ -253,6 +253,7 @@ func TestBranchDefaultClosesPullRequestFromPromotedBranch(testInstance *testing.
 		[]byte(buildBranchDefaultGitWrapper(realGitBinary, stateDirectory)),
 		0o755,
 	))
+	verifiedSourceCommit := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", branchDefaultInitialBranch))
 
 	output := runIntegrationCommand(
 		testInstance,
@@ -298,7 +299,7 @@ func TestBranchDefaultClosesPullRequestFromPromotedBranch(testInstance *testing.
 	)))
 	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--list", branchDefaultInitialBranch)))
 	gitLog := readTextFile(testInstance, filepath.Join(stateDirectory, "git.log"))
-	require.Contains(testInstance, gitLog, "push\norigin\n--delete\n"+branchDefaultInitialBranch+"\n")
+	require.Contains(testInstance, gitLog, "push\n--force-with-lease=refs/heads/"+branchDefaultInitialBranch+":"+verifiedSourceCommit+"\norigin\n--delete\n"+branchDefaultInitialBranch+"\n")
 }
 
 func TestBranchDefaultDeletesContentEquivalentMergedSource(testInstance *testing.T) {
@@ -324,6 +325,7 @@ func TestBranchDefaultDeletesContentEquivalentMergedSource(testInstance *testing
 
 	stateDirectory := testInstance.TempDir()
 	initializeStubStateFile(testInstance, stateDirectory, branchDefaultPromotionRemoteRepository, branchDefaultInitialBranch)
+	verifiedSourceCommit := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", branchDefaultInitialBranch))
 	output := runBranchDefaultMigration(testInstance, repositoryPath, stateDirectory)
 
 	require.Contains(testInstance, output, fmt.Sprintf(
@@ -332,9 +334,8 @@ func TestBranchDefaultDeletesContentEquivalentMergedSource(testInstance *testing
 	))
 	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--list", branchDefaultInitialBranch)))
 	gitLog := readTextFile(testInstance, filepath.Join(stateDirectory, "git.log"))
-	require.Contains(testInstance, gitLog, "merge-base\n--is-ancestor\nmain\nmaster\n")
-	require.Contains(testInstance, gitLog, "diff\n--quiet\nmain\nmaster\n")
-	require.Contains(testInstance, gitLog, "push\norigin\n--delete\nmain\n")
+	require.Contains(testInstance, gitLog, "fetch\n--no-tags\norigin\n+refs/heads/main:refs/remotes/origin/main\n+refs/heads/master:refs/remotes/origin/master\n")
+	require.Contains(testInstance, gitLog, "push\n--force-with-lease=refs/heads/main:"+verifiedSourceCommit+"\norigin\n--delete\nmain\n")
 }
 
 func TestBranchDefaultRetainsSourceWithUnpreservedChanges(testInstance *testing.T) {
@@ -371,7 +372,100 @@ func TestBranchDefaultRetainsSourceWithUnpreservedChanges(testInstance *testing.
 	))
 	require.NotEmpty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--list", branchDefaultInitialBranch)))
 	gitLog := readTextFile(testInstance, filepath.Join(stateDirectory, "git.log"))
-	require.NotContains(testInstance, gitLog, "push\norigin\n--delete\nmain\n")
+	require.NotContains(testInstance, gitLog, "--delete\nmain\n")
+}
+
+func TestBranchDefaultRetainsRemoteSourceAheadOfStaleLocalBranch(testInstance *testing.T) {
+	workspaceDirectory := testInstance.TempDir()
+	remotePath := filepath.Join(workspaceDirectory, "remote.git")
+	repositoryPath := filepath.Join(workspaceDirectory, "stale-checkout")
+	runGitWithDir(testInstance, workspaceDirectory, "init", "--bare", remotePath)
+	runGitWithDir(testInstance, workspaceDirectory, "init", "--initial-branch="+branchDefaultInitialBranch, repositoryPath)
+	configureGitIdentity(testInstance, repositoryPath)
+
+	readmePath := filepath.Join(repositoryPath, "README.md")
+	workflowPath := filepath.Join(repositoryPath, branchDefaultWorkflowRelativePath)
+	require.NoError(testInstance, os.WriteFile(readmePath, []byte("stale checkout repository\n"), 0o644))
+	require.NoError(testInstance, os.MkdirAll(filepath.Dir(workflowPath), 0o755))
+	require.NoError(testInstance, os.WriteFile(workflowPath, []byte(fmt.Sprintf(branchDefaultWorkflowTemplate, branchDefaultInitialBranch)), 0o644))
+	runGit(testInstance, repositoryPath, "add", "README.md", branchDefaultWorkflowRelativePath)
+	runGit(testInstance, repositoryPath, "commit", "-m", branchDefaultInitialCommitMessage)
+	initialCommit := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD"))
+	runGit(testInstance, repositoryPath, "remote", "add", "origin", remotePath)
+	runGit(testInstance, repositoryPath, "push", "-u", "origin", branchDefaultInitialBranch)
+	runGit(testInstance, repositoryPath, "branch", branchDefaultTargetBranch, initialCommit)
+	runGit(testInstance, repositoryPath, "push", "origin", branchDefaultTargetBranch)
+
+	remoteOnlyPath := filepath.Join(repositoryPath, "remote-only.txt")
+	require.NoError(testInstance, os.WriteFile(remoteOnlyPath, []byte("remote source change\n"), 0o644))
+	runGit(testInstance, repositoryPath, "add", filepath.Base(remoteOnlyPath))
+	runGit(testInstance, repositoryPath, "commit", "-m", "add remote source change")
+	remoteSourceCommit := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD"))
+	runGit(testInstance, repositoryPath, "push", "origin", branchDefaultInitialBranch)
+	runGit(testInstance, repositoryPath, "checkout", branchDefaultTargetBranch)
+	runGit(testInstance, repositoryPath, "branch", "-f", branchDefaultInitialBranch, initialCommit)
+	runGit(testInstance, remotePath, "symbolic-ref", "HEAD", "refs/heads/"+branchDefaultInitialBranch)
+	runGit(testInstance, repositoryPath, "remote", "set-url", "origin", branchDefaultPromotionRemoteURL)
+
+	stateDirectory := testInstance.TempDir()
+	initializeStubStateFile(testInstance, stateDirectory, branchDefaultPromotionRemoteRepository, branchDefaultInitialBranch)
+	output := runBranchDefaultMigrationWithRemote(testInstance, repositoryPath, stateDirectory, remotePath)
+
+	require.Contains(testInstance, output, fmt.Sprintf(
+		"WORKFLOW-DEFAULT: %s (main → master) safe_to_delete=false source_deleted=false",
+		repositoryPath,
+	))
+	require.Equal(testInstance, remoteSourceCommit, strings.TrimSpace(runGit(testInstance, remotePath, "rev-parse", "refs/heads/"+branchDefaultInitialBranch)))
+	gitLog := readTextFile(testInstance, filepath.Join(stateDirectory, "git.log"))
+	require.Contains(testInstance, gitLog, "fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main +refs/heads/master:refs/remotes/origin/master")
+	require.NotContains(testInstance, gitLog, "--delete "+branchDefaultInitialBranch)
+}
+
+func TestBranchDefaultRetainsRemoteSourceThatAdvancesBeforeDeletion(testInstance *testing.T) {
+	workspaceDirectory := testInstance.TempDir()
+	remotePath := filepath.Join(workspaceDirectory, "remote.git")
+	repositoryPath := filepath.Join(workspaceDirectory, "source-race")
+	runGitWithDir(testInstance, workspaceDirectory, "init", "--bare", remotePath)
+	runGitWithDir(testInstance, workspaceDirectory, "init", "--initial-branch="+branchDefaultInitialBranch, repositoryPath)
+	configureGitIdentity(testInstance, repositoryPath)
+
+	readmePath := filepath.Join(repositoryPath, "README.md")
+	workflowPath := filepath.Join(repositoryPath, branchDefaultWorkflowRelativePath)
+	require.NoError(testInstance, os.WriteFile(readmePath, []byte("source race repository\n"), 0o644))
+	require.NoError(testInstance, os.MkdirAll(filepath.Dir(workflowPath), 0o755))
+	require.NoError(testInstance, os.WriteFile(workflowPath, []byte(fmt.Sprintf(branchDefaultWorkflowTemplate, branchDefaultInitialBranch)), 0o644))
+	runGit(testInstance, repositoryPath, "add", "README.md", branchDefaultWorkflowRelativePath)
+	runGit(testInstance, repositoryPath, "commit", "-m", branchDefaultInitialCommitMessage)
+	verifiedSourceCommit := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD"))
+	runGit(testInstance, repositoryPath, "remote", "add", "origin", remotePath)
+	runGit(testInstance, repositoryPath, "push", "-u", "origin", branchDefaultInitialBranch)
+	runGit(testInstance, repositoryPath, "branch", branchDefaultTargetBranch, verifiedSourceCommit)
+	runGit(testInstance, repositoryPath, "push", "origin", branchDefaultTargetBranch)
+
+	concurrentPath := filepath.Join(repositoryPath, "concurrent.txt")
+	require.NoError(testInstance, os.WriteFile(concurrentPath, []byte("concurrent source change\n"), 0o644))
+	runGit(testInstance, repositoryPath, "add", filepath.Base(concurrentPath))
+	runGit(testInstance, repositoryPath, "commit", "-m", "add concurrent source change")
+	advancedSourceCommit := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD"))
+	runGit(testInstance, repositoryPath, "push", "origin", "HEAD:refs/heads/source-race")
+	runGit(testInstance, repositoryPath, "checkout", branchDefaultTargetBranch)
+	runGit(testInstance, repositoryPath, "branch", "-f", branchDefaultInitialBranch, verifiedSourceCommit)
+	runGit(testInstance, remotePath, "symbolic-ref", "HEAD", "refs/heads/"+branchDefaultInitialBranch)
+	runGit(testInstance, repositoryPath, "remote", "set-url", "origin", branchDefaultPromotionRemoteURL)
+
+	stateDirectory := testInstance.TempDir()
+	initializeStubStateFile(testInstance, stateDirectory, branchDefaultPromotionRemoteRepository, branchDefaultInitialBranch)
+	output := runBranchDefaultMigrationWithRemoteAdvance(testInstance, repositoryPath, stateDirectory, remotePath, advancedSourceCommit)
+
+	require.Contains(testInstance, output, fmt.Sprintf(
+		"WORKFLOW-DEFAULT: %s (main → master) safe_to_delete=true source_deleted=false",
+		repositoryPath,
+	))
+	require.Contains(testInstance, output, "DELETE-SKIP:")
+	require.Equal(testInstance, advancedSourceCommit, strings.TrimSpace(runGit(testInstance, remotePath, "rev-parse", "refs/heads/"+branchDefaultInitialBranch)))
+	require.NotEmpty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--list", branchDefaultInitialBranch)))
+	gitLog := readTextFile(testInstance, filepath.Join(stateDirectory, "git.log"))
+	require.Contains(testInstance, gitLog, "push --force-with-lease=refs/heads/main:"+verifiedSourceCommit+" origin --delete main")
 }
 
 func TestBranchDefaultRetargetsSameNamedForkPullRequest(testInstance *testing.T) {
@@ -499,7 +593,7 @@ func TestBranchDefaultRejectsDirtyWorktreeBeforeLocalOrRemoteMutation(testInstan
 	realGitBinary, lookupError := exec.LookPath(branchDefaultGitExecutable)
 	require.NoError(testInstance, lookupError)
 	require.NoError(testInstance, os.WriteFile(filepath.Join(stubDirectory, branchDefaultStubExecutableName), []byte(buildBranchDefaultStubScript(stateDirectory)), 0o755))
-	require.NoError(testInstance, os.WriteFile(filepath.Join(stubDirectory, branchDefaultGitWrapperExecutableName), []byte(buildBranchDefaultDelegatingGitWrapper(realGitBinary, stateDirectory, remotePath)), 0o755))
+	require.NoError(testInstance, os.WriteFile(filepath.Join(stubDirectory, branchDefaultGitWrapperExecutableName), []byte(buildBranchDefaultDelegatingGitWrapper(realGitBinary, stateDirectory, remotePath, "")), 0o755))
 
 	output, runError := runFailingIntegrationCommand(
 		testInstance,
@@ -601,6 +695,42 @@ func initializeRepositoryWithFiles(testInstance *testing.T, repositoryPath strin
 
 func runBranchDefaultMigration(testInstance *testing.T, repositoryPath string, stateDirectory string) string {
 	testInstance.Helper()
+	realGitBinary, lookupError := exec.LookPath(branchDefaultGitExecutable)
+	require.NoError(testInstance, lookupError)
+	return runBranchDefaultMigrationWithWrapper(
+		testInstance,
+		repositoryPath,
+		stateDirectory,
+		buildBranchDefaultGitWrapper(realGitBinary, stateDirectory),
+	)
+}
+
+func runBranchDefaultMigrationWithRemote(testInstance *testing.T, repositoryPath string, stateDirectory string, remotePath string) string {
+	testInstance.Helper()
+	realGitBinary, lookupError := exec.LookPath(branchDefaultGitExecutable)
+	require.NoError(testInstance, lookupError)
+	return runBranchDefaultMigrationWithWrapper(
+		testInstance,
+		repositoryPath,
+		stateDirectory,
+		buildBranchDefaultDelegatingGitWrapper(realGitBinary, stateDirectory, remotePath, ""),
+	)
+}
+
+func runBranchDefaultMigrationWithRemoteAdvance(testInstance *testing.T, repositoryPath string, stateDirectory string, remotePath string, advancedSourceCommit string) string {
+	testInstance.Helper()
+	realGitBinary, lookupError := exec.LookPath(branchDefaultGitExecutable)
+	require.NoError(testInstance, lookupError)
+	return runBranchDefaultMigrationWithWrapper(
+		testInstance,
+		repositoryPath,
+		stateDirectory,
+		buildBranchDefaultDelegatingGitWrapper(realGitBinary, stateDirectory, remotePath, advancedSourceCommit),
+	)
+}
+
+func runBranchDefaultMigrationWithWrapper(testInstance *testing.T, repositoryPath string, stateDirectory string, gitWrapper string) string {
+	testInstance.Helper()
 	stubDirectory := filepath.Join(testInstance.TempDir(), "bin")
 	require.NoError(testInstance, os.MkdirAll(stubDirectory, 0o755))
 	require.NoError(testInstance, os.WriteFile(
@@ -608,11 +738,9 @@ func runBranchDefaultMigration(testInstance *testing.T, repositoryPath string, s
 		[]byte(buildBranchDefaultStubScript(stateDirectory)),
 		0o755,
 	))
-	realGitBinary, lookupError := exec.LookPath(branchDefaultGitExecutable)
-	require.NoError(testInstance, lookupError)
 	require.NoError(testInstance, os.WriteFile(
 		filepath.Join(stubDirectory, branchDefaultGitWrapperExecutableName),
-		[]byte(buildBranchDefaultGitWrapper(realGitBinary, stateDirectory)),
+		[]byte(gitWrapper),
 		0o755,
 	))
 
@@ -783,6 +911,20 @@ printf '%%s\n' "$@" >>"$STATE_DIR/git.log"
 if [ "$1" = "ls-remote" ]; then
   exit 0
 fi
+if [ "$1" = "fetch" ]; then
+  for argument in "$@"; do
+    case "$argument" in
+      +refs/heads/*:refs/remotes/*)
+        source_reference=${argument%%%%:*}
+        source_reference=${source_reference#+}
+        destination_reference=${argument#*:}
+        source_commit=$("$REAL_GIT" rev-parse "$source_reference")
+        "$REAL_GIT" update-ref "$destination_reference" "$source_commit"
+        ;;
+    esac
+  done
+  exit 0
+fi
 if [ "$1" = "push" ]; then
   exit 0
 fi
@@ -790,11 +932,12 @@ exec "$REAL_GIT" "$@"
 `, realGitPath, stateDirectory)
 }
 
-func buildBranchDefaultDelegatingGitWrapper(realGitPath string, stateDirectory string, remotePath string) string {
+func buildBranchDefaultDelegatingGitWrapper(realGitPath string, stateDirectory string, remotePath string, advancedSourceCommit string) string {
 	return fmt.Sprintf(`#!/bin/sh
 REAL_GIT=%q
 STATE_DIR=%q
 REMOTE_PATH=%q
+ADVANCED_SOURCE_COMMIT=%q
 printf '%%s\n' "$*" >>"$STATE_DIR/git.log"
 if [ "$1" = "ls-remote" ] && [ "$2" = "--heads" ] && [ "$3" = "origin" ]; then
   exec "$REAL_GIT" ls-remote --heads "$REMOTE_PATH" "$4"
@@ -802,12 +945,24 @@ fi
 if [ "$1" = "ls-remote" ] && [ "$2" = "--symref" ] && [ "$3" = "origin" ]; then
   exec "$REAL_GIT" ls-remote --symref "$REMOTE_PATH" "$4"
 fi
+if [ "$1" = "fetch" ] && [ "$2" = "--no-tags" ] && [ "$3" = "origin" ]; then
+  shift 3
+  exec "$REAL_GIT" fetch --no-tags "$REMOTE_PATH" "$@"
+fi
 if [ "$1" = "push" ] && [ "$2" = "origin" ]; then
   shift 2
   exec "$REAL_GIT" push "$REMOTE_PATH" "$@"
 fi
+if [ "$1" = "push" ] && [ "$3" = "origin" ]; then
+  lease="$2"
+  shift 3
+  if [ -n "$ADVANCED_SOURCE_COMMIT" ]; then
+    "$REAL_GIT" --git-dir="$REMOTE_PATH" update-ref refs/heads/main "$ADVANCED_SOURCE_COMMIT"
+  fi
+  exec "$REAL_GIT" push "$lease" "$REMOTE_PATH" "$@"
+fi
 exec "$REAL_GIT" "$@"
-`, realGitPath, stateDirectory, remotePath)
+`, realGitPath, stateDirectory, remotePath, advancedSourceCommit)
 }
 
 func initializeStubStateFile(testInstance *testing.T, stateDirectory string, repository string, branch string) {

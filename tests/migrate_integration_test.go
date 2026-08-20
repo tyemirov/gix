@@ -208,6 +208,7 @@ func TestMigrationIntegration(testInstance *testing.T) {
 
 			runMigrationGitCommand(subtest, repositoryDirectory, "remote", "add", "origin", remotePath)
 			runMigrationGitCommand(subtest, repositoryDirectory, "push", "origin", "main:main")
+			runMigrationGitCommand(subtest, repositoryDirectory, "push", "origin", "master:master")
 
 			logger := zap.NewNop()
 			commandRunner := execshell.NewOSCommandRunner()
