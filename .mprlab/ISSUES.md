@@ -11,6 +11,41 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B072] (P0) Stop semantic repair after a provider request failure.
+  Reported on 2026-08-20 after a strict-sync conflict request failed.
+  Expected result:
+  A failed provider round stops semantic repair and starts exact rollback.
+  Actual result:
+  Gix sent the request error as model feedback and repeated the complete provider round four times.
+  Requirements:
+  - Separate provider request failure from candidate rejection.
+  - Use validation feedback only for returned candidates.
+  - Stop semantic repair when the complete provider order returns no response.
+  - Keep request retries in a separate typed provider policy.
+  - Preserve typed LLM Proxy HTTP status without the raw response body.
+  - Preserve exact pre-publication rollback.
+  Validation:
+  - Add compiled CLI coverage for an LLM Proxy `403` and OpenAI empty-response exhaustion.
+  - Verify one provider round and bounded request counts.
+  - Verify no validation-guided repair starts.
+  - Run focused tests and complete CI.
+  Resolution:
+  Gix now stops semantic repair after one failed provider round.
+  Only a returned candidate rejection supplies validation feedback for another attempt.
+  LLM Proxy `v0.4.0` preserves a typed HTTP status without the raw response body.
+  The repository and hosted CI now use Go `1.26.5`, as required by the client.
+  Compiled CLI coverage verifies one proxy request, two OpenAI requests, and exact rollback.
+  `make test-fast`, `make test-slow`, `make ci`, and `git diff --check` passed on 2026-08-20.
+  Review finding:
+  Gix classified a returned marker-bearing candidate as a provider failure.
+  Follow-up resolution:
+  Gix now keeps marker-bearing candidates in the bounded validation-guided repair loop.
+  The compiled CLI test verifies marker feedback, a corrected candidate, semantic approval, and four bounded requests.
+  Follow-up validation:
+  `make test-fast` and all four bounded `make test-slow` shards passed.
+  `make ci` passed formatting, lint, fast Go tests, and licensing tests.
+  The unsharded integration package then reached the 350-second command limit while its tests continued to pass.
+
 - [x] [B071] (P1) Delete the safe source branch after default migration.
   Reported on 2026-08-20 after `gix default master` ran for `tyemirov/QwenOC`.
   Expected result:

@@ -760,18 +760,46 @@ func (service mergeConflictResolutionService) resolveSemanticConflictRegion(ctx 
 			conflictFile.Path,
 			attemptTimeout,
 		)
+		resolvedContent := strings.TrimSpace(response)
+		if responseErr == nil && resolvedContent == "" {
+			responseErr = fmt.Errorf(mergeConflictResolutionEmptyResponse, conflictFile.Path)
+		}
 		if responseErr != nil {
 			if ctx.Err() != nil {
 				return "", responseErr
 			}
-			attemptErr := fmt.Errorf("%s attempt %d: %w", strategy, attempt, responseErr)
+			providerRoundErr := fmt.Errorf("%s attempt %d provider request failed: %w", strategy, attempt, responseErr)
+			service.reportSemanticProviderRoundFailed(
+				conflictFile.Path,
+				regionIndex,
+				regionCount,
+				attempt,
+				strategy,
+				providerRoundErr,
+			)
+			return "", providerRoundErr
+		}
+
+		service.report(
+			shared.EventLevelInfo,
+			shared.EventCodeAIMergeValidation,
+			fmt.Sprintf("validating AI resolution for %s", subject),
+			map[string]string{"path": conflictFile.Path},
+		)
+		if containsConflictMarker(resolvedContent) {
+			attemptErr := fmt.Errorf(
+				"%s attempt %d: %w",
+				strategy,
+				attempt,
+				fmt.Errorf(mergeConflictResolutionConflictMarkers, conflictFile.Path),
+			)
 			attemptErrors = append(attemptErrors, attemptErr)
 			feedback = attemptErr.Error()
 			service.reportSemanticAttemptRejected(conflictFile.Path, regionIndex, regionCount, attempt, strategy, feedback, candidate != "")
 			continue
 		}
 
-		if reviewing && strings.TrimSpace(response) == mergeConflictResolutionReviewApproved {
+		if reviewing && resolvedContent == mergeConflictResolutionReviewApproved {
 			service.report(
 				shared.EventLevelInfo,
 				shared.EventCodeAIMergeValidation,
@@ -844,6 +872,30 @@ func (service mergeConflictResolutionService) resolveSemanticConflictRegion(ctx 
 	)
 }
 
+func (service mergeConflictResolutionService) reportSemanticProviderRoundFailed(path string, regionIndex int, regionCount int, attempt int, strategy string, providerRoundErr error) {
+	service.report(
+		shared.EventLevelWarn,
+		shared.EventCodeAIMergeResolution,
+		fmt.Sprintf(
+			"%s provider round failed for %s conflict region %d/%d on attempt %d/%d; stopping semantic repair: %s",
+			strategy,
+			path,
+			regionIndex+1,
+			regionCount,
+			attempt,
+			mergeConflictResolutionMaxSemanticAttempts,
+			strings.ReplaceAll(strings.TrimSpace(providerRoundErr.Error()), "\n", "; "),
+		),
+		map[string]string{
+			"path":     path,
+			"region":   strconv.Itoa(regionIndex + 1),
+			"attempt":  strconv.Itoa(attempt),
+			"strategy": strategy,
+			"reason":   providerRoundErr.Error(),
+		},
+	)
+}
+
 func (service mergeConflictResolutionService) reportSemanticAttemptRejected(path string, regionIndex int, regionCount int, attempt int, strategy string, reason string, candidateAvailable bool) {
 	nextAction := "requesting validation-guided repair"
 	if candidateAvailable {
@@ -901,19 +953,6 @@ func (service mergeConflictResolutionService) requestMergeConflictResolution(ctx
 			return "", fmt.Errorf(mergeConflictResolutionCanceledMessage+": %w", responseErr)
 		}
 		return "", responseErr
-	}
-	service.report(
-		shared.EventLevelInfo,
-		shared.EventCodeAIMergeValidation,
-		fmt.Sprintf("validating AI resolution for %s", subject),
-		map[string]string{"path": path},
-	)
-	resolvedContent := strings.TrimSpace(response)
-	if resolvedContent == "" {
-		return "", fmt.Errorf(mergeConflictResolutionEmptyResponse, path)
-	}
-	if containsConflictMarker(resolvedContent) {
-		return "", fmt.Errorf(mergeConflictResolutionConflictMarkers, path)
 	}
 	return response, nil
 }

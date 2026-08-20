@@ -43,5 +43,7 @@ func TestSyncHelpDescribesMissingBranchCurrentHeadContract(testInstance *testing
 	require.Contains(testInstance, output, "sync reconstructs untouched bytes locally and directly accepts only cases with no two-sided semantic choice: identical sides, a change on only one side, and marker-free current-stage decisions.")
 	require.Contains(testInstance, output, "Every marker-bearing region changed by both sides requires semantic LLM audit.")
 	require.Contains(testInstance, output, "Concurrent insertions and non-overlapping token edits start from lossless locally derived candidates; genuinely overlapping regions use candidate generation plus bounded validation-guided repair.")
-	require.Contains(testInstance, output, "rollback occurs only after every safe strategy is exhausted, or after cancellation or an unrecoverable local failure, and always stops before push.")
+	require.Contains(testInstance, output, "A provider round with no response stops semantic repair and starts rollback.")
+	require.Contains(testInstance, output, "Only returned candidate rejection supplies validation feedback for the next bounded attempt.")
+	require.Contains(testInstance, output, "Rollback occurs only after every safe candidate is exhausted, or after provider failure, cancellation, or an unrecoverable local failure, and always stops before push.")
 }
