@@ -36,6 +36,15 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   The repository and hosted CI now use Go `1.26.5`, as required by the client.
   Compiled CLI coverage verifies one proxy request, two OpenAI requests, and exact rollback.
   `make test-fast`, `make test-slow`, `make ci`, and `git diff --check` passed on 2026-08-20.
+  Review finding:
+  Gix classified a returned marker-bearing candidate as a provider failure.
+  Follow-up resolution:
+  Gix now keeps marker-bearing candidates in the bounded validation-guided repair loop.
+  The compiled CLI test verifies marker feedback, a corrected candidate, semantic approval, and four bounded requests.
+  Follow-up validation:
+  `make test-fast` and all four bounded `make test-slow` shards passed.
+  `make ci` passed formatting, lint, fast Go tests, and licensing tests.
+  The unsharded integration package then reached the 350-second command limit while its tests continued to pass.
 
 - [x] [B071] (P1) Delete the safe source branch after default migration.
   Reported on 2026-08-20 after `gix default master` ran for `tyemirov/QwenOC`.
