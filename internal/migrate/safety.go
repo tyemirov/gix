@@ -4,6 +4,7 @@ const (
 	safetyReasonOpenPullRequestsConstant = "open pull requests still target source branch"
 	safetyReasonBranchProtectedConstant  = "source branch is protected"
 	safetyReasonWorkflowMentionsConstant = "workflow files still reference source branch"
+	safetyReasonSourceChangesConstant    = "source branch contains changes absent from target branch"
 )
 
 // SafetyInputs captures conditions that influence branch deletion safety.
@@ -11,6 +12,7 @@ type SafetyInputs struct {
 	OpenPullRequestCount int
 	BranchProtected      bool
 	WorkflowMentions     bool
+	SourceChangesMissing bool
 }
 
 // SafetyStatus conveys whether it is safe to delete the source branch.
@@ -33,6 +35,9 @@ func (SafetyEvaluator) Evaluate(inputs SafetyInputs) SafetyStatus {
 	}
 	if inputs.WorkflowMentions {
 		blockingReasons = append(blockingReasons, safetyReasonWorkflowMentionsConstant)
+	}
+	if inputs.SourceChangesMissing {
+		blockingReasons = append(blockingReasons, safetyReasonSourceChangesConstant)
 	}
 
 	return SafetyStatus{SafeToDelete: len(blockingReasons) == 0, BlockingReasons: blockingReasons}

@@ -40,8 +40,6 @@ const (
 	workflowCommitErrorTemplateConstant             = "unable to commit workflow updates: %w"
 	workflowPushErrorTemplateConstant               = "unable to push workflow updates: %w"
 	pagesUpdateErrorTemplateConstant                = "GitHub Pages update failed: %w"
-	pagesUpdateWarningMessageConstant               = "GitHub Pages update skipped"
-	pagesUpdateWarningTemplateConstant              = "PAGES-SKIP: %s (%s)"
 	defaultBranchUpdateErrorMessageTemplateConstant = "DEFAULT-BRANCH-UPDATE repository=%s path=%s source=%s target=%s"
 	pullRequestListErrorTemplateConstant            = "unable to list pull requests: %w"
 	pullRequestListWarningTemplateConstant          = "PR-LIST-SKIP: %s (%s)"
@@ -99,6 +97,7 @@ type MigrationResult struct {
 	WorkflowOutcome           WorkflowOutcome
 	PagesConfigurationUpdated bool
 	DefaultBranchUpdated      bool
+	SourceBranchDeleted       bool
 	RetargetedPullRequests    []int
 	ClosedPullRequests        []int
 	SafetyStatus              SafetyStatus
@@ -242,6 +241,10 @@ func (service *Service) Execute(executionContext context.Context, options Migrat
 	if preparationError := prepareTargetBranch(executionContext, service.repositoryManager, service.gitExecutor, options); preparationError != nil {
 		return MigrationResult{}, preparationError
 	}
+	sourceChangesMissing, sourceChangesError := sourceChangesMissingFromTarget(executionContext, service.gitExecutor, options)
+	if sourceChangesError != nil {
+		return MigrationResult{}, sourceChangesError
+	}
 
 	workflowOutcome, rewriteError := service.workflowRewriter.Rewrite(executionContext, WorkflowRewriteConfig{
 		RepositoryPath:     options.RepositoryPath,
@@ -275,19 +278,7 @@ func (service *Service) Execute(executionContext context.Context, options Migrat
 			TargetBranch:         options.TargetBranch,
 		})
 		if pagesError != nil {
-			if isNonCriticalPagesError(pagesError) {
-				service.logger.Warn(
-					pagesUpdateWarningMessageConstant,
-					zap.String(repositoryPathFieldNameConstant, options.RepositoryPath),
-					zap.String(repositoryIdentifierFieldNameConstant, options.RepositoryIdentifier),
-					zap.Error(pagesError),
-				)
-				warning := fmt.Sprintf(pagesUpdateWarningTemplateConstant, options.RepositoryIdentifier, summarizeCommandError(pagesError))
-				service.warnings = append(service.warnings, warning)
-				pagesUpdated = false
-			} else {
-				return MigrationResult{}, fmt.Errorf(pagesUpdateErrorTemplateConstant, pagesError)
-			}
+			return MigrationResult{}, fmt.Errorf(pagesUpdateErrorTemplateConstant, pagesError)
 		}
 	}
 
@@ -359,6 +350,7 @@ func (service *Service) Execute(executionContext context.Context, options Migrat
 		OpenPullRequestCount: len(pullRequests) - len(pullRequestOutcome.closed),
 		BranchProtected:      branchProtected,
 		WorkflowMentions:     workflowOutcome.RemainingMainReferences,
+		SourceChangesMissing: sourceChangesMissing,
 	})
 
 	result := MigrationResult{
@@ -387,24 +379,13 @@ func (service *Service) Execute(executionContext context.Context, options Migrat
 				)
 				warning := fmt.Sprintf(branchDeletionWarningTemplateConstant, summarizeCommandError(deletionError))
 				result.Warnings = append(result.Warnings, warning)
+			} else {
+				result.SourceBranchDeleted = true
 			}
 		}
 	}
 
 	return result, nil
-}
-
-func isNonCriticalPagesError(err error) bool {
-	var operationError githubcli.OperationError
-	if errors.As(err, &operationError) {
-		return true
-	}
-	var decodingError githubcli.ResponseDecodingError
-	if errors.As(err, &decodingError) {
-		return true
-	}
-	var missingToken githubauth.MissingTokenError
-	return errors.As(err, &missingToken) && !missingToken.CriticalRequirement()
 }
 
 func (service *Service) validateOptions(options MigrationOptions) error {

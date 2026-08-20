@@ -55,7 +55,6 @@ const (
 	pagesEndpointTemplateConstant              = "repos/%s/pages"
 	repositoryEndpointTemplateConstant         = "repos/%s"
 	branchProtectionEndpointTemplateConstant   = "repos/%s/branches/%s/protection"
-	pagesNullResponseConstant                  = "null"
 	httpMethodGetConstant                      = "GET"
 	httpMethodPutConstant                      = "PUT"
 	httpMethodPatchConstant                    = "PATCH"
@@ -70,6 +69,13 @@ const (
 	createPullRequestOperationNameConstant     = OperationName("CreatePullRequest")
 	httpNotFoundIndicatorConstant              = "http 404"
 	statusNotFoundIndicatorConstant            = "status 404"
+	pagesResponseEmptyMessageConstant          = "pages response is empty"
+	pagesResponseNullMessageConstant           = "pages response is null"
+	pagesBuildTypeUnsupportedTemplateConstant  = "pages build type %q is unsupported"
+	pagesSourceBranchMissingMessageConstant    = "legacy Pages response has no source branch"
+	pagesSourcePathUnsupportedTemplateConstant = "legacy Pages source path %q is unsupported"
+	pagesRootSourcePathConstant                = "/"
+	pagesDocsSourcePathConstant                = "/docs"
 )
 
 // OperationName describes a named GitHub CLI workflow supported by the client.
@@ -481,15 +487,26 @@ func (client *Client) GetPagesConfig(executionContext context.Context, repositor
 
 	executionResult, executionError := client.executor.ExecuteGitHubCLI(executionContext, commandDetails)
 	if executionError != nil {
+		var commandFailure execshell.CommandFailedError
+		if errors.As(executionError, &commandFailure) && githubResourceNotFound(commandFailure.Result) {
+			return PagesStatus{Enabled: false}, nil
+		}
 		return PagesStatus{}, OperationError{Operation: getPagesOperationNameConstant, Cause: executionError}
 	}
 
-	trimmedOutput := strings.TrimSpace(executionResult.StandardOutput)
-	if len(trimmedOutput) == 0 || trimmedOutput == pagesNullResponseConstant {
-		return PagesStatus{Enabled: false}, nil
+	return decodePagesStatus(executionResult.StandardOutput)
+}
+
+func decodePagesStatus(output string) (PagesStatus, error) {
+	trimmedOutput := strings.TrimSpace(output)
+	if len(trimmedOutput) == 0 {
+		return PagesStatus{}, ResponseDecodingError{
+			Operation: getPagesOperationNameConstant,
+			Cause:     errors.New(pagesResponseEmptyMessageConstant),
+		}
 	}
 
-	var response struct {
+	var response *struct {
 		BuildType string `json:"build_type"`
 		Source    struct {
 			Branch string `json:"branch"`
@@ -501,15 +518,44 @@ func (client *Client) GetPagesConfig(executionContext context.Context, repositor
 	if decodingError != nil {
 		return PagesStatus{}, ResponseDecodingError{Operation: getPagesOperationNameConstant, Cause: decodingError}
 	}
-
-	pagesStatus := PagesStatus{
-		Enabled:      true,
-		BuildType:    PagesBuildType(response.BuildType),
-		SourceBranch: response.Source.Branch,
-		SourcePath:   response.Source.Path,
+	if response == nil {
+		return PagesStatus{}, ResponseDecodingError{
+			Operation: getPagesOperationNameConstant,
+			Cause:     errors.New(pagesResponseNullMessageConstant),
+		}
 	}
 
-	return pagesStatus, nil
+	buildType := PagesBuildType(response.BuildType)
+	switch buildType {
+	case PagesBuildTypeWorkflow:
+		return PagesStatus{Enabled: true, BuildType: buildType}, nil
+	case PagesBuildTypeLegacy:
+		sourceBranch := strings.TrimSpace(response.Source.Branch)
+		if len(sourceBranch) == 0 {
+			return PagesStatus{}, ResponseDecodingError{
+				Operation: getPagesOperationNameConstant,
+				Cause:     errors.New(pagesSourceBranchMissingMessageConstant),
+			}
+		}
+		sourcePath := strings.TrimSpace(response.Source.Path)
+		if sourcePath != pagesRootSourcePathConstant && sourcePath != pagesDocsSourcePathConstant {
+			return PagesStatus{}, ResponseDecodingError{
+				Operation: getPagesOperationNameConstant,
+				Cause:     fmt.Errorf(pagesSourcePathUnsupportedTemplateConstant, sourcePath),
+			}
+		}
+		return PagesStatus{
+			Enabled:      true,
+			BuildType:    buildType,
+			SourceBranch: sourceBranch,
+			SourcePath:   sourcePath,
+		}, nil
+	default:
+		return PagesStatus{}, ResponseDecodingError{
+			Operation: getPagesOperationNameConstant,
+			Cause:     fmt.Errorf(pagesBuildTypeUnsupportedTemplateConstant, response.BuildType),
+		}
+	}
 }
 
 // SetDefaultBranch updates the default branch for the repository.
@@ -644,7 +690,7 @@ func (client *Client) CheckBranchProtection(executionContext context.Context, re
 
 	var commandFailure execshell.CommandFailedError
 	if errors.As(executionError, &commandFailure) {
-		if branchProtectionNotFound(commandFailure.Result) {
+		if githubResourceNotFound(commandFailure.Result) {
 			return false, nil
 		}
 	}
@@ -652,7 +698,7 @@ func (client *Client) CheckBranchProtection(executionContext context.Context, re
 	return false, OperationError{Operation: checkBranchProtectionOperationNameConstant, Cause: executionError}
 }
 
-func branchProtectionNotFound(result execshell.ExecutionResult) bool {
+func githubResourceNotFound(result execshell.ExecutionResult) bool {
 	if len(result.StandardError) == 0 && len(result.StandardOutput) == 0 {
 		return false
 	}

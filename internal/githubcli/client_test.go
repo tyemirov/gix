@@ -36,8 +36,14 @@ const (
 	testPagesRepositoryValidationCaseNameConstant        = "pages_repository_validation"
 	testPagesSourceBranchValidationCaseNameConstant      = "pages_source_branch_validation"
 	testGetPagesSuccessCaseNameConstant                  = "get_pages_success"
+	testGetPagesWorkflowCaseNameConstant                 = "get_pages_workflow"
+	testGetPagesNotFoundCaseNameConstant                 = "get_pages_not_found"
+	testGetPagesEmptyCaseNameConstant                    = "get_pages_empty"
 	testGetPagesNullCaseNameConstant                     = "get_pages_null"
 	testGetPagesDecodeFailureCaseNameConstant            = "get_pages_decode_failure"
+	testGetPagesUnsupportedCaseNameConstant              = "get_pages_unsupported"
+	testGetPagesMissingSourceCaseNameConstant            = "get_pages_missing_source"
+	testGetPagesUnsupportedPathCaseNameConstant          = "get_pages_unsupported_path"
 	testGetPagesCommandFailureCaseNameConstant           = "get_pages_command_failure"
 	testGetPagesValidationCaseNameConstant               = "get_pages_validation"
 	testDefaultBranchSuccessCaseNameConstant             = "default_branch_success"
@@ -354,10 +360,26 @@ func TestGetPagesConfig(testInstance *testing.T) {
 			},
 		},
 		{
-			name:       testGetPagesNullCaseNameConstant,
+			name:       testGetPagesWorkflowCaseNameConstant,
 			repository: testRepositoryIdentifierConstant,
 			executor: &stubGitHubExecutor{executeFunc: func(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
-				return execshell.ExecutionResult{StandardOutput: "null"}, nil
+				return execshell.ExecutionResult{StandardOutput: `{"build_type":"workflow"}`}, nil
+			}},
+			verify: func(testInstance *testing.T, status githubcli.PagesStatus, executor *stubGitHubExecutor) {
+				require.True(testInstance, status.Enabled)
+				require.Equal(testInstance, githubcli.PagesBuildTypeWorkflow, status.BuildType)
+				require.Len(testInstance, executor.recordedDetails, 1)
+			},
+		},
+		{
+			name:       testGetPagesNotFoundCaseNameConstant,
+			repository: testRepositoryIdentifierConstant,
+			executor: &stubGitHubExecutor{executeFunc: func(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
+				result := execshell.ExecutionResult{ExitCode: 1, StandardError: testHTTPNotFoundStandardErrorMessageConstant}
+				return result, execshell.CommandFailedError{
+					Command: execshell.ShellCommand{Name: execshell.CommandGitHub},
+					Result:  result,
+				}
 			}},
 			verify: func(testInstance *testing.T, status githubcli.PagesStatus, executor *stubGitHubExecutor) {
 				require.False(testInstance, status.Enabled)
@@ -365,10 +387,55 @@ func TestGetPagesConfig(testInstance *testing.T) {
 			},
 		},
 		{
+			name:       testGetPagesEmptyCaseNameConstant,
+			repository: testRepositoryIdentifierConstant,
+			executor: &stubGitHubExecutor{executeFunc: func(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
+				return execshell.ExecutionResult{}, nil
+			}},
+			expectError: true,
+			errorType:   githubcli.ResponseDecodingError{},
+		},
+		{
+			name:       testGetPagesNullCaseNameConstant,
+			repository: testRepositoryIdentifierConstant,
+			executor: &stubGitHubExecutor{executeFunc: func(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
+				return execshell.ExecutionResult{StandardOutput: "null"}, nil
+			}},
+			expectError: true,
+			errorType:   githubcli.ResponseDecodingError{},
+		},
+		{
 			name:       testGetPagesDecodeFailureCaseNameConstant,
 			repository: testRepositoryIdentifierConstant,
 			executor: &stubGitHubExecutor{executeFunc: func(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
 				return execshell.ExecutionResult{StandardOutput: "{"}, nil
+			}},
+			expectError: true,
+			errorType:   githubcli.ResponseDecodingError{},
+		},
+		{
+			name:       testGetPagesUnsupportedCaseNameConstant,
+			repository: testRepositoryIdentifierConstant,
+			executor: &stubGitHubExecutor{executeFunc: func(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
+				return execshell.ExecutionResult{StandardOutput: `{"build_type":"future","source":{"branch":"main","path":"/"}}`}, nil
+			}},
+			expectError: true,
+			errorType:   githubcli.ResponseDecodingError{},
+		},
+		{
+			name:       testGetPagesMissingSourceCaseNameConstant,
+			repository: testRepositoryIdentifierConstant,
+			executor: &stubGitHubExecutor{executeFunc: func(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
+				return execshell.ExecutionResult{StandardOutput: `{"build_type":"legacy","source":{"path":"/"}}`}, nil
+			}},
+			expectError: true,
+			errorType:   githubcli.ResponseDecodingError{},
+		},
+		{
+			name:       testGetPagesUnsupportedPathCaseNameConstant,
+			repository: testRepositoryIdentifierConstant,
+			executor: &stubGitHubExecutor{executeFunc: func(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
+				return execshell.ExecutionResult{StandardOutput: `{"build_type":"legacy","source":{"branch":"main","path":"/public"}}`}, nil
 			}},
 			expectError: true,
 			errorType:   githubcli.ResponseDecodingError{},
