@@ -38,6 +38,26 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - The result reports `safe_to_delete` and `source_deleted` independently.
   - Compiled CLI tests reproduce equal merged branches and divergent branches.
   - `make test-fast`, `make test-slow`, and `make ci` passed on 2026-08-20.
+  Review finding:
+  The source safety gate reads local branch refs.
+  A stale checkout can hide remote source commits and permit unsafe remote deletion.
+  Additional requirements:
+  - Fetch the authoritative remote source and target refs before the safety check.
+  - Compare the fetched remote commits instead of local branch commits.
+  - Make remote source deletion conditional on the verified source commit.
+  - Retain the remote source branch when its commit changes before deletion.
+  Additional validation:
+  - Reproduce a remote source commit that is absent from the stale local source branch.
+  - Verify that the compiled CLI retains the remote source branch.
+  - Verify that the deletion command includes the verified remote source commit.
+  Follow-up resolution:
+  - Gix fetches the authoritative remote source and target refs before the safety check.
+  - Gix compares the fetched commit identities and file content.
+  - The delete request includes the verified remote source commit.
+  - Git rejects deletion when the remote source commit changes.
+  - A failed remote deletion retains the local source branch.
+  - Compiled CLI tests cover a stale checkout and a concurrent remote source change.
+  - `make test-fast`, `make test-slow`, and `make ci` passed on 2026-08-20.
 
 - [x] [B070] (P1) Treat an absent Pages site as a valid migration state.
   Reported on 2026-08-20 after `gix default master` ran for `tyemirov/QwenOC`.
