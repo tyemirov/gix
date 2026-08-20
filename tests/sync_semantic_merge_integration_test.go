@@ -266,6 +266,7 @@ func TestSyncRepairsAndAuditsRejectedSemanticCandidateBeforeRollback(testInstanc
 		baseContent            = "reviewers: alice\n"
 		oursContent            = "reviewers: alice, bob\n"
 		theirsContent          = "reviewers: alice, carol\n"
+		markerBearingContent   = "<<<<<<< OURS\n" + oursContent + "=======\n" + theirsContent + ">>>>>>> THEIRS\n"
 		expectedMergedContent  = "reviewers: alice, bob, carol\n"
 		reviewApprovedResponse = "GIX_MERGE_REVIEW_APPROVED"
 	)
@@ -296,7 +297,7 @@ func TestSyncRepairsAndAuditsRejectedSemanticCandidateBeforeRollback(testInstanc
 	runGit(testInstance, repositoryPath, "push", "-u", "origin", targetBranchName)
 
 	var requestCount atomic.Int64
-	requestBodies := make(chan string, 3)
+	requestBodies := make(chan string, 4)
 	llmServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 		if request.URL.Path != "/chat/completions" {
 			http.NotFound(responseWriter, request)
@@ -313,10 +314,12 @@ func TestSyncRepairsAndAuditsRejectedSemanticCandidateBeforeRollback(testInstanc
 		var response string
 		switch requestIndex {
 		case 1:
-			response = semanticMergeResponse(oursContent)
+			response = semanticMergeResponse(markerBearingContent)
 		case 2:
-			response = semanticMergeResponse(expectedMergedContent)
+			response = semanticMergeResponse(oursContent)
 		case 3:
+			response = semanticMergeResponse(expectedMergedContent)
+		case 4:
 			response = reviewApprovedResponse
 		default:
 			http.Error(responseWriter, "semantic resolution exceeded its bounded strategy ladder", http.StatusInternalServerError)
@@ -397,24 +400,28 @@ operations:
 	)
 	require.NoError(testInstance, runError, output)
 	require.Contains(testInstance, output, "semantic candidate attempt 1/4 rejected")
+	require.Contains(testInstance, output, "llm left conflict markers")
 	require.Contains(testInstance, output, "requesting validation-guided repair")
 	require.Contains(testInstance, output, "semantic audit approved")
 	require.Contains(testInstance, output, "merge conflict resolution completed")
 	require.NotContains(testInstance, output, "AI_MERGE_ROLLBACK")
 	require.NotContains(testInstance, output, "AI_MERGE_HANDOFF")
-	require.Equal(testInstance, int64(3), requestCount.Load())
+	require.Equal(testInstance, int64(4), requestCount.Load())
 	require.Equal(testInstance, expectedMergedContent, readTextFile(testInstance, conflictedFilePath))
 	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
 
 	firstRequest := <-requestBodies
 	secondRequest := <-requestBodies
 	thirdRequest := <-requestBodies
+	fourthRequest := <-requestBodies
 	require.Contains(testInstance, firstRequest, "reviewers: alice, bob\\n")
 	require.Contains(testInstance, firstRequest, "reviewers: alice, carol\\n")
-	require.Contains(testInstance, secondRequest, "does not preserve THEIRS replacement intent")
+	require.Contains(testInstance, secondRequest, "llm left conflict markers")
 	require.Contains(testInstance, secondRequest, "reviewers: alice, bob\\n")
-	require.Contains(testInstance, thirdRequest, "reviewers: alice, bob, carol\\n")
-	require.Contains(testInstance, thirdRequest, "semantic fidelity auditor")
+	require.Contains(testInstance, thirdRequest, "does not preserve THEIRS replacement intent")
+	require.Contains(testInstance, thirdRequest, "reviewers: alice, bob\\n")
+	require.Contains(testInstance, fourthRequest, "reviewers: alice, bob, carol\\n")
+	require.Contains(testInstance, fourthRequest, "semantic fidelity auditor")
 
 	gitLog := readTextFile(testInstance, gitLogPath)
 	require.Contains(testInstance, gitLog, "commit --no-edit")
