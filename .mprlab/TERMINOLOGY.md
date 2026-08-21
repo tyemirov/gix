@@ -80,6 +80,7 @@ Give each term one meaning. Use the same term for the same concept in all docume
 Add repository-specific technical nouns below this line.
 
 - `CalVer`: A release version that derives its numeric fields from a release timestamp.
+- `edit context`: The unchanged tokens next to a replacement intent base location.
 - `fixed-major policy`: A SemVer policy that keeps one configured major value.
 - `provider round`: One LLM request that uses the complete configured provider order.
 - `release policy`: The invocation input that selects one release version scheme and its scheme-specific options.

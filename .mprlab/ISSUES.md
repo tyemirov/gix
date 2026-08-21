@@ -34,6 +34,20 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   The compiled CLI regression reproduces a multiline `--stash` conflict.
   It accepts the reflowed candidate, completes semantic audit, and finalizes the exact invocation stash.
   Focused tests and `make ci` passed on 2026-08-20.
+  Review finding on 2026-08-20:
+  A candidate can use an unrelated normalized match from a different location.
+  This match can hide the loss of an edited occurrence.
+  Follow-up requirements:
+  - Require a new occurrence or an edit context match for each replacement intent.
+  - Reject an unrelated normalized match before semantic audit.
+  - Cover the failure through the compiled CLI.
+  Follow-up resolution:
+  Gix now requires the necessary normalized occurrence count or a matching edit context.
+  An unrelated occurrence cannot satisfy this validation.
+  The focused test covers occurrence counting and edit context matching.
+  The compiled CLI rejects the lossy alias candidate before audit.
+  It preserves the lossless stash candidate and completes strict sync.
+  Focused tests and `make ci` passed on 2026-08-20.
 
 - [x] [B072] (P0) Stop semantic repair after a provider request failure.
   Reported on 2026-08-20 after a strict-sync conflict request failed.
