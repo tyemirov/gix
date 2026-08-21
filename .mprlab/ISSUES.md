@@ -85,6 +85,34 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   The replay preserves the exact combined document and the original stash inventory.
   The unrelated-fragment regression still rejects a lossy candidate before semantic audit.
   Focused tests and `make ci` passed on 2026-08-21.
+  Acceptance regression failure on 2026-08-21:
+  The fixture used the reported conflict regions, but its model stub returned the prepared result.
+  The regression validated an ideal candidate instead of candidate generation.
+  Additional requirements:
+  - Cover conflicting replacement alternatives through one general contract.
+  - Cover compatible edits inside a coarse conflict region.
+  - Cover deletion as a valid replacement alternative.
+  - Do not return a prepared result during semantic candidate generation.
+  - Require each derivable conflict region to start with semantic audit.
+  - Cover the reported conflict structures through the compiled CLI.
+  - Keep the acceptance tests failing until Gix derives the candidates.
+  Additional validation:
+  - Confirm that the idealized regression passes before the test refactor.
+  - Confirm that each refactored regression fails on an unexpected semantic candidate request.
+  Regression refactor on 2026-08-21:
+  The prepared-candidate replay passed before the refactor.
+  The new strategy guard fails for all four generalized replacement forms.
+  Both compiled CLI regressions fail on the first unexpected semantic candidate request.
+  This test-only step does not include a production implementation change.
+  Final resolution on 2026-08-21:
+  Gix now calculates each side's token edits once.
+  It coalesces edit fragments that have only unchanged whitespace between them.
+  This rule prevents shared words from splitting one wholesale replacement into false compatible edits.
+  Compatible edits and same-position insertions produce one deterministic candidate.
+  Conflicting replacements use the local alternative plus each compatible incoming edit.
+  Gix sends every derived candidate directly to semantic audit.
+  The `llm-proxy` lifecycle and `download_your_data` stash compiled replays now pass.
+  Full `make ci` passed on 2026-08-21.
 
 - [x] [B073] (P0) Ignore whitespace when validating merge replacement intent.
   Reported on 2026-08-20 after `gix sync master --stash` rejected four semantic candidates.
