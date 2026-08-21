@@ -160,6 +160,12 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.7.4] - 2026-08-21
+
+- test: update semantic audit retry scenarios
+- fix(sync): accept valid semantic audit corrections immediately
+- docs: document semantic audit correction handling
+
 ## [v1.7.3] - 2026-08-21
 
 - Merge pull request #440 from tyemirov/gix/derive-and-audit-merge-replacement-candidates
