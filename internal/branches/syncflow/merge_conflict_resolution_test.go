@@ -429,7 +429,7 @@ func TestDeterministicMergeConflictRegionResolutionBuildsAuthoritativeResultsAnd
 			expectedStrategy:      "concurrent insertions",
 			requiresSemanticAudit: true,
 		},
-		"non-overlapping token edits": {
+		"compatible token edits": {
 			region: mergeConflictRegion{
 				Ours:        "policy: strict timeout=30\n",
 				Base:        "policy: standard timeout=30\n",
@@ -437,7 +437,7 @@ func TestDeterministicMergeConflictRegionResolutionBuildsAuthoritativeResultsAnd
 				Theirs:      "policy: standard timeout=60\n",
 			},
 			expectedContent:       "policy: strict timeout=60\n",
-			expectedStrategy:      "non-overlapping token edits",
+			expectedStrategy:      "compatible token edits",
 			requiresSemanticAudit: true,
 		},
 	}
@@ -454,17 +454,135 @@ func TestDeterministicMergeConflictRegionResolutionBuildsAuthoritativeResultsAnd
 	}
 }
 
-func TestDeterministicMergeConflictRegionResolutionDefersOverlappingTokenInsertions(t *testing.T) {
-	region := mergeConflictRegion{
-		Ours:        "reviewers: alice, bob\n",
-		Base:        "reviewers: alice\n",
-		BasePresent: true,
-		Theirs:      "reviewers: alice, carol\n",
+func TestDeterministicMergeConflictRegionResolutionDerivesAuditableReplacementAlternatives(t *testing.T) {
+	testCases := []struct {
+		name   string
+		region mergeConflictRegion
+	}{
+		{
+			name: "conflicting replacement with compatible edit",
+			region: mergeConflictRegion{
+				Base:        "contract: SchemaV4\nmode: standard\n",
+				BasePresent: true,
+				Ours:        "contract: SchemaV5\nmode: standard\n",
+				Theirs:      "contract: Versionless\nmode: strict\n",
+			},
+		},
+		{
+			name: "compatible edits inside one coarse conflict region",
+			region: mergeConflictRegion{
+				Base: reportedConflictRegionLines(
+					"- `[ ]` means open.",
+					"- `[-]` means taken.",
+					"- `[!]` means blocked and must include a `Blocked:` body line.",
+					"- `[x]` means closed.",
+					"- The external ID is required.",
+					"- Priority `(P0)` through `(P2)` is optional.",
+					"- Dependencies `{ID,ID}` are optional.",
+					"- The title is required.",
+				),
+				BasePresent: true,
+				Ours: reportedConflictRegionLines(
+					"- `[ ]` means open.",
+					"- `[-]` means taken.",
+					"- `[!]` means blocked and must include a `Blocked:` body line.",
+					"- `[x]` means closed.",
+					"- The external ID is necessary.",
+					"- Priority `(P0)` through `(P2)` is optional.",
+					"- Dependencies `{ID,ID}` are optional.",
+					"- The title is necessary.",
+					"- Write each changed title in Simplified Technical English.",
+				),
+				Theirs: reportedConflictRegionLines(
+					"- `[ ]` means open (unresolved), `[-]` means taken (active), `[!]` means blocked (unresolved), `[x]` means closed (resolved).",
+					"- The external ID is required.",
+					"- Priority and dependencies are optional and follow the ID.",
+					"- The title is required.",
+					"- Blocked issues must include a `Blocked:` body line.",
+				),
+			},
+		},
+		{
+			name: "deletion is one replacement alternative",
+			region: mergeConflictRegion{
+				Base:        "assert schema version 4\n",
+				BasePresent: true,
+				Ours:        "assert schema version 5\n",
+				Theirs:      "",
+			},
+		},
+		{
+			name: "overlapping insertions are replacement alternatives",
+			region: mergeConflictRegion{
+				Base:        "reviewers: alice\n",
+				BasePresent: true,
+				Ours:        "reviewers: alice, bob\n",
+				Theirs:      "reviewers: alice, carol\n",
+			},
+		},
+		{
+			name: "whole replacement with adjacent insertion",
+			region: mergeConflictRegion{
+				Base:        "`Blocked:` is required only for blocked issues and must name the external dependency, missing input, or policy decision preventing progress.\n",
+				BasePresent: true,
+				Ours: reportedConflictRegionLines(
+					"  Blocked: waiting on upstream API credentials.",
+					"  ```bash",
+					"  timeout -k 30s -s SIGKILL 30s make test",
+					"  ```",
+					"```",
+				),
+				Theirs: reportedConflictRegionLines(
+					"`Blocked:` is necessary only for blocked issues. It must identify the dependency, input, or policy decision that prevents progress.",
+					"",
+					"Write each changed body in Simplified Technical English.",
+				),
+			},
+		},
 	}
 
-	_, resolved := deterministicMergeConflictRegionResolution(region)
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			resolution, resolved := deterministicMergeConflictRegionResolution(testCase.region)
 
-	require.False(t, resolved)
+			require.True(t, resolved)
+			require.True(t, resolution.RequiresSemanticAudit)
+			require.NotEmpty(t, resolution.Strategy)
+			require.NoError(
+				t,
+				validateMergeConflictRegionResponse("contract.txt", 0, testCase.region, resolution.Content),
+				"candidate: %q",
+				resolution.Content,
+			)
+		})
+	}
+}
+
+func reportedConflictRegionLines(lines ...string) string {
+	return strings.Join(lines, "\n") + "\n"
+}
+
+func TestDeterministicMergeConflictRegionResolutionOrdersSamePositionInsertionsIndependentlyOfSides(t *testing.T) {
+	forwardRegion := mergeConflictRegion{
+		Base:        "reviewers: alice\n",
+		BasePresent: true,
+		Ours:        "reviewers: alice, carol\n",
+		Theirs:      "reviewers: alice, bob\n",
+	}
+	reverseRegion := mergeConflictRegion{
+		Base:        forwardRegion.Base,
+		BasePresent: true,
+		Ours:        forwardRegion.Theirs,
+		Theirs:      forwardRegion.Ours,
+	}
+
+	forward, forwardResolved := deterministicMergeConflictRegionResolution(forwardRegion)
+	reverse, reverseResolved := deterministicMergeConflictRegionResolution(reverseRegion)
+
+	require.True(t, forwardResolved)
+	require.True(t, reverseResolved)
+	require.Equal(t, "reviewers: alice, bob, carol\n", forward.Content)
+	require.Equal(t, forward.Content, reverse.Content)
 }
 
 func TestResolveRejectsCachedDiffCheckBeforeMergeCommit(t *testing.T) {

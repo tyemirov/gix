@@ -49,32 +49,41 @@ func deterministicMergeConflictRegionResolution(region mergeConflictRegion) (mer
 		}, true
 	}
 
-	mergedContent, merged := mergeConflictNonOverlappingTokenEdits(region.Base, region.Ours, region.Theirs)
-	if !merged {
-		return mergeConflictDeterministicResolution{}, false
-	}
-	return mergeConflictDeterministicResolution{
-		Content:               mergedContent,
-		Strategy:              "non-overlapping token edits",
-		RequiresSemanticAudit: true,
-	}, true
+	return mergeConflictTokenEditResolution(region.Base, region.Ours, region.Theirs)
 }
 
-func mergeConflictNonOverlappingTokenEdits(base string, ours string, theirs string) (string, bool) {
+func mergeConflictTokenEditResolution(base string, ours string, theirs string) (mergeConflictDeterministicResolution, bool) {
 	baseTokens := mergeConflictTokens(base)
 	oursTokens := mergeConflictTokens(ours)
 	theirsTokens := mergeConflictTokens(theirs)
 	oursEdits, oursEditsAvailable := mergeConflictTokenEdits(baseTokens, oursTokens)
 	theirsEdits, theirsEditsAvailable := mergeConflictTokenEdits(baseTokens, theirsTokens)
 	if !oursEditsAvailable || !theirsEditsAvailable {
-		return "", false
+		return mergeConflictDeterministicResolution{}, false
 	}
 
 	mergedEdits, editsCompatible := mergeConflictCompatibleTokenEdits(oursEdits, theirsEdits)
-	if !editsCompatible {
-		return "", false
+	if editsCompatible {
+		mergedContent, merged := applyMergeConflictTokenEdits(baseTokens, mergedEdits)
+		if !merged {
+			return mergeConflictDeterministicResolution{}, false
+		}
+		return mergeConflictDeterministicResolution{
+			Content:               mergedContent,
+			Strategy:              "compatible token edits",
+			RequiresSemanticAudit: true,
+		}, true
 	}
-	return applyMergeConflictTokenEdits(baseTokens, mergedEdits)
+
+	candidate, candidateAvailable := mergeConflictVariantWithCompatibleOtherEdits(baseTokens, oursEdits, theirsEdits)
+	if !candidateAvailable {
+		return mergeConflictDeterministicResolution{}, false
+	}
+	return mergeConflictDeterministicResolution{
+		Content:               candidate,
+		Strategy:              "local replacement alternative",
+		RequiresSemanticAudit: true,
+	}, true
 }
 
 func mergeConflictTokens(value string) []string {
@@ -175,7 +184,28 @@ func mergeConflictTokenEdits(baseTokens []string, variantTokens []string) ([]mer
 		len(baseTokens),
 		variantTokens[unmatchedVariantStart:],
 	)
-	return edits, true
+	return mergeConflictCoalesceWhitespaceSeparatedTokenEdits(baseTokens, edits), true
+}
+
+func mergeConflictCoalesceWhitespaceSeparatedTokenEdits(baseTokens []string, edits []mergeConflictTokenEdit) []mergeConflictTokenEdit {
+	if len(edits) < 2 {
+		return edits
+	}
+
+	coalesced := make([]mergeConflictTokenEdit, 1, len(edits))
+	coalesced[0] = edits[0]
+	for _, edit := range edits[1:] {
+		lastIndex := len(coalesced) - 1
+		last := &coalesced[lastIndex]
+		gap := strings.Join(baseTokens[last.End:edit.Start], "")
+		if strings.TrimSpace(gap) != "" {
+			coalesced = append(coalesced, edit)
+			continue
+		}
+		last.End = edit.End
+		last.Replacement += gap + edit.Replacement
+	}
+	return coalesced
 }
 
 func appendMergeConflictTokenEdit(edits []mergeConflictTokenEdit, start int, end int, replacementTokens []string) []mergeConflictTokenEdit {
@@ -196,7 +226,13 @@ func mergeConflictCompatibleTokenEdits(ours []mergeConflictTokenEdit, theirs []m
 		if merged[leftIndex].Start != merged[rightIndex].Start {
 			return merged[leftIndex].Start < merged[rightIndex].Start
 		}
-		return merged[leftIndex].End < merged[rightIndex].End
+		if merged[leftIndex].End != merged[rightIndex].End {
+			return merged[leftIndex].End < merged[rightIndex].End
+		}
+		if merged[leftIndex].Start == merged[leftIndex].End {
+			return merged[leftIndex].Replacement < merged[rightIndex].Replacement
+		}
+		return false
 	})
 
 	deduplicated := make([]mergeConflictTokenEdit, 0, len(merged))
@@ -221,14 +257,15 @@ func mergeConflictCompatibleTokenEdits(ours []mergeConflictTokenEdit, theirs []m
 }
 
 func mergeConflictTokenEditsConflict(left mergeConflictTokenEdit, right mergeConflictTokenEdit) bool {
+	leftInsertion := left.Start == left.End
+	rightInsertion := right.Start == right.End
+	if leftInsertion && rightInsertion {
+		return false
+	}
 	if left.Start == right.Start && left.End == right.End {
 		return left.Replacement != right.Replacement
 	}
-	leftInsertion := left.Start == left.End
-	rightInsertion := right.Start == right.End
 	switch {
-	case leftInsertion && rightInsertion:
-		return left.Start == right.Start
 	case leftInsertion:
 		return right.Start < left.Start && left.Start < right.End
 	case rightInsertion:
