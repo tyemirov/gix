@@ -7,7 +7,10 @@ import (
 	"unicode/utf8"
 )
 
-const mergeConflictTokenDiffMaximumCells = 4_000_000
+const (
+	mergeConflictTokenDiffMaximumCells              = 4_000_000
+	mergeConflictReplacementIntentContextTokenCount = 3
+)
 
 type mergeConflictDeterministicResolution struct {
 	Content               string
@@ -251,10 +254,13 @@ func applyMergeConflictTokenEdits(baseTokens []string, edits []mergeConflictToke
 }
 
 func mergeConflictMissingReplacementIntents(base string, variant string, candidate string) ([]string, bool) {
-	edits, editsAvailable := mergeConflictTokenEdits(mergeConflictTokens(base), mergeConflictTokens(variant))
+	baseTokens := mergeConflictTokens(base)
+	edits, editsAvailable := mergeConflictTokenEdits(baseTokens, mergeConflictTokens(variant))
 	if !editsAvailable {
 		return nil, false
 	}
+	normalizedBase := mergeConflictWithoutWhitespace(base)
+	normalizedVariant := mergeConflictWithoutWhitespace(variant)
 	normalizedCandidate := mergeConflictWithoutWhitespace(candidate)
 	missingIntents := make([]string, 0, len(edits))
 	for _, edit := range edits {
@@ -262,11 +268,57 @@ func mergeConflictMissingReplacementIntents(base string, variant string, candida
 		if normalizedReplacement == "" {
 			continue
 		}
-		if !strings.Contains(normalizedCandidate, normalizedReplacement) {
+		baseOccurrences := strings.Count(normalizedBase, normalizedReplacement)
+		variantOccurrences := strings.Count(normalizedVariant, normalizedReplacement)
+		candidateOccurrences := strings.Count(normalizedCandidate, normalizedReplacement)
+		preservesNewOccurrences := variantOccurrences > baseOccurrences && candidateOccurrences >= variantOccurrences
+		if !preservesNewOccurrences && !mergeConflictCandidateMatchesEditContext(baseTokens, edit, normalizedReplacement, normalizedCandidate) {
 			missingIntents = append(missingIntents, edit.Replacement)
 		}
 	}
 	return missingIntents, true
+}
+
+func mergeConflictCandidateMatchesEditContext(
+	baseTokens []string,
+	edit mergeConflictTokenEdit,
+	normalizedReplacement string,
+	normalizedCandidate string,
+) bool {
+	leftContext := mergeConflictReplacementIntentLeftContext(baseTokens, edit.Start)
+	if leftContext != "" && strings.Contains(normalizedCandidate, leftContext+normalizedReplacement) {
+		return true
+	}
+	rightContext := mergeConflictReplacementIntentRightContext(baseTokens, edit.End)
+	return rightContext != "" && strings.Contains(normalizedCandidate, normalizedReplacement+rightContext)
+}
+
+func mergeConflictReplacementIntentLeftContext(baseTokens []string, editStart int) string {
+	contextTokens := make([]string, 0, mergeConflictReplacementIntentContextTokenCount)
+	for tokenIndex := editStart - 1; tokenIndex >= 0 && len(contextTokens) < mergeConflictReplacementIntentContextTokenCount; tokenIndex-- {
+		normalizedToken := mergeConflictWithoutWhitespace(baseTokens[tokenIndex])
+		if normalizedToken != "" {
+			contextTokens = append(contextTokens, normalizedToken)
+		}
+	}
+	var context strings.Builder
+	for tokenIndex := len(contextTokens) - 1; tokenIndex >= 0; tokenIndex-- {
+		context.WriteString(contextTokens[tokenIndex])
+	}
+	return context.String()
+}
+
+func mergeConflictReplacementIntentRightContext(baseTokens []string, editEnd int) string {
+	var context strings.Builder
+	nonWhitespaceTokenCount := 0
+	for tokenIndex := editEnd; tokenIndex < len(baseTokens) && nonWhitespaceTokenCount < mergeConflictReplacementIntentContextTokenCount; tokenIndex++ {
+		normalizedToken := mergeConflictWithoutWhitespace(baseTokens[tokenIndex])
+		if normalizedToken != "" {
+			context.WriteString(normalizedToken)
+			nonWhitespaceTokenCount++
+		}
+	}
+	return context.String()
 }
 
 func mergeConflictWithoutWhitespace(value string) string {

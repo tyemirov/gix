@@ -219,6 +219,44 @@ func TestValidateMergeConflictRegionResponseIgnoresWhitespaceAndReportsAllMissin
 	require.Contains(t, multipleLossErr.Error(), "mode=strict")
 }
 
+func TestValidateMergeConflictRegionResponseRejectsReplacementIntentFromUnrelatedOccurrence(t *testing.T) {
+	region := mergeConflictRegion{
+		Ours:        "primary: foo bar\nalias: foobar\nmode: standard\n",
+		Base:        "primary: old\nalias: foobar\nmode: standard\n",
+		BasePresent: true,
+		Theirs:      "primary: old\nalias: foobar\nmode: strict\n",
+	}
+
+	lossyCandidateErr := validateMergeConflictRegionResponse(
+		"policy.txt",
+		0,
+		region,
+		"primary: old\nalias: foobar\nmode: strict\n",
+	)
+	require.Error(t, lossyCandidateErr)
+	require.Contains(t, lossyCandidateErr.Error(), "does not preserve OURS replacement intent")
+	require.Contains(t, lossyCandidateErr.Error(), "foo bar")
+
+	require.NoError(
+		t,
+		validateMergeConflictRegionResponse(
+			"policy.txt",
+			0,
+			region,
+			"primary: foo\n  bar\nalias: foobar\nmode: strict\n",
+		),
+	)
+	require.NoError(
+		t,
+		validateMergeConflictRegionResponse(
+			"policy.txt",
+			0,
+			region,
+			"primary: foo bar\nmode: strict\n",
+		),
+	)
+}
+
 func TestDeterministicMergeConflictRegionResolutionBuildsAuthoritativeResultsAndAuditedCandidates(t *testing.T) {
 	testCases := map[string]struct {
 		region                mergeConflictRegion
