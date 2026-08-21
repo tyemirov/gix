@@ -624,6 +624,7 @@ func TestSyncSuccessfulFinalizationTable(testInstance *testing.T) {
 			expectedStatus := ""
 			expectedIndex := ""
 			expectedFiles := []string(nil)
+			expectedResolvedPath := ""
 			expectedResolvedContents := ""
 			expectedStashes := strings.TrimSpace(runGit(testInstance, repositoryPath, "stash", "list", "--format=%H %s"))
 			arguments := []string{"sync", targetBranch}
@@ -634,8 +635,8 @@ func TestSyncSuccessfulFinalizationTable(testInstance *testing.T) {
 				responseWriter.Header().Set("Content-Type", "application/json")
 				if testCase.Mode == "stash_conflict" {
 					response := "GIX_MERGE_REVIEW_APPROVED"
-					if currentRequest%2 == 1 {
-						response = "GIX_MERGE_RESOLUTION_CONTENT_BEGIN\nmaster upstream\nfeature dirty\nGIX_MERGE_RESOLUTION_CONTENT_END"
+					if currentRequest == 1 {
+						response = "GIX_MERGE_RESOLUTION_CONTENT_BEGIN\npolicy: strict timeout=60\n\nGIX_MERGE_RESOLUTION_CONTENT_END"
 					}
 					_, _ = fmt.Fprintf(responseWriter, `{"choices":[{"message":{"role":"assistant","content":%q}}]}`, response)
 					return
@@ -669,15 +670,21 @@ func TestSyncSuccessfulFinalizationTable(testInstance *testing.T) {
 				expectedStashes = strings.TrimSpace(runGit(testInstance, repositoryPath, "stash", "list", "--format=%H %s"))
 				arguments = append(arguments, "--stash")
 			case "stash_conflict":
+				policyPath := filepath.Join(repositoryPath, "policy.txt")
+				require.NoError(testInstance, os.WriteFile(policyPath, []byte("policy: standard timeout=30\n"), 0o644))
+				runGit(testInstance, repositoryPath, "add", "policy.txt")
+				runGit(testInstance, repositoryPath, "commit", "-m", "seed policy")
+				runGit(testInstance, repositoryPath, "push", "origin", "master")
 				runGit(testInstance, repositoryPath, "switch", "-c", syncStateTransitionBranchName)
 				runGit(testInstance, repositoryPath, "switch", "master")
-				require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "README.md"), []byte("initial\nmaster upstream\n"), 0o644))
-				runGit(testInstance, repositoryPath, "add", "README.md")
-				runGit(testInstance, repositoryPath, "commit", "-m", "add master upstream line")
+				require.NoError(testInstance, os.WriteFile(policyPath, []byte("policy: strict\n  timeout=30\n"), 0o644))
+				runGit(testInstance, repositoryPath, "add", "policy.txt")
+				runGit(testInstance, repositoryPath, "commit", "-m", "make policy strict")
 				runGit(testInstance, repositoryPath, "push", "origin", "master")
 				runGit(testInstance, repositoryPath, "switch", syncStateTransitionBranchName)
-				require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "README.md"), []byte("initial\nfeature dirty\n"), 0o644))
-				expectedResolvedContents = "initial\nmaster upstream\nfeature dirty\n"
+				require.NoError(testInstance, os.WriteFile(policyPath, []byte("policy: standard timeout=60\n"), 0o644))
+				expectedResolvedPath = policyPath
+				expectedResolvedContents = "policy: strict timeout=60\n"
 				arguments = append(arguments, "--stash")
 			default:
 				testInstance.Fatalf("unsupported successful transition mode %q", testCase.Mode)
@@ -724,9 +731,10 @@ func TestSyncSuccessfulFinalizationTable(testInstance *testing.T) {
 				require.Equal(testInstance, expectedFiles, snapshotSyncFiles(testInstance, repositoryPath))
 				require.Zero(testInstance, requestCount.Load())
 			case "stash_conflict":
-				require.Equal(testInstance, expectedResolvedContents, readTextFile(testInstance, filepath.Join(repositoryPath, "README.md")))
+				require.Equal(testInstance, expectedResolvedContents, readTextFile(testInstance, expectedResolvedPath))
 				require.NotEmpty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
-				require.GreaterOrEqual(testInstance, requestCount.Load(), int64(1))
+				require.Equal(testInstance, int64(2), requestCount.Load())
+				require.NotContains(testInstance, output, "does not preserve OURS replacement intent")
 			}
 		})
 	}
