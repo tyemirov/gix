@@ -157,6 +157,18 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.7.1] - 2026-08-21
+
+- Merge pull request #438 from tyemirov/gix/ignore-whitespace-in-merge-replacement-intent-validation
+- test: cover stash conflict replacement intent alias collisions
+- fix(syncflow): validate replacement intent in edit context
+- fix(syncflow): require new occurrence or edit context for replacements
+- docs: document edit context validation
+- test: cover stash conflict resolution with formatting changes
+- fix(syncflow): validate all merge replacement intents ignoring whitespace
+- docs: document merge conflict resolution fixes
+- docs: document whitespace-insensitive replacement intent validation
+
 ## [v1.7.0] - 2026-08-20
 
 - Merge pull request #437 from tyemirov/bugfix/B072-stop-semantic-repair-after-provider-failure
