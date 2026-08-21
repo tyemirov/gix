@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -140,15 +141,20 @@ func TestMergeConflictResolutionContentPreservesBoundaryWhitespace(t *testing.T)
 	require.Equal(t, expectedContent, content)
 }
 
-func TestMergeConflictResolutionContentRejectsMissingOrEmptyEnvelope(t *testing.T) {
+func TestMergeConflictResolutionContentRejectsMissingEnvelopeAndAcceptsEmptyRegion(t *testing.T) {
 	_, missingEnvelopeErr := mergeConflictResolutionContent("ISSUES.md", "resolved region")
 	require.Error(t, missingEnvelopeErr)
 	require.Contains(t, missingEnvelopeErr.Error(), "required content envelope")
 
-	emptyResponse := mergeConflictResolutionContentBegin + "\n\n" + mergeConflictResolutionContentEnd
-	_, emptyContentErr := mergeConflictResolutionContent("ISSUES.md", emptyResponse)
-	require.Error(t, emptyContentErr)
-	require.Contains(t, emptyContentErr.Error(), "empty merge resolution")
+	adjacentSentinelResponse := mergeConflictResolutionContentBegin + "\n" + mergeConflictResolutionContentEnd
+	adjacentContent, adjacentContentErr := mergeConflictResolutionContent("ISSUES.md", adjacentSentinelResponse)
+	require.NoError(t, adjacentContentErr)
+	require.Empty(t, adjacentContent)
+
+	blankLineResponse := mergeConflictResolutionContentBegin + "\n\n" + mergeConflictResolutionContentEnd
+	blankLineContent, blankLineContentErr := mergeConflictResolutionContent("ISSUES.md", blankLineResponse)
+	require.NoError(t, blankLineContentErr)
+	require.Empty(t, blankLineContent)
 }
 
 func TestValidateMergeConflictRegionResponseContracts(t *testing.T) {
@@ -255,6 +261,125 @@ func TestValidateMergeConflictRegionResponseRejectsReplacementIntentFromUnrelate
 			"primary: foo bar\nmode: strict\n",
 		),
 	)
+}
+
+func TestValidateMergeConflictRegionResponseAllowsReplacementAlternativeAndRequiresCompatibleIntent(t *testing.T) {
+	region := mergeConflictRegion{
+		Ours:        "contract: SchemaV5 mode=standard\n",
+		Base:        "contract: SchemaV4 mode=standard\n",
+		BasePresent: true,
+		Theirs:      "contract: Versionless mode=strict\n",
+	}
+
+	require.NoError(
+		t,
+		validateMergeConflictRegionResponse(
+			"lifecycle_contract_test.go",
+			0,
+			region,
+			region.Theirs,
+		),
+	)
+
+	missingCompatibleIntentErr := validateMergeConflictRegionResponse(
+		"lifecycle_contract_test.go",
+		0,
+		region,
+		"contract: Versionless mode=standard\n",
+	)
+	require.Error(t, missingCompatibleIntentErr)
+	require.Contains(t, missingCompatibleIntentErr.Error(), "does not preserve THEIRS replacement intent")
+	require.Contains(t, missingCompatibleIntentErr.Error(), "strict")
+
+	missingAlternativeErr := validateMergeConflictRegionResponse(
+		"lifecycle_contract_test.go",
+		0,
+		region,
+		"contract: Unified mode=strict\n",
+	)
+	require.Error(t, missingAlternativeErr)
+	require.Contains(t, missingAlternativeErr.Error(), "does not preserve OURS replacement intent")
+	require.Contains(t, missingAlternativeErr.Error(), "SchemaV5")
+	require.Contains(t, missingAlternativeErr.Error(), "does not preserve THEIRS replacement intent")
+	require.Contains(t, missingAlternativeErr.Error(), "Versionless")
+}
+
+func TestValidateMergeConflictRegionResponseIntegratesCompatibleWordingInsideReportedRegion(t *testing.T) {
+	base := "- `[ ]` means open.\n- `[-]` means taken.\n- `[!]` means blocked and must include a `Blocked:` body line.\n- `[x]` means closed.\n- The external ID is required.\n- Priority `(P0)` through `(P2)` is optional.\n- Dependencies `{ID,ID}` are optional.\n- The title is required.\n"
+	ours := "- `[ ]` means open (unresolved), `[-]` means taken (actively being worked, but still unresolved), `[!]` means blocked (unresolved), `[x]` means closed (resolved).\n- The external ID is required.\n- Priority and dependencies are optional and appear immediately after the ID.\n- The title is required.\n- Blocked issues (`[!]`) MUST include a short explanation in the body (at minimum one indented line starting with `Blocked:`).\n"
+	theirs := "- `[ ]` means open.\n- `[-]` means taken.\n- `[!]` means blocked and must include a `Blocked:` body line.\n- `[x]` means closed.\n- The external ID is necessary.\n- Priority `(P0)` through `(P2)` is optional.\n- Dependencies `{ID,ID}` are optional.\n- The title is necessary.\n- Write each new or changed title in ASD-STE100 Simplified Technical English.\n"
+	candidate := "- `[ ]` means open (unresolved), `[-]` means taken (actively being worked, but still unresolved), `[!]` means blocked (unresolved), `[x]` means closed (resolved).\n- The external ID is necessary.\n- Priority and dependencies are optional and appear immediately after the ID.\n- The title is necessary.\n- Blocked issues (`[!]`) MUST include a short explanation in the body (at minimum one indented line starting with `Blocked:`).\n- Write each new or changed title in ASD-STE100 Simplified Technical English.\n"
+	require.NoError(t, validateMergeConflictRegionResponse(
+		".mprlab/issues-md-format.md",
+		1,
+		mergeConflictRegion{Base: base, BasePresent: true, Ours: ours, Theirs: theirs},
+		candidate,
+	))
+}
+
+func TestResolveSemanticConflictRegionReportsUnapprovedCorrectionsAtExhaustion(t *testing.T) {
+	region := mergeConflictRegion{
+		Ours:        "contract: SchemaV5\n",
+		Base:        "contract: SchemaV4\n",
+		BasePresent: true,
+		Theirs:      "contract: Versionless\n",
+	}
+	client := &strictSyncChatClient{
+		response: mergeConflictResolutionContentBegin + "\n" + region.Theirs + mergeConflictResolutionContentEnd,
+	}
+	service := mergeConflictResolutionService{
+		repositoryPath: "/repo",
+		commitMessages: worktreeAdoptionCommitMessageOptions{
+			Client: client,
+		},
+	}
+
+	_, resolutionErr := service.resolveSemanticConflictRegion(
+		context.Background(),
+		client,
+		mergeConflictResolutionOptions{
+			SourceReference: "origin/master",
+			TargetBranch:    "feature/schema-v5",
+		},
+		mergeConflictFile{Path: "lifecycle_contract_test.go"},
+		region,
+		0,
+		1,
+		time.Second,
+		region.Ours,
+		true,
+	)
+	require.Error(t, resolutionErr)
+	require.Contains(t, resolutionErr.Error(), "exhausted 4 validated attempts")
+	require.Contains(t, resolutionErr.Error(), "returned a locally valid corrected candidate without approval")
+	require.NotContains(t, resolutionErr.Error(), "%!w(<nil>)")
+	require.Len(t, client.requests, mergeConflictResolutionMaxSemanticAttempts)
+}
+
+func TestResolveSemanticConflictRegionRejectsEmptyProviderResponse(t *testing.T) {
+	client := &strictSyncChatClient{response: "   "}
+	service := mergeConflictResolutionService{
+		repositoryPath: "/repo",
+		commitMessages: worktreeAdoptionCommitMessageOptions{
+			Client: client,
+		},
+	}
+
+	_, resolutionErr := service.resolveSemanticConflictRegion(
+		context.Background(),
+		client,
+		mergeConflictResolutionOptions{SourceReference: "origin/master", TargetBranch: "master"},
+		mergeConflictFile{Path: "policy.txt"},
+		mergeConflictRegion{Base: "base\n", BasePresent: true, Ours: "ours\n", Theirs: "theirs\n"},
+		0,
+		1,
+		time.Second,
+		"",
+		false,
+	)
+	require.Error(t, resolutionErr)
+	require.Contains(t, resolutionErr.Error(), "llm returned an empty merge resolution")
+	require.Len(t, client.requests, 1)
 }
 
 func TestDeterministicMergeConflictRegionResolutionBuildsAuthoritativeResultsAndAuditedCandidates(t *testing.T) {

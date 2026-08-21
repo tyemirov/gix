@@ -253,30 +253,123 @@ func applyMergeConflictTokenEdits(baseTokens []string, edits []mergeConflictToke
 	return resolved.String(), true
 }
 
-func mergeConflictMissingReplacementIntents(base string, variant string, candidate string) ([]string, bool) {
+func mergeConflictMissingReplacementIntents(base string, variant string, otherVariant string, candidate string) ([]string, bool) {
 	baseTokens := mergeConflictTokens(base)
 	edits, editsAvailable := mergeConflictTokenEdits(baseTokens, mergeConflictTokens(variant))
-	if !editsAvailable {
+	otherEdits, otherEditsAvailable := mergeConflictTokenEdits(baseTokens, mergeConflictTokens(otherVariant))
+	if !editsAvailable || !otherEditsAvailable {
 		return nil, false
 	}
 	normalizedBase := mergeConflictWithoutWhitespace(base)
 	normalizedVariant := mergeConflictWithoutWhitespace(variant)
+	normalizedOtherVariant := mergeConflictWithoutWhitespace(otherVariant)
 	normalizedCandidate := mergeConflictWithoutWhitespace(candidate)
+	if normalizedVariant != "" && strings.Contains(normalizedCandidate, normalizedVariant) {
+		return nil, true
+	}
+	compatibleVariant, compatibleVariantAvailable := mergeConflictVariantWithCompatibleOtherEdits(baseTokens, edits, otherEdits)
+	normalizedCompatibleVariant := mergeConflictWithoutWhitespace(compatibleVariant)
+	if compatibleVariantAvailable && normalizedCompatibleVariant != "" && strings.Contains(normalizedCandidate, normalizedCompatibleVariant) {
+		return nil, true
+	}
 	missingIntents := make([]string, 0, len(edits))
 	for _, edit := range edits {
 		normalizedReplacement := mergeConflictWithoutWhitespace(edit.Replacement)
 		if normalizedReplacement == "" {
 			continue
 		}
-		baseOccurrences := strings.Count(normalizedBase, normalizedReplacement)
-		variantOccurrences := strings.Count(normalizedVariant, normalizedReplacement)
-		candidateOccurrences := strings.Count(normalizedCandidate, normalizedReplacement)
-		preservesNewOccurrences := variantOccurrences > baseOccurrences && candidateOccurrences >= variantOccurrences
-		if !preservesNewOccurrences && !mergeConflictCandidateMatchesEditContext(baseTokens, edit, normalizedReplacement, normalizedCandidate) {
-			missingIntents = append(missingIntents, edit.Replacement)
+		if mergeConflictCandidatePreservesReplacementIntent(
+			baseTokens,
+			edit,
+			normalizedBase,
+			normalizedVariant,
+			normalizedCandidate,
+		) {
+			continue
 		}
+		if mergeConflictCandidatePreservesReplacementAlternative(
+			baseTokens,
+			edit,
+			otherEdits,
+			normalizedBase,
+			normalizedOtherVariant,
+			normalizedCandidate,
+		) {
+			continue
+		}
+		missingIntents = append(missingIntents, edit.Replacement)
 	}
 	return missingIntents, true
+}
+
+func mergeConflictVariantWithCompatibleOtherEdits(baseTokens []string, variantEdits []mergeConflictTokenEdit, otherEdits []mergeConflictTokenEdit) (string, bool) {
+	compatibleOtherEdits := make([]mergeConflictTokenEdit, 0, len(otherEdits))
+	for _, otherEdit := range otherEdits {
+		conflicts := false
+		for _, variantEdit := range variantEdits {
+			if mergeConflictTokenEditsConflict(variantEdit, otherEdit) {
+				conflicts = true
+				break
+			}
+		}
+		if !conflicts {
+			compatibleOtherEdits = append(compatibleOtherEdits, otherEdit)
+		}
+	}
+	mergedEdits, editsCompatible := mergeConflictCompatibleTokenEdits(variantEdits, compatibleOtherEdits)
+	if !editsCompatible {
+		return "", false
+	}
+	return applyMergeConflictTokenEdits(baseTokens, mergedEdits)
+}
+
+func mergeConflictCandidatePreservesReplacementAlternative(
+	baseTokens []string,
+	edit mergeConflictTokenEdit,
+	otherEdits []mergeConflictTokenEdit,
+	normalizedBase string,
+	normalizedOtherVariant string,
+	normalizedCandidate string,
+) bool {
+	for _, otherEdit := range otherEdits {
+		if edit.Start == edit.End && otherEdit.Start == otherEdit.End {
+			continue
+		}
+		if !mergeConflictTokenEditsConflict(edit, otherEdit) {
+			continue
+		}
+		if normalizedCandidate == normalizedOtherVariant {
+			return true
+		}
+		normalizedReplacement := mergeConflictWithoutWhitespace(otherEdit.Replacement)
+		if normalizedReplacement != "" && mergeConflictCandidatePreservesReplacementIntent(
+			baseTokens,
+			otherEdit,
+			normalizedBase,
+			normalizedOtherVariant,
+			normalizedCandidate,
+		) {
+			return true
+		}
+	}
+	return false
+}
+
+func mergeConflictCandidatePreservesReplacementIntent(
+	baseTokens []string,
+	edit mergeConflictTokenEdit,
+	normalizedBase string,
+	normalizedVariant string,
+	normalizedCandidate string,
+) bool {
+	normalizedReplacement := mergeConflictWithoutWhitespace(edit.Replacement)
+	baseOccurrences := strings.Count(normalizedBase, normalizedReplacement)
+	variantOccurrences := strings.Count(normalizedVariant, normalizedReplacement)
+	candidateOccurrences := strings.Count(normalizedCandidate, normalizedReplacement)
+	if variantOccurrences > baseOccurrences && candidateOccurrences >= variantOccurrences {
+		return true
+	}
+	return mergeConflictCandidateMatchesEditContext(baseTokens, edit, normalizedReplacement, normalizedCandidate)
 }
 
 func mergeConflictCandidateMatchesEditContext(
