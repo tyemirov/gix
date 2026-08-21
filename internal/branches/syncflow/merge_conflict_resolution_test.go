@@ -169,6 +169,7 @@ func TestValidateMergeConflictRegionResponseContracts(t *testing.T) {
 	additiveLossErr := validateMergeConflictRegionResponse("ISSUES.md", 0, additiveRegion, additiveRegion.Ours)
 	require.Error(t, additiveLossErr)
 	require.Contains(t, additiveLossErr.Error(), "not an exact ordering of OURS and THEIRS")
+	require.NotErrorIs(t, additiveLossErr, errMergeConflictReplacementIntentProofUnavailable)
 
 	nonAdditiveRegion := mergeConflictRegion{
 		Ours:        "reviewers: alice, bob\n",
@@ -181,10 +182,17 @@ func TestValidateMergeConflictRegionResponseContracts(t *testing.T) {
 	oursLossErr := validateMergeConflictRegionResponse("ISSUES.md", 1, nonAdditiveRegion, nonAdditiveRegion.Theirs)
 	require.Error(t, oursLossErr)
 	require.Contains(t, oursLossErr.Error(), "does not preserve OURS replacement intent")
+	require.ErrorIs(t, oursLossErr, errMergeConflictReplacementIntentProofUnavailable)
 
 	theirsLossErr := validateMergeConflictRegionResponse("ISSUES.md", 1, nonAdditiveRegion, nonAdditiveRegion.Ours)
 	require.Error(t, theirsLossErr)
 	require.Contains(t, theirsLossErr.Error(), "does not preserve THEIRS replacement intent")
+	require.ErrorIs(t, theirsLossErr, errMergeConflictReplacementIntentProofUnavailable)
+
+	baseOnlyErr := validateMergeConflictRegionResponse("ISSUES.md", 1, nonAdditiveRegion, nonAdditiveRegion.Base)
+	require.Error(t, baseOnlyErr)
+	require.Contains(t, baseOnlyErr.Error(), "returned BASE without either side's changes")
+	require.NotErrorIs(t, baseOnlyErr, errMergeConflictReplacementIntentProofUnavailable)
 }
 
 func TestValidateMergeConflictRegionResponseIgnoresWhitespaceAndReportsAllMissingIntent(t *testing.T) {
@@ -385,7 +393,7 @@ func TestResolveSemanticConflictRegionUsesFirstValidAuditedResult(t *testing.T) 
 				semanticResponse("unrelated contract\n"),
 			},
 			expectedRequests: mergeConflictResolutionMaxSemanticAttempts,
-			expectedError:    "exhausted 4 validated attempts",
+			expectedError:    "exhausted 4 semantic attempts",
 		},
 	}
 
@@ -423,6 +431,71 @@ func TestResolveSemanticConflictRegionUsesFirstValidAuditedResult(t *testing.T) 
 			require.Len(t, client.requests, testCase.expectedRequests)
 		})
 	}
+}
+
+func TestResolveSemanticConflictRegionAuditsTheExactUnprovenCorrection(t *testing.T) {
+	region := mergeConflictRegion{
+		Base:        "`Blocked:` is required only for blocked issues and must name the external dependency, missing input, or policy decision preventing progress.\n",
+		BasePresent: true,
+		Ours: reportedConflictRegionLines(
+			"  Blocked: waiting on upstream API credentials.",
+			"  ```bash",
+			"  timeout -k 30s -s SIGKILL 30s make test",
+			"  ```",
+			"```",
+		),
+		Theirs: reportedConflictRegionLines(
+			"`Blocked:` is necessary only for blocked issues. It must identify the dependency, input, or policy decision that prevents progress.",
+			"",
+			"Write each new or changed body in ASD-STE100. Use `.mprlab/AGENTS.DOCS.md` and `.mprlab/TERMINOLOGY.md`.",
+		),
+	}
+	semanticCorrection := region.Ours + "\n" + reportedConflictRegionLines(
+		"`Blocked:` is required only for blocked issues. It must name the dependency, input, or policy decision that stops progress.",
+		"",
+		"Write each new or changed body in ASD-STE100. Use `.mprlab/AGENTS.DOCS.md` and `.mprlab/TERMINOLOGY.md`.",
+	)
+	locallyValidCorrection := region.Ours + "\n" + region.Theirs
+	initialResolution, resolved := deterministicMergeConflictRegionResolution(region)
+	require.True(t, resolved)
+	require.True(t, initialResolution.RequiresSemanticAudit)
+	require.NoError(t, validateMergeConflictRegionResponse(".mprlab/issues-md-format.md", 3, region, initialResolution.Content))
+	proofErr := validateMergeConflictRegionResponse(".mprlab/issues-md-format.md", 3, region, semanticCorrection)
+	require.Error(t, proofErr)
+	require.ErrorIs(t, proofErr, errMergeConflictReplacementIntentProofUnavailable)
+
+	client := &strictSyncChatClient{responses: []string{
+		mergeConflictResolutionContentBegin + "\n" + semanticCorrection + mergeConflictResolutionContentEnd,
+		mergeConflictResolutionReviewApproved,
+		mergeConflictResolutionContentBegin + "\n" + locallyValidCorrection + mergeConflictResolutionContentEnd,
+	}}
+	service := mergeConflictResolutionService{
+		repositoryPath: "/repo",
+		commitMessages: worktreeAdoptionCommitMessageOptions{Client: client},
+	}
+
+	resolution, resolutionErr := service.resolveSemanticConflictRegion(
+		context.Background(),
+		client,
+		mergeConflictResolutionOptions{SourceReference: "origin/master", TargetBranch: "master"},
+		mergeConflictFile{Path: ".mprlab/issues-md-format.md"},
+		region,
+		3,
+		4,
+		time.Second,
+		initialResolution.Content,
+		true,
+	)
+
+	require.NoError(t, resolutionErr)
+	require.Equal(t, strings.TrimSuffix(locallyValidCorrection, "\n"), resolution)
+	require.Len(t, client.requests, 3)
+	followupPrompt := client.requests[1].Messages[1].Content
+	require.Contains(t, followupPrompt, "SEMANTIC CORRECTION CANDIDATE:\n"+strings.TrimSuffix(semanticCorrection, "\n"))
+	require.Contains(t, followupPrompt, "deterministic replacement-intent proof is unavailable")
+	repairPrompt := client.requests[2].Messages[1].Content
+	require.Contains(t, repairPrompt, "SEMANTIC CORRECTION CANDIDATE:\n"+strings.TrimSuffix(semanticCorrection, "\n"))
+	require.Contains(t, repairPrompt, "cannot accept a candidate without deterministic replacement-intent proof")
 }
 
 func TestResolveSemanticConflictRegionRejectsEmptyProviderResponse(t *testing.T) {
