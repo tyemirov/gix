@@ -3,6 +3,7 @@ package tests
 import (
 	"crypto/sha256"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -615,6 +616,7 @@ func TestSyncSuccessfulFinalizationTable(testInstance *testing.T) {
 		{Name: "stash_restores_exact_index_and_preserves_existing_stashes", Mode: "stash"},
 		{Name: "stash_conflict_completes_semantic_finalization_before_success", Mode: "stash_conflict"},
 		{Name: "stash_conflict_rejects_unrelated_replacement_intent_match", Mode: "stash_conflict_alias_collision"},
+		{Name: "stash_conflict_replays_reported_download_your_data_regions", Mode: "stash_conflict_reported_download_data"},
 	}
 
 	for testCaseIndex := range testCases {
@@ -629,6 +631,7 @@ func TestSyncSuccessfulFinalizationTable(testInstance *testing.T) {
 			expectedResolvedContents := ""
 			expectedStashes := strings.TrimSpace(runGit(testInstance, repositoryPath, "stash", "list", "--format=%H %s"))
 			arguments := []string{"sync", targetBranch}
+			reportedDownloadDataFixture := newReportedDownloadDataStashFixture()
 
 			var requestCount atomic.Int64
 			llmServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
@@ -646,6 +649,31 @@ func TestSyncSuccessfulFinalizationTable(testInstance *testing.T) {
 					response := "GIX_MERGE_REVIEW_APPROVED"
 					if currentRequest == 1 {
 						response = "GIX_MERGE_RESOLUTION_CONTENT_BEGIN\nprimary: old; alias: foobar; mode: strict\n\nGIX_MERGE_RESOLUTION_CONTENT_END"
+					}
+					_, _ = fmt.Fprintf(responseWriter, `{"choices":[{"message":{"role":"assistant","content":%q}}]}`, response)
+					return
+				}
+				if testCase.Mode == "stash_conflict_reported_download_data" {
+					requestBody, requestReadError := io.ReadAll(request.Body)
+					if requestReadError != nil {
+						http.Error(responseWriter, requestReadError.Error(), http.StatusBadRequest)
+						return
+					}
+					requestText := string(requestBody)
+					response := "GIX_MERGE_REVIEW_APPROVED"
+					if !strings.Contains(requestText, "semantic fidelity auditor") {
+						candidate := ""
+						for regionIndex, regionCandidate := range reportedDownloadDataFixture.Candidates {
+							if strings.Contains(requestText, fmt.Sprintf("Conflict region: %d of 4", regionIndex)) {
+								candidate = regionCandidate
+								break
+							}
+						}
+						if candidate == "" {
+							http.Error(responseWriter, "reported download_your_data request has no conflict-region candidate", http.StatusBadRequest)
+							return
+						}
+						response = semanticMergeResponse(candidate)
 					}
 					_, _ = fmt.Fprintf(responseWriter, `{"choices":[{"message":{"role":"assistant","content":%q}}]}`, response)
 					return
@@ -712,6 +740,24 @@ func TestSyncSuccessfulFinalizationTable(testInstance *testing.T) {
 				expectedResolvedPath = policyPath
 				expectedResolvedContents = "primary: foo\n  bar; alias: foobar; mode: strict\n"
 				arguments = append(arguments, "--stash")
+			case "stash_conflict_reported_download_data":
+				issuesFormatPath := filepath.Join(repositoryPath, ".mprlab", "issues-md-format.md")
+				require.NoError(testInstance, os.MkdirAll(filepath.Dir(issuesFormatPath), 0o755))
+				require.NoError(testInstance, os.WriteFile(issuesFormatPath, []byte(reportedDownloadDataFixture.Base), 0o644))
+				runGit(testInstance, repositoryPath, "add", ".mprlab/issues-md-format.md")
+				runGit(testInstance, repositoryPath, "commit", "-m", "seed issue format")
+				runGit(testInstance, repositoryPath, "push", "origin", "master")
+				runGit(testInstance, repositoryPath, "switch", "-c", syncStateTransitionBranchName)
+				runGit(testInstance, repositoryPath, "switch", "master")
+				require.NoError(testInstance, os.WriteFile(issuesFormatPath, []byte(reportedDownloadDataFixture.Upstream), 0o644))
+				runGit(testInstance, repositoryPath, "add", ".mprlab/issues-md-format.md")
+				runGit(testInstance, repositoryPath, "commit", "-m", "update issue format structure")
+				runGit(testInstance, repositoryPath, "push", "origin", "master")
+				runGit(testInstance, repositoryPath, "switch", syncStateTransitionBranchName)
+				require.NoError(testInstance, os.WriteFile(issuesFormatPath, []byte(reportedDownloadDataFixture.Stash), 0o644))
+				expectedResolvedPath = issuesFormatPath
+				expectedResolvedContents = reportedDownloadDataFixture.Resolved
+				arguments = append(arguments, "--stash")
 			default:
 				testInstance.Fatalf("unsupported successful transition mode %q", testCase.Mode)
 			}
@@ -766,6 +812,14 @@ func TestSyncSuccessfulFinalizationTable(testInstance *testing.T) {
 				require.NotEmpty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
 				require.Equal(testInstance, int64(2), requestCount.Load())
 				require.Contains(testInstance, output, "does not preserve OURS replacement intent")
+			case "stash_conflict_reported_download_data":
+				require.Equal(testInstance, expectedResolvedContents, readTextFile(testInstance, expectedResolvedPath))
+				require.NotEmpty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
+				require.Equal(testInstance, int64(8), requestCount.Load())
+				require.Equal(testInstance, 4, strings.Count(output, "semantic audit approved"))
+				require.NotContains(testInstance, output, "does not preserve OURS replacement intent")
+				require.NotContains(testInstance, output, "does not preserve THEIRS replacement intent")
+				require.NotContains(testInstance, output, "AI_MERGE_ROLLBACK")
 			}
 		})
 	}
