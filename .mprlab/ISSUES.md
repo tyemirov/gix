@@ -11,6 +11,52 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B077] (P0) Retain a semantic correction for its next audit.
+  Reported on 2026-08-21 during a real `download_your_data` strict stash sync with Gix v1.7.4.
+  Expected result:
+  The next semantic audit examines the exact correction that did not have local replacement-intent proof.
+  Actual result:
+  Gix discards the correction and audits the original derived candidate again.
+  The model cannot revise or approve its prior semantic result.
+  Requirements:
+  - Retain a structurally valid correction when local replacement-intent validation cannot prove its content.
+  - Label that correction separately from a locally validated candidate.
+  - Send the exact correction and its proof warning to the next semantic audit.
+  - Reject an approval sentinel for a correction without replacement-intent proof.
+  - Accept only a later locally valid corrected result.
+  - Accept a locally valid correction immediately.
+  - Reject conflict markers, invalid envelopes, exact BASE content, and lossy additive content.
+  - Preserve provider failure behavior, the four-attempt bound, and exact rollback.
+  Validation:
+  - Replay the four reported `download_your_data` conflict regions through the compiled CLI.
+  - Return an equivalent region-four correction that uses different words.
+  - Verify that the next request contains the exact correction and its proof warning.
+  - Repair that correction and preserve the exact resolved file and stash inventory.
+  - Verify hard rejection, bounded exhaustion, and provider failure behavior.
+  - Run focused tests and complete CI.
+  Resolution:
+  Gix now retains a structurally valid semantic correction when deterministic replacement-intent validation cannot prove it.
+  The next repair request contains the exact correction, a separate candidate label, and the proof warning.
+  An approval sentinel cannot accept a correction without replacement-intent proof.
+  A later locally valid correction completes immediately.
+  The compiled four-region replay returns an equivalent region-four correction, verifies the next request, and repairs the exact file.
+  The alias-collision replay rejects a lossy correction and approval before it accepts a locally valid correction.
+  Both compiled replays preserve the resolved file and stash inventory.
+  Existing tests preserve hard validation, the four-attempt bound, immediate provider failure, and exact rollback.
+  Focused tests and full `make ci` passed on 2026-08-21.
+  Review follow-up on 2026-08-21:
+  The compiled alias-collision replay returned a locally valid correction before it returned an approval sentinel.
+  The replay did not verify approval rejection for a correction without replacement-intent proof.
+  Follow-up requirements:
+  - Return an approval sentinel while the semantic correction does not have replacement-intent proof.
+  - Verify approval rejection through the compiled CLI.
+  - Return a locally valid correction after the approval rejection.
+  Follow-up resolution:
+  The compiled replay now returns a lossy correction, an approval sentinel, and a locally valid correction in that order.
+  Gix rejects the approval on the second request and accepts the valid correction on the third request.
+  The replay verifies the rejection message, exact resolved file, and stash inventory.
+  The focused replay and full `make ci` passed on 2026-08-21.
+
 - [x] [B076] (P0) Accept a valid correction from semantic audit.
   Reported on 2026-08-21 during a real `download_your_data` strict stash sync.
   Expected result:

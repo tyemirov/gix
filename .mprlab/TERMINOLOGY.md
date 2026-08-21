@@ -79,6 +79,7 @@ Give each term one meaning. Use the same term for the same concept in all docume
 
 Add repository-specific technical nouns below this line.
 
+- `approval sentinel`: The exact model response that approves a locally validated conflict result.
 - `CalVer`: A release version that derives its numeric fields from a release timestamp.
 - `derived candidate`: A conflict result that Gix constructs from one side and each compatible edit from the other side.
 - `edit context`: The unchanged tokens next to a replacement intent base location.
@@ -87,7 +88,9 @@ Add repository-specific technical nouns below this line.
 - `release policy`: The invocation input that selects one release version scheme and its scheme-specific options.
 - `replacement alternative`: One of two incompatible replacements for the same base tokens.
 - `replacement intent`: The non-whitespace content that one conflict side adds or changes relative to a common base.
-- `semantic audit`: A model review that approves or corrects a locally validated conflict result.
+- `replacement-intent proof`: The deterministic validation that confirms a conflict result preserves each compatible replacement intent.
+- `semantic audit`: A model review that approves a locally validated conflict result or returns a semantic correction.
+- `semantic correction`: A conflict result that a semantic audit returns instead of an approval sentinel.
 - `SemVer`: A release version with major, minor, and patch fields.
 - `token edit`: A change that has an original range in the common base tokens.
 - `version decision`: The Gix result that selects one release version from repository evidence and policy.
