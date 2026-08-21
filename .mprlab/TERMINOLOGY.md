@@ -83,6 +83,7 @@ Add repository-specific technical nouns below this line.
 - `fixed-major policy`: A SemVer policy that keeps one configured major value.
 - `provider round`: One LLM request that uses the complete configured provider order.
 - `release policy`: The invocation input that selects one release version scheme and its scheme-specific options.
+- `replacement intent`: The non-whitespace content that one conflict side adds or changes relative to a common base.
 - `SemVer`: A release version with major, minor, and patch fields.
 - `version decision`: The Gix result that selects one release version from repository evidence and policy.
 

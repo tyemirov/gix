@@ -11,6 +11,30 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B073] (P0) Ignore whitespace when validating merge replacement intent.
+  Reported on 2026-08-20 after `gix sync master --stash` rejected four semantic candidates.
+  Expected result:
+  Gix accepts a candidate when it keeps each replacement's non-whitespace content in the correct order.
+  Actual result:
+  Gix uses a raw substring comparison. A different line wrap causes a false missing-intent error.
+  Requirements:
+  - Compare replacement intent without whitespace.
+  - Preserve the exact non-whitespace content and order.
+  - Report all missing OURS and THEIRS replacement content in one error.
+  - Preserve additive validation, semantic audit, bounded attempts, and exact rollback.
+  Validation:
+  - Reproduce a multiline stash conflict through the compiled CLI.
+  - Return a valid semantic candidate that changes only line wrapping.
+  - Verify that local validation accepts the candidate before semantic audit.
+  - Verify that one-sided loss reports all missing replacement content.
+  - Run focused tests and complete CI.
+  Resolution:
+  Gix now removes Unicode whitespace from each replacement and candidate before comparison.
+  It reports every missing OURS and THEIRS replacement fragment in one error.
+  The compiled CLI regression reproduces a multiline `--stash` conflict.
+  It accepts the reflowed candidate, completes semantic audit, and finalizes the exact invocation stash.
+  Focused tests and `make ci` passed on 2026-08-20.
+
 - [x] [B072] (P0) Stop semantic repair after a provider request failure.
   Reported on 2026-08-20 after a strict-sync conflict request failed.
   Expected result:
