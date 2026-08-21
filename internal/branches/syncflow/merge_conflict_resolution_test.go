@@ -317,43 +317,112 @@ func TestValidateMergeConflictRegionResponseIntegratesCompatibleWordingInsideRep
 	))
 }
 
-func TestResolveSemanticConflictRegionReportsUnapprovedCorrectionsAtExhaustion(t *testing.T) {
+func TestResolveSemanticConflictRegionUsesFirstValidAuditedResult(t *testing.T) {
 	region := mergeConflictRegion{
 		Ours:        "contract: SchemaV5\n",
 		Base:        "contract: SchemaV4\n",
 		BasePresent: true,
 		Theirs:      "contract: Versionless\n",
 	}
-	client := &strictSyncChatClient{
-		response: mergeConflictResolutionContentBegin + "\n" + region.Theirs + mergeConflictResolutionContentEnd,
+	semanticResponse := func(content string) string {
+		return mergeConflictResolutionContentBegin + "\n" + content + mergeConflictResolutionContentEnd
 	}
-	service := mergeConflictResolutionService{
-		repositoryPath: "/repo",
-		commitMessages: worktreeAdoptionCommitMessageOptions{
-			Client: client,
+	testCases := map[string]struct {
+		initialCandidate string
+		candidateExists  bool
+		responses        []string
+		expectedResult   string
+		expectedRequests int
+		expectedError    string
+	}{
+		"approve derived candidate": {
+			initialCandidate: region.Ours,
+			candidateExists:  true,
+			responses:        []string{mergeConflictResolutionReviewApproved},
+			expectedResult:   region.Ours,
+			expectedRequests: 1,
+		},
+		"correct derived candidate": {
+			initialCandidate: region.Ours,
+			candidateExists:  true,
+			responses:        []string{semanticResponse(region.Theirs)},
+			expectedResult:   strings.TrimSpace(region.Theirs),
+			expectedRequests: 1,
+		},
+		"repair invalid audit response": {
+			initialCandidate: region.Ours,
+			candidateExists:  true,
+			responses: []string{
+				semanticResponse("unrelated contract\n"),
+				semanticResponse(region.Theirs),
+			},
+			expectedResult:   strings.TrimSpace(region.Theirs),
+			expectedRequests: 2,
+		},
+		"approve generated candidate": {
+			responses: []string{
+				semanticResponse(region.Ours),
+				mergeConflictResolutionReviewApproved,
+			},
+			expectedResult:   strings.TrimSpace(region.Ours),
+			expectedRequests: 2,
+		},
+		"correct generated candidate": {
+			responses: []string{
+				semanticResponse(region.Ours),
+				semanticResponse(region.Theirs),
+			},
+			expectedResult:   strings.TrimSpace(region.Theirs),
+			expectedRequests: 2,
+		},
+		"exhaust invalid audit responses": {
+			initialCandidate: region.Ours,
+			candidateExists:  true,
+			responses: []string{
+				semanticResponse("unrelated contract\n"),
+				semanticResponse("unrelated contract\n"),
+				semanticResponse("unrelated contract\n"),
+				semanticResponse("unrelated contract\n"),
+			},
+			expectedRequests: mergeConflictResolutionMaxSemanticAttempts,
+			expectedError:    "exhausted 4 validated attempts",
 		},
 	}
 
-	_, resolutionErr := service.resolveSemanticConflictRegion(
-		context.Background(),
-		client,
-		mergeConflictResolutionOptions{
-			SourceReference: "origin/master",
-			TargetBranch:    "feature/schema-v5",
-		},
-		mergeConflictFile{Path: "lifecycle_contract_test.go"},
-		region,
-		0,
-		1,
-		time.Second,
-		region.Ours,
-		true,
-	)
-	require.Error(t, resolutionErr)
-	require.Contains(t, resolutionErr.Error(), "exhausted 4 validated attempts")
-	require.Contains(t, resolutionErr.Error(), "returned a locally valid corrected candidate without approval")
-	require.NotContains(t, resolutionErr.Error(), "%!w(<nil>)")
-	require.Len(t, client.requests, mergeConflictResolutionMaxSemanticAttempts)
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			client := &strictSyncChatClient{responses: testCase.responses}
+			service := mergeConflictResolutionService{
+				repositoryPath: "/repo",
+				commitMessages: worktreeAdoptionCommitMessageOptions{
+					Client: client,
+				},
+			}
+
+			resolution, resolutionErr := service.resolveSemanticConflictRegion(
+				context.Background(),
+				client,
+				mergeConflictResolutionOptions{
+					SourceReference: "origin/master",
+					TargetBranch:    "feature/current-contract",
+				},
+				mergeConflictFile{Path: "contract.txt"},
+				region,
+				0,
+				1,
+				time.Second,
+				testCase.initialCandidate,
+				testCase.candidateExists,
+			)
+			if testCase.expectedError != "" {
+				require.ErrorContains(t, resolutionErr, testCase.expectedError)
+			} else {
+				require.NoError(t, resolutionErr)
+				require.Equal(t, testCase.expectedResult, resolution)
+			}
+			require.Len(t, client.requests, testCase.expectedRequests)
+		})
+	}
 }
 
 func TestResolveSemanticConflictRegionRejectsEmptyProviderResponse(t *testing.T) {

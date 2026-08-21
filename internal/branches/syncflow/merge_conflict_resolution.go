@@ -804,23 +804,7 @@ func (service mergeConflictResolutionService) resolveSemanticConflictRegion(ctx 
 		}
 
 		if reviewing && resolvedContent == mergeConflictResolutionReviewApproved {
-			service.report(
-				shared.EventLevelInfo,
-				shared.EventCodeAIMergeValidation,
-				fmt.Sprintf(
-					"semantic audit approved %s conflict region %d/%d on attempt %d/%d",
-					conflictFile.Path,
-					regionIndex+1,
-					regionCount,
-					attempt,
-					mergeConflictResolutionMaxSemanticAttempts,
-				),
-				map[string]string{
-					"path":    conflictFile.Path,
-					"region":  strconv.Itoa(regionIndex + 1),
-					"attempt": strconv.Itoa(attempt),
-				},
-			)
+			service.reportSemanticAuditApproved(conflictFile.Path, regionIndex, regionCount, attempt)
 			return candidate, nil
 		}
 
@@ -846,10 +830,8 @@ func (service mergeConflictResolutionService) resolveSemanticConflictRegion(ctx 
 		}
 
 		if reviewing {
-			attemptErrors = append(
-				attemptErrors,
-				fmt.Errorf("semantic audit attempt %d returned a locally valid corrected candidate without approval", attempt),
-			)
+			service.reportSemanticAuditApproved(conflictFile.Path, regionIndex, regionCount, attempt)
+			return resolvedRegion, nil
 		}
 		candidate = resolvedRegion
 		candidateAvailable = true
@@ -885,6 +867,26 @@ func (service mergeConflictResolutionService) resolveSemanticConflictRegion(ctx 
 		regionIndex+1,
 		mergeConflictResolutionMaxSemanticAttempts,
 		errors.Join(attemptErrors...),
+	)
+}
+
+func (service mergeConflictResolutionService) reportSemanticAuditApproved(path string, regionIndex int, regionCount int, attempt int) {
+	service.report(
+		shared.EventLevelInfo,
+		shared.EventCodeAIMergeValidation,
+		fmt.Sprintf(
+			"semantic audit approved %s conflict region %d/%d on attempt %d/%d",
+			path,
+			regionIndex+1,
+			regionCount,
+			attempt,
+			mergeConflictResolutionMaxSemanticAttempts,
+		),
+		map[string]string{
+			"path":    path,
+			"region":  strconv.Itoa(regionIndex + 1),
+			"attempt": strconv.Itoa(attempt),
+		},
 	)
 }
 

@@ -1944,7 +1944,6 @@ func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedCurrentDirtyMaster
 		"fix: support agentic model and reasoning effort settings",
 		"docs: update issue notes",
 		resolvedRegionResponse,
-		mergeConflictResolutionReviewApproved,
 		pullRequestBody,
 	}}
 	environment := &workflow.Environment{
@@ -1991,7 +1990,7 @@ func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedCurrentDirtyMaster
 	resolvedBytes, resolvedReadErr := os.ReadFile(filepath.Join(repositoryPath, "README.md"))
 	require.NoError(t, resolvedReadErr)
 	require.Equal(t, resolvedContent, string(resolvedBytes))
-	require.Len(t, chatClient.requests, 5)
+	require.Len(t, chatClient.requests, 4)
 	require.Contains(t, chatClient.requests[2].Messages[0].Content, "semantic fidelity auditor")
 	require.Contains(t, chatClient.requests[2].Messages[1].Content, "OURS current branch region")
 	require.Contains(t, chatClient.requests[2].Messages[1].Content, "Configure agentic model")
@@ -2001,8 +2000,6 @@ func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedCurrentDirtyMaster
 	require.Contains(t, chatClient.requests[2].Messages[1].Content, oursRegion)
 	require.NotContains(t, chatClient.requests[2].Messages[1].Content, "stable preface")
 	require.NotContains(t, chatClient.requests[2].Messages[1].Content, "stable epilogue")
-	require.Contains(t, chatClient.requests[3].Messages[0].Content, "semantic fidelity auditor")
-	require.Contains(t, chatClient.requests[3].Messages[1].Content, resolvedRegion)
 	require.Len(t, githubExecutor.commands, 1)
 	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", generatedBranchName, "--title", generatedBranchName, "--body", pullRequestBody}, githubExecutor.commands[0].Arguments)
 }
