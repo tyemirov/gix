@@ -2,7 +2,7 @@ package tests
 
 import "strings"
 
-type reportedDownloadDataStashFixture struct {
+type reportedIssueFormatConflictFixture struct {
 	Base       string
 	Upstream   string
 	Stash      string
@@ -10,7 +10,10 @@ type reportedDownloadDataStashFixture struct {
 	Candidates map[int]string
 }
 
-func newReportedDownloadDataStashFixture() reportedDownloadDataStashFixture {
+// newReportedIssueFormatConflictFixture retains the four conflict-region shapes
+// from the reported download_your_data stash failure without pinning unrelated
+// repository content.
+func newReportedIssueFormatConflictFixture() reportedIssueFormatConflictFixture {
 	regionOneBase := reportedConflictLines(
 		"- The file starts with a title line, for example `# ISSUES`.",
 		"- Issues are grouped under level-2 headings.",
@@ -132,12 +135,34 @@ func newReportedDownloadDataStashFixture() reportedDownloadDataStashFixture {
 	betweenThreeAndFour := reportedConflictLines("", "  Validation:", "  Reproduce the startup path with the affected configuration.", "")
 	suffix := reportedConflictLines("", "End of fixture.")
 
-	return reportedDownloadDataStashFixture{
+	return reportedIssueFormatConflictFixture{
 		Base:       prefix + regionOneBase + betweenOneAndTwo + regionTwoBase + betweenTwoAndThree + regionThreeBase + betweenThreeAndFour + regionFourBase + suffix,
 		Upstream:   prefix + regionOneUpstream + betweenOneAndTwo + regionTwoUpstream + betweenTwoAndThree + regionThreeUpstream + betweenThreeAndFour + regionFourUpstream + suffix,
 		Stash:      prefix + regionOneStash + betweenOneAndTwo + regionTwoStash + betweenTwoAndThree + regionThreeStash + betweenThreeAndFour + regionFourStash + suffix,
 		Resolved:   prefix + regionOneResolved + betweenOneAndTwo + regionTwoResolved + betweenTwoAndThree + regionThreeResolved + betweenThreeAndFour + regionFourResolved + suffix,
 		Candidates: map[int]string{1: regionOneResolved, 2: regionTwoResolved, 3: regionThreeResolved, 4: regionFourResolved},
+	}
+}
+
+type reportedLifecycleConflictFixture struct {
+	Base   string
+	Ours   string
+	Theirs string
+}
+
+// newReportedLifecycleConflictFixture retains the replacement and deletion
+// regions from the reported llm-proxy merge without unrelated file content.
+func newReportedLifecycleConflictFixture() reportedLifecycleConflictFixture {
+	const functionPrefix = "package tests\n\nfunc "
+	const functionBodyPrefix = "(testingInstance *testing.T) {\n\trepositoryRoot := operationalRepositoryRoot(testingInstance)\n"
+	const assertionV4 = "\tif schemaVersion, schemaAvailable := resourcesDocument[\"schema_version\"].(int); !schemaAvailable || schemaVersion != 4 {\n\t\ttestingInstance.Fatalf(\"unexpected lifecycle schema version: %#v\", resourcesDocument[\"schema_version\"])\n\t}\n"
+	const assertionV5 = "\tif schemaVersion, schemaAvailable := resourcesDocument[\"schema_version\"].(int); !schemaAvailable || schemaVersion != 5 {\n\t\ttestingInstance.Fatalf(\"unexpected lifecycle schema version: %#v\", resourcesDocument[\"schema_version\"])\n\t}\n"
+	const functionSuffix = "\tuseRepositoryRoot(repositoryRoot)\n}\n"
+
+	return reportedLifecycleConflictFixture{
+		Base:   functionPrefix + "TestOperationalRepositoryOwnsSchemaV4Lifecycle" + functionBodyPrefix + assertionV4 + functionSuffix,
+		Ours:   functionPrefix + "TestOperationalRepositoryOwnsSchemaV5Lifecycle" + functionBodyPrefix + assertionV5 + functionSuffix,
+		Theirs: functionPrefix + "TestOperationalRepositoryOwnsVersionlessLifecycle" + functionBodyPrefix + functionSuffix,
 	}
 }
 

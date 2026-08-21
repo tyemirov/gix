@@ -1507,7 +1507,7 @@ operations:
 	require.Contains(testInstance, output, "MERGE_CONFLICT")
 	require.Contains(testInstance, output, "AI_MERGE_RESOLUTION")
 	require.Contains(testInstance, output, "attempt deadline 2s")
-	require.Contains(testInstance, output, "still resolving "+conflictedFileName+" conflict region 1/1 semantic candidate attempt")
+	require.Contains(testInstance, output, "still resolving "+conflictedFileName+" conflict region 1/1 semantic audit attempt")
 	require.Contains(testInstance, output, "AI_MERGE_ROLLBACK")
 	require.Contains(testInstance, output, "AI merge resolution timed out after 2s")
 	require.Contains(testInstance, output, "stopping semantic repair")
