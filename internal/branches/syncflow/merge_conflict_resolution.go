@@ -1208,9 +1208,15 @@ func validateMergeConflictRegionResponse(path string, regionIndex int, region me
 		return fmt.Errorf(mergeConflictResolutionBaseOnlyTemplate, path, regionIndex+1)
 	}
 	intentErrors := make([]error, 0, 2)
-	missingOursIntents, oursIntentAvailable := mergeConflictMissingReplacementIntents(region.Base, region.Ours, region.Theirs, response)
-	if !oursIntentAvailable {
+	missingOursIntents, missingTheirsIntents, intentAvailable := mergeConflictMissingRegionReplacementIntents(
+		region.Base,
+		region.Ours,
+		region.Theirs,
+		response,
+	)
+	if !intentAvailable {
 		intentErrors = append(intentErrors, fmt.Errorf(mergeConflictResolutionIntentTemplate, path, regionIndex+1, "OURS"))
+		intentErrors = append(intentErrors, fmt.Errorf(mergeConflictResolutionIntentTemplate, path, regionIndex+1, "THEIRS"))
 	}
 	if len(missingOursIntents) != 0 {
 		intentErrors = append(
@@ -1222,10 +1228,6 @@ func validateMergeConflictRegionResponse(path string, regionIndex int, region me
 				mergeConflictReplacementIntentDetails(missingOursIntents),
 			),
 		)
-	}
-	missingTheirsIntents, theirsIntentAvailable := mergeConflictMissingReplacementIntents(region.Base, region.Theirs, region.Ours, response)
-	if !theirsIntentAvailable {
-		intentErrors = append(intentErrors, fmt.Errorf(mergeConflictResolutionIntentTemplate, path, regionIndex+1, "THEIRS"))
 	}
 	if len(missingTheirsIntents) != 0 {
 		intentErrors = append(

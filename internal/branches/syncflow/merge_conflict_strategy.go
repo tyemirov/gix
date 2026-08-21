@@ -184,28 +184,7 @@ func mergeConflictTokenEdits(baseTokens []string, variantTokens []string) ([]mer
 		len(baseTokens),
 		variantTokens[unmatchedVariantStart:],
 	)
-	return mergeConflictCoalesceWhitespaceSeparatedTokenEdits(baseTokens, edits), true
-}
-
-func mergeConflictCoalesceWhitespaceSeparatedTokenEdits(baseTokens []string, edits []mergeConflictTokenEdit) []mergeConflictTokenEdit {
-	if len(edits) < 2 {
-		return edits
-	}
-
-	coalesced := make([]mergeConflictTokenEdit, 1, len(edits))
-	coalesced[0] = edits[0]
-	for _, edit := range edits[1:] {
-		lastIndex := len(coalesced) - 1
-		last := &coalesced[lastIndex]
-		gap := strings.Join(baseTokens[last.End:edit.Start], "")
-		if strings.TrimSpace(gap) != "" {
-			coalesced = append(coalesced, edit)
-			continue
-		}
-		last.End = edit.End
-		last.Replacement += gap + edit.Replacement
-	}
-	return coalesced
+	return edits, true
 }
 
 func appendMergeConflictTokenEdit(edits []mergeConflictTokenEdit, start int, end int, replacementTokens []string) []mergeConflictTokenEdit {
@@ -290,24 +269,41 @@ func applyMergeConflictTokenEdits(baseTokens []string, edits []mergeConflictToke
 	return resolved.String(), true
 }
 
-func mergeConflictMissingReplacementIntents(base string, variant string, otherVariant string, candidate string) ([]string, bool) {
+func mergeConflictMissingRegionReplacementIntents(base string, ours string, theirs string, candidate string) ([]string, []string, bool) {
 	baseTokens := mergeConflictTokens(base)
-	edits, editsAvailable := mergeConflictTokenEdits(baseTokens, mergeConflictTokens(variant))
-	otherEdits, otherEditsAvailable := mergeConflictTokenEdits(baseTokens, mergeConflictTokens(otherVariant))
-	if !editsAvailable || !otherEditsAvailable {
-		return nil, false
+	oursEdits, oursEditsAvailable := mergeConflictTokenEdits(baseTokens, mergeConflictTokens(ours))
+	theirsEdits, theirsEditsAvailable := mergeConflictTokenEdits(baseTokens, mergeConflictTokens(theirs))
+	if !oursEditsAvailable || !theirsEditsAvailable {
+		return nil, nil, false
 	}
+	if mergeConflictCandidateMatchesDerivedVariant(baseTokens, oursEdits, theirsEdits, candidate) {
+		return nil, nil, true
+	}
+	oursMissing := mergeConflictMissingReplacementIntents(base, ours, theirs, candidate, baseTokens, oursEdits, theirsEdits)
+	theirsMissing := mergeConflictMissingReplacementIntents(base, theirs, ours, candidate, baseTokens, theirsEdits, oursEdits)
+	return oursMissing, theirsMissing, true
+}
+
+func mergeConflictMissingReplacementIntents(
+	base string,
+	variant string,
+	otherVariant string,
+	candidate string,
+	baseTokens []string,
+	edits []mergeConflictTokenEdit,
+	otherEdits []mergeConflictTokenEdit,
+) []string {
 	normalizedBase := mergeConflictWithoutWhitespace(base)
 	normalizedVariant := mergeConflictWithoutWhitespace(variant)
 	normalizedOtherVariant := mergeConflictWithoutWhitespace(otherVariant)
 	normalizedCandidate := mergeConflictWithoutWhitespace(candidate)
 	if normalizedVariant != "" && strings.Contains(normalizedCandidate, normalizedVariant) {
-		return nil, true
+		return nil
 	}
 	compatibleVariant, compatibleVariantAvailable := mergeConflictVariantWithCompatibleOtherEdits(baseTokens, edits, otherEdits)
 	normalizedCompatibleVariant := mergeConflictWithoutWhitespace(compatibleVariant)
 	if compatibleVariantAvailable && normalizedCompatibleVariant != "" && strings.Contains(normalizedCandidate, normalizedCompatibleVariant) {
-		return nil, true
+		return nil
 	}
 	missingIntents := make([]string, 0, len(edits))
 	for _, edit := range edits {
@@ -336,7 +332,22 @@ func mergeConflictMissingReplacementIntents(base string, variant string, otherVa
 		}
 		missingIntents = append(missingIntents, edit.Replacement)
 	}
-	return missingIntents, true
+	return missingIntents
+}
+
+func mergeConflictCandidateMatchesDerivedVariant(
+	baseTokens []string,
+	oursEdits []mergeConflictTokenEdit,
+	theirsEdits []mergeConflictTokenEdit,
+	candidate string,
+) bool {
+	normalizedCandidate := mergeConflictWithoutWhitespace(candidate)
+	oursCandidate, oursCandidateAvailable := mergeConflictVariantWithCompatibleOtherEdits(baseTokens, oursEdits, theirsEdits)
+	if oursCandidateAvailable && normalizedCandidate == mergeConflictWithoutWhitespace(oursCandidate) {
+		return true
+	}
+	theirsCandidate, theirsCandidateAvailable := mergeConflictVariantWithCompatibleOtherEdits(baseTokens, theirsEdits, oursEdits)
+	return theirsCandidateAvailable && normalizedCandidate == mergeConflictWithoutWhitespace(theirsCandidate)
 }
 
 func mergeConflictVariantWithCompatibleOtherEdits(baseTokens []string, variantEdits []mergeConflictTokenEdit, otherEdits []mergeConflictTokenEdit) (string, bool) {

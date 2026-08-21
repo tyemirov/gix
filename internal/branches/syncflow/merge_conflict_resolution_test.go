@@ -562,6 +562,27 @@ func reportedConflictRegionLines(lines ...string) string {
 	return strings.Join(lines, "\n") + "\n"
 }
 
+func TestDeterministicMergeConflictRegionResolutionPreservesInsertionInsideWhitespaceSeparatedEdits(t *testing.T) {
+	region := mergeConflictRegion{
+		Base:        "foo bar\n",
+		BasePresent: true,
+		Ours:        "FOO BAR\n",
+		Theirs:      "foo, bar\n",
+	}
+
+	resolution, resolved := deterministicMergeConflictRegionResolution(region)
+
+	require.True(t, resolved)
+	require.True(t, resolution.RequiresSemanticAudit)
+	require.Equal(t, "FOO, BAR\n", resolution.Content)
+	require.NoError(t, validateMergeConflictRegionResponse("contract.txt", 0, region, resolution.Content))
+
+	lossyCandidateErr := validateMergeConflictRegionResponse("contract.txt", 0, region, region.Ours)
+	require.Error(t, lossyCandidateErr)
+	require.Contains(t, lossyCandidateErr.Error(), "does not preserve THEIRS replacement intent")
+	require.Contains(t, lossyCandidateErr.Error(), ",")
+}
+
 func TestDeterministicMergeConflictRegionResolutionOrdersSamePositionInsertionsIndependentlyOfSides(t *testing.T) {
 	forwardRegion := mergeConflictRegion{
 		Base:        "reviewers: alice\n",
