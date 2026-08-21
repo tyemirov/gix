@@ -80,13 +80,16 @@ Give each term one meaning. Use the same term for the same concept in all docume
 Add repository-specific technical nouns below this line.
 
 - `CalVer`: A release version that derives its numeric fields from a release timestamp.
+- `derived candidate`: A conflict result that Gix constructs from one side and each compatible edit from the other side.
 - `edit context`: The unchanged tokens next to a replacement intent base location.
 - `fixed-major policy`: A SemVer policy that keeps one configured major value.
 - `provider round`: One LLM request that uses the complete configured provider order.
 - `release policy`: The invocation input that selects one release version scheme and its scheme-specific options.
 - `replacement alternative`: One of two incompatible replacements for the same base tokens.
 - `replacement intent`: The non-whitespace content that one conflict side adds or changes relative to a common base.
+- `semantic audit`: A model review that approves or corrects a locally validated conflict result.
 - `SemVer`: A release version with major, minor, and patch fields.
+- `token edit`: A change that has an original range in the common base tokens.
 - `version decision`: The Gix result that selects one release version from repository evidence and policy.
 
 ## MPR Lab Technical Verbs

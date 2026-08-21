@@ -106,12 +106,33 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   This test-only step does not include a production implementation change.
   Final resolution on 2026-08-21:
   Gix now calculates each side's token edits once.
-  It coalesces edit fragments that have only unchanged whitespace between them.
-  This rule prevents shared words from splitting one wholesale replacement into false compatible edits.
+  Each token edit keeps its original base range.
   Compatible edits and same-position insertions produce one deterministic candidate.
   Conflicting replacements use the local alternative plus each compatible incoming edit.
+  Local validation accepts an exact whitespace-normalized derived candidate.
+  This candidate combines one complete variant with all compatible opposite token edits.
   Gix sends every derived candidate directly to semantic audit.
   The `llm-proxy` lifecycle and `download_your_data` stash compiled replays now pass.
+  Full `make ci` passed on 2026-08-21.
+  Review follow-up on 2026-08-21:
+  The old edit rule combined independent replacements across unchanged whitespace.
+  This rule made a compatible insertion conflict with the combined replacement.
+  BASE `foo bar`, OURS `FOO BAR`, and THEIRS `foo, bar` then produced `FOO BAR`.
+  The result lost the incoming comma before semantic audit.
+  Follow-up requirements:
+  - Keep each original token edit boundary during compatibility checks.
+  - Keep each original token edit boundary during replacement intent validation.
+  - Preserve an insertion inside unchanged whitespace that separates independent edits.
+  - Reject a derived candidate that omits the insertion.
+  - Keep the two reported compiled CLI replays valid.
+  Follow-up resolution:
+  Gix now keeps each original token edit boundary for compatibility and intent validation.
+  Region validation calculates both edit sets once and uses them for all local checks.
+  An exact derived candidate contains one complete variant and all compatible opposite edits.
+  The `foo bar` regression now derives `FOO, BAR`.
+  A candidate without the comma fails local validation.
+  The `llm-proxy` lifecycle and `download_your_data` stash compiled replays passed.
+  Focused tests passed on 2026-08-21.
   Full `make ci` passed on 2026-08-21.
 
 - [x] [B073] (P0) Ignore whitespace when validating merge replacement intent.
