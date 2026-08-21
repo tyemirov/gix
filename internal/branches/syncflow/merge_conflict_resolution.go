@@ -41,8 +41,8 @@ const (
 	mergeConflictResolutionEmptyResponse        = "llm returned an empty merge resolution for %s"
 	mergeConflictResolutionEnvelopeTemplate     = "llm merge resolution for %s did not use the required content envelope"
 	mergeConflictResolutionConflictMarkers      = "llm left conflict markers in merge resolution for %s"
-	mergeConflictResolutionOursTemplate         = "llm merge resolution for %s conflict region %d does not preserve OURS replacement intent %q"
-	mergeConflictResolutionTheirsTemplate       = "llm merge resolution for %s conflict region %d does not preserve THEIRS replacement intent %q"
+	mergeConflictResolutionOursTemplate         = "llm merge resolution for %s conflict region %d does not preserve OURS replacement intent %s"
+	mergeConflictResolutionTheirsTemplate       = "llm merge resolution for %s conflict region %d does not preserve THEIRS replacement intent %s"
 	mergeConflictResolutionAdditiveTemplate     = "llm merge resolution for %s additive conflict region %d is not an exact ordering of OURS and THEIRS"
 	mergeConflictResolutionIntentTemplate       = "llm merge resolution for %s conflict region %d cannot be validated against %s replacement intent"
 	mergeConflictResolutionBaseOnlyTemplate     = "llm merge resolution for %s conflict region %d returned BASE without either side's changes"
@@ -1190,21 +1190,46 @@ func validateMergeConflictRegionResponse(path string, regionIndex int, region me
 	if response == region.Base && (region.Ours != region.Base || region.Theirs != region.Base) {
 		return fmt.Errorf(mergeConflictResolutionBaseOnlyTemplate, path, regionIndex+1)
 	}
-	missingOursIntent, oursIntentMissing, oursIntentAvailable := mergeConflictMissingReplacementIntent(region.Base, region.Ours, response)
+	intentErrors := make([]error, 0, 2)
+	missingOursIntents, oursIntentAvailable := mergeConflictMissingReplacementIntents(region.Base, region.Ours, response)
 	if !oursIntentAvailable {
-		return fmt.Errorf(mergeConflictResolutionIntentTemplate, path, regionIndex+1, "OURS")
+		intentErrors = append(intentErrors, fmt.Errorf(mergeConflictResolutionIntentTemplate, path, regionIndex+1, "OURS"))
 	}
-	if oursIntentMissing {
-		return fmt.Errorf(mergeConflictResolutionOursTemplate, path, regionIndex+1, missingOursIntent)
+	if len(missingOursIntents) != 0 {
+		intentErrors = append(
+			intentErrors,
+			fmt.Errorf(
+				mergeConflictResolutionOursTemplate,
+				path,
+				regionIndex+1,
+				mergeConflictReplacementIntentDetails(missingOursIntents),
+			),
+		)
 	}
-	missingTheirsIntent, theirsIntentMissing, theirsIntentAvailable := mergeConflictMissingReplacementIntent(region.Base, region.Theirs, response)
+	missingTheirsIntents, theirsIntentAvailable := mergeConflictMissingReplacementIntents(region.Base, region.Theirs, response)
 	if !theirsIntentAvailable {
-		return fmt.Errorf(mergeConflictResolutionIntentTemplate, path, regionIndex+1, "THEIRS")
+		intentErrors = append(intentErrors, fmt.Errorf(mergeConflictResolutionIntentTemplate, path, regionIndex+1, "THEIRS"))
 	}
-	if theirsIntentMissing {
-		return fmt.Errorf(mergeConflictResolutionTheirsTemplate, path, regionIndex+1, missingTheirsIntent)
+	if len(missingTheirsIntents) != 0 {
+		intentErrors = append(
+			intentErrors,
+			fmt.Errorf(
+				mergeConflictResolutionTheirsTemplate,
+				path,
+				regionIndex+1,
+				mergeConflictReplacementIntentDetails(missingTheirsIntents),
+			),
+		)
 	}
-	return nil
+	return errors.Join(intentErrors...)
+}
+
+func mergeConflictReplacementIntentDetails(intents []string) string {
+	details := make([]string, 0, len(intents))
+	for _, intent := range intents {
+		details = append(details, strconv.Quote(intent))
+	}
+	return strings.Join(details, ", ")
 }
 
 func parseMergeConflictDocument(content string) (mergeConflictDocument, error) {

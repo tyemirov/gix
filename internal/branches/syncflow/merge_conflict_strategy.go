@@ -250,18 +250,33 @@ func applyMergeConflictTokenEdits(baseTokens []string, edits []mergeConflictToke
 	return resolved.String(), true
 }
 
-func mergeConflictMissingReplacementIntent(base string, variant string, candidate string) (string, bool, bool) {
+func mergeConflictMissingReplacementIntents(base string, variant string, candidate string) ([]string, bool) {
 	edits, editsAvailable := mergeConflictTokenEdits(mergeConflictTokens(base), mergeConflictTokens(variant))
 	if !editsAvailable {
-		return "", false, false
+		return nil, false
 	}
+	normalizedCandidate := mergeConflictWithoutWhitespace(candidate)
+	missingIntents := make([]string, 0, len(edits))
 	for _, edit := range edits {
-		if strings.TrimSpace(edit.Replacement) == "" {
+		normalizedReplacement := mergeConflictWithoutWhitespace(edit.Replacement)
+		if normalizedReplacement == "" {
 			continue
 		}
-		if !strings.Contains(candidate, edit.Replacement) {
-			return edit.Replacement, true, true
+		if !strings.Contains(normalizedCandidate, normalizedReplacement) {
+			missingIntents = append(missingIntents, edit.Replacement)
 		}
 	}
-	return "", false, true
+	return missingIntents, true
+}
+
+func mergeConflictWithoutWhitespace(value string) string {
+	var normalized strings.Builder
+	normalized.Grow(len(value))
+	for _, currentRune := range value {
+		if unicode.IsSpace(currentRune) {
+			continue
+		}
+		normalized.WriteRune(currentRune)
+	}
+	return normalized.String()
 }
