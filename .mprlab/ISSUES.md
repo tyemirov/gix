@@ -85,6 +85,55 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   The replay preserves the exact combined document and the original stash inventory.
   The unrelated-fragment regression still rejects a lossy candidate before semantic audit.
   Focused tests and `make ci` passed on 2026-08-21.
+  Acceptance regression failure on 2026-08-21:
+  The fixture used the reported conflict regions, but its model stub returned the prepared result.
+  The regression validated an ideal candidate instead of candidate generation.
+  Additional requirements:
+  - Cover conflicting replacement alternatives through one general contract.
+  - Cover compatible edits inside a coarse conflict region.
+  - Cover deletion as a valid replacement alternative.
+  - Do not return a prepared result during semantic candidate generation.
+  - Require each derivable conflict region to start with semantic audit.
+  - Cover the reported conflict structures through the compiled CLI.
+  - Keep the acceptance tests failing until Gix derives the candidates.
+  Additional validation:
+  - Confirm that the idealized regression passes before the test refactor.
+  - Confirm that each refactored regression fails on an unexpected semantic candidate request.
+  Regression refactor on 2026-08-21:
+  The prepared-candidate replay passed before the refactor.
+  The new strategy guard fails for all four generalized replacement forms.
+  Both compiled CLI regressions fail on the first unexpected semantic candidate request.
+  This test-only step does not include a production implementation change.
+  Final resolution on 2026-08-21:
+  Gix now calculates each side's token edits once.
+  Each token edit keeps its original base range.
+  Compatible edits and same-position insertions produce one deterministic candidate.
+  Conflicting replacements use the local alternative plus each compatible incoming edit.
+  Local validation accepts an exact whitespace-normalized derived candidate.
+  This candidate combines one complete variant with all compatible opposite token edits.
+  Gix sends every derived candidate directly to semantic audit.
+  The `llm-proxy` lifecycle and `download_your_data` stash compiled replays now pass.
+  Full `make ci` passed on 2026-08-21.
+  Review follow-up on 2026-08-21:
+  The old edit rule combined independent replacements across unchanged whitespace.
+  This rule made a compatible insertion conflict with the combined replacement.
+  BASE `foo bar`, OURS `FOO BAR`, and THEIRS `foo, bar` then produced `FOO BAR`.
+  The result lost the incoming comma before semantic audit.
+  Follow-up requirements:
+  - Keep each original token edit boundary during compatibility checks.
+  - Keep each original token edit boundary during replacement intent validation.
+  - Preserve an insertion inside unchanged whitespace that separates independent edits.
+  - Reject a derived candidate that omits the insertion.
+  - Keep the two reported compiled CLI replays valid.
+  Follow-up resolution:
+  Gix now keeps each original token edit boundary for compatibility and intent validation.
+  Region validation calculates both edit sets once and uses them for all local checks.
+  An exact derived candidate contains one complete variant and all compatible opposite edits.
+  The `foo bar` regression now derives `FOO, BAR`.
+  A candidate without the comma fails local validation.
+  The `llm-proxy` lifecycle and `download_your_data` stash compiled replays passed.
+  Focused tests passed on 2026-08-21.
+  Full `make ci` passed on 2026-08-21.
 
 - [x] [B073] (P0) Ignore whitespace when validating merge replacement intent.
   Reported on 2026-08-20 after `gix sync master --stash` rejected four semantic candidates.

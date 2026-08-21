@@ -49,32 +49,41 @@ func deterministicMergeConflictRegionResolution(region mergeConflictRegion) (mer
 		}, true
 	}
 
-	mergedContent, merged := mergeConflictNonOverlappingTokenEdits(region.Base, region.Ours, region.Theirs)
-	if !merged {
-		return mergeConflictDeterministicResolution{}, false
-	}
-	return mergeConflictDeterministicResolution{
-		Content:               mergedContent,
-		Strategy:              "non-overlapping token edits",
-		RequiresSemanticAudit: true,
-	}, true
+	return mergeConflictTokenEditResolution(region.Base, region.Ours, region.Theirs)
 }
 
-func mergeConflictNonOverlappingTokenEdits(base string, ours string, theirs string) (string, bool) {
+func mergeConflictTokenEditResolution(base string, ours string, theirs string) (mergeConflictDeterministicResolution, bool) {
 	baseTokens := mergeConflictTokens(base)
 	oursTokens := mergeConflictTokens(ours)
 	theirsTokens := mergeConflictTokens(theirs)
 	oursEdits, oursEditsAvailable := mergeConflictTokenEdits(baseTokens, oursTokens)
 	theirsEdits, theirsEditsAvailable := mergeConflictTokenEdits(baseTokens, theirsTokens)
 	if !oursEditsAvailable || !theirsEditsAvailable {
-		return "", false
+		return mergeConflictDeterministicResolution{}, false
 	}
 
 	mergedEdits, editsCompatible := mergeConflictCompatibleTokenEdits(oursEdits, theirsEdits)
-	if !editsCompatible {
-		return "", false
+	if editsCompatible {
+		mergedContent, merged := applyMergeConflictTokenEdits(baseTokens, mergedEdits)
+		if !merged {
+			return mergeConflictDeterministicResolution{}, false
+		}
+		return mergeConflictDeterministicResolution{
+			Content:               mergedContent,
+			Strategy:              "compatible token edits",
+			RequiresSemanticAudit: true,
+		}, true
 	}
-	return applyMergeConflictTokenEdits(baseTokens, mergedEdits)
+
+	candidate, candidateAvailable := mergeConflictVariantWithCompatibleOtherEdits(baseTokens, oursEdits, theirsEdits)
+	if !candidateAvailable {
+		return mergeConflictDeterministicResolution{}, false
+	}
+	return mergeConflictDeterministicResolution{
+		Content:               candidate,
+		Strategy:              "local replacement alternative",
+		RequiresSemanticAudit: true,
+	}, true
 }
 
 func mergeConflictTokens(value string) []string {
@@ -196,7 +205,13 @@ func mergeConflictCompatibleTokenEdits(ours []mergeConflictTokenEdit, theirs []m
 		if merged[leftIndex].Start != merged[rightIndex].Start {
 			return merged[leftIndex].Start < merged[rightIndex].Start
 		}
-		return merged[leftIndex].End < merged[rightIndex].End
+		if merged[leftIndex].End != merged[rightIndex].End {
+			return merged[leftIndex].End < merged[rightIndex].End
+		}
+		if merged[leftIndex].Start == merged[leftIndex].End {
+			return merged[leftIndex].Replacement < merged[rightIndex].Replacement
+		}
+		return false
 	})
 
 	deduplicated := make([]mergeConflictTokenEdit, 0, len(merged))
@@ -221,14 +236,15 @@ func mergeConflictCompatibleTokenEdits(ours []mergeConflictTokenEdit, theirs []m
 }
 
 func mergeConflictTokenEditsConflict(left mergeConflictTokenEdit, right mergeConflictTokenEdit) bool {
+	leftInsertion := left.Start == left.End
+	rightInsertion := right.Start == right.End
+	if leftInsertion && rightInsertion {
+		return false
+	}
 	if left.Start == right.Start && left.End == right.End {
 		return left.Replacement != right.Replacement
 	}
-	leftInsertion := left.Start == left.End
-	rightInsertion := right.Start == right.End
 	switch {
-	case leftInsertion && rightInsertion:
-		return left.Start == right.Start
 	case leftInsertion:
 		return right.Start < left.Start && left.Start < right.End
 	case rightInsertion:
@@ -253,24 +269,41 @@ func applyMergeConflictTokenEdits(baseTokens []string, edits []mergeConflictToke
 	return resolved.String(), true
 }
 
-func mergeConflictMissingReplacementIntents(base string, variant string, otherVariant string, candidate string) ([]string, bool) {
+func mergeConflictMissingRegionReplacementIntents(base string, ours string, theirs string, candidate string) ([]string, []string, bool) {
 	baseTokens := mergeConflictTokens(base)
-	edits, editsAvailable := mergeConflictTokenEdits(baseTokens, mergeConflictTokens(variant))
-	otherEdits, otherEditsAvailable := mergeConflictTokenEdits(baseTokens, mergeConflictTokens(otherVariant))
-	if !editsAvailable || !otherEditsAvailable {
-		return nil, false
+	oursEdits, oursEditsAvailable := mergeConflictTokenEdits(baseTokens, mergeConflictTokens(ours))
+	theirsEdits, theirsEditsAvailable := mergeConflictTokenEdits(baseTokens, mergeConflictTokens(theirs))
+	if !oursEditsAvailable || !theirsEditsAvailable {
+		return nil, nil, false
 	}
+	if mergeConflictCandidateMatchesDerivedVariant(baseTokens, oursEdits, theirsEdits, candidate) {
+		return nil, nil, true
+	}
+	oursMissing := mergeConflictMissingReplacementIntents(base, ours, theirs, candidate, baseTokens, oursEdits, theirsEdits)
+	theirsMissing := mergeConflictMissingReplacementIntents(base, theirs, ours, candidate, baseTokens, theirsEdits, oursEdits)
+	return oursMissing, theirsMissing, true
+}
+
+func mergeConflictMissingReplacementIntents(
+	base string,
+	variant string,
+	otherVariant string,
+	candidate string,
+	baseTokens []string,
+	edits []mergeConflictTokenEdit,
+	otherEdits []mergeConflictTokenEdit,
+) []string {
 	normalizedBase := mergeConflictWithoutWhitespace(base)
 	normalizedVariant := mergeConflictWithoutWhitespace(variant)
 	normalizedOtherVariant := mergeConflictWithoutWhitespace(otherVariant)
 	normalizedCandidate := mergeConflictWithoutWhitespace(candidate)
 	if normalizedVariant != "" && strings.Contains(normalizedCandidate, normalizedVariant) {
-		return nil, true
+		return nil
 	}
 	compatibleVariant, compatibleVariantAvailable := mergeConflictVariantWithCompatibleOtherEdits(baseTokens, edits, otherEdits)
 	normalizedCompatibleVariant := mergeConflictWithoutWhitespace(compatibleVariant)
 	if compatibleVariantAvailable && normalizedCompatibleVariant != "" && strings.Contains(normalizedCandidate, normalizedCompatibleVariant) {
-		return nil, true
+		return nil
 	}
 	missingIntents := make([]string, 0, len(edits))
 	for _, edit := range edits {
@@ -299,7 +332,22 @@ func mergeConflictMissingReplacementIntents(base string, variant string, otherVa
 		}
 		missingIntents = append(missingIntents, edit.Replacement)
 	}
-	return missingIntents, true
+	return missingIntents
+}
+
+func mergeConflictCandidateMatchesDerivedVariant(
+	baseTokens []string,
+	oursEdits []mergeConflictTokenEdit,
+	theirsEdits []mergeConflictTokenEdit,
+	candidate string,
+) bool {
+	normalizedCandidate := mergeConflictWithoutWhitespace(candidate)
+	oursCandidate, oursCandidateAvailable := mergeConflictVariantWithCompatibleOtherEdits(baseTokens, oursEdits, theirsEdits)
+	if oursCandidateAvailable && normalizedCandidate == mergeConflictWithoutWhitespace(oursCandidate) {
+		return true
+	}
+	theirsCandidate, theirsCandidateAvailable := mergeConflictVariantWithCompatibleOtherEdits(baseTokens, theirsEdits, oursEdits)
+	return theirsCandidateAvailable && normalizedCandidate == mergeConflictWithoutWhitespace(theirsCandidate)
 }
 
 func mergeConflictVariantWithCompatibleOtherEdits(baseTokens []string, variantEdits []mergeConflictTokenEdit, otherEdits []mergeConflictTokenEdit) (string, bool) {

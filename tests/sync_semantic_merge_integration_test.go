@@ -258,7 +258,7 @@ operations:
 	require.NotContains(testInstance, gitLog, "merge --abort")
 }
 
-func TestSyncRepairsAndAuditsRejectedSemanticCandidateBeforeRollback(testInstance *testing.T) {
+func TestSyncRepairsRejectedSemanticAuditCorrectionsBeforeCommit(testInstance *testing.T) {
 	const (
 		baseBranchName         = "feature/semantic-review-base"
 		targetBranchName       = "bugfix/semantic-review-target"
@@ -399,9 +399,10 @@ operations:
 		},
 	)
 	require.NoError(testInstance, runError, output)
-	require.Contains(testInstance, output, "semantic candidate attempt 1/4 rejected")
+	require.Contains(testInstance, output, "derived reviewers.txt conflict region 1/1 candidate using compatible token edits; requesting semantic audit")
+	require.Contains(testInstance, output, "semantic audit attempt 1/4 rejected")
 	require.Contains(testInstance, output, "llm left conflict markers")
-	require.Contains(testInstance, output, "requesting validation-guided repair")
+	require.Contains(testInstance, output, "retrying semantic audit")
 	require.Contains(testInstance, output, "semantic audit approved")
 	require.Contains(testInstance, output, "merge conflict resolution completed")
 	require.NotContains(testInstance, output, "AI_MERGE_ROLLBACK")
@@ -414,8 +415,10 @@ operations:
 	secondRequest := <-requestBodies
 	thirdRequest := <-requestBodies
 	fourthRequest := <-requestBodies
+	require.Contains(testInstance, firstRequest, "semantic fidelity auditor")
 	require.Contains(testInstance, firstRequest, "reviewers: alice, bob\\n")
 	require.Contains(testInstance, firstRequest, "reviewers: alice, carol\\n")
+	require.Contains(testInstance, firstRequest, "LOCALLY VALIDATED CANDIDATE:\\nreviewers: alice, bob, carol\\n")
 	require.Contains(testInstance, secondRequest, "llm left conflict markers")
 	require.Contains(testInstance, secondRequest, "reviewers: alice, bob\\n")
 	require.Contains(testInstance, thirdRequest, "does not preserve THEIRS replacement intent")
@@ -429,17 +432,15 @@ operations:
 	require.NotContains(testInstance, gitLog, "merge --abort")
 }
 
-func TestSyncAuditsOneReplacementAlternativeAndPreservesCompatibleIntent(testInstance *testing.T) {
+func TestSyncDerivesReplacementAndDeletionCandidatesBeforeSemanticAudit(testInstance *testing.T) {
 	const (
 		baseBranchName                 = "feature/versionless-lifecycle"
 		targetBranchName               = "gix/migrate-lifecycle-manifest-to-schema-version-5"
 		conflictedPath                 = "tests/lifecycle_contract_test.go"
 		versionlessFunctionDeclaration = "func TestOperationalRepositoryOwnsVersionlessLifecycle(testingInstance *testing.T) {\n"
-		baseContent                    = "package tests\n\nfunc TestOperationalRepositoryOwnsSchemaV4Lifecycle(testingInstance *testing.T) {\n\trepositoryRoot := operationalRepositoryRoot(testingInstance)\n\tif schemaVersion, schemaAvailable := resourcesDocument[\"schema_version\"].(int); !schemaAvailable || schemaVersion != 4 {\n\t\ttestingInstance.Fatalf(\"unexpected lifecycle schema version: %#v\", resourcesDocument[\"schema_version\"])\n\t}\n\tuseRepositoryRoot(repositoryRoot)\n}\n"
-		oursContent                    = "package tests\n\nfunc TestOperationalRepositoryOwnsSchemaV5Lifecycle(testingInstance *testing.T) {\n\trepositoryRoot := operationalRepositoryRoot(testingInstance)\n\tif schemaVersion, schemaAvailable := resourcesDocument[\"schema_version\"].(int); !schemaAvailable || schemaVersion != 5 {\n\t\ttestingInstance.Fatalf(\"unexpected lifecycle schema version: %#v\", resourcesDocument[\"schema_version\"])\n\t}\n\tuseRepositoryRoot(repositoryRoot)\n}\n"
-		theirsContent                  = "package tests\n\n" + versionlessFunctionDeclaration + "\trepositoryRoot := operationalRepositoryRoot(testingInstance)\n\tuseRepositoryRoot(repositoryRoot)\n}\n"
 		reviewApprovedResponse         = "GIX_MERGE_REVIEW_APPROVED"
 	)
+	fixture := newReportedLifecycleConflictFixture()
 
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	workspacePath := syncHomeWorkspace(testInstance)
@@ -449,13 +450,13 @@ func TestSyncAuditsOneReplacementAlternativeAndPreservesCompatibleIntent(testIns
 
 	conflictedFilePath := filepath.Join(repositoryPath, conflictedPath)
 	require.NoError(testInstance, os.MkdirAll(filepath.Dir(conflictedFilePath), 0o755))
-	require.NoError(testInstance, os.WriteFile(conflictedFilePath, []byte(baseContent), 0o644))
+	require.NoError(testInstance, os.WriteFile(conflictedFilePath, []byte(fixture.Base), 0o644))
 	runGit(testInstance, repositoryPath, "add", conflictedPath)
 	runGit(testInstance, repositoryPath, "commit", "-m", "seed lifecycle contract fixture")
 	runGit(testInstance, repositoryPath, "push", "-u", "origin", "master")
 
 	runGit(testInstance, repositoryPath, "switch", "-c", baseBranchName)
-	require.NoError(testInstance, os.WriteFile(conflictedFilePath, []byte(theirsContent), 0o644))
+	require.NoError(testInstance, os.WriteFile(conflictedFilePath, []byte(fixture.Theirs), 0o644))
 	runGit(testInstance, repositoryPath, "add", conflictedPath)
 	runGit(testInstance, repositoryPath, "commit", "-m", "remove lifecycle schema version")
 	runGit(testInstance, repositoryPath, "push", "-u", "origin", baseBranchName)
@@ -463,7 +464,7 @@ func TestSyncAuditsOneReplacementAlternativeAndPreservesCompatibleIntent(testIns
 
 	runGit(testInstance, repositoryPath, "switch", "master")
 	runGit(testInstance, repositoryPath, "switch", "-c", targetBranchName)
-	require.NoError(testInstance, os.WriteFile(conflictedFilePath, []byte(oursContent), 0o644))
+	require.NoError(testInstance, os.WriteFile(conflictedFilePath, []byte(fixture.Ours), 0o644))
 	runGit(testInstance, repositoryPath, "add", conflictedPath)
 	runGit(testInstance, repositoryPath, "commit", "-m", "update lifecycle schema version")
 	runGit(testInstance, repositoryPath, "push", "-u", "origin", targetBranchName)
@@ -471,6 +472,7 @@ func TestSyncAuditsOneReplacementAlternativeAndPreservesCompatibleIntent(testIns
 
 	var requestCount atomic.Int64
 	requestBodies := make(chan string, 8)
+	auditAttempts := [3]int{}
 	llmServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 		requestBody, requestReadError := io.ReadAll(request.Body)
 		if requestReadError != nil {
@@ -480,46 +482,36 @@ func TestSyncAuditsOneReplacementAlternativeAndPreservesCompatibleIntent(testIns
 		requestBodyText := string(requestBody)
 		requestBodies <- requestBodyText
 		requestCount.Add(1)
-		response := semanticMergeResponse(versionlessFunctionDeclaration)
-		if strings.Contains(requestBodyText, "semantic fidelity auditor") {
-			response = reviewApprovedResponse
-		} else if strings.Contains(requestBodyText, "Conflict region: 2 of 2") {
-			response = semanticMergeResponse("")
+		regionIndex := 0
+		for candidateRegionIndex := 1; candidateRegionIndex <= 2; candidateRegionIndex++ {
+			if strings.Contains(requestBodyText, fmt.Sprintf("Conflict region: %d of 2", candidateRegionIndex)) {
+				regionIndex = candidateRegionIndex
+				break
+			}
+		}
+		if regionIndex == 0 {
+			http.Error(responseWriter, "reported lifecycle request has no conflict region", http.StatusBadRequest)
+			return
+		}
+		if !strings.Contains(requestBodyText, "semantic fidelity auditor") {
+			http.Error(responseWriter, "unexpected semantic candidate request for a derivable reported conflict region", http.StatusConflict)
+			return
+		}
+		auditAttempts[regionIndex]++
+		response := reviewApprovedResponse
+		if auditAttempts[regionIndex] == 1 {
+			correction := versionlessFunctionDeclaration
+			if regionIndex == 2 {
+				correction = ""
+			}
+			response = semanticMergeResponse(correction)
 		}
 		responseWriter.Header().Set("Content-Type", "application/json")
 		_, _ = fmt.Fprintf(responseWriter, `{"choices":[{"message":{"role":"assistant","content":%q}}]}`, response)
 	}))
 	testInstance.Cleanup(llmServer.Close)
 
-	configurationPath := filepath.Join(testInstance.TempDir(), "config.yml")
-	configurationContent := fmt.Sprintf(`common:
-  log_level: error
-  log_format: console
-  require_clean: true
-github:
-  credential: test-github-key
-llm:
-  openai:
-    priority: 1
-    model: mock-model
-    base_url: %q
-    credential: test-key
-  llm_proxy:
-    priority: 2
-    provider: meta
-    model: muse-spark-1.1
-    base_url: "https://llm-proxy.example"
-    credential: test-proxy-key
-  max_completion_tokens: 64
-  effort: "high"
-  timeout_seconds: 5
-operations:
-  - command: ["sync"]
-    with:
-      remote: origin
-      require_clean: true
-`, llmServer.URL)
-	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
+	configurationPath := writeReportedLifecycleSemanticConfiguration(testInstance, llmServer.URL)
 
 	gitLogPath := filepath.Join(testInstance.TempDir(), "git.log")
 	githubLogPath := filepath.Join(testInstance.TempDir(), "gh.log")
@@ -560,27 +552,29 @@ operations:
 		},
 	)
 	require.NoError(testInstance, runError, output)
-	require.Contains(testInstance, output, "semantic candidate attempt 1/4 passed local validation")
+	require.NotContains(testInstance, output, "semantic candidate attempt")
 	require.Contains(testInstance, output, "semantic audit approved")
 	require.NotContains(testInstance, output, "does not preserve OURS replacement intent")
 	require.NotContains(testInstance, output, "AI_MERGE_ROLLBACK")
 	require.Equal(testInstance, 2, strings.Count(output, "semantic audit approved"))
 	require.Equal(testInstance, int64(4), requestCount.Load())
-	require.Equal(testInstance, theirsContent, readTextFile(testInstance, conflictedFilePath))
+	require.Equal(testInstance, fixture.Theirs, readTextFile(testInstance, conflictedFilePath))
 	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
 
-	candidateRequest := <-requestBodies
-	auditRequest := <-requestBodies
-	deletionCandidateRequest := <-requestBodies
-	deletionAuditRequest := <-requestBodies
-	require.Contains(testInstance, candidateRequest, "SchemaV5")
-	require.Contains(testInstance, candidateRequest, "Versionless")
-	require.Contains(testInstance, auditRequest, "Versionless")
-	require.Contains(testInstance, auditRequest, "semantic fidelity auditor")
-	require.Contains(testInstance, deletionCandidateRequest, "schemaVersion != 5")
-	require.Contains(testInstance, deletionCandidateRequest, "Conflict region: 2 of 2")
-	require.Contains(testInstance, deletionAuditRequest, "semantic fidelity auditor")
-	require.Contains(testInstance, deletionAuditRequest, "LOCALLY VALIDATED CANDIDATE:\\n\\n")
+	firstReplacementAuditRequest := <-requestBodies
+	secondReplacementAuditRequest := <-requestBodies
+	firstDeletionAuditRequest := <-requestBodies
+	secondDeletionAuditRequest := <-requestBodies
+	require.Contains(testInstance, firstReplacementAuditRequest, "SchemaV5")
+	require.Contains(testInstance, firstReplacementAuditRequest, "Versionless")
+	require.Contains(testInstance, firstReplacementAuditRequest, "semantic fidelity auditor")
+	require.Contains(testInstance, secondReplacementAuditRequest, "Versionless")
+	require.Contains(testInstance, secondReplacementAuditRequest, "semantic fidelity auditor")
+	require.Contains(testInstance, firstDeletionAuditRequest, "schemaVersion != 5")
+	require.Contains(testInstance, firstDeletionAuditRequest, "Conflict region: 2 of 2")
+	require.Contains(testInstance, firstDeletionAuditRequest, "semantic fidelity auditor")
+	require.Contains(testInstance, secondDeletionAuditRequest, "semantic fidelity auditor")
+	require.Contains(testInstance, secondDeletionAuditRequest, "LOCALLY VALIDATED CANDIDATE:\\n\\n")
 
 	headWithParents := strings.Fields(runGit(testInstance, repositoryPath, "rev-list", "--parents", "-n", "1", "HEAD"))
 	require.Len(testInstance, headWithParents, 3)
@@ -595,6 +589,40 @@ operations:
 	require.Contains(testInstance, gitLog, "commit --no-edit")
 	require.Contains(testInstance, gitLog, "push origin "+targetBranchName)
 	require.NotContains(testInstance, gitLog, "merge --abort")
+}
+
+func writeReportedLifecycleSemanticConfiguration(testInstance *testing.T, baseURL string) string {
+	testInstance.Helper()
+	configurationPath := filepath.Join(testInstance.TempDir(), "reported-lifecycle-semantic-config.yml")
+	configurationContent := fmt.Sprintf(`common:
+  log_level: error
+  log_format: console
+  require_clean: true
+github:
+  credential: test-github-key
+llm:
+  openai:
+    priority: 1
+    model: mock-model
+    base_url: %q
+    credential: test-key
+  llm_proxy:
+    priority: 2
+    provider: mock-provider
+    model: mock-model
+    base_url: %q
+    credential: test-proxy-key
+  max_completion_tokens: 64
+  effort: "high"
+  timeout_seconds: 5
+operations:
+  - command: ["sync"]
+    with:
+      remote: origin
+      require_clean: true
+`, baseURL, baseURL)
+	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
+	return configurationPath
 }
 
 func semanticMergeResponse(content string) string {

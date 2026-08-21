@@ -616,7 +616,7 @@ func TestSyncSuccessfulFinalizationTable(testInstance *testing.T) {
 		{Name: "stash_restores_exact_index_and_preserves_existing_stashes", Mode: "stash"},
 		{Name: "stash_conflict_completes_semantic_finalization_before_success", Mode: "stash_conflict"},
 		{Name: "stash_conflict_rejects_unrelated_replacement_intent_match", Mode: "stash_conflict_alias_collision"},
-		{Name: "stash_conflict_replays_reported_download_your_data_regions", Mode: "stash_conflict_reported_download_data"},
+		{Name: "stash_conflict_derives_reported_coarse_regions_before_audit", Mode: "stash_conflict_reported_issue_format"},
 	}
 
 	for testCaseIndex := range testCases {
@@ -631,7 +631,8 @@ func TestSyncSuccessfulFinalizationTable(testInstance *testing.T) {
 			expectedResolvedContents := ""
 			expectedStashes := strings.TrimSpace(runGit(testInstance, repositoryPath, "stash", "list", "--format=%H %s"))
 			arguments := []string{"sync", targetBranch}
-			reportedDownloadDataFixture := newReportedDownloadDataStashFixture()
+			reportedIssueFormatFixture := newReportedIssueFormatConflictFixture()
+			reportedIssueFormatAuditAttempts := [5]int{}
 
 			var requestCount atomic.Int64
 			llmServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
@@ -653,27 +654,32 @@ func TestSyncSuccessfulFinalizationTable(testInstance *testing.T) {
 					_, _ = fmt.Fprintf(responseWriter, `{"choices":[{"message":{"role":"assistant","content":%q}}]}`, response)
 					return
 				}
-				if testCase.Mode == "stash_conflict_reported_download_data" {
+				if testCase.Mode == "stash_conflict_reported_issue_format" {
 					requestBody, requestReadError := io.ReadAll(request.Body)
 					if requestReadError != nil {
 						http.Error(responseWriter, requestReadError.Error(), http.StatusBadRequest)
 						return
 					}
 					requestText := string(requestBody)
-					response := "GIX_MERGE_REVIEW_APPROVED"
+					regionIndex := 0
+					for candidateRegionIndex := range reportedIssueFormatFixture.Candidates {
+						if strings.Contains(requestText, fmt.Sprintf("Conflict region: %d of 4", candidateRegionIndex)) {
+							regionIndex = candidateRegionIndex
+							break
+						}
+					}
+					if regionIndex == 0 {
+						http.Error(responseWriter, "reported issue-format request has no conflict region", http.StatusBadRequest)
+						return
+					}
 					if !strings.Contains(requestText, "semantic fidelity auditor") {
-						candidate := ""
-						for regionIndex, regionCandidate := range reportedDownloadDataFixture.Candidates {
-							if strings.Contains(requestText, fmt.Sprintf("Conflict region: %d of 4", regionIndex)) {
-								candidate = regionCandidate
-								break
-							}
-						}
-						if candidate == "" {
-							http.Error(responseWriter, "reported download_your_data request has no conflict-region candidate", http.StatusBadRequest)
-							return
-						}
-						response = semanticMergeResponse(candidate)
+						http.Error(responseWriter, "unexpected semantic candidate request for a derivable reported conflict region", http.StatusConflict)
+						return
+					}
+					reportedIssueFormatAuditAttempts[regionIndex]++
+					response := "GIX_MERGE_REVIEW_APPROVED"
+					if reportedIssueFormatAuditAttempts[regionIndex] == 1 {
+						response = semanticMergeResponse(reportedIssueFormatFixture.Candidates[regionIndex])
 					}
 					_, _ = fmt.Fprintf(responseWriter, `{"choices":[{"message":{"role":"assistant","content":%q}}]}`, response)
 					return
@@ -682,6 +688,9 @@ func TestSyncSuccessfulFinalizationTable(testInstance *testing.T) {
 			}))
 			testInstance.Cleanup(llmServer.Close)
 			configurationPath := writeDirtySyncMergedBranchConfiguration(testInstance, llmServer.URL)
+			if testCase.Mode == "stash_conflict_reported_issue_format" {
+				configurationPath = writeReportedSemanticStashConfiguration(testInstance, llmServer.URL)
+			}
 
 			switch testCase.Mode {
 			case "refs":
@@ -740,23 +749,23 @@ func TestSyncSuccessfulFinalizationTable(testInstance *testing.T) {
 				expectedResolvedPath = policyPath
 				expectedResolvedContents = "primary: foo\n  bar; alias: foobar; mode: strict\n"
 				arguments = append(arguments, "--stash")
-			case "stash_conflict_reported_download_data":
+			case "stash_conflict_reported_issue_format":
 				issuesFormatPath := filepath.Join(repositoryPath, ".mprlab", "issues-md-format.md")
 				require.NoError(testInstance, os.MkdirAll(filepath.Dir(issuesFormatPath), 0o755))
-				require.NoError(testInstance, os.WriteFile(issuesFormatPath, []byte(reportedDownloadDataFixture.Base), 0o644))
+				require.NoError(testInstance, os.WriteFile(issuesFormatPath, []byte(reportedIssueFormatFixture.Base), 0o644))
 				runGit(testInstance, repositoryPath, "add", ".mprlab/issues-md-format.md")
 				runGit(testInstance, repositoryPath, "commit", "-m", "seed issue format")
 				runGit(testInstance, repositoryPath, "push", "origin", "master")
 				runGit(testInstance, repositoryPath, "switch", "-c", syncStateTransitionBranchName)
 				runGit(testInstance, repositoryPath, "switch", "master")
-				require.NoError(testInstance, os.WriteFile(issuesFormatPath, []byte(reportedDownloadDataFixture.Upstream), 0o644))
+				require.NoError(testInstance, os.WriteFile(issuesFormatPath, []byte(reportedIssueFormatFixture.Upstream), 0o644))
 				runGit(testInstance, repositoryPath, "add", ".mprlab/issues-md-format.md")
 				runGit(testInstance, repositoryPath, "commit", "-m", "update issue format structure")
 				runGit(testInstance, repositoryPath, "push", "origin", "master")
 				runGit(testInstance, repositoryPath, "switch", syncStateTransitionBranchName)
-				require.NoError(testInstance, os.WriteFile(issuesFormatPath, []byte(reportedDownloadDataFixture.Stash), 0o644))
+				require.NoError(testInstance, os.WriteFile(issuesFormatPath, []byte(reportedIssueFormatFixture.Stash), 0o644))
 				expectedResolvedPath = issuesFormatPath
-				expectedResolvedContents = reportedDownloadDataFixture.Resolved
+				expectedResolvedContents = reportedIssueFormatFixture.Resolved
 				arguments = append(arguments, "--stash")
 			default:
 				testInstance.Fatalf("unsupported successful transition mode %q", testCase.Mode)
@@ -812,7 +821,7 @@ func TestSyncSuccessfulFinalizationTable(testInstance *testing.T) {
 				require.NotEmpty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
 				require.Equal(testInstance, int64(2), requestCount.Load())
 				require.Contains(testInstance, output, "does not preserve OURS replacement intent")
-			case "stash_conflict_reported_download_data":
+			case "stash_conflict_reported_issue_format":
 				require.Equal(testInstance, expectedResolvedContents, readTextFile(testInstance, expectedResolvedPath))
 				require.NotEmpty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
 				require.Equal(testInstance, int64(8), requestCount.Load())
@@ -823,6 +832,45 @@ func TestSyncSuccessfulFinalizationTable(testInstance *testing.T) {
 			}
 		})
 	}
+}
+
+func writeReportedSemanticStashConfiguration(testInstance *testing.T, baseURL string) string {
+	testInstance.Helper()
+	configurationPath := filepath.Join(testInstance.TempDir(), "reported-semantic-stash-config.yml")
+	configurationContent := fmt.Sprintf(`common:
+  log_level: error
+  log_format: console
+  require_clean: false
+github:
+  credential: test-github-key
+llm:
+  openai:
+    priority: 1
+    model: mock-model
+    base_url: %q
+    credential: test-key
+  llm_proxy:
+    priority: 2
+    provider: mock-provider
+    model: mock-model
+    base_url: %q
+    credential: test-proxy-key
+  max_completion_tokens: 64
+  effort: "high"
+  timeout_seconds: 5
+operations:
+  - command: ["sync"]
+    with:
+      remote: origin
+  - command: ["message", "commit"]
+    with:
+      diff_source: staged
+      max_completion_tokens: 64
+      effort: "high"
+      timeout_seconds: 5
+`, baseURL, baseURL)
+	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
+	return configurationPath
 }
 
 func syncAdministrativeReferenceNamesForTest() []string {
