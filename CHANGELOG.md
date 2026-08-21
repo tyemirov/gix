@@ -161,6 +161,15 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.7.5] - 2026-08-21
+
+- test: cover semantic repair retries for unproven corrections
+- fix(sync): retain unproven merge corrections for semantic repair
+- fix(sync): require validated merge conflict corrections
+- fix(sync): retain semantic corrections for follow-up repair
+- fix(sync): require local proof before accepting audit approvals
+- docs: document semantic correction audit retention
+
 ## [v1.7.4] - 2026-08-21
 
 - test: update semantic audit retry scenarios
