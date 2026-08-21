@@ -11,6 +11,41 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B076] (P0) Accept a valid correction from semantic audit.
+  Reported on 2026-08-21 during a real `download_your_data` strict stash sync.
+  Expected result:
+  The first locally valid semantic audit result completes the conflict region.
+  Actual result:
+  Gix requires a later approval sentinel after a valid correction.
+  Gix discards the correction when it arrives on the final attempt.
+  Requirements:
+  - Use the current candidate when the auditor returns the approval sentinel.
+  - Use corrected content when the auditor returns a locally valid content envelope.
+  - Retry semantic audit only when the audit result is invalid.
+  - Preserve the four-attempt bound and provider failure behavior.
+  - Preserve exact rollback when no valid semantic result exists.
+  Validation:
+  - Verify generated and derived candidates with approval and correction audit results.
+  - Verify recovery from one invalid audit result and exhaustion after four invalid results.
+  - Replay the four reported `download_your_data` conflict regions through the compiled CLI.
+  - Return two invalid region-four corrections before one valid correction.
+  - Complete the sync without a separate approval request for the valid correction.
+  - Replay the reported `llm-proxy` replacement and deletion conflicts through the compiled CLI.
+  - Preserve the exact resolved file and stash inventory.
+  - Run focused tests and complete CI.
+  Resolution:
+  Gix now uses the first valid result while semantic audit is active.
+  The approval sentinel selects the current candidate.
+  A locally valid content envelope selects its corrected content.
+  Only an invalid audit result consumes another bounded attempt.
+  A table-driven test covers generated and derived candidates, both valid result forms,
+  invalid-result recovery, and bounded exhaustion.
+  The compiled `download_your_data` replay failed on `v1.7.3` before the source code change.
+  It now rejects two invalid region-four corrections and accepts the third valid correction.
+  The compiled `llm-proxy` replay accepts its replacement and deletion corrections in one audit request each.
+  Both replays preserve their exact file, Git, and stash contracts.
+  Focused tests and full `make ci` passed on 2026-08-21.
+
 - [x] [B075] (P0) Allow an audited semantic candidate to delete one conflict region.
   Reported on 2026-08-21 while replaying the exact `llm-proxy` lifecycle conflict.
   Expected result:
