@@ -160,6 +160,16 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.7.3] - 2026-08-21
+
+- Merge pull request #440 from tyemirov/gix/derive-and-audit-merge-replacement-candidates
+- fix(syncflow): preserve insertions between whitespace-separated edits
+- docs: clarify token edit boundaries in merge resolution
+- test(sync): cover derived conflict candidates in semantic audits
+- feat(sync): derive auditable merge conflict alternatives
+- docs: clarify semantic merge candidate strategies
+- fix(sync): derive semantic merge candidates from token edits
+
 ## [v1.7.2] - 2026-08-21
 
 - Merge pull request #439 from tyemirov/gix/support-semantic-merge-alternatives-and-deletions
