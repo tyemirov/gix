@@ -47,6 +47,9 @@ func TestSyncHelpDescribesMissingBranchCurrentHeadContract(testInstance *testing
 	require.Contains(testInstance, output, "Sync sends every derived candidate directly to semantic audit.")
 	require.Contains(testInstance, output, "Candidate generation remains only when local token analysis cannot derive a valid candidate.")
 	require.Contains(testInstance, output, "A provider round with no response stops semantic repair and starts rollback.")
-	require.Contains(testInstance, output, "Only returned candidate rejection supplies validation feedback for the next bounded attempt.")
+	require.Contains(testInstance, output, "A locally valid audit correction completes immediately.")
+	require.Contains(testInstance, output, "When exact replacement-intent proof is unavailable for a structurally valid correction, sync retains that exact correction for repair in the next semantic audit.")
+	require.Contains(testInstance, output, "An approval cannot accept that candidate. Only a later locally valid correction completes it.")
+	require.Contains(testInstance, output, "Responses that fail hard validation supply feedback for the next bounded attempt.")
 	require.Contains(testInstance, output, "Rollback occurs only after every safe candidate is exhausted, or after provider failure, cancellation, or an unrecoverable local failure, and always stops before push.")
 }

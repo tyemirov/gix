@@ -3,11 +3,12 @@ package tests
 import "strings"
 
 type reportedIssueFormatConflictFixture struct {
-	Base       string
-	Upstream   string
-	Stash      string
-	Resolved   string
-	Candidates map[int]string
+	Base                         string
+	Upstream                     string
+	Stash                        string
+	Resolved                     string
+	RegionFourSemanticCorrection string
+	Candidates                   map[int]string
 }
 
 // newReportedIssueFormatConflictFixture retains the four conflict-region shapes
@@ -127,6 +128,11 @@ func newReportedIssueFormatConflictFixture() reportedIssueFormatConflictFixture 
 		"",
 		"Write each new or changed body in ASD-STE100. Use `.mprlab/AGENTS.DOCS.md` and `.mprlab/TERMINOLOGY.md`.",
 	)
+	regionFourSemanticCorrection := regionFourUpstream + "\n" + reportedConflictLines(
+		"`Blocked:` is required only for blocked issues. It must name the dependency, input, or policy decision that stops progress.",
+		"",
+		"Write each new or changed body in ASD-STE100. Use `.mprlab/AGENTS.DOCS.md` and `.mprlab/TERMINOLOGY.md`.",
+	)
 	regionFourResolved := regionFourUpstream + "\n" + regionFourStash
 
 	prefix := reportedConflictLines("# ISSUES.md Format", "", "## Structure", "")
@@ -136,11 +142,12 @@ func newReportedIssueFormatConflictFixture() reportedIssueFormatConflictFixture 
 	suffix := reportedConflictLines("", "End of fixture.")
 
 	return reportedIssueFormatConflictFixture{
-		Base:       prefix + regionOneBase + betweenOneAndTwo + regionTwoBase + betweenTwoAndThree + regionThreeBase + betweenThreeAndFour + regionFourBase + suffix,
-		Upstream:   prefix + regionOneUpstream + betweenOneAndTwo + regionTwoUpstream + betweenTwoAndThree + regionThreeUpstream + betweenThreeAndFour + regionFourUpstream + suffix,
-		Stash:      prefix + regionOneStash + betweenOneAndTwo + regionTwoStash + betweenTwoAndThree + regionThreeStash + betweenThreeAndFour + regionFourStash + suffix,
-		Resolved:   prefix + regionOneResolved + betweenOneAndTwo + regionTwoResolved + betweenTwoAndThree + regionThreeResolved + betweenThreeAndFour + regionFourResolved + suffix,
-		Candidates: map[int]string{1: regionOneResolved, 2: regionTwoResolved, 3: regionThreeResolved, 4: regionFourResolved},
+		Base:                         prefix + regionOneBase + betweenOneAndTwo + regionTwoBase + betweenTwoAndThree + regionThreeBase + betweenThreeAndFour + regionFourBase + suffix,
+		Upstream:                     prefix + regionOneUpstream + betweenOneAndTwo + regionTwoUpstream + betweenTwoAndThree + regionThreeUpstream + betweenThreeAndFour + regionFourUpstream + suffix,
+		Stash:                        prefix + regionOneStash + betweenOneAndTwo + regionTwoStash + betweenTwoAndThree + regionThreeStash + betweenThreeAndFour + regionFourStash + suffix,
+		Resolved:                     prefix + regionOneResolved + betweenOneAndTwo + regionTwoResolved + betweenTwoAndThree + regionThreeResolved + betweenThreeAndFour + regionFourResolved + suffix,
+		RegionFourSemanticCorrection: regionFourSemanticCorrection,
+		Candidates:                   map[int]string{1: regionOneResolved, 2: regionTwoResolved, 3: regionThreeResolved, 4: regionFourResolved},
 	}
 }
 
