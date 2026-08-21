@@ -7,7 +7,10 @@ import (
 	"unicode/utf8"
 )
 
-const mergeConflictTokenDiffMaximumCells = 4_000_000
+const (
+	mergeConflictTokenDiffMaximumCells              = 4_000_000
+	mergeConflictReplacementIntentContextTokenCount = 3
+)
 
 type mergeConflictDeterministicResolution struct {
 	Content               string
@@ -250,18 +253,82 @@ func applyMergeConflictTokenEdits(baseTokens []string, edits []mergeConflictToke
 	return resolved.String(), true
 }
 
-func mergeConflictMissingReplacementIntent(base string, variant string, candidate string) (string, bool, bool) {
-	edits, editsAvailable := mergeConflictTokenEdits(mergeConflictTokens(base), mergeConflictTokens(variant))
+func mergeConflictMissingReplacementIntents(base string, variant string, candidate string) ([]string, bool) {
+	baseTokens := mergeConflictTokens(base)
+	edits, editsAvailable := mergeConflictTokenEdits(baseTokens, mergeConflictTokens(variant))
 	if !editsAvailable {
-		return "", false, false
+		return nil, false
 	}
+	normalizedBase := mergeConflictWithoutWhitespace(base)
+	normalizedVariant := mergeConflictWithoutWhitespace(variant)
+	normalizedCandidate := mergeConflictWithoutWhitespace(candidate)
+	missingIntents := make([]string, 0, len(edits))
 	for _, edit := range edits {
-		if strings.TrimSpace(edit.Replacement) == "" {
+		normalizedReplacement := mergeConflictWithoutWhitespace(edit.Replacement)
+		if normalizedReplacement == "" {
 			continue
 		}
-		if !strings.Contains(candidate, edit.Replacement) {
-			return edit.Replacement, true, true
+		baseOccurrences := strings.Count(normalizedBase, normalizedReplacement)
+		variantOccurrences := strings.Count(normalizedVariant, normalizedReplacement)
+		candidateOccurrences := strings.Count(normalizedCandidate, normalizedReplacement)
+		preservesNewOccurrences := variantOccurrences > baseOccurrences && candidateOccurrences >= variantOccurrences
+		if !preservesNewOccurrences && !mergeConflictCandidateMatchesEditContext(baseTokens, edit, normalizedReplacement, normalizedCandidate) {
+			missingIntents = append(missingIntents, edit.Replacement)
 		}
 	}
-	return "", false, true
+	return missingIntents, true
+}
+
+func mergeConflictCandidateMatchesEditContext(
+	baseTokens []string,
+	edit mergeConflictTokenEdit,
+	normalizedReplacement string,
+	normalizedCandidate string,
+) bool {
+	leftContext := mergeConflictReplacementIntentLeftContext(baseTokens, edit.Start)
+	if leftContext != "" && strings.Contains(normalizedCandidate, leftContext+normalizedReplacement) {
+		return true
+	}
+	rightContext := mergeConflictReplacementIntentRightContext(baseTokens, edit.End)
+	return rightContext != "" && strings.Contains(normalizedCandidate, normalizedReplacement+rightContext)
+}
+
+func mergeConflictReplacementIntentLeftContext(baseTokens []string, editStart int) string {
+	contextTokens := make([]string, 0, mergeConflictReplacementIntentContextTokenCount)
+	for tokenIndex := editStart - 1; tokenIndex >= 0 && len(contextTokens) < mergeConflictReplacementIntentContextTokenCount; tokenIndex-- {
+		normalizedToken := mergeConflictWithoutWhitespace(baseTokens[tokenIndex])
+		if normalizedToken != "" {
+			contextTokens = append(contextTokens, normalizedToken)
+		}
+	}
+	var context strings.Builder
+	for tokenIndex := len(contextTokens) - 1; tokenIndex >= 0; tokenIndex-- {
+		context.WriteString(contextTokens[tokenIndex])
+	}
+	return context.String()
+}
+
+func mergeConflictReplacementIntentRightContext(baseTokens []string, editEnd int) string {
+	var context strings.Builder
+	nonWhitespaceTokenCount := 0
+	for tokenIndex := editEnd; tokenIndex < len(baseTokens) && nonWhitespaceTokenCount < mergeConflictReplacementIntentContextTokenCount; tokenIndex++ {
+		normalizedToken := mergeConflictWithoutWhitespace(baseTokens[tokenIndex])
+		if normalizedToken != "" {
+			context.WriteString(normalizedToken)
+			nonWhitespaceTokenCount++
+		}
+	}
+	return context.String()
+}
+
+func mergeConflictWithoutWhitespace(value string) string {
+	var normalized strings.Builder
+	normalized.Grow(len(value))
+	for _, currentRune := range value {
+		if unicode.IsSpace(currentRune) {
+			continue
+		}
+		normalized.WriteRune(currentRune)
+	}
+	return normalized.String()
 }
