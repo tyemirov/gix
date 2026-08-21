@@ -614,6 +614,7 @@ func TestSyncSuccessfulFinalizationTable(testInstance *testing.T) {
 		{Name: "dirty_clusters_commit_and_remove_transaction_snapshot", Mode: "commit"},
 		{Name: "stash_restores_exact_index_and_preserves_existing_stashes", Mode: "stash"},
 		{Name: "stash_conflict_completes_semantic_finalization_before_success", Mode: "stash_conflict"},
+		{Name: "stash_conflict_rejects_unrelated_replacement_intent_match", Mode: "stash_conflict_alias_collision"},
 	}
 
 	for testCaseIndex := range testCases {
@@ -637,6 +638,14 @@ func TestSyncSuccessfulFinalizationTable(testInstance *testing.T) {
 					response := "GIX_MERGE_REVIEW_APPROVED"
 					if currentRequest == 1 {
 						response = "GIX_MERGE_RESOLUTION_CONTENT_BEGIN\npolicy: strict timeout=60\n\nGIX_MERGE_RESOLUTION_CONTENT_END"
+					}
+					_, _ = fmt.Fprintf(responseWriter, `{"choices":[{"message":{"role":"assistant","content":%q}}]}`, response)
+					return
+				}
+				if testCase.Mode == "stash_conflict_alias_collision" {
+					response := "GIX_MERGE_REVIEW_APPROVED"
+					if currentRequest == 1 {
+						response = "GIX_MERGE_RESOLUTION_CONTENT_BEGIN\nprimary: old; alias: foobar; mode: strict\n\nGIX_MERGE_RESOLUTION_CONTENT_END"
 					}
 					_, _ = fmt.Fprintf(responseWriter, `{"choices":[{"message":{"role":"assistant","content":%q}}]}`, response)
 					return
@@ -685,6 +694,23 @@ func TestSyncSuccessfulFinalizationTable(testInstance *testing.T) {
 				require.NoError(testInstance, os.WriteFile(policyPath, []byte("policy: standard timeout=60\n"), 0o644))
 				expectedResolvedPath = policyPath
 				expectedResolvedContents = "policy: strict timeout=60\n"
+				arguments = append(arguments, "--stash")
+			case "stash_conflict_alias_collision":
+				policyPath := filepath.Join(repositoryPath, "policy.txt")
+				require.NoError(testInstance, os.WriteFile(policyPath, []byte("primary: old; alias: foobar; mode: standard\n"), 0o644))
+				runGit(testInstance, repositoryPath, "add", "policy.txt")
+				runGit(testInstance, repositoryPath, "commit", "-m", "seed policy")
+				runGit(testInstance, repositoryPath, "push", "origin", "master")
+				runGit(testInstance, repositoryPath, "switch", "-c", syncStateTransitionBranchName)
+				runGit(testInstance, repositoryPath, "switch", "master")
+				require.NoError(testInstance, os.WriteFile(policyPath, []byte("primary: foo\n  bar; alias: foobar; mode: standard\n"), 0o644))
+				runGit(testInstance, repositoryPath, "add", "policy.txt")
+				runGit(testInstance, repositoryPath, "commit", "-m", "make policy strict")
+				runGit(testInstance, repositoryPath, "push", "origin", "master")
+				runGit(testInstance, repositoryPath, "switch", syncStateTransitionBranchName)
+				require.NoError(testInstance, os.WriteFile(policyPath, []byte("primary: old; alias: foobar; mode: strict\n"), 0o644))
+				expectedResolvedPath = policyPath
+				expectedResolvedContents = "primary: foo\n  bar; alias: foobar; mode: strict\n"
 				arguments = append(arguments, "--stash")
 			default:
 				testInstance.Fatalf("unsupported successful transition mode %q", testCase.Mode)
@@ -735,6 +761,11 @@ func TestSyncSuccessfulFinalizationTable(testInstance *testing.T) {
 				require.NotEmpty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
 				require.Equal(testInstance, int64(2), requestCount.Load())
 				require.NotContains(testInstance, output, "does not preserve OURS replacement intent")
+			case "stash_conflict_alias_collision":
+				require.Equal(testInstance, expectedResolvedContents, readTextFile(testInstance, expectedResolvedPath))
+				require.NotEmpty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
+				require.Equal(testInstance, int64(2), requestCount.Load())
+				require.Contains(testInstance, output, "does not preserve OURS replacement intent")
 			}
 		})
 	}
