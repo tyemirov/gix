@@ -429,6 +429,174 @@ operations:
 	require.NotContains(testInstance, gitLog, "merge --abort")
 }
 
+func TestSyncAuditsOneReplacementAlternativeAndPreservesCompatibleIntent(testInstance *testing.T) {
+	const (
+		baseBranchName                 = "feature/versionless-lifecycle"
+		targetBranchName               = "gix/migrate-lifecycle-manifest-to-schema-version-5"
+		conflictedPath                 = "tests/lifecycle_contract_test.go"
+		versionlessFunctionDeclaration = "func TestOperationalRepositoryOwnsVersionlessLifecycle(testingInstance *testing.T) {\n"
+		baseContent                    = "package tests\n\nfunc TestOperationalRepositoryOwnsSchemaV4Lifecycle(testingInstance *testing.T) {\n\trepositoryRoot := operationalRepositoryRoot(testingInstance)\n\tif schemaVersion, schemaAvailable := resourcesDocument[\"schema_version\"].(int); !schemaAvailable || schemaVersion != 4 {\n\t\ttestingInstance.Fatalf(\"unexpected lifecycle schema version: %#v\", resourcesDocument[\"schema_version\"])\n\t}\n\tuseRepositoryRoot(repositoryRoot)\n}\n"
+		oursContent                    = "package tests\n\nfunc TestOperationalRepositoryOwnsSchemaV5Lifecycle(testingInstance *testing.T) {\n\trepositoryRoot := operationalRepositoryRoot(testingInstance)\n\tif schemaVersion, schemaAvailable := resourcesDocument[\"schema_version\"].(int); !schemaAvailable || schemaVersion != 5 {\n\t\ttestingInstance.Fatalf(\"unexpected lifecycle schema version: %#v\", resourcesDocument[\"schema_version\"])\n\t}\n\tuseRepositoryRoot(repositoryRoot)\n}\n"
+		theirsContent                  = "package tests\n\n" + versionlessFunctionDeclaration + "\trepositoryRoot := operationalRepositoryRoot(testingInstance)\n\tuseRepositoryRoot(repositoryRoot)\n}\n"
+		reviewApprovedResponse         = "GIX_MERGE_REVIEW_APPROVED"
+	)
+
+	repositoryRoot := integrationRepositoryRoot(testInstance)
+	workspacePath := syncHomeWorkspace(testInstance)
+	remotePath := filepath.Join(workspacePath, "remote.git")
+	repositoryPath := filepath.Join(workspacePath, "project")
+	createSyncGitHubBackedRepository(testInstance, remotePath, repositoryPath)
+
+	conflictedFilePath := filepath.Join(repositoryPath, conflictedPath)
+	require.NoError(testInstance, os.MkdirAll(filepath.Dir(conflictedFilePath), 0o755))
+	require.NoError(testInstance, os.WriteFile(conflictedFilePath, []byte(baseContent), 0o644))
+	runGit(testInstance, repositoryPath, "add", conflictedPath)
+	runGit(testInstance, repositoryPath, "commit", "-m", "seed lifecycle contract fixture")
+	runGit(testInstance, repositoryPath, "push", "-u", "origin", "master")
+
+	runGit(testInstance, repositoryPath, "switch", "-c", baseBranchName)
+	require.NoError(testInstance, os.WriteFile(conflictedFilePath, []byte(theirsContent), 0o644))
+	runGit(testInstance, repositoryPath, "add", conflictedPath)
+	runGit(testInstance, repositoryPath, "commit", "-m", "remove lifecycle schema version")
+	runGit(testInstance, repositoryPath, "push", "-u", "origin", baseBranchName)
+	incomingCommit := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD"))
+
+	runGit(testInstance, repositoryPath, "switch", "master")
+	runGit(testInstance, repositoryPath, "switch", "-c", targetBranchName)
+	require.NoError(testInstance, os.WriteFile(conflictedFilePath, []byte(oursContent), 0o644))
+	runGit(testInstance, repositoryPath, "add", conflictedPath)
+	runGit(testInstance, repositoryPath, "commit", "-m", "update lifecycle schema version")
+	runGit(testInstance, repositoryPath, "push", "-u", "origin", targetBranchName)
+	targetCommit := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD"))
+
+	var requestCount atomic.Int64
+	requestBodies := make(chan string, 8)
+	llmServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+		requestBody, requestReadError := io.ReadAll(request.Body)
+		if requestReadError != nil {
+			http.Error(responseWriter, requestReadError.Error(), http.StatusBadRequest)
+			return
+		}
+		requestBodyText := string(requestBody)
+		requestBodies <- requestBodyText
+		requestCount.Add(1)
+		response := semanticMergeResponse(versionlessFunctionDeclaration)
+		if strings.Contains(requestBodyText, "semantic fidelity auditor") {
+			response = reviewApprovedResponse
+		} else if strings.Contains(requestBodyText, "Conflict region: 2 of 2") {
+			response = semanticMergeResponse("")
+		}
+		responseWriter.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(responseWriter, `{"choices":[{"message":{"role":"assistant","content":%q}}]}`, response)
+	}))
+	testInstance.Cleanup(llmServer.Close)
+
+	configurationPath := filepath.Join(testInstance.TempDir(), "config.yml")
+	configurationContent := fmt.Sprintf(`common:
+  log_level: error
+  log_format: console
+  require_clean: true
+github:
+  credential: test-github-key
+llm:
+  openai:
+    priority: 1
+    model: mock-model
+    base_url: %q
+    credential: test-key
+  llm_proxy:
+    priority: 2
+    provider: meta
+    model: muse-spark-1.1
+    base_url: "https://llm-proxy.example"
+    credential: test-proxy-key
+  max_completion_tokens: 64
+  effort: "high"
+  timeout_seconds: 5
+operations:
+  - command: ["sync"]
+    with:
+      remote: origin
+      require_clean: true
+`, llmServer.URL)
+	require.NoError(testInstance, os.WriteFile(configurationPath, []byte(configurationContent), 0o600))
+
+	gitLogPath := filepath.Join(testInstance.TempDir(), "git.log")
+	githubLogPath := filepath.Join(testInstance.TempDir(), "gh.log")
+	require.NoError(
+		testInstance,
+		os.WriteFile(
+			githubLogPath,
+			[]byte("created-pr --base "+baseBranchName+" --head "+targetBranchName+"\n"),
+			0o600,
+		),
+	)
+
+	output, runError := runIntegrationCommandWithInput(
+		testInstance,
+		repositoryRoot,
+		integrationCommandOptions{
+			PathVariable: buildSyncMergedBranchExecutablePath(testInstance),
+			EnvironmentOverrides: map[string]string{
+				syncMergedBranchGitLogVariable:    gitLogPath,
+				syncMergedBranchGitHubLogVariable: githubLogPath,
+				syncMergedBranchNameVariable:      targetBranchName,
+				syncMergedBranchMergedVariable:    "false",
+			},
+		},
+		syncMergedBranchIntegrationTimeout,
+		"",
+		[]string{
+			syncRefreshIntegrationRunCommand,
+			syncRefreshIntegrationModulePath,
+			"--config",
+			configurationPath,
+			syncRefreshIntegrationLogLevelFlag,
+			syncRefreshIntegrationErrorLogLevel,
+			"sync",
+			targetBranchName,
+			"--roots",
+			repositoryPath,
+		},
+	)
+	require.NoError(testInstance, runError, output)
+	require.Contains(testInstance, output, "semantic candidate attempt 1/4 passed local validation")
+	require.Contains(testInstance, output, "semantic audit approved")
+	require.NotContains(testInstance, output, "does not preserve OURS replacement intent")
+	require.NotContains(testInstance, output, "AI_MERGE_ROLLBACK")
+	require.Equal(testInstance, 2, strings.Count(output, "semantic audit approved"))
+	require.Equal(testInstance, int64(4), requestCount.Load())
+	require.Equal(testInstance, theirsContent, readTextFile(testInstance, conflictedFilePath))
+	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
+
+	candidateRequest := <-requestBodies
+	auditRequest := <-requestBodies
+	deletionCandidateRequest := <-requestBodies
+	deletionAuditRequest := <-requestBodies
+	require.Contains(testInstance, candidateRequest, "SchemaV5")
+	require.Contains(testInstance, candidateRequest, "Versionless")
+	require.Contains(testInstance, auditRequest, "Versionless")
+	require.Contains(testInstance, auditRequest, "semantic fidelity auditor")
+	require.Contains(testInstance, deletionCandidateRequest, "schemaVersion != 5")
+	require.Contains(testInstance, deletionCandidateRequest, "Conflict region: 2 of 2")
+	require.Contains(testInstance, deletionAuditRequest, "semantic fidelity auditor")
+	require.Contains(testInstance, deletionAuditRequest, "LOCALLY VALIDATED CANDIDATE:\\n\\n")
+
+	headWithParents := strings.Fields(runGit(testInstance, repositoryPath, "rev-list", "--parents", "-n", "1", "HEAD"))
+	require.Len(testInstance, headWithParents, 3)
+	require.Equal(testInstance, targetCommit, headWithParents[1])
+	require.Equal(testInstance, incomingCommit, headWithParents[2])
+	require.Equal(
+		testInstance,
+		strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD")),
+		strings.TrimSpace(runGit(testInstance, remotePath, "rev-parse", "refs/heads/"+targetBranchName)),
+	)
+	gitLog := readTextFile(testInstance, gitLogPath)
+	require.Contains(testInstance, gitLog, "commit --no-edit")
+	require.Contains(testInstance, gitLog, "push origin "+targetBranchName)
+	require.NotContains(testInstance, gitLog, "merge --abort")
+}
+
 func semanticMergeResponse(content string) string {
 	return mergeResolutionContentBeginForTest + "\n" +
 		content +

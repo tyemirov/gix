@@ -11,6 +11,81 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B075] (P0) Allow an audited semantic candidate to delete one conflict region.
+  Reported on 2026-08-21 while replaying the exact `llm-proxy` lifecycle conflict.
+  Expected result:
+  Gix can select the incoming deletion of an obsolete schema assertion.
+  Actual result:
+  Gix uses an empty candidate string to mean that no candidate exists.
+  A newline candidate completes audit but leaves an extra byte in the merged file.
+  Requirements:
+  - Track candidate availability separately from candidate content.
+  - Accept adjacent content sentinels as an empty replacement region.
+  - Send an empty locally validated candidate through semantic audit.
+  - Preserve the exact merged file bytes after region deletion.
+  - Preserve empty provider-response rejection and bounded audit attempts.
+  Validation:
+  - Reproduce both conflict regions from the reported `llm-proxy` commits.
+  - Select `TestOperationalRepositoryOwnsVersionlessLifecycle` in the first region.
+  - Delete the obsolete schema-version assertion in the second region.
+  - Verify the exact incoming file, merge parents, push, and clean status.
+  - Run focused tests and complete CI.
+  Resolution:
+  Gix now tracks candidate availability separately from candidate content.
+  Adjacent content sentinels represent an empty conflict region.
+  Gix sends an empty locally validated candidate through semantic audit.
+  The compiled CLI replay selects `TestOperationalRepositoryOwnsVersionlessLifecycle` and deletes the obsolete assertion.
+  The result matches the exact incoming file and has the correct merge parents.
+  The replay pushes the result and leaves a clean status.
+  A raw empty provider response remains invalid.
+  Focused tests and `make ci` passed on 2026-08-21.
+
+- [x] [B074] (P0) Allow semantic choice between replacement alternatives.
+  Reported on 2026-08-21 after `gix sync` exhausted four semantic candidates.
+  Expected result:
+  Gix lets semantic audit select one alternative when both sides replace the same base tokens differently.
+  Actual result:
+  Gix requires the exact replacement from each alternative before semantic audit.
+  The model alternates between valid alternatives until all attempts stop.
+  Requirements:
+  - Require exact replacement intent only for compatible edits.
+  - Require one replacement alternative before semantic audit.
+  - Do not require all mutually exclusive alternatives in one candidate.
+  - Preserve both concurrent insertions at the same position.
+  - Preserve non-overlapping replacement intent.
+  - Preserve BASE-only rejection, bounded attempts, and exact rollback.
+  - Report audit exhaustion without a malformed nil error.
+  Validation:
+  - Reproduce the `SchemaV4`, `SchemaV5`, and `Versionless` conflict through the compiled CLI.
+  - Accept one replacement alternative before semantic audit.
+  - Reject a candidate that preserves neither replacement alternative.
+  - Reject a candidate that loses an independent replacement.
+  - Exhaust unapproved audit corrections with an actionable error.
+  - Run focused tests and complete CI.
+  Resolution:
+  Gix now identifies conflicting non-insertion token edits as replacement alternatives.
+  Local validation requires one alternative, every compatible edit, and all concurrent insertions.
+  The semantic candidate and audit prompts apply the same symmetric contract to both sides.
+  The compiled CLI reproduces the `SchemaV4`, `SchemaV5`, and `Versionless` conflict.
+  It accepts `Versionless` with the independent `strict` edit, completes audit, commits the merge, and pushes a clean result.
+  Focused rollback regressions reject candidates that preserve neither alternative or truncate independent content.
+  Bounded audit exhaustion reports unapproved corrections without a malformed nil error.
+  Focused tests and `make ci` passed on 2026-08-21.
+  Exact-scenario follow-up on 2026-08-21:
+  The reported `download_your_data` region still rejects a candidate that contains the complete upstream region.
+  Token-level edit context misclassifies unchanged common fragments inside the complete match.
+  Follow-up requirements:
+  - Accept a complete normalized side-region match before fragment checks.
+  - Preserve rejection when only an unrelated replacement fragment exists.
+  - Pass the four-region compiled strict-stash replay.
+  Follow-up resolution:
+  Gix now accepts a complete normalized side region before fragment validation.
+  It also integrates compatible opposite-side edits into that complete region.
+  The four-region compiled strict-stash replay matches the reported `download_your_data` conflict.
+  The replay preserves the exact combined document and the original stash inventory.
+  The unrelated-fragment regression still rejects a lossy candidate before semantic audit.
+  Focused tests and `make ci` passed on 2026-08-21.
+
 - [x] [B073] (P0) Ignore whitespace when validating merge replacement intent.
   Reported on 2026-08-20 after `gix sync master --stash` rejected four semantic candidates.
   Expected result:
