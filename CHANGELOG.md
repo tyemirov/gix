@@ -160,6 +160,14 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.7.2] - 2026-08-21
+
+- Merge pull request #439 from tyemirov/gix/support-semantic-merge-alternatives-and-deletions
+- test(sync): cover semantic conflict alternatives and state transitions
+- fix(sync): refine semantic merge conflict resolution
+- fix(sync): handle semantic conflict candidate edge cases
+- docs: record semantic merge conflict resolution fixes
+
 ## [v1.7.1] - 2026-08-21
 
 - Merge pull request #438 from tyemirov/gix/ignore-whitespace-in-merge-replacement-intent-validation
