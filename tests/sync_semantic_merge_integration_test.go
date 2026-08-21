@@ -260,15 +260,14 @@ operations:
 
 func TestSyncRepairsRejectedSemanticAuditCorrectionsBeforeCommit(testInstance *testing.T) {
 	const (
-		baseBranchName         = "feature/semantic-review-base"
-		targetBranchName       = "bugfix/semantic-review-target"
-		conflictedPath         = "reviewers.txt"
-		baseContent            = "reviewers: alice\n"
-		oursContent            = "reviewers: alice, bob\n"
-		theirsContent          = "reviewers: alice, carol\n"
-		markerBearingContent   = "<<<<<<< OURS\n" + oursContent + "=======\n" + theirsContent + ">>>>>>> THEIRS\n"
-		expectedMergedContent  = "reviewers: alice, bob, carol\n"
-		reviewApprovedResponse = "GIX_MERGE_REVIEW_APPROVED"
+		baseBranchName        = "feature/semantic-review-base"
+		targetBranchName      = "bugfix/semantic-review-target"
+		conflictedPath        = "reviewers.txt"
+		baseContent           = "reviewers: alice\n"
+		oursContent           = "reviewers: alice, bob\n"
+		theirsContent         = "reviewers: alice, carol\n"
+		markerBearingContent  = "<<<<<<< OURS\n" + oursContent + "=======\n" + theirsContent + ">>>>>>> THEIRS\n"
+		expectedMergedContent = "reviewers: alice, bob, carol\n"
 	)
 
 	repositoryRoot := integrationRepositoryRoot(testInstance)
@@ -319,8 +318,6 @@ func TestSyncRepairsRejectedSemanticAuditCorrectionsBeforeCommit(testInstance *t
 			response = semanticMergeResponse(oursContent)
 		case 3:
 			response = semanticMergeResponse(expectedMergedContent)
-		case 4:
-			response = reviewApprovedResponse
 		default:
 			http.Error(responseWriter, "semantic resolution exceeded its bounded strategy ladder", http.StatusInternalServerError)
 			return
@@ -407,14 +404,13 @@ operations:
 	require.Contains(testInstance, output, "merge conflict resolution completed")
 	require.NotContains(testInstance, output, "AI_MERGE_ROLLBACK")
 	require.NotContains(testInstance, output, "AI_MERGE_HANDOFF")
-	require.Equal(testInstance, int64(4), requestCount.Load())
+	require.Equal(testInstance, int64(3), requestCount.Load())
 	require.Equal(testInstance, expectedMergedContent, readTextFile(testInstance, conflictedFilePath))
 	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
 
 	firstRequest := <-requestBodies
 	secondRequest := <-requestBodies
 	thirdRequest := <-requestBodies
-	fourthRequest := <-requestBodies
 	require.Contains(testInstance, firstRequest, "semantic fidelity auditor")
 	require.Contains(testInstance, firstRequest, "reviewers: alice, bob\\n")
 	require.Contains(testInstance, firstRequest, "reviewers: alice, carol\\n")
@@ -423,8 +419,6 @@ operations:
 	require.Contains(testInstance, secondRequest, "reviewers: alice, bob\\n")
 	require.Contains(testInstance, thirdRequest, "does not preserve THEIRS replacement intent")
 	require.Contains(testInstance, thirdRequest, "reviewers: alice, bob\\n")
-	require.Contains(testInstance, fourthRequest, "reviewers: alice, bob, carol\\n")
-	require.Contains(testInstance, fourthRequest, "semantic fidelity auditor")
 
 	gitLog := readTextFile(testInstance, gitLogPath)
 	require.Contains(testInstance, gitLog, "commit --no-edit")
@@ -438,7 +432,6 @@ func TestSyncDerivesReplacementAndDeletionCandidatesBeforeSemanticAudit(testInst
 		targetBranchName               = "gix/migrate-lifecycle-manifest-to-schema-version-5"
 		conflictedPath                 = "tests/lifecycle_contract_test.go"
 		versionlessFunctionDeclaration = "func TestOperationalRepositoryOwnsVersionlessLifecycle(testingInstance *testing.T) {\n"
-		reviewApprovedResponse         = "GIX_MERGE_REVIEW_APPROVED"
 	)
 	fixture := newReportedLifecycleConflictFixture()
 
@@ -472,7 +465,6 @@ func TestSyncDerivesReplacementAndDeletionCandidatesBeforeSemanticAudit(testInst
 
 	var requestCount atomic.Int64
 	requestBodies := make(chan string, 8)
-	auditAttempts := [3]int{}
 	llmServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 		requestBody, requestReadError := io.ReadAll(request.Body)
 		if requestReadError != nil {
@@ -497,15 +489,11 @@ func TestSyncDerivesReplacementAndDeletionCandidatesBeforeSemanticAudit(testInst
 			http.Error(responseWriter, "unexpected semantic candidate request for a derivable reported conflict region", http.StatusConflict)
 			return
 		}
-		auditAttempts[regionIndex]++
-		response := reviewApprovedResponse
-		if auditAttempts[regionIndex] == 1 {
-			correction := versionlessFunctionDeclaration
-			if regionIndex == 2 {
-				correction = ""
-			}
-			response = semanticMergeResponse(correction)
+		correction := versionlessFunctionDeclaration
+		if regionIndex == 2 {
+			correction = ""
 		}
+		response := semanticMergeResponse(correction)
 		responseWriter.Header().Set("Content-Type", "application/json")
 		_, _ = fmt.Fprintf(responseWriter, `{"choices":[{"message":{"role":"assistant","content":%q}}]}`, response)
 	}))
@@ -557,24 +545,19 @@ func TestSyncDerivesReplacementAndDeletionCandidatesBeforeSemanticAudit(testInst
 	require.NotContains(testInstance, output, "does not preserve OURS replacement intent")
 	require.NotContains(testInstance, output, "AI_MERGE_ROLLBACK")
 	require.Equal(testInstance, 2, strings.Count(output, "semantic audit approved"))
-	require.Equal(testInstance, int64(4), requestCount.Load())
+	require.Equal(testInstance, int64(2), requestCount.Load())
 	require.Equal(testInstance, fixture.Theirs, readTextFile(testInstance, conflictedFilePath))
 	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
 
-	firstReplacementAuditRequest := <-requestBodies
-	secondReplacementAuditRequest := <-requestBodies
-	firstDeletionAuditRequest := <-requestBodies
-	secondDeletionAuditRequest := <-requestBodies
-	require.Contains(testInstance, firstReplacementAuditRequest, "SchemaV5")
-	require.Contains(testInstance, firstReplacementAuditRequest, "Versionless")
-	require.Contains(testInstance, firstReplacementAuditRequest, "semantic fidelity auditor")
-	require.Contains(testInstance, secondReplacementAuditRequest, "Versionless")
-	require.Contains(testInstance, secondReplacementAuditRequest, "semantic fidelity auditor")
-	require.Contains(testInstance, firstDeletionAuditRequest, "schemaVersion != 5")
-	require.Contains(testInstance, firstDeletionAuditRequest, "Conflict region: 2 of 2")
-	require.Contains(testInstance, firstDeletionAuditRequest, "semantic fidelity auditor")
-	require.Contains(testInstance, secondDeletionAuditRequest, "semantic fidelity auditor")
-	require.Contains(testInstance, secondDeletionAuditRequest, "LOCALLY VALIDATED CANDIDATE:\\n\\n")
+	replacementAuditRequest := <-requestBodies
+	deletionAuditRequest := <-requestBodies
+	require.Contains(testInstance, replacementAuditRequest, "SchemaV5")
+	require.Contains(testInstance, replacementAuditRequest, "Versionless")
+	require.Contains(testInstance, replacementAuditRequest, "semantic fidelity auditor")
+	require.Contains(testInstance, deletionAuditRequest, "schemaVersion != 5")
+	require.Contains(testInstance, deletionAuditRequest, "Conflict region: 2 of 2")
+	require.Contains(testInstance, deletionAuditRequest, "semantic fidelity auditor")
+	require.Contains(testInstance, deletionAuditRequest, "LOCALLY VALIDATED CANDIDATE:\\n")
 
 	headWithParents := strings.Fields(runGit(testInstance, repositoryPath, "rev-list", "--parents", "-n", "1", "HEAD"))
 	require.Len(testInstance, headWithParents, 3)

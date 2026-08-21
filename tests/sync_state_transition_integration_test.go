@@ -677,8 +677,16 @@ func TestSyncSuccessfulFinalizationTable(testInstance *testing.T) {
 						return
 					}
 					reportedIssueFormatAuditAttempts[regionIndex]++
+					auditAttempt := reportedIssueFormatAuditAttempts[regionIndex]
 					response := "GIX_MERGE_REVIEW_APPROVED"
-					if reportedIssueFormatAuditAttempts[regionIndex] == 1 {
+					switch {
+					case regionIndex == 2 && auditAttempt == 1:
+						response = semanticMergeResponse("invalid semantic correction\n")
+					case regionIndex == 4 && auditAttempt <= 2:
+						response = semanticMergeResponse("invalid semantic correction\n")
+					case regionIndex == 4:
+						response = semanticMergeResponse(reportedIssueFormatFixture.Candidates[regionIndex])
+					case auditAttempt == 1:
 						response = semanticMergeResponse(reportedIssueFormatFixture.Candidates[regionIndex])
 					}
 					_, _ = fmt.Fprintf(responseWriter, `{"choices":[{"message":{"role":"assistant","content":%q}}]}`, response)
@@ -814,7 +822,8 @@ func TestSyncSuccessfulFinalizationTable(testInstance *testing.T) {
 			case "stash_conflict":
 				require.Equal(testInstance, expectedResolvedContents, readTextFile(testInstance, expectedResolvedPath))
 				require.NotEmpty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
-				require.Equal(testInstance, int64(2), requestCount.Load())
+				require.Equal(testInstance, int64(1), requestCount.Load())
+				require.Contains(testInstance, output, "semantic audit approved")
 				require.NotContains(testInstance, output, "does not preserve OURS replacement intent")
 			case "stash_conflict_alias_collision":
 				require.Equal(testInstance, expectedResolvedContents, readTextFile(testInstance, expectedResolvedPath))
@@ -824,10 +833,10 @@ func TestSyncSuccessfulFinalizationTable(testInstance *testing.T) {
 			case "stash_conflict_reported_issue_format":
 				require.Equal(testInstance, expectedResolvedContents, readTextFile(testInstance, expectedResolvedPath))
 				require.NotEmpty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
-				require.Equal(testInstance, int64(8), requestCount.Load())
+				require.Equal(testInstance, int64(7), requestCount.Load())
 				require.Equal(testInstance, 4, strings.Count(output, "semantic audit approved"))
-				require.NotContains(testInstance, output, "does not preserve OURS replacement intent")
-				require.NotContains(testInstance, output, "does not preserve THEIRS replacement intent")
+				require.Contains(testInstance, output, "does not preserve OURS replacement intent")
+				require.Contains(testInstance, output, "does not preserve THEIRS replacement intent")
 				require.NotContains(testInstance, output, "AI_MERGE_ROLLBACK")
 			}
 		})
