@@ -450,8 +450,8 @@ func TestHandleStrictSyncRemovesReviewBaseWhenChildCreationFails(t *testing.T) {
 	_, reviewBaseExists := gitExecutor.configValues[strictSyncStackReviewBaseKey("feature/child")]
 	require.False(t, reviewBaseExists)
 	recordedCommands := recordedGitCommands(gitExecutor.commands)
-	require.Contains(t, recordedCommands, "config "+strictSyncStackReviewBaseKey("feature/child")+" master")
-	require.Contains(t, recordedCommands, "config --unset "+strictSyncStackReviewBaseKey("feature/child"))
+	require.Contains(t, recordedCommands, "config --local --no-includes "+strictSyncStackReviewBaseKey("feature/child")+" master")
+	require.Contains(t, recordedCommands, "config --local --no-includes --unset-all "+strictSyncStackReviewBaseKey("feature/child"))
 }
 
 func missingStrictSyncStackChildReferences() map[string]bool {

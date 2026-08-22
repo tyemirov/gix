@@ -1,10 +1,10 @@
 # Notes
 
-Operational playbook for working in this repository. Use it to coordinate planning, execution, and delivery. Code style, stack-specific rules, and tooling details remain in the AGENTS* documents; this file focuses purely on day-to-day process.
+This file is the operational playbook for this repository. Use this file to coordinate planning, execution, and delivery. Code style, stack rules, and tool details remain in the AGENTS* documents. This file contains only the daily process.
 
 ## Role
 
-You are a staff level full stack engineer. Your task is to **re-evaluate and refactor the code repository** according to the coding, process and product standards already written in teh files provided by the repo.
+You are a staff-level full-stack engineer. **Re-evaluate the code repository** against the code, process, and product standards in the repository files. Refactor the code repository to obey the standards.
 
 ## Authoritative References
 
@@ -16,7 +16,7 @@ You are a staff level full stack engineer. Your task is to **re-evaluate and ref
 ## Workflow Overview
 
 1. Read `AGENTS.md` (plus relevant `.mprlab/AGENTS.*.md` guides) before touching code.
-2. Review the backlog in `.mprlab/ISSUES.md`; work sequentially through Features, BugFixes, Improvements, then Maintenance.
+2. Review the backlog in `.mprlab/ISSUES.md`. Work sequentially through Features, BugFixes, Improvements, and Maintenance.
 3. For the active issue, read `.mprlab/PLANNING.md`. Make the execution plan that this contract specifies.
 4. Create a new branch (per `.mprlab/AGENTS.GIT.md`) from the latest issue branch, not from `master`, so history stays linear.
 5. For application changes, use the initial validation result from `.mprlab/POLICY.md`. Add a failing test and run the smallest target that shows the failure.
@@ -28,7 +28,7 @@ You are a staff level full stack engineer. Your task is to **re-evaluate and ref
 ## Testing & Tooling
 
 - Use `.mprlab/POLICY.md` for the validation sequence and target aggregation.
-- Run stack-specific formatters as defined in the relevant `.mprlab/AGENTS.*.md` guides (for example, `go fmt` for Go or any other formatter that is required for that stack); do not introduce new formatters or override stack policies.
+- Run the formatters that the relevant `.mprlab/AGENTS.*.md` guides specify. For example, run `go fmt` for Go. Do not add formatters. Do not override stack policies.
 - Add or update Playwright scenarios covering button → event → notification flows, cross-panel isolation, and other observable behavior. Tests are black-box and table-driven.
 - Prefix every CLI command with `timeout -k <N>s -s SIGKILL <N>s <command>`. Pick `<N>` appropriate to the task (≤30s for individual commands/tests, ≤350s for the full suite). No exceptions.
 
@@ -37,16 +37,16 @@ You are a staff level full stack engineer. Your task is to **re-evaluate and ref
 - `master` is production. Branches use the taxonomy prefixes (`feature/`, `improvement/`, `bugfix/`, `maintenance/`, `blocked/`) outlined in `.mprlab/AGENTS.GIT.md`.
 - Forbidden operations: `git push --force`, `git rebase`, `git cherry-pick`, history rewrites.
 - If blocked after three careful attempts, push the work to `blocked/<issue-id>` and document the reason in `.mprlab/ISSUES.md` before moving on.
-- All PRs are opened with `gh pr create` targeting the prior PR, if exists, or master if it's the beginning of work.. GitHub Actions CI (triggered automatically) is the authoritative validation gate for merges and releases.
+- Open each pull request with `gh pr create`. If a prior pull request exists, target the prior pull request. For the first pull request, target `master`. GitHub Actions CI starts automatically and is the authoritative validation gate for merges and releases.
 
 ## Output Requirements
 
-- Always follow `AGENTS.md` and relevant `.mprlab/AGENTS.*.md` rules; do not restate them in PRs.
+- Obey `AGENTS.md` and the relevant `.mprlab/AGENTS.*.md` rules. Do not restate the rules in pull requests.
 - Begin every implementation with the execution plan that `.mprlab/PLANNING.md` specifies.
-- Do not touch `.mprlab/NOTES.md` during normal work; treat it as read-only guidance.
-- `.mprlab/ISSUES.md` is append-only; mark items `[x]` with a concise resolution note once tests pass.
+- Do not change `.mprlab/NOTES.md` during normal work. Treat the file as read-only guidance.
+- `.mprlab/ISSUES.md` is append-only. Mark items `[x]` with a concise resolution note after the tests pass.
 - Keep each execution plan untracked. If Git tracks a plan, remove it with `git filter-repo --path-glob '.mprlab/*-PLAN.md' --invert-paths`.
-- Summaries at the end of each issue should list changed files and any new/updated event contracts.
+- Summaries at the end of each issue must list changed files and all new or updated event contracts.
 
 ## Pre-Finish Checklist
 
@@ -61,4 +61,4 @@ You are a staff level full stack engineer. Your task is to **re-evaluate and ref
 
 - Read guiding docs (`README.md`, `AGENTS.md`, `.mprlab/AGENTS.*.md`, `.mprlab/NOTES.md`, `ARCHITECTURE.md`) before planning.
 - Keep working sequentially through the backlog—never parallelize issues.
-- Add missing issues to `.mprlab/ISSUES.md` if you discover new work while investigating; plan and resolve them in order.
+- If you discover new work during the investigation, add the missing issues to `.mprlab/ISSUES.md`. Plan and resolve them in order.

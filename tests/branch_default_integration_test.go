@@ -302,6 +302,105 @@ func TestBranchDefaultClosesPullRequestFromPromotedBranch(testInstance *testing.
 	require.Contains(testInstance, gitLog, "push\n--force-with-lease=refs/heads/"+branchDefaultInitialBranch+":"+verifiedSourceCommit+"\norigin\n--delete\n"+branchDefaultInitialBranch+"\n")
 }
 
+func TestBranchDefaultAlreadyTargetRemovesObsoleteReviewBase(testInstance *testing.T) {
+	workspaceDirectory := testInstance.TempDir()
+	repositoryPath := filepath.Join(workspaceDirectory, "already-default")
+	initializeRepositoryWithFiles(
+		testInstance,
+		repositoryPath,
+		branchDefaultPromotionRemoteURL,
+		map[string]string{
+			"README.md":                       "already default repository\n",
+			branchDefaultWorkflowRelativePath: fmt.Sprintf(branchDefaultWorkflowTemplate, branchDefaultInitialBranch),
+		},
+	)
+	runGit(testInstance, repositoryPath, "config", "branch.master.gix-review-base", branchDefaultInitialBranch)
+
+	stateDirectory := testInstance.TempDir()
+	initializeStubStateFile(testInstance, stateDirectory, branchDefaultPromotionRemoteRepository, branchDefaultTargetBranch)
+	output := runBranchDefaultMigration(testInstance, repositoryPath, stateDirectory)
+
+	require.Contains(testInstance, output, fmt.Sprintf(
+		"WORKFLOW-DEFAULT-SKIP: %s already defaults to master",
+		repositoryPath,
+	))
+	assertBranchReviewBaseMissing(testInstance, repositoryPath, branchDefaultTargetBranch)
+	githubLog := readTextFile(testInstance, filepath.Join(stateDirectory, "gh.log"))
+	require.NotContains(testInstance, githubLog, "default_branch=")
+}
+
+func TestBranchDefaultAlreadyTargetIgnoresIncludedReviewBase(testInstance *testing.T) {
+	workspaceDirectory := testInstance.TempDir()
+	repositoryPath := filepath.Join(workspaceDirectory, "included-review-base")
+	initializeRepositoryWithFiles(
+		testInstance,
+		repositoryPath,
+		branchDefaultPromotionRemoteURL,
+		map[string]string{
+			"README.md":                       "included review base repository\n",
+			branchDefaultWorkflowRelativePath: fmt.Sprintf(branchDefaultWorkflowTemplate, branchDefaultInitialBranch),
+		},
+	)
+	includePath := filepath.Join(testInstance.TempDir(), "review-base.inc")
+	require.NoError(testInstance, os.WriteFile(includePath, []byte("[branch \"master\"]\n\tgix-review-base = main\n"), 0o600))
+	runGit(testInstance, repositoryPath, "config", "--local", "include.path", includePath)
+	require.Equal(testInstance, branchDefaultInitialBranch, strings.TrimSpace(runGit(
+		testInstance,
+		repositoryPath,
+		"config",
+		"--includes",
+		"--get",
+		"branch.master.gix-review-base",
+	)))
+
+	stateDirectory := testInstance.TempDir()
+	initializeStubStateFile(testInstance, stateDirectory, branchDefaultPromotionRemoteRepository, branchDefaultTargetBranch)
+	output := runBranchDefaultMigration(testInstance, repositoryPath, stateDirectory)
+
+	require.Contains(testInstance, output, fmt.Sprintf(
+		"WORKFLOW-DEFAULT-SKIP: %s already defaults to master",
+		repositoryPath,
+	))
+	require.Equal(testInstance, branchDefaultInitialBranch, strings.TrimSpace(runGit(
+		testInstance,
+		repositoryPath,
+		"config",
+		"--includes",
+		"--get",
+		"branch.master.gix-review-base",
+	)))
+	assertBranchReviewBaseMissing(testInstance, repositoryPath, branchDefaultTargetBranch)
+}
+
+func TestBranchDefaultPreservesCaseDistinctReviewBaseBeforeMigration(testInstance *testing.T) {
+	workspaceDirectory := testInstance.TempDir()
+	repositoryPath := filepath.Join(workspaceDirectory, "case-distinct-default")
+	initializeRepositoryWithFiles(
+		testInstance,
+		repositoryPath,
+		branchDefaultPromotionRemoteURL,
+		map[string]string{
+			"README.md":                       "case-distinct default repository\n",
+			branchDefaultWorkflowRelativePath: fmt.Sprintf(branchDefaultWorkflowTemplate, branchDefaultInitialBranch),
+		},
+	)
+	runGit(testInstance, repositoryPath, "config", "--local", "branch.master.gix-review-base", branchDefaultInitialBranch)
+	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "README.md"), []byte("dirty case-distinct work\n"), 0o644))
+
+	stateDirectory := testInstance.TempDir()
+	initializeStubStateFile(testInstance, stateDirectory, branchDefaultPromotionRemoteRepository, "Master")
+	output, runError := runFailingBranchDefaultMigration(testInstance, repositoryPath, stateDirectory)
+
+	require.Error(testInstance, runError)
+	require.Contains(testInstance, output, "repository worktree must be clean before migration")
+	require.NotContains(testInstance, output, "WORKFLOW-DEFAULT-SKIP")
+	require.Equal(
+		testInstance,
+		branchDefaultInitialBranch,
+		strings.TrimSpace(runGit(testInstance, repositoryPath, "config", "--local", "--no-includes", "--get", "branch.master.gix-review-base")),
+	)
+}
+
 func TestBranchDefaultDeletesContentEquivalentMergedSource(testInstance *testing.T) {
 	workspaceDirectory := testInstance.TempDir()
 	repositoryPath := filepath.Join(workspaceDirectory, "merged-source")
@@ -322,6 +421,7 @@ func TestBranchDefaultDeletesContentEquivalentMergedSource(testInstance *testing
 	runGit(testInstance, repositoryPath, "commit", "-m", "add model configuration")
 	runGit(testInstance, repositoryPath, "checkout", branchDefaultInitialBranch)
 	runGit(testInstance, repositoryPath, "merge", "--no-ff", branchDefaultTargetBranch, "-m", branchDefaultMergeCommitMessage)
+	runGit(testInstance, repositoryPath, "config", "branch.master.gix-review-base", branchDefaultInitialBranch)
 
 	stateDirectory := testInstance.TempDir()
 	initializeStubStateFile(testInstance, stateDirectory, branchDefaultPromotionRemoteRepository, branchDefaultInitialBranch)
@@ -332,6 +432,7 @@ func TestBranchDefaultDeletesContentEquivalentMergedSource(testInstance *testing
 		"WORKFLOW-DEFAULT: %s (main → master) safe_to_delete=true source_deleted=true",
 		repositoryPath,
 	))
+	assertBranchReviewBaseMissing(testInstance, repositoryPath, branchDefaultTargetBranch)
 	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--list", branchDefaultInitialBranch)))
 	gitLog := readTextFile(testInstance, filepath.Join(stateDirectory, "git.log"))
 	require.Contains(testInstance, gitLog, "fetch\n--no-tags\norigin\n+refs/heads/main:refs/remotes/origin/main\n+refs/heads/master:refs/remotes/origin/master\n")
@@ -772,6 +873,51 @@ func runBranchDefaultMigrationWithWrapper(testInstance *testing.T, repositoryPat
 	)
 }
 
+func runFailingBranchDefaultMigration(testInstance *testing.T, repositoryPath string, stateDirectory string) (string, error) {
+	testInstance.Helper()
+	stubDirectory := filepath.Join(testInstance.TempDir(), "bin")
+	require.NoError(testInstance, os.MkdirAll(stubDirectory, 0o755))
+	require.NoError(testInstance, os.WriteFile(
+		filepath.Join(stubDirectory, branchDefaultStubExecutableName),
+		[]byte(buildBranchDefaultStubScript(stateDirectory)),
+		0o755,
+	))
+	realGitBinary, lookupError := exec.LookPath(branchDefaultGitExecutable)
+	require.NoError(testInstance, lookupError)
+	require.NoError(testInstance, os.WriteFile(
+		filepath.Join(stubDirectory, branchDefaultGitWrapperExecutableName),
+		[]byte(buildBranchDefaultGitWrapper(realGitBinary, stateDirectory)),
+		0o755,
+	))
+
+	return runFailingIntegrationCommand(
+		testInstance,
+		integrationRepositoryRoot(testInstance),
+		integrationCommandOptions{
+			PathVariable: stubDirectory + string(os.PathListSeparator) + os.Getenv(pathEnvironmentVariableNameConstant),
+			EnvironmentOverrides: map[string]string{
+				branchDefaultStubStateDirectoryEnvironment: stateDirectory,
+				branchDefaultPagesStateEnvironment:         branchDefaultPagesStateAbsent,
+				githubauth.EnvGitHubToken:                  "test-token",
+				githubauth.EnvGitHubCLIToken:               "test-token",
+				githubauth.EnvGitHubAPIToken:               "test-token",
+			},
+		},
+		branchDefaultIntegrationTimeout,
+		[]string{
+			"run",
+			".",
+			"--log-level",
+			"error",
+			"default",
+			branchDefaultTargetBranch,
+			"--roots",
+			repositoryPath,
+			"--yes",
+		},
+	)
+}
+
 func buildBranchDefaultStubScript(stateDirectory string) string {
 	return fmt.Sprintf(`#!/bin/sh
 STATE_DIR=%[1]q
@@ -988,4 +1134,13 @@ func assertStateFileBranch(testInstance *testing.T, stateDirectory string, repos
 	content, readError := os.ReadFile(statePath)
 	require.NoError(testInstance, readError)
 	require.Equal(testInstance, expectedBranch, strings.TrimSpace(string(content)))
+}
+
+func assertBranchReviewBaseMissing(testInstance *testing.T, repositoryPath string, branchName string) {
+	testInstance.Helper()
+	command := exec.Command(branchDefaultGitExecutable, "-C", repositoryPath, "config", "--local", "--no-includes", "--get", "branch."+branchName+".gix-review-base")
+	command.Env = buildGitCommandEnvironment(nil)
+	output, commandError := command.CombinedOutput()
+	require.Error(testInstance, commandError, string(output))
+	require.Empty(testInstance, strings.TrimSpace(string(output)))
 }
