@@ -161,6 +161,13 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.7.6] - 2026-08-22
+
+- Merge pull request #441 from tyemirov/gix/treat-default-branches-as-terminal-review-targets
+- test: cover obsolete review base cleanup flows
+- fix(sync): clear review bases from default branches
+- fix(sync): keep the default branch terminal during sync
+
 ## [v1.7.5] - 2026-08-21
 
 - test: cover semantic repair retries for unproven corrections
