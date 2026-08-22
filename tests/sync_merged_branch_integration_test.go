@@ -46,6 +46,69 @@ type syncMergedBranchFixture struct {
 	BranchName     string
 }
 
+func TestSyncDirtyDefaultBranchRemovesObsoleteReviewBaseAndCommits(testInstance *testing.T) {
+	repositoryRoot := integrationRepositoryRoot(testInstance)
+	workspacePath := syncHomeWorkspace(testInstance)
+	remotePath := filepath.Join(workspacePath, "remote.git")
+	repositoryPath := filepath.Join(workspacePath, "project")
+	createSyncGitHubBackedRepository(testInstance, remotePath, repositoryPath)
+
+	readmePath := filepath.Join(repositoryPath, "README.md")
+	require.NoError(testInstance, os.WriteFile(readmePath, []byte("initial\n"), 0o644))
+	runGit(testInstance, repositoryPath, "add", "README.md")
+	runGit(testInstance, repositoryPath, "commit", "-m", "initial commit")
+	runGit(testInstance, repositoryPath, "push", "-u", "origin", "master")
+	originalHead := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD"))
+	runGit(testInstance, repositoryPath, "config", "branch.master.gix-review-base", "main")
+	require.NoError(testInstance, os.WriteFile(readmePath, []byte("current default work\n"), 0o644))
+
+	llmServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/chat/completions" {
+			http.NotFound(responseWriter, request)
+			return
+		}
+		responseWriter.Header().Set("Content-Type", "application/json")
+		_, _ = responseWriter.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"fix: update current default work"}}]}`))
+	}))
+	testInstance.Cleanup(llmServer.Close)
+
+	configurationPath := writeDirtySyncMergedBranchConfiguration(testInstance, llmServer.URL)
+	githubLogPath := filepath.Join(testInstance.TempDir(), "gh.log")
+	require.NoError(testInstance, os.WriteFile(
+		githubLogPath,
+		[]byte("merged-pr --base main --head master --oid "+originalHead+"\n"),
+		0o600,
+	))
+	pathVariable := buildSyncMergedBranchExecutablePath(testInstance)
+
+	output, runError := runIntegrationCommandWithInput(
+		testInstance,
+		repositoryRoot,
+		integrationCommandOptions{
+			PathVariable: pathVariable,
+			EnvironmentOverrides: map[string]string{
+				syncMergedBranchAPIKeyVariable:    "test-key",
+				syncMergedBranchGitHubLogVariable: githubLogPath,
+				syncMergedBranchNameVariable:      "master",
+			},
+		},
+		syncMergedBranchIntegrationTimeout,
+		"",
+		[]string{"run", ".", "--config", configurationPath, "--log-level", "error", "sync", "master", "--roots", repositoryPath},
+	)
+	require.NoError(testInstance, runError, output)
+
+	require.Contains(testInstance, output, fmt.Sprintf("SYNCED: %s (master)", repositoryPath))
+	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
+	require.Equal(testInstance, "fix: update current default work", strings.TrimSpace(runGit(testInstance, repositoryPath, "log", "-1", "--format=%s")))
+	require.Equal(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "master")), strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "origin/master")))
+	assertBranchReviewBaseMissing(testInstance, repositoryPath, "master")
+
+	githubLog := readTextFile(testInstance, githubLogPath)
+	require.NotContains(testInstance, githubLog, "pr list --repo owner/project --state open --head master")
+	require.NotContains(testInstance, githubLog, "pr list --repo owner/project --state merged --head master")
+}
+
 func TestSyncCurrentMergedBranchPromptsAndSyncsMasterBeforeCreatingPullRequest(testInstance *testing.T) {
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	branchName := "feature/squashed-review"
