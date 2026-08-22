@@ -164,25 +164,32 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 	case gitLSRemoteSubcommandConstant:
 		return execshell.ExecutionResult{StandardOutput: fmt.Sprintf("ref: refs/heads/%s\tHEAD\n%s\tHEAD\n", strictSyncTestDefaultBranch, strictSyncGitTestCommit)}, nil
 	case "config":
-		if len(details.Arguments) < 3 || (!strings.HasSuffix(details.Arguments[1], ".gix-review-base") && !strings.HasSuffix(details.Arguments[2], ".gix-review-base")) {
+		reviewBaseKeyIndex := -1
+		for argumentIndex, argument := range details.Arguments {
+			if strings.HasSuffix(argument, ".gix-review-base") {
+				reviewBaseKeyIndex = argumentIndex
+				break
+			}
+		}
+		if reviewBaseKeyIndex < 0 {
 			return execshell.ExecutionResult{}, nil
 		}
-		if len(details.Arguments) > 2 && details.Arguments[1] == strictSyncGitConfigGetFlag {
-			configValue, exists := executor.configValues[details.Arguments[2]]
+		if commandHasArgument(details.Arguments, "--get") {
+			configValue, exists := executor.configValues[details.Arguments[reviewBaseKeyIndex]]
 			if !exists {
 				return execshell.ExecutionResult{}, commandFailedErrorWithExitCode("", 1)
 			}
 			return execshell.ExecutionResult{StandardOutput: configValue + "\n"}, nil
 		}
-		if len(details.Arguments) > 2 && details.Arguments[1] == strictSyncGitConfigUnsetFlag {
-			delete(executor.configValues, details.Arguments[2])
+		if commandHasArgument(details.Arguments, "--unset-all") {
+			delete(executor.configValues, details.Arguments[reviewBaseKeyIndex])
 			return execshell.ExecutionResult{}, nil
 		}
-		if len(details.Arguments) > 2 {
+		if reviewBaseKeyIndex+1 < len(details.Arguments) {
 			if executor.configValues == nil {
 				executor.configValues = map[string]string{}
 			}
-			executor.configValues[details.Arguments[1]] = details.Arguments[2]
+			executor.configValues[details.Arguments[reviewBaseKeyIndex]] = details.Arguments[reviewBaseKeyIndex+1]
 		}
 		return execshell.ExecutionResult{}, nil
 	case "status":

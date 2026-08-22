@@ -23,6 +23,7 @@ const (
 	migrationMetadataResolutionErrorTemplateConstant   = "default branch metadata resolution failed: %w"
 	migrationMetadataMissingMessageConstant            = "repository metadata missing default branch for update"
 	migrationSkipMessageTemplateConstant               = "WORKFLOW-DEFAULT-SKIP: %s already defaults to %s\n"
+	migrationReviewBaseRemovalErrorTemplateConstant    = "default branch review-base reconciliation failed: %w"
 	remotePresenceResolutionErrorTemplateConstant      = "default branch remote resolution failed: %w"
 	localDefaultResolutionErrorTemplateConstant        = "default branch local detection failed: %w"
 	sourceBranchMissingMessageConstant                 = "default branch source not detected for promotion"
@@ -162,12 +163,15 @@ func (operation *BranchMigrationOperation) Execute(executionContext context.Cont
 
 		skipMigration := false
 		if remoteAvailable && len(remoteDefaultBranch) > 0 {
-			skipMigration = strings.EqualFold(targetBranchValue, remoteDefaultBranch)
+			skipMigration = targetBranchValue == remoteDefaultBranch
 		} else if len(localDefaultBranch) > 0 {
-			skipMigration = strings.EqualFold(targetBranchValue, localDefaultBranch)
+			skipMigration = targetBranchValue == localDefaultBranch
 		}
 
 		if skipMigration {
+			if reviewBaseErr := gitrepo.RemoveBranchReviewBase(executionContext, environment.GitExecutor, repositoryPath, targetBranchValue); reviewBaseErr != nil {
+				return fmt.Errorf(migrationReviewBaseRemovalErrorTemplateConstant, reviewBaseErr)
+			}
 			if environment.Output != nil {
 				fmt.Fprintf(environment.Output, migrationSkipMessageTemplateConstant, repositoryState.Path, targetBranchValue)
 			}
@@ -192,6 +196,9 @@ func (operation *BranchMigrationOperation) Execute(executionContext context.Cont
 				return executionError
 			}
 			return fmt.Errorf(migrationExecutionErrorTemplateConstant, executionError)
+		}
+		if reviewBaseErr := gitrepo.RemoveBranchReviewBase(executionContext, environment.GitExecutor, repositoryPath, targetBranchValue); reviewBaseErr != nil {
+			return fmt.Errorf(migrationReviewBaseRemovalErrorTemplateConstant, reviewBaseErr)
 		}
 
 		if environment.Output != nil {

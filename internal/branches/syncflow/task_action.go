@@ -9,6 +9,7 @@ import (
 	"github.com/tyemirov/gix/internal/branches/refresh"
 	"github.com/tyemirov/gix/internal/execshell"
 	"github.com/tyemirov/gix/internal/githubcli"
+	"github.com/tyemirov/gix/internal/gitrepo"
 	"github.com/tyemirov/gix/internal/repos/shared"
 	"github.com/tyemirov/gix/internal/repos/worktree"
 	"github.com/tyemirov/gix/internal/workflow"
@@ -577,6 +578,11 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 	}
 	if dirty && syncStatusEntriesHaveConflicts(statusEntries) {
 		return errors.New(strictSyncConflictWorktreeMessage)
+	}
+	if branchName == defaultBranch {
+		if reviewBaseErr := gitrepo.RemoveBranchReviewBase(ctx, environment.GitExecutor, repository.Path, branchName); reviewBaseErr != nil {
+			return reviewBaseErr
+		}
 	}
 	reviewBaseBranch := defaultBranch
 	stackPlan, stackPlanErr := planStrictSyncStack(ctx, environment, repository, strictSyncStackPlanningOptions{
