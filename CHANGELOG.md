@@ -162,6 +162,11 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.7.7] - 2026-08-28
+
+- Merge pull request #442 from tyemirov/bugfix/B079-loopaware-site-id
+- fix: add current LoopAware site identity
+
 ## [v1.7.6] - 2026-08-22
 
 - Merge pull request #441 from tyemirov/gix/treat-default-branches-as-terminal-review-targets
