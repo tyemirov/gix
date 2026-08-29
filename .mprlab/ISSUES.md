@@ -11,6 +11,24 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B079] (P1) Add missing gix LoopAware telemetry.
+  Goal:
+  The published gix site reports activity to its current production LoopAware site.
+  Requirements:
+  - Add the current gix LoopAware pixel to `docs/index.html`.
+  - Require exactly one current gix site identity in the published page.
+  - Reject each different LoopAware site identity in the published page.
+  Validation:
+  - Run the focused documentation package test before and after the page change.
+  - Run `make ci` after the last source change.
+  - Run the language checker and `git diff --check`.
+  Resolution:
+  - Added the current gix LoopAware pixel to the published Pages artifact.
+  - Added a documentation package test for the exact current site identity.
+  - The focused test and `make ci` passed.
+  - Changed files: `.mprlab/ISSUES.md`, `CHANGELOG.md`, `docs/index.html`, and `docs/readme_config_test.go`.
+  - Event contracts: none.
+
 - [x] [B078] (P0) Keep the default branch terminal during sync.
   Reported on 2026-08-22 during a real `QwenOC` sync with Gix v1.7.5.
   Expected result:

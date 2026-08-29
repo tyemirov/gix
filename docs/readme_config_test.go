@@ -27,6 +27,9 @@ const (
 	unexpectedOperationMessageTemplate  = "unexpected command %s"
 	duplicateOperationMessageTemplate   = "duplicate command %s"
 	defaultTempDirectoryRootConstant    = ""
+	pagesFileNameConstant               = "index.html"
+	loopAwarePixelURLPrefixConstant     = "https://www.loopaware.com/pixel.js?site_id="
+	gixLoopAwareSiteIDConstant          = "64026286-27e2-4b89-9ec5-956878d731d2"
 )
 
 var expectedCommandOperations = map[string]struct{}{
@@ -47,6 +50,20 @@ type readmeApplicationConfiguration struct {
 type readmeOperationConfiguration struct {
 	Command []string       `yaml:"command"`
 	Options map[string]any `yaml:"with"`
+}
+
+func TestPagesUseCurrentLoopAwareSiteIdentity(testInstance *testing.T) {
+	workingDirectory, workingDirectoryError := os.Getwd()
+	require.NoError(testInstance, workingDirectoryError)
+
+	pagePath := filepath.Join(workingDirectory, pagesFileNameConstant)
+	pageBytes, readError := os.ReadFile(pagePath)
+	require.NoError(testInstance, readError)
+
+	pageText := string(pageBytes)
+	expectedPixelURL := loopAwarePixelURLPrefixConstant + gixLoopAwareSiteIDConstant
+	require.Equal(testInstance, 1, strings.Count(pageText, expectedPixelURL))
+	require.Equal(testInstance, 1, strings.Count(pageText, loopAwarePixelURLPrefixConstant))
 }
 
 func TestArchitectureWorkflowConfigurationParses(testInstance *testing.T) {

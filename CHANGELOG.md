@@ -26,6 +26,7 @@
 - Updated the LLM Proxy Go client from v0.2.21 to v0.2.46, moved Gix's configured proxy work budget to the current per-request timeout header, and raised the Go module floor to 1.25.12 with the dependency graph required by that client.
 
 ### Bug Fixes 🐛
+- Added the current gix LoopAware pixel to the published Pages artifact. Added a repository test for the exact site identity.
 - Retained a semantic correction without replacement-intent proof for the next repair request. The next audit now repairs that exact correction instead of the malformed derived candidate.
 - Allowed an audited semantic candidate to delete one conflict region without adding a newline. Tracked candidate availability separately from candidate content.
 - Accepted a complete side region with compatible opposite-side edits before fragment validation. Preserved unrelated-fragment rejection and exact edit-context checks.
