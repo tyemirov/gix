@@ -11,6 +11,58 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B080] (P0) Merge overlapping concurrent insertions without duplicate content.
+  Reported on 2026-08-31 during a real B512 sync with Gix v1.7.6.
+  Expected result:
+  Gix merges the resolved B512 record with the unchanged review-base record.
+  Gix keeps one B512 record and preserves the resolution.
+  Actual result:
+  Gix classifies the complete records as strictly additive because their common Git base is empty.
+  The semantic audit removes the duplicate record, but exact additive validation rejects the correction four times.
+  Gix then rolls back the merge without a push.
+  Requirements:
+  - Treat insertions as one overlap when all smaller-side word tokens occur in order in the larger insertion.
+  - Keep exact ordering validation for disjoint concurrent insertions.
+  - Select the side with the complete word-token sequence when one sequence contains the other.
+  - Select OURS when both word-token sequences are identical.
+  - Validate the candidate against one exact complete word-token sequence.
+  - Reject missing, reordered, added, or duplicated word tokens.
+  - Keep semantic audit, bounded attempts, and exact rollback behavior.
+  Validation:
+  - Reproduce the B512 empty-base record conflict through the compiled CLI.
+  - Verify a repair request follows a duplicated B512 audit correction.
+  - Verify the neighboring-gap case accepts `foo X bar Y` without duplication.
+  - Verify punctuation ties preserve the shared word sequence.
+  - Verify preservation of the resolved state and resolution text.
+  - Verify exact ordering for disjoint concurrent insertions.
+  - Run focused tests and complete CI.
+  Initial resolution:
+  The first implementation aligned full tokens and checked each insertion gap independently.
+  It passed the initial B512 regression but did not meet the whole-sequence contract.
+  Review follow-up on 2026-08-31:
+  Independent gap checks can reject one valid aligned result and accept duplicated common content.
+  Full-token LCS ties can also select punctuation instead of the shared word sequence.
+  Follow-up requirements:
+  - Select overlap from the side word-token sequences without punctuation tie effects.
+  - Use the longer complete word sequence when one sequence contains the other.
+  - Use the local side when both complete word sequences are identical.
+  - Validate the candidate against one complete word-token sequence.
+  - Reject missing, reordered, added, or duplicated word tokens.
+  Follow-up validation:
+  - Accept `foo X bar Y` for local `foo bar` and incoming `foo X bar Y`.
+  - Reject `foo X bar foo bar Y` for the same conflict.
+  - Classify `foo:` and `:foo` as overlapping insertions.
+  - Keep the B512 compiled CLI regression and disjoint insertion coverage.
+  - Run focused tests and complete CI.
+  Follow-up resolution:
+  Gix now finds insertion overlaps from side word-token sequences instead of full-token LCS alignment.
+  It selects the complete sequence side, or OURS when both word sequences are identical.
+  One whole-sequence comparison rejects missing, reordered, added, and duplicated word tokens.
+  Disjoint concurrent insertions retain exact ordering validation.
+  The compiled CLI regression rejects a duplicated B512 repair and then keeps one resolved record.
+  `make test-fast`, `make test-slow`, and `make ci` passed on 2026-08-31.
+  This change did not install, release, commit, push, or retry Gix against the live gateway.
+
 - [x] [B079] (P1) Add missing gix LoopAware telemetry.
   Goal:
   The published gix site reports activity to its current production LoopAware site.
