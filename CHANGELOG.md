@@ -163,6 +163,12 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.7.9] - 2026-09-01
+
+- test: cover remote-only branch sync journal transitions
+- fix(sync): preserve branch creation ownership expectations
+- fix(sync): guard branch creation against concurrent updates
+
 ## [v1.7.8] - 2026-08-31
 
 - test: cover overlapping concurrent insertion semantic merges
