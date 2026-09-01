@@ -46,6 +46,7 @@ PROFILE_HOLDER_PLACEHOLDERS = {
 }
 EXPECTED_LICENSE_TEMPLATE_FILES = {
     "COMMERCIAL_LICENSE.md": "COMMERCIAL_LICENSE.md",
+    "CONTRIBUTOR_LICENSE.md": "CONTRIBUTOR_LICENSE.md",
     "LICENSE": "LICENSE.md",
     "NOTICE": "NOTICE.md",
 }
@@ -58,6 +59,7 @@ LICENSE_FILE_NAMES = (
     "COMMERCIAL_LICENSE",
     "COMMERCIAL_LICENSE.md",
     "COMMERCIAL_LICENSE.txt",
+    "CONTRIBUTOR_LICENSE.md",
     "COPYING",
     "COPYING.md",
     "LICENCE",
@@ -585,6 +587,8 @@ def expected_license_blobs(record: RepositoryRecord) -> Mapping[str, str]:
     replacements = {
         "{{CONTACT}}": profile_variables["license_contact"],
         "{{YEAR}}": profile_variables["license_year"],
+        "{{REPOSITORY}}": record.repository,
+        "{{REPOSITORY_URL}}": f"https://github.com/{record.repository}",
         holder_placeholder: record.license_holder,
     }
     blobs: dict[str, str] = {}

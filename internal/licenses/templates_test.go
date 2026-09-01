@@ -36,6 +36,13 @@ func TestLoadTemplateBundleUsesUnmodifiedPolyFormNoncommercialLicense(testInstan
 	require.Contains(testInstance, noticeContent, "Required Notice: Copyright")
 	require.Contains(testInstance, noticeContent, VariableYear)
 	require.Contains(testInstance, noticeContent, VariableLicensor)
+	require.Contains(testInstance, noticeContent, VariableRepository)
+	require.Contains(testInstance, noticeContent, "Third-party material")
+
+	contributorContent, contributorExists := templateBundle.AdditionalContents[OutputContributorFileName]
+	require.True(testInstance, contributorExists)
+	require.Contains(testInstance, contributorContent, VariableRepositoryURL)
+	require.Contains(testInstance, contributorContent, "commercial, proprietary")
 
 	commercialContent, commercialExists := templateBundle.AdditionalContents[OutputCommercialFileName]
 	require.True(testInstance, commercialExists)
@@ -55,12 +62,18 @@ func TestLoadTemplateBundleUsesSPDXTaggedProprietaryTemplate(testInstance *testi
 	require.NoError(testInstance, loadError)
 	require.Contains(testInstance, templateBundle.PrimaryContent, "SPDX-License-Identifier: LicenseRef-MPRL-Proprietary")
 	require.Contains(testInstance, templateBundle.PrimaryContent, VariableCompany)
-	require.Contains(testInstance, templateBundle.PrimaryContent, `The Software is provided "AS IS"`)
-	require.Contains(testInstance, templateBundle.PrimaryContent, "No license is granted to the public.")
+	require.Contains(testInstance, templateBundle.PrimaryContent, `provided "AS IS"`)
+	require.Contains(testInstance, templateBundle.PrimaryContent, "no license is")
+	require.Contains(testInstance, templateBundle.PrimaryContent, VariableRepositoryURL)
+	require.Contains(testInstance, templateBundle.PrimaryContent, "Third-party material")
 
 	noticeContent, noticeExists := templateBundle.AdditionalContents[OutputNoticeFileName]
 	require.True(testInstance, noticeExists)
 	require.Contains(testInstance, noticeContent, VariableCompany)
+
+	contributorContent, contributorExists := templateBundle.AdditionalContents[OutputContributorFileName]
+	require.True(testInstance, contributorExists)
+	require.Contains(testInstance, contributorContent, "Patent License")
 
 	commercialContent, commercialExists := templateBundle.AdditionalContents[OutputCommercialFileName]
 	require.True(testInstance, commercialExists)

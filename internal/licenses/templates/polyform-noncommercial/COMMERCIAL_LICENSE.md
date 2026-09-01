@@ -1,8 +1,18 @@
 # Commercial Licensing
 
-The PolyForm Noncommercial License 1.0.0 in `LICENSE` does not grant
-commercial use. A commercial license is available only through a separate
-written agreement with the licensor.
+This notice applies to the licensor-owned or licensable materials in the
+version of the `{{REPOSITORY}}` repository at <{{REPOSITORY_URL}}> distributed
+with this notice.
+
+The PolyForm Noncommercial License 1.0.0 in `LICENSE` does not grant commercial
+use. A separate commercial license may be available through a written
+agreement with {{LICENSOR}}, solely for materials that {{LICENSOR}} owns or has
+sufficient authority to license commercially.
+
+Third-party and separately licensed materials remain governed by their own
+terms. Contributions may be included in a commercial license only to the extent
+that `CONTRIBUTOR_LICENSE.md` or another written agreement grants sufficient
+commercial relicensing rights.
 
 To request commercial licensing terms, contact {{CONTACT}}.
 

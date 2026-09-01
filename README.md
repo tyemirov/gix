@@ -254,6 +254,8 @@ Variables appear inside task templates via `{{ index .Environment "key" }}` and 
 | `license_licensor` | BSL or PolyForm licensor override (defaults to the repository owner). |
 | `license_contact` | Commercial-license contact (defaults to `legal@mprlab.com` for templates that use it). |
 | `license_project_name` | BSL project name override (defaults to the repository name). |
+| `license_repository` | Licensed repository identity override (defaults to `owner/name`). |
+| `license_repository_url` | Licensed repository URL override (defaults to its GitHub URL). |
 | `license_change_date` | BSL change date (defaults to `2029-01-01`). |
 | `license_change_license` | BSL change license (defaults to `Apache License 2.0`). |
 | `license_branch` | Branch name template for the license changes. |

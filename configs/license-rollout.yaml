@@ -63,6 +63,7 @@ workflow:
       with:
         tasks:
           - name: "Distribute license file"
+            ensure_clean: false
             steps:
               - files.apply
             files:
