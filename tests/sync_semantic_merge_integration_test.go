@@ -258,6 +258,153 @@ operations:
 	require.NotContains(testInstance, gitLog, "merge --abort")
 }
 
+func TestSyncMergesOverlappingConcurrentIssueInsertionsWithoutDuplicateContent(testInstance *testing.T) {
+	const (
+		baseBranchName   = "master"
+		targetBranchName = "bugfix/B512-concurrent-deployments"
+	)
+
+	issuePrefix := "# ISSUES\n\n## BugFixes\n\n"
+	sharedIssueBody := "  Goal:\n  Concurrent deployments must finish with the latest current fences.\n  Requirements:\n  - Serialize each affected fence key.\n  Validation:\n  - Run `make test-convergence` and `make ci`.\n\n"
+	oursIssueBlock := "- [x] [B512] Converge concurrent deployments without stale runtime effects.\n" +
+		sharedIssueBody +
+		"  Resolution 2026-08-31:\n  - Added gateway-private coordination for each affected fence key.\n\n"
+	theirsIssueBlock := "- [ ] [B512] Converge concurrent deployments without stale runtime effects.\n" + sharedIssueBody
+	stableIssue := "- [x] [B511] Use the default branch as the lifecycle authority.\n"
+	baseIssues := issuePrefix + stableIssue
+	oursIssues := issuePrefix + oursIssueBlock + stableIssue
+	theirsIssues := issuePrefix + theirsIssueBlock + stableIssue
+
+	repositoryRoot := integrationRepositoryRoot(testInstance)
+	workspacePath := syncHomeWorkspace(testInstance)
+	remotePath := filepath.Join(workspacePath, "remote.git")
+	repositoryPath := filepath.Join(workspacePath, "project")
+	createSyncGitHubBackedRepository(testInstance, remotePath, repositoryPath)
+
+	issuesPath := filepath.Join(repositoryPath, ".mprlab", "ISSUES.md")
+	require.NoError(testInstance, os.MkdirAll(filepath.Dir(issuesPath), 0o755))
+	require.NoError(testInstance, os.WriteFile(issuesPath, []byte(baseIssues), 0o644))
+	runGit(testInstance, repositoryPath, "add", ".mprlab/ISSUES.md")
+	runGit(testInstance, repositoryPath, "commit", "-m", "seed B512 merge fixture")
+	runGit(testInstance, repositoryPath, "push", "-u", "origin", baseBranchName)
+
+	runGit(testInstance, repositoryPath, "switch", "-c", targetBranchName)
+	require.NoError(testInstance, os.WriteFile(issuesPath, []byte(oursIssues), 0o644))
+	runGit(testInstance, repositoryPath, "add", ".mprlab/ISSUES.md")
+	runGit(testInstance, repositoryPath, "commit", "-m", "resolve B512")
+	runGit(testInstance, repositoryPath, "push", "-u", "origin", targetBranchName)
+	targetCommit := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD"))
+
+	runGit(testInstance, repositoryPath, "switch", baseBranchName)
+	require.NoError(testInstance, os.WriteFile(issuesPath, []byte(theirsIssues), 0o644))
+	runGit(testInstance, repositoryPath, "add", ".mprlab/ISSUES.md")
+	runGit(testInstance, repositoryPath, "commit", "-m", "record unresolved B512")
+	runGit(testInstance, repositoryPath, "push", "origin", baseBranchName)
+	incomingCommit := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD"))
+	runGit(testInstance, repositoryPath, "switch", targetBranchName)
+
+	var requestCount atomic.Int64
+	requestBodies := make(chan string, 2)
+	llmServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+		requestBody, requestReadError := io.ReadAll(request.Body)
+		if requestReadError != nil {
+			http.Error(responseWriter, requestReadError.Error(), http.StatusBadRequest)
+			return
+		}
+		requestBodies <- string(requestBody)
+		requestNumber := requestCount.Add(1)
+		var response string
+		switch requestNumber {
+		case 1:
+			response = semanticMergeResponse(oursIssueBlock + oursIssueBlock)
+		case 2:
+			response = semanticMergeResponse(oursIssueBlock)
+		default:
+			http.Error(responseWriter, "overlapping insertion resolution exceeded two semantic audits", http.StatusInternalServerError)
+			return
+		}
+		responseWriter.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(
+			responseWriter,
+			`{"choices":[{"message":{"role":"assistant","content":%q}}]}`,
+			response,
+		)
+	}))
+	testInstance.Cleanup(llmServer.Close)
+
+	configurationPath := writeReportedLifecycleSemanticConfiguration(testInstance, llmServer.URL)
+	gitLogPath := filepath.Join(testInstance.TempDir(), "git.log")
+	githubLogPath := filepath.Join(testInstance.TempDir(), "gh.log")
+	require.NoError(
+		testInstance,
+		os.WriteFile(
+			githubLogPath,
+			[]byte("created-pr --base "+baseBranchName+" --head "+targetBranchName+"\n"),
+			0o600,
+		),
+	)
+
+	output, runError := runIntegrationCommandWithInput(
+		testInstance,
+		repositoryRoot,
+		integrationCommandOptions{
+			PathVariable: buildSyncMergedBranchExecutablePath(testInstance),
+			EnvironmentOverrides: map[string]string{
+				syncMergedBranchGitLogVariable:    gitLogPath,
+				syncMergedBranchGitHubLogVariable: githubLogPath,
+				syncMergedBranchNameVariable:      targetBranchName,
+				syncMergedBranchMergedVariable:    "false",
+			},
+		},
+		syncMergedBranchIntegrationTimeout,
+		"",
+		[]string{
+			syncRefreshIntegrationRunCommand,
+			syncRefreshIntegrationModulePath,
+			"--config",
+			configurationPath,
+			syncRefreshIntegrationLogLevelFlag,
+			syncRefreshIntegrationErrorLogLevel,
+			"sync",
+			targetBranchName,
+			"--roots",
+			repositoryPath,
+		},
+	)
+	require.NoError(testInstance, runError, output)
+	require.Contains(testInstance, output, "derived .mprlab/ISSUES.md conflict region 1/1 candidate using overlapping concurrent insertions; requesting semantic audit")
+	require.Contains(testInstance, output, "semantic audit attempt 1/4 retained a semantic correction")
+	require.Contains(testInstance, output, "does not preserve the exact complete word-token sequence")
+	require.Contains(testInstance, output, "requesting repair of the exact correction")
+	require.Contains(testInstance, output, "semantic audit approved")
+	require.NotContains(testInstance, output, "AI_MERGE_ROLLBACK")
+	require.Equal(testInstance, int64(2), requestCount.Load())
+	require.Equal(testInstance, oursIssues, readTextFile(testInstance, issuesPath))
+	require.Equal(testInstance, 1, strings.Count(readTextFile(testInstance, issuesPath), "[B512]"))
+	require.Equal(
+		testInstance,
+		strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD")),
+		strings.TrimSpace(runGit(testInstance, remotePath, "rev-parse", "refs/heads/"+targetBranchName)),
+	)
+	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
+
+	firstRequestBody := <-requestBodies
+	secondRequestBody := <-requestBodies
+	require.Contains(testInstance, firstRequestBody, "LOCALLY VALIDATED CANDIDATE")
+	require.Equal(testInstance, 3, strings.Count(firstRequestBody, "[B512]"))
+	require.Contains(testInstance, firstRequestBody, "Resolution 2026-08-31")
+	require.Contains(testInstance, secondRequestBody, "does not preserve the exact complete word-token sequence")
+
+	headWithParents := strings.Fields(runGit(testInstance, repositoryPath, "rev-list", "--parents", "-n", "1", "HEAD"))
+	require.Len(testInstance, headWithParents, 3)
+	require.Equal(testInstance, targetCommit, headWithParents[1])
+	require.Equal(testInstance, incomingCommit, headWithParents[2])
+	gitLog := readTextFile(testInstance, gitLogPath)
+	require.Contains(testInstance, gitLog, "commit --no-edit")
+	require.Contains(testInstance, gitLog, "push origin "+targetBranchName)
+	require.NotContains(testInstance, gitLog, "merge --abort")
+}
+
 func TestSyncRepairsRejectedSemanticAuditCorrectionsBeforeCommit(testInstance *testing.T) {
 	const (
 		baseBranchName        = "feature/semantic-review-base"
