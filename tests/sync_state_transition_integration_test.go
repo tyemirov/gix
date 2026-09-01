@@ -871,6 +871,109 @@ func TestSyncSuccessfulFinalizationTable(testInstance *testing.T) {
 	}
 }
 
+func TestSyncCreatesRemoteOnlyBranchThroughTransactionJournal(testInstance *testing.T) {
+	repositoryRoot := integrationRepositoryRoot(testInstance)
+	binaryPath := buildIntegrationBinary(testInstance, repositoryRoot)
+	remotePath, repositoryPath := createSyncStateTransitionRepository(testInstance)
+	targetBranch := syncStateTransitionBranchName
+	createSyncRemoteOnlyBranch(testInstance, repositoryPath, targetBranch)
+
+	configurationPath := writeSyncMergedBranchConfiguration(testInstance)
+	gitLogPath := filepath.Join(testInstance.TempDir(), "git.log")
+	githubLogPath := filepath.Join(testInstance.TempDir(), "gh.log")
+	require.NoError(testInstance, os.WriteFile(githubLogPath, []byte("created-pr --base master --head "+targetBranch+"\n"), 0o600))
+
+	output, runError := runBinaryIntegrationCommand(
+		testInstance,
+		binaryPath,
+		repositoryPath,
+		map[string]string{
+			pathEnvironmentVariableNameConstant: buildSyncMergedBranchExecutablePath(testInstance),
+			syncMergedBranchGitLogVariable:      gitLogPath,
+			syncMergedBranchGitHubLogVariable:   githubLogPath,
+			syncMergedBranchNameVariable:        targetBranch,
+			syncMergedBranchMergedVariable:      "false",
+		},
+		syncStateTransitionTimeout,
+		[]string{"--config", configurationPath, "--log-level", "error", "--roots", repositoryPath, "sync", targetBranch},
+	)
+
+	require.NoError(testInstance, runError, output)
+	require.Contains(testInstance, output, fmt.Sprintf("SYNCED: %s (%s)", repositoryPath, targetBranch))
+	require.NotContains(testInstance, output, "SYNC_SWITCH_HANDOFF")
+	require.Equal(testInstance, targetBranch, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
+	require.Equal(
+		testInstance,
+		strings.TrimSpace(runGit(testInstance, remotePath, "rev-parse", "refs/heads/"+targetBranch)),
+		strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "refs/heads/"+targetBranch)),
+	)
+	require.Equal(testInstance, "origin", strings.TrimSpace(runGit(testInstance, repositoryPath, "config", "branch."+targetBranch+".remote")))
+	require.Equal(testInstance, "refs/heads/"+targetBranch, strings.TrimSpace(runGit(testInstance, repositoryPath, "config", "branch."+targetBranch+".merge")))
+
+	gitLog := readTextFile(testInstance, gitLogPath)
+	require.Contains(testInstance, gitLog, "switch --no-guess "+targetBranch)
+	require.Contains(testInstance, gitLog, "switch -c "+targetBranch+" --track origin/"+targetBranch)
+}
+
+func TestSyncRejectsRemoteOnlyBranchAdvanceBeforeJournalCompletion(testInstance *testing.T) {
+	repositoryRoot := integrationRepositoryRoot(testInstance)
+	binaryPath := buildIntegrationBinary(testInstance, repositoryRoot)
+	remotePath, repositoryPath := createSyncStateTransitionRepository(testInstance)
+	targetBranch := syncStateTransitionBranchName
+	createSyncRemoteOnlyBranch(testInstance, repositoryPath, targetBranch)
+	remoteCommit := strings.TrimSpace(runGit(testInstance, remotePath, "rev-parse", "refs/heads/"+targetBranch))
+
+	configurationPath := writeSyncMergedBranchConfiguration(testInstance)
+	gitLogPath := filepath.Join(testInstance.TempDir(), "git.log")
+	githubLogPath := filepath.Join(testInstance.TempDir(), "gh.log")
+	require.NoError(testInstance, os.WriteFile(githubLogPath, []byte("created-pr --base master --head "+targetBranch+"\n"), 0o600))
+
+	output, runError := runBinaryIntegrationCommand(
+		testInstance,
+		binaryPath,
+		repositoryPath,
+		map[string]string{
+			pathEnvironmentVariableNameConstant:         buildSyncMergedBranchExecutablePath(testInstance),
+			syncMergedBranchGitLogVariable:              gitLogPath,
+			syncMergedBranchGitHubLogVariable:           githubLogPath,
+			syncMergedBranchNameVariable:                targetBranch,
+			syncMergedBranchMergedVariable:              "false",
+			syncMergedBranchPostGitAdvanceMatchVariable: "switch -c " + targetBranch + " --track origin/" + targetBranch,
+		},
+		syncStateTransitionTimeout,
+		[]string{"--config", configurationPath, "--log-level", "error", "--roots", repositoryPath, "sync", targetBranch},
+	)
+
+	require.Error(testInstance, runError, output)
+	require.Equal(testInstance, 1, strings.Count(output, "SYNC_SWITCH_HANDOFF"))
+	require.NotContains(testInstance, output, "SYNCED:")
+	require.Equal(testInstance, targetBranch, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
+	operatorCommit := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD"))
+	require.NotEqual(testInstance, remoteCommit, operatorCommit)
+	require.Contains(testInstance, output, fmt.Sprintf("expected %s, found %s", remoteCommit, operatorCommit))
+	require.Equal(testInstance, "operator: concurrent post-create advance", strings.TrimSpace(runGit(testInstance, repositoryPath, "log", "-1", "--format=%s")))
+	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
+	require.Equal(testInstance, "remote review work\n", readTextFile(testInstance, filepath.Join(repositoryPath, "feature.txt")))
+	require.Equal(testInstance, remoteCommit, strings.TrimSpace(runGit(testInstance, remotePath, "rev-parse", "refs/heads/"+targetBranch)))
+
+	gitLog := readTextFile(testInstance, gitLogPath)
+	require.Contains(testInstance, gitLog, "switch -c "+targetBranch+" --track origin/"+targetBranch)
+	require.NotContains(testInstance, gitLog, "reset --hard origin/"+targetBranch)
+	require.NotContains(testInstance, gitLog, "merge --no-edit")
+	require.NotContains(testInstance, gitLog, "push origin "+targetBranch)
+}
+
+func createSyncRemoteOnlyBranch(testInstance *testing.T, repositoryPath string, targetBranch string) {
+	testInstance.Helper()
+	runGit(testInstance, repositoryPath, "switch", "-c", targetBranch)
+	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "feature.txt"), []byte("remote review work\n"), 0o644))
+	runGit(testInstance, repositoryPath, "add", "feature.txt")
+	runGit(testInstance, repositoryPath, "commit", "-m", "add remote review work")
+	runGit(testInstance, repositoryPath, "push", "-u", "origin", targetBranch)
+	runGit(testInstance, repositoryPath, "switch", "master")
+	runGit(testInstance, repositoryPath, "branch", "-D", targetBranch)
+}
+
 func writeReportedSemanticStashConfiguration(testInstance *testing.T, baseURL string) string {
 	testInstance.Helper()
 	configurationPath := filepath.Join(testInstance.TempDir(), "reported-semantic-stash-config.yml")

@@ -1214,7 +1214,7 @@ operations:
 
 	gitLog := readTextFile(testInstance, gitLogPath)
 	require.Contains(testInstance, gitLog, "stash push --include-untracked")
-	require.Contains(testInstance, gitLog, "switch master")
+	require.Contains(testInstance, gitLog, "switch --no-guess master")
 	require.Contains(testInstance, gitLog, "stash apply --index")
 	require.Contains(testInstance, gitLog, "stash drop")
 	require.NotContains(testInstance, gitLog, "switch -c gix/")

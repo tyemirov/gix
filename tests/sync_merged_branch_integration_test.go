@@ -27,6 +27,7 @@ const (
 	syncMergedBranchFailGitMatchVariable        = "GIX_SYNC_TEST_FAIL_GIT_MATCH"
 	syncMergedBranchFailGitOccurrenceVariable   = "GIX_SYNC_TEST_FAIL_GIT_OCCURRENCE"
 	syncMergedBranchFailGitStateVariable        = "GIX_SYNC_TEST_FAIL_GIT_STATE"
+	syncMergedBranchPostGitAdvanceMatchVariable = "GIX_SYNC_TEST_POST_GIT_ADVANCE_MATCH"
 	syncMergedBranchConcurrentWorktreeVariable  = "GIX_SYNC_TEST_CONCURRENT_WORKTREE"
 	syncMergedBranchStageCaptureMarkerVariable  = "GIX_SYNC_TEST_STAGE_CAPTURE_MARKER"
 	syncMergedBranchStageCapturePathVariable    = "GIX_SYNC_TEST_STAGE_CAPTURE_PATH"
@@ -1070,6 +1071,19 @@ if [ -n "$GIX_SYNC_TEST_STAGE_CAPTURE_PATH" ] &&
       } >"$GIX_SYNC_TEST_STAGE_CAPTURE_RESULT"
       cat "$capture_output_path"
       exit 0
+      ;;
+  esac
+fi
+if [ -n "$GIX_SYNC_TEST_POST_GIT_ADVANCE_MATCH" ]; then
+  case "$*" in
+    *"$GIX_SYNC_TEST_POST_GIT_ADVANCE_MATCH"*)
+      "$real_git_path" "$@"
+      command_status=$?
+      if [ "$command_status" -ne 0 ]; then
+        exit "$command_status"
+      fi
+      env -u GIT_INDEX_FILE "$real_git_path" commit --allow-empty -m "operator: concurrent post-create advance"
+      exit $?
       ;;
   esac
 fi
