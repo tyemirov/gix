@@ -72,7 +72,7 @@ class LicenseRolloutTest(unittest.TestCase):
                 "headRefOid": head_commit,
                 "isCrossRepository": False,
                 "isDraft": True,
-                "changedFiles": 4,
+                "changedFiles": 5,
                 "state": "OPEN",
             }
         ]
@@ -114,6 +114,11 @@ class LicenseRolloutTest(unittest.TestCase):
                     "filename": "COMMERCIAL_LICENSE.md",
                     "status": "added",
                     "sha": expected_blobs["COMMERCIAL_LICENSE.md"],
+                },
+                {
+                    "filename": "CONTRIBUTOR_LICENSE.md",
+                    "status": "added",
+                    "sha": expected_blobs["CONTRIBUTOR_LICENSE.md"],
                 },
             ],
         }
@@ -191,9 +196,9 @@ class LicenseRolloutTest(unittest.TestCase):
             license_rollout.DEFAULT_MANIFEST_PATH
         )
 
-        self.assertEqual(103, len(manifest.repositories))
-        self.assertEqual(97, manifest.apply_count)
-        self.assertEqual(6, manifest.review_count)
+        self.assertEqual(108, len(manifest.repositories))
+        self.assertEqual(101, manifest.apply_count)
+        self.assertEqual(7, manifest.review_count)
 
     def test_load_manifest_rejects_cross_owner_profile(self):
         path = self.write_manifest(
@@ -513,7 +518,7 @@ class LicenseRolloutTest(unittest.TestCase):
                             "sha": "4" * 40,
                         }
                     )
-                    pull_requests[0]["changedFiles"] = 5
+                    pull_requests[0]["changedFiles"] = 6
                 else:
                     comparison["files"][0]["sha"] = "5" * 40
                     head_contents[0]["sha"] = "5" * 40
@@ -569,6 +574,7 @@ class LicenseRolloutTest(unittest.TestCase):
         self.assertIn("/LICENSE", calls[2])
         self.assertIn("/NOTICE", calls[2])
         self.assertIn("/COMMERCIAL_LICENSE.md", calls[2])
+        self.assertIn("/CONTRIBUTOR_LICENSE.md", calls[2])
         self.assertEqual(
             [
                 "git",
