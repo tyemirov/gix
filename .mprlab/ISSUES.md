@@ -11,6 +11,55 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B081] (P0) Journal remote branch creation during strict sync.
+  Reported on 2026-09-01 after a real Ledger sync with Gix v1.7.8.
+  Expected result:
+  Gix creates a missing local tracking branch as a transaction-owned ref mutation.
+  Actual result:
+  Git creates the local branch during a plain switch when one matching remote branch exists.
+  Gix classifies this branch as an outside ref change and emits `SYNC_SWITCH_HANDOFF`.
+  Requirements:
+  - Disable implicit remote branch creation during the first switch.
+  - Create the remote tracking branch only through an explicit journaled command.
+  - Preserve detection of a real concurrent ref change.
+  Validation:
+  - Reproduce a remote-only branch through the compiled CLI.
+  - Verify that the first switch cannot guess a remote branch.
+  - Verify explicit creation of the local tracking branch.
+  - Verify successful sync without `SYNC_SWITCH_HANDOFF`.
+  - Run focused tests and complete CI.
+  Resolution:
+  Gix now disables Git branch guessing during the first switch.
+  A missing local branch uses only the explicit journaled tracking-branch command.
+  The transaction records the missing ref before Git creates it.
+  It then records the created ref before the next mutation.
+  A compiled CLI regression reproduces the remote-only branch and verifies `SYNCED` without `SYNC_SWITCH_HANDOFF`.
+  `make test-fast`, `make test-slow`, `make ci`, and `git diff --check` passed on 2026-09-01.
+  This change did not install, release, commit, push, or retry Gix against the live Ledger repository.
+  Review follow-up on 2026-09-01:
+  - The journal accepts any branch OID that exists after `switch -c` returns.
+  - A concurrent writer can advance the new branch before the journal reads it.
+  - The next reset, merge, or push can overwrite or publish that outside change.
+  Follow-up requirements:
+  - Resolve the exact permitted branch-creation commit before `switch -c`.
+  - Reject each different post-command branch state as ownership loss.
+  - Preserve the outside branch, commit, index, files, and remote ref.
+  - Emit one `SYNC_SWITCH_HANDOFF` before reset, merge, or push.
+  Follow-up validation:
+  - Advance the remote-only local branch after `switch -c` and before journal completion.
+  - Verify exact outside-state preservation through the compiled CLI.
+  - Keep the successful remote-only branch regression.
+  - Run focused tests and complete CI.
+  Follow-up resolution:
+  The journal now resolves the permitted `switch -c` start commit before Git runs the command.
+  Journal completion accepts only that exact branch OID and existence state.
+  A different post-command state marks ownership loss before another mutation.
+  The compiled CLI regression advances the new branch before journal completion.
+  It verifies preservation of the outside commit, index, files, and remote ref.
+  It also verifies one `SYNC_SWITCH_HANDOFF` and no reset, merge, or push.
+  `make test-fast`, `make test-slow`, `make ci`, and `git diff --check` passed for the review follow-up on 2026-09-01.
+  This follow-up did not install, release, commit, push, or retry Gix against the live Ledger repository.
+
 - [x] [B080] (P0) Merge overlapping concurrent insertions without duplicate content.
   Reported on 2026-08-31 during a real B512 sync with Gix v1.7.6.
   Expected result:
