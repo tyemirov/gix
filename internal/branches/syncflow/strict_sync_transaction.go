@@ -42,6 +42,7 @@ const (
 	strictSyncReferenceOwnershipTemplate      = "local branch %s changed outside the strict-sync transaction: expected %s, found %s"
 	strictSyncPushStatusMissingMessage        = "successful strict-sync push did not return a porcelain ref status"
 	strictSyncPushStatusInvalidTemplate       = "successful strict-sync push returned unknown porcelain status %q"
+	strictSyncBranchCreationStartTemplate     = "resolve strict sync branch creation start %q: %w"
 )
 
 type strictSyncTransaction struct {
@@ -486,8 +487,14 @@ func captureStrictSyncLocalBranches(ctx context.Context, executor shared.GitExec
 }
 
 type strictSyncGitMutationJournal struct {
-	transaction *strictSyncTransaction
-	references  []string
+	transaction         *strictSyncTransaction
+	references          []string
+	referencePoststates map[string]strictSyncReferenceExpectation
+}
+
+type strictSyncReferenceExpectation struct {
+	Commit string
+	Exists bool
 }
 
 func prepareStrictSyncGitMutation(ctx context.Context, executor shared.GitExecutor, workingDirectory string, arguments []string) (strictSyncGitMutationJournal, error) {
@@ -529,7 +536,11 @@ func prepareStrictSyncGitMutation(ctx context.Context, executor shared.GitExecut
 			return strictSyncGitMutationJournal{}, markStrictSyncOwnershipLost(ctx, ownershipErr)
 		}
 	}
-	return strictSyncGitMutationJournal{transaction: transaction, references: references}, nil
+	referencePoststates, poststateErr := strictSyncMutationReferencePoststates(ctx, executor, workingDirectory, arguments, references)
+	if poststateErr != nil {
+		return strictSyncGitMutationJournal{}, poststateErr
+	}
+	return strictSyncGitMutationJournal{transaction: transaction, references: references, referencePoststates: referencePoststates}, nil
 }
 
 func completeStrictSyncGitMutation(ctx context.Context, executor shared.GitExecutor, journal strictSyncGitMutationJournal) error {
@@ -543,10 +554,62 @@ func completeStrictSyncGitMutation(ctx context.Context, executor shared.GitExecu
 	for referenceIndex := range journal.references {
 		referenceName := journal.references[referenceIndex]
 		mutation := journal.transaction.branchMutations[referenceName]
-		mutation.ExpectedCommit, mutation.ExpectedExists = currentBranches[referenceName]
+		currentCommit, currentExists := currentBranches[referenceName]
+		poststate, constrained := journal.referencePoststates[referenceName]
+		if constrained {
+			if currentExists != poststate.Exists || currentCommit != poststate.Commit {
+				ownershipErr := strictSyncReferenceOwnershipError(referenceName, poststate.Commit, poststate.Exists, currentCommit, currentExists)
+				return markStrictSyncOwnershipLost(ctx, ownershipErr)
+			}
+			mutation.ExpectedCommit = poststate.Commit
+			mutation.ExpectedExists = poststate.Exists
+		} else {
+			mutation.ExpectedCommit = currentCommit
+			mutation.ExpectedExists = currentExists
+		}
 		journal.transaction.branchMutations[referenceName] = mutation
 	}
 	return nil
+}
+
+func strictSyncMutationReferencePoststates(ctx context.Context, executor shared.GitExecutor, workingDirectory string, arguments []string, references []string) (map[string]strictSyncReferenceExpectation, error) {
+	if len(arguments) == 0 || arguments[0] != gitSwitchSubcommandConstant || len(references) != 1 {
+		return nil, nil
+	}
+	createIndex := -1
+	for argumentIndex := 1; argumentIndex+1 < len(arguments); argumentIndex++ {
+		if arguments[argumentIndex] == gitCreateBranchFlagConstant {
+			createIndex = argumentIndex
+			break
+		}
+	}
+	if createIndex < 0 {
+		return nil, nil
+	}
+
+	startReference := gitHeadReferenceConstant
+	for argumentIndex := createIndex + 2; argumentIndex < len(arguments); argumentIndex++ {
+		argument := arguments[argumentIndex]
+		if argument == gitSwitchTrackFlagConstant && argumentIndex+1 < len(arguments) {
+			startReference = arguments[argumentIndex+1]
+			break
+		}
+		if strings.HasPrefix(argument, "-") {
+			continue
+		}
+		startReference = argument
+		break
+	}
+	commitID, exists, commitErr := strictSyncReferenceCommit(ctx, executor, workingDirectory, startReference)
+	if commitErr != nil {
+		return nil, fmt.Errorf(strictSyncBranchCreationStartTemplate, startReference, commitErr)
+	}
+	if !exists {
+		return nil, fmt.Errorf(strictSyncBranchCreationStartTemplate, startReference, fmt.Errorf(strictSyncEmptyReferenceCommitTemplate, startReference))
+	}
+	return map[string]strictSyncReferenceExpectation{
+		references[0]: {Commit: commitID, Exists: true},
+	}, nil
 }
 
 func strictSyncCommandMutatesWorktree(arguments []string) bool {

@@ -312,11 +312,14 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 			_ = os.Remove(filepath.Join(details.WorkingDirectory, details.Arguments[len(details.Arguments)-1]))
 		}
 	case "switch":
-		if len(details.Arguments) > 1 && details.Arguments[1] == executor.blockedBranch && !executor.worktreeRemoved {
+		if len(details.Arguments) > 2 && details.Arguments[1] == gitSwitchNoGuessFlagConstant && details.Arguments[2] == executor.blockedBranch && !executor.worktreeRemoved {
 			return execshell.ExecutionResult{}, commandFailedError(fmt.Sprintf("fatal: %q is already used by worktree at %q", executor.blockedBranch, executor.blockedWorktree))
 		}
-		if len(details.Arguments) > 2 && details.Arguments[1] == gitCreateBranchFlagConstant && executor.missingReferences != nil {
-			delete(executor.missingReferences, "refs/heads/"+details.Arguments[2])
+		if len(details.Arguments) > 2 && details.Arguments[1] == gitCreateBranchFlagConstant {
+			executor.currentBranch = details.Arguments[2]
+			if executor.missingReferences != nil {
+				delete(executor.missingReferences, "refs/heads/"+details.Arguments[2])
+			}
 		}
 	case "worktree":
 		if len(details.Arguments) > 2 && details.Arguments[1] == gitWorktreeListSubcommandConstant {
@@ -741,7 +744,7 @@ func TestHandleBranchSyncActionStrictPRBranchMergesBaseAndPushes(t *testing.T) {
 
 	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "fetch --prune origin")
-	require.Contains(t, recordedGitCommands(gitExecutor.commands), "switch feature/foo")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "switch --no-guess feature/foo")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "reset --hard origin/feature/foo")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "merge --no-edit origin/master")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "push origin feature/foo")
@@ -1022,7 +1025,7 @@ func TestHandleBranchSyncActionStrictPRBranchTreatsIgnoredOnlyStatusAsClean(t *t
 	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	recordedCommands := recordedGitCommands(gitExecutor.commands)
 	require.NotContains(t, recordedCommands, "check-ignore --stdin")
-	require.Contains(t, recordedCommands, "switch master")
+	require.Contains(t, recordedCommands, "switch --no-guess master")
 	require.Contains(t, recordedCommands, "reset --hard origin/master")
 	require.NotContains(t, recordedCommands, "switch -c gix/sync-dirty-work")
 	require.NotContains(t, recordedCommands, "add --all")
@@ -1082,10 +1085,10 @@ func TestHandleBranchSyncActionStrictPRBranchAdoptsDirtySiblingWorktree(t *testi
 	require.Contains(t, recordedCommands, "worktree prune")
 	require.Contains(t, recordedCommands, "merge --no-edit origin/master")
 	require.Contains(t, recordedCommands, "push origin feature/foo")
-	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, worktreeRemoveCommand), recordedGitCommandLastIndex(gitExecutor.commands, "switch feature/foo"))
+	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, worktreeRemoveCommand), recordedGitCommandLastIndex(gitExecutor.commands, "switch --no-guess feature/foo"))
 	require.GreaterOrEqual(t, recordedGitCommandCount(gitExecutor.commands, "fetch --prune origin"), 2)
 	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, "worktree prune"), recordedGitCommandLastIndex(gitExecutor.commands, "fetch --prune origin"))
-	require.Less(t, recordedGitCommandLastIndex(gitExecutor.commands, "fetch --prune origin"), recordedGitCommandLastIndex(gitExecutor.commands, "switch feature/foo"))
+	require.Less(t, recordedGitCommandLastIndex(gitExecutor.commands, "fetch --prune origin"), recordedGitCommandLastIndex(gitExecutor.commands, "switch --no-guess feature/foo"))
 	require.Len(t, chatClient.requests, 1)
 	require.True(t, gitExecutor.worktreeRemoved)
 }
@@ -1210,7 +1213,7 @@ func TestHandleBranchSyncActionStrictPRBranchPromptsToSyncMasterWhenPullRequestM
 
 	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	recordedCommands := recordedGitCommands(gitExecutor.commands)
-	require.Contains(t, recordedCommands, "switch master")
+	require.Contains(t, recordedCommands, "switch --no-guess master")
 	require.Contains(t, recordedCommands, "reset --hard origin/master")
 	require.NotContains(t, recordedCommands, "merge --no-edit origin/master")
 	require.NotContains(t, recordedCommands, "push origin feature/foo")
@@ -1262,7 +1265,7 @@ func TestHandleBranchSyncActionStrictPRBranchPromptsToSyncMasterWhenMergedPullRe
 
 	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	recordedCommands := recordedGitCommands(gitExecutor.commands)
-	require.Contains(t, recordedCommands, "switch master")
+	require.Contains(t, recordedCommands, "switch --no-guess master")
 	require.Contains(t, recordedCommands, "reset --hard origin/master")
 	require.NotContains(t, recordedCommands, "merge --no-edit origin/master")
 	require.NotContains(t, recordedCommands, "push origin feature/foo")
@@ -1313,7 +1316,7 @@ func TestHandleBranchSyncActionStrictPRBranchKeepsMissingPullRequestErrorWhenMer
 	require.Error(t, syncError)
 	require.Contains(t, syncError.Error(), "does not have an open pull request")
 	recordedCommands := recordedGitCommands(gitExecutor.commands)
-	require.NotContains(t, recordedCommands, "switch master")
+	require.NotContains(t, recordedCommands, "switch --no-guess master")
 	require.NotContains(t, recordedCommands, "reset --hard origin/master")
 	require.Len(t, prompter.prompts, 1)
 }
@@ -1717,7 +1720,7 @@ func TestHandleBranchSyncActionStrictPRBranchPushesLocalAheadMissingRemoteBranch
 
 	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	recordedCommands := recordedGitCommands(gitExecutor.commands)
-	require.Contains(t, recordedCommands, "switch feature/foo")
+	require.Contains(t, recordedCommands, "switch --no-guess feature/foo")
 	require.NotContains(t, recordedCommands, "switch -c feature/foo origin/master")
 	require.Contains(t, recordedCommands, "merge --no-edit origin/master")
 	require.Contains(t, recordedCommands, "push -u origin feature/foo")
@@ -2241,7 +2244,7 @@ func TestHandleBranchSyncActionStrictPRBranchCommitsDirtyWorkToExplicitMaster(t 
 	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	recordedCommands := recordedGitCommands(gitExecutor.commands)
 	require.Contains(t, recordedCommands, "stash push --include-untracked")
-	require.Contains(t, recordedCommands, "switch master")
+	require.Contains(t, recordedCommands, "switch --no-guess master")
 	require.Contains(t, recordedCommands, "stash apply --index")
 	require.Contains(t, recordedCommands, "stash drop")
 	require.Contains(t, recordedCommands, "commit -m docs: preserve dirty work on explicit master")

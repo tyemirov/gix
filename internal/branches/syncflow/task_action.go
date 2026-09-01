@@ -67,6 +67,7 @@ const (
 	gitFetchRemoteBranchRefspecTemplateConstant  = "+refs/heads/%s:refs/remotes/%s/%s"
 	gitPullRequestHeadReferenceTemplateConstant  = "refs/pull/%d/head"
 	gitSwitchTrackFlagConstant                   = "--track"
+	gitSwitchNoGuessFlagConstant                 = "--no-guess"
 	stashTrackedChangesFailureTemplateConstant   = "failed to stash tracked changes before switching: %w"
 	restoreStashedChangesFailureTemplateConstant = "failed to restore stashed changes after switching: %w"
 	stashExecutorMissingMessageConstant          = "git executor required to manage stash operations"
@@ -1129,7 +1130,7 @@ func pushAndCreatePullRequest(ctx context.Context, environment *workflow.Environ
 }
 
 func switchToLocalOrRemoteBranch(ctx context.Context, executor shared.GitExecutor, repositoryPath string, remoteName string, branchName string) error {
-	if switchErr := executeGit(ctx, executor, repositoryPath, []string{gitSwitchSubcommandConstant, branchName}); switchErr == nil {
+	if switchErr := executeGit(ctx, executor, repositoryPath, []string{gitSwitchSubcommandConstant, gitSwitchNoGuessFlagConstant, branchName}); switchErr == nil {
 		return nil
 	} else if !isBranchMissingError(switchErr) {
 		return switchErr
