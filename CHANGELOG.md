@@ -163,6 +163,15 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.7.8] - 2026-08-31
+
+- test: cover overlapping concurrent insertion semantic merges
+- feat(sync): handle overlapping concurrent insertions safely
+- fix(sync): validate overlapping concurrent insertions
+- fix: merge contained word sequences from empty bases
+- feat(sync): prefer complete overlapping insertion sequences
+- fix(sync): merge overlapping insertions without duplicates
+
 ## [v1.7.7] - 2026-08-28
 
 - Merge pull request #442 from tyemirov/bugfix/B079-loopaware-site-id
