@@ -24,6 +24,11 @@ type mergeConflictTokenEdit struct {
 	Replacement string
 }
 
+type mergeConflictConcurrentInsertionAnalysis struct {
+	Candidate          string
+	CompleteWordTokens []string
+}
+
 func deterministicMergeConflictRegionResolution(region mergeConflictRegion) (mergeConflictDeterministicResolution, bool) {
 	switch {
 	case region.Ours == region.Theirs:
@@ -42,6 +47,13 @@ func deterministicMergeConflictRegionResolution(region mergeConflictRegion) (mer
 			Strategy: "local-only change",
 		}, true
 	case region.BasePresent && region.Base == "":
+		if insertionAnalysis, overlapping := analyzeMergeConflictConcurrentInsertions(region.Ours, region.Theirs); overlapping {
+			return mergeConflictDeterministicResolution{
+				Content:               insertionAnalysis.Candidate,
+				Strategy:              "overlapping concurrent insertions",
+				RequiresSemanticAudit: true,
+			}, true
+		}
 		return mergeConflictDeterministicResolution{
 			Content:               region.Ours + region.Theirs,
 			Strategy:              "concurrent insertions",
@@ -50,6 +62,72 @@ func deterministicMergeConflictRegionResolution(region mergeConflictRegion) (mer
 	}
 
 	return mergeConflictTokenEditResolution(region.Base, region.Ours, region.Theirs)
+}
+
+func analyzeMergeConflictConcurrentInsertions(ours string, theirs string) (mergeConflictConcurrentInsertionAnalysis, bool) {
+	oursWordTokens := mergeConflictWordTokens(mergeConflictTokens(ours))
+	theirsWordTokens := mergeConflictWordTokens(mergeConflictTokens(theirs))
+	if len(oursWordTokens) == 0 || len(theirsWordTokens) == 0 {
+		return mergeConflictConcurrentInsertionAnalysis{}, false
+	}
+	switch {
+	case len(oursWordTokens) <= len(theirsWordTokens) && mergeConflictTokenSequenceContained(oursWordTokens, theirsWordTokens):
+		if len(oursWordTokens) == len(theirsWordTokens) {
+			return mergeConflictConcurrentInsertionAnalysis{
+				Candidate:          ours,
+				CompleteWordTokens: oursWordTokens,
+			}, true
+		}
+		return mergeConflictConcurrentInsertionAnalysis{
+			Candidate:          theirs,
+			CompleteWordTokens: theirsWordTokens,
+		}, true
+	case len(theirsWordTokens) < len(oursWordTokens) && mergeConflictTokenSequenceContained(theirsWordTokens, oursWordTokens):
+		return mergeConflictConcurrentInsertionAnalysis{
+			Candidate:          ours,
+			CompleteWordTokens: oursWordTokens,
+		}, true
+	default:
+		return mergeConflictConcurrentInsertionAnalysis{}, false
+	}
+}
+
+func mergeConflictWordTokens(tokens []string) []string {
+	wordTokens := make([]string, 0, len(tokens))
+	for _, token := range tokens {
+		if mergeConflictTokenClass(token, 0) == 1 {
+			wordTokens = append(wordTokens, token)
+		}
+	}
+	return wordTokens
+}
+
+func mergeConflictTokenSequenceContained(subsequence []string, sequence []string) bool {
+	if len(subsequence) > len(sequence) {
+		return false
+	}
+	subsequenceIndex := 0
+	for _, token := range sequence {
+		if subsequenceIndex == len(subsequence) {
+			break
+		}
+		if token == subsequence[subsequenceIndex] {
+			subsequenceIndex++
+		}
+	}
+	return subsequenceIndex == len(subsequence)
+}
+
+func mergeConflictTokenSequencesEqual(left []string, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for tokenIndex := range left {
+		if left[tokenIndex] != right[tokenIndex] {
+			return false
+		}
+	}
+	return true
 }
 
 func mergeConflictTokenEditResolution(base string, ours string, theirs string) (mergeConflictDeterministicResolution, bool) {

@@ -44,6 +44,7 @@ const (
 	mergeConflictResolutionOursTemplate         = "llm merge resolution for %s conflict region %d does not preserve OURS replacement intent %s"
 	mergeConflictResolutionTheirsTemplate       = "llm merge resolution for %s conflict region %d does not preserve THEIRS replacement intent %s"
 	mergeConflictResolutionAdditiveTemplate     = "llm merge resolution for %s additive conflict region %d is not an exact ordering of OURS and THEIRS"
+	mergeConflictResolutionOverlapTemplate      = "llm merge resolution for %s overlapping insertion conflict region %d does not preserve the exact complete word-token sequence"
 	mergeConflictResolutionIntentTemplate       = "llm merge resolution for %s conflict region %d cannot be validated against %s replacement intent"
 	mergeConflictResolutionBaseOnlyTemplate     = "llm merge resolution for %s conflict region %d returned BASE without either side's changes"
 	mergeConflictResolutionExhaustedTemplate    = "semantic resolution for %s conflict region %d exhausted %d semantic attempts: %w"
@@ -1306,6 +1307,9 @@ func mergeConflictResolutionContent(path string, response string) (string, error
 
 func validateMergeConflictRegionResponse(path string, regionIndex int, region mergeConflictRegion, response string) error {
 	if region.BasePresent && region.Base == "" {
+		if insertionAnalysis, overlapping := analyzeMergeConflictConcurrentInsertions(region.Ours, region.Theirs); overlapping {
+			return validateMergeConflictOverlappingInsertions(path, regionIndex, insertionAnalysis, response)
+		}
 		oursThenTheirs := region.Ours + region.Theirs
 		theirsThenOurs := region.Theirs + region.Ours
 		if response != oursThenTheirs && response != theirsThenOurs {
@@ -1361,6 +1365,16 @@ func validateMergeConflictRegionResponse(path string, regionIndex int, region me
 		)
 	}
 	return errors.Join(intentErrors...)
+}
+
+func validateMergeConflictOverlappingInsertions(path string, regionIndex int, analysis mergeConflictConcurrentInsertionAnalysis, response string) error {
+	candidateWordTokens := mergeConflictWordTokens(mergeConflictTokens(response))
+	if mergeConflictTokenSequencesEqual(candidateWordTokens, analysis.CompleteWordTokens) {
+		return nil
+	}
+	return mergeConflictReplacementIntentProofError{
+		detail: fmt.Errorf(mergeConflictResolutionOverlapTemplate, path, regionIndex+1),
+	}
 }
 
 func mergeConflictReplacementIntentDetails(intents []string) string {

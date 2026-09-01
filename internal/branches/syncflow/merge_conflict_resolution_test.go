@@ -171,6 +171,60 @@ func TestValidateMergeConflictRegionResponseContracts(t *testing.T) {
 	require.Contains(t, additiveLossErr.Error(), "not an exact ordering of OURS and THEIRS")
 	require.NotErrorIs(t, additiveLossErr, errMergeConflictReplacementIntentProofUnavailable)
 
+	overlappingInsertionRegion := mergeConflictRegion{
+		Ours:        "- [x] [B512] Converge deployments.\n  Goal:\n  Keep the latest fence.\n  Resolution:\n  Added coordination.\n",
+		BasePresent: true,
+		Theirs:      "- [ ] [B512] Converge deployments.\n  Goal:\n  Keep the latest fence.\n",
+	}
+	overlappingResolution, resolved := deterministicMergeConflictRegionResolution(overlappingInsertionRegion)
+	require.True(t, resolved)
+	require.Equal(t, "overlapping concurrent insertions", overlappingResolution.Strategy)
+	require.Equal(t, overlappingInsertionRegion.Ours, overlappingResolution.Content)
+	require.NoError(t, validateMergeConflictRegionResponse("ISSUES.md", 0, overlappingInsertionRegion, overlappingResolution.Content))
+
+	incomingStatusWithResolution := strings.Replace(overlappingInsertionRegion.Ours, "[x]", "[ ]", 1)
+	incomingStatusErr := validateMergeConflictRegionResponse("ISSUES.md", 0, overlappingInsertionRegion, incomingStatusWithResolution)
+	require.Error(t, incomingStatusErr)
+	require.Contains(t, incomingStatusErr.Error(), "does not preserve the exact complete word-token sequence")
+	overlappingLossErr := validateMergeConflictRegionResponse("ISSUES.md", 0, overlappingInsertionRegion, overlappingInsertionRegion.Theirs)
+	require.Error(t, overlappingLossErr)
+	require.Contains(t, overlappingLossErr.Error(), "does not preserve the exact complete word-token sequence")
+	require.ErrorIs(t, overlappingLossErr, errMergeConflictReplacementIntentProofUnavailable)
+
+	neighboringGapRegion := mergeConflictRegion{
+		Ours:        "foo bar",
+		BasePresent: true,
+		Theirs:      "foo X bar Y",
+	}
+	require.NoError(t, validateMergeConflictRegionResponse("notes.txt", 0, neighboringGapRegion, "foo X bar Y"))
+	for invalidCandidateName, invalidCandidate := range map[string]string{
+		"missing":    "foo bar Y",
+		"reordered":  "foo bar X Y",
+		"added":      "foo X bar Z Y",
+		"duplicated": "foo X bar foo bar Y",
+	} {
+		t.Run("overlapping insertion rejects "+invalidCandidateName+" word tokens", func(t *testing.T) {
+			invalidCandidateErr := validateMergeConflictRegionResponse("notes.txt", 0, neighboringGapRegion, invalidCandidate)
+			require.Error(t, invalidCandidateErr)
+			require.Contains(t, invalidCandidateErr.Error(), "does not preserve the exact complete word-token sequence")
+			require.ErrorIs(t, invalidCandidateErr, errMergeConflictReplacementIntentProofUnavailable)
+		})
+	}
+
+	punctuationTieRegion := mergeConflictRegion{
+		Ours:        "foo:",
+		BasePresent: true,
+		Theirs:      ":foo",
+	}
+	punctuationTieResolution, punctuationTieResolved := deterministicMergeConflictRegionResolution(punctuationTieRegion)
+	require.True(t, punctuationTieResolved)
+	require.Equal(t, "overlapping concurrent insertions", punctuationTieResolution.Strategy)
+	require.Equal(t, punctuationTieRegion.Ours, punctuationTieResolution.Content)
+	require.NoError(t, validateMergeConflictRegionResponse("notes.txt", 0, punctuationTieRegion, punctuationTieRegion.Theirs))
+	punctuationDuplicateErr := validateMergeConflictRegionResponse("notes.txt", 0, punctuationTieRegion, "foo:foo")
+	require.Error(t, punctuationDuplicateErr)
+	require.ErrorIs(t, punctuationDuplicateErr, errMergeConflictReplacementIntentProofUnavailable)
+
 	nonAdditiveRegion := mergeConflictRegion{
 		Ours:        "reviewers: alice, bob\n",
 		Base:        "reviewers: alice\n",
@@ -569,6 +623,26 @@ func TestDeterministicMergeConflictRegionResolutionBuildsAuthoritativeResultsAnd
 			},
 			expectedContent:       "local insertion\nincoming insertion\n",
 			expectedStrategy:      "concurrent insertions",
+			requiresSemanticAudit: true,
+		},
+		"overlapping insertions use the complete longer word sequence": {
+			region: mergeConflictRegion{
+				Ours:        "- [ ] [B512] Converge deployments.\n  Goal:\n  Keep the latest fence.\n",
+				BasePresent: true,
+				Theirs:      "- [x] [B512] Converge deployments.\n  Goal:\n  Keep the latest fence.\n  Validation:\n  Run the incoming check.\n",
+			},
+			expectedContent:       "- [x] [B512] Converge deployments.\n  Goal:\n  Keep the latest fence.\n  Validation:\n  Run the incoming check.\n",
+			expectedStrategy:      "overlapping concurrent insertions",
+			requiresSemanticAudit: true,
+		},
+		"punctuation lcs ties keep the shared word sequence": {
+			region: mergeConflictRegion{
+				Ours:        "foo:",
+				BasePresent: true,
+				Theirs:      ":foo",
+			},
+			expectedContent:       "foo:",
+			expectedStrategy:      "overlapping concurrent insertions",
 			requiresSemanticAudit: true,
 		},
 		"compatible token edits": {
