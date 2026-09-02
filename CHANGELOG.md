@@ -163,6 +163,17 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.8.0] - 2026-09-01
+
+- Merge remote-tracking branch 'origin/master'
+- test: cover large concurrent deletion and insertion sync
+- feat(sync): support large semantic merges with linear token diffs
+- docs: document large replacement conflict validation
+- Merge pull request #443 from tyemirov/automation/license/polyform-noncommercial
+- docs: correct license scope and rights
+- docs: identify licensed repository
+- chore: apply polyform-noncommercial license
+
 ## [v1.7.9] - 2026-09-01
 
 - test: cover remote-only branch sync journal transitions
