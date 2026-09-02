@@ -1,170 +1,7 @@
 {
   "schema_version": 1,
-  "snapshot_date": "2026-07-28",
+  "snapshot_date": "2026-09-01",
   "repositories": [
-    {
-      "repository": "MarcoPoloResearchLab/Hecate",
-      "profile": "mprlab-proprietary",
-      "disposition": "apply",
-      "default_branch": "master",
-      "visibility": "PRIVATE",
-      "license_holder": "Marco Polo Research Lab LLC",
-      "license_files": {
-        "LICENSE": "492ca4390d06e583aa2c481749d69db08b3b3f85"
-      },
-      "reason": "owner-policy"
-    },
-    {
-      "repository": "MarcoPoloResearchLab/ISSUES.md",
-      "profile": "mprlab-proprietary",
-      "disposition": "apply",
-      "default_branch": "master",
-      "visibility": "PRIVATE",
-      "license_holder": "Marco Polo Research Lab LLC",
-      "license_files": {},
-      "reason": "owner-policy"
-    },
-    {
-      "repository": "MarcoPoloResearchLab/LikeMe",
-      "profile": "mprlab-proprietary",
-      "disposition": "apply",
-      "default_branch": "main",
-      "visibility": "PUBLIC",
-      "license_holder": "Marco Polo Research Lab LLC",
-      "license_files": {
-        "LICENSE": "1cff24776f0c80336ee24cbf23a689d86e01a2ff"
-      },
-      "reason": "owner-policy"
-    },
-    {
-      "repository": "MarcoPoloResearchLab/MediaOps",
-      "profile": "mprlab-proprietary",
-      "disposition": "apply",
-      "default_branch": "master",
-      "visibility": "PRIVATE",
-      "license_holder": "Marco Polo Research Lab LLC",
-      "license_files": {
-        "LICENSE": "1c1ed6682e10edd1c15df5339e52930eb3ab1544",
-        "MIT-LICENSE": "a68b4bcdf7d6686bc471045c247c2c066f12c128"
-      },
-      "reason": "owner-policy"
-    },
-    {
-      "repository": "MarcoPoloResearchLab/NameSignal",
-      "profile": "mprlab-proprietary",
-      "disposition": "review",
-      "default_branch": "master",
-      "visibility": "PRIVATE",
-      "license_holder": "Marco Polo Research Lab LLC",
-      "license_files": {
-        "MIT-LICENSE.txt": "a5d7f102d54d92f0f0bf94494fc9472500704214"
-      },
-      "reason": "MIT notice names Scott Chacon and others; confirm relicensing authority"
-    },
-    {
-      "repository": "MarcoPoloResearchLab/NearestCityFinder",
-      "profile": "mprlab-proprietary",
-      "disposition": "apply",
-      "default_branch": "master",
-      "visibility": "PUBLIC",
-      "license_holder": "Marco Polo Research Lab LLC",
-      "license_files": {},
-      "reason": "owner-policy"
-    },
-    {
-      "repository": "MarcoPoloResearchLab/OpenaiExtract",
-      "profile": "mprlab-proprietary",
-      "disposition": "apply",
-      "default_branch": "master",
-      "visibility": "PUBLIC",
-      "license_holder": "Marco Polo Research Lab LLC",
-      "license_files": {
-        "MIT-LICENSE": "a68b4bcdf7d6686bc471045c247c2c066f12c128"
-      },
-      "reason": "owner-policy"
-    },
-    {
-      "repository": "MarcoPoloResearchLab/PhotoFriend",
-      "profile": "mprlab-proprietary",
-      "disposition": "apply",
-      "default_branch": "master",
-      "visibility": "PRIVATE",
-      "license_holder": "Marco Polo Research Lab LLC",
-      "license_files": {},
-      "reason": "owner-policy"
-    },
-    {
-      "repository": "MarcoPoloResearchLab/PoodleScanner",
-      "profile": "mprlab-proprietary",
-      "disposition": "review",
-      "default_branch": "master",
-      "visibility": "PRIVATE",
-      "license_holder": "Marco Polo Research Lab LLC",
-      "license_files": {
-        "LICENSE": "348b48e9ec5cc04e52af8887eeb5d7adcffaf3aa"
-      },
-      "reason": "non-owner contributor detected; confirm contribution rights"
-    },
-    {
-      "repository": "MarcoPoloResearchLab/RSVP",
-      "profile": "mprlab-proprietary",
-      "disposition": "apply",
-      "default_branch": "master",
-      "visibility": "PUBLIC",
-      "license_holder": "Marco Polo Research Lab LLC",
-      "license_files": {},
-      "reason": "owner-policy"
-    },
-    {
-      "repository": "MarcoPoloResearchLab/Smith",
-      "profile": "mprlab-proprietary",
-      "disposition": "apply",
-      "default_branch": "master",
-      "visibility": "PRIVATE",
-      "license_holder": "Marco Polo Research Lab LLC",
-      "license_files": {},
-      "reason": "owner-policy"
-    },
-    {
-      "repository": "MarcoPoloResearchLab/SummerCan",
-      "profile": "mprlab-proprietary",
-      "disposition": "apply",
-      "default_branch": "master",
-      "visibility": "PRIVATE",
-      "license_holder": "Marco Polo Research Lab LLC",
-      "license_files": {},
-      "reason": "owner-policy"
-    },
-    {
-      "repository": "MarcoPoloResearchLab/TellTale",
-      "profile": "mprlab-proprietary",
-      "disposition": "apply",
-      "default_branch": "master",
-      "visibility": "PRIVATE",
-      "license_holder": "Marco Polo Research Lab LLC",
-      "license_files": {},
-      "reason": "owner-policy"
-    },
-    {
-      "repository": "MarcoPoloResearchLab/WriterBlock",
-      "profile": "mprlab-proprietary",
-      "disposition": "apply",
-      "default_branch": "master",
-      "visibility": "PRIVATE",
-      "license_holder": "Marco Polo Research Lab LLC",
-      "license_files": {},
-      "reason": "owner-policy"
-    },
-    {
-      "repository": "MarcoPoloResearchLab/X-sync",
-      "profile": "mprlab-proprietary",
-      "disposition": "apply",
-      "default_branch": "master",
-      "visibility": "PUBLIC",
-      "license_holder": "Marco Polo Research Lab LLC",
-      "license_files": {},
-      "reason": "owner-policy"
-    },
     {
       "repository": "MarcoPoloResearchLab/allergy_wheel",
       "profile": "mprlab-proprietary",
@@ -212,6 +49,26 @@
       "reason": "owner-policy"
     },
     {
+      "repository": "MarcoPoloResearchLab/FamilyHome",
+      "profile": "mprlab-proprietary",
+      "disposition": "apply",
+      "default_branch": "main",
+      "visibility": "PUBLIC",
+      "license_holder": "Marco Polo Research Lab LLC",
+      "license_files": {},
+      "reason": "owner-policy"
+    },
+    {
+      "repository": "MarcoPoloResearchLab/FatherMathew",
+      "profile": "mprlab-proprietary",
+      "disposition": "apply",
+      "default_branch": "master",
+      "visibility": "PRIVATE",
+      "license_holder": "Marco Polo Research Lab LLC",
+      "license_files": {},
+      "reason": "owner-policy"
+    },
+    {
       "repository": "MarcoPoloResearchLab/gcal",
       "profile": "mprlab-proprietary",
       "disposition": "apply",
@@ -236,6 +93,40 @@
       "reason": "owner-policy"
     },
     {
+      "repository": "MarcoPoloResearchLab/Hecate",
+      "profile": "mprlab-proprietary",
+      "disposition": "apply",
+      "default_branch": "master",
+      "visibility": "PRIVATE",
+      "license_holder": "Marco Polo Research Lab LLC",
+      "license_files": {
+        "LICENSE": "492ca4390d06e583aa2c481749d69db08b3b3f85"
+      },
+      "reason": "owner-policy"
+    },
+    {
+      "repository": "MarcoPoloResearchLab/ISSUES.md",
+      "profile": "mprlab-proprietary",
+      "disposition": "apply",
+      "default_branch": "master",
+      "visibility": "PRIVATE",
+      "license_holder": "Marco Polo Research Lab LLC",
+      "license_files": {},
+      "reason": "owner-policy"
+    },
+    {
+      "repository": "MarcoPoloResearchLab/LikeMe",
+      "profile": "mprlab-proprietary",
+      "disposition": "apply",
+      "default_branch": "main",
+      "visibility": "PUBLIC",
+      "license_holder": "Marco Polo Research Lab LLC",
+      "license_files": {
+        "LICENSE": "1cff24776f0c80336ee24cbf23a689d86e01a2ff"
+      },
+      "reason": "owner-policy"
+    },
+    {
       "repository": "MarcoPoloResearchLab/marcopolo.github.io",
       "profile": "mprlab-proprietary",
       "disposition": "apply",
@@ -244,6 +135,19 @@
       "license_holder": "Marco Polo Research Lab LLC",
       "license_files": {
         "LICENSE": "fdcb9e0d5a7749e2b954dcd6328c2e6cf73feaa5"
+      },
+      "reason": "owner-policy"
+    },
+    {
+      "repository": "MarcoPoloResearchLab/MediaOps",
+      "profile": "mprlab-proprietary",
+      "disposition": "apply",
+      "default_branch": "master",
+      "visibility": "PRIVATE",
+      "license_holder": "Marco Polo Research Lab LLC",
+      "license_files": {
+        "LICENSE": "1c1ed6682e10edd1c15df5339e52930eb3ab1544",
+        "MIT-LICENSE": "a68b4bcdf7d6686bc471045c247c2c066f12c128"
       },
       "reason": "owner-policy"
     },
@@ -278,6 +182,28 @@
       "reason": "owner-policy"
     },
     {
+      "repository": "MarcoPoloResearchLab/NameSignal",
+      "profile": "mprlab-proprietary",
+      "disposition": "review",
+      "default_branch": "master",
+      "visibility": "PRIVATE",
+      "license_holder": "Marco Polo Research Lab LLC",
+      "license_files": {
+        "MIT-LICENSE.txt": "a5d7f102d54d92f0f0bf94494fc9472500704214"
+      },
+      "reason": "MIT notice names Scott Chacon and others; confirm relicensing authority"
+    },
+    {
+      "repository": "MarcoPoloResearchLab/NearestCityFinder",
+      "profile": "mprlab-proprietary",
+      "disposition": "apply",
+      "default_branch": "master",
+      "visibility": "PUBLIC",
+      "license_holder": "Marco Polo Research Lab LLC",
+      "license_files": {},
+      "reason": "owner-policy"
+    },
+    {
       "repository": "MarcoPoloResearchLab/netflix",
       "profile": "mprlab-proprietary",
       "disposition": "apply",
@@ -302,6 +228,40 @@
       "reason": "owner-policy"
     },
     {
+      "repository": "MarcoPoloResearchLab/OpenaiExtract",
+      "profile": "mprlab-proprietary",
+      "disposition": "apply",
+      "default_branch": "master",
+      "visibility": "PUBLIC",
+      "license_holder": "Marco Polo Research Lab LLC",
+      "license_files": {
+        "MIT-LICENSE": "a68b4bcdf7d6686bc471045c247c2c066f12c128"
+      },
+      "reason": "owner-policy"
+    },
+    {
+      "repository": "MarcoPoloResearchLab/PhotoFriend",
+      "profile": "mprlab-proprietary",
+      "disposition": "apply",
+      "default_branch": "master",
+      "visibility": "PRIVATE",
+      "license_holder": "Marco Polo Research Lab LLC",
+      "license_files": {},
+      "reason": "owner-policy"
+    },
+    {
+      "repository": "MarcoPoloResearchLab/PoodleScanner",
+      "profile": "mprlab-proprietary",
+      "disposition": "review",
+      "default_branch": "master",
+      "visibility": "PRIVATE",
+      "license_holder": "Marco Polo Research Lab LLC",
+      "license_files": {
+        "LICENSE": "348b48e9ec5cc04e52af8887eeb5d7adcffaf3aa"
+      },
+      "reason": "non-owner contributor detected; confirm contribution rights"
+    },
+    {
       "repository": "MarcoPoloResearchLab/prompts",
       "profile": "mprlab-proprietary",
       "disposition": "apply",
@@ -311,6 +271,16 @@
       "license_files": {
         "LICENSE": "1c1ed6682e10edd1c15df5339e52930eb3ab1544"
       },
+      "reason": "owner-policy"
+    },
+    {
+      "repository": "MarcoPoloResearchLab/RSVP",
+      "profile": "mprlab-proprietary",
+      "disposition": "apply",
+      "default_branch": "master",
+      "visibility": "PUBLIC",
+      "license_holder": "Marco Polo Research Lab LLC",
+      "license_files": {},
       "reason": "owner-policy"
     },
     {
@@ -334,6 +304,16 @@
       "reason": "owner-policy"
     },
     {
+      "repository": "MarcoPoloResearchLab/Smith",
+      "profile": "mprlab-proprietary",
+      "disposition": "apply",
+      "default_branch": "master",
+      "visibility": "PRIVATE",
+      "license_holder": "Marco Polo Research Lab LLC",
+      "license_files": {},
+      "reason": "owner-policy"
+    },
+    {
       "repository": "MarcoPoloResearchLab/social_threader",
       "profile": "mprlab-proprietary",
       "disposition": "apply",
@@ -346,11 +326,41 @@
       "reason": "owner-policy"
     },
     {
+      "repository": "MarcoPoloResearchLab/StillPuzzle",
+      "profile": "mprlab-proprietary",
+      "disposition": "apply",
+      "default_branch": "master",
+      "visibility": "PRIVATE",
+      "license_holder": "Marco Polo Research Lab LLC",
+      "license_files": {},
+      "reason": "owner-policy"
+    },
+    {
+      "repository": "MarcoPoloResearchLab/SummerCan",
+      "profile": "mprlab-proprietary",
+      "disposition": "apply",
+      "default_branch": "master",
+      "visibility": "PRIVATE",
+      "license_holder": "Marco Polo Research Lab LLC",
+      "license_files": {},
+      "reason": "owner-policy"
+    },
+    {
       "repository": "MarcoPoloResearchLab/swarm",
       "profile": "mprlab-proprietary",
       "disposition": "apply",
       "default_branch": "master",
       "visibility": "PUBLIC",
+      "license_holder": "Marco Polo Research Lab LLC",
+      "license_files": {},
+      "reason": "owner-policy"
+    },
+    {
+      "repository": "MarcoPoloResearchLab/TellTale",
+      "profile": "mprlab-proprietary",
+      "disposition": "apply",
+      "default_branch": "master",
+      "visibility": "PRIVATE",
       "license_holder": "Marco Polo Research Lab LLC",
       "license_files": {},
       "reason": "owner-policy"
@@ -368,12 +378,22 @@
       "reason": "owner-policy"
     },
     {
-      "repository": "tyemirov/AWS",
-      "profile": "polyform-noncommercial",
+      "repository": "MarcoPoloResearchLab/WriterBlock",
+      "profile": "mprlab-proprietary",
       "disposition": "apply",
       "default_branch": "master",
       "visibility": "PRIVATE",
-      "license_holder": "Vadym Temirov",
+      "license_holder": "Marco Polo Research Lab LLC",
+      "license_files": {},
+      "reason": "owner-policy"
+    },
+    {
+      "repository": "MarcoPoloResearchLab/X-sync",
+      "profile": "mprlab-proprietary",
+      "disposition": "apply",
+      "default_branch": "master",
+      "visibility": "PUBLIC",
+      "license_holder": "Marco Polo Research Lab LLC",
       "license_files": {},
       "reason": "owner-policy"
     },
@@ -398,6 +418,16 @@
       "reason": "owner-policy"
     },
     {
+      "repository": "tyemirov/atlas-to-chrome-tab-groups",
+      "profile": "polyform-noncommercial",
+      "disposition": "apply",
+      "default_branch": "main",
+      "visibility": "PUBLIC",
+      "license_holder": "Vadym Temirov",
+      "license_files": {},
+      "reason": "owner-policy"
+    },
+    {
       "repository": "tyemirov/AutoCoder",
       "profile": "polyform-noncommercial",
       "disposition": "review",
@@ -410,131 +440,11 @@
       "reason": "contributor-owned BSL notice; confirm relicensing authority"
     },
     {
-      "repository": "tyemirov/CalendarPlus",
+      "repository": "tyemirov/AWS",
       "profile": "polyform-noncommercial",
       "disposition": "apply",
       "default_branch": "master",
       "visibility": "PRIVATE",
-      "license_holder": "Vadym Temirov",
-      "license_files": {},
-      "reason": "owner-policy"
-    },
-    {
-      "repository": "tyemirov/CryptoMessenger",
-      "profile": "polyform-noncommercial",
-      "disposition": "apply",
-      "default_branch": "main",
-      "visibility": "PRIVATE",
-      "license_holder": "Vadym Temirov",
-      "license_files": {
-        "LICENSE": "66f010cb64000dac62a4f69cac945caa709eddac"
-      },
-      "reason": "owner-policy"
-    },
-    {
-      "repository": "tyemirov/ETS",
-      "profile": "polyform-noncommercial",
-      "disposition": "apply",
-      "default_branch": "master",
-      "visibility": "PUBLIC",
-      "license_holder": "Vadym Temirov",
-      "license_files": {},
-      "reason": "owner-policy"
-    },
-    {
-      "repository": "tyemirov/FinA",
-      "profile": "polyform-noncommercial",
-      "disposition": "apply",
-      "default_branch": "master",
-      "visibility": "PRIVATE",
-      "license_holder": "Vadym Temirov",
-      "license_files": {
-        "LICENSE": "5b02bc824b619989994d51d94886bf8982016202"
-      },
-      "reason": "owner-policy"
-    },
-    {
-      "repository": "tyemirov/GAuss",
-      "profile": "polyform-noncommercial",
-      "disposition": "apply",
-      "default_branch": "master",
-      "visibility": "PUBLIC",
-      "license_holder": "Vadym Temirov",
-      "license_files": {
-        "MIT-LICENSE": "a68b4bcdf7d6686bc471045c247c2c066f12c128"
-      },
-      "reason": "owner-policy"
-    },
-    {
-      "repository": "tyemirov/Kamu",
-      "profile": "polyform-noncommercial",
-      "disposition": "apply",
-      "default_branch": "master",
-      "visibility": "PRIVATE",
-      "license_holder": "Vadym Temirov",
-      "license_files": {},
-      "reason": "owner-policy"
-    },
-    {
-      "repository": "tyemirov/Lo",
-      "profile": "polyform-noncommercial",
-      "disposition": "review",
-      "default_branch": "master",
-      "visibility": "PUBLIC",
-      "license_holder": "Vadym Temirov",
-      "license_files": {
-        "LICENSE": "572e6490959c071575298c7c703d6bc8a5ed5a87"
-      },
-      "reason": "Apache-2.0 license; confirm provenance and retained notices"
-    },
-    {
-      "repository": "tyemirov/MediaOps",
-      "profile": "polyform-noncommercial",
-      "disposition": "apply",
-      "default_branch": "master",
-      "visibility": "PRIVATE",
-      "license_holder": "Vadym Temirov",
-      "license_files": {},
-      "reason": "owner-policy"
-    },
-    {
-      "repository": "tyemirov/Obsidian-santizer",
-      "profile": "polyform-noncommercial",
-      "disposition": "apply",
-      "default_branch": "master",
-      "visibility": "PUBLIC",
-      "license_holder": "Vadym Temirov",
-      "license_files": {
-        "MIT-LICENSE.txt": "3d6b60f2b5dc771d222a6658ee77ee8da6c35e12"
-      },
-      "reason": "owner-policy"
-    },
-    {
-      "repository": "tyemirov/Smith",
-      "profile": "polyform-noncommercial",
-      "disposition": "apply",
-      "default_branch": "master",
-      "visibility": "PUBLIC",
-      "license_holder": "Vadym Temirov",
-      "license_files": {},
-      "reason": "owner-policy"
-    },
-    {
-      "repository": "tyemirov/TAuth",
-      "profile": "polyform-noncommercial",
-      "disposition": "apply",
-      "default_branch": "master",
-      "visibility": "PUBLIC",
-      "license_holder": "Vadym Temirov",
-      "license_files": {},
-      "reason": "owner-policy"
-    },
-    {
-      "repository": "tyemirov/atlas-to-chrome-tab-groups",
-      "profile": "polyform-noncommercial",
-      "disposition": "apply",
-      "default_branch": "main",
-      "visibility": "PUBLIC",
       "license_holder": "Vadym Temirov",
       "license_files": {},
       "reason": "owner-policy"
@@ -559,6 +469,28 @@
       "visibility": "PUBLIC",
       "license_holder": "Vadym Temirov",
       "license_files": {},
+      "reason": "owner-policy"
+    },
+    {
+      "repository": "tyemirov/CalendarPlus",
+      "profile": "polyform-noncommercial",
+      "disposition": "apply",
+      "default_branch": "master",
+      "visibility": "PRIVATE",
+      "license_holder": "Vadym Temirov",
+      "license_files": {},
+      "reason": "owner-policy"
+    },
+    {
+      "repository": "tyemirov/CryptoMessenger",
+      "profile": "polyform-noncommercial",
+      "disposition": "apply",
+      "default_branch": "main",
+      "visibility": "PRIVATE",
+      "license_holder": "Vadym Temirov",
+      "license_files": {
+        "LICENSE": "66f010cb64000dac62a4f69cac945caa709eddac"
+      },
       "reason": "owner-policy"
     },
     {
@@ -606,6 +538,16 @@
       "reason": "owner-policy"
     },
     {
+      "repository": "tyemirov/ETS",
+      "profile": "polyform-noncommercial",
+      "disposition": "apply",
+      "default_branch": "master",
+      "visibility": "PUBLIC",
+      "license_holder": "Vadym Temirov",
+      "license_files": {},
+      "reason": "owner-policy"
+    },
+    {
       "repository": "tyemirov/face_extractor",
       "profile": "polyform-noncommercial",
       "disposition": "apply",
@@ -633,6 +575,30 @@
       "visibility": "PRIVATE",
       "license_holder": "Vadym Temirov",
       "license_files": {},
+      "reason": "owner-policy"
+    },
+    {
+      "repository": "tyemirov/FinA",
+      "profile": "polyform-noncommercial",
+      "disposition": "apply",
+      "default_branch": "master",
+      "visibility": "PRIVATE",
+      "license_holder": "Vadym Temirov",
+      "license_files": {
+        "LICENSE": "5b02bc824b619989994d51d94886bf8982016202"
+      },
+      "reason": "owner-policy"
+    },
+    {
+      "repository": "tyemirov/GAuss",
+      "profile": "polyform-noncommercial",
+      "disposition": "apply",
+      "default_branch": "master",
+      "visibility": "PUBLIC",
+      "license_holder": "Vadym Temirov",
+      "license_files": {
+        "MIT-LICENSE": "a68b4bcdf7d6686bc471045c247c2c066f12c128"
+      },
       "reason": "owner-policy"
     },
     {
@@ -756,6 +722,16 @@
       "reason": "owner-policy"
     },
     {
+      "repository": "tyemirov/Kamu",
+      "profile": "polyform-noncommercial",
+      "disposition": "apply",
+      "default_branch": "master",
+      "visibility": "PRIVATE",
+      "license_holder": "Vadym Temirov",
+      "license_files": {},
+      "reason": "owner-policy"
+    },
+    {
       "repository": "tyemirov/ledger",
       "profile": "polyform-noncommercial",
       "disposition": "apply",
@@ -800,6 +776,18 @@
       "reason": "owner-policy"
     },
     {
+      "repository": "tyemirov/Lo",
+      "profile": "polyform-noncommercial",
+      "disposition": "review",
+      "default_branch": "master",
+      "visibility": "PUBLIC",
+      "license_holder": "Vadym Temirov",
+      "license_files": {
+        "LICENSE": "572e6490959c071575298c7c703d6bc8a5ed5a87"
+      },
+      "reason": "Apache-2.0 license; confirm provenance and retained notices"
+    },
+    {
       "repository": "tyemirov/logger",
       "profile": "polyform-noncommercial",
       "disposition": "apply",
@@ -832,6 +820,28 @@
       "reason": "owner-policy"
     },
     {
+      "repository": "tyemirov/MediaOps",
+      "profile": "polyform-noncommercial",
+      "disposition": "apply",
+      "default_branch": "master",
+      "visibility": "PRIVATE",
+      "license_holder": "Vadym Temirov",
+      "license_files": {},
+      "reason": "owner-policy"
+    },
+    {
+      "repository": "tyemirov/MEval",
+      "profile": "polyform-noncommercial",
+      "disposition": "review",
+      "default_branch": "main",
+      "visibility": "PRIVATE",
+      "license_holder": "Vadym Temirov",
+      "license_files": {
+        "LICENSE": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64"
+      },
+      "reason": "Apache-2.0 repository includes non-owner contributors; confirm contribution and relicensing rights"
+    },
+    {
       "repository": "tyemirov/mosaic",
       "profile": "polyform-noncommercial",
       "disposition": "apply",
@@ -849,6 +859,18 @@
       "visibility": "PUBLIC",
       "license_holder": "Vadym Temirov",
       "license_files": {},
+      "reason": "owner-policy"
+    },
+    {
+      "repository": "tyemirov/Obsidian-santizer",
+      "profile": "polyform-noncommercial",
+      "disposition": "apply",
+      "default_branch": "master",
+      "visibility": "PUBLIC",
+      "license_holder": "Vadym Temirov",
+      "license_files": {
+        "MIT-LICENSE.txt": "3d6b60f2b5dc771d222a6658ee77ee8da6c35e12"
+      },
       "reason": "owner-policy"
     },
     {
@@ -923,6 +945,18 @@
       "visibility": "PRIVATE",
       "license_holder": "Vadym Temirov",
       "license_files": {},
+      "reason": "owner-policy"
+    },
+    {
+      "repository": "tyemirov/QwenOC",
+      "profile": "polyform-noncommercial",
+      "disposition": "apply",
+      "default_branch": "master",
+      "visibility": "PUBLIC",
+      "license_holder": "Vadym Temirov",
+      "license_files": {
+        "LICENSE": "e72cf863caf85e28005fd6917ae90b7cbe919b3d"
+      },
       "reason": "owner-policy"
     },
     {
@@ -1010,6 +1044,16 @@
       "reason": "owner-policy"
     },
     {
+      "repository": "tyemirov/Smith",
+      "profile": "polyform-noncommercial",
+      "disposition": "apply",
+      "default_branch": "master",
+      "visibility": "PUBLIC",
+      "license_holder": "Vadym Temirov",
+      "license_files": {},
+      "reason": "owner-policy"
+    },
+    {
       "repository": "tyemirov/svg_tools",
       "profile": "polyform-noncommercial",
       "disposition": "apply",
@@ -1019,6 +1063,16 @@
       "license_files": {
         "LICENSE": "fdcb9e0d5a7749e2b954dcd6328c2e6cf73feaa5"
       },
+      "reason": "owner-policy"
+    },
+    {
+      "repository": "tyemirov/TAuth",
+      "profile": "polyform-noncommercial",
+      "disposition": "apply",
+      "default_branch": "master",
+      "visibility": "PUBLIC",
+      "license_holder": "Vadym Temirov",
+      "license_files": {},
       "reason": "owner-policy"
     },
     {

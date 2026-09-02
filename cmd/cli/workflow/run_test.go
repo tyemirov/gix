@@ -192,7 +192,7 @@ func TestLicenseRolloutConfigurationAcceptsTemplateBundle(testInstance *testing.
 		}
 	}
 
-	require.Equal(testInstance, 3, templateFileCount)
+	require.Equal(testInstance, 4, templateFileCount)
 }
 
 func TestLicenseRolloutConfigurationRemovesObsoleteLicenseAliases(testInstance *testing.T) {

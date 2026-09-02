@@ -14,25 +14,28 @@ const (
 	TemplateNamePolyFormNoncommercial = "polyform-noncommercial"
 	TemplateNameProprietary           = "proprietary"
 
-	VariableTemplate         = "license_template"
-	VariableContent          = "license_content"
-	VariableMode             = "license_mode"
-	VariableTarget           = "license_target"
-	VariableCommercialTarget = "license_commercial_target"
-	VariableYear             = "license_year"
-	VariableAuthor           = "license_author"
-	VariableCompany          = "license_company"
-	VariableLicensor         = "license_licensor"
-	VariableContact          = "license_contact"
-	VariableProjectName      = "license_project_name"
-	VariableChangeDate       = "license_change_date"
-	VariableChangeLicense    = "license_change_license"
-	DefaultChangeDate        = "2029-01-01"
-	DefaultChangeLicense     = "Apache License 2.0"
-	DefaultContact           = "legal@mprlab.com"
-	OutputLicenseFileName    = "LICENSE"
-	OutputNoticeFileName     = "NOTICE"
-	OutputCommercialFileName = "COMMERCIAL_LICENSE.md"
+	VariableTemplate          = "license_template"
+	VariableContent           = "license_content"
+	VariableMode              = "license_mode"
+	VariableTarget            = "license_target"
+	VariableCommercialTarget  = "license_commercial_target"
+	VariableYear              = "license_year"
+	VariableAuthor            = "license_author"
+	VariableCompany           = "license_company"
+	VariableLicensor          = "license_licensor"
+	VariableContact           = "license_contact"
+	VariableProjectName       = "license_project_name"
+	VariableRepository        = "license_repository"
+	VariableRepositoryURL     = "license_repository_url"
+	VariableChangeDate        = "license_change_date"
+	VariableChangeLicense     = "license_change_license"
+	DefaultChangeDate         = "2029-01-01"
+	DefaultChangeLicense      = "Apache License 2.0"
+	DefaultContact            = "legal@mprlab.com"
+	OutputLicenseFileName     = "LICENSE"
+	OutputNoticeFileName      = "NOTICE"
+	OutputCommercialFileName  = "COMMERCIAL_LICENSE.md"
+	OutputContributorFileName = "CONTRIBUTOR_LICENSE.md"
 )
 
 const (
@@ -42,6 +45,8 @@ const (
 	placeholderLicensorConstant      = "{{LICENSOR}}"
 	placeholderContactConstant       = "{{CONTACT}}"
 	placeholderProjectNameConstant   = "{{PROJECT_NAME}}"
+	placeholderRepositoryConstant    = "{{REPOSITORY}}"
+	placeholderRepositoryURLConstant = "{{REPOSITORY_URL}}"
 	placeholderChangeDateConstant    = "{{CHANGE_DATE}}"
 	placeholderChangeLicenseConstant = "{{CHANGE_LICENSE}}"
 )
@@ -51,18 +56,22 @@ const (
 	environmentFallbackTemplateConstant = "{{ if .Environment.%s }}{{ .Environment.%s }}{{ else }}%s{{ end }}"
 	repositoryOwnerTemplateConstant     = "{{ .Repository.Owner }}"
 	repositoryNameTemplateConstant      = "{{ .Repository.Name }}"
+	repositoryFullNameTemplateConstant  = "{{ .Repository.Owner }}/{{ .Repository.Name }}"
+	repositoryURLTemplateConstant       = "https://github.com/{{ .Repository.Owner }}/{{ .Repository.Name }}"
 )
 
 const (
-	templatePathBSLLicenseConstant            = "templates/bsl/LICENSE.md"
-	templatePathBSLCommercialConstant         = "templates/bsl/COMMERCIAL_LICENSE.md"
-	templatePathMITLicenseConstant            = "templates/mit/LICENSE.md"
-	templatePathPolyFormLicenseConstant       = "templates/polyform-noncommercial/LICENSE.md"
-	templatePathPolyFormNoticeConstant        = "templates/polyform-noncommercial/NOTICE.md"
-	templatePathPolyFormCommercialConstant    = "templates/polyform-noncommercial/COMMERCIAL_LICENSE.md"
-	templatePathProprietaryLicenseConstant    = "templates/proprietary/LICENSE.md"
-	templatePathProprietaryNoticeConstant     = "templates/proprietary/NOTICE.md"
-	templatePathProprietaryCommercialConstant = "templates/proprietary/COMMERCIAL_LICENSE.md"
+	templatePathBSLLicenseConstant             = "templates/bsl/LICENSE.md"
+	templatePathBSLCommercialConstant          = "templates/bsl/COMMERCIAL_LICENSE.md"
+	templatePathMITLicenseConstant             = "templates/mit/LICENSE.md"
+	templatePathPolyFormLicenseConstant        = "templates/polyform-noncommercial/LICENSE.md"
+	templatePathPolyFormNoticeConstant         = "templates/polyform-noncommercial/NOTICE.md"
+	templatePathPolyFormCommercialConstant     = "templates/polyform-noncommercial/COMMERCIAL_LICENSE.md"
+	templatePathPolyFormContributorConstant    = "templates/polyform-noncommercial/CONTRIBUTOR_LICENSE.md"
+	templatePathProprietaryLicenseConstant     = "templates/proprietary/LICENSE.md"
+	templatePathProprietaryNoticeConstant      = "templates/proprietary/NOTICE.md"
+	templatePathProprietaryCommercialConstant  = "templates/proprietary/COMMERCIAL_LICENSE.md"
+	templatePathProprietaryContributorConstant = "templates/proprietary/CONTRIBUTOR_LICENSE.md"
 )
 
 const (
@@ -151,16 +160,18 @@ func templateCatalog() map[string]templateDescriptor {
 			Name:                TemplateNamePolyFormNoncommercial,
 			PrimaryTemplatePath: templatePathPolyFormLicenseConstant,
 			AdditionalTemplatePaths: map[string]string{
-				OutputNoticeFileName:     templatePathPolyFormNoticeConstant,
-				OutputCommercialFileName: templatePathPolyFormCommercialConstant,
+				OutputNoticeFileName:      templatePathPolyFormNoticeConstant,
+				OutputCommercialFileName:  templatePathPolyFormCommercialConstant,
+				OutputContributorFileName: templatePathPolyFormContributorConstant,
 			},
 		},
 		TemplateNameProprietary: {
 			Name:                TemplateNameProprietary,
 			PrimaryTemplatePath: templatePathProprietaryLicenseConstant,
 			AdditionalTemplatePaths: map[string]string{
-				OutputNoticeFileName:     templatePathProprietaryNoticeConstant,
-				OutputCommercialFileName: templatePathProprietaryCommercialConstant,
+				OutputNoticeFileName:      templatePathProprietaryNoticeConstant,
+				OutputCommercialFileName:  templatePathProprietaryCommercialConstant,
+				OutputContributorFileName: templatePathProprietaryContributorConstant,
 			},
 		},
 	}
@@ -190,6 +201,8 @@ func placeholderReplacementMap() map[string]string {
 		placeholderLicensorConstant:      environmentFallbackExpression(VariableLicensor, repositoryOwnerTemplateConstant),
 		placeholderContactConstant:       environmentValueExpression(VariableContact),
 		placeholderProjectNameConstant:   environmentFallbackExpression(VariableProjectName, repositoryNameTemplateConstant),
+		placeholderRepositoryConstant:    environmentFallbackExpression(VariableRepository, repositoryFullNameTemplateConstant),
+		placeholderRepositoryURLConstant: environmentFallbackExpression(VariableRepositoryURL, repositoryURLTemplateConstant),
 		placeholderChangeDateConstant:    environmentValueExpression(VariableChangeDate),
 		placeholderChangeLicenseConstant: environmentValueExpression(VariableChangeLicense),
 	}
