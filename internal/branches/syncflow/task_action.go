@@ -79,7 +79,6 @@ const (
 	strictSyncDefaultBranchFetchTemplate         = "fetch default branch %q from remote %q: %w"
 	strictSyncObsoleteOptionTemplate             = "branch.sync option %q is obsolete; remove it"
 	strictSyncDirtyWorktreeTemplate              = "worktree is dirty; remove --require-clean or use --stash before syncing"
-	strictSyncLocalOnlyCommitTemplate            = "local branch %q has commits not on %s/%s"
 	strictSyncEmptyLocalBranchTemplate           = "local branch %q has no commits beyond %s/%s and no merged pull request handoff"
 	strictSyncMissingPullRequestTemplate         = "branch %q does not have an open pull request"
 	strictSyncMissingPullRequestBaseTemplate     = "open pull request for branch %q did not report a base branch"
@@ -829,14 +828,10 @@ func syncBaseBranch(ctx context.Context, environment *workflow.Environment, repo
 	if switchErr := switchToLocalOrRemoteBranchWithAdoption(ctx, environment, repository, remoteName, baseBranch, commitMessages); switchErr != nil {
 		return switchErr
 	}
-	aheadCount, aheadErr := commitCount(ctx, environment.GitExecutor, repository.Path, fmt.Sprintf("%s..%s", remoteReference, baseBranch))
-	if aheadErr != nil {
-		return aheadErr
+	if mergeErr := mergeRemoteBranchIntoLocal(ctx, environment, repository, environment.GitExecutor, repository.Path, remoteName, baseBranch, commitMessages); mergeErr != nil {
+		return mergeErr
 	}
-	if aheadCount > 0 {
-		return fmt.Errorf(strictSyncLocalOnlyCommitTemplate, baseBranch, remoteName, baseBranch)
-	}
-	return executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitResetSubcommandConstant, gitResetHardFlagConstant, remoteReference})
+	return executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitPushSubcommandConstant, remoteName, baseBranch})
 }
 
 func syncPullRequestBranch(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, options strictPullRequestBranchOptions) (strictPullRequestBranchResult, error) {

@@ -1026,7 +1026,8 @@ func TestHandleBranchSyncActionStrictPRBranchTreatsIgnoredOnlyStatusAsClean(t *t
 	recordedCommands := recordedGitCommands(gitExecutor.commands)
 	require.NotContains(t, recordedCommands, "check-ignore --stdin")
 	require.Contains(t, recordedCommands, "switch --no-guess master")
-	require.Contains(t, recordedCommands, "reset --hard origin/master")
+	require.Contains(t, recordedCommands, "merge --no-edit origin/master")
+	require.Contains(t, recordedCommands, "push origin master")
 	require.NotContains(t, recordedCommands, "switch -c gix/sync-dirty-work")
 	require.NotContains(t, recordedCommands, "add --all")
 	require.NotContains(t, recordedCommands, "commit -m")
@@ -1214,8 +1215,8 @@ func TestHandleBranchSyncActionStrictPRBranchPromptsToSyncMasterWhenPullRequestM
 	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	recordedCommands := recordedGitCommands(gitExecutor.commands)
 	require.Contains(t, recordedCommands, "switch --no-guess master")
-	require.Contains(t, recordedCommands, "reset --hard origin/master")
-	require.NotContains(t, recordedCommands, "merge --no-edit origin/master")
+	require.Contains(t, recordedCommands, "merge --no-edit origin/master")
+	require.Contains(t, recordedCommands, "push origin master")
 	require.NotContains(t, recordedCommands, "push origin feature/foo")
 	require.Equal(t, "SYNCED: /tmp/project (master)\n", output.String())
 	require.Equal(t, []string{`Pull request for branch "feature/foo" into master is already merged. Sync master instead? [a/N/y] `}, prompter.prompts)
@@ -1266,8 +1267,8 @@ func TestHandleBranchSyncActionStrictPRBranchPromptsToSyncMasterWhenMergedPullRe
 	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	recordedCommands := recordedGitCommands(gitExecutor.commands)
 	require.Contains(t, recordedCommands, "switch --no-guess master")
-	require.Contains(t, recordedCommands, "reset --hard origin/master")
-	require.NotContains(t, recordedCommands, "merge --no-edit origin/master")
+	require.Contains(t, recordedCommands, "merge --no-edit origin/master")
+	require.Contains(t, recordedCommands, "push origin master")
 	require.NotContains(t, recordedCommands, "push origin feature/foo")
 	require.Equal(t, "SYNCED: /tmp/project (master)\n", output.String())
 	require.Equal(t, []string{`Pull request for branch "feature/foo" into master is already merged. Sync master instead? [a/N/y] `}, prompter.prompts)
@@ -1357,7 +1358,8 @@ func TestHandleBranchSyncActionStrictPRBranchAssumeYesSyncsMasterForMergedPullRe
 	}
 
 	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
-	require.Contains(t, recordedGitCommands(gitExecutor.commands), "reset --hard origin/master")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "merge --no-edit origin/master")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "push origin master")
 }
 
 func TestResolveMergedPullRequestBaseTargetPrefersActiveOpenPullRequest(t *testing.T) {
