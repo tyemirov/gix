@@ -50,7 +50,7 @@ class LicenseRolloutTest(unittest.TestCase):
             reason="owner-policy",
         )
 
-    def existing_draft_fixture(self):
+    def existing_pull_request_fixture(self):
         record = self.make_apply_record()
         base_commit = "1" * 40
         head_commit = "2" * 40
@@ -71,7 +71,7 @@ class LicenseRolloutTest(unittest.TestCase):
                 "headRefName": license_rollout.automation_branch(record),
                 "headRefOid": head_commit,
                 "isCrossRepository": False,
-                "isDraft": True,
+                "isDraft": False,
                 "changedFiles": 5,
                 "state": "OPEN",
             }
@@ -379,9 +379,9 @@ class LicenseRolloutTest(unittest.TestCase):
         self.assertEqual(1, plan.apply_count)
         self.assertEqual(0, plan.review_count)
 
-    def test_existing_draft_matches_reviewed_base_head_and_license_diff(self):
+    def test_existing_pull_request_matches_reviewed_base_head_and_license_diff(self):
         runner, record, inspected, _, _, _, _ = (
-            self.existing_draft_fixture()
+            self.existing_pull_request_fixture()
         )
 
         state = license_rollout.inspect_pull_request_state(
@@ -407,7 +407,23 @@ class LicenseRolloutTest(unittest.TestCase):
             runner.calls[-1][:3],
         )
 
-    def test_existing_draft_rejects_wrong_base_name_or_commit(self):
+    def test_existing_pull_request_rejects_draft(self):
+        runner, record, inspected, pull_requests, _, _, _ = (
+            self.existing_pull_request_fixture()
+        )
+        pull_requests[0]["isDraft"] = True
+
+        with self.assertRaisesRegex(
+            license_rollout.RolloutError,
+            "still a draft",
+        ):
+            license_rollout.inspect_pull_request_state(
+                runner,
+                record,
+                inspected,
+            )
+
+    def test_existing_pull_request_rejects_wrong_base_name_or_commit(self):
         scenarios = (
             ("baseRefName", "develop", "base branch changed"),
             ("baseRefOid", "3" * 40, "base commit changed"),
@@ -422,7 +438,7 @@ class LicenseRolloutTest(unittest.TestCase):
                     _,
                     _,
                     _,
-                ) = self.existing_draft_fixture()
+                ) = self.existing_pull_request_fixture()
                 pull_requests[0][field] = value
 
                 with self.assertRaisesRegex(
@@ -435,7 +451,7 @@ class LicenseRolloutTest(unittest.TestCase):
                         inspected,
                     )
 
-    def test_existing_draft_rejects_noncanonical_head_history(self):
+    def test_existing_pull_request_rejects_noncanonical_head_history(self):
         (
             runner,
             record,
@@ -444,7 +460,7 @@ class LicenseRolloutTest(unittest.TestCase):
             comparison,
             _,
             _,
-        ) = self.existing_draft_fixture()
+        ) = self.existing_pull_request_fixture()
         comparison["ahead_by"] = 2
         comparison["total_commits"] = 2
 
@@ -458,7 +474,7 @@ class LicenseRolloutTest(unittest.TestCase):
                 inspected,
             )
 
-    def test_existing_draft_rejects_snapshot_changes_during_validation(self):
+    def test_existing_pull_request_rejects_snapshot_changes_during_validation(self):
         scenarios = (
             ("headRefOid", "3" * 40),
             ("state", "CLOSED"),
@@ -473,7 +489,7 @@ class LicenseRolloutTest(unittest.TestCase):
                     _,
                     _,
                     _,
-                ) = self.existing_draft_fixture()
+                ) = self.existing_pull_request_fixture()
                 original_run_json = runner.run_json
 
                 def run_json(arguments):
@@ -497,7 +513,7 @@ class LicenseRolloutTest(unittest.TestCase):
                         inspected,
                     )
 
-    def test_existing_draft_rejects_extra_or_modified_files(self):
+    def test_existing_pull_request_rejects_extra_or_modified_files(self):
         scenarios = ("extra file", "modified license")
         for scenario in scenarios:
             with self.subTest(scenario=scenario):
@@ -509,7 +525,7 @@ class LicenseRolloutTest(unittest.TestCase):
                     comparison,
                     head_contents,
                     _,
-                ) = self.existing_draft_fixture()
+                ) = self.existing_pull_request_fixture()
                 if scenario == "extra file":
                     comparison["files"].append(
                         {
