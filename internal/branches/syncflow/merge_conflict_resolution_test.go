@@ -287,6 +287,32 @@ func TestValidateMergeConflictRegionResponseIgnoresWhitespaceAndReportsAllMissin
 	require.Contains(t, multipleLossErr.Error(), "mode=strict")
 }
 
+func TestValidateMergeConflictRegionResponseProvesDeletionIntent(t *testing.T) {
+	stableSuffix := strings.Repeat("stable value\n", 1200)
+	region := mergeConflictRegion{
+		Base:        "status: keep remove\n" + stableSuffix,
+		BasePresent: true,
+		Ours:        "status: keep\n" + stableSuffix,
+		Theirs:      "notice: new\nstatus: keep remove\n" + stableSuffix,
+	}
+
+	lossyCandidateErr := validateMergeConflictRegionResponse("status.txt", 0, region, region.Theirs)
+	require.Error(t, lossyCandidateErr)
+	require.Contains(t, lossyCandidateErr.Error(), "does not preserve OURS replacement intent")
+	require.Contains(t, lossyCandidateErr.Error(), "delete BASE token range")
+	require.ErrorIs(t, lossyCandidateErr, errMergeConflictReplacementIntentProofUnavailable)
+
+	require.NoError(t, validateMergeConflictRegionResponse("status.txt", 0, region, "notice: new\nstatus: keep\n"+stableSuffix))
+
+	replacementAlternativeRegion := mergeConflictRegion{
+		Base:        "mode: old\n" + stableSuffix,
+		BasePresent: true,
+		Ours:        "mode:\n" + stableSuffix,
+		Theirs:      "mode: new\n" + stableSuffix,
+	}
+	require.NoError(t, validateMergeConflictRegionResponse("status.txt", 0, replacementAlternativeRegion, replacementAlternativeRegion.Theirs))
+}
+
 func TestValidateMergeConflictRegionResponseRejectsReplacementIntentFromUnrelatedOccurrence(t *testing.T) {
 	region := mergeConflictRegion{
 		Ours:        "primary: foo bar\nalias: foobar\nmode: standard\n",

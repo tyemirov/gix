@@ -45,7 +45,6 @@ const (
 	mergeConflictResolutionTheirsTemplate       = "llm merge resolution for %s conflict region %d does not preserve THEIRS replacement intent %s"
 	mergeConflictResolutionAdditiveTemplate     = "llm merge resolution for %s additive conflict region %d is not an exact ordering of OURS and THEIRS"
 	mergeConflictResolutionOverlapTemplate      = "llm merge resolution for %s overlapping insertion conflict region %d does not preserve the exact complete word-token sequence"
-	mergeConflictResolutionIntentTemplate       = "llm merge resolution for %s conflict region %d cannot be validated against %s replacement intent"
 	mergeConflictResolutionBaseOnlyTemplate     = "llm merge resolution for %s conflict region %d returned BASE without either side's changes"
 	mergeConflictResolutionExhaustedTemplate    = "semantic resolution for %s conflict region %d exhausted %d semantic attempts: %w"
 	mergeConflictResolutionStructureTemplate    = "conflicted worktree file %s has invalid conflict marker structure"
@@ -1321,23 +1320,12 @@ func validateMergeConflictRegionResponse(path string, regionIndex int, region me
 		return fmt.Errorf(mergeConflictResolutionBaseOnlyTemplate, path, regionIndex+1)
 	}
 	intentErrors := make([]error, 0, 2)
-	missingOursIntents, missingTheirsIntents, intentAvailable := mergeConflictMissingRegionReplacementIntents(
+	missingOursIntents, missingTheirsIntents := mergeConflictMissingRegionReplacementIntents(
 		region.Base,
 		region.Ours,
 		region.Theirs,
 		response,
 	)
-	if !intentAvailable {
-		intentErrors = append(
-			intentErrors,
-			mergeConflictReplacementIntentProofError{
-				detail: fmt.Errorf(mergeConflictResolutionIntentTemplate, path, regionIndex+1, "OURS"),
-			},
-			mergeConflictReplacementIntentProofError{
-				detail: fmt.Errorf(mergeConflictResolutionIntentTemplate, path, regionIndex+1, "THEIRS"),
-			},
-		)
-	}
 	if len(missingOursIntents) != 0 {
 		intentErrors = append(
 			intentErrors,

@@ -1,6 +1,7 @@
 package syncflow
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 	"unicode"
@@ -8,7 +9,7 @@ import (
 )
 
 const (
-	mergeConflictTokenDiffMaximumCells              = 4_000_000
+	mergeConflictTokenDiffMatrixMaximumCells        = 4_000_000
 	mergeConflictReplacementIntentContextTokenCount = 3
 )
 
@@ -22,6 +23,11 @@ type mergeConflictTokenEdit struct {
 	Start       int
 	End         int
 	Replacement string
+}
+
+type mergeConflictTokenMatch struct {
+	BaseIndex    int
+	VariantIndex int
 }
 
 type mergeConflictConcurrentInsertionAnalysis struct {
@@ -134,11 +140,8 @@ func mergeConflictTokenEditResolution(base string, ours string, theirs string) (
 	baseTokens := mergeConflictTokens(base)
 	oursTokens := mergeConflictTokens(ours)
 	theirsTokens := mergeConflictTokens(theirs)
-	oursEdits, oursEditsAvailable := mergeConflictTokenEdits(baseTokens, oursTokens)
-	theirsEdits, theirsEditsAvailable := mergeConflictTokenEdits(baseTokens, theirsTokens)
-	if !oursEditsAvailable || !theirsEditsAvailable {
-		return mergeConflictDeterministicResolution{}, false
-	}
+	oursEdits := mergeConflictTokenEdits(baseTokens, oursTokens)
+	theirsEdits := mergeConflictTokenEdits(baseTokens, theirsTokens)
 
 	mergedEdits, editsCompatible := mergeConflictCompatibleTokenEdits(oursEdits, theirsEdits)
 	if editsCompatible {
@@ -203,14 +206,20 @@ func mergeConflictTokenClass(value string, offset int) uint8 {
 	}
 }
 
-func mergeConflictTokenEdits(baseTokens []string, variantTokens []string) ([]mergeConflictTokenEdit, bool) {
+func mergeConflictTokenEdits(baseTokens []string, variantTokens []string) []mergeConflictTokenEdit {
 	rowCount := len(baseTokens) + 1
 	columnCount := len(variantTokens) + 1
-	if rowCount > mergeConflictTokenDiffMaximumCells/columnCount {
-		return nil, false
+	if !mergeConflictTokenEditsRequireLinearMemory(baseTokens, variantTokens) {
+		return mergeConflictMatrixTokenEdits(baseTokens, variantTokens, rowCount*columnCount, columnCount)
 	}
-	cellCount := rowCount * columnCount
+	return mergeConflictLinearTokenEdits(baseTokens, variantTokens)
+}
 
+func mergeConflictTokenEditsRequireLinearMemory(baseTokens []string, variantTokens []string) bool {
+	return len(baseTokens)+1 > mergeConflictTokenDiffMatrixMaximumCells/(len(variantTokens)+1)
+}
+
+func mergeConflictMatrixTokenEdits(baseTokens []string, variantTokens []string, cellCount int, columnCount int) []mergeConflictTokenEdit {
 	longestSubsequences := make([]int, cellCount)
 	for baseIndex := len(baseTokens) - 1; baseIndex >= 0; baseIndex-- {
 		for variantIndex := len(variantTokens) - 1; variantIndex >= 0; variantIndex-- {
@@ -236,12 +245,7 @@ func mergeConflictTokenEdits(baseTokens []string, variantTokens []string) ([]mer
 	unmatchedVariantStart := 0
 	for baseIndex < len(baseTokens) && variantIndex < len(variantTokens) {
 		if baseTokens[baseIndex] == variantTokens[variantIndex] {
-			edits = appendMergeConflictTokenEdit(
-				edits,
-				unmatchedBaseStart,
-				baseIndex,
-				variantTokens[unmatchedVariantStart:variantIndex],
-			)
+			edits = appendMergeConflictTokenEdit(edits, unmatchedBaseStart, baseIndex, variantTokens[unmatchedVariantStart:variantIndex])
 			baseIndex++
 			variantIndex++
 			unmatchedBaseStart = baseIndex
@@ -256,13 +260,125 @@ func mergeConflictTokenEdits(baseTokens []string, variantTokens []string) ([]mer
 			variantIndex++
 		}
 	}
-	edits = appendMergeConflictTokenEdit(
-		edits,
-		unmatchedBaseStart,
-		len(baseTokens),
-		variantTokens[unmatchedVariantStart:],
+	edits = appendMergeConflictTokenEdit(edits, unmatchedBaseStart, len(baseTokens), variantTokens[unmatchedVariantStart:])
+	return edits
+}
+
+func mergeConflictLinearTokenEdits(baseTokens []string, variantTokens []string) []mergeConflictTokenEdit {
+	commonPrefixLength := 0
+	for commonPrefixLength < len(baseTokens) &&
+		commonPrefixLength < len(variantTokens) &&
+		baseTokens[commonPrefixLength] == variantTokens[commonPrefixLength] {
+		commonPrefixLength++
+	}
+	commonSuffixLength := 0
+	for commonSuffixLength < len(baseTokens) &&
+		commonSuffixLength < len(variantTokens) &&
+		baseTokens[len(baseTokens)-commonSuffixLength-1] == variantTokens[len(variantTokens)-commonSuffixLength-1] {
+		commonSuffixLength++
+	}
+	shorterTokenCount := min(len(baseTokens), len(variantTokens))
+	if commonPrefixLength+commonSuffixLength > shorterTokenCount {
+		if commonPrefixLength >= commonSuffixLength {
+			commonSuffixLength = 0
+		} else {
+			commonPrefixLength = 0
+		}
+	}
+	baseMiddleEnd := len(baseTokens) - commonSuffixLength
+	variantMiddleEnd := len(variantTokens) - commonSuffixLength
+	matches := mergeConflictTokenMatches(
+		baseTokens[commonPrefixLength:baseMiddleEnd],
+		variantTokens[commonPrefixLength:variantMiddleEnd],
+		commonPrefixLength,
+		commonPrefixLength,
 	)
-	return edits, true
+	edits := make([]mergeConflictTokenEdit, 0)
+	baseCursor := commonPrefixLength
+	variantCursor := commonPrefixLength
+	for _, match := range matches {
+		edits = appendMergeConflictTokenEdit(edits, baseCursor, match.BaseIndex, variantTokens[variantCursor:match.VariantIndex])
+		baseCursor = match.BaseIndex + 1
+		variantCursor = match.VariantIndex + 1
+	}
+	edits = appendMergeConflictTokenEdit(edits, baseCursor, baseMiddleEnd, variantTokens[variantCursor:variantMiddleEnd])
+	return edits
+}
+
+func mergeConflictTokenMatches(baseTokens []string, variantTokens []string, baseOffset int, variantOffset int) []mergeConflictTokenMatch {
+	if len(baseTokens) == 0 || len(variantTokens) == 0 {
+		return nil
+	}
+	if len(baseTokens) == 1 {
+		for variantIndex, variantToken := range variantTokens {
+			if baseTokens[0] == variantToken {
+				return []mergeConflictTokenMatch{{BaseIndex: baseOffset, VariantIndex: variantOffset + variantIndex}}
+			}
+		}
+		return nil
+	}
+	if len(variantTokens) == 1 {
+		for baseIndex, baseToken := range baseTokens {
+			if baseToken == variantTokens[0] {
+				return []mergeConflictTokenMatch{{BaseIndex: baseOffset + baseIndex, VariantIndex: variantOffset}}
+			}
+		}
+		return nil
+	}
+
+	baseMiddle := len(baseTokens) / 2
+	variantMiddle := func() int {
+		prefixLengths := mergeConflictTokenPrefixLCSLengths(baseTokens[:baseMiddle], variantTokens)
+		suffixLengths := mergeConflictTokenSuffixLCSLengths(baseTokens[baseMiddle:], variantTokens)
+		selectedMiddle := 0
+		longestLength := -1
+		for variantIndex := 0; variantIndex <= len(variantTokens); variantIndex++ {
+			candidateLength := prefixLengths[variantIndex] + suffixLengths[variantIndex]
+			if candidateLength > longestLength {
+				selectedMiddle = variantIndex
+				longestLength = candidateLength
+			}
+		}
+		return selectedMiddle
+	}()
+
+	leftMatches := mergeConflictTokenMatches(baseTokens[:baseMiddle], variantTokens[:variantMiddle], baseOffset, variantOffset)
+	rightMatches := mergeConflictTokenMatches(baseTokens[baseMiddle:], variantTokens[variantMiddle:], baseOffset+baseMiddle, variantOffset+variantMiddle)
+	return append(leftMatches, rightMatches...)
+}
+
+func mergeConflictTokenPrefixLCSLengths(baseTokens []string, variantTokens []string) []int {
+	lengths := make([]int, len(variantTokens)+1)
+	for _, baseToken := range baseTokens {
+		previousDiagonal := 0
+		for variantIndex, variantToken := range variantTokens {
+			previousLength := lengths[variantIndex+1]
+			if baseToken == variantToken {
+				lengths[variantIndex+1] = previousDiagonal + 1
+			} else if lengths[variantIndex] > previousLength {
+				lengths[variantIndex+1] = lengths[variantIndex]
+			}
+			previousDiagonal = previousLength
+		}
+	}
+	return lengths
+}
+
+func mergeConflictTokenSuffixLCSLengths(baseTokens []string, variantTokens []string) []int {
+	lengths := make([]int, len(variantTokens)+1)
+	for baseIndex := len(baseTokens) - 1; baseIndex >= 0; baseIndex-- {
+		previousDiagonal := 0
+		for variantIndex := len(variantTokens) - 1; variantIndex >= 0; variantIndex-- {
+			previousLength := lengths[variantIndex]
+			if baseTokens[baseIndex] == variantTokens[variantIndex] {
+				lengths[variantIndex] = previousDiagonal + 1
+			} else if lengths[variantIndex+1] > previousLength {
+				lengths[variantIndex] = lengths[variantIndex+1]
+			}
+			previousDiagonal = previousLength
+		}
+	}
+	return lengths
 }
 
 func appendMergeConflictTokenEdit(edits []mergeConflictTokenEdit, start int, end int, replacementTokens []string) []mergeConflictTokenEdit {
@@ -347,19 +463,21 @@ func applyMergeConflictTokenEdits(baseTokens []string, edits []mergeConflictToke
 	return resolved.String(), true
 }
 
-func mergeConflictMissingRegionReplacementIntents(base string, ours string, theirs string, candidate string) ([]string, []string, bool) {
+func mergeConflictMissingRegionReplacementIntents(base string, ours string, theirs string, candidate string) ([]string, []string) {
 	baseTokens := mergeConflictTokens(base)
-	oursEdits, oursEditsAvailable := mergeConflictTokenEdits(baseTokens, mergeConflictTokens(ours))
-	theirsEdits, theirsEditsAvailable := mergeConflictTokenEdits(baseTokens, mergeConflictTokens(theirs))
-	if !oursEditsAvailable || !theirsEditsAvailable {
-		return nil, nil, false
-	}
+	oursTokens := mergeConflictTokens(ours)
+	theirsTokens := mergeConflictTokens(theirs)
+	oursEdits := mergeConflictTokenEdits(baseTokens, oursTokens)
+	theirsEdits := mergeConflictTokenEdits(baseTokens, theirsTokens)
 	if mergeConflictCandidateMatchesDerivedVariant(baseTokens, oursEdits, theirsEdits, candidate) {
-		return nil, nil, true
+		return nil, nil
 	}
-	oursMissing := mergeConflictMissingReplacementIntents(base, ours, theirs, candidate, baseTokens, oursEdits, theirsEdits)
-	theirsMissing := mergeConflictMissingReplacementIntents(base, theirs, ours, candidate, baseTokens, theirsEdits, oursEdits)
-	return oursMissing, theirsMissing, true
+	requireDeletionProof := mergeConflictTokenEditsRequireLinearMemory(baseTokens, oursTokens) ||
+		mergeConflictTokenEditsRequireLinearMemory(baseTokens, theirsTokens)
+	candidateEdits := mergeConflictTokenEdits(baseTokens, mergeConflictTokens(candidate))
+	oursMissing := mergeConflictMissingReplacementIntents(base, ours, theirs, candidate, baseTokens, oursEdits, theirsEdits, candidateEdits, requireDeletionProof)
+	theirsMissing := mergeConflictMissingReplacementIntents(base, theirs, ours, candidate, baseTokens, theirsEdits, oursEdits, candidateEdits, requireDeletionProof)
+	return oursMissing, theirsMissing
 }
 
 func mergeConflictMissingReplacementIntents(
@@ -370,23 +488,49 @@ func mergeConflictMissingReplacementIntents(
 	baseTokens []string,
 	edits []mergeConflictTokenEdit,
 	otherEdits []mergeConflictTokenEdit,
+	candidateEdits []mergeConflictTokenEdit,
+	requireDeletionProof bool,
 ) []string {
 	normalizedBase := mergeConflictWithoutWhitespace(base)
 	normalizedVariant := mergeConflictWithoutWhitespace(variant)
 	normalizedOtherVariant := mergeConflictWithoutWhitespace(otherVariant)
 	normalizedCandidate := mergeConflictWithoutWhitespace(candidate)
-	if normalizedVariant != "" && strings.Contains(normalizedCandidate, normalizedVariant) {
+	hasDeletionIntent := requireDeletionProof && mergeConflictTokenEditsContainDeletionIntent(baseTokens, edits)
+	if hasDeletionIntent && mergeConflictCandidateContainsDisjointVariants(normalizedCandidate, normalizedVariant, normalizedOtherVariant) {
+		return nil
+	}
+	if !hasDeletionIntent && normalizedVariant != "" && strings.Contains(normalizedCandidate, normalizedVariant) {
 		return nil
 	}
 	compatibleVariant, compatibleVariantAvailable := mergeConflictVariantWithCompatibleOtherEdits(baseTokens, edits, otherEdits)
 	normalizedCompatibleVariant := mergeConflictWithoutWhitespace(compatibleVariant)
-	if compatibleVariantAvailable && normalizedCompatibleVariant != "" && strings.Contains(normalizedCandidate, normalizedCompatibleVariant) {
+	if !hasDeletionIntent && compatibleVariantAvailable && normalizedCompatibleVariant != "" && strings.Contains(normalizedCandidate, normalizedCompatibleVariant) {
 		return nil
 	}
 	missingIntents := make([]string, 0, len(edits))
 	for _, edit := range edits {
 		normalizedReplacement := mergeConflictWithoutWhitespace(edit.Replacement)
 		if normalizedReplacement == "" {
+			if !requireDeletionProof {
+				continue
+			}
+			if edit.Start == edit.End || mergeConflictWithoutWhitespace(strings.Join(baseTokens[edit.Start:edit.End], "")) == "" {
+				continue
+			}
+			if mergeConflictCandidatePreservesDeletionIntent(edit, candidateEdits) {
+				continue
+			}
+			if mergeConflictCandidatePreservesReplacementAlternative(
+				baseTokens,
+				edit,
+				otherEdits,
+				normalizedBase,
+				normalizedOtherVariant,
+				normalizedCandidate,
+			) {
+				continue
+			}
+			missingIntents = append(missingIntents, fmt.Sprintf("delete BASE token range %d:%d", edit.Start, edit.End))
 			continue
 		}
 		if mergeConflictCandidatePreservesReplacementIntent(
@@ -411,6 +555,55 @@ func mergeConflictMissingReplacementIntents(
 		missingIntents = append(missingIntents, edit.Replacement)
 	}
 	return missingIntents
+}
+
+func mergeConflictCandidateContainsDisjointVariants(candidate string, variant string, otherVariant string) bool {
+	if variant == "" || otherVariant == "" {
+		return false
+	}
+	searchOffset := 0
+	for searchOffset <= len(candidate)-len(variant) {
+		variantOffset := strings.Index(candidate[searchOffset:], variant)
+		if variantOffset < 0 {
+			return false
+		}
+		variantStart := searchOffset + variantOffset
+		variantEnd := variantStart + len(variant)
+		if strings.Contains(candidate[:variantStart], otherVariant) || strings.Contains(candidate[variantEnd:], otherVariant) {
+			return true
+		}
+		searchOffset = variantStart + 1
+	}
+	return false
+}
+
+func mergeConflictTokenEditsContainDeletionIntent(baseTokens []string, edits []mergeConflictTokenEdit) bool {
+	for _, edit := range edits {
+		if edit.Start == edit.End || mergeConflictWithoutWhitespace(edit.Replacement) != "" {
+			continue
+		}
+		if mergeConflictWithoutWhitespace(strings.Join(baseTokens[edit.Start:edit.End], "")) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func mergeConflictCandidatePreservesDeletionIntent(deletion mergeConflictTokenEdit, candidateEdits []mergeConflictTokenEdit) bool {
+	coveredUntil := deletion.Start
+	for _, candidateEdit := range candidateEdits {
+		if candidateEdit.Start == candidateEdit.End || candidateEdit.End <= coveredUntil {
+			continue
+		}
+		if candidateEdit.Start > coveredUntil {
+			return false
+		}
+		coveredUntil = candidateEdit.End
+		if coveredUntil >= deletion.End {
+			return true
+		}
+	}
+	return false
 }
 
 func mergeConflictCandidateMatchesDerivedVariant(
