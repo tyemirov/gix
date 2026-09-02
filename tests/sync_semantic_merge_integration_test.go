@@ -15,6 +15,129 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestSyncValidatesLargeConcurrentDeletionAndInsertion(testInstance *testing.T) {
+	const targetBranchName = "bugfix/large-replacement-proof"
+
+	issuePrefix := "# ISSUES\n\n## Improvements\n\n"
+	var resolvedHistoryBuilder strings.Builder
+	for issueIndex := 1; issueIndex <= 180; issueIndex++ {
+		_, _ = fmt.Fprintf(
+			&resolvedHistoryBuilder,
+			"- [x] [I%03d] (P1) Preserve resolved history entry %03d.\n  Resolution:\n  Preserved stable result %03d.\n\n",
+			issueIndex,
+			issueIndex,
+			issueIndex,
+		)
+	}
+	resolvedHistory := resolvedHistoryBuilder.String()
+	issueSuffix := "## Maintenance\n\n- [ ] [M001R] Keep the recurring maintenance entry.\n"
+	incomingIssue := "- [x] [I181] (P0) Adopt the incoming contract.\n  Resolution:\n  Adopted the incoming contract.\n\n"
+	baseIssues := issuePrefix + resolvedHistory + issueSuffix
+	localIssues := issuePrefix + issueSuffix
+	incomingIssues := issuePrefix + incomingIssue + resolvedHistory + issueSuffix
+	expectedIssues := issuePrefix + incomingIssue + issueSuffix
+
+	repositoryRoot := integrationRepositoryRoot(testInstance)
+	binaryPath := buildIntegrationBinary(testInstance, repositoryRoot)
+	workspacePath := syncHomeWorkspace(testInstance)
+	remotePath := filepath.Join(workspacePath, "remote.git")
+	repositoryPath := filepath.Join(workspacePath, "project")
+	createSyncGitHubBackedRepository(testInstance, remotePath, repositoryPath)
+
+	issuesPath := filepath.Join(repositoryPath, ".mprlab", "ISSUES.md")
+	require.NoError(testInstance, os.MkdirAll(filepath.Dir(issuesPath), 0o755))
+	require.NoError(testInstance, os.WriteFile(issuesPath, []byte(baseIssues), 0o644))
+	runGit(testInstance, repositoryPath, "add", ".mprlab/ISSUES.md")
+	runGit(testInstance, repositoryPath, "commit", "-m", "seed resolved issue history")
+	runGit(testInstance, repositoryPath, "push", "-u", "origin", "master")
+
+	runGit(testInstance, repositoryPath, "switch", "-c", targetBranchName)
+	require.NoError(testInstance, os.WriteFile(issuesPath, []byte(localIssues), 0o644))
+	runGit(testInstance, repositoryPath, "add", ".mprlab/ISSUES.md")
+	runGit(testInstance, repositoryPath, "commit", "-m", "archive resolved issue history")
+	runGit(testInstance, repositoryPath, "push", "-u", "origin", targetBranchName)
+	targetCommit := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD"))
+
+	runGit(testInstance, repositoryPath, "switch", "master")
+	require.NoError(testInstance, os.WriteFile(issuesPath, []byte(incomingIssues), 0o644))
+	runGit(testInstance, repositoryPath, "add", ".mprlab/ISSUES.md")
+	runGit(testInstance, repositoryPath, "commit", "-m", "add incoming resolved issue")
+	runGit(testInstance, repositoryPath, "push", "origin", "master")
+	runGit(testInstance, repositoryPath, "switch", targetBranchName)
+
+	var requestCount atomic.Int64
+	llmServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/chat/completions" {
+			http.NotFound(responseWriter, request)
+			return
+		}
+		requestNumber := requestCount.Add(1)
+		if requestNumber > 2 {
+			http.Error(responseWriter, "large replacement conflict required more than one semantic audit", http.StatusConflict)
+			return
+		}
+		responseContent := semanticMergeResponse(incomingIssue + resolvedHistory)
+		if requestNumber == 2 {
+			remoteCommitCommand := exec.Command("git", "-C", remotePath, "rev-parse", "refs/heads/"+targetBranchName)
+			remoteCommitOutput, remoteCommitErr := remoteCommitCommand.CombinedOutput()
+			if remoteCommitErr != nil {
+				http.Error(responseWriter, string(remoteCommitOutput), http.StatusInternalServerError)
+				return
+			}
+			if strings.TrimSpace(string(remoteCommitOutput)) != targetCommit {
+				http.Error(responseWriter, "lossy semantic result was pushed before rejection", http.StatusConflict)
+				return
+			}
+			responseContent = semanticMergeResponse(incomingIssue)
+		}
+		responseWriter.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(
+			responseWriter,
+			`{"choices":[{"message":{"role":"assistant","content":%q}}]}`,
+			responseContent,
+		)
+	}))
+	testInstance.Cleanup(llmServer.Close)
+
+	configurationPath := writeReportedLifecycleSemanticConfiguration(testInstance, llmServer.URL)
+	gitLogPath := filepath.Join(testInstance.TempDir(), "git.log")
+	githubLogPath := filepath.Join(testInstance.TempDir(), "gh.log")
+	require.NoError(testInstance, os.WriteFile(githubLogPath, []byte("created-pr --base master --head "+targetBranchName+"\n"), 0o600))
+
+	output, runError := runBinaryIntegrationCommand(
+		testInstance,
+		binaryPath,
+		repositoryPath,
+		map[string]string{
+			pathEnvironmentVariableNameConstant: buildSyncMergedBranchExecutablePath(testInstance),
+			syncMergedBranchGitLogVariable:      gitLogPath,
+			syncMergedBranchGitHubLogVariable:   githubLogPath,
+			syncMergedBranchNameVariable:        targetBranchName,
+			syncMergedBranchMergedVariable:      "false",
+		},
+		syncStateTransitionTimeout,
+		[]string{"--config", configurationPath, "--log-level", "error", "--roots", repositoryPath, "sync", targetBranchName},
+	)
+
+	require.NoError(testInstance, runError, output)
+	require.Contains(testInstance, output, "derived .mprlab/ISSUES.md conflict region 1/1 candidate using compatible token edits")
+	require.Contains(testInstance, output, "does not preserve OURS replacement intent")
+	require.Contains(testInstance, output, "delete BASE token range")
+	require.Contains(testInstance, output, "semantic audit approved")
+	require.NotContains(testInstance, output, "cannot be validated against")
+	require.NotContains(testInstance, output, "AI_MERGE_ROLLBACK")
+	require.Equal(testInstance, int64(2), requestCount.Load())
+	require.Equal(testInstance, expectedIssues, readTextFile(testInstance, issuesPath))
+	require.Equal(testInstance, targetBranchName, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
+	require.Equal(
+		testInstance,
+		strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", targetBranchName)),
+		strings.TrimSpace(runGit(testInstance, remotePath, "rev-parse", "refs/heads/"+targetBranchName)),
+	)
+	require.NotEqual(testInstance, targetCommit, strings.TrimSpace(runGit(testInstance, remotePath, "rev-parse", "refs/heads/"+targetBranchName)))
+	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
+}
+
 func TestSyncAuditsLargeAdditiveIssueAndChangelogConflictsBySemanticRegion(testInstance *testing.T) {
 	testInstance.Helper()
 
