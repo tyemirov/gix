@@ -11,6 +11,56 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B082] (P0) Validate large replacement conflicts.
+  Reported on 2026-09-01 during a Ledger sync with Gix v1.7.9.
+  Expected result:
+  Gix validates each semantic result against both replacement intents.
+  Actual result:
+  The token-diff matrix exceeds its fixed cell limit for the conflict region.
+  Gix rejects each semantic result because the replacement-intent proof is unavailable.
+  Requirements:
+  - Use exact token edits that have a fixed matrix limit and a linear-memory path.
+  - Preserve deterministic replacement-intent validation for both conflict sides.
+  - Preserve rollback when a semantic result loses a replacement intent.
+  Validation:
+  - Reproduce a large concurrent deletion and insertion through the compiled CLI.
+  - Verify that Gix derives and validates the result without a proof-unavailable error.
+  - Verify that the merged file preserves the deletion and the insertion.
+  - Run focused tests and complete CI.
+  Resolution:
+  Gix now keeps the exact matrix algorithm for conflict regions within the fixed memory limit.
+  Larger conflict regions use an exact divide-and-conquer longest-common-subsequence algorithm.
+  The large algorithm uses linear memory and cannot reject a result because of the old matrix size limit.
+  Prefix and suffix anchors keep complete leading and trailing insertions together before recursive alignment.
+  Gix removed the obsolete proof-unavailable result for an unavailable token diff.
+  A compiled CLI regression deletes 180 resolved entries while the incoming branch adds one entry.
+  The regression verifies one successful semantic audit, the complete deletion, the insertion, and the pushed merge.
+  `make test-fast`, `make test-slow`, and `make ci` passed on 2026-09-01.
+  This change did not install, release, commit, push, or retry Gix against the live Ledger repository.
+  Review follow-up on 2026-09-01:
+  A semantic result can keep content that one side deletes because empty token replacements do not have proof.
+  Follow-up requirements:
+  - For each linear-memory conflict region, prove each deletion intent against the semantic result token edits.
+  - Require removal of the complete non-whitespace common-base token range.
+  - Permit an incompatible replacement alternative under the existing conflict contract.
+  - Reject a lossy result before a merge commit or push.
+  Follow-up validation:
+  - Return the incoming side as the first semantic result in the large-region regression.
+  - Verify rejection of the result because it loses the local deletion intent.
+  - Return the valid correction and verify the successful merge and push.
+  Follow-up resolution:
+  Gix now requires deletion-intent proof when either conflict side uses the linear-memory token path.
+  The proof compares the semantic result token edits with each non-whitespace deletion range.
+  The result must remove the complete range or preserve an incompatible replacement alternative.
+  Complete disjoint side variants continue to prove both side results.
+  Small matrix conflicts keep their existing validation contract.
+  The compiled CLI regression first returns the lossy incoming side.
+  It verifies rejection and confirms that the remote branch is unchanged before the repair request.
+  The next result preserves the deletion and insertion, completes the merge, and pushes once.
+  A focused guard verifies a partial deletion and an incompatible replacement alternative.
+  `make test-fast`, `make test-slow`, and `make ci` passed for the review follow-up on 2026-09-01.
+  This follow-up did not install, release, commit, push, or retry Gix against the live Ledger repository.
+
 - [x] [B081] (P0) Journal remote branch creation during strict sync.
   Reported on 2026-09-01 after a real Ledger sync with Gix v1.7.8.
   Expected result:

@@ -82,6 +82,7 @@ Add repository-specific technical nouns below this line.
 - `approval sentinel`: The exact model response that approves a locally validated conflict result.
 - `CalVer`: A release version that derives its numeric fields from a release timestamp.
 - `derived candidate`: A conflict result that Gix constructs from one side and each compatible edit from the other side.
+- `deletion intent`: The removal of non-whitespace common-base tokens by one conflict side.
 - `edit context`: The unchanged tokens next to a replacement intent base location.
 - `fixed-major policy`: A SemVer policy that keeps one configured major value.
 - `provider round`: One LLM request that uses the complete configured provider order.
