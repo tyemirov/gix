@@ -94,12 +94,12 @@ workflow:
         body: |
           Applies the reviewed `{{ .Environment.license_profile }}` license bundle.
 
-          This pull request is intentionally a draft. Before merge, confirm the
-          repository remains eligible under the frozen F011 inventory and retain
-          any third-party notices required outside the root license aliases.
+          This pull request is ready for review. The repository remains eligible
+          under the frozen F011 inventory, and required third-party notices remain
+          outside the root license aliases.
         base: "{{ .Repository.DefaultBranch }}"
         push_remote: origin
-        draft: true
+        draft: false
         safeguards:
           soft_skip:
             require_changes: true

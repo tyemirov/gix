@@ -558,7 +558,7 @@ def build_plan(manifest: Manifest, inspector: object) -> RolloutPlan:
 def print_plan(plan: RolloutPlan) -> None:
     print(
         f"Verified {len(plan.manifest.repositories)} reviewed source repositories: "
-        f"{plan.apply_count} ready for draft pull requests, "
+        f"{plan.apply_count} ready for pull requests, "
         f"{plan.review_count} held for review."
     )
     profile_counts: dict[str, int] = {}
@@ -677,9 +677,9 @@ def inspect_pull_request_state(
             raise RolloutError(
                 f"{record.repository}: pull-request result had an unexpected shape"
             )
-        if pull_request.get("isDraft") is not True:
+        if pull_request.get("isDraft") is not False:
             raise RolloutError(
-                f"{record.repository}: rollout pull request for {branch} is not a draft"
+                f"{record.repository}: rollout pull request for {branch} is still a draft"
             )
         validate_existing_pull_request(
             runner,
@@ -1213,7 +1213,7 @@ def verify_created_pull_requests(
     ]
     if missing:
         raise RolloutError(
-            "workflow completed without an open draft pull request for: "
+            "workflow completed without an open pull request for: "
             + ", ".join(missing)
         )
     return tuple(state.existing_url for state in states)
@@ -1308,7 +1308,7 @@ def apply_plan(
             )
 
     print(
-        f"Prepared {len(created_urls)} new draft pull requests; "
+        f"Prepared {len(created_urls)} new pull requests; "
         f"{len(existing_states)} were already open."
     )
 
@@ -1316,7 +1316,7 @@ def apply_plan(
 def build_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Verify the frozen license inventory or create its reviewed draft "
+            "Verify the frozen license inventory or create its reviewed "
             "pull requests."
         )
     )

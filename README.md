@@ -283,14 +283,14 @@ The old `template` variable and `gix repo-license-apply` wrapper have been
 removed.
 
 The reviewed personal and MPR Lab fleet policy, legal holds, frozen inventory,
-and one-command draft-PR handoff are documented in
+and one-command PR handoff are documented in
 [`docs/licensing-rollout.md`](docs/licensing-rollout.md). Run
 `make license-rollout-plan` for the read-only drift check. After review,
-`make license-rollout-apply` creates the eligible draft pull requests.
+`make license-rollout-apply` creates the eligible ready-for-review pull requests.
 The plan resolves each default branch to one commit, reads its license blobs
 from that revision, and pins apply clones to the same commit even if the
 remote branch advances before the clone starts.
-Apply accepts an already-open deterministic draft only after its base commit,
+Apply accepts an already-open deterministic pull request only after its base commit,
 single rollout commit, complete changed-file set, and rendered license blobs
 match the reviewed plan and a final pull-request snapshot remains unchanged.
 
