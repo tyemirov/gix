@@ -163,6 +163,15 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.9.0] - 2026-09-01
+
+- Merge remote-tracking branch 'origin/master'
+- test: cover syncing divergent default branch histories
+- fix(sync): merge and push base branch instead of resetting
+- Merge pull request #444 from tyemirov/automation/license/polyform-noncommercial
+- ci: validate licensing workflow changes
+- fix: publish license pull requests as ready
+
 ## [v1.8.0] - 2026-09-01
 
 - Merge remote-tracking branch 'origin/master'
