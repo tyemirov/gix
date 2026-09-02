@@ -47,6 +47,73 @@ type syncMergedBranchFixture struct {
 	BranchName     string
 }
 
+func TestSyncCleanDivergentDefaultBranchMergesAndPushesBothHistories(testInstance *testing.T) {
+	repositoryRoot := integrationRepositoryRoot(testInstance)
+	workspacePath := syncHomeWorkspace(testInstance)
+	remotePath := filepath.Join(workspacePath, "remote.git")
+	repositoryPath := filepath.Join(workspacePath, "project")
+	createSyncGitHubBackedRepository(testInstance, remotePath, repositoryPath)
+
+	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "README.md"), []byte("initial\n"), 0o644))
+	runGit(testInstance, repositoryPath, "add", "README.md")
+	runGit(testInstance, repositoryPath, "commit", "-m", "initial commit")
+	runGit(testInstance, repositoryPath, "push", "-u", "origin", "master")
+
+	require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, "CHANGELOG.md"), []byte("release v1.8.0\n"), 0o644))
+	runGit(testInstance, repositoryPath, "add", "CHANGELOG.md")
+	runGit(testInstance, repositoryPath, "commit", "-m", "release v1.8.0")
+	localCommit := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD"))
+
+	upstreamPath := filepath.Join(workspacePath, "upstream")
+	runGitWithDir(testInstance, "", "clone", remotePath, upstreamPath)
+	configureGitIdentity(testInstance, upstreamPath)
+	for commitIndex := 1; commitIndex <= 3; commitIndex++ {
+		fileName := fmt.Sprintf("remote-%d.txt", commitIndex)
+		require.NoError(testInstance, os.WriteFile(filepath.Join(upstreamPath, fileName), []byte(fmt.Sprintf("remote change %d\n", commitIndex)), 0o644))
+		runGit(testInstance, upstreamPath, "add", fileName)
+		runGit(testInstance, upstreamPath, "commit", "-m", fmt.Sprintf("remote change %d", commitIndex))
+	}
+	runGit(testInstance, upstreamPath, "push", "origin", "master")
+	remoteCommit := strings.TrimSpace(runGit(testInstance, upstreamPath, "rev-parse", "HEAD"))
+
+	configurationPath := writeSyncMergedBranchConfiguration(testInstance)
+	gitLogPath := filepath.Join(testInstance.TempDir(), "git.log")
+	pathVariable := buildSyncMergedBranchExecutablePath(testInstance)
+	output, runError := runIntegrationCommandWithInput(
+		testInstance,
+		repositoryRoot,
+		integrationCommandOptions{
+			PathVariable: pathVariable,
+			EnvironmentOverrides: map[string]string{
+				syncMergedBranchGitLogVariable: gitLogPath,
+				syncMergedBranchNameVariable:   "master",
+				syncMergedBranchMergedVariable: "false",
+			},
+		},
+		syncMergedBranchIntegrationTimeout,
+		"",
+		[]string{"run", ".", "--config", configurationPath, "--log-level", "error", "sync", "--roots", repositoryPath},
+	)
+	require.NoError(testInstance, runError, output)
+
+	require.Contains(testInstance, output, fmt.Sprintf("SYNCED: %s (master)", repositoryPath))
+	require.NotContains(testInstance, output, "SYNC_SWITCH_ROLLBACK")
+	require.Equal(testInstance, "0\t0", strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-list", "--left-right", "--count", "master...origin/master")))
+	require.NoError(testInstance, exec.Command("git", "-C", repositoryPath, "merge-base", "--is-ancestor", localCommit, "master").Run())
+	require.NoError(testInstance, exec.Command("git", "-C", repositoryPath, "merge-base", "--is-ancestor", remoteCommit, "master").Run())
+	require.Equal(testInstance, "release v1.8.0\n", readTextFile(testInstance, filepath.Join(repositoryPath, "CHANGELOG.md")))
+	for commitIndex := 1; commitIndex <= 3; commitIndex++ {
+		fileName := fmt.Sprintf("remote-%d.txt", commitIndex)
+		require.Equal(testInstance, fmt.Sprintf("remote change %d\n", commitIndex), readTextFile(testInstance, filepath.Join(repositoryPath, fileName)))
+	}
+
+	gitLog := readTextFile(testInstance, gitLogPath)
+	mergeIndex := strings.Index(gitLog, "merge --no-edit origin/master")
+	pushIndex := strings.Index(gitLog, "push origin master")
+	require.GreaterOrEqual(testInstance, mergeIndex, 0)
+	require.Greater(testInstance, pushIndex, mergeIndex)
+}
+
 func TestSyncDirtyDefaultBranchRemovesObsoleteReviewBaseAndCommits(testInstance *testing.T) {
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	workspacePath := syncHomeWorkspace(testInstance)
