@@ -148,7 +148,7 @@ func FilterIgnoredRepositories(ctx context.Context, executor GitExecutor, reposi
 
 	filtered := make([]string, 0, len(repositoryPaths))
 	for index := range repositoryPaths {
-		if _, skip := ignored[normalizedPaths[index]]; skip {
+		if _, skip := ignored[normalizedPaths[index]]; skip || closestAncestor(normalizedPaths[index], ignored) != "" {
 			continue
 		}
 		filtered = append(filtered, repositoryPaths[index])
