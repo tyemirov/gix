@@ -11,6 +11,39 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B083] (P1) Ignore all repositories in an ignored repository.
+  Goal:
+  Repository discovery ignores each repository in an ignored repository.
+  Expected result:
+  An ignored source checkout and all repositories in it stay outside the sync operation.
+  Actual result:
+  Gix v1.9.0 selects a dependency in an ignored FamilyHome build directory.
+  Strict sync then reports that the dependency path is absent from Git worktree metadata.
+  Requirements:
+  - Apply each repository exclusion to all repositories in that directory.
+  - Keep repositories outside the ignored directory in the discovery result.
+  - Use the same discovery result for audit and workflow commands.
+  Validation:
+  - Reproduce the failure through the compiled CLI with real Git repositories.
+  - Verify ordinary repositories, Git submodules, and a second dependency level.
+  - Verify a separate repository with a similar directory name.
+  - Run focused tests and final CI validation.
+  Initial validation:
+  Lint and fast tests passed. The initial integration suite reached the required 350-second limit.
+  Implementation:
+  The discovery filter now removes each ignored repository and all repositories in that directory.
+  A compiled CLI test reproduced the original failure in audit and workflow commands.
+  All four regression scenarios passed after the correction.
+  The test covers ordinary repositories, Git submodules, a second dependency level, and a separate repository with a similar name.
+  The change adds no events or public fields.
+  Final validation:
+  `make ci`, `make build`, and `git diff --check` passed on 2026-09-04.
+  The complete integration suite passed in 296.582 seconds.
+  The new binary reported one repository for the cleaned FamilyHome directory.
+  The language checker reported no new findings in the changed documentation.
+  Existing documentation has 292 mechanical findings. The Governor check reports existing managed-document differences.
+  The change remains local. The installed Gix binary remains v1.9.0.
+
 - [x] [B082] (P0) Validate large replacement conflicts.
   Reported on 2026-09-01 during a Ledger sync with Gix v1.7.9.
   Expected result:
