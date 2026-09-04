@@ -634,7 +634,7 @@ func TestSyncSuccessfulFinalizationTable(testInstance *testing.T) {
 			arguments := []string{"sync", targetBranch}
 			reportedIssueFormatFixture := newReportedIssueFormatConflictFixture()
 			reportedIssueFormatAuditAttempts := [5]int{}
-			regionFourFollowupRequest := make(chan string, 1)
+			regionFourFollowupRequest := make(chan string, mergeConflictResolutionAttemptCountForTest)
 
 			var requestCount atomic.Int64
 			llmServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
