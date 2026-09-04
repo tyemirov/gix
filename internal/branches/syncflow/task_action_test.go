@@ -2044,7 +2044,7 @@ func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedCurrentDirtyMaster
 	githubExecutor := &strictSyncGitHubExecutor{}
 	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
 	require.NoError(t, githubClientError)
-	chatClient := &strictSyncChatClient{responses: []string{"fix: remove obsolete readme after conflict", "docs: remove obsolete readme", pullRequestBody}}
+	chatClient := &strictSyncChatClient{responses: []string{"fix: remove obsolete readme after conflict", "docs: remove obsolete readme", mergeConflictSelectOurs, pullRequestBody}}
 	environment := &workflow.Environment{
 		GitExecutor:       gitExecutor,
 		RepositoryManager: gitManager,
@@ -2085,8 +2085,8 @@ func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedCurrentDirtyMaster
 	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, "rm -f -- README.md"), recordedGitCommandIndex(gitExecutor.commands, "commit --no-edit"))
 	_, readErr := os.Stat(readmePath)
 	require.True(t, os.IsNotExist(readErr))
-	require.Len(t, chatClient.requests, 3)
-	require.Contains(t, chatClient.requests[2].Messages[1].Content, "Comparison range: origin/master..."+generatedBranchName)
+	require.Len(t, chatClient.requests, 4)
+	require.Contains(t, chatClient.requests[3].Messages[1].Content, "Comparison range: origin/master..."+generatedBranchName)
 	require.Len(t, githubExecutor.commands, 1)
 	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", generatedBranchName, "--title", generatedBranchName, "--body", pullRequestBody}, githubExecutor.commands[0].Arguments)
 }

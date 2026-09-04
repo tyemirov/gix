@@ -44,7 +44,7 @@ const (
 	mergeConflictResolutionOursTemplate         = "llm merge resolution for %s conflict region %d does not preserve OURS replacement intent %s"
 	mergeConflictResolutionTheirsTemplate       = "llm merge resolution for %s conflict region %d does not preserve THEIRS replacement intent %s"
 	mergeConflictResolutionAdditiveTemplate     = "llm merge resolution for %s additive conflict region %d is not an exact ordering of OURS and THEIRS"
-	mergeConflictResolutionOverlapTemplate      = "llm merge resolution for %s overlapping insertion conflict region %d does not preserve the exact complete word-token sequence"
+	mergeConflictResolutionOverlapTemplate      = "llm merge resolution for %s overlapping insertion conflict region %d is not an exact insertion alternative"
 	mergeConflictResolutionBaseOnlyTemplate     = "llm merge resolution for %s conflict region %d returned BASE without either side's changes"
 	mergeConflictResolutionExhaustedTemplate    = "semantic resolution for %s conflict region %d exhausted %d semantic attempts: %w"
 	mergeConflictResolutionStructureTemplate    = "conflicted worktree file %s has invalid conflict marker structure"
@@ -131,6 +131,8 @@ type mergeConflictFile struct {
 	Base            string
 	Ours            string
 	OursPresent     bool
+	BasePresent     bool
+	TheirsPresent   bool
 	Theirs          string
 	WorktreeContent string
 }
@@ -537,11 +539,15 @@ func (service mergeConflictResolutionService) collectConflictFile(ctx context.Co
 		}
 	}
 	_, oursPresent := stages[2]
+	_, basePresent := stages[1]
+	_, theirsPresent := stages[3]
 	return mergeConflictFile{
 		Path:            path,
 		Base:            base,
 		Ours:            ours,
 		OursPresent:     oursPresent,
+		BasePresent:     basePresent,
+		TheirsPresent:   theirsPresent,
 		Theirs:          theirs,
 		WorktreeContent: worktreeContent,
 	}, nil
@@ -619,12 +625,15 @@ func (service mergeConflictResolutionService) conflictStageContent(ctx context.C
 }
 
 func (service mergeConflictResolutionService) resolveConflictFile(ctx context.Context, clientProvider mergeConflictResolutionClientProvider, options mergeConflictResolutionOptions, conflictFile mergeConflictFile, timeout time.Duration) (mergeConflictFileResolution, error) {
+	if !mergeConflictFileIsText(conflictFile) {
+		return mergeConflictFileResolution{}, fmt.Errorf(mergeConflictBinaryError, conflictFile.Path)
+	}
 	document, parseErr := parseMergeConflictDocument(conflictFile.WorktreeContent)
 	if parseErr != nil {
 		return mergeConflictFileResolution{}, fmt.Errorf(mergeConflictResolutionStructureTemplate+": %w", conflictFile.Path, parseErr)
 	}
 	if len(document.ConflictRegions) == 0 {
-		return service.resolveMarkerFreeConflictFile(conflictFile), nil
+		return service.resolveMarkerFreeConflictFile(ctx, clientProvider, options, conflictFile, timeout)
 	}
 
 	resolvedRegions := make([]string, len(document.ConflictRegions))
@@ -715,27 +724,6 @@ func (service mergeConflictResolutionService) resolveConflictFile(ctx context.Co
 		},
 	)
 	return resolution, nil
-}
-
-func (service mergeConflictResolutionService) resolveMarkerFreeConflictFile(conflictFile mergeConflictFile) mergeConflictFileResolution {
-	var resolution mergeConflictFileResolution
-	strategy := "current-stage content preservation"
-	if conflictFile.OursPresent {
-		resolution = mergeConflictFileResolution{Content: conflictFile.Ours}
-	} else {
-		resolution = mergeConflictFileResolution{Delete: true}
-		strategy = "current-stage deletion preservation"
-	}
-	service.report(
-		shared.EventLevelInfo,
-		shared.EventCodeAIMergeResolution,
-		fmt.Sprintf("resolved marker-free conflict for %s deterministically using %s", conflictFile.Path, strategy),
-		map[string]string{
-			"path":     conflictFile.Path,
-			"strategy": strategy,
-		},
-	)
-	return resolution
 }
 
 func (service mergeConflictResolutionService) resolveSemanticConflictRegion(ctx context.Context, client llm.ChatClient, options mergeConflictResolutionOptions, conflictFile mergeConflictFile, region mergeConflictRegion, regionIndex int, regionCount int, timeout time.Duration, initialCandidate string, initialCandidateAvailable bool) (string, error) {
@@ -1176,6 +1164,7 @@ func (service mergeConflictResolutionService) buildRegionResolutionRequest(optio
 		region.Ours,
 		region.Theirs,
 	)
+	userPrompt += mergeConflictInsertionInstructions(region)
 	if strings.TrimSpace(feedback) != "" {
 		userPrompt += "\n\n" + fmt.Sprintf(mergeConflictResolutionRepairPrompt, feedback)
 	}
@@ -1223,6 +1212,7 @@ func (service mergeConflictResolutionService) buildRegionReviewRequest(
 		candidateLabel,
 		candidate,
 	)
+	userPrompt += mergeConflictInsertionInstructions(region)
 	if strings.TrimSpace(candidateProofWarning) != "" {
 		userPrompt += "\n\n" + fmt.Sprintf(mergeConflictResolutionProofWarningTemplate, candidateProofWarning)
 	}
@@ -1306,6 +1296,12 @@ func mergeConflictResolutionContent(path string, response string) (string, error
 
 func validateMergeConflictRegionResponse(path string, regionIndex int, region mergeConflictRegion, response string) error {
 	if region.BasePresent && region.Base == "" {
+		if issueAnalysis, related := analyzeMergeConflictIssueInsertions(region.Ours, region.Theirs); related {
+			if issueAnalysis.accepts(response) {
+				return nil
+			}
+			return mergeConflictReplacementIntentProofError{detail: fmt.Errorf(mergeConflictIssueInsertionError, path, regionIndex+1)}
+		}
 		if insertionAnalysis, overlapping := analyzeMergeConflictConcurrentInsertions(region.Ours, region.Theirs); overlapping {
 			return validateMergeConflictOverlappingInsertions(path, regionIndex, insertionAnalysis, response)
 		}
@@ -1356,9 +1352,10 @@ func validateMergeConflictRegionResponse(path string, regionIndex int, region me
 }
 
 func validateMergeConflictOverlappingInsertions(path string, regionIndex int, analysis mergeConflictConcurrentInsertionAnalysis, response string) error {
-	candidateWordTokens := mergeConflictWordTokens(mergeConflictTokens(response))
-	if mergeConflictTokenSequencesEqual(candidateWordTokens, analysis.CompleteWordTokens) {
-		return nil
+	for _, alternative := range analysis.Alternatives {
+		if response == alternative {
+			return nil
+		}
 	}
 	return mergeConflictReplacementIntentProofError{
 		detail: fmt.Errorf(mergeConflictResolutionOverlapTemplate, path, regionIndex+1),

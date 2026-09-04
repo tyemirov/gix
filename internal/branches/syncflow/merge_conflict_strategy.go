@@ -31,8 +31,8 @@ type mergeConflictTokenMatch struct {
 }
 
 type mergeConflictConcurrentInsertionAnalysis struct {
-	Candidate          string
-	CompleteWordTokens []string
+	Candidate    string
+	Alternatives []string
 }
 
 func deterministicMergeConflictRegionResolution(region mergeConflictRegion) (mergeConflictDeterministicResolution, bool) {
@@ -53,6 +53,9 @@ func deterministicMergeConflictRegionResolution(region mergeConflictRegion) (mer
 			Strategy: "local-only change",
 		}, true
 	case region.BasePresent && region.Base == "":
+		if issueAnalysis, related := analyzeMergeConflictIssueInsertions(region.Ours, region.Theirs); related {
+			return mergeConflictDeterministicResolution{Content: issueAnalysis.candidate(), Strategy: mergeConflictIssueInsertionStrategy, RequiresSemanticAudit: true}, true
+		}
 		if insertionAnalysis, overlapping := analyzeMergeConflictConcurrentInsertions(region.Ours, region.Theirs); overlapping {
 			return mergeConflictDeterministicResolution{
 				Content:               insertionAnalysis.Candidate,
@@ -80,18 +83,18 @@ func analyzeMergeConflictConcurrentInsertions(ours string, theirs string) (merge
 	case len(oursWordTokens) <= len(theirsWordTokens) && mergeConflictTokenSequenceContained(oursWordTokens, theirsWordTokens):
 		if len(oursWordTokens) == len(theirsWordTokens) {
 			return mergeConflictConcurrentInsertionAnalysis{
-				Candidate:          ours,
-				CompleteWordTokens: oursWordTokens,
+				Candidate:    ours,
+				Alternatives: []string{ours, theirs},
 			}, true
 		}
 		return mergeConflictConcurrentInsertionAnalysis{
-			Candidate:          theirs,
-			CompleteWordTokens: theirsWordTokens,
+			Candidate:    theirs,
+			Alternatives: []string{theirs},
 		}, true
 	case len(theirsWordTokens) < len(oursWordTokens) && mergeConflictTokenSequenceContained(theirsWordTokens, oursWordTokens):
 		return mergeConflictConcurrentInsertionAnalysis{
-			Candidate:          ours,
-			CompleteWordTokens: oursWordTokens,
+			Candidate:    ours,
+			Alternatives: []string{ours},
 		}, true
 	default:
 		return mergeConflictConcurrentInsertionAnalysis{}, false
@@ -99,11 +102,11 @@ func analyzeMergeConflictConcurrentInsertions(ours string, theirs string) (merge
 }
 
 func mergeConflictWordTokens(tokens []string) []string {
-	wordTokens := make([]string, 0, len(tokens))
+	var wordTokens []string
 	for _, token := range tokens {
-		if mergeConflictTokenClass(token, 0) == 1 {
-			wordTokens = append(wordTokens, token)
-		}
+		wordTokens = append(wordTokens, strings.FieldsFunc(token, func(character rune) bool {
+			return !unicode.IsLetter(character) && !unicode.IsNumber(character) && character != '_'
+		})...)
 	}
 	return wordTokens
 }
@@ -122,18 +125,6 @@ func mergeConflictTokenSequenceContained(subsequence []string, sequence []string
 		}
 	}
 	return subsequenceIndex == len(subsequence)
-}
-
-func mergeConflictTokenSequencesEqual(left []string, right []string) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	for tokenIndex := range left {
-		if left[tokenIndex] != right[tokenIndex] {
-			return false
-		}
-	}
-	return true
 }
 
 func mergeConflictTokenEditResolution(base string, ours string, theirs string) (mergeConflictDeterministicResolution, bool) {
@@ -177,6 +168,18 @@ func mergeConflictTokens(value string) []string {
 	offset := 0
 	currentClass := mergeConflictTokenClass(value, offset)
 	for offset < len(value) {
+		if literalEnd := mergeConflictCodeSpanEnd(value, offset); literalEnd > offset {
+			if tokenStart < offset {
+				tokens = append(tokens, value[tokenStart:offset])
+			}
+			tokens = append(tokens, value[offset:literalEnd])
+			offset = literalEnd
+			tokenStart = literalEnd
+			if offset < len(value) {
+				currentClass = mergeConflictTokenClass(value, offset)
+			}
+			continue
+		}
 		_, runeSize := utf8.DecodeRuneInString(value[offset:])
 		nextOffset := offset + runeSize
 		if nextOffset == len(value) {
@@ -184,7 +187,7 @@ func mergeConflictTokens(value string) []string {
 			break
 		}
 		nextClass := mergeConflictTokenClass(value, nextOffset)
-		if nextClass != currentClass {
+		if nextClass != currentClass || value[nextOffset] == '`' {
 			tokens = append(tokens, value[tokenStart:nextOffset])
 			tokenStart = nextOffset
 			currentClass = nextClass
@@ -192,6 +195,35 @@ func mergeConflictTokens(value string) []string {
 		offset = nextOffset
 	}
 	return tokens
+}
+
+// Keep backtick code spans atomic so prose edits cannot attach to words inside code.
+func mergeConflictCodeSpanEnd(value string, offset int) int {
+	if value[offset] != '`' {
+		return offset
+	}
+	delimiterEnd := offset
+	for delimiterEnd < len(value) && value[delimiterEnd] == '`' {
+		delimiterEnd++
+	}
+	delimiter := value[offset:delimiterEnd]
+	searchOffset := delimiterEnd
+	for searchOffset < len(value) {
+		relativeStart := strings.IndexByte(value[searchOffset:], '`')
+		if relativeStart < 0 {
+			return delimiterEnd
+		}
+		closingStart := searchOffset + relativeStart
+		closingEnd := closingStart
+		for closingEnd < len(value) && value[closingEnd] == '`' {
+			closingEnd++
+		}
+		if closingEnd-closingStart == len(delimiter) {
+			return closingEnd
+		}
+		searchOffset = closingEnd
+	}
+	return delimiterEnd
 }
 
 func mergeConflictTokenClass(value string, offset int) uint8 {
@@ -472,11 +504,9 @@ func mergeConflictMissingRegionReplacementIntents(base string, ours string, thei
 	if mergeConflictCandidateMatchesDerivedVariant(baseTokens, oursEdits, theirsEdits, candidate) {
 		return nil, nil
 	}
-	requireDeletionProof := mergeConflictTokenEditsRequireLinearMemory(baseTokens, oursTokens) ||
-		mergeConflictTokenEditsRequireLinearMemory(baseTokens, theirsTokens)
 	candidateEdits := mergeConflictTokenEdits(baseTokens, mergeConflictTokens(candidate))
-	oursMissing := mergeConflictMissingReplacementIntents(base, ours, theirs, candidate, baseTokens, oursEdits, theirsEdits, candidateEdits, requireDeletionProof)
-	theirsMissing := mergeConflictMissingReplacementIntents(base, theirs, ours, candidate, baseTokens, theirsEdits, oursEdits, candidateEdits, requireDeletionProof)
+	oursMissing := mergeConflictMissingReplacementIntents(base, ours, theirs, candidate, baseTokens, oursEdits, theirsEdits, candidateEdits)
+	theirsMissing := mergeConflictMissingReplacementIntents(base, theirs, ours, candidate, baseTokens, theirsEdits, oursEdits, candidateEdits)
 	return oursMissing, theirsMissing
 }
 
@@ -489,31 +519,26 @@ func mergeConflictMissingReplacementIntents(
 	edits []mergeConflictTokenEdit,
 	otherEdits []mergeConflictTokenEdit,
 	candidateEdits []mergeConflictTokenEdit,
-	requireDeletionProof bool,
 ) []string {
 	normalizedBase := mergeConflictWithoutWhitespace(base)
 	normalizedVariant := mergeConflictWithoutWhitespace(variant)
 	normalizedOtherVariant := mergeConflictWithoutWhitespace(otherVariant)
 	normalizedCandidate := mergeConflictWithoutWhitespace(candidate)
-	hasDeletionIntent := requireDeletionProof && mergeConflictTokenEditsContainDeletionIntent(baseTokens, edits)
-	if hasDeletionIntent && mergeConflictCandidateContainsDisjointVariants(normalizedCandidate, normalizedVariant, normalizedOtherVariant) {
-		return nil
-	}
-	if !hasDeletionIntent && normalizedVariant != "" && strings.Contains(normalizedCandidate, normalizedVariant) {
+	hasDeletionIntent := mergeConflictTokenEditsContainDeletionIntent(baseTokens, edits)
+	preservesVariant := normalizedVariant != "" && strings.Contains(normalizedCandidate, normalizedVariant)
+	if !hasDeletionIntent && preservesVariant {
 		return nil
 	}
 	compatibleVariant, compatibleVariantAvailable := mergeConflictVariantWithCompatibleOtherEdits(baseTokens, edits, otherEdits)
 	normalizedCompatibleVariant := mergeConflictWithoutWhitespace(compatibleVariant)
-	if !hasDeletionIntent && compatibleVariantAvailable && normalizedCompatibleVariant != "" && strings.Contains(normalizedCandidate, normalizedCompatibleVariant) {
+	preservesCompatibleVariant := compatibleVariantAvailable && normalizedCompatibleVariant != "" && strings.Contains(normalizedCandidate, normalizedCompatibleVariant)
+	if !hasDeletionIntent && preservesCompatibleVariant {
 		return nil
 	}
 	missingIntents := make([]string, 0, len(edits))
 	for _, edit := range edits {
 		normalizedReplacement := mergeConflictWithoutWhitespace(edit.Replacement)
 		if normalizedReplacement == "" {
-			if !requireDeletionProof {
-				continue
-			}
 			if edit.Start == edit.End || mergeConflictWithoutWhitespace(strings.Join(baseTokens[edit.Start:edit.End], "")) == "" {
 				continue
 			}
@@ -531,6 +556,10 @@ func mergeConflictMissingReplacementIntents(
 				continue
 			}
 			missingIntents = append(missingIntents, fmt.Sprintf("delete BASE token range %d:%d", edit.Start, edit.End))
+			continue
+		}
+		// Exact source text proves replacements. Deletions still require the checks above.
+		if preservesVariant || preservesCompatibleVariant {
 			continue
 		}
 		if mergeConflictCandidatePreservesReplacementIntent(
@@ -555,26 +584,6 @@ func mergeConflictMissingReplacementIntents(
 		missingIntents = append(missingIntents, edit.Replacement)
 	}
 	return missingIntents
-}
-
-func mergeConflictCandidateContainsDisjointVariants(candidate string, variant string, otherVariant string) bool {
-	if variant == "" || otherVariant == "" {
-		return false
-	}
-	searchOffset := 0
-	for searchOffset <= len(candidate)-len(variant) {
-		variantOffset := strings.Index(candidate[searchOffset:], variant)
-		if variantOffset < 0 {
-			return false
-		}
-		variantStart := searchOffset + variantOffset
-		variantEnd := variantStart + len(variant)
-		if strings.Contains(candidate[:variantStart], otherVariant) || strings.Contains(candidate[variantEnd:], otherVariant) {
-			return true
-		}
-		searchOffset = variantStart + 1
-	}
-	return false
 }
 
 func mergeConflictTokenEditsContainDeletionIntent(baseTokens []string, edits []mergeConflictTokenEdit) bool {
