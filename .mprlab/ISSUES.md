@@ -11,6 +11,146 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B087] (P1) Validate punctuation in insertion conflict results.
+  Goal:
+  Gix preserves meaningful punctuation when it validates a semantic correction.
+  Evidence:
+  The compiled CLI reproduced this defect at commit `6205e07` on 2026-09-04.
+  Both branches insert one statement between the same unchanged lines.
+  The local statement is `return enabled;`. The incoming statement is `return !enabled;`.
+  A controlled local model response returns `return &&enabled;`.
+  Gix accepts this invented operator after one request and pushes the result to the local test remote.
+  Expected result:
+  Validation rejects the invented operator.
+  Actual result:
+  `validateMergeConflictOverlappingInsertions` compares only word tokens and ignores all punctuation.
+  Requirements:
+  - Validate meaningful punctuation and whitespace against the conflict alternatives.
+  - Preserve the distinction between operators and document punctuation.
+  Validation:
+  - Exercise operator changes through the compiled CLI with controlled model responses.
+  - Verify rejection of invented operators before a merge commit or push.
+  - Verify valid conflict alternatives and exact rollback after rejected results.
+  Resolution on 2026-09-04:
+  Insertion validation now compares exact source bytes, including punctuation and whitespace.
+  The compiled CLI rejects invented operators and spacing, accepts valid alternatives, and restores the checkout after bounded rejection.
+  Final validation:
+  All 21 compiled CLI regression cases passed.
+  `make ci` passed on 2026-09-04. The complete integration suite passed in 303.063 seconds.
+  The source change remains local on `tyemirov/bugfix/merge-conflict-fidelity`.
+
+
+- [x] [B086] (P0) Validate deletion intent for every conflict size.
+  Goal:
+  Gix preserves each compatible deletion intent at every conflict size.
+  Evidence:
+  The compiled CLI reproduced this defect at commit `6205e07` on 2026-09-04.
+  BASE is `alpha beta gamma`. OURS is `alpha gamma`. THEIRS is `alpha beta gamma delta`.
+  Each version ends with a newline.
+  Gix derives the compatible result `alpha gamma delta`.
+  A controlled local model response returns THEIRS and restores the deleted `beta` token.
+  Gix accepts that response after one request and pushes it to the local test remote.
+  Expected result:
+  The result preserves the deletion of `beta` and the addition of `delta`.
+  Actual result:
+  `mergeConflictMissingRegionReplacementIntents` requires deletion proof only when a token matrix exceeds its size limit.
+  The small-matrix path skips empty replacements.
+  Requirements:
+  - Apply the same deletion-intent contract to both token algorithms.
+  - Reject a result that restores a compatible deletion.
+  Validation:
+  - Exercise small and large deletion conflicts through the compiled CLI.
+  - Return a result that restores deleted content before the valid correction.
+  - Verify rejection, bounded repair, and preservation of both compatible changes.
+  Resolution on 2026-09-04:
+  Both token algorithms now require deletion proof.
+  Copies of both source variants cannot bypass that check.
+  Source containment proves replacement text separately from deletion intent.
+  Backtick code spans stay in one token to prevent prose changes inside code.
+  The original coarse-region stash fixture passes with its expected document unchanged.
+  Compiled CLI tests cover small and large deletions, repair, and exact rollback.
+  Final validation:
+  All 21 compiled CLI regression cases passed.
+  `make ci` passed on 2026-09-04. The complete integration suite passed in 303.063 seconds.
+  The source change remains local on `tyemirov/bugfix/merge-conflict-fidelity`.
+
+
+- [x] [B085] (P0) Resolve conflicts without markers from both sides.
+  Goal:
+  Gix resolves a file deletion and a concurrent file edit from explicit conflict evidence.
+  Evidence:
+  The compiled CLI reproduced this defect at commit `6205e07` on 2026-09-04.
+  BASE contains `original`. The local branch deletes the file.
+  The incoming branch replaces its contents with `incoming valuable edit`.
+  Git reports a modify/delete conflict and leaves the incoming file in the checkout.
+  Gix deletes that file, makes zero model requests, and pushes the deletion to the local test remote.
+  Expected result:
+  Gix evaluates both the deletion and the incoming edit before it selects a result.
+  Actual result:
+  `resolveMarkerFreeConflictFile` selects OURS whenever a conflict has no text markers.
+  Absence of conflict markers is not proof of a completed conflict decision.
+  Requirements:
+  - Classify conflicts from Git stage presence and content.
+  - Resolve changes on both sides through an explicit conflict contract.
+  - Preserve rollback when that contract cannot establish a valid result.
+  Validation:
+  - Exercise modify/delete conflicts in both directions through the compiled CLI.
+  - Exercise binary conflicts and explicit file deletion results.
+  - Verify both conflict intents before a merge commit or push.
+  Resolution on 2026-09-04:
+  Git stage presence and content now establish identical or unilateral changes.
+  Other text conflicts without markers require an explicit OURS or THEIRS selection.
+  The selected file keeps its exact contents or its deletion.
+  Empty files remain distinct from deleted files.
+  Binary conflicts stop before model access and restore the local state before publication.
+  Provider failures stop semantic repair immediately.
+  Compiled CLI tests cover both conflict directions, both choices, rejected choices, provider failure, and rollback.
+  Final validation:
+  All 21 compiled CLI regression cases passed.
+  `make ci` passed on 2026-09-04. The complete integration suite passed in 303.063 seconds.
+  The source change remains local on `tyemirov/bugfix/merge-conflict-fidelity`.
+
+
+- [x] [B084] (P1) Accept one coherent result for related insertions.
+  Goal:
+  Gix resolves related insertions without duplicate obsolete content.
+  Evidence:
+  Gix v1.9.0 rejected the Social Threader I002 conflict on 2026-09-04.
+  The compiled CLI reproduced the failure at commit `6205e07` with the exact three file versions.
+  The common ancestor has no I002 entry. OURS adds the original open entry.
+  THEIRS adds the closed entry with approved requirement changes and resolution evidence.
+  A controlled local model response returns the complete closed entry.
+  Gix rejects that response four times and restores the original local commit.
+  Native `git pull --no-rebase` also reports a conflict for these same committed changes.
+  Expected result:
+  Gix accepts one coherent current entry that preserves the approved requirements and resolution evidence.
+  Actual result:
+  The empty-BASE validator accepts only exact concatenation when neither word sequence contains the other.
+  Both accepted concatenations duplicate I002 and preserve obsolete requirements.
+  Requirements:
+  - Distinguish independent additions from related versions of the same content.
+  - Validate a coherent replacement alternative for related insertions.
+  - Preserve all independent additions and bounded rollback for unresolved intent.
+  Validation:
+  - Reproduce the exact I002 versions through the compiled CLI.
+  - Verify one I002 entry with the approved requirements and resolution evidence.
+  - Verify independent additions, conflicting requirements, and exact rollback after rejected results.
+  Resolution on 2026-09-04:
+  Complete issue records now use their canonical identifiers as keys.
+  Each identifier appears once with an exact source alternative.
+  The exact Social Threader I002 regression accepts the closed entry and preserves independent additions.
+  Duplicate records, missing independent records, and invented requirements fail validation.
+  Final validation:
+  All 21 compiled CLI regression cases passed.
+  `make ci` passed on 2026-09-04. The complete integration suite passed in 303.063 seconds.
+  The source change remains local on `tyemirov/bugfix/merge-conflict-fidelity`.
+  `make build` and `git diff --check` also passed.
+  The changed documentation has no new mechanical language findings.
+  The checked documents retain 404 existing findings.
+  The Governor check reports eight existing managed-document differences.
+  The corrected local binary is `bin/gix`. The installed binary remains v1.9.0.
+
+
 - [x] [B083] (P1) Ignore all repositories in an ignored repository.
   Goal:
   Repository discovery ignores each repository in an ignored repository.
