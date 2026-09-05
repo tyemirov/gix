@@ -35,6 +35,12 @@ func TestSyncConflictFidelityContracts(t *testing.T) {
 		providerFailure          bool
 		rejection                string
 	}{
+
+		{name: "compatible inline correction", base: "Run `alpha beta gamma`.\n", ours: "Run `alpha gamma`.\n", theirs: "Run `alpha beta gamma delta`.\n", responses: []string{semanticMergeResponse("Run `alpha gamma delta`.\n")}, expected: "Run `alpha gamma delta`.\n"},
+		{name: "compatible inline approval", base: "Run `alpha beta gamma`.\n", ours: "Run `alpha gamma`.\n", theirs: "Run `alpha beta gamma delta`.\n", responses: []string{"GIX_MERGE_REVIEW_APPROVED"}, expected: "Run `alpha gamma delta`.\n"},
+		{name: "inline correction preserves incoming deletion", base: "Run `alpha beta gamma`.\n", ours: "Run `alpha beta gamma delta`.\n", theirs: "Run `alpha gamma`.\n", responses: []string{semanticMergeResponse("Run `alpha gamma delta`.\n")}, expected: "Run `alpha gamma delta`.\n"},
+		{name: "inline correction cannot drop addition", base: "Run `alpha beta gamma`.\n", ours: "Run `alpha gamma`.\n", theirs: "Run `alpha beta gamma delta`.\n", responses: []string{semanticMergeResponse("Run `alpha gamma`.\n"), semanticMergeResponse("Run `alpha gamma delta`.\n")}, expected: "Run `alpha gamma delta`.\n", rejection: "replacement intent"},
+		{name: "inline correction cannot restore deletion", base: "Run `alpha beta gamma`.\n", ours: "Run `alpha gamma`.\n", theirs: "Run `alpha beta gamma delta`.\n", responses: []string{semanticMergeResponse("Run `alpha beta gamma delta`.\n"), semanticMergeResponse("Run `alpha gamma delta`.\n")}, expected: "Run `alpha gamma delta`.\n", rejection: "delete BASE token range"},
 		{name: "local deletion keeps incoming edit", base: "original\n", oursAbsent: true, theirs: "valuable incoming edit\n", responses: []string{selectTheirs}, expected: "valuable incoming edit\n"},
 		{name: "incoming deletion keeps local edit", base: "original\n", ours: "valuable local edit\n", theirsAbsent: true, responses: []string{selectOurs}, expected: "valuable local edit\n"},
 		{name: "explicit local deletion", base: "original\n", oursAbsent: true, theirs: "valuable incoming edit\n", responses: []string{selectOurs}, expectedAbsent: true},
@@ -159,6 +165,60 @@ func TestSyncConflictFidelityContracts(t *testing.T) {
 			if (tc.oursAbsent || tc.theirsAbsent) && len(tc.responses) > 0 {
 				require.Contains(t, <-requestBodies, "file absent in this stage")
 			}
+		})
+	}
+}
+
+func TestSyncRenameConflictRequiresGitResolution(t *testing.T) {
+	root := integrationRepositoryRoot(t)
+	binary := buildIntegrationBinary(t, root)
+	for _, originalPath := range []string{"original.txt", "aaa-original.txt"} {
+		t.Run(originalPath, func(t *testing.T) {
+			workspace := syncHomeWorkspace(t)
+			remote := filepath.Join(workspace, "remote.git")
+			repository := filepath.Join(workspace, "project")
+			createSyncGitHubBackedRepository(t, remote, repository)
+			require.NoError(t, os.WriteFile(filepath.Join(repository, originalPath), []byte("unique original content\n"), 0o644))
+			runGit(t, repository, "add", ".")
+			runGit(t, repository, "commit", "-m", "base")
+			runGit(t, repository, "push", "-u", "origin", "master")
+			runGit(t, repository, "switch", "-c", "incoming")
+			runGit(t, repository, "mv", originalPath, "incoming.txt")
+			runGit(t, repository, "commit", "-m", "rename incoming")
+			runGit(t, repository, "push", "origin", "HEAD:master")
+			incomingCommit := strings.TrimSpace(runGit(t, remote, "rev-parse", "master"))
+			runGit(t, repository, "switch", "master")
+			runGit(t, repository, "mv", originalPath, "local.txt")
+			runGit(t, repository, "commit", "-m", "rename local")
+			localCommit := strings.TrimSpace(runGit(t, repository, "rev-parse", "HEAD"))
+			var requests atomic.Int64
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests.Add(1)
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprint(w, `{"choices":[{"message":{"role":"assistant","content":"GIX_MERGE_SELECT_OURS"}}]}`)
+			}))
+			defer server.Close()
+			configuration := writeReportedLifecycleSemanticConfiguration(t, server.URL)
+			output, err := runBinaryIntegrationCommand(t, binary, repository, map[string]string{
+				pathEnvironmentVariableNameConstant: buildSyncMergedBranchExecutablePath(t),
+				syncMergedBranchGitLogVariable:      filepath.Join(t.TempDir(), "git.log"),
+				syncMergedBranchGitHubLogVariable:   filepath.Join(t.TempDir(), "gh.log"),
+				syncMergedBranchNameVariable:        "master",
+				syncMergedBranchMergedVariable:      "false",
+			}, syncStateTransitionTimeout, []string{"--config", configuration, "--roots", repository, "sync", "master"})
+			require.Error(t, err, output)
+			require.Contains(t, output, "structural conflict")
+			require.Contains(t, output, "AI_MERGE_ROLLBACK")
+			require.Zero(t, requests.Load())
+			require.Equal(t, localCommit, strings.TrimSpace(runGit(t, repository, "rev-parse", "HEAD")))
+			require.Equal(t, incomingCommit, strings.TrimSpace(runGit(t, remote, "rev-parse", "master")))
+			require.Equal(t, "unique original content\n", readTextFile(t, filepath.Join(repository, "local.txt")))
+			require.NoFileExists(t, filepath.Join(repository, "incoming.txt"))
+			require.NoFileExists(t, filepath.Join(repository, originalPath))
+			require.Empty(t, strings.TrimSpace(runGit(t, repository, "status", "--porcelain")))
+			command := exec.Command("git", "-C", repository, "rev-parse", "--verify", "MERGE_HEAD")
+			command.Env = buildGitCommandEnvironment(nil)
+			require.Error(t, command.Run())
 		})
 	}
 }
