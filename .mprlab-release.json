@@ -1,6 +1,6 @@
 {
-  "release_timestamp": "2026-09-04T17:32:20-07:00",
-  "release_version": "v1.9.1",
+  "release_timestamp": "2026-09-05T09:16:55-07:00",
+  "release_version": "v1.9.2",
   "schema_version": 1,
-  "source_commit": "ab1781d8201ae884694f0a15b5630ecddd24c1d2"
+  "source_commit": "8850bd49b8bed6cf1a6dd123d89bc7d7eae97015"
 }
