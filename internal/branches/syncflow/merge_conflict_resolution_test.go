@@ -178,17 +178,17 @@ func TestValidateMergeConflictRegionResponseContracts(t *testing.T) {
 	}
 	overlappingResolution, resolved := deterministicMergeConflictRegionResolution(overlappingInsertionRegion)
 	require.True(t, resolved)
-	require.Equal(t, "overlapping concurrent insertions", overlappingResolution.Strategy)
+	require.Equal(t, mergeConflictIssueInsertionStrategy, overlappingResolution.Strategy)
 	require.Equal(t, overlappingInsertionRegion.Ours, overlappingResolution.Content)
 	require.NoError(t, validateMergeConflictRegionResponse("ISSUES.md", 0, overlappingInsertionRegion, overlappingResolution.Content))
 
 	incomingStatusWithResolution := strings.Replace(overlappingInsertionRegion.Ours, "[x]", "[ ]", 1)
 	incomingStatusErr := validateMergeConflictRegionResponse("ISSUES.md", 0, overlappingInsertionRegion, incomingStatusWithResolution)
 	require.Error(t, incomingStatusErr)
-	require.Contains(t, incomingStatusErr.Error(), "does not preserve the exact complete word-token sequence")
+	require.Contains(t, incomingStatusErr.Error(), "issue insertion result")
 	overlappingLossErr := validateMergeConflictRegionResponse("ISSUES.md", 0, overlappingInsertionRegion, overlappingInsertionRegion.Theirs)
 	require.Error(t, overlappingLossErr)
-	require.Contains(t, overlappingLossErr.Error(), "does not preserve the exact complete word-token sequence")
+	require.Contains(t, overlappingLossErr.Error(), "issue insertion result")
 	require.ErrorIs(t, overlappingLossErr, errMergeConflictReplacementIntentProofUnavailable)
 
 	neighboringGapRegion := mergeConflictRegion{
@@ -206,7 +206,7 @@ func TestValidateMergeConflictRegionResponseContracts(t *testing.T) {
 		t.Run("overlapping insertion rejects "+invalidCandidateName+" word tokens", func(t *testing.T) {
 			invalidCandidateErr := validateMergeConflictRegionResponse("notes.txt", 0, neighboringGapRegion, invalidCandidate)
 			require.Error(t, invalidCandidateErr)
-			require.Contains(t, invalidCandidateErr.Error(), "does not preserve the exact complete word-token sequence")
+			require.Contains(t, invalidCandidateErr.Error(), "is not an exact insertion alternative")
 			require.ErrorIs(t, invalidCandidateErr, errMergeConflictReplacementIntentProofUnavailable)
 		})
 	}
@@ -658,7 +658,7 @@ func TestDeterministicMergeConflictRegionResolutionBuildsAuthoritativeResultsAnd
 				Theirs:      "- [x] [B512] Converge deployments.\n  Goal:\n  Keep the latest fence.\n  Validation:\n  Run the incoming check.\n",
 			},
 			expectedContent:       "- [x] [B512] Converge deployments.\n  Goal:\n  Keep the latest fence.\n  Validation:\n  Run the incoming check.\n",
-			expectedStrategy:      "overlapping concurrent insertions",
+			expectedStrategy:      mergeConflictIssueInsertionStrategy,
 			requiresSemanticAudit: true,
 		},
 		"punctuation lcs ties keep the shared word sequence": {

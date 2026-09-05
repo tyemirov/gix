@@ -1540,7 +1540,7 @@ operations:
 	}
 }
 
-func TestSyncResolvesMarkerFreeModifyDeleteDeterministicallyWithoutLLM(testInstance *testing.T) {
+func TestSyncResolvesDirtyModifyDeleteWithExplicitSelection(testInstance *testing.T) {
 	testInstance.Helper()
 
 	const (
@@ -1578,12 +1578,17 @@ func TestSyncResolvesMarkerFreeModifyDeleteDeterministicallyWithoutLLM(testInsta
 			http.NotFound(responseWriter, request)
 			return
 		}
-		if responseIndex.Add(1) != 1 {
+		requestNumber := responseIndex.Add(1)
+		if requestNumber > 2 {
 			http.Error(responseWriter, "unexpected LLM request", http.StatusBadRequest)
 			return
 		}
 		responseWriter.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprint(responseWriter, `{"choices":[{"message":{"role":"assistant","content":"docs: delete obsolete notes"}}]}`)
+		response := "docs: delete obsolete notes"
+		if requestNumber == 2 {
+			response = "GIX_MERGE_SELECT_OURS"
+		}
+		_, _ = fmt.Fprintf(responseWriter, `{"choices":[{"message":{"role":"assistant","content":%q}}]}`, response)
 	}))
 	testInstance.Cleanup(llmServer.Close)
 
@@ -1654,11 +1659,11 @@ operations:
 		},
 	)
 	require.NoError(testInstance, runError, output)
-	require.Contains(testInstance, output, "resolved marker-free conflict for "+conflictedFileName+" deterministically using current-stage deletion preservation")
+	require.Contains(testInstance, output, "resolved marker-free conflict for "+conflictedFileName+" with explicit selection GIX_MERGE_SELECT_OURS")
 	require.Contains(testInstance, output, "merge conflict resolution completed")
 	require.NotContains(testInstance, output, "AI_MERGE_ROLLBACK")
 	require.NotContains(testInstance, output, "AI_MERGE_HANDOFF")
-	require.Equal(testInstance, int64(1), responseIndex.Load())
+	require.Equal(testInstance, int64(2), responseIndex.Load())
 
 	require.Equal(testInstance, "master", strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
 	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))

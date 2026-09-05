@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Conflict resolution
+- Stopped structural rename conflicts before publication and restored the checkout for an explicit Git resolution.
+- Required explicit source selection for text conflicts without markers and stopped binary conflicts before model access.
+- Applied deletion-intent validation to every conflict size.
+- Kept code tokens distinct from prose tokens and preserved independent changes within backtick spans.
+- Resolved related issue insertions with one exact record per identifier.
+- Rejected invented punctuation and whitespace in overlapping insertion results.
+
 ### Documentation
 - Archived resolved backlog records and refreshed the current documentation for strict configuration, release source-versus-release commit identities, and the local web audit workspace.
 
@@ -27,7 +35,7 @@
 
 ### Bug Fixes 🐛
 - Removed repositories in ignored repositories from audit and workflow discovery results.
-- Merged empty-base insertions when one word sequence contains the other. Required the exact complete word sequence without missing or duplicated content.
+- Merged empty-base insertions when one word sequence contains the other. Required an exact complete source alternative.
 - Added the current gix LoopAware pixel to the published Pages artifact. Added a repository test for the exact site identity.
 - Retained a semantic correction without replacement-intent proof for the next repair request. The next audit now repairs that exact correction instead of the malformed derived candidate.
 - Allowed an audited semantic candidate to delete one conflict region without adding a newline. Tracked candidate availability separately from candidate content.
@@ -67,7 +75,7 @@
 - Converted CLI Ctrl-C into context cancellation and detached `MERGE_HEAD` inspection, so cancellation before conflict discovery still aborts the operation-owned merge.
 - Made strict sync transactional across the caller and every sibling it may adopt: transaction-owned snapshots preserve commits, local branch refs, the index, staged and unstaged contents, untracked files, stash ordering, and worktree topology; pre-push failure restores the exact snapshot, while post-push failure preserves forward recovery state under `SYNC_SWITCH_HANDOFF`.
 - Deferred sibling publication to the normal target-branch push and made invocation-owned stashes restore by exact object with `--index`, use bounded semantic conflict resolution when required, and finish before `SYNCED` is reported.
-- Replaced strict-sync's one-shot full-file AI merge path with a fidelity-first diff3 ladder: exact local reconstruction, authoritative no-choice/current-stage decisions, lossless issue/changelog and token candidates, and mandatory semantic LLM audit for every two-sided marker-bearing region.
+- Replaced whole-file AI generation with diff3 region resolution. Added exact local reconstruction and semantic audit of issue and token candidates.
 - Deferred strict-sync rollback until every deterministic and bounded semantic strategy is exhausted, while retaining immediate final recovery for caller cancellation or unrecoverable Git/filesystem failure and manual handoff only for a failed abort.
 - Required existing license-rollout drafts to match the inspected base, canonical one-commit history, exact changed paths, and rendered license blobs before apply can skip them.
 - Pinned every license-rollout clone to the exact default-branch commit whose root license blobs passed planning, preventing a later branch advance from changing the mutation base.
@@ -139,7 +147,7 @@
 - Added public CLI regressions for dirty unreviewed remote branches and dirty merged remote branches without stack metadata.
 - Added a public CLI regression proving a three-level parent stack remains intact, parent push/PR creation precedes child creation, clustered commits stay linear, a failed child PR creation retries against the persisted parent, and merged stacks hand off normally.
 - Added a black-box dirty-sync regression that verifies two top-level change clusters become two linear commits above the original branch before push and pull-request creation.
-- Added CLI regressions for isolated explicit-master rescue, local-only generated-name collisions, marker-bearing candidate rejection, deterministic marker-free deletion, and the assembled sync help output.
+- Added CLI regressions for explicit-master rescue, name collisions, and candidate rejection. Covered explicit file selection and sync help output.
 - Added black-box release coverage for clean-checkout helpers, failed or missing platform outputs, replaced published manifests, and missing integrity prerequisites.
 
 ### Docs 📚

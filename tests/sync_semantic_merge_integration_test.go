@@ -495,9 +495,9 @@ func TestSyncMergesOverlappingConcurrentIssueInsertionsWithoutDuplicateContent(t
 		},
 	)
 	require.NoError(testInstance, runError, output)
-	require.Contains(testInstance, output, "derived .mprlab/ISSUES.md conflict region 1/1 candidate using overlapping concurrent insertions; requesting semantic audit")
+	require.Contains(testInstance, output, "derived .mprlab/ISSUES.md conflict region 1/1 candidate using related issue insertions; requesting semantic audit")
 	require.Contains(testInstance, output, "semantic audit attempt 1/4 retained a semantic correction")
-	require.Contains(testInstance, output, "does not preserve the exact complete word-token sequence")
+	require.Contains(testInstance, output, "issue insertion result")
 	require.Contains(testInstance, output, "requesting repair of the exact correction")
 	require.Contains(testInstance, output, "semantic audit approved")
 	require.NotContains(testInstance, output, "AI_MERGE_ROLLBACK")
@@ -516,7 +516,7 @@ func TestSyncMergesOverlappingConcurrentIssueInsertionsWithoutDuplicateContent(t
 	require.Contains(testInstance, firstRequestBody, "LOCALLY VALIDATED CANDIDATE")
 	require.Equal(testInstance, 3, strings.Count(firstRequestBody, "[B512]"))
 	require.Contains(testInstance, firstRequestBody, "Resolution 2026-08-31")
-	require.Contains(testInstance, secondRequestBody, "does not preserve the exact complete word-token sequence")
+	require.Contains(testInstance, secondRequestBody, "issue insertion result")
 
 	headWithParents := strings.Fields(runGit(testInstance, repositoryPath, "rev-list", "--parents", "-n", "1", "HEAD"))
 	require.Len(testInstance, headWithParents, 3)
