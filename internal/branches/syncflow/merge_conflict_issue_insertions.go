@@ -117,17 +117,13 @@ func (analysis mergeConflictIssueInsertionAnalysis) accepts(content string) bool
 }
 
 const (
-	mergeConflictIssueInsertionInstructions = "\n\nIssue record contract: Include every distinct issue identifier exactly once. For a shared identifier, select one complete source record. Preserve independent records. If one source record contains the complete word sequence of the other plus additional words, preserve that complete record. Keep the selected records byte-for-byte, including punctuation and whitespace."
-	mergeConflictOverlapInstructions        = "\n\nInsertion contract: Return an exact source alternative, including punctuation and whitespace. When one side contains the complete word sequence plus additional words, only that complete source alternative is valid. Equal word sequences permit either exact source alternative."
-	mergeConflictAdditiveInstructions       = "\n\nIndependent insertion contract: Return exact OURS followed by THEIRS, or exact THEIRS followed by OURS, including every byte and boundary newline."
+	mergeConflictOverlapInstructions  = "\n\nInsertion contract: Return an exact source alternative, including punctuation and whitespace. When one side contains the complete word sequence plus additional words, only that complete source alternative is valid. Equal word sequences permit either exact source alternative."
+	mergeConflictAdditiveInstructions = "\n\nIndependent insertion contract: Return exact OURS followed by THEIRS, or exact THEIRS followed by OURS, including every byte and boundary newline."
 )
 
 func mergeConflictInsertionInstructions(region mergeConflictRegion) string {
 	if !region.BasePresent || region.Base != "" {
 		return ""
-	}
-	if _, related := analyzeMergeConflictIssueInsertions(region.Ours, region.Theirs); related {
-		return mergeConflictIssueInsertionInstructions
 	}
 	if _, overlapping := analyzeMergeConflictConcurrentInsertions(region.Ours, region.Theirs); overlapping {
 		return mergeConflictOverlapInstructions
