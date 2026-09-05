@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Conflict resolution
+- Preserved independent new issues with the same identifier and different titles. Assigned new incoming identifiers and updated incoming tracker references.
 - Replaced issue transcription with source selection keys and kept the original record bytes in each merge result.
 - Stopped structural rename conflicts before publication and restored the checkout for an explicit Git resolution.
 - Required explicit source selection for text conflicts without markers and stopped binary conflicts before model access.
