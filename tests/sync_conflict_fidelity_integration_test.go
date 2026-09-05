@@ -24,6 +24,10 @@ func TestSyncConflictFidelityContracts(t *testing.T) {
 	issueTail := "- [x] [I001] Stable issue.\n"
 	otherIssue := "- [ ] [I003] Independent local request.\n\n"
 	incomingIssue := "- [ ] [I004] Independent incoming request.\n\n"
+	csvIssue := "- [ ] [I002] Add CSV export.\n  Export all orders.\n\n"
+	ssoIssue := "- [ ] [I002] Add SSO login.\n  Authenticate company accounts.\n\n"
+	localDependent := "- [ ] [I003] {I002} Validate CSV export.\n\n"
+	incomingDependent := "- [ ] [I004] {I002} Validate SSO login.\n  Verify I002 with [I002].\n\n"
 	const selectOurs = "GIX_MERGE_SELECT_OURS"
 	const selectTheirs = "GIX_MERGE_SELECT_THEIRS"
 	cases := []struct {
@@ -35,8 +39,18 @@ func TestSyncConflictFidelityContracts(t *testing.T) {
 		providerFailure          bool
 		dirty                    bool
 		rejection                string
+		archive                  string
 	}{
 
+		{name: "collision preserves separate requests", base: issuePrefix + issueTail, ours: issuePrefix + csvIssue + issueTail, theirs: issuePrefix + ssoIssue + issueTail, responses: []string{"GIX_MERGE_REVIEW_APPROVED"}, expected: issuePrefix + csvIssue + strings.ReplaceAll(ssoIssue, "I002", "I003") + issueTail},
+		{name: "collision allocates multiple linked requests", base: issuePrefix + issueTail, ours: issuePrefix + csvIssue + localDependent + issueTail, theirs: issuePrefix + ssoIssue + strings.ReplaceAll(incomingDependent, "I004", "I003") + issueTail, responses: []string{"GIX_MERGE_REVIEW_APPROVED"}, expected: issuePrefix + csvIssue + localDependent + strings.ReplaceAll(ssoIssue, "I002", "I004") + strings.ReplaceAll(strings.ReplaceAll(incomingDependent, "I004", "I005"), "I002", "I004") + issueTail},
+		{name: "related issue metadata keeps identity", base: issuePrefix + issueTail, ours: issuePrefix + csvIssue + issueTail, theirs: issuePrefix + strings.ReplaceAll(csvIssue, "[I002] ", "[I002]  (P1) {I001} ") + issueTail, responses: []string{"I002=1"}, expected: issuePrefix + strings.ReplaceAll(csvIssue, "[I002] ", "[I002]  (P1) {I001} ") + issueTail},
+		{name: "collision preserves separate requests reversed", base: issuePrefix + issueTail, ours: issuePrefix + ssoIssue + issueTail, theirs: issuePrefix + csvIssue + issueTail, responses: []string{"GIX_MERGE_REVIEW_APPROVED"}, expected: issuePrefix + ssoIssue + strings.ReplaceAll(csvIssue, "I002", "I003") + issueTail},
+		{name: "collision dirty sync preserves both requests", dirty: true, base: issuePrefix + issueTail, ours: issuePrefix + csvIssue + issueTail, theirs: issuePrefix + ssoIssue + issueTail, responses: []string{"GIX_MERGE_REVIEW_APPROVED"}, expected: issuePrefix + csvIssue + strings.ReplaceAll(ssoIssue, "I002", "I003") + issueTail},
+		{name: "collision reserves whole tracker IDs", base: issuePrefix + issueTail + "- [x] [I009] Later record.\n", ours: issuePrefix + csvIssue + localDependent + issueTail + "- [x] [I009] Later record.\n", theirs: issuePrefix + ssoIssue + incomingDependent + issueTail + "- [x] [I009] Later record.\n", responses: []string{"GIX_MERGE_REVIEW_APPROVED"}, expected: issuePrefix + csvIssue + localDependent + strings.ReplaceAll(ssoIssue+incomingDependent, "I002", "I010") + issueTail + "- [x] [I009] Later record.\n"},
+		{name: "collision reserves archive IDs", archive: "# ARCHIVE\n\n- [x] [I020] Archived request.\n", base: issuePrefix + issueTail, ours: issuePrefix + csvIssue + issueTail, theirs: issuePrefix + ssoIssue + incomingDependent + issueTail, responses: []string{"GIX_MERGE_REVIEW_APPROVED"}, expected: issuePrefix + csvIssue + strings.ReplaceAll(ssoIssue+incomingDependent, "I002", "I021") + issueTail},
+		{name: "collision keeps recurring suffix", base: "# ISSUES\n\n## Maintenance\n\n- [x] [M003] Existing request.\n", ours: "# ISSUES\n\n## Maintenance\n\n- [ ] [M002R] Inspect CSV exports.\n\n- [x] [M003] Existing request.\n", theirs: "# ISSUES\n\n## Maintenance\n\n- [ ] [M002R] Inspect SSO logins.\n\n- [x] [M003] Existing request.\n", responses: []string{"GIX_MERGE_REVIEW_APPROVED"}, expected: "# ISSUES\n\n## Maintenance\n\n- [ ] [M002R] Inspect CSV exports.\n\n- [ ] [M004R] Inspect SSO logins.\n\n- [x] [M003] Existing request.\n"},
+		{name: "existing issue title changes keep identity", base: issuePrefix + "- [ ] [I002] Original title.\n\n" + issueTail, ours: issuePrefix + "- [ ] [I002] Local title.\n\n" + issueTail, theirs: issuePrefix + "- [ ] [I002] Incoming title.\n\n" + issueTail, responses: []string{"GIX_MERGE_REVIEW_APPROVED"}, expected: issuePrefix + "- [ ] [I002] Local title.\n\n" + issueTail},
 		{name: "compatible inline correction", base: "Run `alpha beta gamma`.\n", ours: "Run `alpha gamma`.\n", theirs: "Run `alpha beta gamma delta`.\n", responses: []string{semanticMergeResponse("Run `alpha gamma delta`.\n")}, expected: "Run `alpha gamma delta`.\n"},
 		{name: "compatible inline approval", base: "Run `alpha beta gamma`.\n", ours: "Run `alpha gamma`.\n", theirs: "Run `alpha beta gamma delta`.\n", responses: []string{"GIX_MERGE_REVIEW_APPROVED"}, expected: "Run `alpha gamma delta`.\n"},
 		{name: "inline correction preserves incoming deletion", base: "Run `alpha beta gamma`.\n", ours: "Run `alpha beta gamma delta`.\n", theirs: "Run `alpha gamma`.\n", responses: []string{semanticMergeResponse("Run `alpha gamma delta`.\n")}, expected: "Run `alpha gamma delta`.\n"},
@@ -85,6 +99,9 @@ func TestSyncConflictFidelityContracts(t *testing.T) {
 			path := filepath.Join(repository, relativePath)
 			require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
 			require.NoError(t, os.WriteFile(path, []byte(tc.base), 0o644))
+			if tc.archive != "" {
+				require.NoError(t, os.WriteFile(filepath.Join(repository, ".mprlab", "ARCHIVE.md"), []byte(tc.archive), 0o644))
+			}
 			runGit(t, repository, "add", ".")
 			runGit(t, repository, "commit", "-m", "base")
 			runGit(t, repository, "push", "-u", "origin", "master")
