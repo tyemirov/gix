@@ -174,6 +174,23 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.9.2] - 2026-09-05
+
+- Merge pull request #447 from tyemirov/tyemirov/bugfix/issue-source-selection
+- test(sync): cover tracker ID collision fidelity
+- fix(sync): renumber colliding concurrent issue identifiers
+- docs: document issue identifier collision handling
+- fix(sync): preserve colliding incoming issues and references
+- feat(sync): renumber colliding incoming issue records during merges
+- docs: record resolution for independent issue ID collisions
+- test(sync): cover related issue source selection
+- feat(sync): select issue conflict records by source key
+- feat(sync): select issue insertion sources by key
+- refactor(sync): preserve source bytes in merge conflict results
+- feat(sync): resolve issue conflicts from source selections
+- docs: strengthen testing and file permission guidance
+- docs: establish integration-first development and hosting policy
+
 ## [v1.9.1] - 2026-09-04
 
 - Merge pull request #446 from tyemirov/tyemirov/bugfix/merge-conflict-fidelity
