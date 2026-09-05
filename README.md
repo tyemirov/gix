@@ -78,9 +78,11 @@ Dirty-cluster commit-message requests are also ownership boundaries. Immediately
 
 `--stash` is invocation-owned. Gix reapplies it with `--index`, resolves a conflicted apply through the same bounded semantic conflict engine, validates the resulting index, and drops only that exact stash. `SYNCED` is emitted only after restoration and transaction-snapshot cleanup succeed. A failed pre-publication restoration returns to the original caller state; a failed post-publication restoration retains the stash and conflicted recovery state under the explicit handoff contract.
 
-Gix uses native Git before it resolves conflicts. For text conflicts, it preserves unchanged file regions locally and sends each changed region for semantic audit. Identical sides and changes on one side resolve directly. Text conflicts without markers require an explicit source-file or deletion selection. Binary conflicts require an explicit Git resolution.
+Gix uses native Git before it resolves conflicts. For text conflicts, it preserves unchanged file regions locally and sends each changed region for semantic audit. Identical sides and changes on one side resolve directly. Text conflicts without markers require an explicit source-file or deletion selection. Binary conflicts and structural conflicts with linked rename paths require an explicit Git resolution.
 
 Related issue insertions preserve each identifier once with an exact source record. Independent issues remain present. For other overlapping insertions, word sequences identify complete source alternatives. Validation preserves the exact selected bytes, including punctuation and whitespace. Independent insertions preserve both sides. Deletion-intent validation applies at every conflict size.
+
+Code tokens stay distinct from prose tokens while preserving independent changes within each backtick span.
 
 Each semantic correction must pass local validation before a merge commit or push. An invalid correction requires another bounded attempt. Exhausted attempts restore the local state before publication.
 
