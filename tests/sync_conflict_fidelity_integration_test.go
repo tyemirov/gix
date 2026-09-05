@@ -33,6 +33,7 @@ func TestSyncConflictFidelityContracts(t *testing.T) {
 		expected                 string
 		expectedAbsent, failure  bool
 		providerFailure          bool
+		dirty                    bool
 		rejection                string
 	}{
 
@@ -53,15 +54,22 @@ func TestSyncConflictFidelityContracts(t *testing.T) {
 		{name: "invented operator requires repair", base: "before\nafter\n", ours: "before\nreturn enabled;\nafter\n", theirs: "before\nreturn !enabled;\nafter\n", responses: []string{semanticMergeResponse("return &&enabled;\n"), semanticMergeResponse("return !enabled;\n")}, expected: "before\nreturn !enabled;\nafter\n", rejection: "exact insertion alternative"},
 		{name: "invented whitespace requires repair", base: "before\nafter\n", ours: "before\nreturn enabled;\nafter\n", theirs: "before\nreturn !enabled;\nafter\n", responses: []string{semanticMergeResponse("return  enabled;\n"), semanticMergeResponse("return enabled;\n")}, expected: "before\nreturn enabled;\nafter\n", rejection: "exact insertion alternative"},
 		{name: "operator rejection rolls back", base: "before\nafter\n", ours: "before\nreturn enabled;\nafter\n", theirs: "before\nreturn !enabled;\nafter\n", responses: []string{semanticMergeResponse("return &&enabled;\n"), semanticMergeResponse("return &&enabled;\n"), semanticMergeResponse("return &&enabled;\n"), semanticMergeResponse("return &&enabled;\n")}, failure: true, rejection: "exact insertion alternative"},
-		{name: "exact social I002 related insertions", base: issuePrefix + issueTail, ours: issuePrefix + openIssue + issueTail, theirs: issuePrefix + closedIssue + issueTail, responses: []string{semanticMergeResponse(closedIssue)}, expected: issuePrefix + closedIssue + issueTail},
-		{name: "related records preserve independent additions", base: issuePrefix + issueTail, ours: issuePrefix + openIssue + otherIssue + issueTail, theirs: issuePrefix + closedIssue + incomingIssue + issueTail, responses: []string{semanticMergeResponse(closedIssue), semanticMergeResponse(closedIssue + otherIssue + incomingIssue)}, expected: issuePrefix + closedIssue + otherIssue + incomingIssue + issueTail, rejection: "issue insertion"},
-		{name: "duplicate related record requires repair", base: issuePrefix + issueTail, ours: issuePrefix + openIssue + issueTail, theirs: issuePrefix + closedIssue + issueTail, responses: []string{semanticMergeResponse(openIssue + closedIssue), semanticMergeResponse(closedIssue)}, expected: issuePrefix + closedIssue + issueTail, rejection: "issue insertion"},
+		{name: "related issue selection keeps local source", base: issuePrefix + issueTail, ours: issuePrefix + closedIssue + issueTail, theirs: issuePrefix + openIssue + issueTail, responses: []string{"I002=1"}, expected: issuePrefix + closedIssue + issueTail},
+		{name: "related issue selection rejects unknown choice", base: issuePrefix + issueTail, ours: issuePrefix + openIssue + issueTail, theirs: issuePrefix + closedIssue + issueTail, responses: []string{"I002=3", "I002=2"}, expected: issuePrefix + closedIssue + issueTail, rejection: "unknown selection"},
+		{name: "related issue selection rejects unknown identifier", base: issuePrefix + issueTail, ours: issuePrefix + openIssue + issueTail, theirs: issuePrefix + closedIssue + issueTail, responses: []string{"I999=2", "I002=2"}, expected: issuePrefix + closedIssue + issueTail, rejection: "unknown selection"},
+		{name: "related issue selection keeps source blank lines", base: issuePrefix + issueTail, ours: issuePrefix + openIssue + issueTail, theirs: issuePrefix + closedIssue + "\n\n" + issueTail, responses: []string{" \nI002=2\n "}, expected: issuePrefix + closedIssue + "\n\n" + issueTail},
+		{name: "dirty social I002 sync", dirty: true, base: issuePrefix + issueTail, ours: issuePrefix + openIssue + issueTail, theirs: issuePrefix + closedIssue + issueTail, responses: []string{"I002=2"}, expected: issuePrefix + closedIssue + issueTail},
+		{name: "dirty issue selection rejection restores edits", dirty: true, base: issuePrefix + issueTail, ours: issuePrefix + openIssue + issueTail, theirs: issuePrefix + closedIssue + issueTail, responses: []string{"I002=9", "I002=9", "I002=9", "I002=9"}, failure: true, rejection: "unknown selection"},
+		{name: "issue selection duplicate displaces independent record", base: issuePrefix + issueTail, ours: issuePrefix + openIssue + otherIssue + issueTail, theirs: issuePrefix + closedIssue + incomingIssue + issueTail, responses: []string{"I002=1 I002=2 I003=1", "I002=2 I003=1 I004=1"}, expected: issuePrefix + closedIssue + otherIssue + incomingIssue + issueTail, rejection: "repeats identifier"},
+		{name: "exact social I002 related insertions", base: issuePrefix + issueTail, ours: issuePrefix + openIssue + issueTail, theirs: issuePrefix + closedIssue + issueTail, responses: []string{"I002=2"}, expected: issuePrefix + closedIssue + issueTail},
+		{name: "related records preserve independent additions", base: issuePrefix + issueTail, ours: issuePrefix + openIssue + otherIssue + issueTail, theirs: issuePrefix + closedIssue + incomingIssue + issueTail, responses: []string{"I002=2", "I004=1 I002=2 I003=1"}, expected: issuePrefix + closedIssue + otherIssue + incomingIssue + issueTail, rejection: "issue selection"},
+		{name: "duplicate related record requires repair", base: issuePrefix + issueTail, ours: issuePrefix + openIssue + issueTail, theirs: issuePrefix + closedIssue + issueTail, responses: []string{"I002=1 I002=2", "I002=2"}, expected: issuePrefix + closedIssue + issueTail, rejection: "issue selection"},
 
 		{name: "empty file is distinct from deletion", base: "original\n", oursAbsent: true, theirs: "", responses: []string{selectTheirs}, expected: ""},
 		{name: "file selection provider failure rolls back", base: "original\n", oursAbsent: true, theirs: "valuable incoming edit\n", providerFailure: true, responses: []string{"", ""}, failure: true, rejection: "stopping semantic repair"},
 		{name: "concatenation cannot restore a deletion", base: "alpha beta gamma\n", ours: "alpha gamma\n", theirs: "alpha beta gamma delta\n", responses: []string{semanticMergeResponse("alpha gamma\nalpha beta gamma delta\n"), semanticMergeResponse("alpha gamma delta\n")}, expected: "alpha gamma delta\n", rejection: "delete BASE token range"},
 		{name: "deletion rejection rolls back", base: "alpha beta gamma\n", ours: "alpha gamma\n", theirs: "alpha beta gamma delta\n", responses: []string{semanticMergeResponse("alpha beta gamma delta\n"), semanticMergeResponse("alpha beta gamma delta\n"), semanticMergeResponse("alpha beta gamma delta\n"), semanticMergeResponse("alpha beta gamma delta\n")}, failure: true, rejection: "delete BASE token range"},
-		{name: "invented issue requirement rolls back", base: issuePrefix + issueTail, ours: issuePrefix + openIssue + issueTail, theirs: issuePrefix + closedIssue + issueTail, responses: []string{semanticMergeResponse(closedIssue + "  Invented requirement.\n"), semanticMergeResponse(closedIssue + "  Invented requirement.\n"), semanticMergeResponse(closedIssue + "  Invented requirement.\n"), semanticMergeResponse(closedIssue + "  Invented requirement.\n")}, failure: true, rejection: "issue insertion"},
+		{name: "invented issue requirement rolls back", base: issuePrefix + issueTail, ours: issuePrefix + openIssue + issueTail, theirs: issuePrefix + closedIssue + issueTail, responses: []string{semanticMergeResponse(closedIssue + "  Invented requirement.\n"), semanticMergeResponse(closedIssue + "  Invented requirement.\n"), semanticMergeResponse(closedIssue + "  Invented requirement.\n"), semanticMergeResponse(closedIssue + "  Invented requirement.\n")}, failure: true, rejection: "issue selection"},
 		{name: "independent insertions retain both sides", base: "before\nafter\n", ours: "before\nlocal distinct entry\nafter\n", theirs: "before\nincoming separate entry\nafter\n", responses: []string{semanticMergeResponse("local distinct entry\n"), semanticMergeResponse("local distinct entry\nincoming separate entry\n")}, expected: "before\nlocal distinct entry\nincoming separate entry\nafter\n", rejection: "not an exact ordering"},
 	}
 	for _, tc := range cases {
@@ -70,7 +78,12 @@ func TestSyncConflictFidelityContracts(t *testing.T) {
 			remote := filepath.Join(workspace, "remote.git")
 			repository := filepath.Join(workspace, "project")
 			createSyncGitHubBackedRepository(t, remote, repository)
-			path := filepath.Join(repository, "content.txt")
+			relativePath := "content.txt"
+			if strings.HasPrefix(tc.base, "# ISSUES") {
+				relativePath = ".mprlab/ISSUES.md"
+			}
+			path := filepath.Join(repository, relativePath)
+			require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
 			require.NoError(t, os.WriteFile(path, []byte(tc.base), 0o644))
 			runGit(t, repository, "add", ".")
 			runGit(t, repository, "commit", "-m", "base")
@@ -91,8 +104,11 @@ func TestSyncConflictFidelityContracts(t *testing.T) {
 			} else {
 				require.NoError(t, os.WriteFile(path, []byte(tc.ours), 0o644))
 			}
-			runGit(t, repository, "add", "-A")
-			runGit(t, repository, "commit", "-m", "local")
+			if !tc.dirty {
+				runGit(t, repository, "add", "-A")
+				runGit(t, repository, "commit", "-m", "local")
+			}
+			initialStatus := runGit(t, repository, "status", "--porcelain")
 			localCommit := strings.TrimSpace(runGit(t, repository, "rev-parse", "HEAD"))
 			var requestCount atomic.Int64
 			requestBodies := make(chan string, 8)
@@ -100,6 +116,11 @@ func TestSyncConflictFidelityContracts(t *testing.T) {
 				body, err := io.ReadAll(r.Body)
 				if err != nil {
 					http.Error(w, err.Error(), 500)
+					return
+				}
+				if tc.dirty && !strings.Contains(string(body), "Conflict region:") {
+					w.Header().Set("Content-Type", "application/json")
+					fmt.Fprint(w, `{"choices":[{"message":{"role":"assistant","content":"docs: record health requirement"}}]}`)
 					return
 				}
 				requestBodies <- string(body)
@@ -124,6 +145,9 @@ func TestSyncConflictFidelityContracts(t *testing.T) {
 			}))
 			t.Cleanup(server.Close)
 			configuration := writeReportedLifecycleSemanticConfiguration(t, server.URL)
+			if tc.dirty {
+				configuration = writeDirtySyncMergedBranchConfiguration(t, server.URL)
+			}
 			gitLog := filepath.Join(t.TempDir(), "git.log")
 			ghLog := filepath.Join(t.TempDir(), "gh.log")
 			output, err := runBinaryIntegrationCommand(t, binaryPath, repository, map[string]string{
@@ -154,11 +178,15 @@ func TestSyncConflictFidelityContracts(t *testing.T) {
 					require.NoFileExists(t, path)
 				} else {
 					require.Equal(t, tc.expected, readTextFile(t, path))
-					require.Equal(t, tc.expected, runGit(t, remote, "show", "master:content.txt"))
+					require.Equal(t, tc.expected, runGit(t, remote, "show", "master:"+relativePath))
 				}
 				require.Equal(t, strings.TrimSpace(runGit(t, repository, "rev-parse", "HEAD")), strings.TrimSpace(runGit(t, remote, "rev-parse", "master")))
 			}
-			require.Empty(t, strings.TrimSpace(runGit(t, repository, "status", "--porcelain")))
+			if tc.failure {
+				require.Equal(t, initialStatus, runGit(t, repository, "status", "--porcelain"))
+			} else {
+				require.Empty(t, strings.TrimSpace(runGit(t, repository, "status", "--porcelain")))
+			}
 			command := exec.Command("git", "-C", repository, "rev-parse", "--verify", "MERGE_HEAD")
 			command.Env = buildGitCommandEnvironment(nil)
 			require.Error(t, command.Run())
