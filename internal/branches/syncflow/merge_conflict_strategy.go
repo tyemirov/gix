@@ -19,6 +19,11 @@ type mergeConflictDeterministicResolution struct {
 	RequiresSemanticAudit bool
 }
 
+type mergeConflictToken struct {
+	Content       string
+	CodeDelimiter string
+}
+
 type mergeConflictTokenEdit struct {
 	Start       int
 	End         int
@@ -101,10 +106,10 @@ func analyzeMergeConflictConcurrentInsertions(ours string, theirs string) (merge
 	}
 }
 
-func mergeConflictWordTokens(tokens []string) []string {
+func mergeConflictWordTokens(tokens []mergeConflictToken) []string {
 	var wordTokens []string
 	for _, token := range tokens {
-		wordTokens = append(wordTokens, strings.FieldsFunc(token, func(character rune) bool {
+		wordTokens = append(wordTokens, strings.FieldsFunc(token.Content, func(character rune) bool {
 			return !unicode.IsLetter(character) && !unicode.IsNumber(character) && character != '_'
 		})...)
 	}
@@ -158,37 +163,53 @@ func mergeConflictTokenEditResolution(base string, ours string, theirs string) (
 	}, true
 }
 
-func mergeConflictTokens(value string) []string {
-	if value == "" {
-		return nil
-	}
-
-	tokens := make([]string, 0, len(value))
-	tokenStart := 0
+// Code context participates in token equality without changing rendered bytes.
+func mergeConflictTokens(value string) []mergeConflictToken {
+	var tokens []mergeConflictToken
 	offset := 0
-	currentClass := mergeConflictTokenClass(value, offset)
 	for offset < len(value) {
-		if literalEnd := mergeConflictCodeSpanEnd(value, offset); literalEnd > offset {
-			if tokenStart < offset {
-				tokens = append(tokens, value[tokenStart:offset])
-			}
-			tokens = append(tokens, value[offset:literalEnd])
-			offset = literalEnd
-			tokenStart = literalEnd
-			if offset < len(value) {
-				currentClass = mergeConflictTokenClass(value, offset)
-			}
-			continue
+		relativeStart := strings.IndexByte(value[offset:], '`')
+		if relativeStart < 0 {
+			return append(tokens, mergeConflictTextTokens(value[offset:], "")...)
 		}
+		literalStart := offset + relativeStart
+		tokens = append(tokens, mergeConflictTextTokens(value[offset:literalStart], "")...)
+		delimiterEnd := literalStart
+		for delimiterEnd < len(value) && value[delimiterEnd] == '`' {
+			delimiterEnd++
+		}
+		literalEnd := mergeConflictCodeSpanEnd(value, literalStart)
+		delimiter := value[literalStart:delimiterEnd]
+		if literalEnd == delimiterEnd {
+			tokens = append(tokens, mergeConflictToken{Content: delimiter})
+		} else {
+			closingStart := literalEnd - len(delimiter)
+			tokens = append(tokens, mergeConflictToken{Content: delimiter, CodeDelimiter: delimiter})
+			tokens = append(tokens, mergeConflictTextTokens(value[delimiterEnd:closingStart], delimiter)...)
+			tokens = append(tokens, mergeConflictToken{Content: delimiter, CodeDelimiter: delimiter})
+		}
+		offset = literalEnd
+	}
+	return tokens
+}
+
+func mergeConflictTextTokens(value string, codeDelimiter string) []mergeConflictToken {
+	var tokens []mergeConflictToken
+	if value == "" {
+		return tokens
+	}
+	tokenStart := 0
+	currentClass := mergeConflictTokenClass(value, 0)
+	for offset := 0; offset < len(value); {
 		_, runeSize := utf8.DecodeRuneInString(value[offset:])
 		nextOffset := offset + runeSize
 		if nextOffset == len(value) {
-			tokens = append(tokens, value[tokenStart:nextOffset])
+			tokens = append(tokens, mergeConflictToken{Content: value[tokenStart:nextOffset], CodeDelimiter: codeDelimiter})
 			break
 		}
 		nextClass := mergeConflictTokenClass(value, nextOffset)
-		if nextClass != currentClass || value[nextOffset] == '`' {
-			tokens = append(tokens, value[tokenStart:nextOffset])
+		if nextClass != currentClass {
+			tokens = append(tokens, mergeConflictToken{Content: value[tokenStart:nextOffset], CodeDelimiter: codeDelimiter})
 			tokenStart = nextOffset
 			currentClass = nextClass
 		}
@@ -197,7 +218,15 @@ func mergeConflictTokens(value string) []string {
 	return tokens
 }
 
-// Keep backtick code spans atomic so prose edits cannot attach to words inside code.
+func mergeConflictTokenContent(tokens []mergeConflictToken) string {
+	var content strings.Builder
+	for _, token := range tokens {
+		content.WriteString(token.Content)
+	}
+	return content.String()
+}
+
+// Find a matching delimiter run; an unmatched run ends at its opening delimiter.
 func mergeConflictCodeSpanEnd(value string, offset int) int {
 	if value[offset] != '`' {
 		return offset
@@ -238,7 +267,7 @@ func mergeConflictTokenClass(value string, offset int) uint8 {
 	}
 }
 
-func mergeConflictTokenEdits(baseTokens []string, variantTokens []string) []mergeConflictTokenEdit {
+func mergeConflictTokenEdits(baseTokens []mergeConflictToken, variantTokens []mergeConflictToken) []mergeConflictTokenEdit {
 	rowCount := len(baseTokens) + 1
 	columnCount := len(variantTokens) + 1
 	if !mergeConflictTokenEditsRequireLinearMemory(baseTokens, variantTokens) {
@@ -247,11 +276,11 @@ func mergeConflictTokenEdits(baseTokens []string, variantTokens []string) []merg
 	return mergeConflictLinearTokenEdits(baseTokens, variantTokens)
 }
 
-func mergeConflictTokenEditsRequireLinearMemory(baseTokens []string, variantTokens []string) bool {
+func mergeConflictTokenEditsRequireLinearMemory(baseTokens []mergeConflictToken, variantTokens []mergeConflictToken) bool {
 	return len(baseTokens)+1 > mergeConflictTokenDiffMatrixMaximumCells/(len(variantTokens)+1)
 }
 
-func mergeConflictMatrixTokenEdits(baseTokens []string, variantTokens []string, cellCount int, columnCount int) []mergeConflictTokenEdit {
+func mergeConflictMatrixTokenEdits(baseTokens []mergeConflictToken, variantTokens []mergeConflictToken, cellCount int, columnCount int) []mergeConflictTokenEdit {
 	longestSubsequences := make([]int, cellCount)
 	for baseIndex := len(baseTokens) - 1; baseIndex >= 0; baseIndex-- {
 		for variantIndex := len(variantTokens) - 1; variantIndex >= 0; variantIndex-- {
@@ -296,7 +325,7 @@ func mergeConflictMatrixTokenEdits(baseTokens []string, variantTokens []string, 
 	return edits
 }
 
-func mergeConflictLinearTokenEdits(baseTokens []string, variantTokens []string) []mergeConflictTokenEdit {
+func mergeConflictLinearTokenEdits(baseTokens []mergeConflictToken, variantTokens []mergeConflictToken) []mergeConflictTokenEdit {
 	commonPrefixLength := 0
 	for commonPrefixLength < len(baseTokens) &&
 		commonPrefixLength < len(variantTokens) &&
@@ -337,7 +366,7 @@ func mergeConflictLinearTokenEdits(baseTokens []string, variantTokens []string) 
 	return edits
 }
 
-func mergeConflictTokenMatches(baseTokens []string, variantTokens []string, baseOffset int, variantOffset int) []mergeConflictTokenMatch {
+func mergeConflictTokenMatches(baseTokens []mergeConflictToken, variantTokens []mergeConflictToken, baseOffset int, variantOffset int) []mergeConflictTokenMatch {
 	if len(baseTokens) == 0 || len(variantTokens) == 0 {
 		return nil
 	}
@@ -379,7 +408,7 @@ func mergeConflictTokenMatches(baseTokens []string, variantTokens []string, base
 	return append(leftMatches, rightMatches...)
 }
 
-func mergeConflictTokenPrefixLCSLengths(baseTokens []string, variantTokens []string) []int {
+func mergeConflictTokenPrefixLCSLengths(baseTokens []mergeConflictToken, variantTokens []mergeConflictToken) []int {
 	lengths := make([]int, len(variantTokens)+1)
 	for _, baseToken := range baseTokens {
 		previousDiagonal := 0
@@ -396,7 +425,7 @@ func mergeConflictTokenPrefixLCSLengths(baseTokens []string, variantTokens []str
 	return lengths
 }
 
-func mergeConflictTokenSuffixLCSLengths(baseTokens []string, variantTokens []string) []int {
+func mergeConflictTokenSuffixLCSLengths(baseTokens []mergeConflictToken, variantTokens []mergeConflictToken) []int {
 	lengths := make([]int, len(variantTokens)+1)
 	for baseIndex := len(baseTokens) - 1; baseIndex >= 0; baseIndex-- {
 		previousDiagonal := 0
@@ -413,8 +442,8 @@ func mergeConflictTokenSuffixLCSLengths(baseTokens []string, variantTokens []str
 	return lengths
 }
 
-func appendMergeConflictTokenEdit(edits []mergeConflictTokenEdit, start int, end int, replacementTokens []string) []mergeConflictTokenEdit {
-	replacement := strings.Join(replacementTokens, "")
+func appendMergeConflictTokenEdit(edits []mergeConflictTokenEdit, start int, end int, replacementTokens []mergeConflictToken) []mergeConflictTokenEdit {
+	replacement := mergeConflictTokenContent(replacementTokens)
 	if start == end && replacement == "" {
 		return edits
 	}
@@ -480,18 +509,18 @@ func mergeConflictTokenEditsConflict(left mergeConflictTokenEdit, right mergeCon
 	}
 }
 
-func applyMergeConflictTokenEdits(baseTokens []string, edits []mergeConflictTokenEdit) (string, bool) {
+func applyMergeConflictTokenEdits(baseTokens []mergeConflictToken, edits []mergeConflictTokenEdit) (string, bool) {
 	var resolved strings.Builder
 	baseCursor := 0
 	for _, edit := range edits {
 		if edit.Start < baseCursor || edit.End < edit.Start || edit.End > len(baseTokens) {
 			return "", false
 		}
-		resolved.WriteString(strings.Join(baseTokens[baseCursor:edit.Start], ""))
+		resolved.WriteString(mergeConflictTokenContent(baseTokens[baseCursor:edit.Start]))
 		resolved.WriteString(edit.Replacement)
 		baseCursor = edit.End
 	}
-	resolved.WriteString(strings.Join(baseTokens[baseCursor:], ""))
+	resolved.WriteString(mergeConflictTokenContent(baseTokens[baseCursor:]))
 	return resolved.String(), true
 }
 
@@ -515,7 +544,7 @@ func mergeConflictMissingReplacementIntents(
 	variant string,
 	otherVariant string,
 	candidate string,
-	baseTokens []string,
+	baseTokens []mergeConflictToken,
 	edits []mergeConflictTokenEdit,
 	otherEdits []mergeConflictTokenEdit,
 	candidateEdits []mergeConflictTokenEdit,
@@ -539,7 +568,7 @@ func mergeConflictMissingReplacementIntents(
 	for _, edit := range edits {
 		normalizedReplacement := mergeConflictWithoutWhitespace(edit.Replacement)
 		if normalizedReplacement == "" {
-			if edit.Start == edit.End || mergeConflictWithoutWhitespace(strings.Join(baseTokens[edit.Start:edit.End], "")) == "" {
+			if edit.Start == edit.End || mergeConflictWithoutWhitespace(mergeConflictTokenContent(baseTokens[edit.Start:edit.End])) == "" {
 				continue
 			}
 			if mergeConflictCandidatePreservesDeletionIntent(edit, candidateEdits) {
@@ -586,12 +615,12 @@ func mergeConflictMissingReplacementIntents(
 	return missingIntents
 }
 
-func mergeConflictTokenEditsContainDeletionIntent(baseTokens []string, edits []mergeConflictTokenEdit) bool {
+func mergeConflictTokenEditsContainDeletionIntent(baseTokens []mergeConflictToken, edits []mergeConflictTokenEdit) bool {
 	for _, edit := range edits {
 		if edit.Start == edit.End || mergeConflictWithoutWhitespace(edit.Replacement) != "" {
 			continue
 		}
-		if mergeConflictWithoutWhitespace(strings.Join(baseTokens[edit.Start:edit.End], "")) != "" {
+		if mergeConflictWithoutWhitespace(mergeConflictTokenContent(baseTokens[edit.Start:edit.End])) != "" {
 			return true
 		}
 	}
@@ -616,7 +645,7 @@ func mergeConflictCandidatePreservesDeletionIntent(deletion mergeConflictTokenEd
 }
 
 func mergeConflictCandidateMatchesDerivedVariant(
-	baseTokens []string,
+	baseTokens []mergeConflictToken,
 	oursEdits []mergeConflictTokenEdit,
 	theirsEdits []mergeConflictTokenEdit,
 	candidate string,
@@ -630,7 +659,7 @@ func mergeConflictCandidateMatchesDerivedVariant(
 	return theirsCandidateAvailable && normalizedCandidate == mergeConflictWithoutWhitespace(theirsCandidate)
 }
 
-func mergeConflictVariantWithCompatibleOtherEdits(baseTokens []string, variantEdits []mergeConflictTokenEdit, otherEdits []mergeConflictTokenEdit) (string, bool) {
+func mergeConflictVariantWithCompatibleOtherEdits(baseTokens []mergeConflictToken, variantEdits []mergeConflictTokenEdit, otherEdits []mergeConflictTokenEdit) (string, bool) {
 	compatibleOtherEdits := make([]mergeConflictTokenEdit, 0, len(otherEdits))
 	for _, otherEdit := range otherEdits {
 		conflicts := false
@@ -652,7 +681,7 @@ func mergeConflictVariantWithCompatibleOtherEdits(baseTokens []string, variantEd
 }
 
 func mergeConflictCandidatePreservesReplacementAlternative(
-	baseTokens []string,
+	baseTokens []mergeConflictToken,
 	edit mergeConflictTokenEdit,
 	otherEdits []mergeConflictTokenEdit,
 	normalizedBase string,
@@ -684,7 +713,7 @@ func mergeConflictCandidatePreservesReplacementAlternative(
 }
 
 func mergeConflictCandidatePreservesReplacementIntent(
-	baseTokens []string,
+	baseTokens []mergeConflictToken,
 	edit mergeConflictTokenEdit,
 	normalizedBase string,
 	normalizedVariant string,
@@ -701,7 +730,7 @@ func mergeConflictCandidatePreservesReplacementIntent(
 }
 
 func mergeConflictCandidateMatchesEditContext(
-	baseTokens []string,
+	baseTokens []mergeConflictToken,
 	edit mergeConflictTokenEdit,
 	normalizedReplacement string,
 	normalizedCandidate string,
@@ -714,10 +743,10 @@ func mergeConflictCandidateMatchesEditContext(
 	return rightContext != "" && strings.Contains(normalizedCandidate, normalizedReplacement+rightContext)
 }
 
-func mergeConflictReplacementIntentLeftContext(baseTokens []string, editStart int) string {
+func mergeConflictReplacementIntentLeftContext(baseTokens []mergeConflictToken, editStart int) string {
 	contextTokens := make([]string, 0, mergeConflictReplacementIntentContextTokenCount)
 	for tokenIndex := editStart - 1; tokenIndex >= 0 && len(contextTokens) < mergeConflictReplacementIntentContextTokenCount; tokenIndex-- {
-		normalizedToken := mergeConflictWithoutWhitespace(baseTokens[tokenIndex])
+		normalizedToken := mergeConflictWithoutWhitespace(baseTokens[tokenIndex].Content)
 		if normalizedToken != "" {
 			contextTokens = append(contextTokens, normalizedToken)
 		}
@@ -729,11 +758,11 @@ func mergeConflictReplacementIntentLeftContext(baseTokens []string, editStart in
 	return context.String()
 }
 
-func mergeConflictReplacementIntentRightContext(baseTokens []string, editEnd int) string {
+func mergeConflictReplacementIntentRightContext(baseTokens []mergeConflictToken, editEnd int) string {
 	var context strings.Builder
 	nonWhitespaceTokenCount := 0
 	for tokenIndex := editEnd; tokenIndex < len(baseTokens) && nonWhitespaceTokenCount < mergeConflictReplacementIntentContextTokenCount; tokenIndex++ {
-		normalizedToken := mergeConflictWithoutWhitespace(baseTokens[tokenIndex])
+		normalizedToken := mergeConflictWithoutWhitespace(baseTokens[tokenIndex].Content)
 		if normalizedToken != "" {
 			context.WriteString(normalizedToken)
 			nonWhitespaceTokenCount++

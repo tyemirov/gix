@@ -625,6 +625,12 @@ func (service mergeConflictResolutionService) conflictStageContent(ctx context.C
 }
 
 func (service mergeConflictResolutionService) resolveConflictFile(ctx context.Context, clientProvider mergeConflictResolutionClientProvider, options mergeConflictResolutionOptions, conflictFile mergeConflictFile, timeout time.Duration) (mergeConflictFileResolution, error) {
+	// A single stage, or a base with neither side, can belong to linked rename paths.
+	// Path-local content comparisons cannot establish their resolution.
+	if (!conflictFile.BasePresent && (!conflictFile.OursPresent || !conflictFile.TheirsPresent)) ||
+		(!conflictFile.OursPresent && !conflictFile.TheirsPresent) {
+		return mergeConflictFileResolution{}, fmt.Errorf(mergeConflictStructuralError, conflictFile.Path)
+	}
 	if !mergeConflictFileIsText(conflictFile) {
 		return mergeConflictFileResolution{}, fmt.Errorf(mergeConflictBinaryError, conflictFile.Path)
 	}

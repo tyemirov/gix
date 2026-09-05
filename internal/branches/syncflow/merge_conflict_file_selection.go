@@ -19,6 +19,7 @@ const (
 	mergeConflictSelectionUserPrompt   = "Path: %s\nTarget branch: %s\nMerged reference: %s\n\nBASE:\n%s\n\nOURS:\n%s\n\nTHEIRS:\n%s"
 	mergeConflictSelectionError        = "file conflict for %s requires an explicit OURS or THEIRS selection"
 	mergeConflictBinaryError           = "binary conflict for %s requires an explicit Git resolution"
+	mergeConflictStructuralError       = "structural conflict for %s requires an explicit Git resolution of linked paths"
 )
 
 func mergeConflictFileIsText(file mergeConflictFile) bool {

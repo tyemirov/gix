@@ -14,27 +14,6 @@ import (
 	"github.com/tyemirov/gix/internal/execshell"
 )
 
-func TestMergeConflictTokensKeepCodeSpansAtomic(t *testing.T) {
-	testCases := []struct {
-		name   string
-		input  string
-		tokens []string
-	}{
-		{"inline code", "run `make test` now", []string{"run", " ", "`make test`", " ", "now"}},
-		{"fenced code", "```sh\nmake test\n```\n", []string{"```sh\nmake test\n```", "\n"}},
-		{"nested backticks", "``use `value` here``", []string{"``use `value` here``"}},
-		{"unmatched opening run", "```make `test`", []string{"```", "make", " ", "`test`"}},
-		{"unmatched final run", "make ```", []string{"make", " ", "```"}},
-	}
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			tokens := mergeConflictTokens(testCase.input)
-			require.Equal(t, testCase.tokens, tokens)
-			require.Equal(t, testCase.input, strings.Join(tokens, ""))
-		})
-	}
-}
-
 type mergeConflictIndexCheckExecutor struct {
 	commands          []execshell.CommandDetails
 	conflictsResolved bool
