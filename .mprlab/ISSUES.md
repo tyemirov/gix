@@ -11,6 +11,59 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B089] (P1) Stop unresolved rename conflicts before publication.
+  Goal:
+  Gix preserves one coherent rename decision for linked conflict paths.
+  Evidence:
+  Both branches rename `original.txt` to different destinations.
+  The compiled CLI at `2574301` retains and pushes both destinations without a model request.
+  Requirements:
+  - Reject structural conflicts that cannot be resolved from one path.
+  - Require an explicit Git resolution for linked paths.
+  - Restore the checkout and preserve the remote when resolution stops.
+  Validation:
+  - Reproduce a rename/rename conflict through the compiled CLI.
+  - Verify zero model requests and exact rollback.
+  Resolution on 2026-09-04:
+  The resolver rejects single-stage and base-only conflicts before path-local resolution.
+  These conflicts require an explicit Git resolution of linked paths.
+  Two compiled CLI cases verify both conflict path orders.
+  Both cases preserve the remote, restore the original checkout, and make zero model requests.
+  Final validation:
+  `make ci` passed. The complete integration suite passed in 262.429 seconds.
+  `make build` and `git diff --check` passed.
+  The documentation check reports no new mechanical findings and 404 existing findings.
+  The Governor check still reports eight existing managed-document differences.
+  The change remains local and the corrected executable is `bin/gix`.
+
+
+- [x] [B088] (P1) Preserve compatible edits inside code spans.
+  Goal:
+  Gix preserves independent edits within a backtick code span.
+  Evidence:
+  The compiled CLI at `2574301` rejects a valid combined code-span correction through four attempts.
+  An approval instead accepts the local code span and loses the incoming addition.
+  Requirements:
+  - Compare fine-grained tokens inside code spans.
+  - Keep code tokens distinct from prose tokens.
+  - Preserve compatible additions and deletions in both conflict directions.
+  Validation:
+  - Verify valid corrections and candidate approvals through the compiled CLI.
+  - Reject a correction that loses an addition or restores a deletion.
+  - Preserve the expected result of the original coarse-region stash fixture.
+  Resolution on 2026-09-04:
+  Each token now retains its source text and code-delimiter context.
+  Code tokens stay distinct from prose tokens while preserving fine-grained edits within code spans.
+  Five compiled CLI cases verify approvals, valid corrections, both deletion directions, and rejection of lost edits.
+  The original coarse-region stash fixture and large deletion tests pass with their expected content unchanged.
+  Final validation:
+  `make ci` passed. The complete integration suite passed in 262.429 seconds.
+  `make build` and `git diff --check` passed.
+  The documentation check reports no new mechanical findings and 404 existing findings.
+  The Governor check still reports eight existing managed-document differences.
+  The change remains local and the corrected executable is `bin/gix`.
+
+
 - [x] [B087] (P1) Validate punctuation in insertion conflict results.
   Goal:
   Gix preserves meaningful punctuation when it validates a semantic correction.
