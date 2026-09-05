@@ -11,6 +11,74 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B091] (P1) Preserve independent issues with the same identifier.
+  Goal:
+  Sync keeps both requests when branches independently assign the same new issue identifier.
+  Evidence:
+  The review reproduced a successful sync that kept an SSO request and removed an independent CSV request.
+  Both branches used I002, which was absent from BASE.
+  Requirements:
+  - Treat different titles as separate identities for a new shared identifier in `ISSUES.md`.
+  - Exclude priority and dependency fields from the title comparison.
+  - Keep the local identifier and assign the incoming request a new section number.
+  - Reserve identifiers from all three tracker versions and adjacent `ARCHIVE.md`.
+  - Keep recurring suffixes and update incoming tracker references.
+  - Keep existing BASE identities through title edits.
+  Validation:
+  The compiled CLI regression failed before the production change.
+  All nine new regression scenarios passed after the correction.
+  The full 42-scenario conflict table passed in 67.286 seconds.
+  Initial `make ci` passed lint and fast tests, then reached the 350-second limit during integration tests.
+  The first final CI run reached the same command limit without a reported test failure.
+  The complete integration suite then passed in 302.273 seconds through `make test-slow`.
+  `make build` passed and produced the corrected `bin/gix` executable.
+  The final `make ci` rerun passed on the unchanged production code and tests.
+  Resolution:
+  Gix preserves both independent records and updates incoming identifier references before source selection.
+  The changed prose has no new mechanical language findings.
+  The Governor check reports four existing managed-document differences.
+
+- [x] [B090] (P1) Resolve issue conflicts through source selection.
+  Goal:
+  Gix constructs the selected issue records from their original bytes.
+  Evidence:
+  Gix v1.9.1 rejected the Social Threader I002 conflict through four semantic attempts on 2026-09-04.
+  Both complete source records were available locally.
+  The previous regression supplied an exact transcription of the selected record.
+  Expected result:
+  The model selects the current source record once.
+  Gix keeps the selected record, including punctuation and whitespace.
+  Actual result:
+  Gix requires an exact model transcription and rejects each returned correction in the reported run.
+  Requirements:
+  - Replace issue transcription with a source selection key for each identifier.
+  - Construct each selected record from its original bytes.
+  - Keep independent issue records in canonical order.
+  - Reject unknown keys, duplicate identifiers, missing selections, and rewritten records.
+  - Keep bounded repair and exact rollback.
+  Validation:
+  - Exercise the exact I002 source records through the compiled CLI.
+  - Verify dirty default-branch sync and rollback of uncommitted edits.
+  - Verify source selections in both directions and exact whitespace.
+  - Run focused integration tests and `make ci`.
+  Validation evidence:
+  Both I002 fixtures match the current Social Threader source bytes.
+  The new source-selection regression failed before the source change.
+  The focused integration suite passed in 44.993 seconds.
+  Dirty sync completed with one source selection and the exact closed record.
+  Invalid selections restored the original uncommitted edit and left the test remote unchanged.
+  Initial `make ci` passed lint and fast tests, then reached the 350-second limit during integration tests.
+  Resolution:
+  Issue audits now select source records through explicit keys.
+  Gix constructs each record from the original bytes.
+  The existing event codes remain unchanged.
+  Final `make ci` passed. The complete integration suite passed in 279.775 seconds.
+  `make build` and `git diff --check` passed.
+  The changed documentation has no new mechanical language findings.
+  Existing documents retain 407 findings. The Governor check reports eight existing managed-document differences.
+  The change remains local on `tyemirov/bugfix/issue-source-selection`.
+  The corrected executable is `bin/gix`. The installed executable remains v1.9.1.
+
 - [x] [B089] (P1) Stop unresolved rename conflicts before publication.
   Goal:
   Gix preserves one coherent rename decision for linked conflict paths.

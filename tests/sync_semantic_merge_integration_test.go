@@ -439,9 +439,9 @@ func TestSyncMergesOverlappingConcurrentIssueInsertionsWithoutDuplicateContent(t
 		var response string
 		switch requestNumber {
 		case 1:
-			response = semanticMergeResponse(oursIssueBlock + oursIssueBlock)
+			response = "B512=1 B512=1"
 		case 2:
-			response = semanticMergeResponse(oursIssueBlock)
+			response = "B512=1"
 		default:
 			http.Error(responseWriter, "overlapping insertion resolution exceeded two semantic audits", http.StatusInternalServerError)
 			return
@@ -496,9 +496,9 @@ func TestSyncMergesOverlappingConcurrentIssueInsertionsWithoutDuplicateContent(t
 	)
 	require.NoError(testInstance, runError, output)
 	require.Contains(testInstance, output, "derived .mprlab/ISSUES.md conflict region 1/1 candidate using related issue insertions; requesting semantic audit")
-	require.Contains(testInstance, output, "semantic audit attempt 1/4 retained a semantic correction")
-	require.Contains(testInstance, output, "issue insertion result")
-	require.Contains(testInstance, output, "requesting repair of the exact correction")
+	require.Contains(testInstance, output, "issue source selection attempt 1/4 rejected")
+	require.Contains(testInstance, output, "issue selection requires exactly one source key")
+	require.Contains(testInstance, output, "requesting validation-guided repair")
 	require.Contains(testInstance, output, "semantic audit approved")
 	require.NotContains(testInstance, output, "AI_MERGE_ROLLBACK")
 	require.Equal(testInstance, int64(2), requestCount.Load())
@@ -513,10 +513,10 @@ func TestSyncMergesOverlappingConcurrentIssueInsertionsWithoutDuplicateContent(t
 
 	firstRequestBody := <-requestBodies
 	secondRequestBody := <-requestBodies
-	require.Contains(testInstance, firstRequestBody, "LOCALLY VALIDATED CANDIDATE")
-	require.Equal(testInstance, 3, strings.Count(firstRequestBody, "[B512]"))
+	require.Contains(testInstance, firstRequestBody, "Available source records:")
+	require.Equal(testInstance, 1, strings.Count(firstRequestBody, "[B512]"))
 	require.Contains(testInstance, firstRequestBody, "Resolution 2026-08-31")
-	require.Contains(testInstance, secondRequestBody, "issue insertion result")
+	require.Contains(testInstance, secondRequestBody, "issue selection requires exactly one source key")
 
 	headWithParents := strings.Fields(runGit(testInstance, repositoryPath, "rev-list", "--parents", "-n", "1", "HEAD"))
 	require.Len(testInstance, headWithParents, 3)

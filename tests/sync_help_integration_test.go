@@ -43,7 +43,7 @@ func TestSyncHelpDescribesMissingBranchCurrentHeadContract(testInstance *testing
 	require.Contains(testInstance, output, "sync reconstructs untouched bytes locally and directly accepts only cases with no two-sided semantic choice: identical sides and a change on only one side.")
 	require.Contains(testInstance, output, "Every marker-bearing region changed by both sides requires semantic LLM audit.")
 	require.Contains(testInstance, output, "A text conflict without markers requires an explicit OURS or THEIRS file selection.")
-	require.Contains(testInstance, output, "Related issue insertions preserve each identifier once with an exact source record.")
+	require.Contains(testInstance, output, "Related issue insertions use source selection keys.")
 	require.Contains(testInstance, output, "Validation requires an exact source alternative, including punctuation and whitespace.")
 	require.Contains(testInstance, output, "Other concurrent insertions and compatible token edits start from lossless locally derived candidates.")
 	require.Contains(testInstance, output, "Conflicting replacements start from the local alternative plus each compatible incoming edit.")

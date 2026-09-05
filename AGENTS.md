@@ -50,11 +50,11 @@ All rules for validation, error handling, invariants, and “confident programmi
 
 ### Testing Philosophy
 
-- Testing follows an **inverted test pyramid**: most coverage comes from high-value black-box integration and end-to-end tests; unit tests are optional and exist only when they add clear implementation guardrails.
+- Use test-driven development with an inverted test pyramid.
 - We **strive for 100% test coverage**, achieved primarily through integration/black-box suites whose scenarios are exhaustive enough to exercise all meaningful branches and error paths.
 - For CLI and backend services, tests compile or run the real program/CLI entrypoints, capture exit codes and output (stdout/stderr, files, side effects), and assert against those observable results—not internal functions.
 - For web/UI, tests run the app and backing web server, drive flows through the browser, and assert against the rendered page, DOM state, events, and other user-visible behavior.
-- Unit tests are acceptable as **implementation guardrails**, but they are not product-level acceptance criteria, must not be the primary mechanism for achieving coverage, and may be removed when equivalent or stronger integration coverage exists.
+- Unit tests do not prove public behavior and are prohibited.
 
 ## Tech Stack Guides
 
@@ -82,6 +82,12 @@ Read these files before editing:
 - `.mprlab/AGENTS.GO.md`: Go guidance.
 - `.mprlab/AGENTS.PY.md`: Python guidance.
 - `.mprlab/AGENTS.FRONTEND.md`: browser frontend guidance.
+
+File permission modes are outside agent scope.
+Never examine, validate, compare, require, change, or record a file permission mode.
+Never use a file permission mode in acceptance, security, credential, execution, publication, deployment, or failure analysis.
+The values `0600` and `7777` have no governance meaning.
+This rule does not change service authorization or operation authority.
 
 Do not create `.mprlab/AGENTS.md`. Scoped guidance belongs in `.mprlab/AGENTS.*.md` files.
 If guidance conflicts, follow `.mprlab/POLICY.md` first, then root `AGENTS.md`, then the relevant scoped guide.

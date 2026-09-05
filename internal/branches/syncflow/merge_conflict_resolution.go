@@ -634,6 +634,14 @@ func (service mergeConflictResolutionService) resolveConflictFile(ctx context.Co
 	if !mergeConflictFileIsText(conflictFile) {
 		return mergeConflictFileResolution{}, fmt.Errorf(mergeConflictBinaryError, conflictFile.Path)
 	}
+	normalizedFile, cleanMerge, collisionErr := service.resolveIssueIdentifierCollisions(ctx, conflictFile)
+	if collisionErr != nil {
+		return mergeConflictFileResolution{}, collisionErr
+	}
+	conflictFile = normalizedFile
+	if cleanMerge {
+		return mergeConflictFileResolution{Content: conflictFile.WorktreeContent}, nil
+	}
 	document, parseErr := parseMergeConflictDocument(conflictFile.WorktreeContent)
 	if parseErr != nil {
 		return mergeConflictFileResolution{}, fmt.Errorf(mergeConflictResolutionStructureTemplate+": %w", conflictFile.Path, parseErr)
@@ -740,12 +748,20 @@ func (service mergeConflictResolutionService) resolveSemanticConflictRegion(ctx 
 	candidateLocallyValidated := initialCandidateAvailable
 	candidateProofWarning := ""
 	rejectionFeedback := ""
+	issueAnalysis := mergeConflictIssueInsertionAnalysis{}
+	issueSelection := false
+	if region.BasePresent && region.Base == "" {
+		issueAnalysis, issueSelection = analyzeMergeConflictIssueInsertions(region.Ours, region.Theirs)
+	}
 
 	for attempt := 1; attempt <= mergeConflictResolutionMaxSemanticAttempts; attempt++ {
 		reviewing := candidateAvailable
 		var request llm.ChatRequest
 		strategy := "semantic candidate"
-		if reviewing {
+		if issueSelection {
+			strategy = mergeConflictIssueSelectionStrategy
+			request = service.buildIssueSelectionRequest(options, conflictFile, regionIndex, regionCount, issueAnalysis, rejectionFeedback)
+		} else if reviewing {
 			strategy = "semantic audit"
 			request = service.buildRegionReviewRequest(
 				options,
@@ -812,6 +828,18 @@ func (service mergeConflictResolutionService) resolveSemanticConflictRegion(ctx 
 			fmt.Sprintf("validating AI resolution for %s", subject),
 			map[string]string{"path": conflictFile.Path},
 		)
+		if issueSelection {
+			content, selectionErr := issueAnalysis.selectSources(response)
+			if selectionErr != nil {
+				attemptErr := fmt.Errorf("%s attempt %d for %s conflict region %d: %w", strategy, attempt, conflictFile.Path, regionIndex+1, selectionErr)
+				attemptErrors = append(attemptErrors, attemptErr)
+				rejectionFeedback = attemptErr.Error()
+				service.reportSemanticAttemptRejected(conflictFile.Path, regionIndex, regionCount, attempt, strategy, rejectionFeedback, false)
+				continue
+			}
+			service.reportSemanticAuditApproved(conflictFile.Path, regionIndex, regionCount, attempt)
+			return content, nil
+		}
 		if containsConflictMarker(resolvedContent) {
 			attemptErr := fmt.Errorf(
 				"%s attempt %d: %w",
