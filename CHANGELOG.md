@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Conflict resolution
+- Replaced issue transcription with source selection keys and kept the original record bytes in each merge result.
 - Stopped structural rename conflicts before publication and restored the checkout for an explicit Git resolution.
 - Required explicit source selection for text conflicts without markers and stopped binary conflicts before model access.
 - Applied deletion-intent validation to every conflict size.
