@@ -172,6 +172,27 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.9.1] - 2026-09-04
+
+- Merge pull request #446 from tyemirov/tyemirov/bugfix/merge-conflict-fidelity
+- test: cover inline and rename sync conflict fidelity
+- fix(sync): preserve code context and reject structural conflicts
+- docs: clarify structural conflict handling and code token validation
+- fix(sync): preserve fidelity in conflict resolution
+- fix(sync): resolve linked paths and tokenize code conflict spans
+- docs: document conflict resolution bug fixes
+- test(sync): cover conflict fidelity and explicit selection
+- feat(sync): preserve exact alternatives in merge resolution
+- feat(sync): add explicit merge conflict file selection
+- feat(sync): enforce conflict resolution fidelity
+- feat(sync): strengthen semantic merge conflict resolution
+- fix(sync): preserve exact intent during semantic conflict resolution
+- Merge pull request #445 from tyemirov/tyemirov/bugfix/ignored-repository-descendants
+- test: cover ignored repository discovery in audit workflows
+- fix: exclude repositories within ignored directories
+- fix(discovery): exclude ignored repositories from audit and workflows
+- fix: exclude nested repositories from ignored directories
+
 ## [v1.9.0] - 2026-09-01
 
 - Merge remote-tracking branch 'origin/master'
