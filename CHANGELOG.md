@@ -3,9 +3,10 @@
 ## [Unreleased]
 
 ### Conflict resolution
+- Stopped structural rename conflicts before publication and restored the checkout for an explicit Git resolution.
 - Required explicit source selection for text conflicts without markers and stopped binary conflicts before model access.
 - Applied deletion-intent validation to every conflict size.
-- Kept backtick code spans in one token to prevent prose changes inside code during conflict resolution.
+- Kept code tokens distinct from prose tokens and preserved independent changes within backtick spans.
 - Resolved related issue insertions with one exact record per identifier.
 - Rejected invented punctuation and whitespace in overlapping insertion results.
 
