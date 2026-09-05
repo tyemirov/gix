@@ -162,7 +162,8 @@ gix message changelog --since-tag v1.2.0 --version v1.3.0
 
 Use the reusable LLM client (`github.com/tyemirov/utils/llm`) to summarize staged changes or recent history. `gix sync` uses the configured provider order only for genuinely overlapping strict-sync regions. For semantic resolution, `timeout_seconds` is the request budget for each provider. Each candidate or audit request can use one complete provider round. A provider round with no response stops semantic repair and starts rollback. A transport or authentication error never becomes model feedback. Only a returned candidate rejection can start the next of four bounded attempts. Gix reports the active region, strategy, attempt, and deadline.
 
-The generated configuration defaults to Meta Muse through MPR LLM Proxy and declares both available connections:
+The generated configuration selects Meta Muse Spark 1.2 through MPR LLM Proxy for all AI tasks.
+Set `effort` in the `openai` profile for direct OpenAI requests.
 
 ```yaml
 llm:
@@ -175,11 +176,10 @@ llm:
   llm_proxy:
     priority: 1
     provider: meta
-    model: muse-spark-1.1
+    model: muse-spark-1.2
     base_url: "https://llm-proxy-api.mprlab.com"
     credential: "${LLM_PROXY_SECRET_KEY}"
   max_completion_tokens: 4800
-  effort: "high"
   timeout_seconds: 60
 ```
 

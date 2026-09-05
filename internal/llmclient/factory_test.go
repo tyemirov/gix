@@ -79,7 +79,7 @@ func TestNewFactoryUsesLLMProxyV2ForInternalRouteAndProvider(t *testing.T) {
 		Provider:            "meta",
 		BaseURL:             "https://llm-proxy.example",
 		APIKey:              "test-secret",
-		Model:               "muse-spark-1.1",
+		Model:               "muse-spark-1.2",
 		MaxCompletionTokens: 64,
 		HTTPClient:          rewriteHTTPClient{target: targetURL},
 		RequestTimeout:      time.Second,
@@ -96,7 +96,7 @@ func TestNewFactoryUsesLLMProxyV2ForInternalRouteAndProvider(t *testing.T) {
 
 	require.NoError(t, responseError)
 	require.Equal(t, "docs: sync dirty work", response)
-	require.Equal(t, "muse-spark-1.1", capturedBody.Model)
+	require.Equal(t, "muse-spark-1.2", capturedBody.Model)
 	require.False(t, capturedBody.WebSearch)
 	require.Equal(t, 80, capturedBody.MaxTokens)
 	require.Equal(t, "system", capturedBody.Messages[0].Role)

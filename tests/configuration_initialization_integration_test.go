@@ -64,6 +64,7 @@ func TestCLIMissingConfigurationOffersUserConfigurationCreation(testInstance *te
 		require.Contains(subtest, string(configurationData), `credential: "${OPENAI_API_KEY}"`)
 		require.Contains(subtest, string(configurationData), "  max_completion_tokens: 4800")
 		require.Equal(subtest, 1, strings.Count(string(configurationData), "max_completion_tokens:"))
+		require.Contains(subtest, string(configurationData), "    model: muse-spark-1.2")
 		require.Contains(subtest, string(configurationData), `credential: "${GH_TOKEN}"`)
 		require.Contains(subtest, string(configurationData), `credential: "${GITHUB_PACKAGES_TOKEN}"`)
 	})

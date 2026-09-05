@@ -17,7 +17,7 @@ llm:
   llm_proxy:
     priority: 1
     provider: meta
-    model: muse-spark-1.1
+    model: muse-spark-1.2
     base_url: "https://llm-proxy-api.mprlab.com"
     credential: "${LLM_PROXY_SECRET_KEY}"
   max_completion_tokens: 4800

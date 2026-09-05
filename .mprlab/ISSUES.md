@@ -2049,6 +2049,27 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## Improvements
 
+- [x] [I014] (P1) Select Muse Spark 1.2 for all AI tasks.
+  Goal:
+  Use one Meta model through LLM Proxy for all AI tasks.
+  Requirements:
+  - Select `muse-spark-1.2` in the generated configuration and configuration examples.
+  - Keep reasoning effort in the direct OpenAI profile.
+  - Update the local configuration to use the same model and effort settings.
+  Validation:
+  - Verify generated configuration through the public CLI.
+  - Verify a live commit message with the selected Meta model.
+  - Run repository CI and documentation checks.
+  Resolution:
+  The generated configuration now selects `muse-spark-1.2` through LLM Proxy.
+  The local configuration uses the same model. Direct OpenAI owns the local reasoning effort.
+  The CLI regression failed with `muse-spark-1.1` before the default changed.
+  Live commit generation through installed Gix succeeded with direct OpenAI disabled.
+  The initial CI command reached its 350-second limit during integration tests.
+  The separate integration run succeeded in 332 seconds. Final `make ci` and `make build` succeeded.
+  The Governor check reports four existing governance differences.
+  Documentation checks report 409 existing language findings. The changed text adds no new findings.
+
 - [x] [I011] (P0) Use one fixed-major version for Gix releases.
   Requested on 2026-08-09.
   Goal:

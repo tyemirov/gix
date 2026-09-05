@@ -340,6 +340,12 @@ func TestApplicationConfigurationInitializationCreatesConfiguration(testInstance
 	fileContent, readError := os.ReadFile(expectedConfigurationPath)
 	require.NoError(testInstance, readError)
 	require.Equal(testInstance, embeddedConfigurationContent, fileContent)
+	var generatedConfiguration cli.ApplicationConfiguration
+	require.NoError(testInstance, yaml.Unmarshal(fileContent, &generatedConfiguration))
+	require.Equal(testInstance, "meta", generatedConfiguration.LLM.LLMProxy.Provider)
+	require.Equal(testInstance, "muse-spark-1.2", generatedConfiguration.LLM.LLMProxy.Model)
+	require.Empty(testInstance, generatedConfiguration.LLM.Effort)
+	require.Equal(testInstance, "high", generatedConfiguration.LLM.OpenAI.Effort)
 }
 
 func TestApplicationConfigurationInitializationForceHandling(testInstance *testing.T) {
@@ -554,7 +560,7 @@ func TestCanonicalConfigurationTemplateProvidesCompleteCommandConfigurations(tes
 	require.Zero(testInstance, embeddedConfiguration.LLM.OpenAI.MaxCompletionTokens)
 	require.Equal(testInstance, 1, embeddedConfiguration.LLM.LLMProxy.Priority)
 	require.Equal(testInstance, "meta", embeddedConfiguration.LLM.LLMProxy.Provider)
-	require.Equal(testInstance, "muse-spark-1.1", embeddedConfiguration.LLM.LLMProxy.Model)
+	require.Equal(testInstance, "muse-spark-1.2", embeddedConfiguration.LLM.LLMProxy.Model)
 	require.Equal(testInstance, "https://llm-proxy-api.mprlab.com", embeddedConfiguration.LLM.LLMProxy.BaseURL)
 	require.Equal(testInstance, "${LLM_PROXY_SECRET_KEY}", embeddedConfiguration.LLM.LLMProxy.Credential)
 	require.Zero(testInstance, embeddedConfiguration.LLM.LLMProxy.MaxCompletionTokens)
