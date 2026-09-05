@@ -634,6 +634,14 @@ func (service mergeConflictResolutionService) resolveConflictFile(ctx context.Co
 	if !mergeConflictFileIsText(conflictFile) {
 		return mergeConflictFileResolution{}, fmt.Errorf(mergeConflictBinaryError, conflictFile.Path)
 	}
+	normalizedFile, cleanMerge, collisionErr := service.resolveIssueIdentifierCollisions(ctx, conflictFile)
+	if collisionErr != nil {
+		return mergeConflictFileResolution{}, collisionErr
+	}
+	conflictFile = normalizedFile
+	if cleanMerge {
+		return mergeConflictFileResolution{Content: conflictFile.WorktreeContent}, nil
+	}
 	document, parseErr := parseMergeConflictDocument(conflictFile.WorktreeContent)
 	if parseErr != nil {
 		return mergeConflictFileResolution{}, fmt.Errorf(mergeConflictResolutionStructureTemplate+": %w", conflictFile.Path, parseErr)
