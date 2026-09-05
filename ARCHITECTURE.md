@@ -67,7 +67,7 @@ Gix resolves identical sides and changes on one side directly. Text conflicts wi
 
 Single-stage conflicts and base-only conflicts require an explicit Git resolution of linked paths. The transaction restores the local state before publication.
 
-Each text conflict with changes on both sides requires a semantic audit. Complete issue insertions use their canonical identifiers as record keys. Each distinct identifier must appear once in the result. A shared identifier permits an exact source record, subject to the complete-sequence rule. Independent records remain present. Partial records and other text use the general conflict rules.
+Each text conflict with changes on both sides requires a semantic audit. Complete issue insertions use their canonical identifiers as record keys. Each distinct identifier must appear once in the result. A shared identifier permits an exact source record, subject to the complete-sequence rule. The model returns one source selection key per identifier. Gix constructs the result from the original records in canonical order. Unknown keys, duplicate identifiers, missing selections, and rewritten records fail validation. Independent records remain present. Partial records and other text use the general conflict rules.
 
 For overlapping insertions, word sequences identify the complete source alternatives. When one sequence contains the other plus additional words, only that complete source alternative is valid. Equal word sequences permit either exact source alternative. Validation compares every byte of the selected alternative, including punctuation and whitespace. Other independent insertions require exact concatenation of both sides.
 
@@ -75,7 +75,7 @@ For overlapping insertions, word sequences identify the complete source alternat
 
 Code tokens include their backtick delimiter as context. Code and prose tokens cannot match. Fine-grained tokens inside each span preserve compatible code changes. Source containment can prove replacement text, but each deletion requires a separate check.
 
-Each region response uses content sentinels to preserve boundary whitespace. Gix reconstructs unchanged file regions locally. A semantic audit can approve a valid candidate or return a valid correction. A correction without replacement-intent proof requires another correction before acceptance. An approval cannot accept an unproven correction. The resolver permits four bounded attempts before rollback.
+Issue responses contain source selection keys. Other region responses use content sentinels to preserve boundary whitespace. Gix reconstructs unchanged file regions locally. A semantic audit can approve a valid candidate or return a valid correction. A correction without replacement-intent proof requires another correction before acceptance. An approval cannot accept an unproven correction. The resolver permits four bounded attempts before rollback.
 
 Each candidate or audit request uses one provider round. Each provider has one configured request timeout. A provider round with no response stops semantic repair. Transport and authentication failures never become model feedback. Provider clients own separate typed request retries. Direct OpenAI empty-response recovery stays inside its provider request. The LLM Proxy client preserves sanitized typed HTTP status and stable error-code data.
 
