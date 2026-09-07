@@ -2049,6 +2049,35 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## Improvements
 
+- [x] [I014] (P1) Use branch protection to select the sync publication path.
+  Goal:
+  Publish new work for a protected default branch through a pull request.
+  The previous explicit default contract attempted a direct push and received `GH006` when required checks were absent.
+  Requirements:
+  - Resolve the default branch from the remote symbolic `HEAD` without special branch names.
+  - Get the explicit branch protection state from GitHub before dirty commit generation.
+  - Stop publication when the protection lookup fails or returns an invalid response.
+  - Preserve local commits and pending files on a review branch for a protected default target.
+  - Open the pull request against the resolved default branch and keep the review branch active.
+  - Preserve direct publication for an unprotected default target.
+  - Omit the push when the default branch has no local commits to publish.
+  - Preserve rollback before publication and the recovery state after publication.
+  Validation:
+  - Reproduce the rejected direct push through the compiled CLI before production changes.
+  - Exercise `main`, `master`, `qqq`, `default`, and `release/trunk` as protected default names.
+  - Verify local commit ancestry, remote commit ancestry, stash restoration, and ordinary target behavior.
+  - Verify lookup failures, publication failures, review reuse, and source-branch isolation.
+  - Run focused tests and final `make ci`.
+  Resolution:
+  Sync now uses the explicit GitHub protection state to select direct publication or a review branch.
+  Protected default work keeps local and remote commit ancestry and opens a pull request against the resolved default.
+  Review reuse requires the same pull-request base and keeps explicit title and body values.
+  The compiled CLI regression reproduced `GH006` before production changes.
+  All 26 new CLI scenarios and final `make ci` passed on 2026-09-07.
+  The changed prose has no mechanical language findings.
+  Governor reports existing drift in four unchanged governance files.
+
+
 - [x] [I011] (P0) Use one fixed-major version for Gix releases.
   Requested on 2026-08-09.
   Goal:

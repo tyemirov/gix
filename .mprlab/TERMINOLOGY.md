@@ -94,6 +94,10 @@ Give each term one meaning. Use the same term for the same concept in all docume
 Add repository-specific technical nouns below this line.
 
 - `approval sentinel`: The exact model response that approves a locally validated conflict result.
+- `branch protection`: GitHub requirements for changes to a branch.
+- `default branch`: The branch that the selected remote reports through its symbolic `HEAD`.
+- `publication path`: The method that publishes commits through a direct push or a pull request.
+- `review branch`: A Git branch that supplies proposed commits to a pull request.
 - `CalVer`: A release version that derives its numeric fields from a release timestamp.
 - `derived candidate`: A conflict result that Gix constructs from one side and each compatible edit from the other side.
 - `deletion intent`: The removal of non-whitespace common-base tokens by one conflict side.
