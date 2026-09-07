@@ -749,9 +749,9 @@ if [ "$1" = "api" ] && [ "$2" = "repos/canonical/example" ]; then
   fi
   exit 0
 fi
-if [ "$1" = "api" ] && [ "$2" = "repos/canonical/example/branches/main/protection" ]; then
-  echo 'gh: Not Found (HTTP 404)' >&2
-  exit 1
+if [ "$1" = "api" ] && [ "$2" = "repos/canonical/example/branches/main" ]; then
+  echo '{"protected":false}'
+  exit 0
 fi
 exit 0
 `

@@ -964,6 +964,23 @@ if [ "$1" = "repo" ] && [ "$2" = "view" ]; then
   exit 0
 fi
 
+if [ "$1" = "api" ]; then
+  case "$2" in
+    repos/owner/project/branches/*)
+      if [ -n "$GIX_SYNC_TEST_PROTECTION_ERROR" ]; then
+        printf '%s\n' "$GIX_SYNC_TEST_PROTECTION_ERROR" >&2
+        exit 1
+      fi
+      if [ -n "$GIX_SYNC_TEST_PROTECTION_RESPONSE" ]; then
+        printf '%s\n' "$GIX_SYNC_TEST_PROTECTION_RESPONSE"
+      else
+        printf '{"protected":%s}\n' "${GIX_SYNC_TEST_PROTECTED:-false}"
+      fi
+      exit 0
+      ;;
+  esac
+fi
+
 find_pull_request_marker() {
   marker_kind="$1"
   expected_head="$2"
@@ -1095,6 +1112,10 @@ if [ -n "$GIX_SYNC_TEST_GIT_LOG" ]; then
 fi
 if [ -n "$GIX_SYNC_TEST_OPERATION_LOG" ]; then
   printf 'git %%s\n' "$*" >>"$GIX_SYNC_TEST_OPERATION_LOG"
+fi
+if [ "$GIX_SYNC_TEST_PROTECTED" = "true" ] && [ "$1" = "push" ] && [ "$2" = "origin" ] && [ "$3" = "$GIX_SYNC_TEST_DEFAULT_BRANCH" ]; then
+  printf 'GH006: Protected branch update failed; required status checks are expected\n' >&2
+  exit 1
 fi
 if [ -n "$GIX_SYNC_TEST_FAIL_GIT_MATCH" ]; then
   case "$*" in

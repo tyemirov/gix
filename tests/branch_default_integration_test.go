@@ -1024,9 +1024,9 @@ if [ "$1" = "api" ]; then
         exit 0
       fi
       ;;
-    repos/*/branches/*/protection)
-      echo 'gh: Not Found (HTTP 404)' >&2
-      exit 1
+    repos/*/branches/*)
+      echo '{"protected":false}'
+      exit 0
       ;;
     repos/*)
       repo=${endpoint#repos/}
