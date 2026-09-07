@@ -662,11 +662,15 @@ func generateSyncBranchMessage(ctx context.Context, executor shared.GitExecutor,
 	return result.Message, nil
 }
 
-func selectGeneratedSyncBranchName(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, remoteName string, options worktreeAdoptionCommitMessageOptions) (string, error) {
+func selectGeneratedSyncBranchName(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, remoteName string, reviewBase string, options worktreeAdoptionCommitMessageOptions) (string, error) {
 	initialBranchName, initialBranchErr := generatedSyncBranchName(ctx, environment.GitExecutor, repository.Path, options)
 	if initialBranchErr != nil {
 		return "", initialBranchErr
 	}
+	return selectSyncBranchName(ctx, environment, repository, remoteName, reviewBase, initialBranchName)
+}
+
+func selectSyncBranchName(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, remoteName string, reviewBase string, initialBranchName string) (string, error) {
 	repositoryIdentifier := strictSyncRepositoryIdentifier(repository)
 	for candidateIndex := 0; candidateIndex < strictSyncGeneratedBranchLimit; candidateIndex++ {
 		candidateBranchName := generatedSyncBranchCandidateName(initialBranchName, candidateIndex)
@@ -693,7 +697,13 @@ func selectGeneratedSyncBranchName(ctx context.Context, environment *workflow.En
 			return "", pullRequestErr
 		}
 		if openPullRequest != nil {
-			return candidateBranchName, nil
+			baseBranch, baseErr := openPullRequestBaseBranch(*openPullRequest, candidateBranchName)
+			if baseErr != nil {
+				return "", baseErr
+			}
+			if baseBranch == reviewBase {
+				return candidateBranchName, nil
+			}
 		}
 	}
 	return "", fmt.Errorf(strictSyncGeneratedBranchLimitMessage, initialBranchName)

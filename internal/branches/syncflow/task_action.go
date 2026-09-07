@@ -85,7 +85,7 @@ const (
 	strictSyncMissingPullRequestHeadOIDTemplate  = "merged pull request for branch %q did not report a head commit"
 	strictSyncEmptyReferenceCommitTemplate       = "reference %q did not resolve to a commit"
 	strictSyncMergedPullRequestPromptTemplate    = "Pull request for branch %q into %s is already merged. Sync %s instead? [a/N/y] "
-	strictSyncConflictTemplate                   = "merge from %s/%s into %s stopped with conflicts; resolve them before pushing"
+	strictSyncConflictTemplate                   = "merge from %s into %s stopped with conflicts; resolve them before pushing"
 	strictSyncFastForwardTemplate                = "fast-forward from %s/%s into %s stopped; commit, stash, or clean local changes before syncing"
 )
 
@@ -635,6 +635,15 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 	if dirty {
 		commitBranchName := branchName
 		commitToExplicitBaseBranch := commitBranchName == defaultBranch && strings.TrimSpace(options.ResolutionSource) == branchResolutionSourceExplicit
+		publication := syncBranchPublicationDirect
+		if commitToExplicitBaseBranch {
+			var policyErr error
+			publication, policyErr = resolveSyncBranchPublication(ctx, environment, repository, defaultBranch)
+			if policyErr != nil {
+				return policyErr
+			}
+			commitToExplicitBaseBranch = publication == syncBranchPublicationDirect
+		}
 		if commitToExplicitBaseBranch {
 			remoteReference := fmt.Sprintf("%s/%s", remoteName, defaultBranch)
 			remoteExists, remoteExistsErr := remoteReferenceExists(ctx, environment.GitExecutor, repository.Path, remoteReference)
@@ -646,7 +655,7 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 			}
 		}
 		if commitBranchName == defaultBranch && !commitToExplicitBaseBranch {
-			generatedBranchName, generatedBranchErr := selectGeneratedSyncBranchName(ctx, environment, repository, remoteName, options.CommitMessages)
+			generatedBranchName, generatedBranchErr := selectGeneratedSyncBranchName(ctx, environment, repository, remoteName, defaultBranch, options.CommitMessages)
 			if generatedBranchErr != nil {
 				return generatedBranchErr
 			}
@@ -692,6 +701,11 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 		}
 		branchName = commitBranchName
 		dirty = false
+		if publication == syncBranchPublicationReview {
+			if mergeErr := mergeLocalDefaultIntoReviewBranch(ctx, environment, repository, defaultBranch, branchName, options.CommitMessages); mergeErr != nil {
+				return mergeErr
+			}
+		}
 		if commitToExplicitBaseBranch {
 			if mergeErr := mergeRemoteBranchIntoLocal(ctx, environment, repository, environment.GitExecutor, repository.Path, remoteName, branchName, options.CommitMessages); mergeErr != nil {
 				return mergeErr
@@ -707,11 +721,13 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 	}
 
 	if branchName == defaultBranch {
-		if syncErr := syncBaseBranch(ctx, environment, repository, remoteName, defaultBranch, options.CommitMessages); syncErr != nil {
+		result, syncErr := syncBaseBranch(ctx, environment, repository, remoteName, defaultBranch, options.CommitMessages, options.PullRequest)
+		if syncErr != nil {
 			return syncErr
 		}
 		return completeStrictSync(ctx, environment, repository, transaction, invocationStash, options, strictSyncCompletion{
-			BranchName: branchName,
+			BranchName: result.SyncedBranch,
+			Created:    result.Created,
 			Stashed:    invocationStash != nil,
 		})
 	}
@@ -807,31 +823,44 @@ type strictPullRequestCreateOptions struct {
 	Body                 string
 }
 
-func syncBaseBranch(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, remoteName string, baseBranch string, commitMessages worktreeAdoptionCommitMessageOptions) error {
+func syncBaseBranch(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, remoteName string, baseBranch string, commitMessages worktreeAdoptionCommitMessageOptions, pullRequest strictSyncPullRequestMetadata) (strictPullRequestBranchResult, error) {
+	result := strictPullRequestBranchResult{SyncedBranch: baseBranch}
 	remoteReference := fmt.Sprintf("%s/%s", remoteName, baseBranch)
 	remoteExists, remoteExistsErr := remoteReferenceExists(ctx, environment.GitExecutor, repository.Path, remoteReference)
 	if remoteExistsErr != nil {
-		return remoteExistsErr
+		return result, remoteExistsErr
 	}
 	if !remoteExists {
-		return fmt.Errorf("remote base branch %q does not exist", remoteReference)
+		return result, fmt.Errorf("remote base branch %q does not exist", remoteReference)
 	}
-
 	localExists, localExistsErr := localBranchExists(ctx, environment.GitExecutor, repository.Path, baseBranch)
 	if localExistsErr != nil {
-		return localExistsErr
+		return result, localExistsErr
 	}
 	if !localExists {
-		return executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitSwitchSubcommandConstant, gitCreateBranchFlagConstant, baseBranch, gitSwitchTrackFlagConstant, remoteReference})
+		return result, executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitSwitchSubcommandConstant, gitCreateBranchFlagConstant, baseBranch, gitSwitchTrackFlagConstant, remoteReference})
 	}
-
 	if switchErr := switchToLocalOrRemoteBranchWithAdoption(ctx, environment, repository, remoteName, baseBranch, commitMessages); switchErr != nil {
-		return switchErr
+		return result, switchErr
+	}
+	aheadCount, aheadErr := commitCount(ctx, environment.GitExecutor, repository.Path, fmt.Sprintf("%s..%s", remoteReference, baseBranch))
+	if aheadErr != nil {
+		return result, aheadErr
+	}
+	if aheadCount == 0 {
+		return result, mergeRemoteBranchIntoLocal(ctx, environment, repository, environment.GitExecutor, repository.Path, remoteName, baseBranch, commitMessages)
+	}
+	publication, policyErr := resolveSyncBranchPublication(ctx, environment, repository, baseBranch)
+	if policyErr != nil {
+		return result, policyErr
+	}
+	if publication == syncBranchPublicationReview {
+		return syncCommittedDefaultForReview(ctx, environment, repository, remoteName, baseBranch, commitMessages, pullRequest)
 	}
 	if mergeErr := mergeRemoteBranchIntoLocal(ctx, environment, repository, environment.GitExecutor, repository.Path, remoteName, baseBranch, commitMessages); mergeErr != nil {
-		return mergeErr
+		return result, mergeErr
 	}
-	return executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitPushSubcommandConstant, remoteName, baseBranch})
+	return result, executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitPushSubcommandConstant, remoteName, baseBranch})
 }
 
 func syncPullRequestBranch(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, options strictPullRequestBranchOptions) (strictPullRequestBranchResult, error) {
@@ -971,10 +1000,7 @@ func syncKnownMergedPullRequestBranch(ctx context.Context, environment *workflow
 	if !syncBaseBranchConfirmed {
 		return strictPullRequestBranchResult{}, fmt.Errorf(strictSyncMissingPullRequestTemplate, options.BranchName)
 	}
-	if syncErr := syncBaseBranch(ctx, environment, repository, options.RemoteName, syncedBranch, options.CommitMessages); syncErr != nil {
-		return strictPullRequestBranchResult{}, syncErr
-	}
-	return strictPullRequestBranchResult{SyncedBranch: syncedBranch}, nil
+	return syncBaseBranch(ctx, environment, repository, options.RemoteName, syncedBranch, options.CommitMessages, options.PullRequest)
 }
 
 func resolveMergedPullRequestBaseTarget(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, repositoryIdentifier string, remoteName string, branchName string, defaultBranch string, visitedBranches map[string]struct{}) (string, error) {
@@ -1148,16 +1174,16 @@ func switchToLocalOrRemoteBranchWithAdoption(ctx context.Context, environment *w
 
 func mergeBaseIntoBranch(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, executor shared.GitExecutor, repositoryPath string, remoteName string, baseBranch string, branchName string, commitMessages worktreeAdoptionCommitMessageOptions) error {
 	baseReference := fmt.Sprintf("%s/%s", remoteName, baseBranch)
-	if mergeErr := executeGit(ctx, executor, repositoryPath, []string{gitMergeSubcommandConstant, gitMergeNoEditFlagConstant, baseReference}); mergeErr != nil {
-		return resolveMergeConflictOrError(ctx, environment, repository, executor, repositoryPath, baseReference, branchName, fmt.Sprintf(strictSyncConflictTemplate, remoteName, baseBranch, branchName), commitMessages, mergeErr)
-	}
-	return nil
+	return mergeReferenceIntoBranch(ctx, environment, repository, executor, repositoryPath, baseReference, branchName, commitMessages)
 }
 
 func mergeRemoteBranchIntoLocal(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, executor shared.GitExecutor, repositoryPath string, remoteName string, branchName string, commitMessages worktreeAdoptionCommitMessageOptions) error {
-	remoteReference := fmt.Sprintf("%s/%s", remoteName, branchName)
-	if mergeErr := executeGit(ctx, executor, repositoryPath, []string{gitMergeSubcommandConstant, gitMergeNoEditFlagConstant, remoteReference}); mergeErr != nil {
-		return resolveMergeConflictOrError(ctx, environment, repository, executor, repositoryPath, remoteReference, branchName, fmt.Sprintf(strictSyncConflictTemplate, remoteName, branchName, branchName), commitMessages, mergeErr)
+	return mergeBaseIntoBranch(ctx, environment, repository, executor, repositoryPath, remoteName, branchName, branchName, commitMessages)
+}
+
+func mergeReferenceIntoBranch(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, executor shared.GitExecutor, repositoryPath string, sourceReference string, branchName string, commitMessages worktreeAdoptionCommitMessageOptions) error {
+	if mergeErr := executeGit(ctx, executor, repositoryPath, []string{gitMergeSubcommandConstant, gitMergeNoEditFlagConstant, sourceReference}); mergeErr != nil {
+		return resolveMergeConflictOrError(ctx, environment, repository, executor, repositoryPath, sourceReference, branchName, fmt.Sprintf(strictSyncConflictTemplate, sourceReference, branchName), commitMessages, mergeErr)
 	}
 	return nil
 }

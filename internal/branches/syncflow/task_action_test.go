@@ -433,9 +433,10 @@ func (executor *strictSyncGitExecutor) commitStrictSyncDirtyCluster(ctx context.
 }
 
 type strictSyncGitHubExecutor struct {
-	output   string
-	outputs  []string
-	commands []execshell.CommandDetails
+	protectionCommands []execshell.CommandDetails
+	output             string
+	outputs            []string
+	commands           []execshell.CommandDetails
 }
 
 func (executor *strictSyncGitHubExecutor) ExecuteGit(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
@@ -443,6 +444,10 @@ func (executor *strictSyncGitHubExecutor) ExecuteGit(context.Context, execshell.
 }
 
 func (executor *strictSyncGitHubExecutor) ExecuteGitHubCLI(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
+	if len(details.Arguments) > 1 && details.Arguments[0] == "api" && strings.Contains(details.Arguments[1], "/branches/") {
+		executor.protectionCommands = append(executor.protectionCommands, details)
+		return execshell.ExecutionResult{StandardOutput: `{"protected":false}`}, nil
+	}
 	executor.commands = append(executor.commands, details)
 	outputIndex := len(executor.commands) - 1
 	if outputIndex < len(executor.outputs) {
@@ -1027,7 +1032,7 @@ func TestHandleBranchSyncActionStrictPRBranchTreatsIgnoredOnlyStatusAsClean(t *t
 	require.NotContains(t, recordedCommands, "check-ignore --stdin")
 	require.Contains(t, recordedCommands, "switch --no-guess master")
 	require.Contains(t, recordedCommands, "merge --no-edit origin/master")
-	require.Contains(t, recordedCommands, "push origin master")
+	require.NotContains(t, recordedCommands, "push origin master")
 	require.NotContains(t, recordedCommands, "switch -c gix/sync-dirty-work")
 	require.NotContains(t, recordedCommands, "add --all")
 	require.NotContains(t, recordedCommands, "commit -m")
@@ -1216,7 +1221,7 @@ func TestHandleBranchSyncActionStrictPRBranchPromptsToSyncMasterWhenPullRequestM
 	recordedCommands := recordedGitCommands(gitExecutor.commands)
 	require.Contains(t, recordedCommands, "switch --no-guess master")
 	require.Contains(t, recordedCommands, "merge --no-edit origin/master")
-	require.Contains(t, recordedCommands, "push origin master")
+	require.NotContains(t, recordedCommands, "push origin master")
 	require.NotContains(t, recordedCommands, "push origin feature/foo")
 	require.Equal(t, "SYNCED: /tmp/project (master)\n", output.String())
 	require.Equal(t, []string{`Pull request for branch "feature/foo" into master is already merged. Sync master instead? [a/N/y] `}, prompter.prompts)
@@ -1268,7 +1273,7 @@ func TestHandleBranchSyncActionStrictPRBranchPromptsToSyncMasterWhenMergedPullRe
 	recordedCommands := recordedGitCommands(gitExecutor.commands)
 	require.Contains(t, recordedCommands, "switch --no-guess master")
 	require.Contains(t, recordedCommands, "merge --no-edit origin/master")
-	require.Contains(t, recordedCommands, "push origin master")
+	require.NotContains(t, recordedCommands, "push origin master")
 	require.NotContains(t, recordedCommands, "push origin feature/foo")
 	require.Equal(t, "SYNCED: /tmp/project (master)\n", output.String())
 	require.Equal(t, []string{`Pull request for branch "feature/foo" into master is already merged. Sync master instead? [a/N/y] `}, prompter.prompts)
@@ -1359,7 +1364,7 @@ func TestHandleBranchSyncActionStrictPRBranchAssumeYesSyncsMasterForMergedPullRe
 
 	require.NoError(t, handleBranchSyncAction(context.Background(), environment, repository, parameters))
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "merge --no-edit origin/master")
-	require.Contains(t, recordedGitCommands(gitExecutor.commands), "push origin master")
+	require.NotContains(t, recordedGitCommands(gitExecutor.commands), "push origin master")
 }
 
 func TestResolveMergedPullRequestBaseTargetPrefersActiveOpenPullRequest(t *testing.T) {
@@ -2254,6 +2259,7 @@ func TestHandleBranchSyncActionStrictPRBranchCommitsDirtyWorkToExplicitMaster(t 
 	require.Contains(t, recordedCommands, "push origin master")
 	require.NotContains(t, recordedCommands, "switch -c gix/")
 	require.Empty(t, githubExecutor.commands)
+	require.Len(t, githubExecutor.protectionCommands, 1)
 	require.Len(t, chatClient.requests, 1)
 }
 
