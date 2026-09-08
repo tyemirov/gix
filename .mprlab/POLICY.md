@@ -78,6 +78,18 @@ Apply this section when the task changes or validates a selected application man
 - Add a resource kind only with one closed shape.
 - Reject unknown fields and `schema_version`.
 
+## Sync Branch Selection
+
+- Resolve the default branch from the selected remote symbolic `HEAD`.
+- Treat branch names as identifiers without special behavior for `main`, `master`, or any other name.
+- When the command names a branch, commit pending work to that branch without an exception for branch protection.
+- If the target still matches a merged pull request, reject dirty auto-commit even when the target is explicit.
+- Preserve pending work after this rejection. The user decides how to proceed.
+- For an explicit default target, publish directly and keep that branch active.
+- Report a rejected direct push as a failure. Do not create a review branch after rejection.
+- Use the generated default review branch only when the command has no branch argument.
+- Keep the implicit protected default review branch active after publication.
+
 ## Static Website Hosting
 
 Apply this section to deployment or publication work for a browser frontend.
