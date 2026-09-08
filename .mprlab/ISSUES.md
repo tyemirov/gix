@@ -11,6 +11,32 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B096] (P1) Let release CI complete under the test time limits.
+  Goal:
+  Release preparation uses the same CI gate as the `make ci` command.
+  Evidence:
+  The release command sent `SIGKILL` to CI after 350 seconds. The last successful integration suite required 363.431 seconds.
+  Requirements:
+  - Remove the separate release deadline for CI.
+  - Keep the complete CI gate and the test time limits.
+  - Report the CI duration and exit status when CI fails.
+  - Stop before version selection, artifact preparation, or release metadata changes when CI fails.
+  - Keep the source commit, tags, and previous receipt after a CI failure.
+  Validation:
+  The public Make regression failed before the production change.
+  The injected deadline stopped CI before successful completion.
+  The failure, timeout, and signal cases lacked CI duration and exit status in their diagnostics.
+  All four public Make scenarios passed after the correction.
+  Successful CI completed release preparation in the local test repository.
+  Failed CI kept the source commit, tags, and previous receipt unchanged.
+  The focused release suite and shell syntax check passed.
+  The final `make ci` check passed. Its integration suite required 461.977 seconds.
+  Resolution:
+  Release preparation runs `make ci` directly and reports its duration and exit status.
+  The complete CI gate and test time limits remain in effect.
+  The changed prose has no new mechanical language findings.
+  The Governor check reports four existing managed-document differences.
+
 - [x] [B092] (P1) Complete default branch sync after a squash merge.
   Goal:
   Sync does not create another review for commits that a merged pull request already contains.
