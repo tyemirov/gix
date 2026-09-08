@@ -687,7 +687,7 @@ func TestBranchSyncCommandUsageIncludesBranchPlaceholder(t *testing.T) {
 
 	require.True(t, strings.HasPrefix(strings.TrimSpace(branchSyncCommand.Use), branchSyncTopLevelUseNameConstant))
 	require.Contains(t, branchSyncCommand.Use, "[remote-url|branch]")
-	require.Contains(t, branchSyncCommand.Long, "PR-backed work branches")
+	require.Contains(t, branchSyncCommand.Long, "When a branch is specified, sync uses that branch.")
 	require.Contains(t, branchSyncCommand.Example, "gix "+branchSyncTopLevelUseNameConstant)
 }
 
