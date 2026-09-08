@@ -11,6 +11,47 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B103] (P2) Accept remote-only parents without a pull request.
+  Evidence:
+  Child sync requires a local parent ref even when the parent exists remotely.
+  Requirements:
+  Resolve and synchronize parent work from the remote. Preserve the child destination and pending files.
+  Validation:
+  The CLI regression first failed with an unknown local parent revision.
+  Corrected cases publish exact child bytes with and without a parent PR.
+  Final `make ci` passed on 2026-09-08.
+
+- [x] [B104] (P2) Synchronize resolved parent bases before review comparison.
+  Evidence:
+  A parent can retain old ancestry after its grandparent merges and cause an empty parent PR.
+  Requirements:
+  Synchronize the parent against its resolved base before evaluating its file diff.
+  Validation:
+  CLI regressions first included grandparent work in the parent review diff.
+  Corrected cases exclude the merged work, with and without separate parent changes.
+  Final `make ci` passed on 2026-09-08.
+
+- [x] [B105] (P2) Report publication of each pushed ref accurately.
+  Evidence:
+  A rejected followed tag can hide a successful branch push and suppress its PR.
+  Requirements:
+  Classify the requested branch result separately. Report rejected extra refs without denying completed branch publication.
+  Validation:
+  Real tag rejection first suppressed branch PR creation and caused false publication reports.
+  Corrected cases retain new, updated, and unchanged branch publication. Parent publication continues the child operation.
+  A later PR failure retains remote branch bytes and reports recovery without rollback.
+  Final `make ci` passed on 2026-09-08.
+
+- [x] [B106] (P2) Synchronize parents that are behind their remote.
+  Evidence:
+  The parent prerequisite rejects incoming remote commits and asks for a separate sync command.
+  Requirements:
+  Integrate incoming parent work during child sync. Preserve unpublished parent and child work.
+  Validation:
+  CLI regressions first rejected parents with incoming or divergent remote history.
+  Corrected cases retain incoming parent bytes, unpublished parent bytes, and staged, unstaged, and untracked child work.
+  Final `make ci` passed on 2026-09-08.
+
 - [x] [B100] (P2) Accept parents without separate file work.
   Evidence:
   An explicit child from a parent without additional commits fails before sync saves pending file changes.

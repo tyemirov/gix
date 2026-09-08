@@ -115,19 +115,25 @@ Work preservation:
 ## Sync Review Metadata
 
 - Accept a parent branch without additional commits or a pull request.
+- Accept a parent that exists only on the remote.
+- Merge incoming parent work before parent publication. Preserve unpublished parent work and pending child files.
 - Resolve a merged parent to its current base before synchronizing an unmerged child without a pull request.
+- Before review comparison, synchronize the parent with its remote ref and resolved base.
 - Keep the child as the destination. Record its current review base.
 - Create a pull request only when the branch has file changes against its review base.
 
 ## Sync GitHub Publication
 
 - Treat GitHub publication as secondary to the Git synchronization operation.
-- If GitHub rejects the push, preserve the completed local work and the selected branch.
-- Report the rejection and state that the remote did not receive the changes.
+- Determine publication from the requested branch result in Git output.
+- If GitHub rejects that branch, preserve the completed local work and the selected branch.
+- Report the rejection and state that the remote did not receive the branch changes.
 - Suggest removal of branch protection or creation of a new pull request.
 - Do not change branch protection or create a substitute branch because GitHub rejected the push.
 - Return success with exit code `0` when completed synchronization has only a GitHub push rejection.
 - Do not start rollback for that rejection.
+- If another ref is rejected after branch publication succeeds, report that rejection and continue branch review publication.
+- Record successful remote updates even when the push command returns a failure.
 - Propagate rejected parent publication to the child operation.
 - Save the child work locally and defer its push and pull request until parent publication succeeds.
 - Require integration tests to verify these results through the CLI.
