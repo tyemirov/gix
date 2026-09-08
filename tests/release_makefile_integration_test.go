@@ -527,6 +527,93 @@ func TestReleaseCIReceivesNoOuterReleaseOrMakeIntent(testInstance *testing.T) {
 	)
 }
 
+func TestReleaseCIUsesNativeCompletion(t *testing.T) {
+	realMake, lookupErr := exec.LookPath("make")
+	require.NoError(t, lookupErr)
+	for _, scenario := range []struct {
+		name     string
+		exitCode int
+	}{
+		{name: "successful_ci_outlives_release_deadline"},
+		{name: "native_failure", exitCode: 42},
+		{name: "native_timeout", exitCode: 124},
+		{name: "native_kill", exitCode: 137},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			fixture := newExactReleaseFixture(t)
+			fixture.commitNextSource(t)
+			sourceHead := strings.TrimSpace(runGit(t, fixture.repositoryPath, "rev-parse", "HEAD"))
+			tagsBefore := runGit(t, fixture.repositoryPath, "tag", "--list")
+			receiptBefore := readReleaseArtifactTree(t, fixture.artifactDirectory)
+			makeLog := filepath.Join(t.TempDir(), "make.log")
+			scripts := map[string]string{
+				"go":   releaseFakeSemVerGoScript,
+				"make": releaseFakeCIOutcomeScript + releaseFakeMakeScript,
+			}
+			if scenario.exitCode == 0 {
+				scripts["timeout"] = "#!/bin/sh\necho 'fixture release deadline expired before native CI completed' >&2\nexit 137\n"
+			}
+			pathVariable := buildReleaseStubbedExecutablePath(t, scripts)
+			executionContext, cancel := context.WithTimeout(context.Background(), releaseMakeCommandTimeout)
+			defer cancel()
+			command := exec.CommandContext(executionContext, realMake,
+				"--file", filepath.Join(fixture.repositoryRoot, "Makefile"),
+				"FAST_TEST_PACKAGES=",
+				"RELEASE_TOOL_DIR="+filepath.Join(fixture.repositoryRoot, releaseToolDirectoryRelativePath),
+				"release",
+			)
+			command.Dir = fixture.repositoryPath
+			command.Env = buildCommandEnvironment(integrationCommandOptions{
+				PathVariable: pathVariable,
+				EnvironmentOverrides: map[string]string{
+					releaseFakeCIExitVariable:  fmt.Sprint(scenario.exitCode),
+					releaseFakeMakeLogVariable: makeLog,
+				},
+			})
+			outputBytes, runErr := command.CombinedOutput()
+			output := string(outputBytes)
+			if scenario.exitCode == 0 {
+				require.NoError(t, runErr, output)
+				require.Contains(t, output, "fixture CI completed")
+				require.Regexp(t, `make ci passed in [0-9]+s`, output)
+				require.Equal(t, "ci\nrelease-artifacts\n", readTextFile(t, makeLog))
+				require.Equal(t, "v1.8.8\n", runGit(t, fixture.repositoryPath, "tag", "--points-at", "HEAD"))
+				require.Equal(t, sourceHead, strings.TrimSpace(runGit(t, fixture.repositoryPath, "rev-parse", "HEAD^")))
+			} else {
+				require.Error(t, runErr, output)
+				require.Contains(t, output, "fixture CI progress")
+				require.Regexp(t, fmt.Sprintf(`release CI failed after [0-9]+s \(make ci exit %d\)`, scenario.exitCode), output)
+				require.NotContains(t, output, "Deciding the release version")
+				require.Equal(t, "ci\n", readTextFile(t, makeLog))
+				require.Equal(t, sourceHead, strings.TrimSpace(runGit(t, fixture.repositoryPath, "rev-parse", "HEAD")))
+				require.Equal(t, tagsBefore, runGit(t, fixture.repositoryPath, "tag", "--list"))
+				require.Equal(t, receiptBefore, readReleaseArtifactTree(t, fixture.artifactDirectory))
+			}
+			require.Empty(t, strings.TrimSpace(runGit(t, fixture.repositoryPath, "status", "--short")))
+			candidates, globErr := filepath.Glob(filepath.Join(filepath.Dir(fixture.artifactDirectory), "mprlab-release-candidate.*"))
+			require.NoError(t, globErr)
+			require.Empty(t, candidates)
+		})
+	}
+}
+
+const releaseFakeCIExitVariable = "GIX_RELEASE_FAKE_CI_EXIT"
+
+const releaseFakeCIOutcomeScript = `#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "ci" ]]; then
+  printf 'ci\n' >>"${GIX_RELEASE_FAKE_MAKE_LOG}"
+  echo 'fixture CI progress' >&2
+  if [[ "${GIX_RELEASE_FAKE_CI_EXIT}" == "137" ]]; then
+    kill -KILL "$$"
+  fi
+  if [[ "${GIX_RELEASE_FAKE_CI_EXIT}" == "0" ]]; then
+    echo 'fixture CI completed'
+  fi
+  exit "${GIX_RELEASE_FAKE_CI_EXIT}"
+fi
+`
+
 func TestReleasePolicyIgnoresForeignCalVerTags(testInstance *testing.T) {
 	fixture := newExactReleaseFixture(testInstance)
 	runGit(testInstance, fixture.repositoryPath, "tag", "-a", "26.807.120000", "-m", "Release 26.807.120000", fixture.releaseCommit)
@@ -1407,6 +1494,10 @@ fi
 
 const releaseFakeSemVerGoScript = `#!/usr/bin/env bash
 set -euo pipefail
+
+if [[ "${1:-}" == "list" ]]; then
+  exit 0
+fi
 
 [[ "$#" == "9" && "${1:-}" == "run" && "${2:-}" == "." && "${3:-}" == "release" && "${4:-}" == "next" && "${5:-}" == "semver" && "${6:-}" == "--fixed-major" && "${7:-}" == "1" && "${8:-}" == "--format" && "${9:-}" == "json" ]] || {
   echo "unexpected go invocation: $*" >&2
