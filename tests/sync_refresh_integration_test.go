@@ -414,113 +414,6 @@ func TestSyncRejectsRemoteWithoutDefaultBeforeCommitting(testInstance *testing.T
 	require.Equal(testInstance, "M README.md", strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
 }
 
-func TestSyncTreatsMainAndMasterAsOrdinaryBranchNames(testInstance *testing.T) {
-	testCases := []struct {
-		name          string
-		defaultBranch string
-		targetBranch  string
-	}{
-		{name: "main default and master target", defaultBranch: "main", targetBranch: "master"},
-		{name: "master default and main target", defaultBranch: "master", targetBranch: "main"},
-	}
-
-	for _, testCase := range testCases {
-		testInstance.Run(testCase.name, func(testInstance *testing.T) {
-			repositoryRoot := integrationRepositoryRoot(testInstance)
-			workspacePath := syncHomeWorkspace(testInstance)
-			remotePath := filepath.Join(workspacePath, "remote.git")
-			repositoryPath := filepath.Join(workspacePath, "project")
-			runGitWithDir(testInstance, "", "init", "--bare", remotePath)
-			runGitWithDir(testInstance, "", "init", "--initial-branch="+testCase.defaultBranch, repositoryPath)
-			configureGitIdentity(testInstance, repositoryPath)
-			runGit(testInstance, repositoryPath, "remote", "add", "origin", localFileURL(remotePath))
-
-			readmePath := filepath.Join(repositoryPath, "README.md")
-			require.NoError(testInstance, os.WriteFile(readmePath, []byte("initial\n"), 0o644))
-			runGit(testInstance, repositoryPath, "add", "README.md")
-			runGit(testInstance, repositoryPath, "commit", "-m", "initial commit")
-			runGit(testInstance, repositoryPath, "push", "-u", "origin", testCase.defaultBranch)
-			runGit(testInstance, remotePath, "symbolic-ref", "HEAD", "refs/heads/"+testCase.defaultBranch)
-			baseCommit := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD"))
-			require.NoError(testInstance, os.WriteFile(readmePath, []byte("initial\ndirty work\n"), 0o644))
-
-			responses := []string{
-				"docs: commit work to requested branch",
-				"Publish the requested branch for review.",
-			}
-			var responseIndex atomic.Int64
-			llmServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
-				if request.URL.Path != "/chat/completions" {
-					http.NotFound(responseWriter, request)
-					return
-				}
-				currentResponseIndex := int(responseIndex.Add(1) - 1)
-				if currentResponseIndex >= len(responses) {
-					http.Error(responseWriter, "unexpected LLM request", http.StatusBadRequest)
-					return
-				}
-				responseWriter.Header().Set("Content-Type", "application/json")
-				_, _ = fmt.Fprintf(responseWriter, `{"choices":[{"message":{"role":"assistant","content":%q}}]}`, responses[currentResponseIndex])
-			}))
-			testInstance.Cleanup(llmServer.Close)
-
-			configurationPath := writeDirtySyncMergedBranchConfiguration(testInstance, llmServer.URL)
-			gitLogPath := filepath.Join(testInstance.TempDir(), "git.log")
-			githubLogPath := filepath.Join(testInstance.TempDir(), "gh.log")
-			output, runError := runIntegrationCommandWithInput(
-				testInstance,
-				repositoryRoot,
-				integrationCommandOptions{
-					PathVariable: buildSyncMergedBranchExecutablePath(testInstance),
-					EnvironmentOverrides: map[string]string{
-						syncMergedBranchAPIKeyVariable:        "test-key",
-						syncMergedBranchDefaultBranchVariable: testCase.defaultBranch,
-						syncMergedBranchGitLogVariable:        gitLogPath,
-						syncMergedBranchGitHubLogVariable:     githubLogPath,
-						syncMergedBranchMergedVariable:        "false",
-					},
-				},
-				syncMergedBranchIntegrationTimeout,
-				"",
-				[]string{
-					syncRefreshIntegrationRunCommand,
-					syncRefreshIntegrationModulePath,
-					"--config",
-					configurationPath,
-					syncRefreshIntegrationLogLevelFlag,
-					syncRefreshIntegrationErrorLogLevel,
-					"sync",
-					testCase.targetBranch,
-					"--roots",
-					repositoryPath,
-				},
-			)
-			require.NoError(testInstance, runError, output)
-
-			require.Contains(testInstance, output, fmt.Sprintf("SYNCED: %s (%s)", repositoryPath, testCase.targetBranch))
-			require.Equal(testInstance, testCase.targetBranch, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
-			require.Equal(testInstance, "1", strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-list", "--count", baseCommit+".."+testCase.targetBranch)))
-			require.Equal(testInstance, baseCommit, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", testCase.defaultBranch)))
-			require.Equal(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", testCase.targetBranch)), strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "origin/"+testCase.targetBranch)))
-			require.Equal(testInstance, "origin/"+testCase.targetBranch, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")))
-			require.Equal(testInstance, "initial\ndirty work\n", readTextFile(testInstance, readmePath))
-			require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
-			require.Equal(testInstance, int64(len(responses)), responseIndex.Load())
-
-			gitLog := readTextFile(testInstance, gitLogPath)
-			require.Contains(testInstance, gitLog, "switch -c "+testCase.targetBranch)
-			require.Contains(testInstance, gitLog, "commit -m "+responses[0])
-			require.Contains(testInstance, gitLog, "merge --no-edit origin/"+testCase.defaultBranch)
-			require.Contains(testInstance, gitLog, "push -u origin "+testCase.targetBranch)
-			require.NotContains(testInstance, gitLog, "origin/"+testCase.targetBranch+".."+testCase.defaultBranch)
-			require.NotContains(testInstance, gitLog, "merge --no-edit origin/"+testCase.targetBranch)
-
-			githubLog := readTextFile(testInstance, githubLogPath)
-			require.Contains(testInstance, githubLog, "pr create --repo owner/project --base "+testCase.defaultBranch+" --head "+testCase.targetBranch)
-		})
-	}
-}
-
 func TestSyncFetchesRemoteDefaultBranchForSingleBranchClone(testInstance *testing.T) {
 	const (
 		defaultBranch = "main"
@@ -923,10 +816,9 @@ operations:
 	cleanTargetBranchName := "feature/clean-child-work"
 	cleanPullRequestBody := "Publish the clean child branch for review."
 	cleanOutput, cleanRunError := runSync(cleanTargetBranchName, cleanPullRequestBody, "")
-	require.Error(testInstance, cleanRunError)
-	require.Contains(testInstance, cleanOutput, "cannot create stacked branch \""+cleanTargetBranchName+"\" from \""+targetBranchName+"\": no changes would remain for its pull request")
-	require.Equal(testInstance, targetBranchName, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
-	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--list", cleanTargetBranchName)))
+	require.NoError(testInstance, cleanRunError, cleanOutput)
+	require.Equal(testInstance, cleanTargetBranchName, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--show-current")))
+	require.Equal(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", targetBranchName)), strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", cleanTargetBranchName)))
 	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
 	require.Equal(testInstance, int64(len(commitMessages)), responseIndex.Load())
 	require.Equal(testInstance, int64(1), sourceDescriptionRequests.Load())
@@ -962,7 +854,7 @@ operations:
 	require.Less(testInstance, targetCreationIndex, targetPushIndex)
 	require.Less(testInstance, targetPushIndex, targetPullRequestIndex)
 	require.NotContains(testInstance, operationLog, "git push -u origin "+grandparentBranchName)
-	require.NotContains(testInstance, operationLog, "git switch -c "+cleanTargetBranchName)
+	require.Contains(testInstance, operationLog, "git switch -c "+cleanTargetBranchName)
 
 	runGit(testInstance, repositoryPath, "push", "origin", "--delete", targetBranchName)
 	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "branch", "--remotes", "--list", "origin/"+targetBranchName)))

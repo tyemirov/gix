@@ -26,7 +26,7 @@ type syncWorktreeAdoptionFixture struct {
 	BranchName     string
 }
 
-func TestSyncRejectsDirtySiblingWorktreeWithoutGitHubPullRequest(testInstance *testing.T) {
+func TestSyncUnsupportedRemotePreservesDirtySibling(testInstance *testing.T) {
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	fixture := createSyncWorktreeAdoptionFixture(testInstance)
 
@@ -49,7 +49,7 @@ func TestSyncRejectsDirtySiblingWorktreeWithoutGitHubPullRequest(testInstance *t
 	require.NoFileExists(testInstance, filepath.Join(fixture.RepositoryPath, "feature.txt"))
 }
 
-func TestSyncRejectsCleanAheadSiblingWorktreeWithoutGitHubPullRequest(testInstance *testing.T) {
+func TestSyncUnsupportedRemotePreservesUnpublishedSibling(testInstance *testing.T) {
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	fixture := createSyncWorktreeAdoptionFixture(testInstance)
 
