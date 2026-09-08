@@ -174,6 +174,23 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.10.2] - 2026-09-08
+
+- Merge pull request #451 from tyemirov/gix/enforce-sync-contract-for-branch-selection-and
+- test: add sync parent publication and grandparent merge coverage
+- feat(sync): auto-sync stacked parent and handle partial push rejects
+- docs: clarify sync push rejection handling for branch and other refs
+- docs: clarify sync push handling and parent branch behavior
+- docs: document B103-B106 parent sync and publication policy
+- test: refactor sync integration suite and expand coverage
+- refactor(sync): replace default review branching with push publication
+- docs: clarify sync branch selection and push rejection contract
+- test: update branch sync help text expectation
+- feat(sync): use explicit branch argument to select destination
+- build: add GO_TEST_FLAGS and test-sync make target
+- docs(architecture): add sync contract and clarify strict-sync handling
+- docs: define sync model and branch publication contract
+
 ## [v1.10.1] - 2026-09-08
 
 - Merge pull request #450 from tyemirov/gix/keep-explicit-branch-target-without-protection-override
