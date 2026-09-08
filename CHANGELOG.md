@@ -174,6 +174,24 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.10.0] - 2026-09-07
+
+- test: verify release CI uses native completion
+- chore(release): remove ci timeout and report make ci elapsed time
+- docs: clarify make release delegates to make ci without extra deadline
+- docs: close B096 - let release CI complete under test time limits
+- Merge pull request #449 from tyemirov/gix/use-branch-protection-to-select-publication-path
+- test: add sync protected-default publication review regressions
+- fix: reuse default snapshot review branch during strict sync
+- docs: clarify protected default sync behavior
+- docs: mark B092-B095 complete and define sync terminology
+- test: add protected default sync publication policy coverage
+- feat(sync): publish protected default branch via review PR
+- docs: clarify protected default publication flow for gix sync
+- docs: document I014 branch protection publication path
+- docs: allow focused unit tests and clarify MPR Lab governance guidance
+- docs: clarify integration-first testing and STE documentation rules
+
 ## [v1.9.2] - 2026-09-05
 
 - Merge pull request #447 from tyemirov/tyemirov/bugfix/issue-source-selection
