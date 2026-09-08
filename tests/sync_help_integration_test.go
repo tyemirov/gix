@@ -22,7 +22,7 @@ func TestSyncHelpDescribesMissingBranchCurrentHeadContract(testInstance *testing
 	require.Contains(
 		testInstance,
 		output,
-		"An explicit ordinary branch target receives dirty work. An unprotected default target receives commits and pushes directly. A protected default target publishes new work on a generated review branch and opens a pull request against the default branch. With no local commits to publish, sync merges the remote counterpart without a push. Protection lookup errors stop before dirty commits.",
+		"An explicit branch target receives dirty work regardless of its name or protection state. An explicit default target receives commits and pushes directly, and stays checked out. A rejected push fails without creating a review branch. With no local commits to publish, sync merges the remote counterpart without a push.",
 	)
 	require.Contains(
 		testInstance,

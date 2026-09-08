@@ -2276,7 +2276,7 @@ func TestHandleBranchSyncActionStrictPRBranchCommitsDirtyWorkToExplicitMaster(t 
 	require.Contains(t, recordedCommands, "push origin master")
 	require.NotContains(t, recordedCommands, "switch -c gix/")
 	require.Empty(t, githubExecutor.commands)
-	require.Len(t, githubExecutor.protectionCommands, 1)
+	require.Empty(t, githubExecutor.protectionCommands)
 	require.Len(t, chatClient.requests, 1)
 }
 

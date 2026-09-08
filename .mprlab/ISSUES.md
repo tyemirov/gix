@@ -11,6 +11,59 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B098] (P1) Preserve rejection of an explicit merged target.
+  Evidence:
+  The compiled CLI rejects `gix sync b2` from dirty branch `b1` when the current `b2` tip has a merged pull request.
+  It reports `cannot commit uncommitted changes on merged branch "b2"` and restores `b1`.
+  A newer local or remote commit on `b2` lets the same command complete.
+  Resolution:
+  The user confirmed that this rejection is required because the merged work is already accounted for.
+  No production fix is required. The user decides how to proceed with the pending work.
+  The prior test incorrectly required publication for this case.
+  The revised test requires rejection and preservation of the original branch, refs, index, pending files, and stashes.
+  It also requires no LLM request, push, or new pull request.
+
+- [x] [B097] (P1) Keep commits on the explicit sync branch.
+  Goal:
+  An explicit default target stays active and publishes directly, regardless of its name or protection state.
+  Evidence:
+  `gix sync main` in FamilyHome created a review branch while `main` was the protected default.
+  The explicit branch contract did not change in the user requirements.
+  Investigation:
+  Commit `e3770be` implemented the binding explicit target on 2026-07-16.
+  The 2026-09-07 report showed a `GH006` rejection and asked about branch-name independence.
+  The agent treated the request for fixes as permission to change the explicit target contract.
+  Commit `acfdbf6` made branch protection override the explicit target and replaced the binding help text.
+  Commit `655d4ac` changed the help regression and added tests that expected the generated branch.
+  Existing explicit `master` tests supplied an unprotected response, so those tests did not detect the override.
+  PR #449 passed hosted CI and merged as `03cd1f3`.
+  Release `v1.10.0` contains the override. The FamilyHome command used that installed version.
+  Requirements:
+  - Keep explicit `main`, `master`, and other branch targets active after direct publication.
+  - Create a default review branch only when the command has no branch argument.
+  - Stop after a rejected direct push without a generated review branch or pull request.
+  - Keep branch names free of special behavior.
+  Validation:
+  The compiled CLI regression failed before the production change because protected explicit defaults selected generated review branches.
+  The focused CLI suite passed after the correction, including direct push rejection and implicit review behavior.
+  Final `make ci` passed. The complete integration suite passed in 375.653 seconds.
+  `make build` and `git diff --check` passed.
+  The changed prose adds no mechanical language findings.
+  Governor reports four managed-document differences, including the repository-specific policy.
+  Resolution:
+  Explicit targets receive commits without a branch protection override.
+  The policy and CLI help preserve the explicit branch target.
+  The corrected executable is `bin/gix`. The installed executable remains `v1.10.0`.
+  Additional coverage:
+  Six compiled CLI scenarios create a local Git remote with `qqq` as its default branch.
+  Each scenario runs `gix sync qqq` from the checkout with controlled GitHub and LLM responses.
+  The scenarios start on `qqq`, `main`, or `master`, with each protection state.
+  Each scenario verifies direct publication, both commit histories, pending files, and unchanged unrelated branches.
+  A second sync keeps the published commit without another push or LLM request.
+  All six focused scenarios passed, including all 12 sync commands.
+  Final `make ci` passed. The complete integration suite passed in 430.819 seconds.
+
+
 - [x] [B096] (P1) Let release CI complete under the test time limits.
   Goal:
   Release preparation uses the same CI gate as the `make ci` command.
@@ -2110,6 +2163,35 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 
 ## Improvements
+
+- [x] [I015] (P1) Test dirty work across explicit sync branches.
+  Goal:
+  Verify `gix sync b2` from dirty branch `b1` through Go integration tables.
+  Coverage:
+  - Exercise staged, unstaged, mixed, untracked, deleted, renamed, and binary files.
+  - Exercise local, remote-only, unpublished, and new target branches.
+  - Verify open, closed, absent, and merged pull requests with local and remote commit differences.
+  - Verify text conflicts, binary conflict rejection, and preservation of stashed changes.
+  - Inject fetch, commit, push, pull request, and provider failures.
+  - Change the checkout or index during a provider request and verify preservation of outside work.
+  - Verify published contents, unchanged source commits, recovery, and repeated commands.
+  Validation:
+  The tests use the compiled CLI, real local Git repositories, bare remotes, and controlled GitHub and LLM responses.
+  The initial table treated B098 as a violation of the explicit target contract.
+  All 51 new scenarios ran. Fifty scenarios passed.
+  `make ci` passed its format, lint, fast Go test, and licensing test stages.
+  The full integration suite completed in 556.075 seconds. It reported only the B098 failure.
+  `git diff --check` passed. The changed prose adds no mechanical language findings.
+  Governor reports the same four managed-document differences as the prior check.
+  Correction:
+  The user confirmed that a current merged target must reject dirty auto-commit even when it is explicit.
+  The table now requires rejection and preservation of pending work for this case.
+  B098 is closed without a production fix and no longer blocks I015.
+  I015 adds tests without a production code change.
+  Final validation:
+  All 51 scenarios passed with the confirmed merged-target requirement.
+  `make ci` passed. The complete integration suite passed in 560.074 seconds.
+  The focused history table passed all nine scenarios, including rejection with unchanged pending work.
 
 - [x] [I014] (P1) Use branch protection to select the sync publication path.
   Goal:
