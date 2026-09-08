@@ -4,7 +4,6 @@ set -euo pipefail
 [[ $# -eq 0 ]] || { echo "error: make release accepts no arguments" >&2; exit 1; }
 
 helper="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/release_helper.py"
-ci_timeout="350"
 artifact_targets="release-artifacts pages-artifact"
 release_policy=(semver --fixed-major 1)
 
@@ -145,10 +144,17 @@ if [[ -n "${exact_release_version}" ]]; then
 fi
 
 echo "==> [release] Running make ci"
-(
+ci_started_seconds="${SECONDS}"
+if (
   unset MAKEFLAGS MAKELEVEL MAKEOVERRIDES MFLAGS
-  timeout -k "${ci_timeout}s" -s SIGKILL "${ci_timeout}s" make ci
-)
+  make ci
+); then
+  echo "==> [release] make ci passed in $((SECONDS - ci_started_seconds))s"
+else
+  ci_status="$?"
+  echo "error: release CI failed after $((SECONDS - ci_started_seconds))s (make ci exit ${ci_status})" >&2
+  exit "${ci_status}"
+fi
 
 echo "==> [release] Rechecking local state after CI"
 run_local_preflight
