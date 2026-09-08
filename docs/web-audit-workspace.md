@@ -21,7 +21,7 @@ Available audit actions are:
 - Rename a repository folder.
 - Fix a canonical remote.
 - Switch a remote between SSH and HTTPS.
-- Sync local state with the remote using the selected dirty-worktree policy.
+- Sync a Git branch with the remote through the [sync contract](../README.md#the-sync-flow).
 - Update a changelog or commit changes when the audit row makes those actions applicable.
 - Delete a folder through the web-only action.
 
@@ -35,6 +35,7 @@ Folder deletion is intentionally not a generic CLI command. It is available only
 
 ## Related contracts
 
+- [Sync policy](../.mprlab/POLICY.md#sync-branch-selection) defines branch selection and GitHub rejection reporting. B099 records the implementation and acceptance tests.
 - [README](../README.md) documents launch, the command surface, and the operator-facing audit workflow.
 - [ARCHITECTURE](../ARCHITECTURE.md) describes the ownership boundary between `cmd/cli` and `internal/web`.
 - [CHANGELOG](../CHANGELOG.md) records released behavior changes.

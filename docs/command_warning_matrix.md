@@ -1,12 +1,13 @@
 # Command Failure Classification
 
-The table below categorises the major maintenance commands into **fatal** and **non‑fatal** steps. Non‑fatal steps emit structured warnings (`FETCH-SKIP`, `PULL-SKIP`, `PAGES-SKIP`, `PR-RETARGET-SKIP`, `PROTECTION-SKIP`, `DELETE-SKIP`) while the command continues processing the remaining repositories.
+This table defines fatal and non-fatal outcomes for maintenance commands. Non-fatal outcomes report warnings while the command continues.
 
 | Command | Step | Classification | Behaviour |
 | --- | --- | --- | --- |
-| sync | Remote attach/clone, base branch restore, PR verification/creation | Fatal | Missing dependencies, remote mismatches, dirty worktrees, local-only commits, or missing PRs abort before mutation. |
-|  | Merge `origin/master` into a PR branch | Fatal | Merge conflicts stop before push and leave the repository in Git's normal conflict state. |
-|  | Push a synchronized PR branch | Fatal | Push failures abort so the branch is not reported as synchronized. |
+| sync | Select a branch | Success | Use an explicit branch. Without one on the default branch, create a branch only for uncommitted changes or unpublished local commits. Otherwise, update the current branch. |
+|  | Pull and merge remote changes, merge pending work, and commit | Fatal on local operation failure | Preserve work through the transaction recovery contract. Reject dirty work on a current merged target. |
+|  | GitHub rejects a push after completed synchronization | Non-fatal | Preserve local commits and the selected branch. Report `SYNC_PUSH_REJECTED` and suggest removal of protection or a new PR. Return exit code `0`. |
+|  | Parent push rejected | Non-fatal | Save child work locally. Report `SYNC_PUBLICATION_DEFERRED`. Defer the child push and PR until parent publication succeeds. |
 |  | Preview skip | Non-fatal | Explicit message and continue. |
 |  | Remote/local deletion (branch cleanup) | Non-fatal | Errors appear as warnings; remaining branches processed. |
 | default | Workflow rewrite, default branch update | Fatal | Required to guarantee correctness. |
@@ -20,3 +21,5 @@ The table below categorises the major maintenance commands into **fatal** and **
 | Workflow runner | Operation execution | Fatal (operation-defined) | Operations decide whether to downgrade issues; warnings bubble via environment output. |
 
 > Note: Commands that operate on remote URLs or filesystem mutations (`remote update-to-canonical`, `remote update-protocol`, `folder rename`, etc.) are treated as fatal for their core steps. Their tasks either succeed or abort with the contextual error catalogue introduced in prior issues.
+
+The [sync policy](../.mprlab/POLICY.md#sync-branch-selection) controls these sync outcomes. Default-branch status adds no other special behavior. B099 records the implementation and acceptance tests.

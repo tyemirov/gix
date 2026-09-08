@@ -288,11 +288,17 @@
               </p>
             </article>
             <article>
-              <h3>Refresh Branches</h3>
-              <p><code>gix sync master --stash --roots ~/Fleet</code></p>
+              <h3>Sync a Branch</h3>
+              <p><code>gix sync qqq --roots ~/Fleet</code></p>
               <p>
-                Stash tracked changes, jump to <code>master</code>, pull
-                updates, and restore your work.
+                Pull remote changes, merge pending work into <code>qqq</code>,
+                commit the result, and push that branch.
+              </p>
+              <p>
+                Any branch name uses the same operation. Without a branch
+                argument on the default branch, create a branch only for
+                uncommitted changes or unpublished local commits. Otherwise,
+                update the current branch.
               </p>
             </article>
             <article>
@@ -371,21 +377,25 @@
           <div class="recipe-grid">
             <article class="recipe">
               <header>
-                <h3>Bulk switch and refresh branches</h3>
+                <h3>Sync branches across repositories</h3>
                 <span class="pill">Branch Fleet</span>
               </header>
               <ol>
                 <li>
-                  Confirm the worktrees are clean or use <code>--stash</code> to
-                  store tracked changes.
+                  Select the branch that will receive your pending changes.
                 </li>
-                <li>Run <code>gix sync master --stash --roots ~/Fleet</code>.</li>
+                <li>Run <code>gix sync qqq --roots ~/Fleet</code>.</li>
                 <li>
-                  Review the summary to see which repositories switched,
-                  skipped, or warned.
+                  Review the synchronization result and any GitHub push rejection.
                 </li>
               </ol>
-              <pre><code>gix sync master --stash --roots ~/Fleet</code></pre>
+              <pre><code>gix sync qqq --roots ~/Fleet</code></pre>
+              <p>
+                A GitHub push rejection preserves local commits and the selected
+                branch. It reports the rejection and suggests removal of branch
+                protection or creation of a new pull request. Completed
+                synchronization with only that rejection returns success.
+              </p>
             </article>
             <article class="recipe">
               <header>
