@@ -6,7 +6,8 @@ This table defines fatal and non-fatal outcomes for maintenance commands. Non-fa
 | --- | --- | --- | --- |
 | sync | Select a branch | Success | Use an explicit branch. Without one on the default branch, create a branch only for uncommitted changes or unpublished local commits. Otherwise, update the current branch. |
 |  | Pull and merge remote changes, merge pending work, and commit | Fatal on local operation failure | Preserve work through the transaction recovery contract. Reject dirty work on a current merged target. |
-|  | GitHub rejects a push after completed synchronization | Non-fatal | Preserve local commits and the selected branch. Report `SYNC_PUSH_REJECTED` and suggest removal of protection or a new PR. Return exit code `0`. |
+|  | GitHub rejects the selected branch after completed synchronization | Non-fatal | Preserve local commits and the selected branch. Report `SYNC_PUSH_REJECTED` and suggest removal of protection or a new PR. Return exit code `0`. |
+|  | Branch push succeeds but another ref is rejected | Non-fatal | Report the rejected ref with `SYNC_PUSH_REJECTED`. Keep the successful branch result and continue its PR operation. |
 |  | Parent push rejected | Non-fatal | Save child work locally. Report `SYNC_PUBLICATION_DEFERRED`. Defer the child push and PR until parent publication succeeds. |
 |  | Preview skip | Non-fatal | Explicit message and continue. |
 |  | Remote/local deletion (branch cleanup) | Non-fatal | Errors appear as warnings; remaining branches processed. |
