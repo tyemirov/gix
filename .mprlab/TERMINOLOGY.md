@@ -91,6 +91,8 @@ Give each term one meaning. Use the same term for the same concept in all docume
 
 ## Repository Technical Nouns
 
+- `unpublished work`: File changes not yet stored on the selected remote branch, including changes held in local commits.
+
 Add repository-specific technical nouns below this line.
 
 - `approval sentinel`: The exact model response that approves a locally validated conflict result.

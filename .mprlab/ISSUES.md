@@ -11,6 +11,153 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B103] (P2) Accept remote-only parents without a pull request.
+  Evidence:
+  Child sync requires a local parent ref even when the parent exists remotely.
+  Requirements:
+  Resolve and synchronize parent work from the remote. Preserve the child destination and pending files.
+  Validation:
+  The CLI regression first failed with an unknown local parent revision.
+  Corrected cases publish exact child bytes with and without a parent PR.
+  Final `make ci` passed on 2026-09-08.
+
+- [x] [B104] (P2) Synchronize resolved parent bases before review comparison.
+  Evidence:
+  A parent can retain old ancestry after its grandparent merges and cause an empty parent PR.
+  Requirements:
+  Synchronize the parent against its resolved base before evaluating its file diff.
+  Validation:
+  CLI regressions first included grandparent work in the parent review diff.
+  Corrected cases exclude the merged work, with and without separate parent changes.
+  Final `make ci` passed on 2026-09-08.
+
+- [x] [B105] (P2) Report publication of each pushed ref accurately.
+  Evidence:
+  A rejected followed tag can hide a successful branch push and suppress its PR.
+  Requirements:
+  Classify the requested branch result separately. Report rejected extra refs without denying completed branch publication.
+  Validation:
+  Real tag rejection first suppressed branch PR creation and caused false publication reports.
+  Corrected cases retain new, updated, and unchanged branch publication. Parent publication continues the child operation.
+  A later PR failure retains remote branch bytes and reports recovery without rollback.
+  Final `make ci` passed on 2026-09-08.
+
+- [x] [B106] (P2) Synchronize parents that are behind their remote.
+  Evidence:
+  The parent prerequisite rejects incoming remote commits and asks for a separate sync command.
+  Requirements:
+  Integrate incoming parent work during child sync. Preserve unpublished parent and child work.
+  Validation:
+  CLI regressions first rejected parents with incoming or divergent remote history.
+  Corrected cases retain incoming parent bytes, unpublished parent bytes, and staged, unstaged, and untracked child work.
+  Final `make ci` passed on 2026-09-08.
+
+- [x] [B100] (P2) Accept parents without separate file work.
+  Evidence:
+  An explicit child from a parent without additional commits fails before sync saves pending file changes.
+  Requirements:
+  Accept the parent and publish the child work without an empty parent pull request.
+  Validation:
+  The CLI regression failed before the correction and then published the exact child file contents.
+  Final `make ci` passed on 2026-09-08.
+
+- [x] [B101] (P2) Reconcile merged review bases for unmerged children.
+  Evidence:
+  A child without a pull request fails after its recorded parent merges.
+  Requirements:
+  Resolve the current review base and preserve the unmerged child as the destination.
+  Validation:
+  CLI regressions failed for retained and deleted parent refs before the correction.
+  Corrected cases preserve new and existing children, with clean and dirty worktrees.
+  A separate failing test exposed an empty child PR after a parent squash merge. File-diff gating prevents that PR.
+  A nested CLI regression first failed after a grandparent merge. The corrected flow updates the parent review base and publishes both branches.
+  Final `make ci` passed on 2026-09-08.
+
+- [x] [B102] (P2) Defer child publication after parent push rejection.
+  Evidence:
+  A rejected parent push can cause a stale child review or a missing-base rollback.
+  Requirements:
+  Preserve the selected child and its committed file work. Defer its push and pull request until parent publication succeeds.
+  Validation:
+  Real Git refusals reproduced stale child publication and missing-base rollback before the correction.
+  Corrected cases save clean and dirty children locally, with or without a remote parent ref.
+  Retry publishes the parent before the child. The child review contains only its file changes.
+  Final `make ci` passed on 2026-09-08.
+
+- [x] [B099] (P1) Enforce the confirmed sync contract.
+  Goal:
+  The user confirmed that explicit branch names select the same synchronization operation.
+  Default-branch status has one branch-selection function, defined in the policy.
+  Evidence:
+  FamilyHome reported `GH006` after GitHub rejected a push to `main`.
+  Gix restored pending files and returned failure.
+  The former rejection regression required an error and rollback, which contradicted the confirmed contract.
+  The `qqq` success fixtures accept the push and do not enforce GitHub status checks.
+  Requirements:
+  - Assume a valid Git repository and a configured, reachable remote with an existing default branch.
+  - Use the specified branch when the command has a branch argument.
+  - Without a branch argument on the default branch, create a new branch.
+  - Without a branch argument on another branch, use the current branch.
+  - Pull remote changes, merge pending changes, commit the result, and push the selected branch.
+  - Keep that branch active without an exception for its name or default status.
+  - Preserve the merged-target rejection and pending work defined by B098.
+  - If GitHub rejects the push, preserve completed local work and report the rejection.
+  - Suggest removal of branch protection or creation of a new pull request.
+  - Return exit code `0` for completed synchronization with only a GitHub push rejection.
+  - Verify branch selection, commit contents, remote results, and rejection guidance through the compiled CLI.
+  Acceptance cases:
+  - Run explicit sync for `main`, `master`, `qqq`, and `wwww` with each name as default and non-default.
+  - Verify incoming remote work and pending local work in the resulting commit on the specified branch.
+  - Without an argument on the default branch, verify new branch creation with clean and dirty worktrees.
+  - Without an argument on another branch, verify that sync uses the current branch.
+  - Verify that a current merged destination rejects dirty work and preserves its original state.
+  - Make the push return rejection, then verify preserved local commits, unchanged remote refs, both suggestions, and exit code `0`.
+  - Do not use a mocked protection field as evidence that a push was rejected.
+  - Verify that each affected test fails when a deliberate defect replaces the destination or restores rollback after push rejection.
+  - Keep help-text validation separate from behavioral acceptance evidence.
+  Documentation:
+  Current policy, user documentation, and CLI help record these requirements.
+  B097 and I014 remain historical records. Their rejected-push and protection-routing descriptions do not control the current contract.
+  Validation:
+  The revised CLI help test failed before its help-text correction.
+  The corrected help test and command-usage test passed.
+  The changed prose has no new mechanical language findings.
+  The Governor check reports the same four managed-document differences as before this update.
+  Live verification:
+  The installed Gix `v1.10.1` ran `gix sync qqq --roots .` in a new private GitHub repository.
+  The repository default branch was `qqq`. The command returned exit code `0` and kept `qqq` active.
+  GitHub reported one new commit with the exact contents of the previously uncommitted `acceptance.txt` file.
+  The GitHub commit and Contents APIs matched local `HEAD` and the expected file bytes. The checkout was clean.
+  Repository: https://github.com/tyemirov/gix-sync-qqq-acceptance-20260908-082718
+  Commit: `5d0a63afc43b1e97b3e2c6fee36b411093a434df`
+  This live case verifies accepted publication. It does not verify the rejected-push contract.
+  Implementation:
+  Sync no longer queries branch protection to select a branch.
+  An explicit default target merges and publishes without default-specific review routing or snapshot replacement.
+  Without a destination on the default branch, sync creates a new branch for clean and dirty worktrees.
+  Generated names also account for remote branches omitted by a narrow fetch configuration.
+  A branch with no review delta can be synchronized and published without an empty pull request.
+  Push refusal preserves completed local commits and reports `SYNC_PUSH_REJECTED` with both publication suggestions.
+  This applies to default and non-default names, including refusal after a concurrent remote push.
+  Behavioral evidence:
+  The first acceptance run failed for five default names after push rejection and for two clean no-destination cases.
+  Real Git rejection tests verify local commit contents, incoming remote data, unchanged remote refs, and successful publication on retry.
+  Cross-branch rejection tests verify the selected default branch, preserved source refs, committed pending data, and an empty stash list.
+  Tests also verify empty destinations, both branch roles, fresh generated names, and the existing merged-target exception.
+  A deliberate explicit-target defect changed `qqq` to a generated branch. The acceptance test failed on that branch mismatch.
+  A deliberate fatal-push defect restored rollback. The rejection acceptance test failed on exit code `1`.
+  Both deliberate defects were removed before final validation.
+  Corrected-build live verification:
+  The source build ran `gix sync qqq --roots .` in the same private acceptance repository.
+  It returned exit code `0`, kept `qqq` active, and left a clean checkout.
+  GitHub reported commit `9f11c1ff859e4e64fbae0e8e49d739c0019d57b0` with the exact `corrected-build.txt` contents.
+  The commit API, Contents API, remote ref, and local `HEAD` agreed.
+  Final validation:
+  Full `make ci` passed, including format, lint, fast tests, licensing tests, and the complete integration suite.
+  Changed prose has no new mechanical language findings. The four known Governor differences remain unchanged.
+  The source build passed live acceptance. The installed executable was not replaced.
+  I016 refines the no-destination rule to prevent branch creation when there is no work to publish.
+
 - [x] [B098] (P1) Preserve rejection of an explicit merged target.
   Evidence:
   The compiled CLI rejects `gix sync b2` from dirty branch `b1` when the current `b2` tip has a merged pull request.
@@ -2163,6 +2310,44 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 
 ## Improvements
+
+- [x] [I017] (P1) Consolidate sync tests around observable intent.
+  Requirements:
+  Preserve distinct file-state and recovery scenarios. Remove redundant branch-name and protection combinations.
+  Share the compiled CLI while each scenario owns its repositories and provider state.
+  Verify published work and subsequent sync from a fresh checkout without local review metadata.
+  Map contract requirements to public acceptance tests. Verify selected assertions with deliberate implementation defects.
+  Validation:
+  I016 supplied the unchanged source baseline. Its full integration suite passed in 545.436 seconds.
+  Fresh-checkout tests passed before the refactor for default and ordinary destinations.
+  The 28-case file-state matrix remains intact. Selection and publication now have separate suites and one shared fixture.
+  The harness builds one executable per test process. Each scenario retains separate repository and provider state.
+  The contract map identifies public acceptance tests. Test names now identify unsupported-remote failures correctly.
+  PR assertions identify the creation operation without fixed metadata-read positions.
+  Eight deliberate defects caused the expected CLI failures: wrong destination, unwanted no-op branch, missing publication, and fatal remote refusal.
+  They also covered merged-parent rejection, empty PR creation, premature child publication, and omitted untracked work.
+  Each mutation restored the exact runtime source. The sweep makes no production code change.
+  Final `make ci GO_TEST_FLAGS=-json` passed on 2026-09-08.
+  All 385 integration scenarios passed, including 239 sync scenarios. The integration suite completed in 437.234 seconds.
+  The prior run took 545.436 seconds. The observed duration decreased by 19.8 percent without a timeout change.
+  Sync test source decreased from 8,377 to 8,280 lines, including the new fresh-checkout acceptance cases.
+  Changed prose has no mechanical language findings. Governor reports the same four existing managed-document differences.
+
+- [x] [I016] (P1) Make file work control sync behavior.
+  Requirements:
+  Assume a valid repository and a configured, reachable remote with an existing default branch.
+  Use the remote as the authority for published history. Treat the local checkout as a replaceable working copy.
+  Preserve file changes absent from the remote, including changes held in local commits.
+  Without a destination on the default branch, create a branch only when there is work to publish.
+  Keep explicit destination selection and non-fatal push rejection from B099.
+  Validation:
+  The B099 CI result supplied the unchanged source baseline. New CLI regressions failed before production changes.
+  No-op sync now stays on the default branch and retrieves incoming remote files without branch creation or an LLM request.
+  The policy, terminology, README, architecture, website, warning matrix, and CLI help record the refined contract.
+  The first final CI run reached the ten-minute integration limit. The active test passed alone in 4.275 seconds.
+  Independent publication regression cases now run concurrently with separate repositories and servers.
+  Final `make ci` passed on 2026-09-08. The complete integration suite passed in 545.436 seconds with the unchanged timeout.
+  The changed prose has no new mechanical language findings. Governor reports the same four existing managed-document differences.
 
 - [x] [I015] (P1) Test dirty work across explicit sync branches.
   Goal:

@@ -7,6 +7,8 @@ const (
 	EventCodeWorktreeAdopt            = "WORKTREE_ADOPT"
 	EventCodeSyncSwitchRollback       = "SYNC_SWITCH_ROLLBACK"
 	EventCodeSyncSwitchHandoff        = "SYNC_SWITCH_HANDOFF"
+	EventCodeSyncPushRejected         = "SYNC_PUSH_REJECTED"
+	EventCodeSyncPublicationDeferred  = "SYNC_PUBLICATION_DEFERRED"
 	EventCodeMergeConflict            = "MERGE_CONFLICT"
 	EventCodeAIMergeResolution        = "AI_MERGE_RESOLUTION"
 	EventCodeAIMergeValidation        = "AI_MERGE_VALIDATION"

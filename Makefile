@@ -1,5 +1,6 @@
 GO_SOURCES := $(shell find . -name '*.go' -not -path "./vendor/*" -not -path "./.git/*" -not -path "*/.git/*")
 FAST_TEST_PACKAGES := $(shell go list ./... | grep -v '/tests$$')
+GO_TEST_FLAGS ?=
 RELEASE_TARGETS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64
 RELEASE_BINARY_NAME := gix
 RELEASE_ARTIFACT_NAMES := gix_linux_amd64 gix_linux_arm64 gix_darwin_amd64 gix_darwin_arm64 gix_windows_amd64.exe
@@ -29,14 +30,18 @@ lint:
 	go run $(INEFFASSIGN_MODULE) ./...
 
 test-fast:
-	go test $(FAST_TEST_PACKAGES)
+	go test $(GO_TEST_FLAGS) $(FAST_TEST_PACKAGES)
 	$(MAKE) test-licensing
 
 test-licensing:
 	python3 -m unittest discover -s scripts/licensing -p 'test_*.py'
 
 test-slow:
-	go test ./tests
+	go test $(GO_TEST_FLAGS) ./tests
+
+.PHONY: test-sync
+test-sync:
+	go test $(GO_TEST_FLAGS) ./tests -run '^TestSync'
 
 test-unit: test-fast
 

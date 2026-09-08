@@ -555,6 +555,9 @@ func prepareStrictSyncBranchForDirtyWork(ctx context.Context, environment *workf
 		return switchToLocalOrRemoteBranchWithAdoption(ctx, environment, repository, remoteName, branchName, commitMessages)
 	}
 
+	if startPoint == strictSyncDirtyBranchStartCurrentCheckout {
+		return createStrictSyncBranchFromCurrentCheckout(ctx, environment.GitExecutor, repository.Path, branchName)
+	}
 	baseReference := fmt.Sprintf("%s/%s", remoteName, baseBranch)
 	baseExists, baseExistsErr := remoteReferenceExists(ctx, environment.GitExecutor, repository.Path, baseReference)
 	if baseExistsErr != nil {
@@ -563,10 +566,7 @@ func prepareStrictSyncBranchForDirtyWork(ctx context.Context, environment *workf
 	if !baseExists {
 		return fmt.Errorf("remote base branch %q does not exist", baseReference)
 	}
-	if startPoint == strictSyncDirtyBranchStartRemoteBase {
-		return createStrictSyncBranchFromReference(ctx, environment.GitExecutor, repository.Path, branchName, baseReference)
-	}
-	return createStrictSyncBranchFromCurrentCheckout(ctx, environment.GitExecutor, repository.Path, branchName)
+	return createStrictSyncBranchFromReference(ctx, environment.GitExecutor, repository.Path, branchName, baseReference)
 }
 
 func createStrictSyncBranchFromCurrentCheckout(ctx context.Context, executor shared.GitExecutor, repositoryPath string, branchName string) error {
@@ -662,15 +662,15 @@ func generateSyncBranchMessage(ctx context.Context, executor shared.GitExecutor,
 	return result.Message, nil
 }
 
-func selectGeneratedSyncBranchName(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, remoteName string, reviewBase string, options worktreeAdoptionCommitMessageOptions) (string, error) {
+func selectGeneratedSyncBranchName(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, remoteName string, options worktreeAdoptionCommitMessageOptions) (string, error) {
 	initialBranchName, initialBranchErr := generatedSyncBranchName(ctx, environment.GitExecutor, repository.Path, options)
 	if initialBranchErr != nil {
 		return "", initialBranchErr
 	}
-	return selectDefaultSnapshotReviewBranch(ctx, environment, repository, remoteName, reviewBase, initialBranchName)
+	return selectSyncBranchName(ctx, environment, repository, remoteName, initialBranchName)
 }
 
-func selectSyncBranchName(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, remoteName string, reviewBase string, initialBranchName string) (string, error) {
+func selectSyncBranchName(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, remoteName string, initialBranchName string) (string, error) {
 	for candidateIndex := 0; candidateIndex < strictSyncGeneratedBranchLimit; candidateIndex++ {
 		candidateBranchName := generatedSyncBranchCandidateName(initialBranchName, candidateIndex)
 		remoteReference := fmt.Sprintf("%s/%s", remoteName, candidateBranchName)
@@ -686,23 +686,21 @@ func selectSyncBranchName(ctx context.Context, environment *workflow.Environment
 			if localExists {
 				continue
 			}
-			return candidateBranchName, nil
-		}
-		repositoryIdentifier, identifierErr := strictSyncRepositoryIdentifier(ctx, environment, repository, remoteName)
-		if identifierErr != nil {
-			return "", identifierErr
-		}
-		openPullRequest, pullRequestErr := openPullRequestForBranch(ctx, environment, repositoryIdentifier, candidateBranchName)
-		if pullRequestErr != nil {
-			return "", pullRequestErr
-		}
-		if openPullRequest != nil {
-			baseBranch, baseErr := openPullRequestBaseBranch(*openPullRequest, candidateBranchName)
-			if baseErr != nil {
-				return "", baseErr
+			// A narrow fetch can omit an existing remote branch from tracking refs.
+			remoteRef := gitBranchReferencePrefix + candidateBranchName
+			remoteResult, remoteErr := environment.GitExecutor.ExecuteGit(ctx, execshell.CommandDetails{
+				Arguments:        []string{gitLSRemoteSubcommandConstant, remoteName, remoteRef},
+				WorkingDirectory: repository.Path,
+			})
+			if remoteErr != nil {
+				return "", fmt.Errorf("check generated branch %q on %q: %w", candidateBranchName, remoteName, remoteErr)
 			}
-			if baseBranch == reviewBase {
+			if strings.TrimSpace(remoteResult.StandardOutput) == "" {
 				return candidateBranchName, nil
+			}
+			fields := strings.Fields(remoteResult.StandardOutput)
+			if len(fields) != 2 || fields[1] != remoteRef {
+				return "", fmt.Errorf("invalid remote branch response for %q", remoteRef)
 			}
 		}
 	}

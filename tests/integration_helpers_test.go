@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -151,21 +152,31 @@ func requireNoError(testInstance *testing.T, err error, output string) {
 	}
 }
 
+var sharedIntegrationBinary struct {
+	once   sync.Once
+	path   string
+	err    error
+	output []byte
+}
+
 func buildIntegrationBinary(testInstance *testing.T, repositoryRoot string) string {
 	testInstance.Helper()
-	binaryDirectory := testInstance.TempDir()
-	binaryPath := filepath.Join(binaryDirectory, integrationBinaryFileNameConstant)
-
-	command := exec.Command("go", "build", "-o", binaryPath, ".")
-	command.Dir = repositoryRoot
-	command.Env = os.Environ()
-
-	outputBytes, runError := command.CombinedOutput()
-	if runError != nil {
-		testInstance.Fatalf(integrationCommandFailureFormatConstant, runError, string(outputBytes))
+	sharedIntegrationBinary.once.Do(func() {
+		var directory string
+		directory, sharedIntegrationBinary.err = os.MkdirTemp("", "gix-integration-")
+		if sharedIntegrationBinary.err != nil {
+			return
+		}
+		sharedIntegrationBinary.path = filepath.Join(directory, integrationBinaryFileNameConstant)
+		command := exec.Command("go", "build", "-o", sharedIntegrationBinary.path, ".")
+		command.Dir = repositoryRoot
+		command.Env = os.Environ()
+		sharedIntegrationBinary.output, sharedIntegrationBinary.err = command.CombinedOutput()
+	})
+	if sharedIntegrationBinary.err != nil {
+		testInstance.Fatalf(integrationCommandFailureFormatConstant, sharedIntegrationBinary.err, string(sharedIntegrationBinary.output))
 	}
-
-	return binaryPath
+	return sharedIntegrationBinary.path
 }
 
 func runBinaryIntegrationCommand(

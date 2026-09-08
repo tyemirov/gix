@@ -31,7 +31,7 @@ const (
 )
 
 type explicitSyncFixture struct {
-	protectedSyncFixture
+	syncFixture
 	sourceHead  string
 	targetHead  string
 	defaultHead string
@@ -39,7 +39,7 @@ type explicitSyncFixture struct {
 
 func newExplicitSyncFixture(t *testing.T, location explicitSyncTargetLocation) explicitSyncFixture {
 	t.Helper()
-	fixture := explicitSyncFixture{protectedSyncFixture: newProtectedSyncFixture(t, explicitSyncDefault)}
+	fixture := explicitSyncFixture{syncFixture: newSyncFixture(t, explicitSyncDefault)}
 	fixture.commitFile(t, "remove.txt", "remove this file\n")
 	fixture.commitFile(t, "rename.txt", "preserve renamed contents\n")
 	fixture.commitFile(t, "binary.dat", "initial\x00bytes")
@@ -377,20 +377,20 @@ func TestSyncExplicitTargetStash(t *testing.T) {
 			writeExplicitSyncFile(t, fixture, "untracked.txt", "untracked work\n")
 			before := captureExplicitSyncState(t, fixture)
 			output, err := fixture.run(t, binary, "sync", explicitSyncTarget, "--stash")
-			if location == explicitSyncNew {
-				require.Error(t, err, output)
-				require.Contains(t, output, "no changes would remain for its pull request")
-				require.Equal(t, before, captureExplicitSyncState(t, fixture))
-				return
-			}
 			require.NoError(t, err, output)
 			after := captureExplicitSyncState(t, fixture)
 			require.Equal(t, "b2\n", after["branch"])
-			for _, field := range []string{"remote_refs", "status", "index_readme", "worktree_readme", "untracked", "stashes"} {
+			for _, field := range []string{"status", "index_readme", "worktree_readme", "untracked", "stashes"} {
 				require.Equal(t, before[field], after[field], field)
 			}
 			require.Equal(t, fixture.sourceHead, strings.TrimSpace(runGit(t, fixture.repository, "rev-parse", explicitSyncSource)))
-			require.Equal(t, fixture.targetHead, strings.TrimSpace(runGit(t, fixture.repository, "rev-parse", explicitSyncTarget)))
+			if location == explicitSyncNew {
+				require.Equal(t, fixture.sourceHead, strings.TrimSpace(runGit(t, fixture.remote, "rev-parse", explicitSyncTarget)))
+				require.NotContains(t, readTextFile(t, fixture.githubLog), "created-pr --base b1 --head b2 ")
+			} else {
+				require.Equal(t, before["remote_refs"], after["remote_refs"])
+				require.Equal(t, fixture.targetHead, strings.TrimSpace(runGit(t, fixture.repository, "rev-parse", explicitSyncTarget)))
+			}
 		})
 	}
 }

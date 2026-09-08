@@ -2,13 +2,13 @@
 
 [![GitHub release](https://img.shields.io/github/release/tyemirov/gix.svg)](https://github.com/tyemirov/gix/releases)
 
-Gix synchronizes Git branches and publishes work through pull requests. Sync uses the remote default branch and its protection state to select the publication path.
+Gix synchronizes Git branches. A branch argument selects the destination. Without that argument on the default branch, sync creates a branch only for uncommitted changes or unpublished local commits.
 
 ## Highlights
 
-- Commit pending work to an explicitly named branch, resume a PR branch, or create a new PR branch with one command.
-- Merge the remote default branch into work branches and push the result without rewriting shared history.
-- Save dirty work automatically by clustering changed paths, drafting commit messages through the configured LLM client, and pushing through the PR flow.
+- Select a branch and commit pending work with one command.
+- Pull remote changes, merge pending work into the selected branch, commit the result, and push that branch.
+- Commit related file changes with messages from the configured LLM client.
 - Reuse discovery, prompting, and logging whether you call a single command or an entire workflow file.
 
 ## Quick Start
@@ -18,8 +18,8 @@ Gix synchronizes Git branches and publishes work through pull requests. Sync use
 3. Either replace the generated credential placeholders with literal values in `$HOME/.gix/config.yml`, or export `GH_TOKEN`, `GITHUB_PACKAGES_TOKEN`, and `LLM_PROXY_SECRET_KEY` before launching gix. Gix interpolates only its inherited process environment and never loads `.env` files.
 4. Attach or verify a workspace: `gix sync https://github.com/OWNER/REPO.git`.
 5. Synchronize the repository default branch with `gix sync <default-branch>`.
-6. With dirty work ready to commit, start a PR branch: `gix sync feature/my-change`; use the same command later to resume it.
-7. Sync the current branch later with plain `gix sync`.
+6. Commit pending work to `feature/my-change` with `gix sync feature/my-change`.
+7. Use plain `gix sync` to update the current branch. On the default branch, uncommitted changes or unpublished local commits select a new branch.
 
 ## Release, Publish, Deploy
 
@@ -55,34 +55,59 @@ These maintainer targets use the repository-owned helpers under `scripts/release
 
 ## The sync flow
 
-`gix sync` has four forms:
+Sync assumes a valid Git repository and a configured, reachable remote with an existing default branch.
+The remote is the authority for published history. The local checkout is a replaceable working copy.
+File changes are the work. Sync preserves unpublished work, including changes held in local commits, before replacing local state. The [sync policy](.mprlab/POLICY.md#sync-branch-selection) defines the contract. B099 records the explicit-destination contract. I016 defines the file-work model and no-op behavior.
+
+`gix sync` has three forms:
 
 | Command | Meaning |
 | --- | --- |
 | `gix sync <remote-url>` | Clone into an empty directory or verify the current workspace already points at that remote. |
-| `gix sync <default-branch>` | Merge remote commits, publish new work directly, and keep the named default branch active. |
-| `gix sync <branch>` | Use the named branch as the target. Switch to it and commit dirty work, or create its pull-request stack. |
-| `gix sync` | Sync the current branch. A dirty current default branch without an explicit target keeps the generated PR rescue flow. |
+| `gix sync <branch>` | Use the specified branch, including the default branch. Pull, merge pending changes, commit, and push. |
+| `gix sync` | On the default branch, create a branch only for uncommitted changes or unpublished local commits. Otherwise, update the current branch. |
 
-An explicit branch target receives the pending files and their commits, regardless of its name or protection state. An explicit default target publishes directly and stays active. A rejected push stops sync without a generated review branch or pull request. With no branch argument, new commits on a protected default use a generated review branch. Sync opens a pull request against the default branch and keeps the review branch active.
+Branch selection has one default-branch rule:
+
+- If the user specifies a branch, use that branch.
+- Without a destination on the default branch, create a branch only for uncommitted changes or unpublished local commits.
+- Without a branch argument on another branch, use the current branch.
+
+Default-branch status adds no other special behavior. Branch protection does not change the destination.
+
+Sync pulls the latest remote changes, merges pending changes into the selected branch, commits the result, and pushes that branch. The selected branch stays active. `gix sync master`, `gix sync qqq`, and `gix sync wwww` use the same operation with different branch names.
+
+GitHub publication is secondary. If GitHub rejects the selected branch, sync keeps the local commits and selected branch. It reports that the remote did not receive the branch changes. It suggests removal of branch protection or creation of a new pull request. That rejection does not start rollback or make the command fail. Completed synchronization with only that rejection returns exit code `0`.
+
+Sync reads the push result for the selected branch separately from other refs.
+If the branch succeeds but a tag is rejected, sync reports the tag rejection and continues the branch PR operation.
+If a later operation fails, sync preserves the published state and reports `SYNC_SWITCH_HANDOFF`.
+
+A parent branch does not need separate commits or a pull request before it can receive child work.
+A parent can exist only on the remote. Sync merges incoming parent work and preserves unpublished parent commits and pending child files.
+If a recorded parent merges, sync resolves its current base and keeps the unmerged child as the destination.
+Before review comparison, sync merges the parent remote ref and resolved base into the parent.
+A pull request requires file changes against that base.
+If a parent push is rejected, sync saves the child work locally and reports `SYNC_PUBLICATION_DEFERRED`.
+It defers the child push and pull request until the parent can be published.
 
 An explicit target still rejects dirty auto-commit when its current tip matches a merged pull request. The merged commits are already accounted for. Sync preserves the original checkout and pending files. The user decides how to proceed.
 
-With no branch argument, sync uses an open review again when that review contains the same local default commit. After a squash merge, sync updates the local default to the remote default commit. Sync publishes newer local commits directly for an explicit target, or through a separate review with no branch argument.
-
-Sync gets the default branch name from the remote symbolic `HEAD`. Names such as `main`, `master`, `qqq`, and `default` have no special function. The selected remote supplies the repository identity for GitHub branch protection and pull requests. An explicit target does not require a protection lookup. With no local commits to publish, sync uses a fast-forward update without a push.
-
-Plain `gix sync` updates the current branch. A dirty current default branch uses the generated pull-request flow. Sync leaves the pull request ready for review and CI. It does not bypass required checks or merge the pull request.
+Sync gets the default branch name from the selected remote symbolic `HEAD`. Names such as `main`, `master`, `qqq`, and `default` have no special function. Pull requests remain ready for review when created. Their GitHub requirements do not define the local branch-selection rule.
 
 Tracked files remain authoritative dirty work even when their paths match `.gitignore`. Sync stages those exact tracked paths, while ordinary untracked files continue through Git's normal ignore-respecting behavior; sync never restores a tracked path merely because an ignore rule also matches it.
 
 Strict sync first lists registered worktrees and validates that every live checkout resolves to the caller's common Git directory. It repairs only linked checkouts whose canonical `.git` target is missing, passing those exact paths to Git and then re-listing and revalidating the topology. This reconnects a checkout after its primary repository moves, while a checkout that still belongs to another live common repository is rejected without mutation; copying a primary repository cannot take over the original repository's sibling. Missing Git-prunable registrations remain on the established prune path. Ownership, repair, and validation failures stop with worktree and repository context. Strict sync then builds one preflight plan and refuses to begin while any valid registered worktree contains an operator-owned merge, revert, cherry-pick, rebase, apply-mailbox, bisect, sequencer operation, or unmerged index. It resolves the exact per-worktree Git administrative paths (`MERGE_HEAD`, `REVERT_HEAD`, `CHERRY_PICK_HEAD`, `rebase-merge`, `rebase-apply`, `BISECT_START`, and `sequencer`) instead of resolving ambiguous revisions, so ordinary branches or tags with those names do not impersonate operation state. Present commit markers must contain canonical commit identifiers, administrative directories must have the expected kind, and every inspection failure stops sync. An unmerged index is rejected even when no administrative marker remains, as with a conflicted `git stash apply`. Rejection occurs before fetch, stash, checkout/worktree content changes, index or ref mutation, LLM dispatch, commit, or push and reports the matching explicit recovery action.
 
-When an explicit branch does not exist, sync requires dirty work for the new branch commits. Sync creates the branch at the current branch's `HEAD`. If the current branch is not the repository default branch, sync first publishes its committed `HEAD`. Sync preserves an existing open pull request. If the pull request is missing, sync opens it against its recorded review base. If no parent is recorded, sync uses the repository default branch. After the parent pull request exists, sync creates the child branch and commits each changed-path cluster. The configured `github.com/tyemirov/utils/llm` client supplies each Conventional Commit message. Sync aligns the child with `origin/<parent-branch>`, pushes it, and opens a pull request against the parent branch.
+A missing explicit branch starts at the current branch's `HEAD`. Pending files and their commits belong to the selected branch. Pull-request metadata retains its recorded review base for later publication. The configured LLM client supplies the Conventional Commit messages.
 
-Sync rejects clean or `--stash` creation of a missing branch. Such a child has no committed delta against its parent. Before child creation, sync records the selected parent in local `branch.<child>.gix-review-base` Git config. A retry after push or pull-request failure uses the same review base. Deeper stacks retain each recorded link. An existing remote-backed branch with no pull request remains publishable review work. Sync rejects current merged state, saves dirty work, and opens the missing pull request through the same base-delta path. A historical merged record is current only when its head OID matches the surviving branch tip. The local branch must also have no local-only commits. Reuse or advancement opens a new pull request instead of the old handoff. Once the child pull request merges, its actual merged base drives the normal handoff. Sync follows every matching merged parent pull request regardless of whether its remote branch ref remains. It stops at the first active branch or at the repository default branch. Sync uses one standard handoff prompt for that terminal branch. Uncommitted work on a known-merged branch is rejected before commit. Rerun with `--stash` to carry that work through the merged handoff. Then create its new review branch from the surviving base. `--stash` remains available when syncing an existing branch. `--commit` explicitly selects the default dirty auto-commit policy. `--require-clean` requires a clean worktree. Explicit `--title` and `--body` values apply to the requested child. An automatically opened parent uses its default title and diff-generated body.
+A historical merged record applies only when its head OID matches the current branch tip without newer local commits. Dirty auto-commit on that merged target is rejected before commit. Sync preserves pending work for the user to resolve.
 
-When the target branch is held by a linked worktree, sync first prunes stale registration and preserves sibling changes before retrying the switch. Sibling adoption may commit locally to release the checkout, but it does not publish from the sibling; an actual remote ref update reported by the normal target-branch push or successful pull-request creation is the publication boundary. Before its first local mutation, the strict-sync transaction snapshots the caller and target sibling checkout, commit, index, tracked contents, untracked contents, stash list, and topology. It journals only branch refs and worktrees the invocation mutates. A pre-publication failure compare-and-swaps those owned refs back to their starting commits, restores the exact files and staged/unstaged distinction, and recreates only adopted topology; unrelated branch advances and worktrees remain untouched. An up-to-date push performs no remote write and therefore remains rollback-capable until another publication occurs. A failure after publication cannot undo the remote write: Gix preserves the published checkout and any invocation-owned recovery stash, emits `SYNC_SWITCH_HANDOFF`, and never reports `SYNCED`.
+`--stash` carries pending work without auto-commit and restores the index after synchronization. `--commit` selects auto-commit. `--require-clean` requires a clean worktree. `--title` and `--body` supply metadata when sync creates a pull request.
+
+When a linked worktree holds the target branch, sync removes stale registration and preserves sibling changes before the switch. Sibling adoption can commit locally to release the checkout. Publication occurs through the target push or pull-request creation. Before local mutation, the transaction records the caller and target sibling state. This includes commits, index contents, tracked and untracked files, stashes, and topology.
+
+The transaction journals only the refs and worktrees it changes. A local operation failure before publication restores those refs, exact files, and staged state. It restores only adopted topology and keeps unrelated branch changes. A GitHub push rejection preserves completed local work and does not start rollback. A later local failure cannot undo remote publication. Gix keeps the published checkout and recovery stash and reports `SYNC_SWITCH_HANDOFF`.
 
 Dirty-cluster commit-message requests are also ownership boundaries. Immediately after staging one cluster, Gix verifies that the complete staged path set belongs to that cluster and checkpoints the active checkout, `HEAD`, exact per-worktree index path, cache entries, skip-worktree and assume-unchanged flags, intent-to-add state, and resolve-undo records. Every post-model ownership inspection uses a cancellation-independent bounded context. For the final inspection, Gix first acquires the worktree's canonical `index.lock`, rechecks the checkpoint while normal Git index writers are excluded, copies the validated index into the private locked file, and commits from that copy through `GIT_INDEX_FILE`; the live index is never replaced by the commit. A writer that wins before the lock is detected as drift, while one that arrives after the lock cannot stage into the commit. Either ownership loss stops before commit or push without reset, clean, or restoration across outside state, retains the transaction snapshot, emits one `SYNC_SWITCH_HANDOFF`, and directs the operator to stop the other writer before retrying.
 
@@ -680,7 +705,7 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
 - `gix default <target-branch> [--roots <dir>...] [-y]`
  - Promotes the default branch across repositories. Gix closes a pull request only when its head repository and head branch match the target repository and branch. Gix changes the base of other pull requests. Gix fetches the remote source and target before it evaluates deletion safety. The delete request includes the verified source commit. Git rejects deletion if the source changes. After all safety gates pass, Gix deletes the local and remote source branches. Gix retains a source branch that contains changes absent from the target branch. The result reports both `safe_to_delete` and `source_deleted`.
 - `gix sync [remote-url|branch] [--remote <name>] [--title <text>] [--body <markdown>] [--stash | --commit] [--require-clean] [--roots <dir>...]` (alias `switch`)
- - Synchronizes the current workspace through the Gix flow. An explicit branch receives dirty commits regardless of its name or protection state. An explicit default target publishes directly and stays active. Without a branch argument, a protected default publishes new commits through a generated review branch and pull request. A default with no local commits to publish uses a fast-forward update without a push. Existing pull-request branches sync against their current pull-request base. Merged branches follow their merged parents to the first active branch or repository default branch. A dirty missing target starts at the current `HEAD`. If the current branch is not the default branch, sync publishes it before the child pull request. Clean or `--stash` creation of a missing branch is rejected because it has no child review delta. Dirty work is clustered, described, committed, and pushed by default. Known-merged branches require a stashed handoff before new review work is created. Plain `gix sync` on a dirty current default branch keeps the generated pull-request rescue flow. Sync validates linked-worktree ownership and rejects operator-owned Git operations before mutation. Before publication, failures restore the exact local state. After publication, failures retain forward recovery state. Sync never rebases or force-pushes. Pull-request body text comes from the branch diff unless an explicit body is configured. The title defaults to the branch unless an explicit title is configured. `--stash` restores the exact index before success. `--commit` selects the auto-commit policy. `--require-clean` requires a clean worktree when no dirty-work policy is selected.
+ - Uses the [sync contract](#the-sync-flow). An explicit argument selects the branch. Without an argument on the default branch, sync creates a branch only for uncommitted changes or unpublished local commits. Otherwise, sync updates the current branch. It pulls remote changes, merges pending changes, commits the result, and pushes the selected branch. GitHub push rejection preserves completed local work and produces rejection guidance with exit code `0`. B099 records the implementation and acceptance tests.
 ## Configuration essentials
 
 - On every launch, gix uses an explicit `--config <path>.yml` when supplied; otherwise it checks `/etc/gix/config.yml` and then `$HOME/.gix/config.yml`.
@@ -713,6 +738,7 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
 
 ## Developer notes
 
+- Use the [sync acceptance map](docs/sync-test-contract.md) to find tests for each sync requirement. Run `make test-sync` for that suite.
 - Repository services accept domain types from `internal/repos/shared` (paths, owners, remotes, branches); CLI edges construct them so executors run without defensive validation.
 - Executor errors surface via the contextual catalog in `internal/repos/errors`, which prints `PLAN-*`, `*-DONE`, and `*-SKIP` banners through the shared reporter.
 - Confirmation prompts respect the `[a/N/y]` contract everywhere (uppercase `N` remains the default decline); passing `--yes` (or setting `assume_yes: true` in workflows) flips the shared confirmation policy to auto-accept, and selecting `a`/`all` at a prompt upgrades the remainder of the run to behave as if `--yes` had been provided (uppercase responses continue to work as well).

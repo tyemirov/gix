@@ -92,7 +92,7 @@ func TestSyncCleanDivergentDefaultBranchMergesAndPushesBothHistories(testInstanc
 		},
 		syncMergedBranchIntegrationTimeout,
 		"",
-		[]string{"run", ".", "--config", configurationPath, "--log-level", "error", "sync", "--roots", repositoryPath},
+		[]string{"run", ".", "--config", configurationPath, "--log-level", "error", "sync", "master", "--roots", repositoryPath},
 	)
 	require.NoError(testInstance, runError, output)
 
@@ -966,21 +966,9 @@ fi
 
 if [ "$1" = "api" ]; then
   case "$2" in
-    repos/upstream/project/branches/*)
-      printf '{"protected":%s}\n' "${GIX_SYNC_TEST_UPSTREAM_PROTECTED:-false}"
-      exit 0
-      ;;
-    repos/owner/project/branches/*)
-      if [ -n "$GIX_SYNC_TEST_PROTECTION_ERROR" ]; then
-        printf '%s\n' "$GIX_SYNC_TEST_PROTECTION_ERROR" >&2
-        exit 1
-      fi
-      if [ -n "$GIX_SYNC_TEST_PROTECTION_RESPONSE" ]; then
-        printf '%s\n' "$GIX_SYNC_TEST_PROTECTION_RESPONSE"
-      else
-        printf '{"protected":%s}\n' "${GIX_SYNC_TEST_PROTECTED:-false}"
-      fi
-      exit 0
+    repos/*/branches/*)
+      printf 'unexpected branch-protection lookup\n' >&2
+      exit 1
       ;;
   esac
 fi
@@ -1153,6 +1141,11 @@ if [ -n "$GIX_SYNC_TEST_GIT_LOG" ]; then
 fi
 if [ -n "$GIX_SYNC_TEST_OPERATION_LOG" ]; then
   printf 'git %%s\n' "$*" >>"$GIX_SYNC_TEST_OPERATION_LOG"
+fi
+if [ -n "$GIX_SYNC_TEST_ADVANCE_REMOTE_CHECKOUT" ] && [ "$1" = "push" ]; then
+  "$real_git_path" -C "$GIX_SYNC_TEST_ADVANCE_REMOTE_CHECKOUT" add --all || exit $?
+  "$real_git_path" -C "$GIX_SYNC_TEST_ADVANCE_REMOTE_CHECKOUT" commit -m "concurrent remote work" >/dev/null || exit $?
+  "$real_git_path" -C "$GIX_SYNC_TEST_ADVANCE_REMOTE_CHECKOUT" push origin "$GIX_SYNC_TEST_DEFAULT_BRANCH" >&2 || exit $?
 fi
 if [ "$GIX_SYNC_TEST_REJECT_DEFAULT_PUSH" = "true" ] && [ "$1" = "push" ] && [ "$2" = "origin" ] && [ "$3" = "$GIX_SYNC_TEST_DEFAULT_BRANCH" ]; then
   printf 'GH006: Protected branch update failed; required status checks are expected\n' >&2
