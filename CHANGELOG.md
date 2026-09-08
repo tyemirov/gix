@@ -174,6 +174,14 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.10.1] - 2026-09-08
+
+- Merge pull request #450 from tyemirov/gix/keep-explicit-branch-target-without-protection-override
+- test: add sync explicit target and qqq default integration tests
+- feat(sync): push explicit targets directly without protection lookup
+- docs: clarify sync explicit target and protected default behavior
+- docs: add sync branch selection policy and close B097 B098 I015
+
 ## [v1.10.0] - 2026-09-07
 
 - test: verify release CI uses native completion
