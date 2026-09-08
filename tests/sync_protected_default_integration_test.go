@@ -15,6 +15,7 @@ import (
 )
 
 const (
+	syncRejectDefaultPushVariable  = "GIX_SYNC_TEST_REJECT_DEFAULT_PUSH"
 	syncProtectedVariable          = "GIX_SYNC_TEST_PROTECTED"
 	syncProtectionErrorVariable    = "GIX_SYNC_TEST_PROTECTION_ERROR"
 	syncProtectionResponseVariable = "GIX_SYNC_TEST_PROTECTION_RESPONSE"
@@ -30,7 +31,11 @@ func TestSyncDefaultPublicationPolicy(testInstance *testing.T) {
 		ahead     bool
 		behind    bool
 		stash     bool
+		implicit  bool
 	}{
+		{name: "implicit_main", branch: "main", protected: true, dirty: true, implicit: true},
+		{name: "implicit_master", branch: "master", protected: true, dirty: true, implicit: true},
+		{name: "implicit_ahead", branch: "qqq", protected: true, ahead: true, implicit: true},
 		{name: "dirty_main", branch: "main", protected: true, dirty: true},
 		{name: "dirty_master", branch: "master", protected: true, dirty: true},
 		{name: "dirty_qqq", branch: "qqq", protected: true, dirty: true},
@@ -66,7 +71,10 @@ func TestSyncDefaultPublicationPolicy(testInstance *testing.T) {
 				runGit(testInstance, fixture.repository, "add", "README.md")
 			}
 			fixture.environment[syncProtectedVariable] = fmt.Sprint(scenario.protected)
-			arguments := []string{"sync", scenario.branch}
+			arguments := []string{"sync"}
+			if !scenario.implicit {
+				arguments = append(arguments, scenario.branch)
+			}
 			if scenario.stash {
 				arguments = append(arguments, "--stash")
 			}
@@ -75,25 +83,25 @@ func TestSyncDefaultPublicationPolicy(testInstance *testing.T) {
 			require.Contains(testInstance, output, "SYNCED:")
 			require.NotContains(testInstance, output, "SYNC_SWITCH_ROLLBACK")
 			currentBranch := strings.TrimSpace(runGit(testInstance, fixture.repository, "branch", "--show-current"))
-			needsReview := scenario.protected && (scenario.ahead || scenario.dirty && !scenario.stash)
 			githubLog := readTextFile(testInstance, fixture.githubLog)
 			gitLog := readTextFile(testInstance, fixture.gitLog)
-			if needsReview {
+			if scenario.implicit {
 				require.NotEqual(testInstance, scenario.branch, currentBranch)
 				require.Contains(testInstance, githubLog, "created-pr --base "+scenario.branch+" --head "+currentBranch)
 				require.NotContains(testInstance, githubLog, "--draft")
 				require.Equal(testInstance, localBefore, strings.TrimSpace(runGit(testInstance, fixture.repository, "rev-parse", scenario.branch)))
 				require.Equal(testInstance, remoteBefore, strings.TrimSpace(runGit(testInstance, fixture.remote, "rev-parse", scenario.branch)))
-				require.Equal(testInstance, strings.TrimSpace(runGit(testInstance, fixture.repository, "rev-parse", "HEAD")), strings.TrimSpace(runGit(testInstance, fixture.remote, "rev-parse", currentBranch)))
-				runGit(testInstance, fixture.repository, "merge-base", "--is-ancestor", localBefore, currentBranch)
-				runGit(testInstance, fixture.repository, "merge-base", "--is-ancestor", remoteBefore, currentBranch)
+				require.NotContains(testInstance, gitLog, "push origin "+scenario.branch+" ")
 			} else {
 				require.Equal(testInstance, scenario.branch, currentBranch)
 				require.NotContains(testInstance, githubLog, "pr create ")
-				require.Equal(testInstance, strings.TrimSpace(runGit(testInstance, fixture.remote, "rev-parse", scenario.branch)), strings.TrimSpace(runGit(testInstance, fixture.repository, "rev-parse", "HEAD")))
+				require.NotContains(testInstance, githubLog, "api repos/owner/project/branches/"+url.PathEscape(scenario.branch)+" ")
 			}
-			if scenario.protected {
-				require.NotContains(testInstance, gitLog, "push origin "+scenario.branch+" ")
+			require.Equal(testInstance, strings.TrimSpace(runGit(testInstance, fixture.remote, "rev-parse", currentBranch)), strings.TrimSpace(runGit(testInstance, fixture.repository, "rev-parse", "HEAD")))
+			runGit(testInstance, fixture.repository, "merge-base", "--is-ancestor", localBefore, currentBranch)
+			runGit(testInstance, fixture.repository, "merge-base", "--is-ancestor", remoteBefore, currentBranch)
+			if !scenario.implicit && (scenario.dirty && !scenario.stash || scenario.ahead) {
+				require.Contains(testInstance, gitLog, "push origin "+scenario.branch+" ")
 			}
 			if scenario.dirty {
 				require.Equal(testInstance, "pending work\n", readTextFile(testInstance, filepath.Join(fixture.repository, "README.md")))
@@ -104,14 +112,11 @@ func TestSyncDefaultPublicationPolicy(testInstance *testing.T) {
 			} else {
 				require.Empty(testInstance, status)
 			}
-			if scenario.dirty && !scenario.stash || scenario.ahead {
-				require.Contains(testInstance, githubLog, "api repos/owner/project/branches/"+url.PathEscape(scenario.branch)+" ")
-			}
 		})
 	}
 }
 
-func TestSyncDefaultProtectionLookupFailurePreservesWork(testInstance *testing.T) {
+func TestSyncExplicitDefaultIgnoresProtectionLookup(testInstance *testing.T) {
 	binaryPath := buildIntegrationBinary(testInstance, integrationRepositoryRoot(testInstance))
 	for _, scenario := range []struct{ name, response, failure string }{
 		{name: "forbidden", failure: "HTTP 403: inaccessible branch"},
@@ -123,23 +128,19 @@ func TestSyncDefaultProtectionLookupFailurePreservesWork(testInstance *testing.T
 	} {
 		testInstance.Run(scenario.name, func(testInstance *testing.T) {
 			fixture := newProtectedSyncFixture(testInstance, "qqq")
-			headBefore := strings.TrimSpace(runGit(testInstance, fixture.repository, "rev-parse", "HEAD"))
 			require.NoError(testInstance, os.WriteFile(filepath.Join(fixture.repository, "README.md"), []byte("staged\n"), 0o644))
 			runGit(testInstance, fixture.repository, "add", "README.md")
 			require.NoError(testInstance, os.WriteFile(filepath.Join(fixture.repository, "README.md"), []byte("unstaged\n"), 0o644))
 			fixture.environment[syncProtectionErrorVariable] = scenario.failure
 			fixture.environment[syncProtectionResponseVariable] = scenario.response
 			output, runError := fixture.run(testInstance, binaryPath, "sync", "qqq")
-			require.Error(testInstance, runError, output)
-			require.Contains(testInstance, output, "publication policy")
-			require.Contains(testInstance, output, "qqq")
-			require.Equal(testInstance, int64(0), fixture.llmCalls.Load())
-			require.NotContains(testInstance, readTextFile(testInstance, fixture.gitLog), "commit -m ")
-			require.NotContains(testInstance, readTextFile(testInstance, fixture.gitLog), "push origin ")
-			require.Equal(testInstance, headBefore, strings.TrimSpace(runGit(testInstance, fixture.repository, "rev-parse", "HEAD")))
-			require.Equal(testInstance, headBefore, strings.TrimSpace(runGit(testInstance, fixture.remote, "rev-parse", "HEAD")))
-			require.Equal(testInstance, "staged\n", runGit(testInstance, fixture.repository, "show", ":README.md"))
+			require.NoError(testInstance, runError, output)
+			require.Equal(testInstance, "qqq", strings.TrimSpace(runGit(testInstance, fixture.repository, "branch", "--show-current")))
+			require.Equal(testInstance, strings.TrimSpace(runGit(testInstance, fixture.remote, "rev-parse", "HEAD")), strings.TrimSpace(runGit(testInstance, fixture.repository, "rev-parse", "HEAD")))
 			require.Equal(testInstance, "unstaged\n", readTextFile(testInstance, filepath.Join(fixture.repository, "README.md")))
+			require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, fixture.repository, "status", "--porcelain")))
+			require.NotContains(testInstance, readTextFile(testInstance, fixture.githubLog), "api repos/owner/project/branches/")
+			require.NotContains(testInstance, readTextFile(testInstance, fixture.githubLog), "pr create ")
 		})
 	}
 }
@@ -159,7 +160,7 @@ func TestSyncProtectedDefaultPreservesPublicationRecovery(testInstance *testing.
 			} else {
 				fixture.environment[syncMergedBranchFailPullRequestHeadVariable] = "gix/preserve-protected-work"
 			}
-			output, runError := fixture.run(testInstance, binaryPath, "sync", "qqq")
+			output, runError := fixture.run(testInstance, binaryPath, "sync")
 			require.Error(testInstance, runError, output)
 			require.NotContains(testInstance, output, "SYNCED:")
 			require.Equal(testInstance, originalHead, strings.TrimSpace(runGit(testInstance, fixture.repository, "rev-parse", "qqq")))
@@ -185,15 +186,44 @@ func TestSyncProtectedDefaultPreservesPublicationRecovery(testInstance *testing.
 	}
 }
 
+func TestSyncExplicitDefaultPushFailurePreservesTarget(testInstance *testing.T) {
+	binaryPath := buildIntegrationBinary(testInstance, integrationRepositoryRoot(testInstance))
+	for _, branch := range []string{"main", "master"} {
+		testInstance.Run(branch, func(testInstance *testing.T) {
+			fixture := newProtectedSyncFixture(testInstance, branch)
+			originalHead := strings.TrimSpace(runGit(testInstance, fixture.repository, "rev-parse", "HEAD"))
+			fixture.environment[syncProtectedVariable] = "true"
+			fixture.environment[syncRejectDefaultPushVariable] = "true"
+			require.NoError(testInstance, os.WriteFile(filepath.Join(fixture.repository, "README.md"), []byte("staged\n"), 0o644))
+			runGit(testInstance, fixture.repository, "add", "README.md")
+			require.NoError(testInstance, os.WriteFile(filepath.Join(fixture.repository, "README.md"), []byte("unstaged\n"), 0o644))
+			output, runError := fixture.run(testInstance, binaryPath, "sync", branch)
+			require.Error(testInstance, runError, output)
+			require.Contains(testInstance, output, "SYNC_SWITCH_ROLLBACK")
+			require.Contains(testInstance, output, "GH006: Protected branch update failed")
+			require.NotContains(testInstance, output, "SYNCED:")
+			require.Equal(testInstance, branch, strings.TrimSpace(runGit(testInstance, fixture.repository, "branch", "--show-current")))
+			require.Equal(testInstance, branch, strings.TrimSpace(runGit(testInstance, fixture.repository, "for-each-ref", "--format=%(refname:short)", "refs/heads/")))
+			require.Equal(testInstance, originalHead, strings.TrimSpace(runGit(testInstance, fixture.repository, "rev-parse", "HEAD")))
+			require.Equal(testInstance, originalHead, strings.TrimSpace(runGit(testInstance, fixture.remote, "rev-parse", "HEAD")))
+			require.Equal(testInstance, "staged\n", runGit(testInstance, fixture.repository, "show", ":README.md"))
+			require.Equal(testInstance, "unstaged\n", readTextFile(testInstance, filepath.Join(fixture.repository, "README.md")))
+			require.Contains(testInstance, readTextFile(testInstance, fixture.gitLog), "push origin "+branch+" ")
+			require.NotContains(testInstance, readTextFile(testInstance, fixture.githubLog), "pr create ")
+		})
+	}
+}
+
 func TestSyncProtectedDefaultReusesCommittedReview(testInstance *testing.T) {
 	binaryPath := buildIntegrationBinary(testInstance, integrationRepositoryRoot(testInstance))
 	fixture := newProtectedSyncFixture(testInstance, "qqq")
 	fixture.commitFile(testInstance, "local.txt", "local work\n")
 	fixture.environment[syncProtectedVariable] = "true"
-	output, runError := fixture.run(testInstance, binaryPath, "sync", "qqq")
+	output, runError := fixture.run(testInstance, binaryPath, "sync")
 	require.NoError(testInstance, runError, output)
 	reviewBranch := strings.TrimSpace(runGit(testInstance, fixture.repository, "branch", "--show-current"))
-	output, runError = fixture.run(testInstance, binaryPath, "sync", "qqq")
+	runGit(testInstance, fixture.repository, "switch", "qqq")
+	output, runError = fixture.run(testInstance, binaryPath, "sync")
 	require.NoError(testInstance, runError, output)
 	require.Equal(testInstance, reviewBranch, strings.TrimSpace(runGit(testInstance, fixture.repository, "branch", "--show-current")))
 	require.Equal(testInstance, 1, strings.Count(readTextFile(testInstance, fixture.githubLog), "created-pr --base qqq --head "))
@@ -206,7 +236,7 @@ func TestSyncProtectedDefaultHonorsConfiguredReviewMetadata(testInstance *testin
 	fixture.environment[syncProtectedVariable] = "true"
 	configuration := strings.Replace(readTextFile(testInstance, fixture.config), "remote: origin", "remote: origin\n      pull_request:\n        title: Explicit review title\n        body: Explicit review body", 1)
 	require.NoError(testInstance, os.WriteFile(fixture.config, []byte(configuration), 0o600))
-	output, runError := fixture.run(testInstance, binaryPath, "sync", "qqq")
+	output, runError := fixture.run(testInstance, binaryPath, "sync")
 	require.NoError(testInstance, runError, output)
 	require.Contains(testInstance, readTextFile(testInstance, fixture.githubLog), "--title Explicit review title --body Explicit review body")
 	require.Zero(testInstance, fixture.llmCalls.Load())
@@ -217,20 +247,21 @@ func TestSyncProtectedDefaultRejectsReviewWithDifferentBase(testInstance *testin
 	fixture := newProtectedSyncFixture(testInstance, "qqq")
 	fixture.commitFile(testInstance, "local.txt", "local work\n")
 	fixture.environment[syncProtectedVariable] = "true"
-	output, runError := fixture.run(testInstance, binaryPath, "sync", "qqq")
+	output, runError := fixture.run(testInstance, binaryPath, "sync")
 	require.NoError(testInstance, runError, output)
 	reviewBranch := strings.TrimSpace(runGit(testInstance, fixture.repository, "branch", "--show-current"))
 	runGit(testInstance, fixture.repository, "push", "origin", "qqq:refs/heads/other-base")
 	log := strings.Replace(readTextFile(testInstance, fixture.githubLog), "created-pr --base qqq --head "+reviewBranch, "created-pr --base other-base --head "+reviewBranch, 1)
 	require.NoError(testInstance, os.WriteFile(fixture.githubLog, []byte(log), 0o600))
-	output, runError = fixture.run(testInstance, binaryPath, "sync", "qqq")
+	runGit(testInstance, fixture.repository, "switch", "qqq")
+	output, runError = fixture.run(testInstance, binaryPath, "sync")
 	require.NoError(testInstance, runError, output)
 	currentBranch := strings.TrimSpace(runGit(testInstance, fixture.repository, "branch", "--show-current"))
 	require.NotEqual(testInstance, reviewBranch, currentBranch)
 	require.Contains(testInstance, readTextFile(testInstance, fixture.githubLog), "created-pr --base qqq --head "+currentBranch)
 }
 
-func TestSyncProtectedDefaultFromFeaturePreservesTargetScope(testInstance *testing.T) {
+func TestSyncExplicitDefaultFromFeaturePreservesTargetScope(testInstance *testing.T) {
 	binaryPath := buildIntegrationBinary(testInstance, integrationRepositoryRoot(testInstance))
 	fixture := newProtectedSyncFixture(testInstance, "qqq")
 	runGit(testInstance, fixture.repository, "switch", "-c", "feature/source")
@@ -243,7 +274,8 @@ func TestSyncProtectedDefaultFromFeaturePreservesTargetScope(testInstance *testi
 	require.Equal(testInstance, sourceHead, strings.TrimSpace(runGit(testInstance, fixture.repository, "rev-parse", "feature/source")))
 	require.NoFileExists(testInstance, filepath.Join(fixture.repository, "feature.txt"))
 	require.Equal(testInstance, "pending work\n", readTextFile(testInstance, filepath.Join(fixture.repository, "README.md")))
-	require.Contains(testInstance, readTextFile(testInstance, fixture.githubLog), "created-pr --base qqq --head ")
+	require.Equal(testInstance, "qqq", strings.TrimSpace(runGit(testInstance, fixture.repository, "branch", "--show-current")))
+	require.NotContains(testInstance, readTextFile(testInstance, fixture.githubLog), "pr create ")
 }
 
 func TestSyncNamedMainRemainsOrdinaryUnderProtectedDefault(testInstance *testing.T) {
@@ -306,11 +338,12 @@ func TestSyncDefaultPublicationReviewRegressions(t *testing.T) {
 		fixture.commitFile(t, "local.txt", "local work\n")
 		require.NoError(t, os.WriteFile(filepath.Join(fixture.repository, "README.md"), []byte("pending work\n"), 0o644))
 		fixture.environment[syncProtectedVariable] = "true"
-		output, err := fixture.run(t, binary, "sync", "qqq")
+		output, err := fixture.run(t, binary, "sync")
 		require.NoError(t, err, output)
 		review := strings.TrimSpace(runGit(t, fixture.repository, "branch", "--show-current"))
 		head := strings.TrimSpace(runGit(t, fixture.repository, "rev-parse", "HEAD"))
-		output, err = fixture.run(t, binary, "sync", "qqq")
+		runGit(t, fixture.repository, "switch", "qqq")
+		output, err = fixture.run(t, binary, "sync")
 		require.NoError(t, err, output)
 		require.Equal(t, review, strings.TrimSpace(runGit(t, fixture.repository, "branch", "--show-current")))
 		require.Equal(t, head, strings.TrimSpace(runGit(t, fixture.repository, "rev-parse", "HEAD")))
@@ -322,14 +355,14 @@ func TestSyncDefaultPublicationReviewRegressions(t *testing.T) {
 		fixture.commitFile(t, "local.txt", "local work\n")
 		require.NoError(t, os.WriteFile(filepath.Join(fixture.repository, "README.md"), []byte("pending work\n"), 0o644))
 		fixture.environment[syncProtectedVariable] = "true"
-		output, err := fixture.run(t, binary, "sync", "qqq")
+		output, err := fixture.run(t, binary, "sync")
 		require.NoError(t, err, output)
 		review := strings.TrimSpace(runGit(t, fixture.repository, "branch", "--show-current"))
 		runGit(t, fixture.repository, "switch", "qqq")
 		runGit(t, fixture.repository, "branch", "-D", review)
 		runGit(t, fixture.repository, "update-ref", "-d", "refs/remotes/origin/"+review)
 		runGit(t, fixture.repository, "config", "remote.origin.fetch", "+refs/heads/qqq:refs/remotes/origin/qqq")
-		output, err = fixture.run(t, binary, "sync", "qqq")
+		output, err = fixture.run(t, binary, "sync")
 		require.NoError(t, err, output)
 		require.Equal(t, review, strings.TrimSpace(runGit(t, fixture.repository, "branch", "--show-current")))
 		require.Equal(t, "pending work\n", readTextFile(t, filepath.Join(fixture.repository, "README.md")))
@@ -345,7 +378,7 @@ func TestSyncDefaultPublicationReviewRegressions(t *testing.T) {
 						require.NoError(t, os.WriteFile(filepath.Join(fixture.repository, "README.md"), []byte("pending work\n"), 0o644))
 					}
 					fixture.environment[syncProtectedVariable] = "true"
-					output, err := fixture.run(t, binary, "sync", "qqq")
+					output, err := fixture.run(t, binary, "sync")
 					require.NoError(t, err, output)
 					review := strings.TrimSpace(runGit(t, fixture.repository, "branch", "--show-current"))
 					head := strings.TrimSpace(runGit(t, fixture.repository, "rev-parse", "HEAD"))
@@ -383,7 +416,7 @@ func TestSyncDefaultPublicationReviewRegressions(t *testing.T) {
 							t.Log(output, readTextFile(t, fixture.githubLog), readTextFile(t, fixture.gitLog))
 						}
 					})
-					if newer {
+					if newer && !explicit {
 						require.NotEqual(t, "qqq", current)
 						require.Equal(t, "unreviewed local work\n", readTextFile(t, filepath.Join(fixture.repository, "newer.txt")))
 						require.Equal(t, 2, strings.Count(readTextFile(t, fixture.githubLog), "created-pr --base qqq --head "))
@@ -391,6 +424,9 @@ func TestSyncDefaultPublicationReviewRegressions(t *testing.T) {
 						require.Equal(t, "qqq", current)
 						require.Equal(t, strings.TrimSpace(runGit(t, fixture.remote, "rev-parse", "qqq")), strings.TrimSpace(runGit(t, fixture.repository, "rev-parse", "HEAD")))
 						require.Equal(t, 1, strings.Count(readTextFile(t, fixture.githubLog), "created-pr --base qqq --head "))
+					}
+					if newer {
+						require.Equal(t, "unreviewed local work\n", readTextFile(t, filepath.Join(fixture.repository, "newer.txt")))
 					}
 					require.Equal(t, "local work\n", readTextFile(t, filepath.Join(fixture.repository, "local.txt")))
 					require.Equal(t, "later remote work\n", readTextFile(t, filepath.Join(fixture.repository, "remote.txt")))
@@ -413,30 +449,36 @@ func TestSyncDefaultPublicationReviewRegressions(t *testing.T) {
 			require.Equal(t, strings.TrimSpace(runGit(t, fixture.remote, "rev-parse", "default")), strings.TrimSpace(runGit(t, fixture.repository, "rev-parse", "HEAD")))
 			require.NotContains(t, readTextFile(t, fixture.githubLog), "pr create ")
 		})
-		for _, dirty := range []bool{false, true} {
-			t.Run(fmt.Sprintf("upstream_protected_%t_dirty_%t", protected, dirty), func(t *testing.T) {
+		for _, explicit := range []bool{false, true} {
+			t.Run(fmt.Sprintf("upstream_protected_%t_explicit_%t", protected, explicit), func(t *testing.T) {
 				fixture := newProtectedSyncFixture(t, "qqq")
 				upstream := filepath.Join(fixture.workspace, "upstream.git")
 				runGitWithDir(t, "", "clone", "--bare", fixture.remote, upstream)
 				runGit(t, fixture.repository, "remote", "add", "upstream", upstream)
 				originHead := strings.TrimSpace(runGit(t, fixture.remote, "rev-parse", "qqq"))
 				fixture.commitFile(t, "local.txt", "local work\n")
-				if dirty {
-					require.NoError(t, os.WriteFile(filepath.Join(fixture.repository, "README.md"), []byte("pending work\n"), 0o644))
-				}
 				fixture.environment[syncProtectedVariable] = fmt.Sprint(!protected)
 				fixture.environment["GIX_SYNC_TEST_UPSTREAM_PROTECTED"] = fmt.Sprint(protected)
-				output, err := fixture.run(t, binary, "sync", "qqq", "--remote", "upstream")
+				arguments := []string{"sync", "--remote", "upstream"}
+				if explicit {
+					arguments = append(arguments, "qqq")
+				}
+				output, err := fixture.run(t, binary, arguments...)
 				require.NoError(t, err, output)
 				current := strings.TrimSpace(runGit(t, fixture.repository, "branch", "--show-current"))
 				log := readTextFile(t, fixture.githubLog)
-				require.Contains(t, log, "api repos/upstream/project/branches/qqq ")
+				if explicit {
+					require.NotContains(t, log, "api repos/upstream/project/branches/qqq ")
+				} else {
+					require.Contains(t, log, "api repos/upstream/project/branches/qqq ")
+				}
 				require.NotContains(t, log, "api repos/owner/project/branches/qqq ")
-				if protected {
+				if protected && !explicit {
 					require.NotEqual(t, "qqq", current)
 					require.Contains(t, log, "pr create --repo upstream/project ")
 					require.NotContains(t, log, "pr create --repo owner/project ")
-					output, err = fixture.run(t, binary, "sync", "qqq", "--remote", "upstream")
+					runGit(t, fixture.repository, "switch", "qqq")
+					output, err = fixture.run(t, binary, "sync", "--remote", "upstream")
 					require.NoError(t, err, output)
 					require.Equal(t, current, strings.TrimSpace(runGit(t, fixture.repository, "branch", "--show-current")))
 					require.Equal(t, 1, strings.Count(readTextFile(t, fixture.githubLog), "created-pr --base qqq --head "))

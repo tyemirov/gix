@@ -1154,7 +1154,7 @@ fi
 if [ -n "$GIX_SYNC_TEST_OPERATION_LOG" ]; then
   printf 'git %%s\n' "$*" >>"$GIX_SYNC_TEST_OPERATION_LOG"
 fi
-if [ "$GIX_SYNC_TEST_PROTECTED" = "true" ] && [ "$1" = "push" ] && [ "$2" = "origin" ] && [ "$3" = "$GIX_SYNC_TEST_DEFAULT_BRANCH" ]; then
+if [ "$GIX_SYNC_TEST_REJECT_DEFAULT_PUSH" = "true" ] && [ "$1" = "push" ] && [ "$2" = "origin" ] && [ "$3" = "$GIX_SYNC_TEST_DEFAULT_BRANCH" ]; then
   printf 'GH006: Protected branch update failed; required status checks are expected\n' >&2
   exit 1
 fi
@@ -1224,7 +1224,7 @@ if [ "$1" = "remote" ] && [ "$2" = "get-url" ] && [ "$3" = "upstream" ]; then
   printf '%%s\n' 'https://github.com/upstream/project.git'
   exit 0
 fi
-if [ "$GIX_SYNC_TEST_UPSTREAM_PROTECTED" = "true" ] && [ "$1" = "push" ] && [ "$2" = "upstream" ] && [ "$3" = "$GIX_SYNC_TEST_DEFAULT_BRANCH" ]; then
+if [ "$GIX_SYNC_TEST_REJECT_DEFAULT_PUSH" = "true" ] && [ "$1" = "push" ] && [ "$2" = "upstream" ] && [ "$3" = "$GIX_SYNC_TEST_DEFAULT_BRANCH" ]; then
   printf 'GH006: Protected upstream branch update failed\n' >&2
   exit 1
 fi
