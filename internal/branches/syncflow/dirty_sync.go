@@ -527,9 +527,9 @@ func prepareStrictSyncBranchForDirtyWork(ctx context.Context, environment *workf
 		if branchName == baseBranch {
 			return switchToLocalOrRemoteBranchWithAdoption(ctx, environment, repository, remoteName, branchName, commitMessages)
 		}
-		repositoryIdentifier := strictSyncRepositoryIdentifier(repository)
-		if repositoryIdentifier == "" {
-			return errors.New(strictSyncMissingRepositoryMessage)
+		repositoryIdentifier, identifierErr := strictSyncRepositoryIdentifier(ctx, environment, repository, remoteName)
+		if identifierErr != nil {
+			return identifierErr
 		}
 		openPullRequest, pullRequestErr := openPullRequestForBranch(ctx, environment, repositoryIdentifier, branchName)
 		if pullRequestErr != nil {
@@ -667,11 +667,10 @@ func selectGeneratedSyncBranchName(ctx context.Context, environment *workflow.En
 	if initialBranchErr != nil {
 		return "", initialBranchErr
 	}
-	return selectSyncBranchName(ctx, environment, repository, remoteName, reviewBase, initialBranchName)
+	return selectDefaultSnapshotReviewBranch(ctx, environment, repository, remoteName, reviewBase, initialBranchName)
 }
 
 func selectSyncBranchName(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, remoteName string, reviewBase string, initialBranchName string) (string, error) {
-	repositoryIdentifier := strictSyncRepositoryIdentifier(repository)
 	for candidateIndex := 0; candidateIndex < strictSyncGeneratedBranchLimit; candidateIndex++ {
 		candidateBranchName := generatedSyncBranchCandidateName(initialBranchName, candidateIndex)
 		remoteReference := fmt.Sprintf("%s/%s", remoteName, candidateBranchName)
@@ -689,8 +688,9 @@ func selectSyncBranchName(ctx context.Context, environment *workflow.Environment
 			}
 			return candidateBranchName, nil
 		}
-		if repositoryIdentifier == "" {
-			return "", errors.New(strictSyncMissingRepositoryMessage)
+		repositoryIdentifier, identifierErr := strictSyncRepositoryIdentifier(ctx, environment, repository, remoteName)
+		if identifierErr != nil {
+			return "", identifierErr
 		}
 		openPullRequest, pullRequestErr := openPullRequestForBranch(ctx, environment, repositoryIdentifier, candidateBranchName)
 		if pullRequestErr != nil {

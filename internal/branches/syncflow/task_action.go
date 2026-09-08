@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
 
 	"github.com/tyemirov/gix/internal/branches/refresh"
@@ -46,6 +48,7 @@ const (
 	gitMergeSubcommandConstant                   = "merge"
 	gitMergeNoEditFlagConstant                   = "--no-edit"
 	gitMergeFastForwardOnlyFlagConstant          = "--ff-only"
+	gitRemoteGetURLSubcommandConstant            = "get-url"
 	gitResetSubcommandConstant                   = "reset"
 	gitResetHardFlagConstant                     = "--hard"
 	gitPushSubcommandConstant                    = "push"
@@ -67,6 +70,10 @@ const (
 	gitFetchRemoteBranchRefspecTemplateConstant  = "+refs/heads/%s:refs/remotes/%s/%s"
 	gitPullRequestHeadReferenceTemplateConstant  = "refs/pull/%d/head"
 	gitSwitchTrackFlagConstant                   = "--track"
+	gitConfigCountEnvironmentConstant            = "GIT_CONFIG_COUNT"
+	gitConfigKeyEnvironmentTemplateConstant      = "GIT_CONFIG_KEY_%d"
+	gitConfigValueEnvironmentTemplateConstant    = "GIT_CONFIG_VALUE_%d"
+	gitRemoteFetchConfigTemplateConstant         = "remote.%s.fetch"
 	gitSwitchNoGuessFlagConstant                 = "--no-guess"
 	stashTrackedChangesFailureTemplateConstant   = "failed to stash tracked changes before switching: %w"
 	restoreStashedChangesFailureTemplateConstant = "failed to restore stashed changes after switching: %w"
@@ -638,7 +645,7 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 		publication := syncBranchPublicationDirect
 		if commitToExplicitBaseBranch {
 			var policyErr error
-			publication, policyErr = resolveSyncBranchPublication(ctx, environment, repository, defaultBranch)
+			publication, policyErr = resolveSyncBranchPublication(ctx, environment, repository, remoteName, defaultBranch)
 			if policyErr != nil {
 				return policyErr
 			}
@@ -838,7 +845,7 @@ func syncBaseBranch(ctx context.Context, environment *workflow.Environment, repo
 		return result, localExistsErr
 	}
 	if !localExists {
-		return result, executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitSwitchSubcommandConstant, gitCreateBranchFlagConstant, baseBranch, gitSwitchTrackFlagConstant, remoteReference})
+		return result, createStrictSyncTrackingBranch(ctx, environment.GitExecutor, repository.Path, remoteName, baseBranch)
 	}
 	if switchErr := switchToLocalOrRemoteBranchWithAdoption(ctx, environment, repository, remoteName, baseBranch, commitMessages); switchErr != nil {
 		return result, switchErr
@@ -848,9 +855,21 @@ func syncBaseBranch(ctx context.Context, environment *workflow.Environment, repo
 		return result, aheadErr
 	}
 	if aheadCount == 0 {
-		return result, mergeRemoteBranchIntoLocal(ctx, environment, repository, environment.GitExecutor, repository.Path, remoteName, baseBranch, commitMessages)
+		return result, fastForwardRemoteBranchIntoLocal(ctx, environment.GitExecutor, repository.Path, remoteName, baseBranch)
 	}
-	publication, policyErr := resolveSyncBranchPublication(ctx, environment, repository, baseBranch)
+	mergedReview, mergedErr := defaultSnapshotReview(ctx, environment, repository, remoteName, baseBranch, githubcli.PullRequestStateMerged)
+	if mergedErr != nil {
+		return result, mergedErr
+	}
+	if mergedReview != nil {
+		if fetchErr := fetchStrictSyncRemoteDefaultBranch(ctx, environment.GitExecutor, repository.Path, remoteName, baseBranch); fetchErr != nil {
+			return result, fetchErr
+		}
+		// The merged review contains the entire local tip, including all local-only commits.
+		// Its squash commit can have different ancestry from the preserved local snapshot.
+		return result, executeGit(ctx, environment.GitExecutor, repository.Path, []string{gitResetSubcommandConstant, gitResetHardFlagConstant, remoteReference})
+	}
+	publication, policyErr := resolveSyncBranchPublication(ctx, environment, repository, remoteName, baseBranch)
 	if policyErr != nil {
 		return result, policyErr
 	}
@@ -870,9 +889,9 @@ func syncPullRequestBranch(ctx context.Context, environment *workflow.Environmen
 		return strictPullRequestBranchResult{}, remoteExistsErr
 	}
 
-	repositoryIdentifier := strictSyncRepositoryIdentifier(repository)
-	if repositoryIdentifier == "" {
-		return strictPullRequestBranchResult{}, errors.New(strictSyncMissingRepositoryMessage)
+	repositoryIdentifier, identifierErr := strictSyncRepositoryIdentifier(ctx, environment, repository, options.RemoteName)
+	if identifierErr != nil {
+		return strictPullRequestBranchResult{}, identifierErr
 	}
 	if options.KnownMergedPullRequest {
 		return syncKnownMergedPullRequestBranch(ctx, environment, repository, repositoryIdentifier, options)
@@ -933,18 +952,18 @@ func syncPullRequestBranch(ctx context.Context, environment *workflow.Environmen
 		return strictPullRequestBranchResult{}, localExistsErr
 	}
 	if localExists {
+		mergedSyncResult, syncBaseBranchErr := syncBaseBranchAfterMergedPullRequest(ctx, environment, repository, repositoryIdentifier, options)
+		if syncBaseBranchErr != nil {
+			return strictPullRequestBranchResult{}, syncBaseBranchErr
+		}
+		if mergedSyncResult.SyncedBranch != "" {
+			return strictPullRequestBranchResult{SyncedBranch: mergedSyncResult.SyncedBranch}, nil
+		}
 		localAheadOfBase, localAheadOfBaseErr := branchHasCommitsBeyondBase(ctx, environment.GitExecutor, repository.Path, options.RemoteName, options.BaseBranch, options.BranchName)
 		if localAheadOfBaseErr != nil {
 			return strictPullRequestBranchResult{}, localAheadOfBaseErr
 		}
 		if !localAheadOfBase {
-			mergedSyncResult, syncBaseBranchErr := syncBaseBranchAfterMergedPullRequest(ctx, environment, repository, repositoryIdentifier, options)
-			if syncBaseBranchErr != nil {
-				return strictPullRequestBranchResult{}, syncBaseBranchErr
-			}
-			if mergedSyncResult.SyncedBranch != "" {
-				return strictPullRequestBranchResult{SyncedBranch: mergedSyncResult.SyncedBranch}, nil
-			}
 			return strictPullRequestBranchResult{}, fmt.Errorf(strictSyncEmptyLocalBranchTemplate, options.BranchName, options.RemoteName, options.BaseBranch)
 		}
 		if switchErr := switchToLocalOrRemoteBranchWithAdoption(ctx, environment, repository, options.RemoteName, options.BranchName, options.CommitMessages); switchErr != nil {
@@ -1156,8 +1175,32 @@ func switchToLocalOrRemoteBranch(ctx context.Context, executor shared.GitExecuto
 	} else if !isBranchMissingError(switchErr) {
 		return switchErr
 	}
-	remoteReference := fmt.Sprintf("%s/%s", remoteName, branchName)
-	return executeGit(ctx, executor, repositoryPath, []string{gitSwitchSubcommandConstant, gitCreateBranchFlagConstant, branchName, gitSwitchTrackFlagConstant, remoteReference})
+	return createStrictSyncTrackingBranch(ctx, executor, repositoryPath, remoteName, branchName)
+}
+
+func createStrictSyncTrackingBranch(ctx context.Context, executor shared.GitExecutor, repositoryPath string, remoteName string, branchName string) error {
+	configCount := 0
+	if configuredCount := os.Getenv(gitConfigCountEnvironmentConstant); configuredCount != "" {
+		var parseErr error
+		configCount, parseErr = strconv.Atoi(configuredCount)
+		if parseErr != nil {
+			return fmt.Errorf("read Git configuration count: %w", parseErr)
+		}
+		if configCount < 0 {
+			return errors.New("git configuration count must not be negative")
+		}
+	}
+	// An explicit fetch can supply a ref outside the configured fetch set.
+	// Bind its tracking identity for this command without changing that set.
+	return executeGitDetails(ctx, executor, execshell.CommandDetails{
+		Arguments:        []string{gitSwitchSubcommandConstant, gitCreateBranchFlagConstant, branchName, gitSwitchTrackFlagConstant, fmt.Sprintf("%s/%s", remoteName, branchName)},
+		WorkingDirectory: repositoryPath,
+		EnvironmentVariables: map[string]string{
+			gitConfigCountEnvironmentConstant:                                   strconv.Itoa(configCount + 1),
+			fmt.Sprintf(gitConfigKeyEnvironmentTemplateConstant, configCount):   fmt.Sprintf(gitRemoteFetchConfigTemplateConstant, remoteName),
+			fmt.Sprintf(gitConfigValueEnvironmentTemplateConstant, configCount): fmt.Sprintf(gitFetchRemoteBranchRefspecTemplateConstant, branchName, remoteName, branchName),
+		},
+	})
 }
 
 func switchToLocalOrRemoteBranchWithAdoption(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, remoteName string, branchName string, commitMessages worktreeAdoptionCommitMessageOptions) error {
@@ -1417,21 +1460,19 @@ func createPullRequest(ctx context.Context, environment *workflow.Environment, o
 	return nil
 }
 
-func strictSyncRepositoryIdentifier(repository *workflow.RepositoryState) string {
-	if repository == nil {
-		return ""
+func strictSyncRepositoryIdentifier(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, remoteName string) (string, error) {
+	result, remoteErr := environment.GitExecutor.ExecuteGit(ctx, execshell.CommandDetails{
+		Arguments:        []string{gitRemoteSubcommandConstant, gitRemoteGetURLSubcommandConstant, remoteName},
+		WorkingDirectory: repository.Path,
+	})
+	if remoteErr != nil {
+		return "", fmt.Errorf("resolve repository for remote %q: %w", remoteName, remoteErr)
 	}
-	for _, candidate := range []string{
-		repository.Inspection.FinalOwnerRepo,
-		repository.Inspection.CanonicalOwnerRepo,
-		repository.Inspection.OriginOwnerRepo,
-	} {
-		trimmed := strings.TrimSpace(candidate)
-		if trimmed != "" && trimmed != "n/a" {
-			return trimmed
-		}
+	remote, parseErr := gitrepo.ParseRemoteURL(result.StandardOutput)
+	if parseErr != nil {
+		return "", fmt.Errorf("resolve repository for remote %q: %w", remoteName, errors.New(strictSyncMissingRepositoryMessage))
 	}
-	return ""
+	return remote.Owner + "/" + remote.Repository, nil
 }
 
 func localBranchExists(ctx context.Context, executor shared.GitExecutor, repositoryPath string, branchName string) (bool, error) {
