@@ -77,10 +77,16 @@ Default-branch status adds no other special behavior. Branch protection does not
 
 Sync pulls the latest remote changes, merges pending changes into the selected branch, commits the result, and pushes that branch. The selected branch stays active. `gix sync master`, `gix sync qqq`, and `gix sync wwww` use the same operation with different branch names.
 
-GitHub publication is secondary. If GitHub rejects the push, sync keeps the local commits and selected branch. It reports that the remote did not receive the changes. It suggests removal of branch protection or creation of a new pull request. That rejection does not start rollback or make the command fail. Completed synchronization with only that rejection returns exit code `0`.
+GitHub publication is secondary. If GitHub rejects the selected branch, sync keeps the local commits and selected branch. It reports that the remote did not receive the branch changes. It suggests removal of branch protection or creation of a new pull request. That rejection does not start rollback or make the command fail. Completed synchronization with only that rejection returns exit code `0`.
+
+Sync reads the push result for the selected branch separately from other refs.
+If the branch succeeds but a tag is rejected, sync reports the tag rejection and continues the branch PR operation.
+If a later operation fails, sync preserves the published state and reports `SYNC_SWITCH_HANDOFF`.
 
 A parent branch does not need separate commits or a pull request before it can receive child work.
+A parent can exist only on the remote. Sync merges incoming parent work and preserves unpublished parent commits and pending child files.
 If a recorded parent merges, sync resolves its current base and keeps the unmerged child as the destination.
+Before review comparison, sync merges the parent remote ref and resolved base into the parent.
 A pull request requires file changes against that base.
 If a parent push is rejected, sync saves the child work locally and reports `SYNC_PUBLICATION_DEFERRED`.
 It defers the child push and pull request until the parent can be published.
