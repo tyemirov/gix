@@ -29,6 +29,18 @@ import (
 
 const mergedFeatureFooPullRequestJSON = `[{"number":7,"title":"Merged","headRefName":"feature/foo","headRefOid":"` + strictSyncGitTestCommit + `","baseRefName":"master"}]`
 
+func onlyGitHubCommand(t *testing.T, commands []execshell.CommandDetails, action string) execshell.CommandDetails {
+	t.Helper()
+	var matches []execshell.CommandDetails
+	for _, command := range commands {
+		if strings.HasPrefix(strings.Join(command.Arguments, " "), action+" ") {
+			matches = append(matches, command)
+		}
+	}
+	require.Len(t, matches, 1, "expected one %s operation", action)
+	return matches[0]
+}
+
 type recordingReporter struct {
 	events []shared.Event
 }
@@ -164,6 +176,9 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 	case "remote":
 		return execshell.ExecutionResult{StandardOutput: "https://github.com/owner/project.git\n"}, nil
 	case gitLSRemoteSubcommandConstant:
+		if !commandHasArgument(details.Arguments, "--symref") {
+			return execshell.ExecutionResult{}, nil
+		}
 		return execshell.ExecutionResult{StandardOutput: fmt.Sprintf("ref: refs/heads/%s\tHEAD\n%s\tHEAD\n", strictSyncTestDefaultBranch, strictSyncGitTestCommit)}, nil
 	case "config":
 		reviewBaseKeyIndex := -1
@@ -1151,7 +1166,7 @@ func TestHandleBranchSyncActionStrictPRBranchRequireCleanRejectsDirtyWorktree(t 
 	require.Len(t, chatClient.requests, 0)
 }
 
-func TestHandleBranchSyncActionStrictPRBranchRejectsMissingPullRequest(t *testing.T) {
+func TestHandleBranchSyncActionStrictPRBranchSyncsWithoutPullRequest(t *testing.T) {
 	gitExecutor := &strictSyncGitExecutor{}
 	gitManager, managerError := gitrepo.NewRepositoryManager(gitExecutor)
 	require.NoError(t, managerError)
@@ -1183,10 +1198,9 @@ func TestHandleBranchSyncActionStrictPRBranchRejectsMissingPullRequest(t *testin
 	}
 
 	syncError := handleBranchSyncAction(context.Background(), environment, repository, parameters)
-	require.Error(t, syncError)
-	require.Contains(t, syncError.Error(), "does not have an open pull request")
-	require.NotContains(t, recordedGitCommands(gitExecutor.commands), "merge --no-edit origin/master")
-	require.NotContains(t, recordedGitCommands(gitExecutor.commands), "push origin feature/foo")
+	require.NoError(t, syncError)
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "merge --no-edit origin/master")
+	require.Contains(t, recordedGitCommands(gitExecutor.commands), "push -u origin feature/foo")
 }
 
 func TestHandleBranchSyncActionStrictPRBranchPromptsToSyncMasterWhenPullRequestMerged(t *testing.T) {
@@ -1685,9 +1699,9 @@ func TestHandleBranchSyncActionStrictPRBranchCreatesMissingRemoteBranchAndPullRe
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "diff --stat origin/master...feature/foo")
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "diff --unified=3 origin/master...feature/foo")
 	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, "diff --stat origin/master...feature/foo"), recordedGitCommandIndex(gitExecutor.commands, "push -u origin feature/foo"))
-	require.Len(t, githubExecutor.commands, 2)
-	require.Contains(t, strings.Join(githubExecutor.commands[0].Arguments, " "), "--state merged")
-	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", "feature/foo", "--title", "feature/foo", "--body", pullRequestBody}, githubExecutor.commands[1].Arguments)
+
+	require.Contains(t, recordedGitCommands(githubExecutor.commands), "--state merged")
+	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", "feature/foo", "--title", "feature/foo", "--body", pullRequestBody}, onlyGitHubCommand(t, githubExecutor.commands, "pr create").Arguments)
 	require.Len(t, chatClient.requests, 2)
 	require.Contains(t, chatClient.requests[1].Messages[1].Content, "Comparison range: origin/master...feature/foo")
 	require.Contains(t, chatClient.requests[1].Messages[1].Content, "README.md | 1 +")
@@ -1742,14 +1756,14 @@ func TestHandleBranchSyncActionStrictPRBranchPushesLocalAheadMissingRemoteBranch
 	require.NotContains(t, recordedCommands, "switch -c feature/foo origin/master")
 	require.Contains(t, recordedCommands, "merge --no-edit origin/master")
 	require.Contains(t, recordedCommands, "push -u origin feature/foo")
-	require.Len(t, githubExecutor.commands, 2)
-	require.Contains(t, strings.Join(githubExecutor.commands[0].Arguments, " "), "--state merged")
-	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", "feature/foo", "--title", "feature/foo", "--body", pullRequestBody}, githubExecutor.commands[1].Arguments)
+
+	require.Contains(t, recordedGitCommands(githubExecutor.commands), "--state merged")
+	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", "feature/foo", "--title", "feature/foo", "--body", pullRequestBody}, onlyGitHubCommand(t, githubExecutor.commands, "pr create").Arguments)
 	require.Len(t, chatClient.requests, 1)
 	require.Contains(t, chatClient.requests[0].Messages[1].Content, "Comparison range: origin/master...feature/foo")
 }
 
-func TestHandleBranchSyncActionStrictPRBranchRejectsEmptyLocalMissingRemoteBranch(t *testing.T) {
+func TestHandleBranchSyncActionStrictPRBranchPublishesEmptyLocalMissingRemoteBranch(t *testing.T) {
 	gitExecutor := &strictSyncGitExecutor{
 		missingReferences: map[string]bool{
 			"origin/feature/foo": true,
@@ -1787,12 +1801,11 @@ func TestHandleBranchSyncActionStrictPRBranchRejectsEmptyLocalMissingRemoteBranc
 	}
 
 	syncError := handleBranchSyncAction(context.Background(), environment, repository, parameters)
-	require.Error(t, syncError)
-	require.Contains(t, syncError.Error(), `local branch "feature/foo" has no commits beyond origin/master and no merged pull request handoff`)
+	require.NoError(t, syncError)
 	recordedCommands := recordedGitCommands(gitExecutor.commands)
 	require.Contains(t, recordedCommands, "rev-list --count origin/master..feature/foo")
-	require.NotContains(t, recordedCommands, "merge --no-edit origin/master")
-	require.NotContains(t, recordedCommands, "push -u origin feature/foo")
+	require.Contains(t, recordedCommands, "merge --no-edit origin/master")
+	require.Contains(t, recordedCommands, "push -u origin feature/foo")
 	require.Len(t, githubExecutor.commands, 1)
 	require.Contains(t, strings.Join(githubExecutor.commands[0].Arguments, " "), "--state merged")
 }
@@ -1850,9 +1863,9 @@ func TestHandleBranchSyncActionStrictPRBranchUsesExplicitPullRequestMetadata(t *
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "push -u origin feature/foo")
 	require.NotContains(t, recordedGitCommands(gitExecutor.commands), "diff --stat origin/master...feature/foo")
 	require.NotContains(t, recordedGitCommands(gitExecutor.commands), "diff --unified=3 origin/master...feature/foo")
-	require.Len(t, githubExecutor.commands, 2)
-	require.Contains(t, strings.Join(githubExecutor.commands[0].Arguments, " "), "--state merged")
-	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", "feature/foo", "--title", "docs: explain sync", "--body", "Explain the reviewer-facing reason."}, githubExecutor.commands[1].Arguments)
+
+	require.Contains(t, recordedGitCommands(githubExecutor.commands), "--state merged")
+	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", "feature/foo", "--title", "docs: explain sync", "--body", "Explain the reviewer-facing reason."}, onlyGitHubCommand(t, githubExecutor.commands, "pr create").Arguments)
 	require.Len(t, chatClient.requests, 1)
 }
 
@@ -1910,9 +1923,9 @@ func TestHandleBranchSyncActionStrictPRBranchCreatesGeneratedBranchFromCurrentDi
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "diff --stat origin/master..."+generatedBranchName)
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "diff --unified=3 origin/master..."+generatedBranchName)
 	require.Less(t, recordedGitCommandIndex(gitExecutor.commands, "diff --stat origin/master..."+generatedBranchName), recordedGitCommandIndex(gitExecutor.commands, "push -u origin "+generatedBranchName))
-	require.Len(t, githubExecutor.commands, 2)
-	require.Contains(t, strings.Join(githubExecutor.commands[0].Arguments, " "), "--state merged")
-	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", generatedBranchName, "--title", generatedBranchName, "--body", pullRequestBody}, githubExecutor.commands[1].Arguments)
+
+	require.Contains(t, recordedGitCommands(githubExecutor.commands), "--state merged")
+	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", generatedBranchName, "--title", generatedBranchName, "--body", pullRequestBody}, onlyGitHubCommand(t, githubExecutor.commands, "pr create").Arguments)
 	require.Len(t, chatClient.requests, 3)
 	require.Contains(t, chatClient.requests[0].Messages[1].Content, "Diff source: ALL")
 	require.Contains(t, chatClient.requests[2].Messages[1].Content, "Comparison range: origin/master..."+generatedBranchName)
@@ -2031,9 +2044,9 @@ func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedCurrentDirtyMaster
 	require.Contains(t, chatClient.requests[2].Messages[1].Content, oursRegion)
 	require.NotContains(t, chatClient.requests[2].Messages[1].Content, "stable preface")
 	require.NotContains(t, chatClient.requests[2].Messages[1].Content, "stable epilogue")
-	require.Len(t, githubExecutor.commands, 2)
-	require.Contains(t, strings.Join(githubExecutor.commands[0].Arguments, " "), "--state merged")
-	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", generatedBranchName, "--title", generatedBranchName, "--body", pullRequestBody}, githubExecutor.commands[1].Arguments)
+
+	require.Contains(t, recordedGitCommands(githubExecutor.commands), "--state merged")
+	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", generatedBranchName, "--title", generatedBranchName, "--body", pullRequestBody}, onlyGitHubCommand(t, githubExecutor.commands, "pr create").Arguments)
 }
 
 func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedCurrentDirtyMasterDeletionConflict(t *testing.T) {
@@ -2107,9 +2120,9 @@ func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedCurrentDirtyMaster
 	require.True(t, os.IsNotExist(readErr))
 	require.Len(t, chatClient.requests, 4)
 	require.Contains(t, chatClient.requests[3].Messages[1].Content, "Comparison range: origin/master..."+generatedBranchName)
-	require.Len(t, githubExecutor.commands, 2)
-	require.Contains(t, strings.Join(githubExecutor.commands[0].Arguments, " "), "--state merged")
-	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", generatedBranchName, "--title", generatedBranchName, "--body", pullRequestBody}, githubExecutor.commands[1].Arguments)
+
+	require.Contains(t, recordedGitCommands(githubExecutor.commands), "--state merged")
+	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", generatedBranchName, "--title", generatedBranchName, "--body", pullRequestBody}, onlyGitHubCommand(t, githubExecutor.commands, "pr create").Arguments)
 }
 
 func TestHandleBranchSyncActionStrictPRBranchCreatesGeneratedBranchFromCurrentDirtyMasterWhenLocalBaseAhead(t *testing.T) {
@@ -2165,9 +2178,9 @@ func TestHandleBranchSyncActionStrictPRBranchCreatesGeneratedBranchFromCurrentDi
 	require.Contains(t, recordedCommands, "commit -m docs: update readme")
 	require.Contains(t, recordedCommands, "merge --no-edit origin/master")
 	require.Contains(t, recordedCommands, "push -u origin "+generatedBranchName)
-	require.Len(t, githubExecutor.commands, 2)
-	require.Contains(t, strings.Join(githubExecutor.commands[0].Arguments, " "), "--state merged")
-	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", generatedBranchName, "--title", generatedBranchName, "--body", pullRequestBody}, githubExecutor.commands[1].Arguments)
+
+	require.Contains(t, recordedGitCommands(githubExecutor.commands), "--state merged")
+	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", generatedBranchName, "--title", generatedBranchName, "--body", pullRequestBody}, onlyGitHubCommand(t, githubExecutor.commands, "pr create").Arguments)
 	require.Len(t, chatClient.requests, 3)
 }
 
@@ -2220,8 +2233,8 @@ func TestHandleBranchSyncActionStrictPRBranchSkipsStaleGeneratedRemoteBranchForC
 	require.NotEqual(t, -1, recordedGitCommandIndex(gitExecutor.commands, "switch -c "+collisionBranchName))
 	require.Equal(t, -1, recordedGitCommandIndex(gitExecutor.commands, "switch -c "+collisionBranchName+" origin/master"))
 	require.Contains(t, recordedGitCommands(gitExecutor.commands), "push -u origin "+collisionBranchName)
-	require.Len(t, githubExecutor.commands, 3)
-	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", collisionBranchName, "--title", collisionBranchName, "--body", pullRequestBody}, githubExecutor.commands[2].Arguments)
+
+	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", collisionBranchName, "--title", collisionBranchName, "--body", pullRequestBody}, onlyGitHubCommand(t, githubExecutor.commands, "pr create").Arguments)
 	require.Len(t, chatClient.requests, 3)
 	require.Contains(t, chatClient.requests[0].Messages[1].Content, "Diff source: ALL")
 	require.Contains(t, chatClient.requests[2].Messages[1].Content, "Comparison range: origin/master..."+collisionBranchName)

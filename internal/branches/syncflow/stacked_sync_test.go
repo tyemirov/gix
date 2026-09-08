@@ -85,7 +85,7 @@ func TestPlanStrictSyncStack(t *testing.T) {
 			resolutionSource:  branchResolutionSourceExplicit,
 			localBranch:       "feature/parent",
 			missingReferences: missingStrictSyncStackChildReferences(),
-			expectedError:     `cannot create stacked branch "feature/child" from "feature/parent": no changes would remain for its pull request`,
+			expectedPlan:      &strictSyncStackPlan{ChildBranch: "feature/child", ParentBranch: "feature/parent", RecordReviewBase: true},
 		},
 		{
 			name:              "stashed child has no committed pull request delta",
@@ -94,7 +94,7 @@ func TestPlanStrictSyncStack(t *testing.T) {
 			dirty:             true,
 			stashChanges:      true,
 			missingReferences: missingStrictSyncStackChildReferences(),
-			expectedError:     `cannot create stacked branch "feature/child" from "feature/parent": no changes would remain for its pull request`,
+			expectedPlan:      &strictSyncStackPlan{ChildBranch: "feature/child", ParentBranch: "feature/parent", RecordReviewBase: true},
 		},
 		{
 			name:              "dirty missing child stacks on current branch",
@@ -116,7 +116,9 @@ func TestPlanStrictSyncStack(t *testing.T) {
 				missingReferences: testCase.missingReferences,
 				configValues:      testCase.configValues,
 			}
-			environment := &workflow.Environment{GitExecutor: gitExecutor}
+			githubClient, clientErr := githubcli.NewClient(&strictSyncGitHubExecutor{output: `[]`})
+			require.NoError(t, clientErr)
+			environment := &workflow.Environment{GitExecutor: gitExecutor, GitHubClient: githubClient}
 			repository := &workflow.RepositoryState{
 				Path: "/tmp/project",
 				Inspection: audit.RepositoryInspection{
@@ -202,7 +204,7 @@ func TestEnsureStrictSyncStackParentUsesExistingOpenPullRequest(t *testing.T) {
 	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":7,"title":"Parent","headRefName":"feature/parent","baseRefName":"feature/grandparent"}]`}
 	environment, repository := strictSyncStackTestContext(t, gitExecutor, githubExecutor)
 
-	parentErr := ensureStrictSyncStackParent(context.Background(), environment, repository, strictSyncStackParentOptions{
+	_, parentErr := ensureStrictSyncStackParent(context.Background(), environment, repository, strictSyncStackParentOptions{
 		RemoteName:    shared.OriginRemoteNameConstant,
 		DefaultBranch: strictSyncTestDefaultBranch,
 		Plan: strictSyncStackPlan{
@@ -225,7 +227,7 @@ func TestEnsureStrictSyncStackParentAcceptsOpenRemoteAncestorWithoutLocalBranch(
 	githubExecutor := &strictSyncGitHubExecutor{output: `[{"number":7,"title":"Grandparent","headRefName":"feature/grandparent","baseRefName":"master"}]`}
 	environment, repository := strictSyncStackTestContext(t, gitExecutor, githubExecutor)
 
-	parentErr := ensureStrictSyncStackParent(context.Background(), environment, repository, strictSyncStackParentOptions{
+	_, parentErr := ensureStrictSyncStackParent(context.Background(), environment, repository, strictSyncStackParentOptions{
 		RemoteName:    shared.OriginRemoteNameConstant,
 		DefaultBranch: strictSyncTestDefaultBranch,
 		Plan: strictSyncStackPlan{
@@ -256,11 +258,12 @@ func TestEnsureStrictSyncStackParentPreservesRecordedParentBase(t *testing.T) {
 			`[]`,
 			`[]`,
 			`[{"number":7,"title":"Grandparent","headRefName":"feature/grandparent","baseRefName":"master"}]`,
+			`[{"number":7,"title":"Grandparent","headRefName":"feature/grandparent","baseRefName":"master"}]`,
 		},
 	}
 	environment, repository := strictSyncStackTestContext(t, gitExecutor, githubExecutor)
 
-	parentErr := ensureStrictSyncStackParent(context.Background(), environment, repository, strictSyncStackParentOptions{
+	_, parentErr := ensureStrictSyncStackParent(context.Background(), environment, repository, strictSyncStackParentOptions{
 		RemoteName:    shared.OriginRemoteNameConstant,
 		DefaultBranch: strictSyncTestDefaultBranch,
 		Plan: strictSyncStackPlan{
@@ -277,8 +280,8 @@ func TestEnsureStrictSyncStackParentPreservesRecordedParentBase(t *testing.T) {
 	require.Contains(t, recordedCommands, "push -u origin feature/grandparent")
 	require.Contains(t, recordedCommands, "push -u origin feature/parent")
 	require.Contains(t, recordedCommands, "diff --stat origin/feature/grandparent...feature/parent")
-	require.Len(t, githubExecutor.commands, 4)
-	createCommand := strings.Join(githubExecutor.commands[3].Arguments, " ")
+
+	createCommand := strings.Join(onlyGitHubCommand(t, githubExecutor.commands, "pr create").Arguments, " ")
 	require.Contains(t, createCommand, "--base feature/grandparent")
 	require.Contains(t, createCommand, "--head feature/parent")
 	require.NotContains(t, createCommand, "--base master")
@@ -300,7 +303,7 @@ func TestEnsureStrictSyncStackParentRejectsRecordedReviewBaseCycle(t *testing.T)
 	githubExecutor := &strictSyncGitHubExecutor{output: `[]`}
 	environment, repository := strictSyncStackTestContext(t, gitExecutor, githubExecutor)
 
-	parentErr := ensureStrictSyncStackParent(context.Background(), environment, repository, strictSyncStackParentOptions{
+	_, parentErr := ensureStrictSyncStackParent(context.Background(), environment, repository, strictSyncStackParentOptions{
 		RemoteName:    shared.OriginRemoteNameConstant,
 		DefaultBranch: strictSyncTestDefaultBranch,
 		Plan: strictSyncStackPlan{
@@ -325,14 +328,7 @@ func TestEnsureStrictSyncStackParentRejectsInvalidReviewState(t *testing.T) {
 			githubOutputs: []string{`[{"number":7,"title":"Parent","headRefName":"feature/parent","baseRefName":""}]`},
 			expectedError: `open pull request for branch "feature/parent" did not report a base branch`,
 		},
-		{
-			name: "parent pull request is merged",
-			githubOutputs: []string{
-				`[]`,
-				`[{"number":7,"title":"Parent","headRefName":"feature/parent","headRefOid":"` + strictSyncGitTestCommit + `","baseRefName":"master"}]`,
-			},
-			expectedError: `cannot create stacked branch "feature/child" from "feature/parent": the parent branch pull request is already merged`,
-		},
+
 		{
 			name:          "remote parent is ahead",
 			githubOutputs: []string{`[{"number":7,"title":"Parent","headRefName":"feature/parent","baseRefName":"master"}]`},
@@ -347,7 +343,7 @@ func TestEnsureStrictSyncStackParentRejectsInvalidReviewState(t *testing.T) {
 			githubExecutor := &strictSyncGitHubExecutor{outputs: testCase.githubOutputs}
 			environment, repository := strictSyncStackTestContext(t, gitExecutor, githubExecutor)
 
-			parentErr := ensureStrictSyncStackParent(context.Background(), environment, repository, strictSyncStackParentOptions{
+			_, parentErr := ensureStrictSyncStackParent(context.Background(), environment, repository, strictSyncStackParentOptions{
 				RemoteName:    shared.OriginRemoteNameConstant,
 				DefaultBranch: strictSyncTestDefaultBranch,
 				Plan: strictSyncStackPlan{
