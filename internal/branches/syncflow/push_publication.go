@@ -12,6 +12,7 @@ import (
 )
 
 const syncPushRejectedMessage = "local synchronization completed on %q; the remote rejected the push and did not receive the changes: %s. To publish the commits, remove branch protection or open a new pull request"
+const syncAdditionalRefRejectedMessage = "the remote has the changes for branch %q; the push rejected another ref: %s. Resolve the rejected ref and push it again"
 
 // publishStrictSyncBranch distinguishes a remote refusal from an execution failure.
 // A refusal completes local sync, but must not trigger pull-request creation.
@@ -24,10 +25,54 @@ func publishStrictSyncBranch(ctx context.Context, environment *workflow.Environm
 	if !errors.As(pushErr, &failure) || !strictSyncRemoteRejectedPush(failure.Result) {
 		return false, pushErr
 	}
+	status := strictSyncRequestedBranchPushStatus(failure.Result, branchName)
+	if status == strictSyncPushUnknown {
+		return false, pushErr
+	}
+	if status == strictSyncPushAccepted {
+		environment.ReportRepositoryEvent(repository, shared.EventLevelWarn, shared.EventCodeSyncPushRejected,
+			fmt.Sprintf(syncAdditionalRefRejectedMessage, branchName, strings.TrimSpace(failure.Result.StandardError+"\n"+failure.Result.StandardOutput)),
+			map[string]string{"branch": branchName, "remote": remoteName, "published": "true"})
+		return true, nil
+	}
 	environment.ReportRepositoryEvent(repository, shared.EventLevelWarn, shared.EventCodeSyncPushRejected,
 		fmt.Sprintf(syncPushRejectedMessage, branchName, strings.TrimSpace(failure.Result.StandardError+"\n"+failure.Result.StandardOutput)),
 		map[string]string{"branch": branchName, "remote": remoteName, "published": "false"})
 	return false, nil
+}
+
+type strictSyncPushStatus uint8
+
+const (
+	strictSyncPushUnknown strictSyncPushStatus = iota
+	strictSyncPushAccepted
+	strictSyncPushRejected
+)
+
+func strictSyncRequestedBranchPushStatus(result execshell.ExecutionResult, branchName string) strictSyncPushStatus {
+	observedStatus := false
+	for _, line := range strings.Split(result.StandardOutput, "\n") {
+		fields := strings.Split(line, "\t")
+		if len(fields) != 3 || len(fields[0]) != 1 {
+			continue
+		}
+		observedStatus = true
+		_, destination, _ := strings.Cut(fields[1], ":")
+		if destination != gitBranchReferencePrefix+branchName {
+			continue
+		}
+		switch fields[0] {
+		case " ", "+", "*", "=":
+			return strictSyncPushAccepted
+		case "!":
+			return strictSyncPushRejected
+		}
+	}
+	// A server can reject the operation before Git reports any ref status.
+	if !observedStatus && strictSyncRemoteRejectedPush(result) {
+		return strictSyncPushRejected
+	}
+	return strictSyncPushUnknown
 }
 
 func strictSyncRemoteRejectedPush(result execshell.ExecutionResult) bool {

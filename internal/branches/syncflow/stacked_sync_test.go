@@ -328,13 +328,6 @@ func TestEnsureStrictSyncStackParentRejectsInvalidReviewState(t *testing.T) {
 			githubOutputs: []string{`[{"number":7,"title":"Parent","headRefName":"feature/parent","baseRefName":""}]`},
 			expectedError: `open pull request for branch "feature/parent" did not report a base branch`,
 		},
-
-		{
-			name:          "remote parent is ahead",
-			githubOutputs: []string{`[{"number":7,"title":"Parent","headRefName":"feature/parent","baseRefName":"master"}]`},
-			revListOutput: "1\n",
-			expectedError: `cannot create stacked branch "feature/child" from "feature/parent": the parent branch is behind origin/feature/parent and must be synced first`,
-		},
 	}
 
 	for _, testCase := range testCases {

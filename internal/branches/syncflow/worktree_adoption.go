@@ -618,15 +618,13 @@ func executeGitDetails(ctx context.Context, executor shared.GitExecutor, details
 	}
 	executionDetails.Arguments = executionArguments
 	result, executionErr := executor.ExecuteGit(ctx, executionDetails)
-	if executionErr != nil {
-		return executionErr
-	}
-	if mutationErr := completeStrictSyncGitMutation(ctx, executor, mutationJournal); mutationErr != nil {
-		return mutationErr
-	}
 	if strictSyncPush {
+		var commandFailure execshell.CommandFailedError
+		if errors.As(executionErr, &commandFailure) {
+			result = commandFailure.Result
+		}
 		published, publicationErr := strictSyncPushUpdatedRemote(result.StandardOutput)
-		if publicationErr != nil {
+		if publicationErr != nil && executionErr == nil {
 			markStrictSyncPublished(ctx)
 			return publicationErr
 		}
@@ -634,7 +632,10 @@ func executeGitDetails(ctx context.Context, executor shared.GitExecutor, details
 			markStrictSyncPublished(ctx)
 		}
 	}
-	return nil
+	if executionErr != nil {
+		return executionErr
+	}
+	return completeStrictSyncGitMutation(ctx, executor, mutationJournal)
 }
 
 func sameFilesystemPath(firstPath string, secondPath string) bool {

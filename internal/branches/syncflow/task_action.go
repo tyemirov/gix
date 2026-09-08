@@ -607,7 +607,16 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 	}
 	parentPublished := true
 	if stackPlan != nil {
-		if !stackPlan.ChildPullRequestMerged {
+		if !stackPlan.ChildPullRequestMerged && stackPlan.ParentBranch != defaultBranch {
+			var parentIsolationStash *strictSyncStash
+			if dirty {
+				stash, stashErr := pushStrictSyncStash(ctx, environment.GitExecutor, repository.Path, strictSyncInvocationStashMessage)
+				if stashErr != nil {
+					return stashErr
+				}
+				transaction.ownStash(stash)
+				parentIsolationStash = &stash
+			}
 			var parentErr error
 			parentPublished, parentErr = ensureStrictSyncStackParent(ctx, environment, repository, strictSyncStackParentOptions{
 				RemoteName:     remoteName,
@@ -617,6 +626,15 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 			})
 			if parentErr != nil {
 				return parentErr
+			}
+			startingBranch := repository.Inspection.LocalBranch
+			if switchErr := switchToLocalOrRemoteBranchWithAdoption(ctx, environment, repository, remoteName, startingBranch, options.CommitMessages); switchErr != nil {
+				return switchErr
+			}
+			if parentIsolationStash != nil {
+				if restoreErr := restoreOwnedStrictSyncStash(ctx, environment, repository, transaction, *parentIsolationStash, startingBranch, options.CommitMessages); restoreErr != nil {
+					return restoreErr
+				}
 			}
 		}
 		if stackPlan.RecordReviewBase {
