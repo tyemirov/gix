@@ -39,7 +39,9 @@ An artifact producer can supply different previous and candidate release output 
 
 The Gix release helper invokes `gix release next semver --fixed-major 1`. Under this policy, incompatible and additive Gix public contract changes select a minor release. Compatible fixes and internal changes select a patch release. Version selection uses only `v1` tags. Other callers can select standard SemVer or CalVer explicitly.
 
-`make release` runs CI. It prepares the binaries, checksums, Pages archive, release metadata commit, one annotated tag, and release manifest. The local `.git/mprlab-release` directory contains the sealed receipt. New release preparation does not write to a remote repository.
+`make release` runs the complete `make ci` gate directly. The CI test commands keep their own time limits. Release preparation adds no separate CI deadline. On failure, it reports the CI duration and exit status before it stops.
+
+After CI passes, the command prepares the binaries, checksums, Pages archive, release metadata commit, one annotated tag, and release manifest. The local `.git/mprlab-release` directory contains the sealed receipt. New release preparation does not write to a remote repository.
 
 At an exact release tag, the command verifies and reuses the complete local receipt without another CI run. If the receipt is incomplete, the command reconstructs it from the matching GitHub Release. Reconstruction verifies the manifest, notes, hashes, annotated tag, source parent, and exact release metadata files.
 
