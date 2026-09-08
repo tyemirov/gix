@@ -96,6 +96,8 @@ Add repository-specific technical nouns below this line.
 - `approval sentinel`: The exact model response that approves a locally validated conflict result.
 - `branch protection`: GitHub requirements for changes to a branch.
 - `default branch`: The branch that the selected remote reports through its symbolic `HEAD`.
+- `fast-forward update`: A branch update that moves its reference to a descendant commit without a merge commit.
+- `squash merge`: A Git merge that records the proposed changes in one commit with the target branch as its parent.
 - `publication path`: The method that publishes commits through a direct push or a pull request.
 - `review branch`: A Git branch that supplies proposed commits to a pull request.
 - `CalVer`: A release version that derives its numeric fields from a release timestamp.

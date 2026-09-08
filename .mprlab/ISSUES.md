@@ -11,6 +11,42 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B092] (P1) Complete default branch sync after a squash merge.
+  Goal:
+  Sync does not create another review for commits that a merged pull request already contains.
+  Requirements:
+  - Confirm the merged review against the selected remote and default branch.
+  - Keep local commits that the merged review does not contain.
+  Validation:
+  The compiled CLI test showed an empty review after a squash merge.
+  Eight squash-merge scenarios passed after the correction. The tests kept newer local commits and covered retained and pruned review branches.
+  The final `make ci` check passed.
+
+- [x] [B093] (P2) Use the selected remote for publication policy.
+  Goal:
+  Branch protection and pull requests use the repository for the selected remote.
+  Validation:
+  The compiled CLI tests showed incorrect publication with opposite protection policies on `origin` and `upstream`.
+  All four remote-policy scenarios passed after the correction.
+  The final `make ci` check passed.
+
+- [x] [B094] (P2) Keep one review for each default branch commit.
+  Goal:
+  The next default branch sync keeps the existing review and its committed file changes.
+  Validation:
+  The compiled CLI test showed a second review after the first sync committed pending file changes.
+  The CLI tests also passed with a restricted fetch configuration.
+  Both tests for review selection passed after the correction.
+  The final `make ci` check passed.
+
+- [x] [B095] (P2) Keep branch updates free of unpublished merge commits.
+  Goal:
+  A default branch with no local commits uses a fast-forward update.
+  Validation:
+  The compiled CLI tests showed unpublished merge commits with `merge.ff=false` under both protection policies.
+  Both tests with `merge.ff=false` passed after the correction.
+  The final `make ci` check passed.
+
 - [x] [B091] (P1) Preserve independent issues with the same identifier.
   Goal:
   Sync keeps both requests when branches independently assign the same new issue identifier.
