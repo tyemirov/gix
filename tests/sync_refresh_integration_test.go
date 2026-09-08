@@ -37,6 +37,7 @@ func TestSyncExplicitMasterCommitsDirtyMasterWorktreeAndMergesRemote(testInstanc
 	gitInvocationLog := filepath.Join(testInstance.TempDir(), syncRefreshIntegrationGitInvocationLog)
 	gitStubScript := []byte(strings.Join([]string{
 		"#!/bin/sh",
+		fmt.Sprintf(`if [ "$1" = "remote" ] && [ "$2" = "get-url" ] && [ "$3" = "origin" ]; then printf '%%s\n' %q; exit 0; fi`, syncMergedBranchRemoteURL),
 		"echo \"$@\" >> " + gitInvocationLog,
 		"if [ \"$1\" = \"pull\" ] && [ \"$2\" = \"--rebase\" ]; then exit 42; fi",
 		"if [ \"$1\" = \"status\" ] && [ \"$2\" = \"--porcelain=v1\" ] && [ \"$3\" = \"-z\" ]; then",
@@ -50,6 +51,8 @@ func TestSyncExplicitMasterCommitsDirtyMasterWorktreeAndMergesRemote(testInstanc
 		"exec " + realGitPath + " \"$@\"",
 	}, "\n") + "\n")
 	pathVariable := buildStubbedExecutablePath(testInstance, "git", string(gitStubScript))
+	require.NoError(testInstance, os.WriteFile(filepath.Join(filepath.SplitList(pathVariable)[0], "gh"), []byte(syncMergedBranchGitHubStubScript()), 0o755))
+	githubLogPath := filepath.Join(testInstance.TempDir(), "gh.log")
 
 	remotePath := filepath.Join(testInstance.TempDir(), "remote.git")
 	remoteInitCommand := exec.Command("git", "init", "--bare", remotePath)
@@ -199,13 +202,16 @@ operations:
 		map[string]string{
 			pathEnvironmentVariableNameConstant:  pathVariable,
 			syncRefreshIntegrationAPIKeyVariable: "test-key",
+			syncMergedBranchGitHubLogVariable:    githubLogPath,
 		},
 		syncRefreshIntegrationTimeout,
 		commandArguments,
 	)
 	require.NoError(testInstance, runError, output)
 	testInstance.Logf("sync output:\n%s", output)
-	require.Contains(testInstance, output, "SYNCED: . (master)")
+	canonicalRepositoryPath, canonicalPathError := filepath.EvalSymlinks(repositoryPath)
+	require.NoError(testInstance, canonicalPathError)
+	require.Contains(testInstance, output, fmt.Sprintf("SYNCED: %s (master)", canonicalRepositoryPath))
 	require.NotContains(testInstance, output, "worktree is dirty")
 	require.NotContains(testInstance, output, "would be overwritten by checkout")
 
@@ -1696,10 +1702,13 @@ func TestSyncCommitsTrackedDirtyPathsEvenWhenMatchedByIgnoreRules(testInstance *
 	gitInvocationLog := filepath.Join(testInstance.TempDir(), syncRefreshIntegrationGitInvocationLog)
 	gitStubScript := []byte(strings.Join([]string{
 		"#!/bin/sh",
+		fmt.Sprintf(`if [ "$1" = "remote" ] && [ "$2" = "get-url" ] && [ "$3" = "origin" ]; then printf '%%s\n' %q; exit 0; fi`, syncMergedBranchRemoteURL),
 		"echo \"$@\" >> " + gitInvocationLog,
 		"exec " + realGitPath + " \"$@\"",
 	}, "\n") + "\n")
 	pathVariable := buildStubbedExecutablePath(testInstance, "git", string(gitStubScript))
+	require.NoError(testInstance, os.WriteFile(filepath.Join(filepath.SplitList(pathVariable)[0], "gh"), []byte(syncMergedBranchGitHubStubScript()), 0o755))
+	githubLogPath := filepath.Join(testInstance.TempDir(), "gh.log")
 
 	remotePath := filepath.Join(testInstance.TempDir(), "remote.git")
 	remoteInitCommand := exec.Command("git", "init", "--bare", remotePath)
@@ -1822,6 +1831,7 @@ operations:
 			PathVariable: pathVariable,
 			EnvironmentOverrides: map[string]string{
 				syncRefreshIntegrationAPIKeyVariable: "test-key",
+				syncMergedBranchGitHubLogVariable:    githubLogPath,
 			},
 		},
 		syncRefreshIntegrationTimeout,

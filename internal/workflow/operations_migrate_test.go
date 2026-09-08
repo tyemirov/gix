@@ -79,12 +79,8 @@ func (executor *scriptedExecutor) ExecuteGitHubCLI(_ context.Context, details ex
 			if strings.Contains(joined, "/pages") && strings.Contains(joined, "GET") {
 				return execshell.ExecutionResult{StandardOutput: `{"build_type":"legacy","source":{"branch":"main","path":"/docs"}}`}, nil
 			}
-			if strings.Contains(joined, "/branches/") && strings.Contains(joined, "/protection") {
-				failure := execshell.CommandFailedError{
-					Command: execshell.ShellCommand{Name: execshell.CommandGitHub, Details: details},
-					Result:  execshell.ExecutionResult{ExitCode: 1, StandardError: "404"},
-				}
-				return execshell.ExecutionResult{}, failure
+			if strings.Contains(joined, "/branches/") {
+				return execshell.ExecutionResult{StandardOutput: `{"protected":false}`}, nil
 			}
 		}
 	}

@@ -767,7 +767,7 @@ func TestCheckBranchProtection(testInstance *testing.T) {
 			repository: testRepositoryIdentifierConstant,
 			branchName: testBaseBranchConstant,
 			executor: &stubGitHubExecutor{executeFunc: func(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
-				return execshell.ExecutionResult{}, nil
+				return execshell.ExecutionResult{StandardOutput: `{"protected":true}`}, nil
 			}},
 			expectedProtected: true,
 		},
@@ -776,7 +776,7 @@ func TestCheckBranchProtection(testInstance *testing.T) {
 			repository: testRepositoryIdentifierConstant,
 			branchName: testBaseBranchConstant,
 			executor: &stubGitHubExecutor{executeFunc: func(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {
-				return execshell.ExecutionResult{}, execshell.CommandFailedError{Command: execshell.ShellCommand{Name: execshell.CommandGitHub}, Result: execshell.ExecutionResult{ExitCode: 1, StandardError: testHTTPNotFoundStandardErrorMessageConstant}}
+				return execshell.ExecutionResult{StandardOutput: `{"protected":false}`}, nil
 			}},
 			expectedProtected: false,
 		},

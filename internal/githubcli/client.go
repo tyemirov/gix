@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -54,7 +55,8 @@ const (
 	invalidInputErrorTemplateConstant          = "%s: %s"
 	pagesEndpointTemplateConstant              = "repos/%s/pages"
 	repositoryEndpointTemplateConstant         = "repos/%s"
-	branchProtectionEndpointTemplateConstant   = "repos/%s/branches/%s/protection"
+	branchProtectionEndpointTemplateConstant   = "repos/%s/branches/%s"
+	branchProtectionMissingFieldMessage        = "branch response requires a protected boolean"
 	httpMethodGetConstant                      = "GET"
 	httpMethodPutConstant                      = "PUT"
 	httpMethodPatchConstant                    = "PATCH"
@@ -674,7 +676,7 @@ func (client *Client) CheckBranchProtection(executionContext context.Context, re
 	commandDetails := execshell.CommandDetails{
 		Arguments: []string{
 			apiSubcommandConstant,
-			fmt.Sprintf(branchProtectionEndpointTemplateConstant, repositoryIdentifier, trimmedBranch),
+			fmt.Sprintf(branchProtectionEndpointTemplateConstant, repositoryIdentifier, url.PathEscape(trimmedBranch)),
 			methodFlagConstant,
 			httpMethodGetConstant,
 			acceptHeaderFlagConstant,
@@ -683,19 +685,20 @@ func (client *Client) CheckBranchProtection(executionContext context.Context, re
 		GitHubTokenRequirement: githubauth.TokenOptional,
 	}
 
-	_, executionError := client.executor.ExecuteGitHubCLI(executionContext, commandDetails)
-	if executionError == nil {
-		return true, nil
+	result, executionError := client.executor.ExecuteGitHubCLI(executionContext, commandDetails)
+	if executionError != nil {
+		return false, OperationError{Operation: checkBranchProtectionOperationNameConstant, Cause: executionError}
 	}
-
-	var commandFailure execshell.CommandFailedError
-	if errors.As(executionError, &commandFailure) {
-		if githubResourceNotFound(commandFailure.Result) {
-			return false, nil
-		}
+	var response struct {
+		Protected *bool `json:"protected"`
 	}
-
-	return false, OperationError{Operation: checkBranchProtectionOperationNameConstant, Cause: executionError}
+	if decodeError := json.Unmarshal([]byte(result.StandardOutput), &response); decodeError != nil {
+		return false, OperationError{Operation: checkBranchProtectionOperationNameConstant, Cause: decodeError}
+	}
+	if response.Protected == nil {
+		return false, OperationError{Operation: checkBranchProtectionOperationNameConstant, Cause: errors.New(branchProtectionMissingFieldMessage)}
+	}
+	return *response.Protected, nil
 }
 
 func githubResourceNotFound(result execshell.ExecutionResult) bool {

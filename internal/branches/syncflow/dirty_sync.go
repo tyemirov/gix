@@ -527,9 +527,9 @@ func prepareStrictSyncBranchForDirtyWork(ctx context.Context, environment *workf
 		if branchName == baseBranch {
 			return switchToLocalOrRemoteBranchWithAdoption(ctx, environment, repository, remoteName, branchName, commitMessages)
 		}
-		repositoryIdentifier := strictSyncRepositoryIdentifier(repository)
-		if repositoryIdentifier == "" {
-			return errors.New(strictSyncMissingRepositoryMessage)
+		repositoryIdentifier, identifierErr := strictSyncRepositoryIdentifier(ctx, environment, repository, remoteName)
+		if identifierErr != nil {
+			return identifierErr
 		}
 		openPullRequest, pullRequestErr := openPullRequestForBranch(ctx, environment, repositoryIdentifier, branchName)
 		if pullRequestErr != nil {
@@ -662,12 +662,15 @@ func generateSyncBranchMessage(ctx context.Context, executor shared.GitExecutor,
 	return result.Message, nil
 }
 
-func selectGeneratedSyncBranchName(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, remoteName string, options worktreeAdoptionCommitMessageOptions) (string, error) {
+func selectGeneratedSyncBranchName(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, remoteName string, reviewBase string, options worktreeAdoptionCommitMessageOptions) (string, error) {
 	initialBranchName, initialBranchErr := generatedSyncBranchName(ctx, environment.GitExecutor, repository.Path, options)
 	if initialBranchErr != nil {
 		return "", initialBranchErr
 	}
-	repositoryIdentifier := strictSyncRepositoryIdentifier(repository)
+	return selectDefaultSnapshotReviewBranch(ctx, environment, repository, remoteName, reviewBase, initialBranchName)
+}
+
+func selectSyncBranchName(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, remoteName string, reviewBase string, initialBranchName string) (string, error) {
 	for candidateIndex := 0; candidateIndex < strictSyncGeneratedBranchLimit; candidateIndex++ {
 		candidateBranchName := generatedSyncBranchCandidateName(initialBranchName, candidateIndex)
 		remoteReference := fmt.Sprintf("%s/%s", remoteName, candidateBranchName)
@@ -685,15 +688,22 @@ func selectGeneratedSyncBranchName(ctx context.Context, environment *workflow.En
 			}
 			return candidateBranchName, nil
 		}
-		if repositoryIdentifier == "" {
-			return "", errors.New(strictSyncMissingRepositoryMessage)
+		repositoryIdentifier, identifierErr := strictSyncRepositoryIdentifier(ctx, environment, repository, remoteName)
+		if identifierErr != nil {
+			return "", identifierErr
 		}
 		openPullRequest, pullRequestErr := openPullRequestForBranch(ctx, environment, repositoryIdentifier, candidateBranchName)
 		if pullRequestErr != nil {
 			return "", pullRequestErr
 		}
 		if openPullRequest != nil {
-			return candidateBranchName, nil
+			baseBranch, baseErr := openPullRequestBaseBranch(*openPullRequest, candidateBranchName)
+			if baseErr != nil {
+				return "", baseErr
+			}
+			if baseBranch == reviewBase {
+				return candidateBranchName, nil
+			}
 		}
 	}
 	return "", fmt.Errorf(strictSyncGeneratedBranchLimitMessage, initialBranchName)

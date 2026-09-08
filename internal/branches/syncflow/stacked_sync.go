@@ -2,7 +2,6 @@ package syncflow
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -67,8 +66,11 @@ func planStrictSyncStack(ctx context.Context, environment *workflow.Environment,
 	}
 	inspectMergedStateBeforeCommit := options.Dirty && options.ChildBranch != options.DefaultBranch
 	if (remoteExists || localExists) && (storedParentBranch != "" || inspectMergedStateBeforeCommit) {
-		repositoryIdentifier := strictSyncRepositoryIdentifier(repository)
-		if repositoryIdentifier != "" && environment.GitHubClient != nil {
+		if environment.GitHubClient != nil {
+			repositoryIdentifier, identifierErr := strictSyncRepositoryIdentifier(ctx, environment, repository, options.RemoteName)
+			if identifierErr != nil {
+				return nil, identifierErr
+			}
 			openPullRequest, openPullRequestErr := openPullRequestForBranch(ctx, environment, repositoryIdentifier, options.ChildBranch)
 			if openPullRequestErr != nil {
 				return nil, openPullRequestErr
@@ -163,9 +165,9 @@ func ensureStrictSyncStackParentChain(ctx context.Context, environment *workflow
 	}
 	visitedBranches[options.Plan.ParentBranch] = struct{}{}
 
-	repositoryIdentifier := strictSyncRepositoryIdentifier(repository)
-	if repositoryIdentifier == "" {
-		return errors.New(strictSyncMissingRepositoryMessage)
+	repositoryIdentifier, identifierErr := strictSyncRepositoryIdentifier(ctx, environment, repository, options.RemoteName)
+	if identifierErr != nil {
+		return identifierErr
 	}
 
 	openPullRequest, openPullRequestErr := openPullRequestForBranch(ctx, environment, repositoryIdentifier, options.Plan.ParentBranch)
