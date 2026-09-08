@@ -292,7 +292,161 @@ func (fixture protectedSyncFixture) commitFile(testInstance *testing.T, name, co
 }
 
 func (fixture protectedSyncFixture) run(testInstance *testing.T, binaryPath string, arguments ...string) (string, error) {
+	fixture.environment["GIX_SYNC_TEST_REPOSITORY"] = fixture.repository
+
 	testInstance.Helper()
 	fixture.environment["PATH"] = fixture.executablePath
 	return runBinaryIntegrationCommandWithInput(testInstance, binaryPath, integrationRepositoryRoot(testInstance), fixture.environment, syncMergedBranchIntegrationTimeout, "", append([]string{"--config", fixture.config, "--roots", fixture.repository}, arguments...))
+}
+
+func TestSyncDefaultPublicationReviewRegressions(t *testing.T) {
+	binary := buildIntegrationBinary(t, integrationRepositoryRoot(t))
+	t.Run("reuse_dirty_review", func(t *testing.T) {
+		fixture := newProtectedSyncFixture(t, "qqq")
+		fixture.commitFile(t, "local.txt", "local work\n")
+		require.NoError(t, os.WriteFile(filepath.Join(fixture.repository, "README.md"), []byte("pending work\n"), 0o644))
+		fixture.environment[syncProtectedVariable] = "true"
+		output, err := fixture.run(t, binary, "sync", "qqq")
+		require.NoError(t, err, output)
+		review := strings.TrimSpace(runGit(t, fixture.repository, "branch", "--show-current"))
+		head := strings.TrimSpace(runGit(t, fixture.repository, "rev-parse", "HEAD"))
+		output, err = fixture.run(t, binary, "sync", "qqq")
+		require.NoError(t, err, output)
+		require.Equal(t, review, strings.TrimSpace(runGit(t, fixture.repository, "branch", "--show-current")))
+		require.Equal(t, head, strings.TrimSpace(runGit(t, fixture.repository, "rev-parse", "HEAD")))
+		require.Equal(t, "pending work\n", readTextFile(t, filepath.Join(fixture.repository, "README.md")))
+		require.Equal(t, 1, strings.Count(readTextFile(t, fixture.githubLog), "created-pr --base qqq --head "))
+	})
+	t.Run("reuse_dirty_review_with_narrow_fetch", func(t *testing.T) {
+		fixture := newProtectedSyncFixture(t, "qqq")
+		fixture.commitFile(t, "local.txt", "local work\n")
+		require.NoError(t, os.WriteFile(filepath.Join(fixture.repository, "README.md"), []byte("pending work\n"), 0o644))
+		fixture.environment[syncProtectedVariable] = "true"
+		output, err := fixture.run(t, binary, "sync", "qqq")
+		require.NoError(t, err, output)
+		review := strings.TrimSpace(runGit(t, fixture.repository, "branch", "--show-current"))
+		runGit(t, fixture.repository, "switch", "qqq")
+		runGit(t, fixture.repository, "branch", "-D", review)
+		runGit(t, fixture.repository, "update-ref", "-d", "refs/remotes/origin/"+review)
+		runGit(t, fixture.repository, "config", "remote.origin.fetch", "+refs/heads/qqq:refs/remotes/origin/qqq")
+		output, err = fixture.run(t, binary, "sync", "qqq")
+		require.NoError(t, err, output)
+		require.Equal(t, review, strings.TrimSpace(runGit(t, fixture.repository, "branch", "--show-current")))
+		require.Equal(t, "pending work\n", readTextFile(t, filepath.Join(fixture.repository, "README.md")))
+		require.Equal(t, 1, strings.Count(readTextFile(t, fixture.githubLog), "created-pr --base qqq --head "))
+	})
+	for _, explicit := range []bool{false, true} {
+		for _, newer := range []bool{false, true} {
+			for _, pruned := range []bool{false, true} {
+				t.Run(fmt.Sprintf("squash_explicit_%t_newer_%t_pruned_%t", explicit, newer, pruned), func(t *testing.T) {
+					fixture := newProtectedSyncFixture(t, "qqq")
+					fixture.commitFile(t, "local.txt", "local work\n")
+					if explicit {
+						require.NoError(t, os.WriteFile(filepath.Join(fixture.repository, "README.md"), []byte("pending work\n"), 0o644))
+					}
+					fixture.environment[syncProtectedVariable] = "true"
+					output, err := fixture.run(t, binary, "sync", "qqq")
+					require.NoError(t, err, output)
+					review := strings.TrimSpace(runGit(t, fixture.repository, "branch", "--show-current"))
+					head := strings.TrimSpace(runGit(t, fixture.repository, "rev-parse", "HEAD"))
+					upstream := filepath.Join(fixture.workspace, "merger")
+					runGitWithDir(t, "", "clone", fixture.remote, upstream)
+					configureGitIdentity(t, upstream)
+					runGit(t, upstream, "merge", "--squash", "origin/"+review)
+					runGit(t, upstream, "commit", "-m", "squash reviewed work")
+					require.NoError(t, os.WriteFile(filepath.Join(upstream, "remote.txt"), []byte("later remote work\n"), 0o644))
+					runGit(t, upstream, "add", "remote.txt")
+					runGit(t, upstream, "commit", "-m", "later remote work")
+					runGit(t, upstream, "push", "origin", "qqq")
+					runGit(t, fixture.remote, "update-ref", "refs/pull/9/head", head)
+					if pruned {
+						runGit(t, upstream, "push", "origin", "--delete", review)
+					}
+					log := readTextFile(t, fixture.githubLog) + fmt.Sprintf("merged-pr --base qqq --head %s --oid %s\n", review, head)
+					require.NoError(t, os.WriteFile(fixture.githubLog, []byte(log), 0o600))
+					if newer {
+						runGit(t, fixture.repository, "switch", "qqq")
+						fixture.commitFile(t, "newer.txt", "unreviewed local work\n")
+						runGit(t, fixture.repository, "switch", review)
+					}
+					arguments := []string{"sync"}
+					if explicit {
+						arguments = append(arguments, "qqq")
+					}
+					arguments = append(arguments, "-y")
+					output, err = fixture.run(t, binary, arguments...)
+					require.NoError(t, err, output)
+					require.Contains(t, output, "SYNCED:")
+					current := strings.TrimSpace(runGit(t, fixture.repository, "branch", "--show-current"))
+					t.Cleanup(func() {
+						if t.Failed() {
+							t.Log(output, readTextFile(t, fixture.githubLog), readTextFile(t, fixture.gitLog))
+						}
+					})
+					if newer {
+						require.NotEqual(t, "qqq", current)
+						require.Equal(t, "unreviewed local work\n", readTextFile(t, filepath.Join(fixture.repository, "newer.txt")))
+						require.Equal(t, 2, strings.Count(readTextFile(t, fixture.githubLog), "created-pr --base qqq --head "))
+					} else {
+						require.Equal(t, "qqq", current)
+						require.Equal(t, strings.TrimSpace(runGit(t, fixture.remote, "rev-parse", "qqq")), strings.TrimSpace(runGit(t, fixture.repository, "rev-parse", "HEAD")))
+						require.Equal(t, 1, strings.Count(readTextFile(t, fixture.githubLog), "created-pr --base qqq --head "))
+					}
+					require.Equal(t, "local work\n", readTextFile(t, filepath.Join(fixture.repository, "local.txt")))
+					require.Equal(t, "later remote work\n", readTextFile(t, filepath.Join(fixture.repository, "remote.txt")))
+				})
+			}
+		}
+	}
+	for _, protected := range []bool{false, true} {
+		t.Run(fmt.Sprintf("behind_ff_false_protected_%t", protected), func(t *testing.T) {
+			fixture := newProtectedSyncFixture(t, "default")
+			upstream := filepath.Join(fixture.workspace, "merger")
+			runGitWithDir(t, "", "clone", fixture.remote, upstream)
+			configureGitIdentity(t, upstream)
+			runGit(t, upstream, "commit", "--allow-empty", "-m", "remote work")
+			runGit(t, upstream, "push", "origin", "default")
+			runGit(t, fixture.repository, "config", "merge.ff", "false")
+			fixture.environment[syncProtectedVariable] = fmt.Sprint(protected)
+			output, err := fixture.run(t, binary, "sync", "default")
+			require.NoError(t, err, output)
+			require.Equal(t, strings.TrimSpace(runGit(t, fixture.remote, "rev-parse", "default")), strings.TrimSpace(runGit(t, fixture.repository, "rev-parse", "HEAD")))
+			require.NotContains(t, readTextFile(t, fixture.githubLog), "pr create ")
+		})
+		for _, dirty := range []bool{false, true} {
+			t.Run(fmt.Sprintf("upstream_protected_%t_dirty_%t", protected, dirty), func(t *testing.T) {
+				fixture := newProtectedSyncFixture(t, "qqq")
+				upstream := filepath.Join(fixture.workspace, "upstream.git")
+				runGitWithDir(t, "", "clone", "--bare", fixture.remote, upstream)
+				runGit(t, fixture.repository, "remote", "add", "upstream", upstream)
+				originHead := strings.TrimSpace(runGit(t, fixture.remote, "rev-parse", "qqq"))
+				fixture.commitFile(t, "local.txt", "local work\n")
+				if dirty {
+					require.NoError(t, os.WriteFile(filepath.Join(fixture.repository, "README.md"), []byte("pending work\n"), 0o644))
+				}
+				fixture.environment[syncProtectedVariable] = fmt.Sprint(!protected)
+				fixture.environment["GIX_SYNC_TEST_UPSTREAM_PROTECTED"] = fmt.Sprint(protected)
+				output, err := fixture.run(t, binary, "sync", "qqq", "--remote", "upstream")
+				require.NoError(t, err, output)
+				current := strings.TrimSpace(runGit(t, fixture.repository, "branch", "--show-current"))
+				log := readTextFile(t, fixture.githubLog)
+				require.Contains(t, log, "api repos/upstream/project/branches/qqq ")
+				require.NotContains(t, log, "api repos/owner/project/branches/qqq ")
+				if protected {
+					require.NotEqual(t, "qqq", current)
+					require.Contains(t, log, "pr create --repo upstream/project ")
+					require.NotContains(t, log, "pr create --repo owner/project ")
+					output, err = fixture.run(t, binary, "sync", "qqq", "--remote", "upstream")
+					require.NoError(t, err, output)
+					require.Equal(t, current, strings.TrimSpace(runGit(t, fixture.repository, "branch", "--show-current")))
+					require.Equal(t, 1, strings.Count(readTextFile(t, fixture.githubLog), "created-pr --base qqq --head "))
+				} else {
+					require.Equal(t, "qqq", current)
+					require.NotContains(t, log, "pr create ")
+				}
+				require.Equal(t, originHead, strings.TrimSpace(runGit(t, fixture.remote, "rev-parse", "qqq")))
+				require.Equal(t, strings.TrimSpace(runGit(t, upstream, "rev-parse", current)), strings.TrimSpace(runGit(t, fixture.repository, "rev-parse", "HEAD")))
+			})
+		}
+	}
 }
