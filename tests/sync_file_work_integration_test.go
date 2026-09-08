@@ -84,32 +84,50 @@ func TestSyncFileWorkFromEmptyParent(t *testing.T) {
 
 func TestSyncFileWorkAfterGrandparentMerges(t *testing.T) {
 	binary := buildIntegrationBinary(t, integrationRepositoryRoot(t))
-	fixture := newSyncFixture(t, "qqq")
-	writeFile(t, filepath.Join(fixture.repository, "grandparent.txt"), "grandparent work\n")
-	output, err := fixture.run(t, binary, "sync", "grandparent")
-	require.NoError(t, err, output)
-	grandparentHead := strings.TrimSpace(runGit(t, fixture.repository, "rev-parse", "HEAD"))
-	output, err = fixture.run(t, binary, "sync", "parent")
-	require.NoError(t, err, output)
-	fixture.commitFile(t, "parent.txt", "unpublished parent work\n")
-	upstream := filepath.Join(fixture.workspace, "merger")
-	runGitWithDir(t, "", "clone", fixture.remote, upstream)
-	configureGitIdentity(t, upstream)
-	runGit(t, upstream, "merge", "--squash", "origin/grandparent")
-	runGit(t, upstream, "commit", "-m", "merge grandparent work")
-	runGit(t, upstream, "push", "origin", "qqq")
-	runGit(t, fixture.remote, "update-ref", "refs/pull/9/head", grandparentHead)
-	runGit(t, upstream, "push", "origin", "--delete", "grandparent")
-	writeFile(t, fixture.githubLog, readTextFile(t, fixture.githubLog)+fmt.Sprintf("merged-pr --base qqq --head grandparent --oid %s\n", grandparentHead))
-	writeFile(t, filepath.Join(fixture.repository, "child.txt"), "child work\n")
-	output, err = fixture.run(t, binary, "sync", "child")
-	require.NoError(t, err, output)
-	require.Equal(t, "child", strings.TrimSpace(runGit(t, fixture.repository, "branch", "--show-current")))
-	require.Equal(t, "qqq", strings.TrimSpace(runGit(t, fixture.repository, "config", "--get", "branch.parent.gix-review-base")))
-	require.Equal(t, "unpublished parent work\n", runGit(t, fixture.remote, "show", "parent:parent.txt"))
-	require.Equal(t, "child work\n", runGit(t, fixture.remote, "show", "child:child.txt"))
-	require.Contains(t, readTextFile(t, fixture.githubLog), "created-pr --base qqq --head parent ")
-	require.Contains(t, readTextFile(t, fixture.githubLog), "created-pr --base parent --head child ")
+	for _, parentWork := range []bool{false, true} {
+		t.Run(fmt.Sprintf("parent_work_%t", parentWork), func(t *testing.T) {
+			t.Parallel()
+			fixture := newSyncFixture(t, "qqq")
+			writeFile(t, filepath.Join(fixture.repository, "grandparent.txt"), "grandparent work\n")
+			output, err := fixture.run(t, binary, "sync", "grandparent")
+			require.NoError(t, err, output)
+			grandparentHead := strings.TrimSpace(runGit(t, fixture.repository, "rev-parse", "HEAD"))
+			output, err = fixture.run(t, binary, "sync", "parent")
+			require.NoError(t, err, output)
+			if parentWork {
+				fixture.commitFile(t, "parent.txt", "unpublished parent work\n")
+			}
+			upstream := filepath.Join(fixture.workspace, "merger")
+			runGitWithDir(t, "", "clone", fixture.remote, upstream)
+			configureGitIdentity(t, upstream)
+			runGit(t, upstream, "merge", "--squash", "origin/grandparent")
+			runGit(t, upstream, "commit", "-m", "merge grandparent work")
+			runGit(t, upstream, "push", "origin", "qqq")
+			runGit(t, fixture.remote, "update-ref", "refs/pull/9/head", grandparentHead)
+			runGit(t, upstream, "push", "origin", "--delete", "grandparent")
+			writeFile(t, fixture.githubLog, readTextFile(t, fixture.githubLog)+fmt.Sprintf("merged-pr --base qqq --head grandparent --oid %s\n", grandparentHead))
+			writeFile(t, filepath.Join(fixture.repository, "child.txt"), "child work\n")
+			output, err = fixture.run(t, binary, "sync", "child")
+			require.NoError(t, err, output)
+			require.Equal(t, "child", strings.TrimSpace(runGit(t, fixture.repository, "branch", "--show-current")))
+			require.Equal(t, "qqq", strings.TrimSpace(runGit(t, fixture.repository, "config", "--get", "branch.parent.gix-review-base")))
+			if parentWork {
+				require.Equal(t, "unpublished parent work\n", runGit(t, fixture.remote, "show", "parent:parent.txt"))
+				require.Equal(t, "parent.txt\n", runGit(t, fixture.remote, "diff", "--name-only", "qqq...parent"))
+			} else {
+				require.Empty(t, runGit(t, fixture.remote, "diff", "--name-only", "qqq...parent"))
+			}
+			require.Equal(t, "child work\n", runGit(t, fixture.remote, "show", "child:child.txt"))
+			if parentWork {
+				require.Contains(t, readTextFile(t, fixture.githubLog), "created-pr --base qqq --head parent ")
+			} else {
+				require.NotContains(t, readTextFile(t, fixture.githubLog), "created-pr --base qqq --head parent ")
+			}
+			require.Equal(t, "child.txt\n", runGit(t, fixture.remote, "diff", "--name-only", "parent...child"))
+			require.Contains(t, readTextFile(t, fixture.githubLog), "created-pr --base parent --head child ")
+
+		})
+	}
 }
 
 func TestSyncFileWorkAfterEmptyChildParentMerges(t *testing.T) {
