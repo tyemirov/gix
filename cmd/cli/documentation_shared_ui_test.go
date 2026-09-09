@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
@@ -26,17 +25,15 @@ const documentationCandidateRevision = "768f25936497c5aabd426197d21c2100b6e5d9a1
 const documentationMenuTrigger = `mpr-footer [data-mpr-dropdown="trigger"]`
 const documentationMenuPanel = `mpr-footer [data-mpr-dropdown="panel"]`
 const documentationLicenseLink = `mpr-footer [data-mpr-footer="privacy-link"]`
+const documentationStylesheetLoaded = `(() => {
+	const stylesheet = document.querySelector('link[rel="stylesheet"][href="styles.css"]');
+	return Boolean(stylesheet && stylesheet.sheet && !stylesheet.sheet.disabled && stylesheet.sheet.cssRules.length > 0);
+})()`
 
 func TestDocumentationSharedUI(t *testing.T) {
 	require.NotEmpty(t, locateBrowserExecutable(), "Documentation qualification requires Chrome")
-	pageBytes, readError := os.ReadFile(filepath.Join("..", "..", "docs", "index.html"))
-	require.NoError(t, readError)
 	assets := documentationCandidateAssets(t)
-	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		response.Header().Set("Content-Type", "text/html")
-		_, writeError := response.Write(pageBytes)
-		require.NoError(t, writeError)
-	}))
+	server := httptest.NewServer(http.FileServer(http.Dir(filepath.Join("..", "..", "docs"))))
 	defer server.Close()
 	for _, width := range []int64{390, 1280} {
 		t.Run(fmt.Sprintf("viewport-%d", width), func(t *testing.T) {
@@ -71,12 +68,16 @@ func TestDocumentationSharedUI(t *testing.T) {
 				}
 			})
 			var links [][]string
-			var inViewport, focused bool
+			var stylesheetLoaded, inViewport, focused bool
 			var licenseContent string
 			require.NoError(t, chromedp.Run(scenarioContext,
 				fetch.Enable().WithPatterns([]*fetch.RequestPattern{{URLPattern: "https://*"}}),
 				chromedp.EmulateViewport(width, 900),
 				chromedp.Navigate(server.URL),
+				chromedp.Evaluate(documentationStylesheetLoaded, &stylesheetLoaded),
+			))
+			require.True(t, stylesheetLoaded, "Documentation stylesheet must load before geometry checks")
+			require.NoError(t, chromedp.Run(scenarioContext,
 				chromedp.WaitVisible(documentationMenuTrigger, chromedp.ByQuery),
 				chromedp.Focus(documentationMenuTrigger, chromedp.ByQuery),
 				chromedp.KeyEvent(kb.Enter),
@@ -90,8 +91,10 @@ func TestDocumentationSharedUI(t *testing.T) {
 				chromedp.Text(`[data-mpr-footer="privacy-modal-content"]`, &licenseContent, chromedp.ByQuery),
 				chromedp.KeyEvent(kb.Escape),
 				chromedp.Reload(),
+				chromedp.Evaluate(documentationStylesheetLoaded, &stylesheetLoaded),
 				chromedp.WaitVisible(documentationMenuTrigger, chromedp.ByQuery),
 			))
+			require.True(t, stylesheetLoaded, "Documentation stylesheet must load after reload")
 			require.Equal(t, [][]string{
 				{"Marco Polo Research Lab", "https://mprlab.com"},
 				{"Gravity Notes", "https://gravity.mprlab.com"},
