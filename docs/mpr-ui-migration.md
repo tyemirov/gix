@@ -2,7 +2,7 @@
 
 I018 prepares the Gix documentation page for mpr-ui I009.
 The application source starts at `a33e01cf2924cf7cda32b77a8cb7a76e5f51a93f`.
-The shared candidate is `7c2f9e36453c6081db7641b7efae00c6e271fa39`.
+The shared candidate is `768f25936497c5aabd426197d21c2100b6e5d9a1`.
 The browser test verifies the JavaScript and CSS SHA-256 values before use.
 
 ## Release Unit
@@ -34,8 +34,9 @@ Run `make test-docs-browser` for these focused checks.
 Run `make ci` for all required local checks.
 Set `GIX_TEST_BROWSER` when Chrome is outside the existing discovery locations.
 The hosted workflow supplies Chrome and includes documentation page changes in its path filters.
-Final local CI passed formatting, Go vet, staticcheck, ineffassign, application tests, 16 licensing tests, and the CLI integration suite.
-Hosted CI passed at `c9334e8ddd898aba31443ed6c5507fa8546f9d67` on the second attempt.
+Final B069 local CI passed formatting, Go vet, staticcheck, ineffassign, application tests, 16 licensing tests, and the CLI integration suite.
+The final local log is `/tmp/gix-i018-b069-ci.log`.
+The previous hosted CI passed at `c9334e8ddd898aba31443ed6c5507fa8546f9d67` on the second attempt.
 The [hosted run](https://github.com/tyemirov/gix/actions/runs/34303302514) records both attempts.
 The first attempt timed out in the unchanged workspace-startup browser test.
 Three focused local repetitions passed. The hosted rerun then passed the complete suite.

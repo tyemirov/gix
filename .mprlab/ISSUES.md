@@ -2324,7 +2324,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Complete shared publication, cache transition, and public acceptance before activation.
   Results:
   - Both real-page regressions failed before migration and passed after it.
-  - Final CI passed formatting, all three Go linters, application tests, 16 licensing tests, and the CLI integration suite.
+  - Final B069 candidate `768f25936497c5aabd426197d21c2100b6e5d9a1` passed native CI, both browser checks, and the CLI integration suite.
   Blocked:
   - Hosted CI passed at `c9334e8ddd898aba31443ed6c5507fa8546f9d67` in run `34303302514`, attempt 2.
   - Attempt 1 timed out in an unchanged workspace-startup test. Three local repetitions and the hosted rerun passed.
