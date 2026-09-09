@@ -1331,7 +1331,7 @@ func mergedPullRequestForCurrentBranchTip(ctx context.Context, environment *work
 			return &matchedPullRequest, nil
 		}
 	}
-	if branchTip.HasLocalOnlyCommits || branchTip.RemoteExists {
+	if branchTip.HasLocalOnlyCommits {
 		return nil, nil
 	}
 	for _, pullRequest := range matchingPullRequests {
@@ -1339,14 +1339,31 @@ func mergedPullRequestForCurrentBranchTip(ctx context.Context, environment *work
 		if headCommitErr != nil {
 			return nil, headCommitErr
 		}
-		isAncestor, ancestryErr := strictSyncCommitIsAncestor(ctx, environment.GitExecutor, repository.Path, branchTip.CommitID, headCommit)
+		ancestorCommit, descendantCommit := branchTip.CommitID, headCommit
+		if branchTip.RemoteExists {
+			ancestorCommit, descendantCommit = headCommit, branchTip.CommitID
+		}
+		isAncestor, ancestryErr := strictSyncCommitIsAncestor(ctx, environment.GitExecutor, repository.Path, ancestorCommit, descendantCommit)
 		if ancestryErr != nil {
 			return nil, ancestryErr
 		}
-		if isAncestor {
-			matchedPullRequest := pullRequest
-			return &matchedPullRequest, nil
+		if !isAncestor {
+			continue
 		}
+		if branchTip.RemoteExists {
+			changes, changesErr := environment.GitExecutor.ExecuteGit(ctx, execshell.CommandDetails{
+				Arguments:        []string{gitDiffSubcommandConstant, gitDiffNameOnlyFlagConstant, headCommit, branchTip.CommitID},
+				WorkingDirectory: repository.Path,
+			})
+			if changesErr != nil {
+				return nil, fmt.Errorf("compare branch %q with merged pull request %d: %w", branchName, pullRequest.Number, changesErr)
+			}
+			if strings.TrimSpace(changes.StandardOutput) != "" {
+				continue
+			}
+		}
+		matchedPullRequest := pullRequest
+		return &matchedPullRequest, nil
 	}
 	return nil, nil
 }
@@ -1402,7 +1419,7 @@ func strictSyncCommitIsAncestor(ctx context.Context, executor shared.GitExecutor
 	if errors.As(ancestryErr, &commandFailure) && commandFailure.Result.ExitCode == 1 {
 		return false, nil
 	}
-	return false, fmt.Errorf("verify commit %q is an ancestor of merged pull request head %q: %w", ancestorCommit, descendantCommit, ancestryErr)
+	return false, fmt.Errorf("verify commit %q is an ancestor of commit %q: %w", ancestorCommit, descendantCommit, ancestryErr)
 }
 
 func currentStrictSyncBranchTip(ctx context.Context, executor shared.GitExecutor, repositoryPath string, remoteName string, branchName string) (strictSyncBranchTip, error) {

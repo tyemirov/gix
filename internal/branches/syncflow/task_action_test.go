@@ -1452,8 +1452,9 @@ func TestResolveMergedPullRequestBaseTargetStopsAtAdvancedMergedParent(t *testin
 	const currentParentCommit = "1111111111111111111111111111111111111111"
 	const historicalParentCommit = "2222222222222222222222222222222222222222"
 	gitExecutor := &strictSyncGitExecutor{referenceCommits: map[string]string{
-		"origin/feature/parent":     currentParentCommit,
-		"refs/heads/feature/parent": currentParentCommit,
+		"origin/feature/parent":                              currentParentCommit,
+		"refs/heads/feature/parent":                          currentParentCommit,
+		historicalParentCommit + gitCommitPeelSuffixConstant: historicalParentCommit,
 	}}
 	githubExecutor := &strictSyncGitHubExecutor{outputs: []string{
 		`[]`,
