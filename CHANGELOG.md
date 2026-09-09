@@ -174,6 +174,17 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.10.3] - 2026-09-09
+
+- Merge pull request #452 from tyemirov/tyemirov/I018-mpr-ui-migration
+- test: cover transitively merged branch sync with unchanged merge tip
+- fix(syncflow): enable merged PR detection for synced remote branches
+- test: ensure documentation shared UI waits for stylesheet load
+- docs: mark B107 as complete for merged PR chain follow-through
+- I018 qualify final shared UI candidate
+- docs: record I018 hosted qualification and initial timeout
+- refactor: migrate Gix documentation footer (I018)
+
 ## [v1.10.2] - 2026-09-08
 
 - Merge pull request #451 from tyemirov/gix/enforce-sync-contract-for-branch-selection-and
