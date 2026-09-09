@@ -11,6 +11,24 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B107] (P2) Follow merged PR chains after unchanged merge commits.
+  Evidence:
+  Gix stopped at the merged B068 branch in `mpr-ui` instead of the final branch in the PR chain.
+  PR #214 was merged. Its remote tip had a later merge commit with the same file contents as the PR head.
+  B048 compared commit IDs and stopped at this tip.
+  Requirements:
+  Accept a later remote tip when it contains the merged PR head and has the same file contents.
+  Stop at branches with new file changes or unpublished local commits.
+  Keep one prompt for the final destination.
+  Validation:
+  The CLI regression first stopped at the middle branch for both the default branch and an open parent PR.
+  Five CLI cases passed after the correction.
+  These cases verify both destinations, new remote work, new local work, and a failed Git comparison.
+  Existing merged branch tests passed.
+  Baseline and final `make ci` passed on 2026-09-09.
+  `make build` and `git diff --check` passed.
+
+
 - [x] [B103] (P2) Accept remote-only parents without a pull request.
   Evidence:
   Child sync requires a local parent ref even when the parent exists remotely.
