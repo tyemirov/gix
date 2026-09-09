@@ -11,6 +11,24 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B107] (P2) Follow merged PR chains after unchanged merge commits.
+  Evidence:
+  Gix stopped at the merged B068 branch in `mpr-ui` instead of the final branch in the PR chain.
+  PR #214 was merged. Its remote tip had a later merge commit with the same file contents as the PR head.
+  B048 compared commit IDs and stopped at this tip.
+  Requirements:
+  Accept a later remote tip when it contains the merged PR head and has the same file contents.
+  Stop at branches with new file changes or unpublished local commits.
+  Keep one prompt for the final destination.
+  Validation:
+  The CLI regression first stopped at the middle branch for both the default branch and an open parent PR.
+  Five CLI cases passed after the correction.
+  These cases verify both destinations, new remote work, new local work, and a failed Git comparison.
+  Existing merged branch tests passed.
+  Baseline and final `make ci` passed on 2026-09-09.
+  `make build` and `git diff --check` passed.
+
+
 - [x] [B103] (P2) Accept remote-only parents without a pull request.
   Evidence:
   Child sync requires a local parent ref even when the parent exists remotely.
@@ -2310,6 +2328,25 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 
 ## Improvements
+
+- [!] [I018] (P1) Adopt the current shared documentation footer
+  Goal: The Gix documentation page uses the current mpr-ui menu contract.
+  Requirements:
+  - Preserve all eleven product links and the current license content.
+  - Keep literal `@latest` shared asset URLs.
+  - Verify the real page and immutable candidate at mobile and desktop widths.
+  Validation:
+  - Record a failing browser regression before the markup change.
+  - Verify menu links, viewport bounds, keyboard controls, license content, and page reload.
+  - Run final `make ci` and inspect hosted CI.
+  - Complete shared publication, cache transition, and public acceptance before activation.
+  Results:
+  - Both real-page regressions failed before migration and passed after it.
+  - Final B069 candidate `768f25936497c5aabd426197d21c2100b6e5d9a1` passed native CI, both browser checks, and the CLI integration suite.
+  Blocked:
+  - Hosted CI passed at `c9334e8ddd898aba31443ed6c5507fa8546f9d67` in run `34303302514`, attempt 2.
+  - Attempt 1 timed out in an unchanged workspace-startup test. Three local repetitions and the hosted rerun passed.
+  - Maintenance preparation, shared publication, cache transition, and public acceptance remain pending.
 
 - [x] [I017] (P1) Consolidate sync tests around observable intent.
   Requirements:

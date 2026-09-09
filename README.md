@@ -744,3 +744,9 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
 - Confirmation prompts respect the `[a/N/y]` contract everywhere (uppercase `N` remains the default decline); passing `--yes` (or setting `assume_yes: true` in workflows) flips the shared confirmation policy to auto-accept, and selecting `a`/`all` at a prompt upgrades the remainder of the run to behave as if `--yes` had been provided (uppercase responses continue to work as well).
 - Run `make ci` before submitting patches; it enforces formatting plus `go vet`, `staticcheck`, `ineffassign`, and the unit/integration test suites. At minimum, run `go run honnef.co/go/tools/cmd/staticcheck@master ./...` so lint blocks (SA1006, etc.) surface before you commit.
     - `mode: append-if-missing` preserves existing content and appends each missing line from `content`, making it ideal for `.gitignore` enforcement.
+
+## Documentation Browser Checks
+
+Run `make test-docs-browser` to verify the real documentation footer at mobile and desktop widths.
+The tests use the existing Chrome harness and a digest-verified shared candidate.
+See the [shared UI migration](docs/mpr-ui-migration.md) for candidate identity and publication gates.

@@ -110,3 +110,7 @@ pages-deploy:
 	@"$(RELEASE_TOOL_DIR)/deploy_pages_artifact.sh"
 
 ci: check-format lint test-fast test-slow
+
+.PHONY: test-docs-browser
+test-docs-browser:
+	go test $(GO_TEST_FLAGS) ./cmd/cli -run '^TestDocumentationSharedUI' -count=1

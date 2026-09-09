@@ -269,6 +269,100 @@ func TestSyncTransitivelyMergedBranchPromptsAndSyncsMasterWithoutRecordedReviewB
 	require.NotContains(testInstance, githubLog, "pr create")
 }
 
+func TestSyncTransitivelyMergedBranchWithUnchangedMergeTip(testInstance *testing.T) {
+	binaryPath := buildIntegrationBinary(testInstance, integrationRepositoryRoot(testInstance))
+	const childBranch = "feature/unchanged-child"
+	const middleBranch = "feature/unchanged-middle"
+	const parentBranch = "feature/unchanged-parent"
+	for _, scenario := range []struct {
+		name           string
+		openParent     bool
+		newRemoteWork  bool
+		newLocalWork   bool
+		failComparison bool
+		target         string
+	}{
+		{name: "default_branch", target: "master"},
+		{name: "open_parent", openParent: true, target: parentBranch},
+		{name: "new_remote_work", newRemoteWork: true, target: middleBranch},
+		{name: "new_local_work", newLocalWork: true, target: middleBranch},
+		{name: "comparison_failure", failComparison: true},
+	} {
+		testInstance.Run(scenario.name, func(testInstance *testing.T) {
+			fixture := createSyncTransitivelyMergedBranchFixture(testInstance, childBranch, middleBranch, parentBranch)
+			childHead := strings.TrimSpace(runGit(testInstance, fixture.RepositoryPath, "rev-parse", childBranch))
+			middleHead := strings.TrimSpace(runGit(testInstance, fixture.RepositoryPath, "rev-parse", middleBranch))
+			parentHead := strings.TrimSpace(runGit(testInstance, fixture.RepositoryPath, "rev-parse", parentBranch))
+
+			runGit(testInstance, fixture.RepositoryPath, "switch", "-c", "duplicate-review", middleBranch+"^1")
+			runGit(testInstance, fixture.RepositoryPath, "restore", "--source", middleBranch, "--", ".")
+			runGit(testInstance, fixture.RepositoryPath, "add", "--all")
+			runGit(testInstance, fixture.RepositoryPath, "commit", "-m", "duplicate reviewed file work")
+			runGit(testInstance, fixture.RepositoryPath, "switch", middleBranch)
+			runGit(testInstance, fixture.RepositoryPath, "merge", "--no-ff", "duplicate-review", "-m", "merge equivalent review history")
+			mergedTip := strings.TrimSpace(runGit(testInstance, fixture.RepositoryPath, "rev-parse", middleBranch))
+			require.NotEqual(testInstance, middleHead, mergedTip)
+			require.Empty(testInstance, runGit(testInstance, fixture.RepositoryPath, "diff", "--name-only", middleHead, mergedTip))
+			runGit(testInstance, fixture.RepositoryPath, "push", "origin", middleBranch)
+			if scenario.newRemoteWork || scenario.newLocalWork {
+				writeFile(testInstance, filepath.Join(fixture.RepositoryPath, "new-parent-work.txt"), "keep new parent work\n")
+				runGit(testInstance, fixture.RepositoryPath, "add", "new-parent-work.txt")
+				runGit(testInstance, fixture.RepositoryPath, "commit", "-m", "new parent work after review")
+				if scenario.newRemoteWork {
+					runGit(testInstance, fixture.RepositoryPath, "push", "origin", middleBranch)
+				}
+			}
+			runGit(testInstance, fixture.RepositoryPath, "switch", childBranch)
+
+			parentState := "merged-pr"
+			if scenario.openParent {
+				parentState = "created-pr"
+			}
+			githubLogPath := filepath.Join(testInstance.TempDir(), "gh.log")
+			writeFile(testInstance, githubLogPath, fmt.Sprintf(
+				"merged-pr --base %s --head %s --oid %s\nmerged-pr --base %s --head %s --oid %s\n%s --base master --head %s --oid %s\n",
+				middleBranch, childBranch, childHead, parentBranch, middleBranch, middleHead, parentState, parentBranch, parentHead,
+			))
+			environment := map[string]string{
+				pathEnvironmentVariableNameConstant: buildSyncMergedBranchExecutablePath(testInstance),
+				syncMergedBranchGitHubLogVariable:   githubLogPath,
+				syncMergedBranchNameVariable:        childBranch,
+				syncMergedBranchMergedVariable:      "false",
+			}
+			if scenario.failComparison {
+				environment[syncMergedBranchFailGitMatchVariable] = "diff --name-only " + middleHead + " " + mergedTip
+				environment[syncMergedBranchFailGitOccurrenceVariable] = "1"
+				environment[syncMergedBranchFailGitStateVariable] = filepath.Join(testInstance.TempDir(), "failure-count")
+			}
+			output, runError := runBinaryIntegrationCommandWithInput(testInstance, binaryPath, fixture.RepositoryPath, environment,
+				syncMergedBranchIntegrationTimeout, "y\n", []string{"--config", writeSyncMergedBranchConfiguration(testInstance), "--roots", fixture.RepositoryPath, "sync"})
+			if scenario.failComparison {
+				require.Error(testInstance, runError, output)
+				require.Contains(testInstance, output, "simulated git failure for diff --name-only "+middleHead+" "+mergedTip)
+				require.NotContains(testInstance, output, "instead?")
+				require.NotContains(testInstance, output, "SYNCED:")
+				require.Equal(testInstance, childBranch, strings.TrimSpace(runGit(testInstance, fixture.RepositoryPath, "branch", "--show-current")))
+				require.Equal(testInstance, mergedTip, strings.TrimSpace(runGit(testInstance, fixture.RepositoryPath, "rev-parse", middleBranch)))
+				require.NotContains(testInstance, readTextFile(testInstance, githubLogPath), "pr create")
+				return
+			}
+			require.NoError(testInstance, runError, output)
+			require.Contains(testInstance, output, "Sync "+scenario.target+" instead?")
+			require.Equal(testInstance, 1, strings.Count(output, "instead?"))
+			require.Contains(testInstance, output, fmt.Sprintf("SYNCED: %s (%s)", fixture.RepositoryPath, scenario.target))
+			require.Equal(testInstance, scenario.target, strings.TrimSpace(runGit(testInstance, fixture.RepositoryPath, "branch", "--show-current")))
+			require.Empty(testInstance, runGit(testInstance, fixture.RepositoryPath, "status", "--porcelain"))
+			require.Equal(testInstance, "child review\n", readTextFile(testInstance, filepath.Join(fixture.RepositoryPath, "child.txt")))
+			if scenario.newRemoteWork || scenario.newLocalWork {
+				require.Equal(testInstance, "keep new parent work\n", readTextFile(testInstance, filepath.Join(fixture.RepositoryPath, "new-parent-work.txt")))
+				require.Equal(testInstance, "keep new parent work\n", runGit(testInstance, fixture.RepositoryPath, "show", "origin/"+middleBranch+":new-parent-work.txt"))
+			}
+			require.NotContains(testInstance, readTextFile(testInstance, githubLogPath), "pr create")
+			require.NotContains(testInstance, output, "SYNC_SWITCH_ROLLBACK")
+		})
+	}
+}
+
 func TestSyncTransitivelyMergedBranchFollowsDeletedParentFromStaleLocalTip(testInstance *testing.T) {
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	branchName := "feature/deleted-stack-child"
