@@ -35,7 +35,11 @@ Run `make ci` for all required local checks.
 Set `GIX_TEST_BROWSER` when Chrome is outside the existing discovery locations.
 The hosted workflow supplies Chrome and includes documentation page changes in its path filters.
 Final local CI passed formatting, Go vet, staticcheck, ineffassign, application tests, 16 licensing tests, and the CLI integration suite.
-Hosted CI remains pending.
+Hosted CI passed at `c9334e8ddd898aba31443ed6c5507fa8546f9d67` on the second attempt.
+The [hosted run](https://github.com/tyemirov/gix/actions/runs/34303302514) records both attempts.
+The first attempt timed out in the unchanged workspace-startup browser test.
+Three focused local repetitions passed. The hosted rerun then passed the complete suite.
+This result does not establish a source fix for that intermittent timeout.
 
 ## Publication And Acceptance
 
