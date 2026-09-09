@@ -2311,6 +2311,24 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## Improvements
 
+- [!] [I018] (P1) Adopt the current shared documentation footer
+  Goal: The Gix documentation page uses the current mpr-ui menu contract.
+  Requirements:
+  - Preserve all eleven product links and the current license content.
+  - Keep literal `@latest` shared asset URLs.
+  - Verify the real page and immutable candidate at mobile and desktop widths.
+  Validation:
+  - Record a failing browser regression before the markup change.
+  - Verify menu links, viewport bounds, keyboard controls, license content, and page reload.
+  - Run final `make ci` and inspect hosted CI.
+  - Complete shared publication, cache transition, and public acceptance before activation.
+  Results:
+  - Both real-page regressions failed before migration and passed after it.
+  - Final CI passed formatting, all three Go linters, application tests, 16 licensing tests, and the CLI integration suite.
+  Blocked:
+  - Hosted CI remains pending.
+  - Maintenance preparation, shared publication, cache transition, and public acceptance remain pending.
+
 - [x] [I017] (P1) Consolidate sync tests around observable intent.
   Requirements:
   Preserve distinct file-state and recovery scenarios. Remove redundant branch-name and protection combinations.
