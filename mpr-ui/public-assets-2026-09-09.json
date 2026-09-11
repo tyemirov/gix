@@ -1,0 +1,62 @@
+{
+  "observations": [
+    {
+      "url": "https://gix.mprlab.com/",
+      "observed_at": "2026-09-09T02:18:00.790059+00:00",
+      "status": 200,
+      "final_url": "https://gix.mprlab.com/",
+      "sha256": "23bb31c3415b11862f484fa1e28aa6ca4a6d715c2445e8df774fcf23c591b178",
+      "bytes": 22030,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8",
+        "Last-Modified": "Tue, 08 Sep 2026 19:50:27 GMT",
+        "ETag": "\"6aa06703-560e\"",
+        "Cache-Control": "max-age=600",
+        "Age": "0"
+      }
+    },
+    {
+      "url": "https://gix.mprlab.com/.mprlab-release.json",
+      "observed_at": "2026-09-09T02:18:00.790402+00:00",
+      "status": 200,
+      "final_url": "https://gix.mprlab.com/.mprlab-release.json",
+      "sha256": "4d74f9afe48385c79adb048e000144e703c52bee0d74d8752ee28d6108f72184",
+      "bytes": 173,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8",
+        "Last-Modified": "Tue, 08 Sep 2026 19:50:27 GMT",
+        "ETag": "\"6aa06703-ad\"",
+        "Cache-Control": "max-age=600",
+        "Age": "0"
+      }
+    },
+    {
+      "url": "https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.js",
+      "observed_at": "2026-09-09T02:18:00.790520+00:00",
+      "status": 200,
+      "final_url": "https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.js",
+      "sha256": "a74e0e5dce0071dfc4164fdc75cee26ceaaaa448dd55ee06c961e715cbe9b206",
+      "bytes": 606745,
+      "headers": {
+        "Content-Type": "application/javascript; charset=utf-8",
+        "cache-control": "public, max-age=604800, s-maxage=43200",
+        "etag": "W/\"94219-F5WvXJt5qqtbDaY9jwSmMXfn/GU\"",
+        "Age": "24091"
+      }
+    },
+    {
+      "url": "https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.css",
+      "observed_at": "2026-09-09T02:18:00.790626+00:00",
+      "status": 200,
+      "final_url": "https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.css",
+      "sha256": "662b37032b21cac44549ad5376e7bce35bed65915bf4a4c9e86c596e266542c7",
+      "bytes": 29498,
+      "headers": {
+        "Content-Type": "text/css; charset=utf-8",
+        "cache-control": "public, max-age=604800, s-maxage=43200",
+        "etag": "W/\"733a-iMaarW0Htu4UnGvIQUc9DLeSLIg\"",
+        "Age": "24091"
+      }
+    }
+  ]
+}
