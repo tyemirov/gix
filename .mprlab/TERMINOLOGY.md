@@ -95,7 +95,6 @@ Give each term one meaning. Use the same term for the same concept in all docume
 
 Add repository-specific technical nouns below this line.
 
-- `approval sentinel`: The exact model response that approves a locally validated conflict result.
 - `branch protection`: GitHub requirements for changes to a branch.
 - `default branch`: The branch that the selected remote reports through its symbolic `HEAD`.
 - `fast-forward update`: A branch update that moves its reference to a descendant commit without a merge commit.
@@ -103,20 +102,19 @@ Add repository-specific technical nouns below this line.
 - `publication path`: The method that publishes commits through a direct push or a pull request.
 - `review branch`: A Git branch that supplies proposed commits to a pull request.
 - `CalVer`: A release version that derives its numeric fields from a release timestamp.
-- `derived candidate`: A conflict result that Gix constructs from one side and each compatible edit from the other side.
-- `deletion intent`: The removal of non-whitespace common-base tokens by one conflict side.
-- `edit context`: The unchanged tokens next to a replacement intent base location.
 - `fixed-major policy`: A SemVer policy that keeps one configured major value.
 - `provider round`: One LLM request that uses the complete configured provider order.
 - `release policy`: The invocation input that selects one release version scheme and its scheme-specific options.
-- `replacement alternative`: One of two incompatible replacements for the same base tokens.
-- `replacement intent`: The non-whitespace content that one conflict side adds or changes relative to a common base.
-- `replacement-intent proof`: The deterministic validation that confirms a conflict result preserves each compatible replacement intent.
-- `semantic audit`: A model review that approves a locally validated conflict result or returns a semantic correction.
-- `semantic correction`: A conflict result that a semantic audit returns instead of an approval sentinel.
+- `semantic audit`: A model review that approves or rejects a conflict candidate against the source evidence.
 - `SemVer`: A release version with major, minor, and patch fields.
-- `token edit`: A change that has an original range in the common base tokens.
 - `version decision`: The Gix result that selects one release version from repository evidence and policy.
+
+- `change disposition`: The recorded result for one source change: retained, combined, superseded, or unresolved.
+- `decision block`: An overlap of source changes that requires a semantic decision.
+- `edit scope`: The source bytes that one model decision can replace.
+- `merge plan`: Exact source changes, fixed content, decision blocks, and their recorded results.
+- `read context`: Source content that the model can use as evidence without authority to replace that content.
+- `conflict corpus`: Fixed source inputs and acceptance criteria for conflict evaluation.
 
 ## MPR Lab Technical Verbs
 

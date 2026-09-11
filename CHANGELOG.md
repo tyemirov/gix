@@ -3,14 +3,13 @@
 ## [Unreleased]
 
 ### Conflict resolution
-- Preserved independent new issues with the same identifier and different titles. Assigned new incoming identifiers and updated incoming tracker references.
-- Replaced issue transcription with source selection keys and kept the original record bytes in each merge result.
-- Stopped structural rename conflicts before publication and restored the checkout for an explicit Git resolution.
-- Required explicit source selection for text conflicts without markers and stopped binary conflicts before model access.
-- Applied deletion-intent validation to every conflict size.
-- Kept code tokens distinct from prose tokens and preserved independent changes within backtick spans.
-- Resolved related issue insertions with one exact record per identifier.
-- Rejected invented punctuation and whitespace in overlapping insertion results.
+- Replaced token-based acceptance rules with exact source changes and explicit JSON decisions.
+- Preserved independent changes locally and allowed compatible requirements to combine within one issue record.
+- Required a separate semantic audit for every two-sided candidate, including exact source selections.
+- Added complete source context, explicit uncertainty, and early termination for repeated rejected candidates.
+- Added complete-file syntax checks for Go, JSON, and YAML and duplicate identifier checks for issue trackers.
+- Preserved Ledger issue records beside changed dependencies, independent identifier collisions, and transaction recovery boundaries.
+- Added a fixed CLI conflict corpus and a separate live-provider evaluation target.
 
 ### Documentation
 - Archived resolved backlog records and refreshed the current documentation for strict configuration, release source-versus-release commit identities, and the local web audit workspace.
