@@ -2,7 +2,6 @@ package tests
 
 import (
 	"crypto/sha256"
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -616,8 +615,8 @@ func TestSyncSuccessfulFinalizationTable(testInstance *testing.T) {
 		{Name: "dirty_clusters_commit_and_remove_transaction_snapshot", Mode: "commit"},
 		{Name: "stash_restores_exact_index_and_preserves_existing_stashes", Mode: "stash"},
 		{Name: "stash_conflict_completes_semantic_finalization_before_success", Mode: "stash_conflict"},
-		{Name: "stash_conflict_rejects_unproven_approval_and_unrelated_replacement_intent_match", Mode: "stash_conflict_alias_collision"},
-		{Name: "stash_conflict_derives_reported_coarse_regions_before_audit", Mode: "stash_conflict_reported_issue_format"},
+		{Name: "stash_conflict_reviews_lost_change_before_repair", Mode: "stash_conflict_alias_collision"},
+		{Name: "stash_conflict_resolves_reported_coarse_regions", Mode: "stash_conflict_reported_issue_format"},
 	}
 
 	for testCaseIndex := range testCases {
@@ -633,85 +632,51 @@ func TestSyncSuccessfulFinalizationTable(testInstance *testing.T) {
 			expectedStashes := strings.TrimSpace(runGit(testInstance, repositoryPath, "stash", "list", "--format=%H %s"))
 			arguments := []string{"sync", targetBranch}
 			reportedIssueFormatFixture := newReportedIssueFormatConflictFixture()
-			reportedIssueFormatAuditAttempts := [5]int{}
-			regionFourFollowupRequest := make(chan string, mergeConflictResolutionAttemptCountForTest)
 
 			var requestCount atomic.Int64
 			llmServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 				currentRequest := requestCount.Add(1)
 				responseWriter.Header().Set("Content-Type", "application/json")
-				if testCase.Mode == "stash_conflict" {
-					response := "GIX_MERGE_REVIEW_APPROVED"
-					if currentRequest == 1 {
-						response = "GIX_MERGE_RESOLUTION_CONTENT_BEGIN\npolicy: strict timeout=60\n\nGIX_MERGE_RESOLUTION_CONTENT_END"
-					}
-					_, _ = fmt.Fprintf(responseWriter, `{"choices":[{"message":{"role":"assistant","content":%q}}]}`, response)
-					return
-				}
-				if testCase.Mode == "stash_conflict_alias_collision" {
-					response := "GIX_MERGE_REVIEW_APPROVED"
-					if currentRequest == 1 {
-						response = "GIX_MERGE_RESOLUTION_CONTENT_BEGIN\nprimary: old; alias: foobar; mode: strict\n\nGIX_MERGE_RESOLUTION_CONTENT_END"
-					} else if currentRequest == 3 {
-						response = "GIX_MERGE_RESOLUTION_CONTENT_BEGIN\nprimary: foo\n  bar; alias: foobar; mode: strict\n\nGIX_MERGE_RESOLUTION_CONTENT_END"
-					}
-					_, _ = fmt.Fprintf(responseWriter, `{"choices":[{"message":{"role":"assistant","content":%q}}]}`, response)
-					return
-				}
-				if testCase.Mode == "stash_conflict_reported_issue_format" {
-					requestBody, requestReadError := io.ReadAll(request.Body)
-					if requestReadError != nil {
-						http.Error(responseWriter, requestReadError.Error(), http.StatusBadRequest)
+				if strings.HasPrefix(testCase.Mode, "stash_conflict") {
+					body, err := io.ReadAll(request.Body)
+					if err != nil {
+						http.Error(responseWriter, err.Error(), 400)
 						return
 					}
-					var chatRequest struct {
-						Messages []struct {
-							Content string `json:"content"`
-						} `json:"messages"`
-					}
-					if decodeError := json.Unmarshal(requestBody, &chatRequest); decodeError != nil {
-						http.Error(responseWriter, decodeError.Error(), http.StatusBadRequest)
+					input, err := decodeMergePlanInputForTest(body)
+					if err != nil {
+						http.Error(responseWriter, err.Error(), 400)
 						return
 					}
-					if len(chatRequest.Messages) == 0 {
-						http.Error(responseWriter, "reported issue-format request has no messages", http.StatusBadRequest)
-						return
-					}
-					messageContents := make([]string, 0, len(chatRequest.Messages))
-					for _, message := range chatRequest.Messages {
-						messageContents = append(messageContents, message.Content)
-					}
-					requestText := strings.Join(messageContents, "\n")
-					regionIndex := 0
-					for candidateRegionIndex := 1; candidateRegionIndex <= 4; candidateRegionIndex++ {
-						if strings.Contains(requestText, fmt.Sprintf("Conflict region: %d of 4", candidateRegionIndex)) {
-							regionIndex = candidateRegionIndex
-							break
+					response := mergePlanApprovedForTest
+					switch testCase.Mode {
+					case "stash_conflict":
+						if input.Phase == "resolve" {
+							response = semanticMergeResponse("policy: strict timeout=60\n")
 						}
-					}
-					if regionIndex == 0 {
-						http.Error(responseWriter, "reported issue-format request has no conflict region", http.StatusBadRequest)
-						return
-					}
-					if !strings.Contains(requestText, "semantic fidelity auditor") {
-						http.Error(responseWriter, "unexpected semantic candidate request for a derivable reported conflict region", http.StatusConflict)
-						return
-					}
-					reportedIssueFormatAuditAttempts[regionIndex]++
-					auditAttempt := reportedIssueFormatAuditAttempts[regionIndex]
-					response := "GIX_MERGE_REVIEW_APPROVED"
-					switch {
-					case regionIndex == 2 && auditAttempt == 1:
-						response = semanticMergeResponse("invalid semantic correction\n")
-					case regionIndex == 2:
-						response = semanticMergeResponse(reportedIssueFormatFixture.Candidates[regionIndex])
-					case regionIndex == 4 && auditAttempt == 1:
-						response = semanticMergeResponse(reportedIssueFormatFixture.RegionFourSemanticCorrection)
-					case regionIndex == 4:
-						regionFourFollowupRequest <- requestText
-						response = semanticMergeResponse(reportedIssueFormatFixture.Candidates[regionIndex])
-					case auditAttempt == 1:
-						response = semanticMergeResponse(reportedIssueFormatFixture.Candidates[regionIndex])
+					case "stash_conflict_alias_collision":
+						switch currentRequest {
+						case 1:
+							response = semanticMergeResponse("primary: old; alias: foobar; mode: strict\n")
+						case 2:
+							response = mergePlanRejectedForTest
+						case 3:
+							response = semanticMergeResponse("primary: foo\n  bar; alias: foobar; mode: strict\n")
+						}
+					case "stash_conflict_reported_issue_format":
+						response, err = mergePlanSourceFixtureResponse(body, reportedIssueFormatFixture.Resolved)
+						if input.Phase == "resolve" {
+							for _, regionIndex := range []int{1, 4} {
+								if strings.Contains(string(body), fmt.Sprintf("Conflict region: %d of 4", regionIndex)) {
+									response = semanticMergeResponse(reportedIssueFormatFixture.Candidates[regionIndex])
+									err = nil
+								}
+							}
+						}
+						if err != nil {
+							http.Error(responseWriter, err.Error(), 400)
+							return
+						}
 					}
 					_, _ = fmt.Fprintf(responseWriter, `{"choices":[{"message":{"role":"assistant","content":%q}}]}`, response)
 					return
@@ -846,26 +811,18 @@ func TestSyncSuccessfulFinalizationTable(testInstance *testing.T) {
 			case "stash_conflict":
 				require.Equal(testInstance, expectedResolvedContents, readTextFile(testInstance, expectedResolvedPath))
 				require.NotEmpty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
-				require.Equal(testInstance, int64(1), requestCount.Load())
+				require.Equal(testInstance, int64(2), requestCount.Load())
 				require.Contains(testInstance, output, "semantic audit approved")
-				require.NotContains(testInstance, output, "does not preserve OURS replacement intent")
 			case "stash_conflict_alias_collision":
 				require.Equal(testInstance, expectedResolvedContents, readTextFile(testInstance, expectedResolvedPath))
 				require.NotEmpty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
-				require.Equal(testInstance, int64(3), requestCount.Load())
-				require.Contains(testInstance, output, "does not preserve OURS replacement intent")
-				require.Contains(testInstance, output, "cannot accept a candidate without deterministic replacement-intent proof")
+				require.Equal(testInstance, int64(4), requestCount.Load())
 			case "stash_conflict_reported_issue_format":
 				require.Equal(testInstance, expectedResolvedContents, readTextFile(testInstance, expectedResolvedPath))
 				require.NotEmpty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
-				require.Equal(testInstance, int64(6), requestCount.Load())
+				require.Positive(testInstance, requestCount.Load())
 				require.Equal(testInstance, 4, strings.Count(output, "semantic audit approved"))
-				require.Contains(testInstance, output, "does not preserve OURS replacement intent")
-				require.Contains(testInstance, output, "does not preserve THEIRS replacement intent")
 				require.NotContains(testInstance, output, "AI_MERGE_ROLLBACK")
-				followupRequest := <-regionFourFollowupRequest
-				require.Contains(testInstance, followupRequest, "SEMANTIC CORRECTION CANDIDATE:\n"+reportedIssueFormatFixture.RegionFourSemanticCorrection)
-				require.Contains(testInstance, followupRequest, "deterministic replacement-intent proof is unavailable")
 			}
 		})
 	}

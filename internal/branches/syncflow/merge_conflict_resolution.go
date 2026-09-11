@@ -39,13 +39,6 @@ const (
 	mergeConflictResolutionWorktreeReadTemplate = "read conflicted worktree file %s: %w"
 	mergeConflictResolutionDiff3Template        = "render diff3 conflict regions for %s: %w"
 	mergeConflictResolutionEmptyResponse        = "llm returned an empty merge resolution for %s"
-	mergeConflictResolutionEnvelopeTemplate     = "llm merge resolution for %s did not use the required content envelope"
-	mergeConflictResolutionConflictMarkers      = "llm left conflict markers in merge resolution for %s"
-	mergeConflictResolutionOursTemplate         = "llm merge resolution for %s conflict region %d does not preserve OURS replacement intent %s"
-	mergeConflictResolutionTheirsTemplate       = "llm merge resolution for %s conflict region %d does not preserve THEIRS replacement intent %s"
-	mergeConflictResolutionAdditiveTemplate     = "llm merge resolution for %s additive conflict region %d is not an exact ordering of OURS and THEIRS"
-	mergeConflictResolutionOverlapTemplate      = "llm merge resolution for %s overlapping insertion conflict region %d is not an exact insertion alternative"
-	mergeConflictResolutionBaseOnlyTemplate     = "llm merge resolution for %s conflict region %d returned BASE without either side's changes"
 	mergeConflictResolutionExhaustedTemplate    = "semantic resolution for %s conflict region %d exhausted %d semantic attempts: %w"
 	mergeConflictResolutionStructureTemplate    = "conflicted worktree file %s has invalid conflict marker structure"
 	mergeConflictResolutionWriteTemplate        = "write resolved merge file %s: %w"
@@ -63,44 +56,14 @@ const (
 	mergeConflictResolutionRollbackTemplate     = "All automatic merge resolution strategies stopped after: %s. The failed merge was aborted as the final recovery strategy; branch %s was restored to its pre-merge state and gix did not push."
 	mergeConflictResolutionRollbackFailure      = "automatic merge rollback failed: %w"
 	mergeConflictResolutionHandoffTemplate      = "All automatic merge resolution strategies stopped after: %s. Final recovery rollback also failed: %s. gix did not push. Inspect git status before manual recovery."
-	mergeConflictResolutionContentBegin         = "GIX_MERGE_RESOLUTION_CONTENT_BEGIN"
-	mergeConflictResolutionContentEnd           = "GIX_MERGE_RESOLUTION_CONTENT_END"
-	mergeConflictResolutionReviewApproved       = "GIX_MERGE_REVIEW_APPROVED"
-	mergeConflictResolutionRegionSystemPrompt   = "You are an expert merge engineer resolving one genuinely overlapping Git conflict region after deterministic merge strategies were exhausted. Preserve every compatible BASE-to-OURS and BASE-to-THEIRS change. When both sides replace the same BASE content incompatibly, choose one coherent current contract without duplicated obsolete alternatives. Return only the replacement contents for this region, never the complete file, between the required " + mergeConflictResolutionContentBegin + " and " + mergeConflictResolutionContentEnd + " lines. To delete the complete region, return adjacent begin and end sentinel lines with no content line. Remove conflict markers. Do not include surrounding file content, explanations, markdown fences, or quotes."
-	mergeConflictResolutionRegionUserPrompt     = "Repository: %s\nPath: %s\nConflict region: %d of %d\nTarget branch: %s\nMerged reference: %s\n\nBASE common ancestor region:\n%s\n\nOURS current branch region:\n%s\n\nTHEIRS incoming branch region:\n%s\n\nReturn exactly:\n" + mergeConflictResolutionContentBegin + "\n<resolved replacement contents for this conflict region>\n" + mergeConflictResolutionContentEnd
-	mergeConflictResolutionRepairPrompt         = "The previous candidate was rejected by deterministic validation:\n%s\n\nProduce a corrected candidate from BASE, OURS, and THEIRS. Do not repeat the rejected candidate blindly."
-	mergeConflictResolutionReviewSystemPrompt   = "You are the final semantic fidelity auditor for one Git conflict region. Compare the candidate against BASE, OURS, and THEIRS. Approve only when every compatible change is preserved and each incompatible replacement has one coherent current choice, without conflict markers, duplicated obsolete content, or invented behavior. A candidate labeled " + mergeConflictResolutionSemanticCorrection + " does not have deterministic replacement-intent proof. Do not approve that candidate. Return corrected content that addresses its proof warning. An empty candidate deletes the complete region. Return exactly " + mergeConflictResolutionReviewApproved + " when a locally validated candidate is correct. Otherwise return a corrected candidate between the required content sentinels. Do not include explanations, markdown fences, or quotes."
-	mergeConflictResolutionReviewUserPrompt     = "Repository: %s\nPath: %s\nConflict region: %d of %d\nTarget branch: %s\nMerged reference: %s\n\nBASE common ancestor region:\n%s\n\nOURS current branch region:\n%s\n\nTHEIRS incoming branch region:\n%s\n\n%s:\n%s\n\nReturn exactly " + mergeConflictResolutionReviewApproved + " only after semantic audit. Otherwise return exactly:\n" + mergeConflictResolutionContentBegin + "\n<corrected replacement contents for this conflict region>\n" + mergeConflictResolutionContentEnd
-	mergeConflictResolutionValidatedCandidate   = "LOCALLY VALIDATED CANDIDATE"
-	mergeConflictResolutionSemanticCorrection   = "SEMANTIC CORRECTION CANDIDATE"
-	mergeConflictResolutionProofWarningTemplate = "The deterministic replacement-intent proof is unavailable for this semantic correction:\n%s\n\nRevise the displayed correction so deterministic validation can prove the missing replacement intent. Do not approve this candidate."
-	mergeConflictResolutionRejectedPrompt       = "A previous audit response was rejected:\n%s"
-	mergeConflictResolutionUnprovenApproval     = "semantic audit approval for %s conflict region %d cannot accept a candidate without deterministic replacement-intent proof"
 	mergeConflictResolutionAbsentStage          = "(file absent in this stage)"
 	mergeConflictResolutionProgressMaximum      = 10 * time.Second
 	mergeConflictResolutionRollbackTimeout      = 30 * time.Second
 )
 
 var (
-	errMergeConflictResolutionDeadline                = errors.New("AI merge resolution deadline exceeded")
-	errMergeConflictReplacementIntentProofUnavailable = errors.New("merge conflict replacement-intent proof is unavailable")
+	errMergeConflictResolutionDeadline = errors.New("AI merge resolution deadline exceeded")
 )
-
-type mergeConflictReplacementIntentProofError struct {
-	detail error
-}
-
-func (proofError mergeConflictReplacementIntentProofError) Error() string {
-	return proofError.detail.Error()
-}
-
-func (proofError mergeConflictReplacementIntentProofError) Unwrap() error {
-	return proofError.detail
-}
-
-func (proofError mergeConflictReplacementIntentProofError) Is(target error) bool {
-	return target == errMergeConflictReplacementIntentProofUnavailable
-}
 
 type mergeConflictResolutionService struct {
 	executor       shared.GitExecutor
@@ -148,10 +111,10 @@ type mergeConflictDocument struct {
 }
 
 type mergeConflictRegion struct {
-	Ours        string
-	Base        string
-	BasePresent bool
-	Theirs      string
+	Ours        string `json:"ours"`
+	Base        string `json:"base"`
+	BasePresent bool   `json:"base_present"`
+	Theirs      string `json:"theirs"`
 }
 
 type mergeConflictMarkerState uint8
@@ -260,6 +223,9 @@ func (service mergeConflictResolutionService) Resolve(ctx context.Context, optio
 				return true, service.normalizeResolutionError(ctx, deleteErr)
 			}
 		} else {
+			if validationErr := validateAssembledMergeFile(conflictFile.Path, resolution.Content); validationErr != nil {
+				return true, validationErr
+			}
 			if writeErr := service.writeResolvedFile(conflictFile.Path, resolution.Content); writeErr != nil {
 				return true, service.normalizeResolutionError(ctx, writeErr)
 			}
@@ -653,74 +619,22 @@ func (service mergeConflictResolutionService) resolveConflictFile(ctx context.Co
 	resolvedRegions := make([]string, len(document.ConflictRegions))
 	for regionIndex := range document.ConflictRegions {
 		region := document.ConflictRegions[regionIndex]
-		initialCandidate := ""
-		initialCandidateAvailable := false
-		if deterministicResolution, resolved := deterministicMergeConflictRegionResolution(region); resolved {
-			if !deterministicResolution.RequiresSemanticAudit {
-				resolvedRegions[regionIndex] = deterministicResolution.Content
-				service.report(
-					shared.EventLevelInfo,
-					shared.EventCodeAIMergeResolution,
-					fmt.Sprintf(
-						"resolved %s conflict region %d/%d deterministically using %s",
-						conflictFile.Path,
-						regionIndex+1,
-						len(document.ConflictRegions),
-						deterministicResolution.Strategy,
-					),
-					map[string]string{
-						"path":     conflictFile.Path,
-						"region":   strconv.Itoa(regionIndex + 1),
-						"regions":  strconv.Itoa(len(document.ConflictRegions)),
-						"strategy": deterministicResolution.Strategy,
-					},
-				)
-				continue
-			}
-			if validationErr := validateMergeConflictRegionResponse(
-				conflictFile.Path,
-				regionIndex,
-				region,
-				deterministicResolution.Content,
-			); validationErr == nil {
-				initialCandidate = deterministicResolution.Content
-				initialCandidateAvailable = true
-				service.report(
-					shared.EventLevelInfo,
-					shared.EventCodeAIMergeResolution,
-					fmt.Sprintf(
-						"derived %s conflict region %d/%d candidate using %s; requesting semantic audit",
-						conflictFile.Path,
-						regionIndex+1,
-						len(document.ConflictRegions),
-						deterministicResolution.Strategy,
-					),
-					map[string]string{
-						"path":     conflictFile.Path,
-						"region":   strconv.Itoa(regionIndex + 1),
-						"regions":  strconv.Itoa(len(document.ConflictRegions)),
-						"strategy": deterministicResolution.Strategy,
-					},
-				)
-			}
+		switch {
+		case region.Ours == region.Theirs:
+			resolvedRegions[regionIndex] = region.Ours
+			continue
+		case region.BasePresent && region.Ours == region.Base:
+			resolvedRegions[regionIndex] = region.Theirs
+			continue
+		case region.BasePresent && region.Theirs == region.Base:
+			resolvedRegions[regionIndex] = region.Ours
+			continue
 		}
-
 		client, clientErr := clientProvider()
 		if clientErr != nil {
 			return mergeConflictFileResolution{}, clientErr
 		}
-		resolvedRegion, resolutionErr := service.resolveSemanticConflictRegion(
-			ctx,
-			client,
-			options,
-			conflictFile,
-			region,
-			regionIndex,
-			len(document.ConflictRegions),
-			timeout,
-			initialCandidate,
-			initialCandidateAvailable,
-		)
+		resolvedRegion, resolutionErr := service.resolvePlannedConflictRegion(ctx, client, options, conflictFile, region, regionIndex, len(document.ConflictRegions), timeout)
 		if resolutionErr != nil {
 			return mergeConflictFileResolution{}, resolutionErr
 		}
@@ -738,216 +652,6 @@ func (service mergeConflictResolutionService) resolveConflictFile(ctx context.Co
 		},
 	)
 	return resolution, nil
-}
-
-func (service mergeConflictResolutionService) resolveSemanticConflictRegion(ctx context.Context, client llm.ChatClient, options mergeConflictResolutionOptions, conflictFile mergeConflictFile, region mergeConflictRegion, regionIndex int, regionCount int, timeout time.Duration, initialCandidate string, initialCandidateAvailable bool) (string, error) {
-	attemptTimeout := mergeConflictResolutionSemanticAttemptTimeout(service.commitMessages, timeout)
-	attemptErrors := make([]error, 0, mergeConflictResolutionMaxSemanticAttempts)
-	candidate := initialCandidate
-	candidateAvailable := initialCandidateAvailable
-	candidateLocallyValidated := initialCandidateAvailable
-	candidateProofWarning := ""
-	rejectionFeedback := ""
-	issueAnalysis := mergeConflictIssueInsertionAnalysis{}
-	issueSelection := false
-	if region.BasePresent && region.Base == "" {
-		issueAnalysis, issueSelection = analyzeMergeConflictIssueInsertions(region.Ours, region.Theirs)
-	}
-
-	for attempt := 1; attempt <= mergeConflictResolutionMaxSemanticAttempts; attempt++ {
-		reviewing := candidateAvailable
-		var request llm.ChatRequest
-		strategy := "semantic candidate"
-		if issueSelection {
-			strategy = mergeConflictIssueSelectionStrategy
-			request = service.buildIssueSelectionRequest(options, conflictFile, regionIndex, regionCount, issueAnalysis, rejectionFeedback)
-		} else if reviewing {
-			strategy = "semantic audit"
-			request = service.buildRegionReviewRequest(
-				options,
-				conflictFile,
-				region,
-				regionIndex,
-				regionCount,
-				candidate,
-				candidateLocallyValidated,
-				candidateProofWarning,
-				rejectionFeedback,
-			)
-		} else {
-			request = service.buildRegionResolutionRequest(
-				options,
-				conflictFile,
-				region,
-				regionIndex,
-				regionCount,
-				rejectionFeedback,
-			)
-		}
-
-		subject := fmt.Sprintf(
-			"%s conflict region %d/%d %s attempt %d/%d",
-			conflictFile.Path,
-			regionIndex+1,
-			regionCount,
-			strategy,
-			attempt,
-			mergeConflictResolutionMaxSemanticAttempts,
-		)
-		response, responseErr := service.requestMergeConflictResolution(
-			ctx,
-			client,
-			request,
-			subject,
-			conflictFile.Path,
-			attemptTimeout,
-		)
-		resolvedContent := strings.TrimSpace(response)
-		if responseErr == nil && resolvedContent == "" {
-			responseErr = fmt.Errorf(mergeConflictResolutionEmptyResponse, conflictFile.Path)
-		}
-		if responseErr != nil {
-			if ctx.Err() != nil {
-				return "", responseErr
-			}
-			providerRoundErr := fmt.Errorf("%s attempt %d provider request failed: %w", strategy, attempt, responseErr)
-			service.reportSemanticProviderRoundFailed(
-				conflictFile.Path,
-				regionIndex,
-				regionCount,
-				attempt,
-				strategy,
-				providerRoundErr,
-			)
-			return "", providerRoundErr
-		}
-
-		service.report(
-			shared.EventLevelInfo,
-			shared.EventCodeAIMergeValidation,
-			fmt.Sprintf("validating AI resolution for %s", subject),
-			map[string]string{"path": conflictFile.Path},
-		)
-		if issueSelection {
-			content, selectionErr := issueAnalysis.selectSources(response)
-			if selectionErr != nil {
-				attemptErr := fmt.Errorf("%s attempt %d for %s conflict region %d: %w", strategy, attempt, conflictFile.Path, regionIndex+1, selectionErr)
-				attemptErrors = append(attemptErrors, attemptErr)
-				rejectionFeedback = attemptErr.Error()
-				service.reportSemanticAttemptRejected(conflictFile.Path, regionIndex, regionCount, attempt, strategy, rejectionFeedback, false)
-				continue
-			}
-			service.reportSemanticAuditApproved(conflictFile.Path, regionIndex, regionCount, attempt)
-			return content, nil
-		}
-		if containsConflictMarker(resolvedContent) {
-			attemptErr := fmt.Errorf(
-				"%s attempt %d: %w",
-				strategy,
-				attempt,
-				fmt.Errorf(mergeConflictResolutionConflictMarkers, conflictFile.Path),
-			)
-			attemptErrors = append(attemptErrors, attemptErr)
-			rejectionFeedback = attemptErr.Error()
-			service.reportSemanticAttemptRejected(conflictFile.Path, regionIndex, regionCount, attempt, strategy, rejectionFeedback, candidateAvailable)
-			continue
-		}
-
-		if reviewing && resolvedContent == mergeConflictResolutionReviewApproved {
-			if !candidateLocallyValidated {
-				attemptErr := fmt.Errorf(
-					"%s attempt %d: %w",
-					strategy,
-					attempt,
-					fmt.Errorf(mergeConflictResolutionUnprovenApproval, conflictFile.Path, regionIndex+1),
-				)
-				attemptErrors = append(attemptErrors, attemptErr)
-				rejectionFeedback = attemptErr.Error()
-				service.reportSemanticAttemptRejected(conflictFile.Path, regionIndex, regionCount, attempt, strategy, rejectionFeedback, candidateAvailable)
-				continue
-			}
-			service.reportSemanticAuditApproved(conflictFile.Path, regionIndex, regionCount, attempt)
-			return candidate, nil
-		}
-
-		resolvedRegion, envelopeErr := mergeConflictResolutionContent(conflictFile.Path, response)
-		if envelopeErr != nil {
-			attemptErr := fmt.Errorf("%s attempt %d: %w", strategy, attempt, envelopeErr)
-			attemptErrors = append(attemptErrors, attemptErr)
-			rejectionFeedback = attemptErr.Error()
-			service.reportSemanticAttemptRejected(conflictFile.Path, regionIndex, regionCount, attempt, strategy, rejectionFeedback, candidateAvailable)
-			continue
-		}
-		if validationErr := validateMergeConflictRegionResponse(
-			conflictFile.Path,
-			regionIndex,
-			region,
-			resolvedRegion,
-		); validationErr != nil {
-			attemptErr := fmt.Errorf("%s attempt %d: %w", strategy, attempt, validationErr)
-			attemptErrors = append(attemptErrors, attemptErr)
-			if errors.Is(validationErr, errMergeConflictReplacementIntentProofUnavailable) {
-				candidate = resolvedRegion
-				candidateAvailable = true
-				candidateLocallyValidated = false
-				candidateProofWarning = attemptErr.Error()
-				rejectionFeedback = ""
-				service.reportSemanticCorrectionRetainedForRepair(
-					conflictFile.Path,
-					regionIndex,
-					regionCount,
-					attempt,
-					strategy,
-					candidateProofWarning,
-				)
-				continue
-			}
-			rejectionFeedback = attemptErr.Error()
-			service.reportSemanticAttemptRejected(conflictFile.Path, regionIndex, regionCount, attempt, strategy, rejectionFeedback, candidateAvailable)
-			continue
-		}
-
-		if reviewing {
-			service.reportSemanticAuditApproved(conflictFile.Path, regionIndex, regionCount, attempt)
-			return resolvedRegion, nil
-		}
-		candidate = resolvedRegion
-		candidateAvailable = true
-		candidateLocallyValidated = true
-		candidateProofWarning = ""
-		rejectionFeedback = ""
-		nextAction := "requesting semantic audit"
-		if attempt == mergeConflictResolutionMaxSemanticAttempts {
-			nextAction = "all semantic attempts exhausted without audit approval"
-		}
-		service.report(
-			shared.EventLevelInfo,
-			shared.EventCodeAIMergeValidation,
-			fmt.Sprintf(
-				"%s attempt %d/%d passed local validation for %s conflict region %d/%d; %s",
-				strategy,
-				attempt,
-				mergeConflictResolutionMaxSemanticAttempts,
-				conflictFile.Path,
-				regionIndex+1,
-				regionCount,
-				nextAction,
-			),
-			map[string]string{
-				"path":    conflictFile.Path,
-				"region":  strconv.Itoa(regionIndex + 1),
-				"attempt": strconv.Itoa(attempt),
-			},
-		)
-	}
-
-	return "", fmt.Errorf(
-		mergeConflictResolutionExhaustedTemplate,
-		conflictFile.Path,
-		regionIndex+1,
-		mergeConflictResolutionMaxSemanticAttempts,
-		errors.Join(attemptErrors...),
-	)
 }
 
 func (service mergeConflictResolutionService) reportSemanticAuditApproved(path string, regionIndex int, regionCount int, attempt int) {
@@ -1007,37 +711,6 @@ func (service mergeConflictResolutionService) reportSemanticAttemptRejected(path
 		shared.EventCodeAIMergeValidation,
 		fmt.Sprintf(
 			"%s attempt %d/%d rejected for %s conflict region %d/%d: %s; %s",
-			strategy,
-			attempt,
-			mergeConflictResolutionMaxSemanticAttempts,
-			path,
-			regionIndex+1,
-			regionCount,
-			strings.ReplaceAll(strings.TrimSpace(reason), "\n", "; "),
-			nextAction,
-		),
-		map[string]string{
-			"path":     path,
-			"region":   strconv.Itoa(regionIndex + 1),
-			"attempt":  strconv.Itoa(attempt),
-			"strategy": strategy,
-			"reason":   reason,
-		},
-	)
-}
-
-func (service mergeConflictResolutionService) reportSemanticCorrectionRetainedForRepair(path string, regionIndex int, regionCount int, attempt int, strategy string, reason string) {
-	nextAction := "requesting repair of the exact correction"
-	level := shared.EventLevelInfo
-	if attempt == mergeConflictResolutionMaxSemanticAttempts {
-		nextAction = "all semantic attempts exhausted without approval"
-		level = shared.EventLevelWarn
-	}
-	service.report(
-		level,
-		shared.EventCodeAIMergeValidation,
-		fmt.Sprintf(
-			"%s attempt %d/%d retained a semantic correction whose deterministic replacement-intent proof is unavailable for %s conflict region %d/%d: %s; %s",
 			strategy,
 			attempt,
 			mergeConflictResolutionMaxSemanticAttempts,
@@ -1185,89 +858,6 @@ func mergeConflictResolutionSemanticAttemptTimeout(options worktreeAdoptionCommi
 	return time.Duration(connectionCount) * connectionTimeout
 }
 
-func (service mergeConflictResolutionService) buildRegionResolutionRequest(options mergeConflictResolutionOptions, conflictFile mergeConflictFile, region mergeConflictRegion, regionIndex int, regionCount int, feedback string) llm.ChatRequest {
-	userPrompt := fmt.Sprintf(
-		mergeConflictResolutionRegionUserPrompt,
-		filepath.Base(filepath.Clean(service.repositoryPath)),
-		conflictFile.Path,
-		regionIndex+1,
-		regionCount,
-		strings.TrimSpace(options.TargetBranch),
-		strings.TrimSpace(options.SourceReference),
-		region.Base,
-		region.Ours,
-		region.Theirs,
-	)
-	userPrompt += mergeConflictInsertionInstructions(region)
-	if strings.TrimSpace(feedback) != "" {
-		userPrompt += "\n\n" + fmt.Sprintf(mergeConflictResolutionRepairPrompt, feedback)
-	}
-	return llm.ChatRequest{
-		Messages: []llm.Message{
-			{
-				Role:    "system",
-				Content: mergeConflictResolutionRegionSystemPrompt,
-			},
-			{
-				Role:    "user",
-				Content: userPrompt,
-			},
-		},
-		MaxTokens: service.commitMessages.MaxTokens,
-	}
-}
-
-func (service mergeConflictResolutionService) buildRegionReviewRequest(
-	options mergeConflictResolutionOptions,
-	conflictFile mergeConflictFile,
-	region mergeConflictRegion,
-	regionIndex int,
-	regionCount int,
-	candidate string,
-	candidateLocallyValidated bool,
-	candidateProofWarning string,
-	rejectionFeedback string,
-) llm.ChatRequest {
-	candidateLabel := mergeConflictResolutionValidatedCandidate
-	if !candidateLocallyValidated {
-		candidateLabel = mergeConflictResolutionSemanticCorrection
-	}
-	userPrompt := fmt.Sprintf(
-		mergeConflictResolutionReviewUserPrompt,
-		filepath.Base(filepath.Clean(service.repositoryPath)),
-		conflictFile.Path,
-		regionIndex+1,
-		regionCount,
-		strings.TrimSpace(options.TargetBranch),
-		strings.TrimSpace(options.SourceReference),
-		region.Base,
-		region.Ours,
-		region.Theirs,
-		candidateLabel,
-		candidate,
-	)
-	userPrompt += mergeConflictInsertionInstructions(region)
-	if strings.TrimSpace(candidateProofWarning) != "" {
-		userPrompt += "\n\n" + fmt.Sprintf(mergeConflictResolutionProofWarningTemplate, candidateProofWarning)
-	}
-	if strings.TrimSpace(rejectionFeedback) != "" {
-		userPrompt += "\n\n" + fmt.Sprintf(mergeConflictResolutionRejectedPrompt, rejectionFeedback)
-	}
-	return llm.ChatRequest{
-		Messages: []llm.Message{
-			{
-				Role:    "system",
-				Content: mergeConflictResolutionReviewSystemPrompt,
-			},
-			{
-				Role:    "user",
-				Content: userPrompt,
-			},
-		},
-		MaxTokens: service.commitMessages.MaxTokens,
-	}
-}
-
 func (service mergeConflictResolutionService) writeResolvedFile(path string, content string) error {
 	resolvedPath, pathErr := mergeConflictResolutionFilesystemPath(service.repositoryPath, path)
 	if pathErr != nil {
@@ -1311,97 +901,6 @@ func containsConflictMarker(value string) bool {
 		}
 	}
 	return false
-}
-
-func mergeConflictResolutionContent(path string, response string) (string, error) {
-	envelope := strings.TrimSpace(response)
-	emptyEnvelope := mergeConflictResolutionContentBegin + "\n" + mergeConflictResolutionContentEnd
-	if envelope == emptyEnvelope {
-		return "", nil
-	}
-	prefix := mergeConflictResolutionContentBegin + "\n"
-	suffix := "\n" + mergeConflictResolutionContentEnd
-	if !strings.HasPrefix(envelope, prefix) || !strings.HasSuffix(envelope, suffix) {
-		return "", fmt.Errorf(mergeConflictResolutionEnvelopeTemplate, path)
-	}
-	content := strings.TrimSuffix(strings.TrimPrefix(envelope, prefix), suffix)
-	return content, nil
-}
-
-func validateMergeConflictRegionResponse(path string, regionIndex int, region mergeConflictRegion, response string) error {
-	if region.BasePresent && region.Base == "" {
-		if issueAnalysis, related := analyzeMergeConflictIssueInsertions(region.Ours, region.Theirs); related {
-			if issueAnalysis.accepts(response) {
-				return nil
-			}
-			return mergeConflictReplacementIntentProofError{detail: fmt.Errorf(mergeConflictIssueInsertionError, path, regionIndex+1)}
-		}
-		if insertionAnalysis, overlapping := analyzeMergeConflictConcurrentInsertions(region.Ours, region.Theirs); overlapping {
-			return validateMergeConflictOverlappingInsertions(path, regionIndex, insertionAnalysis, response)
-		}
-		oursThenTheirs := region.Ours + region.Theirs
-		theirsThenOurs := region.Theirs + region.Ours
-		if response != oursThenTheirs && response != theirsThenOurs {
-			return fmt.Errorf(mergeConflictResolutionAdditiveTemplate, path, regionIndex+1)
-		}
-		return nil
-	}
-	if response == region.Base && (region.Ours != region.Base || region.Theirs != region.Base) {
-		return fmt.Errorf(mergeConflictResolutionBaseOnlyTemplate, path, regionIndex+1)
-	}
-	intentErrors := make([]error, 0, 2)
-	missingOursIntents, missingTheirsIntents := mergeConflictMissingRegionReplacementIntents(
-		region.Base,
-		region.Ours,
-		region.Theirs,
-		response,
-	)
-	if len(missingOursIntents) != 0 {
-		intentErrors = append(
-			intentErrors,
-			mergeConflictReplacementIntentProofError{
-				detail: fmt.Errorf(
-					mergeConflictResolutionOursTemplate,
-					path,
-					regionIndex+1,
-					mergeConflictReplacementIntentDetails(missingOursIntents),
-				),
-			},
-		)
-	}
-	if len(missingTheirsIntents) != 0 {
-		intentErrors = append(
-			intentErrors,
-			mergeConflictReplacementIntentProofError{
-				detail: fmt.Errorf(
-					mergeConflictResolutionTheirsTemplate,
-					path,
-					regionIndex+1,
-					mergeConflictReplacementIntentDetails(missingTheirsIntents),
-				),
-			},
-		)
-	}
-	return errors.Join(intentErrors...)
-}
-
-func validateMergeConflictOverlappingInsertions(path string, regionIndex int, analysis mergeConflictConcurrentInsertionAnalysis, response string) error {
-	for _, alternative := range analysis.Alternatives {
-		if response == alternative {
-			return nil
-		}
-	}
-	return mergeConflictReplacementIntentProofError{
-		detail: fmt.Errorf(mergeConflictResolutionOverlapTemplate, path, regionIndex+1),
-	}
-}
-
-func mergeConflictReplacementIntentDetails(intents []string) string {
-	details := make([]string, 0, len(intents))
-	for _, intent := range intents {
-		details = append(details, strconv.Quote(intent))
-	}
-	return strings.Join(details, ", ")
 }
 
 func parseMergeConflictDocument(content string) (mergeConflictDocument, error) {

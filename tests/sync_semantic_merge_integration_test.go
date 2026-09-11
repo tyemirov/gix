@@ -88,7 +88,7 @@ func TestSyncValidatesLargeConcurrentDeletionAndInsertion(testInstance *testing.
 				http.Error(responseWriter, "lossy semantic result was pushed before rejection", http.StatusConflict)
 				return
 			}
-			responseContent = semanticMergeResponse(incomingIssue)
+			responseContent = mergePlanApprovedForTest
 		}
 		responseWriter.Header().Set("Content-Type", "application/json")
 		_, _ = fmt.Fprintf(
@@ -120,9 +120,6 @@ func TestSyncValidatesLargeConcurrentDeletionAndInsertion(testInstance *testing.
 	)
 
 	require.NoError(testInstance, runError, output)
-	require.Contains(testInstance, output, "derived .mprlab/ISSUES.md conflict region 1/1 candidate using compatible token edits")
-	require.Contains(testInstance, output, "does not preserve OURS replacement intent")
-	require.Contains(testInstance, output, "delete BASE token range")
 	require.Contains(testInstance, output, "semantic audit approved")
 	require.NotContains(testInstance, output, "cannot be validated against")
 	require.NotContains(testInstance, output, "AI_MERGE_ROLLBACK")
@@ -208,7 +205,7 @@ func TestSyncAuditsLargeAdditiveIssueAndChangelogConflictsBySemanticRegion(testI
 	targetCommit := strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "HEAD"))
 
 	var requestCount atomic.Int64
-	requestBodies := make(chan string, 2)
+	requestBodies := make(chan string, 4)
 	llmServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 		if request.URL.Path != "/chat/completions" {
 			http.NotFound(responseWriter, request)
@@ -221,7 +218,7 @@ func TestSyncAuditsLargeAdditiveIssueAndChangelogConflictsBySemanticRegion(testI
 		}
 		requestBodies <- string(requestBody)
 		requestNumber := requestCount.Add(1)
-		if requestNumber > 2 {
+		if requestNumber > 3 {
 			http.Error(responseWriter, "additive resolution exceeded one semantic audit per conflict region", http.StatusInternalServerError)
 			return
 		}
@@ -242,11 +239,20 @@ func TestSyncAuditsLargeAdditiveIssueAndChangelogConflictsBySemanticRegion(testI
 				return
 			}
 		}
+		input, inputErr := decodeMergePlanInputForTest(requestBody)
+		if inputErr != nil {
+			http.Error(responseWriter, inputErr.Error(), 400)
+			return
+		}
+		response := mergePlanApprovedForTest
+		if input.Phase == "resolve" {
+			response = semanticMergeResponse(oursChangelogBlock + theirsChangelogBlock)
+		}
 		responseWriter.Header().Set("Content-Type", "application/json")
 		_, _ = fmt.Fprintf(
 			responseWriter,
 			`{"choices":[{"message":{"role":"assistant","content":%q}}]}`,
-			"GIX_MERGE_REVIEW_APPROVED",
+			response,
 		)
 	}))
 	testInstance.Cleanup(llmServer.Close)
@@ -321,14 +327,12 @@ operations:
 	)
 	require.NoError(testInstance, runError, output)
 	require.Contains(testInstance, output, "MERGE_CONFLICT")
-	require.Contains(testInstance, output, "derived .mprlab/ISSUES.md conflict region 1/1 candidate using concurrent insertions; requesting semantic audit")
-	require.Contains(testInstance, output, "derived CHANGELOG.md conflict region 1/1 candidate using concurrent insertions; requesting semantic audit")
 	require.Equal(testInstance, 2, strings.Count(output, "semantic audit approved"))
 	require.Contains(testInstance, output, "accepted inherited whitespace for .mprlab/ISSUES.md from incoming parent origin/"+baseBranchName)
 	require.Contains(testInstance, output, "merge conflict resolution completed")
 	require.NotContains(testInstance, output, "AI_MERGE_ROLLBACK")
 	require.NotContains(testInstance, output, "AI_MERGE_HANDOFF")
-	require.Equal(testInstance, int64(2), requestCount.Load())
+	require.Equal(testInstance, int64(3), requestCount.Load())
 	require.Equal(testInstance, expectedIssues, readTextFile(testInstance, issuesPath))
 	require.Equal(testInstance, expectedChangelog, readTextFile(testInstance, changelogPath))
 	require.Equal(testInstance, targetCommit, strings.TrimSpace(runGit(testInstance, repositoryPath, "rev-parse", "origin/"+baseBranchName)))
@@ -337,28 +341,21 @@ operations:
 	require.Equal(testInstance, 1, strings.Count(readTextFile(testInstance, issuesPath), "[B043]"))
 	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
 
-	firstRequest := <-requestBodies
-	secondRequest := <-requestBodies
 	requestsByPath := map[string]string{}
-	for _, requestBody := range []string{firstRequest, secondRequest} {
-		switch {
-		case strings.Contains(requestBody, ".mprlab/ISSUES.md"):
-			requestsByPath[".mprlab/ISSUES.md"] = requestBody
-		case strings.Contains(requestBody, "CHANGELOG.md"):
-			requestsByPath["CHANGELOG.md"] = requestBody
-		}
+	for index := int64(0); index < requestCount.Load(); index++ {
+		requestBody := <-requestBodies
+		input, err := decodeMergePlanInputForTest([]byte(requestBody))
+		require.NoError(testInstance, err)
+		requestsByPath[input.Path] = requestBody
 	}
 	require.Len(testInstance, requestsByPath, 2)
-	require.Contains(testInstance, requestsByPath[".mprlab/ISSUES.md"], "semantic fidelity auditor")
 	require.Contains(testInstance, requestsByPath[".mprlab/ISSUES.md"], "Preserve the local rollback fix.")
 	require.Contains(testInstance, requestsByPath[".mprlab/ISSUES.md"], "Preserve the incoming license pin.")
 	require.Contains(testInstance, requestsByPath[".mprlab/ISSUES.md"], "Preserve the incoming review validation.")
-	require.NotContains(testInstance, requestsByPath[".mprlab/ISSUES.md"], "Stable unrelated maintenance entry 600")
-	require.Contains(testInstance, requestsByPath["CHANGELOG.md"], "semantic fidelity auditor")
 	require.Contains(testInstance, requestsByPath["CHANGELOG.md"], "Restored the local branch")
 	require.Contains(testInstance, requestsByPath["CHANGELOG.md"], "Pinned license rollout clones")
 	require.Contains(testInstance, requestsByPath["CHANGELOG.md"], "Validated existing rollout pull requests")
-	require.NotContains(testInstance, requestsByPath["CHANGELOG.md"], "Stable unrelated documentation note")
+	require.Contains(testInstance, requestsByPath["CHANGELOG.md"], "Stable unrelated documentation note")
 
 	headWithParents := strings.Fields(runGit(testInstance, repositoryPath, "rev-list", "--parents", "-n", "1", "HEAD"))
 	require.Len(testInstance, headWithParents, 3)
@@ -427,7 +424,7 @@ func TestSyncMergesOverlappingConcurrentIssueInsertionsWithoutDuplicateContent(t
 	runGit(testInstance, repositoryPath, "switch", targetBranchName)
 
 	var requestCount atomic.Int64
-	requestBodies := make(chan string, 2)
+	requestBodies := make(chan string, 4)
 	llmServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 		requestBody, requestReadError := io.ReadAll(request.Body)
 		if requestReadError != nil {
@@ -439,9 +436,11 @@ func TestSyncMergesOverlappingConcurrentIssueInsertionsWithoutDuplicateContent(t
 		var response string
 		switch requestNumber {
 		case 1:
-			response = "B512=1 B512=1"
+			response = mergePlanUnknownBlockForTest
 		case 2:
-			response = "B512=1"
+			response = `{"status":"resolved","decisions":[{"id":"conflict-1","action":"ours","reason":"Keep the recorded resolution evidence."}]}`
+		case 3:
+			response = mergePlanApprovedForTest
 		default:
 			http.Error(responseWriter, "overlapping insertion resolution exceeded two semantic audits", http.StatusInternalServerError)
 			return
@@ -495,13 +494,10 @@ func TestSyncMergesOverlappingConcurrentIssueInsertionsWithoutDuplicateContent(t
 		},
 	)
 	require.NoError(testInstance, runError, output)
-	require.Contains(testInstance, output, "derived .mprlab/ISSUES.md conflict region 1/1 candidate using related issue insertions; requesting semantic audit")
-	require.Contains(testInstance, output, "issue source selection attempt 1/4 rejected")
-	require.Contains(testInstance, output, "issue selection requires exactly one source key")
 	require.Contains(testInstance, output, "requesting validation-guided repair")
 	require.Contains(testInstance, output, "semantic audit approved")
 	require.NotContains(testInstance, output, "AI_MERGE_ROLLBACK")
-	require.Equal(testInstance, int64(2), requestCount.Load())
+	require.Equal(testInstance, int64(3), requestCount.Load())
 	require.Equal(testInstance, oursIssues, readTextFile(testInstance, issuesPath))
 	require.Equal(testInstance, 1, strings.Count(readTextFile(testInstance, issuesPath), "[B512]"))
 	require.Equal(
@@ -513,10 +509,9 @@ func TestSyncMergesOverlappingConcurrentIssueInsertionsWithoutDuplicateContent(t
 
 	firstRequestBody := <-requestBodies
 	secondRequestBody := <-requestBodies
-	require.Contains(testInstance, firstRequestBody, "Available source records:")
-	require.Equal(testInstance, 1, strings.Count(firstRequestBody, "[B512]"))
+	require.Contains(testInstance, secondRequestBody, "unknown merge block")
+	require.Contains(testInstance, firstRequestBody, "GIX_MERGE_INPUT")
 	require.Contains(testInstance, firstRequestBody, "Resolution 2026-08-31")
-	require.Contains(testInstance, secondRequestBody, "issue selection requires exactly one source key")
 
 	headWithParents := strings.Fields(runGit(testInstance, repositoryPath, "rev-list", "--parents", "-n", "1", "HEAD"))
 	require.Len(testInstance, headWithParents, 3)
@@ -585,9 +580,9 @@ func TestSyncRepairsRejectedSemanticAuditCorrectionsBeforeCommit(testInstance *t
 		case 1:
 			response = semanticMergeResponse(markerBearingContent)
 		case 2:
-			response = semanticMergeResponse(oursContent)
-		case 3:
 			response = semanticMergeResponse(expectedMergedContent)
+		case 3:
+			response = mergePlanApprovedForTest
 		default:
 			http.Error(responseWriter, "semantic resolution exceeded its bounded strategy ladder", http.StatusInternalServerError)
 			return
@@ -666,10 +661,7 @@ operations:
 		},
 	)
 	require.NoError(testInstance, runError, output)
-	require.Contains(testInstance, output, "derived reviewers.txt conflict region 1/1 candidate using compatible token edits; requesting semantic audit")
-	require.Contains(testInstance, output, "semantic audit attempt 1/4 rejected")
-	require.Contains(testInstance, output, "llm left conflict markers")
-	require.Contains(testInstance, output, "retrying semantic audit")
+	require.Contains(testInstance, output, "contains conflict markers")
 	require.Contains(testInstance, output, "semantic audit approved")
 	require.Contains(testInstance, output, "merge conflict resolution completed")
 	require.NotContains(testInstance, output, "AI_MERGE_ROLLBACK")
@@ -681,14 +673,11 @@ operations:
 	firstRequest := <-requestBodies
 	secondRequest := <-requestBodies
 	thirdRequest := <-requestBodies
-	require.Contains(testInstance, firstRequest, "semantic fidelity auditor")
-	require.Contains(testInstance, firstRequest, "reviewers: alice, bob\\n")
-	require.Contains(testInstance, firstRequest, "reviewers: alice, carol\\n")
-	require.Contains(testInstance, firstRequest, "LOCALLY VALIDATED CANDIDATE:\\nreviewers: alice, bob, carol\\n")
-	require.Contains(testInstance, secondRequest, "llm left conflict markers")
-	require.Contains(testInstance, secondRequest, "reviewers: alice, bob\\n")
-	require.Contains(testInstance, thirdRequest, "does not preserve THEIRS replacement intent")
-	require.Contains(testInstance, thirdRequest, "reviewers: alice, bob\\n")
+	require.Contains(testInstance, firstRequest, "reviewers: alice, bob")
+	require.Contains(testInstance, firstRequest, "reviewers: alice, carol")
+	require.Contains(testInstance, secondRequest, "contains conflict markers")
+	require.Contains(testInstance, secondRequest, "reviewers: alice, bob")
+	require.Contains(testInstance, thirdRequest, "reviewers: alice, bob")
 
 	gitLog := readTextFile(testInstance, gitLogPath)
 	require.Contains(testInstance, gitLog, "commit --no-edit")
@@ -698,10 +687,9 @@ operations:
 
 func TestSyncDerivesReplacementAndDeletionCandidatesBeforeSemanticAudit(testInstance *testing.T) {
 	const (
-		baseBranchName                 = "feature/versionless-lifecycle"
-		targetBranchName               = "gix/migrate-lifecycle-manifest-to-schema-version-5"
-		conflictedPath                 = "tests/lifecycle_contract_test.go"
-		versionlessFunctionDeclaration = "func TestOperationalRepositoryOwnsVersionlessLifecycle(testingInstance *testing.T) {\n"
+		baseBranchName   = "feature/versionless-lifecycle"
+		targetBranchName = "gix/migrate-lifecycle-manifest-to-schema-version-5"
+		conflictedPath   = "tests/lifecycle_contract_test.go"
 	)
 	fixture := newReportedLifecycleConflictFixture()
 
@@ -755,15 +743,16 @@ func TestSyncDerivesReplacementAndDeletionCandidatesBeforeSemanticAudit(testInst
 			http.Error(responseWriter, "reported lifecycle request has no conflict region", http.StatusBadRequest)
 			return
 		}
-		if !strings.Contains(requestBodyText, "semantic fidelity auditor") {
-			http.Error(responseWriter, "unexpected semantic candidate request for a derivable reported conflict region", http.StatusConflict)
+		response := `{"status":"resolved","decisions":[{"id":"conflict-1","action":"theirs","reason":"Adopt the current versionless contract."}]}`
+		input, inputErr := decodeMergePlanInputForTest(requestBody)
+		if inputErr != nil {
+			http.Error(responseWriter, inputErr.Error(), 400)
 			return
 		}
-		correction := versionlessFunctionDeclaration
-		if regionIndex == 2 {
-			correction = ""
+		if input.Phase == "review" {
+			response = mergePlanApprovedForTest
 		}
-		response := semanticMergeResponse(correction)
+
 		responseWriter.Header().Set("Content-Type", "application/json")
 		_, _ = fmt.Fprintf(responseWriter, `{"choices":[{"message":{"role":"assistant","content":%q}}]}`, response)
 	}))
@@ -810,24 +799,20 @@ func TestSyncDerivesReplacementAndDeletionCandidatesBeforeSemanticAudit(testInst
 		},
 	)
 	require.NoError(testInstance, runError, output)
-	require.NotContains(testInstance, output, "semantic candidate attempt")
 	require.Contains(testInstance, output, "semantic audit approved")
-	require.NotContains(testInstance, output, "does not preserve OURS replacement intent")
 	require.NotContains(testInstance, output, "AI_MERGE_ROLLBACK")
 	require.Equal(testInstance, 2, strings.Count(output, "semantic audit approved"))
-	require.Equal(testInstance, int64(2), requestCount.Load())
+	require.Equal(testInstance, int64(4), requestCount.Load())
 	require.Equal(testInstance, fixture.Theirs, readTextFile(testInstance, conflictedFilePath))
 	require.Empty(testInstance, strings.TrimSpace(runGit(testInstance, repositoryPath, "status", "--porcelain")))
 
 	replacementAuditRequest := <-requestBodies
+	<-requestBodies
 	deletionAuditRequest := <-requestBodies
 	require.Contains(testInstance, replacementAuditRequest, "SchemaV5")
 	require.Contains(testInstance, replacementAuditRequest, "Versionless")
-	require.Contains(testInstance, replacementAuditRequest, "semantic fidelity auditor")
 	require.Contains(testInstance, deletionAuditRequest, "schemaVersion != 5")
 	require.Contains(testInstance, deletionAuditRequest, "Conflict region: 2 of 2")
-	require.Contains(testInstance, deletionAuditRequest, "semantic fidelity auditor")
-	require.Contains(testInstance, deletionAuditRequest, "LOCALLY VALIDATED CANDIDATE:\\n")
 
 	headWithParents := strings.Fields(runGit(testInstance, repositoryPath, "rev-list", "--parents", "-n", "1", "HEAD"))
 	require.Len(testInstance, headWithParents, 3)
@@ -878,13 +863,6 @@ operations:
 	return configurationPath
 }
 
-func semanticMergeResponse(content string) string {
-	return mergeResolutionContentBeginForTest + "\n" +
-		content +
-		"\nGIX_MERGE_RESOLUTION_CONTENT_END"
-}
-
 const (
-	mergeResolutionContentBeginForTest         = "GIX_MERGE_RESOLUTION_CONTENT_BEGIN"
 	mergeConflictResolutionAttemptCountForTest = 4
 )

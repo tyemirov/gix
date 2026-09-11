@@ -151,7 +151,7 @@ operations:
 	)
 	require.Error(testInstance, runError)
 	require.Contains(testInstance, output, "AI_MERGE_ROLLBACK")
-	require.Contains(testInstance, output, "does not preserve OURS replacement intent")
+	require.Contains(testInstance, output, "semantic review requires approved, rejected, needs_context, or unresolved")
 	require.Contains(testInstance, output, "all semantic attempts exhausted")
 	require.Contains(testInstance, output, "failed merge was aborted")
 	require.Contains(testInstance, output, "SYNC_SWITCH_ROLLBACK")

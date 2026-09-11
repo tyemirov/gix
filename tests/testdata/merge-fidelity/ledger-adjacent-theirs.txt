@@ -1,0 +1,58 @@
+- [ ] [I027] (P1) Standardize HTTP health at `/healthz`.
+  Goal:
+  Make `/healthz` the canonical health endpoint for the Ledger web and API
+  origin. Use the endpoint for readiness without application requests.
+
+  Requirements:
+  - Keep unauthenticated `GET /healthz` on the combined web and API origin.
+  - Return `200` only when the origin can serve its current application contract.
+  - Return a non-success status when a required runtime dependency prevents service.
+  - Send `Cache-Control: no-store` on every health response.
+  - Keep the response free from credentials and internal state.
+  - Do not mutate application state during a probe.
+  - Do not record a probe as application usage or an audit event.
+  - Do not emit routine information-level request events for successful probes.
+  - Keep failed probe evidence in container and deployment diagnostics.
+  - Use `/healthz` for local Compose, runtime capability, and public health checks.
+  - Set `start_interval: 1s` and `interval: 30s` for Docker probes.
+  - Set a bounded `start_period` for the HTTP startup contract.
+  - Preserve protocol-native readiness for the gRPC service.
+  - Keep the selected manifest contract unchanged.
+
+  Deliverables:
+  - Update the endpoint, request logging, orchestration, manifest, documentation, and black-box tests.
+
+  Validation:
+  - Verify unauthenticated `GET /healthz` returns `200` and `Cache-Control: no-store`.
+  - Verify a required dependency failure returns a non-success status.
+  - Verify the gRPC readiness contract remains protocol-native.
+  - Verify Docker probes use the required startup and steady intervals.
+  - Verify successful probes create no routine request events.
+  - Verify failed probes retain diagnostic evidence.
+  - Run `make ci`.
+
+- [ ] [I026] (P1) {I025,F001,F002,F003} Deploy and accept the UserAccount runtime.
+  Goal:
+  I026 deploys the completed UserAccount runtime after the one-time production migration.
+  It does not own application configuration or data migration.
+  Requirements:
+  - Start production deployment only after I025 is resolved.
+  - Use the exact hosted profile and manifest that F002 defines.
+  - Use the canonical Ledger release, publication, and deployment lifecycle.
+  - Keep source CI, release, publication, deployment, runtime, and public acceptance results separate.
+  Deliverables:
+  - Deploy the exact published Ledger image and selected configuration.
+  - Activate each migrated application through an official F003 client with its canonical tenant ID and tenant credential.
+  - Record production deployment and client verification without private values.
+  Validation:
+  - Verify the frontend and `/config-ui.yaml` at `https://ledger.mprlab.com` after deployment.
+  - Verify `https://ledger-api.mprlab.com/healthz` after deployment.
+  - Verify browser authentication through the Ledger TAuth tenant and selected Google web client.
+  - Verify credentialed frontend requests can use the protected API.
+  - Verify the session and refresh cookies use the selected names, domain boundary, `Secure`, `HttpOnly`, and `SameSite` behavior.
+  - Verify the backend authorization boundary and authenticated workspace.
+  - Verify the UserAccount lists each approved migrated Ledger tenant.
+  - Request a balance through each updated production application and its official F003 client.
+  - Verify each old static credential and legacy tenant ID is rejected.
+
+- [ ] [I025] (P1) {F001,F002,F003} Complete the one-time production UserAccount migration.

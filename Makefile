@@ -66,3 +66,8 @@ ci: check-format lint test-fast test-slow
 .PHONY: test-docs-browser
 test-docs-browser:
 	go test $(GO_TEST_FLAGS) ./cmd/cli -run '^TestDocumentationSharedUI' -count=1
+
+.PHONY: test-merge-eval
+test-merge-eval:
+	@test -n "$(GIX_MERGE_EVAL_CONFIG)" || (echo "Set GIX_MERGE_EVAL_CONFIG to a provider configuration file."; exit 1)
+	go test -v ./tests -run '^TestSyncResolutionPlanProviderEvaluation$$' -count=1 -timeout=60m

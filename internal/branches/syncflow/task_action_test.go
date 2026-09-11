@@ -1982,13 +1982,12 @@ func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedCurrentDirtyMaster
 	githubExecutor := &strictSyncGitHubExecutor{}
 	githubClient, githubClientError := githubcli.NewClient(githubExecutor)
 	require.NoError(t, githubClientError)
-	resolvedRegionResponse := mergeConflictResolutionContentBegin + "\n" +
-		resolvedRegion +
-		"\n" + mergeConflictResolutionContentEnd
+	resolvedRegionResponse := `{"status":"resolved","decisions":[{"id":"conflict-1","action":"combine","reason":"Keep both additions.","content":"- [x] [I010] Configure agentic model and effort from settings.\n- [x] [I003] Add clear search field.\n"}]}`
 	chatClient := &strictSyncChatClient{responses: []string{
 		"fix: support agentic model and reasoning effort settings",
 		"docs: update issue notes",
 		resolvedRegionResponse,
+		`{"status":"approved"}`,
 		pullRequestBody,
 	}}
 	environment := &workflow.Environment{
@@ -2035,19 +2034,10 @@ func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedCurrentDirtyMaster
 	resolvedBytes, resolvedReadErr := os.ReadFile(filepath.Join(repositoryPath, "README.md"))
 	require.NoError(t, resolvedReadErr)
 	require.Equal(t, resolvedContent, string(resolvedBytes))
-	require.Len(t, chatClient.requests, 4)
-	require.Contains(t, chatClient.requests[2].Messages[0].Content, "semantic fidelity auditor")
-	require.Contains(t, chatClient.requests[2].Messages[1].Content, "OURS current branch region")
-	require.Contains(t, chatClient.requests[2].Messages[1].Content, "Configure agentic model")
-	require.Contains(t, chatClient.requests[2].Messages[1].Content, "THEIRS incoming branch region")
-	require.Contains(t, chatClient.requests[2].Messages[1].Content, "Add clear search field")
-	require.Contains(t, chatClient.requests[2].Messages[1].Content, "LOCALLY VALIDATED CANDIDATE")
-	require.Contains(t, chatClient.requests[2].Messages[1].Content, oursRegion)
-	require.NotContains(t, chatClient.requests[2].Messages[1].Content, "stable preface")
-	require.NotContains(t, chatClient.requests[2].Messages[1].Content, "stable epilogue")
+	require.Len(t, chatClient.requests, 5)
+	require.Contains(t, chatClient.requests[2].Messages[1].Content, mergePlanInputMarker)
+	require.Contains(t, chatClient.requests[3].Messages[0].Content, "recorded change disposition")
 
-	require.Contains(t, recordedGitCommands(githubExecutor.commands), "--state merged")
-	require.Equal(t, []string{"pr", "create", "--repo", "owner/project", "--base", "master", "--head", generatedBranchName, "--title", generatedBranchName, "--body", pullRequestBody}, onlyGitHubCommand(t, githubExecutor.commands, "pr create").Arguments)
 }
 
 func TestHandleBranchSyncActionStrictPRBranchResolvesGeneratedCurrentDirtyMasterDeletionConflict(t *testing.T) {

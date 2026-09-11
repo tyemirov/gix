@@ -11,6 +11,63 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B111] (P1) Preserve significant whitespace during conflict decisions.
+  Evidence:
+  The validator accepted Python calls moved outside a condition through indentation changes.
+  Requirements:
+  - Preserve source whitespace during exact construction.
+  - Require semantic review for combined content.
+  - Verify the condition remains effective in the accepted corpus result.
+  Resolution:
+  Exact source selections preserve whitespace. Every two-sided candidate receives an audit of its original context.
+  The Python corpus result keeps both calls inside the condition.
+
+
+- [x] [B112] (P1) Keep each semantic source alternative available.
+  Evidence:
+  The validator excluded `Allow uploads.` when the other source said `Allow uploads only for admins.`
+  Requirements:
+  - Use explicit semantic decisions between alternatives.
+  - Keep word counts outside the acceptance rules.
+  Resolution:
+  Both source alternatives remain available. The corpus selects the shorter policy after a separate audit.
+
+
+- [x] [B113] (P1) Combine compatible requirements in one issue.
+  Evidence:
+  One source required encrypted exports. The other source required signed exports.
+  The source-selection contract rejected the result that contained both requirements.
+  Requirements:
+  - Allow a reviewed combination of both requirements.
+  - Keep independent issue records and their identifiers.
+  Resolution:
+  A combined issue retains encryption and signature requirements. Independent records remain fixed.
+
+
+- [x] [B110] (P1) Keep issue records beside a changed base record.
+  Evidence:
+  Ledger `gix sync master --stash` rejected the I027 conflict after four semantic attempts on 2026-09-11.
+  The conflict included new I027 records, independent I026, and a change to the I025 dependencies.
+  Gix used token edits because the conflict had a base record.
+  The required result contains one current I027, I026, and the changed I025 record.
+  Requirements:
+  - Use source selection for related new issues before adjacent base records.
+  - Keep base records in their original sequence.
+  - If only one side changes a base record, keep that change.
+  - If both sides have the same result, keep one copy.
+  - Use the existing merge rules for base record deletions and incompatible edits.
+  - Keep independent issues and the text outside each conflict.
+  Validation:
+  The CLI regression first failed because Gix used token edits instead of issue source selection.
+  Initial `make ci` passed.
+  Five new CLI cases passed with the original Ledger conflict text.
+  The cases cover both branch directions, `--stash`, an invalid selection, and restoration after four rejected selections.
+  The complete conflict-fidelity suite and 11 focused issue-analysis cases passed.
+  `make build` passed. The corrected executable is `bin/gix`.
+  Final `make ci` passed. The complete integration suite required 532.714 seconds.
+  The new prose passed the language check. `git diff --check` passed.
+  The Governor check reports differences in four unchanged guidance files.
+
 - [x] [B109] (P1) Configure the Git author for the Pages archive test.
   Goal:
   Run the Pages archive test without a host Git identity.
@@ -2377,6 +2434,36 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 
 ## Improvements
+
+- [x] [I021] (P1) {B111,B112,B113} Resolve conflicts through explicit change decisions.
+  Goal:
+  Give source preservation, semantic decisions, and file validation separate acceptance rules.
+  Requirements:
+  - Derive exact changes from each side and the common base.
+  - Keep independent changes through local construction.
+  - Record a disposition for each source change.
+  - Require explicit decisions for overlapping changes.
+  - Review combined content with the original source context.
+  - Support a request for complete file context and an unresolved result.
+  - Stop repeated candidates and provider failures with their distinct causes.
+  - Validate the complete file before commit or stash completion.
+  - Preserve transaction ownership, rollback, and publication boundaries.
+  - Replace obsolete token-proof and source-selection paths.
+  Validation:
+  - Use real CLI entry points and a fixed conflict corpus.
+  - Verify both accepted results and rejected content loss.
+  - Keep real-provider evaluation separate from deterministic protocol coverage.
+  - Run `make ci`.
+  Resolution:
+  Added exact line and record construction, explicit decisions, separate audits, context expansion, and complete-file syntax checks.
+  Preserved identifier allocation, stash restoration, rollback, and publication behavior.
+  `AI_MERGE_VALIDATION` records each accepted change identifier, disposition, and reason.
+  `AI_MERGE_RESOLUTION` reports context expansion and the active decision or audit phase.
+  Unresolved intent, unavailable context, repeated candidates, and provider failure have distinct causes.
+  The fixed corpus and transaction tests passed. Final `make ci` passed on 2026-09-11, with the CLI suite at 447.091 seconds.
+  `make build` passed. Live model evaluation has a separate target and was not run.
+  Changed prose passed mechanical checks and received a scoped language review. The Governor check retained four pre-existing managed-file differences.
+
 
 - [x] [I020] (P1) Delegate the release lifecycle to Gateway.
   Goal:

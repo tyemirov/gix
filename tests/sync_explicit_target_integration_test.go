@@ -342,7 +342,15 @@ func TestSyncExplicitTargetConflicts(t *testing.T) {
 				response := "fix: preserve pending work"
 				if strings.Contains(string(body), "Conflict region:") {
 					conflictCalls.Add(1)
-					response = "GIX_MERGE_REVIEW_APPROVED"
+					input, inputErr := decodeMergePlanInputForTest(body)
+					if inputErr != nil {
+						http.Error(writer, inputErr.Error(), 400)
+						return
+					}
+					response = mergePlanApprovedForTest
+					if input.Phase == "resolve" {
+						response = semanticMergeResponse(scenario.expected)
+					}
 				}
 				writer.Header().Set("Content-Type", "application/json")
 				_, _ = fmt.Fprintf(writer, `{"choices":[{"message":{"role":"assistant","content":%q}}]}`, response)

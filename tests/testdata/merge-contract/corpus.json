@@ -1,0 +1,159 @@
+[
+  {
+    "name": "shorter_policy",
+    "path": "policy.txt",
+    "base": "Policy: uploads are available to all authenticated users.\nafter\n",
+    "ours": "Policy: uploads are available to all authenticated users.\nAllow uploads.\nafter\n",
+    "theirs": "Policy: uploads are available to all authenticated users.\nAllow uploads only for admins.\nafter\n",
+    "expected": "Policy: uploads are available to all authenticated users.\nAllow uploads.\nafter\n",
+    "action": "ours",
+    "evaluate": true
+  },
+  {
+    "name": "combined_issue_requirements",
+    "path": ".mprlab/ISSUES.md",
+    "base": "# ISSUES\n\n## Improvements\n\n- [ ] [I001] Existing issue.\n",
+    "ours": "# ISSUES\n\n## Improvements\n\n- [ ] [I002] Protect exports.\n  - Encrypt exports.\n\n- [ ] [I001] Existing issue.\n",
+    "theirs": "# ISSUES\n\n## Improvements\n\n- [ ] [I002] Protect exports.\n  - Sign exports.\n\n- [ ] [I001] Existing issue.\n",
+    "expected": "# ISSUES\n\n## Improvements\n\n- [ ] [I002] Protect exports.\n  - Encrypt exports.\n  - Sign exports.\n\n- [ ] [I001] Existing issue.\n",
+    "action": "combine",
+    "combined": "- [ ] [I002] Protect exports.\n  - Encrypt exports.\n  - Sign exports.\n\n",
+    "evaluate": true
+  },
+  {
+    "name": "python_condition",
+    "path": "example.py",
+    "base": "if enabled:\n    process()\n",
+    "ours": "if enabled:\n    process()\n    audit()\n",
+    "theirs": "if enabled:\n    process()\n    notify()\n",
+    "expected": "if enabled:\n    process()\n    audit()\n    notify()\n",
+    "action": "combine",
+    "combined": "    audit()\n    notify()\n",
+    "rejected_combination": "audit()\nnotify()\n",
+    "evaluate": true
+  },
+  {
+    "name": "independent_change",
+    "path": "settings.txt",
+    "base": "mode = 1\nlimit = 5\n",
+    "ours": "mode = 2\nlimit = 5\n",
+    "theirs": "mode = 3\nlimit = 7\n",
+    "expected": "mode = 2\nlimit = 7\n",
+    "action": "ours",
+    "evaluate": true
+  },
+  {
+    "name": "invalid_config.json",
+    "path": "config.json",
+    "base": "{\"x\":1}\n",
+    "ours": "{\"x\":2}\n",
+    "theirs": "{\"x\":3}\n",
+    "action": "combine",
+    "combined": "{\"x\":}\n",
+    "failure": "validate assembled merge file"
+  },
+  {
+    "name": "invalid_file.go",
+    "path": "file.go",
+    "base": "package main\nfunc f() {}\n",
+    "ours": "package main\nfunc f() { a() }\n",
+    "theirs": "package main\nfunc f() { b() }\n",
+    "action": "combine",
+    "combined": "func f() {\n",
+    "failure": "validate assembled merge file"
+  },
+  {
+    "name": "invalid_config.yml",
+    "path": "config.yml",
+    "base": "x: 1\n",
+    "ours": "x: 2\n",
+    "theirs": "x: 3\n",
+    "action": "combine",
+    "combined": "x: [\n",
+    "failure": "validate assembled merge file"
+  },
+  {
+    "name": "explicit_uncertainty",
+    "path": "policy.txt",
+    "base": "base\n",
+    "ours": "ours\n",
+    "theirs": "theirs\n",
+    "responses": [
+      "{\"status\":\"unresolved\",\"reason\":\"The two approvals conflict.\"}"
+    ],
+    "failure": "unresolved merge decision"
+  },
+  {
+    "name": "unavailable_context",
+    "path": "policy.txt",
+    "base": "base\n",
+    "ours": "ours\n",
+    "theirs": "theirs\n",
+    "responses": [
+      "{\"status\":\"needs_context\",\"reason\":\"Need an external product decision.\"}"
+    ],
+    "failure": "requires unavailable context"
+  },
+  {
+    "name": "unreviewed_proposal",
+    "path": "policy.txt",
+    "base": "base\n",
+    "ours": "ours\n",
+    "theirs": "theirs\n",
+    "responses": [
+      "{}",
+      "{}",
+      "{}",
+      "{\"status\": \"resolved\", \"decisions\": [{\"id\": \"conflict-1\", \"action\": \"ours\", \"reason\": \"Choose source\"}]}"
+    ],
+    "failure": "still requires semantic review"
+  },
+  {
+    "name": "duplicate_keys",
+    "path": "policy.txt",
+    "base": "base\n",
+    "ours": "ours\n",
+    "theirs": "theirs\n",
+    "action": "ours",
+    "expected": "ours\n",
+    "responses": [
+      "{\"status\":\"approved\",\"status\":\"resolved\"}"
+    ],
+    "rejection": "duplicate JSON key"
+  },
+  {
+    "name": "out_of_scope",
+    "path": "policy.txt",
+    "base": "base\n",
+    "ours": "ours\n",
+    "theirs": "theirs\n",
+    "action": "ours",
+    "expected": "ours\n",
+    "responses": [
+      "{\"status\":\"resolved\",\"decisions\":[{\"id\":\"outside\",\"action\":\"ours\",\"reason\":\"scope\"}]}"
+    ],
+    "rejection": "unknown merge block"
+  },
+  {
+    "name": "source_rewrite",
+    "path": "policy.txt",
+    "base": "base\n",
+    "ours": "ours\n",
+    "theirs": "theirs\n",
+    "action": "ours",
+    "expected": "ours\n",
+    "responses": [
+      "{\"status\":\"resolved\",\"decisions\":[{\"id\":\"conflict-1\",\"action\":\"ours\",\"content\":\"invented\",\"reason\":\"scope\"}]}"
+    ],
+    "rejection": "cannot rewrite source bytes"
+  },
+  {
+    "name": "yaml_complex_key",
+    "path": "settings.yml",
+    "base": "? [red, green]\n: enabled\nvalue: base\n",
+    "ours": "? [red, green]\n: enabled\nvalue: local\n",
+    "theirs": "? [red, green]\n: enabled\nvalue: incoming\n",
+    "expected": "? [red, green]\n: enabled\nvalue: local\n",
+    "action": "ours"
+  }
+]
