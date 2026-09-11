@@ -156,15 +156,15 @@ func prepareStrictSyncStashIndex(ctx context.Context, executor shared.GitExecuto
 			return nil, fmt.Errorf("inspect intent-to-add file %q: %w", intentPath, inspectErr)
 		}
 	}
-	_, resetErr := executor.ExecuteGit(ctx, execshell.CommandDetails{
-		Arguments: append([]string{gitResetSubcommandConstant, gitPathspecSeparatorConstant}, intentPaths...), WorkingDirectory: repositoryPath,
+	_, addErr := executor.ExecuteGit(ctx, execshell.CommandDetails{
+		Arguments: append([]string{gitAddSubcommandConstant, gitAddForceFlagConstant, gitPathspecSeparatorConstant}, intentPaths...), WorkingDirectory: repositoryPath,
 		EnvironmentVariables: map[string]string{
 			gitIndexFileEnvironmentNameConstant: indexLock.lockPath,
 			gitLiteralPathspecsEnvironmentName:  "1",
 		},
 	})
-	if resetErr != nil {
-		return nil, resetErr
+	if addErr != nil {
+		return nil, addErr
 	}
 	return indexLock, nil
 }
@@ -184,6 +184,13 @@ func applyStrictSyncStash(ctx context.Context, executor shared.GitExecutor, stas
 func restoreStrictSyncIntentToAdd(ctx context.Context, executor shared.GitExecutor, stash strictSyncStash) error {
 	if len(stash.IntentPaths) == 0 {
 		return nil
+	}
+	if resetErr := executeGitDetails(ctx, executor, execshell.CommandDetails{
+		Arguments:            append([]string{gitResetSubcommandConstant, gitPathspecSeparatorConstant}, stash.IntentPaths...),
+		WorkingDirectory:     stash.Path,
+		EnvironmentVariables: map[string]string{gitLiteralPathspecsEnvironmentName: "1"},
+	}); resetErr != nil {
+		return fmt.Errorf(strictSyncStashIntentFailureTemplate, stash.Path, resetErr)
 	}
 	if addErr := executeGitDetails(ctx, executor, execshell.CommandDetails{
 		Arguments:            append([]string{gitAddSubcommandConstant, gitAddIntentFlagConstant, gitAddForceFlagConstant, gitPathspecSeparatorConstant}, stash.IntentPaths...),
