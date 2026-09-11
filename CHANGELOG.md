@@ -36,6 +36,7 @@
 - Updated the LLM Proxy Go client from v0.2.21 to v0.2.46, moved Gix's configured proxy work budget to the current per-request timeout header, and raised the Go module floor to 1.25.12 with the dependency graph required by that client.
 
 ### Bug Fixes 🐛
+- Kept files added with `git add -N` during sync. Restored their entries after `--stash` and local failures.
 - Removed repositories in ignored repositories from audit and workflow discovery results.
 - Merged empty-base insertions when one word sequence contains the other. Required an exact complete source alternative.
 - Added the current gix LoopAware pixel to the published Pages artifact. Added a repository test for the exact site identity.
