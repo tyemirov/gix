@@ -175,6 +175,17 @@
 - Clarified that missing explicit sync targets start at the current branch's `HEAD` and merge the remote review base afterward.
 - Documented fidelity-first conflict resolution and the repository-owned release workflow prerequisites.
 
+## [v1.10.4] - 2026-09-11
+
+- Merge pull request #453 from tyemirov/tyemirov/bugfix/B108-sync-intent-to-add
+- test: expand sync intent-to-add coverage for ignored files
+- fix(syncflow): preserve intent-to-add files in strict sync stash
+- docs: update ISSUES.md with intent-to-add sync correction
+- test: add sync intent-to-add integration test
+- fix(syncflow): preserve intent-to-add entries in strict sync stash
+- fix(sync): preserve intent-to-add files across stash and local failures
+- fix(sync): preserve intent-to-add files during stash sync
+
 ## [v1.10.3] - 2026-09-09
 
 - Merge pull request #452 from tyemirov/tyemirov/I018-mpr-ui-migration
