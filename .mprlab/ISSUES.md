@@ -2365,6 +2365,40 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## Improvements
 
+- [x] [I020] (P1) Delegate the release lifecycle to Gateway.
+  Goal:
+  Use the shared lifecycle for release, publication, and Pages deployment.
+  Requirements:
+  - Declare SemVer with fixed major `1`, five Go platforms, and the Pages site.
+  - Keep version selection in the Gix CLI.
+  - Remove the local lifecycle scripts and their separate receipt contract.
+  - Preserve the release version in each binary and the Windows executable suffix.
+  - Verify delegation, archive contents, and the shared artifact builder.
+  Validation:
+  The delegation test failed through the local scripts before this change.
+  Delegation and Pages archive tests passed. Gateway accepted the actual manifest and built all five archives.
+  The macOS ARM64 binary reported the injected release version.
+  `make ci` passed on 2026-09-11. Gateway format, lint, and full tests also passed against its current checkout.
+  The changed prose passed the scoped language check. `git diff --check` passed.
+  Governor reported four unchanged guidance files and no manifest warnings.
+  Gateway B556 must land before this manifest is used for release.
+  Production deployment remains an operator action.
+
+- [x] [I019] (P2) Show integration test progress.
+  Goal:
+  Show each test name and result while the integration suite runs.
+  Requirements:
+  Use `make ci` without extra arguments.
+  Changes:
+  The `test-slow` and `test-sync` targets use `go test -v`.
+  `make ci`, `make test`, and `make test-integration` use the updated `test-slow` target.
+  Validation:
+  An existing CLI test showed only the package result before this change.
+  The same CLI test showed its name, result, and duration after the change.
+  Plain `make ci` passed. The integration suite completed in 529.149 seconds with live test output.
+  Baseline CI and `git diff --check` passed.
+  The new prose has no mechanical language findings.
+
 - [!] [I018] (P1) Adopt the current shared documentation footer
   Goal: The Gix documentation page uses the current mpr-ui menu contract.
   Requirements:
