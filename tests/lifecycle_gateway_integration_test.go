@@ -58,6 +58,8 @@ app-release app-publish app-deploy:
 func TestLifecyclePagesSourceArchive(t *testing.T) {
 	repositoryRoot := releaseRepositoryRoot(t)
 	fixture := createGitRepository(t, gitRepositoryOptions{InitialBranch: "master"})
+	runGit(t, fixture, "config", "user.useConfigOnly", "true")
+	configureGitIdentity(t, fixture)
 	source := filepath.Join(repositoryRoot, "docs")
 	require.NoError(t, filepath.WalkDir(source, func(path string, entry os.DirEntry, walkError error) error {
 		if walkError != nil {

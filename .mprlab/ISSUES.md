@@ -11,6 +11,19 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B109] (P1) Configure the Git author for the Pages archive test.
+  Goal:
+  Run the Pages archive test without a host Git identity.
+  Requirements:
+  Configure the author in the test repository before the commit.
+  Set `user.useConfigOnly` to require an explicit Git identity.
+  Validation:
+  PR #454 failed because the test commit had no author identity.
+  The focused test reproduced this failure with automatic identity detection disabled.
+  After the change, both lifecycle tests passed with the same restriction.
+  `make ci` passed on 2026-09-11. The integration suite completed in 420.254 seconds.
+  The changed prose passed the language check. `git diff --check` passed.
+
 - [x] [B108] (P1) Keep files added with `git add -N` during sync.
   Evidence:
   The new files in Ledger had `git add -N` entries.
