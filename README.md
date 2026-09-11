@@ -29,29 +29,27 @@ make publish
 make deploy
 ```
 
-These three targets accept no release flags, arguments, or lifecycle overrides. The repository release helper supplies its release policy when it calls `gix release next`. The command validates that invocation policy and selects the next version without reading MPR Lab repository files.
+These three targets delegate to the physical sibling `../mprlab-gateway`. The [resource manifest](.mprlab/deploy/resources.yml) declares the release policy, five Go platforms, and the Pages site. Gateway calls `gix release next` with the declared policy. The CLI validates that policy and selects the next version without reading MPR Lab repository files.
 
 For an established SemVer sequence, the command uses an LLM to examine all committed changes after the latest SemVer tag. The evidence includes commit messages, the diff summary, range-scoped changelog changes, and a bounded diff excerpt. The model classifies each packet by its effect on a supported public contract. A second model call audits each candidate against the same evidence. Standard SemVer maps incompatible, additive, and compatible effects to `major`, `minor`, and `patch`. Commit labels and implementation changes cannot set a higher release level by themselves.
 
-Invalid or unavailable model output stops the release before version selection. A SemVer repository without tags starts at `v1.0.0`. A CalVer repository uses the canonical UTC release timestamp. At an exact release tag, `make release` is the idempotent retry command.
+Invalid or unavailable model output stops the release before version selection. A SemVer repository without tags starts at `v1.0.0`. A CalVer repository uses the canonical UTC release timestamp.
 
 An artifact producer can supply different previous and candidate release output identities for the same tagged source commit. Gix binds both SHA-256 identities into deterministic evidence and selects the next patch version without an LLM request. An ordinary SemVer decision with an empty commit range remains invalid.
 
-The Gix release helper invokes `gix release next semver --fixed-major 1`. Under this policy, incompatible and additive Gix public contract changes select a minor release. Compatible fixes and internal changes select a patch release. Version selection uses only `v1` tags. Other callers can select standard SemVer or CalVer explicitly.
+The manifest selects SemVer with fixed major `1`. Under this policy, incompatible and additive public changes select a minor release. Compatible changes select a patch release. Other callers can select standard SemVer or CalVer.
 
-`make release` runs the complete `make ci` gate directly. The CI test commands keep their own time limits. Release preparation adds no separate CI deadline. On failure, it reports the CI duration and exit status before it stops.
+Gateway owns CI, artifact preparation, release receipts, publication, Pages activation, network retries, and verification. Both repositories must use their published default branch before the production lifecycle starts. The commands consume committed source.
 
-After CI passes, the command prepares the binaries, checksums, Pages archive, release metadata commit, one annotated tag, and release manifest. The local `.git/mprlab-release` directory contains the sealed receipt. New release preparation does not write to a remote repository.
+`make release` runs the Gix `make ci` gate and seals the declared artifacts. Gateway stores receipts under the application Git directory in `mprlab-lifecycle`. A retry reuses the receipt for the same application commit.
 
-At an exact release tag, the command verifies and reuses the complete local receipt without another CI run. If the receipt is incomplete, the command reconstructs it from the matching GitHub Release. Reconstruction verifies the manifest, notes, hashes, annotated tag, source parent, and exact release metadata files.
+`make publish` publishes the sealed artifacts and records their immutable identities. `make deploy` consumes that publication receipt and verifies the declared Pages site. The commands use the sibling Gateway implementation and its prerequisites.
 
-New release preparation uses a separate candidate receipt. A preparation failure preserves the prior receipt and rolls back the transaction-owned commit and tags. `make publish` pushes the exact prepared Git refs and GitHub Release assets through canonical `origin`. `make deploy` activates the published Pages archive only when the downloaded manifest matches the prepared release. The CLI has no runtime rollout.
+The Go resource produces `gix-<os>-<arch>.tar.gz` for Linux and macOS on AMD64 and ARM64, plus Windows on AMD64. Each archive contains `gix`, or `gix.exe` for Windows. Gateway embeds the selected release version through the declared `build.version_symbol`.
 
-The release manifest records two revisions and one version. `source_commit` identifies the source that builds the Pages archive. `release_commit` identifies the release metadata commit and its tag. The decision, tag, manifest, binary, and GitHub Release use the same version. Pages deployment verifies the public archive marker against `source_commit` and the published tag against `release_commit`.
+The Pages resource uses the committed `docs` directory at `https://gix.mprlab.com/`. The directory attributes exclude test code and internal plans from its archive. Gateway generates `CNAME`, `.nojekyll`, and `/.mprlab-release.json`. The marker contains `schema_version`, `source_commit`, and `version`.
 
-Pages remains configured through GitHub's legacy branch publishing contract at `gh-pages:/`; the repository does not own a Pages Actions workflow. Deployment reconciles that configuration only when it is missing or different, then follows the GitHub Pages build for the exact deployed branch commit. A changed branch or configuration is the build trigger. An unchanged retry reuses a built, queued, or building record and requests one rebuild only when the matching build is absent or terminally errored. Public marker verification begins after that build succeeds, and failures report the Pages build status, error, commit, and URL.
-
-These maintainer targets use the repository-owned helpers under `scripts/release`. They require Bash 4+, Python 3.10+, GNU `timeout`, `rsync`, `tar`, `shasum`, `curl`, and an authenticated GitHub CLI in addition to the normal Go and Git prerequisites.
+Gateway owns the `gh-pages` branch activation, provider status checks, and public marker verification. A successful local test proves the implementation contract. Production verification requires completion of the operator lifecycle command.
 
 ## The sync flow
 

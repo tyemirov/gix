@@ -19,6 +19,8 @@
 - Added explicit GHCR retention to `gix packages delete --keep <count>`, preserving the newest requested versions and deleting every older tagged or untagged version.
 
 ### Improvements ⚙️
+- Delegated release, publication, and Pages deployment to Gateway through the declared resources. Removed the local lifecycle scripts.
+- Showed test names, results, and durations during integration tests and CI.
 - Made release policy an explicit `gix release next` input. Removed the `.mprlab` dependency and recorded the applied policy in decision contract v2.
 - Added a fixed `v1` major policy for Gix only. Gix public contract changes select a minor release, compatible changes select a patch release, and other repositories retain standard SemVer or their declared CalVer policy.
 - Made `make release`, `make publish`, and `make deploy` self-contained zero-input lifecycle boundaries. Established SemVer lines use an LLM decision node over the complete committed range. Supported public contract effects determine the release level, and invalid or unavailable decisions fail closed.
