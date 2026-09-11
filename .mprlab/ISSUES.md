@@ -11,6 +11,29 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B108] (P1) Keep files added with `git add -N` during sync.
+  Evidence:
+  The new files in Ledger had `git add -N` entries.
+  `gix sync master --stash` failed during its first `git stash`.
+  Requirements:
+  Keep file contents, staged changes, and existing stashes.
+  Restore the `git add -N` entries after `--stash` and after a local failure.
+  Changes:
+  Gix records the new paths separately and uses a private `index` for `git stash`.
+  Gix restores the entries after it restores the stash.
+  Validation:
+  The CLI regression first failed with the reported Git error.
+  Seven CLI cases passed after the correction.
+  These cases cover file publication, stash restoration, and failures during snapshot creation, stash creation, and branch selection.
+  A missing file causes an error before stash creation. The original state stays intact.
+  Ignored files stay intact when a later commit fails.
+  The cases include empty files, literal paths, staged changes, unstaged changes, and untracked files.
+  Initial `make ci` reported `context canceled` in an existing browser test.
+  Final `make ci` passed. The complete integration suite required 576.160 seconds.
+  `make build` and `git diff --check` passed.
+  The new prose has no mechanical language findings.
+  The Governor check reports differences in four unchanged guidance files.
+
 - [x] [B107] (P2) Follow merged PR chains after unchanged merge commits.
   Evidence:
   Gix stopped at the merged B068 branch in `mpr-ui` instead of the final branch in the PR chain.
