@@ -11,6 +11,42 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B108] (P1) Keep files added with `git add -N` during sync.
+  Evidence:
+  The new files in Ledger had `git add -N` entries.
+  `gix sync master --stash` failed during its first `git stash`.
+  Requirements:
+  Keep file contents, staged changes, and existing stashes.
+  Restore the `git add -N` entries after `--stash` and after a local failure.
+  Changes:
+  Gix records the new paths separately and uses a private `index` for `git stash`.
+  Gix restores the entries after it restores the stash.
+  Validation:
+  The CLI regression first failed with the reported Git error.
+  Seven CLI cases passed after the correction.
+  These cases cover file publication, stash restoration, and failures during snapshot creation, stash creation, and branch selection.
+  A missing file causes an error before stash creation. The original state stays intact.
+  Ignored files stay intact when a later commit fails.
+  The cases include empty files, literal paths, staged changes, unstaged changes, and untracked files.
+  Initial `make ci` reported `context canceled` in an existing browser test.
+  Final `make ci` passed. The complete integration suite required 576.160 seconds.
+  `make build` and `git diff --check` passed.
+  The new prose has no mechanical language findings.
+  The Governor check reports differences in four unchanged guidance files.
+  Review correction:
+  Five additional CLI cases first failed because sync deleted ignored file contents or removed an existing user stash.
+  Gix now adds intent-to-add files to the private index before stash creation.
+  The snapshot contains the ignored file contents, including empty files.
+  After stash application, Gix resets only those index entries and adds them with `git add -N -f`.
+  All 13 intent-to-add CLI cases passed after the correction.
+  The cases verify file contents, index entries, existing stashes, and unrelated ignored files.
+  The cases include failure during the second stash push and an ignored file as the only change.
+  Initial and final `make ci` runs reached the integration package limit of ten minutes without an assertion failure.
+  `make test-slow GO_TEST_FLAGS=-timeout=20m` passed in 594.965 seconds.
+  The larger package limit did not change individual CLI timeouts or test assertions.
+  `make ci GO_TEST_FLAGS=-timeout=20m` passed. Its integration suite required 640.478 seconds.
+  The added prose has no mechanical language findings. `git diff --check` passed.
+
 - [x] [B107] (P2) Follow merged PR chains after unchanged merge commits.
   Evidence:
   Gix stopped at the merged B068 branch in `mpr-ui` instead of the final branch in the PR chain.
