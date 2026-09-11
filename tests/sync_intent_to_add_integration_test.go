@@ -20,6 +20,8 @@ func TestSyncIntentToAdd(testInstance *testing.T) {
 		Occurrence string
 		Missing    bool
 		Ignored    bool
+		OnlyIntent bool
+		Empty      bool
 	}{
 		{Name: "stash_restores_intent_and_mixed_changes", Stash: true},
 		{Name: "commit_publishes_intent_files"},
@@ -28,6 +30,12 @@ func TestSyncIntentToAdd(testInstance *testing.T) {
 		{Name: "switch_failure_restores_index", Stash: true, FailMatch: "switch --no-guess master", Occurrence: "1"},
 		{Name: "missing_intent_file_preserves_state", Stash: true, Missing: true},
 		{Name: "ignored_intent_commit_failure_preserves_state", FailMatch: "commit -m", Occurrence: "2", Ignored: true},
+		{Name: "ignored_intent_stash_restores_mixed_changes", Stash: true, Ignored: true},
+		{Name: "ignored_intent_invocation_failure_restores_contents", Stash: true, FailMatch: "stash push", Occurrence: "2", Ignored: true},
+		{Name: "only_ignored_intent_preserves_existing_stash", Stash: true, Ignored: true, OnlyIntent: true},
+		{Name: "only_ignored_empty_intent_preserves_existing_stash", Stash: true, Ignored: true, OnlyIntent: true, Empty: true},
+		{Name: "only_ignored_intent_invocation_failure_restores_contents", Stash: true, FailMatch: "stash push", Occurrence: "2", Ignored: true, OnlyIntent: true},
+		{Name: "only_ignored_intent_commit_publishes_contents", Ignored: true, OnlyIntent: true},
 	} {
 		testInstance.Run(testCase.Name, func(testInstance *testing.T) {
 			remotePath, repositoryPath := createSyncStateTransitionRepository(testInstance)
@@ -45,19 +53,33 @@ func TestSyncIntentToAdd(testInstance *testing.T) {
 				"staged-empty.txt":   "",
 				"untracked.txt":      "untracked content\n",
 			}
-			writeFile("README.md", "staged change\n")
-			runGit(testInstance, repositoryPath, "add", "README.md")
+			intentPaths := []string{"new config.yaml", "empty.txt", "literal[1]\nnew.js"}
+			if testCase.OnlyIntent {
+				files = map[string]string{"new config.yaml": files["new config.yaml"]}
+				intentPaths = []string{"new config.yaml"}
+				if testCase.Empty {
+					files["new config.yaml"] = ""
+				}
+			} else {
+				writeFile("README.md", "staged change\n")
+				runGit(testInstance, repositoryPath, "add", "README.md")
+			}
 			for name, content := range files {
 				writeFile(name, content)
 			}
 			if testCase.Ignored {
-				require.NoError(testInstance, os.WriteFile(filepath.Join(repositoryPath, ".git", "info", "exclude"), []byte("new config.yaml\n"), 0o644))
-				require.NoError(testInstance, os.Mkdir(filepath.Join(repositoryPath, "zlater"), 0o755))
-				files["zlater/state.go"] = "package state\n"
-				writeFile("zlater/state.go", files["zlater/state.go"])
+				writeFile(".git/info/exclude", "new config.yaml\nignored-untracked.txt\n")
+				writeFile("ignored-untracked.txt", "unrelated ignored content\n")
+				if !testCase.OnlyIntent {
+					require.NoError(testInstance, os.Mkdir(filepath.Join(repositoryPath, "zlater"), 0o755))
+					files["zlater/state.go"] = "package state\n"
+					writeFile("zlater/state.go", files["zlater/state.go"])
+				}
 			}
-			runGit(testInstance, repositoryPath, "--literal-pathspecs", "add", "-N", "-f", "--", "new config.yaml", "empty.txt", "literal[1]\nnew.js")
-			runGit(testInstance, repositoryPath, "add", "staged-empty.txt")
+			runGit(testInstance, repositoryPath, append([]string{"--literal-pathspecs", "add", "-N", "-f", "--"}, intentPaths...)...)
+			if !testCase.OnlyIntent {
+				runGit(testInstance, repositoryPath, "add", "staged-empty.txt")
+			}
 			if testCase.Missing {
 				require.NoError(testInstance, os.Remove(filepath.Join(repositoryPath, "empty.txt")))
 				delete(files, "empty.txt")
@@ -109,12 +131,18 @@ func TestSyncIntentToAdd(testInstance *testing.T) {
 				require.Equal(testInstance, content, readTextFile(testInstance, filepath.Join(repositoryPath, name)), name)
 			}
 			require.Equal(testInstance, stashesBefore, runGit(testInstance, repositoryPath, "stash", "list", "--format=%H %s"))
+			require.NoFileExists(testInstance, filepath.Join(repositoryPath, "saved.txt"))
+			if testCase.Ignored {
+				require.Equal(testInstance, "unrelated ignored content\n", readTextFile(testInstance, filepath.Join(repositoryPath, "ignored-untracked.txt")))
+			}
 			requireSyncIndexUnlocked(testInstance, repositoryPath)
 			if testCase.Stash || testCase.FailMatch != "" {
 				require.Equal(testInstance, statusBefore, runGit(testInstance, repositoryPath, "status", "--porcelain=v1", "-z", "--untracked-files=all"))
 				require.Equal(testInstance, visibleBefore, runGit(testInstance, repositoryPath, "diff", "--cached", "--name-only", "--ita-visible-in-index", "-z"))
 				require.Equal(testInstance, stagedBefore, runGit(testInstance, repositoryPath, "diff", "--cached", "--name-only", "--ita-invisible-in-index", "-z"))
-				require.Equal(testInstance, "staged change\n", runGit(testInstance, repositoryPath, "show", ":README.md"))
+				if !testCase.OnlyIntent {
+					require.Equal(testInstance, "staged change\n", runGit(testInstance, repositoryPath, "show", ":README.md"))
+				}
 				require.Equal(testInstance, headBefore, runGit(testInstance, remotePath, "rev-parse", "refs/heads/master"))
 			} else {
 				require.Empty(testInstance, runGit(testInstance, repositoryPath, "status", "--porcelain"))
