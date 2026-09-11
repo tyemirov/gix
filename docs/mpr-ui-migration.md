@@ -14,7 +14,7 @@ Its current license content remains available through the footer modal.
 The page has no authentication config or theme control.
 
 GitHub confirms `gix.mprlab.com` and the `gh-pages` publication branch.
-The existing `make pages-artifact` target packages `docs` and adds the release identity.
+The declared Pages resource packages `docs` through Gateway and adds the release identity.
 The user owns release, publication, and deployment.
 
 ## Validation
