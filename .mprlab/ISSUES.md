@@ -33,6 +33,19 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   `make build` and `git diff --check` passed.
   The new prose has no mechanical language findings.
   The Governor check reports differences in four unchanged guidance files.
+  Review correction:
+  Five additional CLI cases first failed because sync deleted ignored file contents or removed an existing user stash.
+  Gix now adds intent-to-add files to the private index before stash creation.
+  The snapshot contains the ignored file contents, including empty files.
+  After stash application, Gix resets only those index entries and adds them with `git add -N -f`.
+  All 13 intent-to-add CLI cases passed after the correction.
+  The cases verify file contents, index entries, existing stashes, and unrelated ignored files.
+  The cases include failure during the second stash push and an ignored file as the only change.
+  Initial and final `make ci` runs reached the integration package limit of ten minutes without an assertion failure.
+  `make test-slow GO_TEST_FLAGS=-timeout=20m` passed in 594.965 seconds.
+  The larger package limit did not change individual CLI timeouts or test assertions.
+  `make ci GO_TEST_FLAGS=-timeout=20m` passed. Its integration suite required 640.478 seconds.
+  The added prose has no mechanical language findings. `git diff --check` passed.
 
 - [x] [B107] (P2) Follow merged PR chains after unchanged merge commits.
   Evidence:
