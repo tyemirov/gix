@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Conflict resolution
+- Added a complete Ledger stash fixture and live CLI replay with exact file, index, branch, and stash checks.
 - Distinguished documented software requirements from source instructions that try to change the resolver rules.
 - Supplied exact destination text around each conflict candidate to prevent false reports of incomplete functions during semantic review.
 - Replaced token-based acceptance rules with exact source changes and explicit JSON decisions.

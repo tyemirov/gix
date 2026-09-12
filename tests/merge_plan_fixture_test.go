@@ -17,6 +17,7 @@ type mergePlanInputForTest struct {
 	Path      string                                    `json:"path"`
 	Blocks    []struct{ ID, Base, Ours, Theirs string } `json:"blocks"`
 	Candidate *struct{ Content string }                 `json:"candidate"`
+	Placement struct{ Before, After string }            `json:"placement"`
 }
 
 func decodeMergePlanInputForTest(body []byte) (mergePlanInputForTest, error) {

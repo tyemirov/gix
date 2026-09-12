@@ -97,3 +97,19 @@ The live target sends the designated semantic cases to the configured provider. 
 The mode selection cases distinguish explicit requirements from unresolved intent. The success case supplies a shared requirement for mode 2. The case without that requirement must stop and restore the original state.
 
 The deterministic corpus does not establish live-model quality. A successful live run establishes agreement with these fixtures for that provider configuration. It does not guarantee correct decisions for every future conflict.
+
+## Complete Ledger Case
+
+`tests/testdata/merge-contract/ledger-20260911` preserves the complete repository inputs from the reported Ledger stash failure.
+The fixture includes the original Git history, all pending files, and both intent-to-add entries.
+Its expected result records every file and index entry after both conflicts resolve.
+
+Run the complete live-provider replay:
+
+```bash
+GIX_MERGE_EVAL_CONFIG=/absolute/path/to/config.yml make test-ledger-e2e
+```
+
+The test runs `gix sync master --stash` against the preserved source and target commits with a local Git remote.
+It requires exact result contents, final branch and index state, unchanged remote references, and stash cleanup.
+The generated stash trees must match the original stash trees.

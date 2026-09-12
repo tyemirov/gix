@@ -2470,6 +2470,29 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## Improvements
 
+- [x] [I022] (P1) Qualify the complete Ledger stash conflict through the CLI.
+  Goal:
+  Establish that Gix resolves the original Ledger case with complete repository inputs and the configured live provider.
+  Requirements:
+  - Preserve the original source, target, index, and pending file contents in a portable fixture.
+  - Run the actual branch switch and stash restoration through `gix sync master --stash`.
+  - Verify both conflicted files and all independent pending changes.
+  - Verify the two intent-to-add entries and the final branch and remote state.
+  - Preserve the user's Ledger checkout during test execution.
+  Validation:
+  - Run deterministic CLI coverage and the full live-provider case.
+  - Retain the completed CLI output and exact content checks as evidence.
+  Resolution:
+  - Preserved the original Git objects, all 110 input files, and the complete expected result in a permanent fixture.
+  - Added deterministic CLI coverage and the live `make test-ledger-e2e` target.
+  - Both complete live runs passed in 104.67 and 146.43 seconds.
+  - Each run verified all 112 result files, the complete index and status, and all three original stash trees.
+  - Verified both intent-to-add entries, branch references, unchanged remote references, and stash cleanup.
+  - Confirmed that the original Ledger checkout still matches all input files, index entries, status, and its source commit.
+  - The existing B114 and B115 corrections resolved the complete case without further production changes.
+  - Local validation passed formatting, static analysis, package tests, licensing tests, and `make build`.
+  - Bounded native test runs completed all 150 regular CLI groups. The two live evaluators had separate qualification.
+
 - [x] [I021] (P1) {B111,B112,B113} Resolve conflicts through explicit change decisions.
   Goal:
   Give source preservation, semantic decisions, and file validation separate acceptance rules.
