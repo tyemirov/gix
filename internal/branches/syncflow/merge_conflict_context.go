@@ -1,8 +1,32 @@
 package syncflow
 
-import "strings"
+import (
+	"strings"
+	"unicode/utf8"
+)
 
 const mergePlanContextLines = 40
+
+func initialMergeRegionPlacement(complete mergeRegionPlacement) mergeRegionPlacement {
+	if len(complete.Before)+len(complete.After) <= mergePlanContextLimit {
+		return complete
+	}
+	boundaryLimit := mergePlanContextLimit / 2
+	beforeStart := max(0, len(complete.Before)-boundaryLimit)
+	for beforeStart < len(complete.Before) && !utf8.RuneStart(complete.Before[beforeStart]) {
+		beforeStart++
+	}
+	afterEnd := min(len(complete.After), boundaryLimit)
+	for afterEnd > 0 && afterEnd < len(complete.After) && !utf8.RuneStart(complete.After[afterEnd]) {
+		afterEnd--
+	}
+	return mergeRegionPlacement{
+		Before:          complete.Before[beforeStart:],
+		After:           complete.After[:afterEnd],
+		BeforeTruncated: beforeStart > 0,
+		AfterTruncated:  afterEnd < len(complete.After),
+	}
+}
 
 func initialMergeReadContext(file mergeConflictFile, region mergeConflictRegion) mergeReadContext {
 	complete := mergeReadContext{Scope: mergePlanFileContext, Base: file.Base, Ours: file.Ours, Theirs: file.Theirs}

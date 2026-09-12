@@ -111,8 +111,13 @@ func runLedgerStashReplay(t *testing.T, providerConfiguration string) {
 				return
 			}
 			if input.Phase == "review" {
-				if input.Candidate == nil || input.Placement.Before+input.Candidate.Content+input.Placement.After != content {
-					http.Error(w, "Ledger audit lacks the exact complete expected file", http.StatusBadRequest)
+				if input.Candidate == nil || input.Candidate.Content == "" || strings.Count(content, input.Candidate.Content) != 1 {
+					http.Error(w, "Ledger audit lacks the exact expected conflict candidate", http.StatusBadRequest)
+					return
+				}
+				before, after, _ := strings.Cut(content, input.Candidate.Content)
+				if err := checkMergePlanPlacementForTest(input.Placement, before, after); err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
 					return
 				}
 				reviews[input.Path].Add(1)

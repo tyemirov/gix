@@ -16,11 +16,13 @@ Source code and documented software requirements supply evidence for the decisio
 
 Each request contains `GIX_MERGE_INPUT` followed by one JSON object. The object supplies the path, region, source context, source changes, fixed dispositions, and decision blocks. An audit request also supplies the candidate and its decisions.
 
-Each request also supplies `placement.before` and `placement.after`. These fields contain the exact fixed destination text before and after the region. The candidate replaces only the conflict region. The audit reads `placement.before + candidate.content + placement.after` as continuous text. A candidate can start or end inside a function, condition, or issue record.
+Each request also supplies `placement.before` and `placement.after`. These fields contain exact destination excerpts immediately before and after the region. The candidate replaces only the conflict region. The audit reads `placement.before + candidate.content + placement.after` as a continuous excerpt. A candidate can start or end inside a function, condition, or issue record.
 
-The destination context stops at the adjacent conflict regions or file boundaries. For one conflict region, the combined text is the complete file. For multiple regions, each request contains the fixed text adjacent to its assigned region. The model cannot change destination context through a decision.
+Initial destination context has a separate 32,768-byte budget. When the complete adjacent spans fit, the request includes both spans. Otherwise, each excerpt includes at most 16,384 bytes nearest the conflict. Excerpts preserve exact source bytes and complete Unicode characters.
 
-The source context budget does not truncate destination context. Large fixed regions can increase the request size.
+The `before_truncated` and `after_truncated` flags identify omitted text at the outer excerpt boundaries. Omitted text remains intact in the local result. An excerpt boundary can occur inside a line, function, or issue record. The model must treat that boundary as incomplete context.
+
+Complete destination spans stop at adjacent conflict regions or file boundaries. For one conflict region, complete spans and the candidate form the complete file. The model cannot change destination context through a decision.
 
 A decision response uses this shape:
 
@@ -61,7 +63,9 @@ Either phase can return these outcomes:
 {"status":"unresolved","reason":"The source contains conflicting product approvals."}
 ```
 
-Files with at most 32,768 source bytes across all three stages supply complete context initially. Larger files supply complete affected issue records or 40 surrounding lines. An ambiguous excerpt location supplies the complete source. A context request expands all stages to complete files once. A second request reports unavailable context.
+Files with at most 32,768 source bytes across all three stages supply complete context initially. Larger files supply complete affected issue records or 40 surrounding lines. An ambiguous excerpt location supplies the complete source.
+
+A `needs_context` response expands all source stages and both destination spans once, during either a decision or an audit. The expanded request clears both truncation flags. This explicit expansion can exceed the initial context budgets. A second context request reports unavailable context.
 
 Each region has a budget of four provider requests, including audits and context expansion. Provider failures terminate the operation through the existing provider and transaction boundaries. Invalid response shape supplies feedback while requests remain. A candidate awaiting audit cannot pass after the budget expires.
 

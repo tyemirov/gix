@@ -41,7 +41,8 @@ It checks every result file, the complete index and status, branch references, i
 It also compares all three generated stash trees with the original stash trees.
 
 Git operations use real Git and the preserved history. GitHub metadata uses the local test adapter.
-The live test sends the full case to the configured model. The deterministic test uses fixed source decisions and checks complete audit content.
+The live test resolves the full case with the configured model. Requests use bounded context and permit explicit context expansion.
+The deterministic test uses fixed source decisions and checks exact audit excerpts against the complete expected files.
 
 Run the deterministic case:
 

@@ -13,11 +13,29 @@ const (
 )
 
 type mergePlanInputForTest struct {
-	Phase     string                                    `json:"phase"`
-	Path      string                                    `json:"path"`
-	Blocks    []struct{ ID, Base, Ours, Theirs string } `json:"blocks"`
-	Candidate *struct{ Content string }                 `json:"candidate"`
-	Placement struct{ Before, After string }            `json:"placement"`
+	Phase     string                                     `json:"phase"`
+	Path      string                                     `json:"path"`
+	Blocks    []struct{ ID, Base, Ours, Theirs string }  `json:"blocks"`
+	Candidate *struct{ Content string }                  `json:"candidate"`
+	Placement mergePlanPlacementForTest                  `json:"placement"`
+	Context   struct{ Scope, Base, Ours, Theirs string } `json:"context"`
+}
+
+type mergePlanPlacementForTest struct {
+	Before          string `json:"before"`
+	After           string `json:"after"`
+	BeforeTruncated bool   `json:"before_truncated"`
+	AfterTruncated  bool   `json:"after_truncated"`
+}
+
+func checkMergePlanPlacementForTest(placement mergePlanPlacementForTest, before, after string) error {
+	if placement.BeforeTruncated != (len(placement.Before) < len(before)) ||
+		placement.AfterTruncated != (len(placement.After) < len(after)) ||
+		!strings.HasSuffix(before, placement.Before) || !strings.HasPrefix(after, placement.After) ||
+		(placement.BeforeTruncated && placement.Before == "") || (placement.AfterTruncated && placement.After == "") {
+		return fmt.Errorf("destination excerpts do not preserve exact adjacent bytes and truncation boundaries")
+	}
+	return nil
 }
 
 func decodeMergePlanInputForTest(body []byte) (mergePlanInputForTest, error) {

@@ -11,6 +11,32 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B116] (P2) Bound destination context in conflict requests.
+  Evidence:
+  A two-line conflict after 1 MB of unchanged text increased the first request from 6,571 to 1,117,622 bytes.
+  A test provider with a 64 KiB input limit accepted the base and rejected the branch.
+  Requirements:
+  - Bound the initial destination context and preserve exact bytes next to each conflict.
+  - Identify each omitted outer boundary without changing the local file result.
+  - Expand destination context only after an explicit model context request.
+  - Preserve the complete Ledger resolution and transaction recovery behavior.
+  Validation:
+  - Reproduce the failure through the CLI with a capped provider.
+  - Verify large fixed spans before and after a conflict, including Unicode text.
+  - Verify context expansion during decisions and semantic review.
+  - Run the complete Ledger case with the configured live provider.
+  Resolution:
+  - Added a CLI regression that first failed with HTTP 413 from the capped provider.
+  - Initial destination context now uses at most 32,768 bytes, with exact Unicode excerpts and explicit truncation flags.
+  - An explicit context request expands both destination spans and all source stages during decisions or review.
+  - Five new CLI cases passed. Initial requests stayed below 47 KB with a 64 KiB provider limit.
+  - All 23 deterministic corpus cases and the complete Ledger CLI replay passed.
+  - The complete Ledger case passed with the live provider in 142.35 seconds.
+  - The original Ledger checkout still matches all 110 input files, index entries, status, and its source commit.
+  - Validation passed formatting, static analysis, package tests, licensing tests, and `make build`.
+  - The full CI command reached 350 seconds after 102 CLI groups completed. A bounded continuation completed the remaining 51 groups.
+  - All 151 regular CLI groups passed. The default test command skipped both live evaluators.
+
 - [x] [B115] (P1) Distinguish software requirements from resolver instructions.
   Evidence:
   The live mode selection test rejected a shared deployment requirement on 2026-09-12.
