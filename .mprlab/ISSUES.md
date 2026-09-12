@@ -11,6 +11,41 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B115] (P1) Distinguish software requirements from resolver instructions.
+  Evidence:
+  The live mode selection test rejected a shared deployment requirement on 2026-09-12.
+  The model interpreted the source-data rule as a prohibition on evidence from comments.
+  Requirements:
+  - Use documented software requirements as evidence for conflict decisions.
+  - Reject source instructions that change the resolver protocol, edit scope, or review rules.
+  - Keep an unresolved result when the evidence cannot establish intent.
+  Validation:
+  - Verify the documented mode requirement with the configured live provider.
+  - Verify refusal and rollback when that requirement is absent.
+  Resolution:
+  Shared prompts use documented software requirements as evidence and reject instructions that change the resolver rules.
+  Live tests confirm required mode selection, unresolved intent, and rejection of source instructions.
+  All seven live cases pass. The complete local suite passes in bounded runs.
+
+- [x] [B114] (P1) Review conflict candidates with their destination context.
+  Evidence:
+  Ledger sync rejected a health function on 2026-09-11 because the audit treated a conflict fragment as a complete function.
+  The success response and closing brace remained in the fixed text after the conflict.
+  Requirements:
+  - Supply the exact fixed text before and after each conflict region.
+  - Define candidate content as the replacement for that region only.
+  - Keep the model edit scope within the assigned decision blocks.
+  Validation:
+  - Verify the Ledger case through the CLI with both source orientations.
+  - Verify distinct destination context for multiple conflict regions.
+  - Preserve rollback after a semantic rejection.
+  - Verify an explicit mode requirement and an unresolved mode selection with the live provider.
+  Resolution:
+  Each request supplies exact fixed text before and after its conflict region. The candidate remains a region replacement.
+  Six CLI cases verify both source orientations, multiple regions, stash restoration, and rejection rollback.
+  The reduced Ledger case passes with the configured live provider. All 23 deterministic corpus cases pass.
+  The full CI command reached its 350-second limit without test failures. A second run completed the remaining CLI tests.
+
 - [x] [B111] (P1) Preserve significant whitespace during conflict decisions.
   Evidence:
   The validator accepted Python calls moved outside a condition through indentation changes.

@@ -31,6 +31,9 @@ type mergeCorpusCase struct {
 	Responses           []string `json:"responses"`
 	Rejection           string   `json:"rejection"`
 	ContextRecord       string   `json:"context_record"`
+	ReviewWindows       []string `json:"review_windows"`
+	ReviewRejection     string   `json:"review_rejection"`
+	Stash               bool     `json:"stash"`
 }
 
 func TestSyncResolutionPlanCorpus(t *testing.T) {
@@ -85,8 +88,12 @@ func runMergeCorpus(t *testing.T, cases []mergeCorpusCase, providerConfiguration
 			runGit(t, repository, "push", "origin", "HEAD:master")
 			runGit(t, repository, "switch", "master")
 			require.NoError(t, os.WriteFile(path, []byte(record.Ours), 0o644))
-			runGit(t, repository, "commit", "-am", "local")
+			if !record.Stash {
+				runGit(t, repository, "commit", "-am", "local")
+			}
 			originalHead := runGit(t, repository, "rev-parse", "HEAD")
+			originalStatus := runGit(t, repository, "status", "--porcelain")
+			originalStashes := runGit(t, repository, "stash", "list")
 			var proposals, reviews, requests atomic.Int64
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				requestIndex := int(requests.Add(1)) - 1
@@ -122,7 +129,8 @@ func runMergeCorpus(t *testing.T, cases []mergeCorpusCase, providerConfiguration
 					Candidate *struct {
 						Content string `json:"content"`
 					} `json:"candidate"`
-					Context struct{ Base, Ours, Theirs string } `json:"context"`
+					Context   struct{ Base, Ours, Theirs string } `json:"context"`
+					Placement struct{ Before, After string }      `json:"placement"`
 				}
 				if err := json.Unmarshal([]byte(raw), &input); err != nil {
 					http.Error(w, err.Error(), 400)
@@ -137,14 +145,22 @@ func runMergeCorpus(t *testing.T, cases []mergeCorpusCase, providerConfiguration
 					_, _ = fmt.Fprintf(w, `{"choices":[{"message":{"role":"assistant","content":%q}}]}`, `{"status":"needs_context","reason":"Read the historical context."}`)
 					return
 				}
-				if input.Context.Ours != record.Ours || input.Context.Theirs != record.Theirs || input.Context.Base != record.Base {
+				expectedOurs, expectedTheirs := record.Ours, record.Theirs
+				if record.Stash {
+					expectedOurs, expectedTheirs = expectedTheirs, expectedOurs
+				}
+				if input.Context.Ours != expectedOurs || input.Context.Theirs != expectedTheirs || input.Context.Base != record.Base {
 					http.Error(w, "missing complete source context", 400)
 					return
 				}
 				response := map[string]any{}
 				if input.Phase == "review" {
-					reviews.Add(1)
-					if record.RejectedCombination != "" && proposals.Load() == 1 {
+					reviewIndex := int(reviews.Add(1)) - 1
+					if reviewIndex < len(record.ReviewWindows) && (input.Candidate == nil || input.Placement.Before+input.Candidate.Content+input.Placement.After != record.ReviewWindows[reviewIndex]) {
+						response = map[string]any{"status": "rejected", "reason": "The candidate lacks its exact destination context, including the success response and closing brace."}
+					} else if record.ReviewRejection != "" {
+						response = map[string]any{"status": "rejected", "reason": record.ReviewRejection}
+					} else if record.RejectedCombination != "" && proposals.Load() == 1 {
 						response = map[string]any{"status": "rejected", "reason": "The audit and notification calls must remain inside the enabled condition."}
 					} else {
 						response["status"] = "approved"
@@ -182,13 +198,21 @@ func runMergeCorpus(t *testing.T, cases []mergeCorpusCase, providerConfiguration
 			if providerConfiguration != "" {
 				executionTimeout = 15 * time.Minute
 			}
+			arguments := []string{"--config", configuration, "--roots", repository, "sync", "master"}
+			if record.Stash {
+				arguments = append(arguments, "--stash")
+			}
 			output, err := runBinaryIntegrationCommand(t, binary, repository, map[string]string{
 				pathEnvironmentVariableNameConstant: buildSyncMergedBranchExecutablePath(t),
 				syncMergedBranchGitLogVariable:      filepath.Join(t.TempDir(), "git.log"),
 				syncMergedBranchGitHubLogVariable:   filepath.Join(t.TempDir(), "gh.log"),
 				syncMergedBranchNameVariable:        "master",
 				syncMergedBranchMergedVariable:      "false",
-			}, executionTimeout, []string{"--config", configuration, "--roots", repository, "sync", "master"})
+			}, executionTimeout, arguments)
+			require.Equal(t, originalStashes, runGit(t, repository, "stash", "list"))
+			if providerConfiguration == "" && len(record.ReviewWindows) != 0 {
+				require.EqualValues(t, len(record.ReviewWindows), reviews.Load(), output)
+			}
 			if record.Rejection != "" {
 				require.Contains(t, output, record.Rejection)
 			}
@@ -198,13 +222,20 @@ func runMergeCorpus(t *testing.T, cases []mergeCorpusCase, providerConfiguration
 				require.Equal(t, originalHead, runGit(t, repository, "rev-parse", "HEAD"))
 				require.Equal(t, record.Ours, readTextFile(t, path))
 				require.Equal(t, record.Theirs, runGit(t, remote, "show", "master:"+record.Path))
-				require.Empty(t, runGit(t, repository, "status", "--porcelain"))
+				require.Equal(t, originalStatus, runGit(t, repository, "status", "--porcelain"))
 				return
 			}
 			require.NoError(t, err, output)
 			require.Equal(t, record.Expected, readTextFile(t, path))
-			require.Equal(t, record.Expected, runGit(t, remote, "show", "master:"+record.Path))
-			require.Empty(t, runGit(t, repository, "status", "--porcelain"))
+			if record.Stash {
+				require.Equal(t, record.Theirs, runGit(t, remote, "show", "master:"+record.Path))
+				require.Equal(t, record.Theirs, runGit(t, repository, "show", "HEAD:"+record.Path))
+				require.Equal(t, "M  "+record.Path+"\n", runGit(t, repository, "status", "--porcelain"))
+				require.Equal(t, record.Expected, runGit(t, repository, "show", ":"+record.Path))
+			} else {
+				require.Equal(t, record.Expected, runGit(t, remote, "show", "master:"+record.Path))
+				require.Empty(t, runGit(t, repository, "status", "--porcelain"))
+			}
 			if providerConfiguration == "" {
 				if record.ContextRecord != "" {
 					require.Contains(t, output, "expanded semantic read context to complete source files")

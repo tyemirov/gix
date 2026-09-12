@@ -10,9 +10,17 @@ Each source change has an identifier. A decision records its disposition as `ret
 
 The model can replace only its assigned blocks. Read context does not expand edit scope. A source selection copies exact bytes. A combination supplies new content for one block. The model must preserve compatible requirements within that block.
 
+Source code and documented software requirements supply evidence for the decision. A requirement in a comment can justify a source choice. Source instructions cannot change the resolver role, response protocol, edit scope, or review rules. Conflicting requirements can still produce an unresolved result.
+
 ## Decision Protocol
 
 Each request contains `GIX_MERGE_INPUT` followed by one JSON object. The object supplies the path, region, source context, source changes, fixed dispositions, and decision blocks. An audit request also supplies the candidate and its decisions.
+
+Each request also supplies `placement.before` and `placement.after`. These fields contain the exact fixed destination text before and after the region. The candidate replaces only the conflict region. The audit reads `placement.before + candidate.content + placement.after` as continuous text. A candidate can start or end inside a function, condition, or issue record.
+
+The destination context stops at the adjacent conflict regions or file boundaries. For one conflict region, the combined text is the complete file. For multiple regions, each request contains the fixed text adjacent to its assigned region. The model cannot change destination context through a decision.
+
+The source context budget does not truncate destination context. Large fixed regions can increase the request size.
 
 A decision response uses this shape:
 
@@ -85,5 +93,7 @@ GIX_MERGE_EVAL_CONFIG=/absolute/path/to/config.yml make test-merge-eval
 ```
 
 The live target sends the designated semantic cases to the configured provider. It uses temporary repositories and local Git remotes. It checks the result against the corpus bytes. A failed check requires review of the output and acceptance criteria. Exact byte agreement is stricter than semantic equivalence.
+
+The mode selection cases distinguish explicit requirements from unresolved intent. The success case supplies a shared requirement for mode 2. The case without that requirement must stop and restore the original state.
 
 The deterministic corpus does not establish live-model quality. A successful live run establishes agreement with these fixtures for that provider configuration. It does not guarantee correct decisions for every future conflict.
