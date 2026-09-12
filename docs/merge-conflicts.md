@@ -10,9 +10,19 @@ Each source change has an identifier. A decision records its disposition as `ret
 
 The model can replace only its assigned blocks. Read context does not expand edit scope. A source selection copies exact bytes. A combination supplies new content for one block. The model must preserve compatible requirements within that block.
 
+Source code and documented software requirements supply evidence for the decision. A requirement in a comment can justify a source choice. Source instructions cannot change the resolver role, response protocol, edit scope, or review rules. Conflicting requirements can still produce an unresolved result.
+
 ## Decision Protocol
 
 Each request contains `GIX_MERGE_INPUT` followed by one JSON object. The object supplies the path, region, source context, source changes, fixed dispositions, and decision blocks. An audit request also supplies the candidate and its decisions.
+
+Each request also supplies `placement.before` and `placement.after`. These fields contain exact destination excerpts immediately before and after the region. The candidate replaces only the conflict region. The audit reads `placement.before + candidate.content + placement.after` as a continuous excerpt. A candidate can start or end inside a function, condition, or issue record.
+
+Initial destination context has a separate 32,768-byte budget. When the complete adjacent spans fit, the request includes both spans. Otherwise, each excerpt includes at most 16,384 bytes nearest the conflict. Excerpts preserve exact source bytes and complete Unicode characters.
+
+The `before_truncated` and `after_truncated` flags identify omitted text at the outer excerpt boundaries. Omitted text remains intact in the local result. An excerpt boundary can occur inside a line, function, or issue record. The model must treat that boundary as incomplete context.
+
+Complete destination spans stop at adjacent conflict regions or file boundaries. For one conflict region, complete spans and the candidate form the complete file. The model cannot change destination context through a decision.
 
 A decision response uses this shape:
 
@@ -53,7 +63,9 @@ Either phase can return these outcomes:
 {"status":"unresolved","reason":"The source contains conflicting product approvals."}
 ```
 
-Files with at most 32,768 source bytes across all three stages supply complete context initially. Larger files supply complete affected issue records or 40 surrounding lines. An ambiguous excerpt location supplies the complete source. A context request expands all stages to complete files once. A second request reports unavailable context.
+Files with at most 32,768 source bytes across all three stages supply complete context initially. Larger files supply complete affected issue records or 40 surrounding lines. An ambiguous excerpt location supplies the complete source.
+
+A `needs_context` response expands all source stages and both destination spans once, during either a decision or an audit. The expanded request clears both truncation flags. This explicit expansion can exceed the initial context budgets. A second context request reports unavailable context.
 
 Each region has a budget of four provider requests, including audits and context expansion. Provider failures terminate the operation through the existing provider and transaction boundaries. Invalid response shape supplies feedback while requests remain. A candidate awaiting audit cannot pass after the budget expires.
 
@@ -86,4 +98,22 @@ GIX_MERGE_EVAL_CONFIG=/absolute/path/to/config.yml make test-merge-eval
 
 The live target sends the designated semantic cases to the configured provider. It uses temporary repositories and local Git remotes. It checks the result against the corpus bytes. A failed check requires review of the output and acceptance criteria. Exact byte agreement is stricter than semantic equivalence.
 
+The mode selection cases distinguish explicit requirements from unresolved intent. The success case supplies a shared requirement for mode 2. The case without that requirement must stop and restore the original state.
+
 The deterministic corpus does not establish live-model quality. A successful live run establishes agreement with these fixtures for that provider configuration. It does not guarantee correct decisions for every future conflict.
+
+## Complete Ledger Case
+
+`tests/testdata/merge-contract/ledger-20260911` preserves the complete repository inputs from the reported Ledger stash failure.
+The fixture includes the original Git history, all pending files, and both intent-to-add entries.
+Its expected result records every file and index entry after both conflicts resolve.
+
+Run the complete live-provider replay:
+
+```bash
+GIX_MERGE_EVAL_CONFIG=/absolute/path/to/config.yml make test-ledger-e2e
+```
+
+The test runs `gix sync master --stash` against the preserved source and target commits with a local Git remote.
+It requires exact result contents, final branch and index state, unchanged remote references, and stash cleanup.
+The generated stash trees must match the original stash trees.

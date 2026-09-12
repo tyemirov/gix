@@ -103,7 +103,9 @@ The model returns strict JSON decisions for those blocks. OURS and THEIRS copy e
 
 `merge_conflict_plan_resolution.go` separates decisions from semantic audits. Every candidate requires approval against the original source context. Rejection returns a reason, then a new decision request. Repeated rejected content stops early. An audit cannot alter fixed content. If fixed changes need a wider edit scope, the resolver reports unresolved intent.
 
-`merge_conflict_context.go` supplies complete small files and contextual source excerpts from large files. Issue excerpts include complete affected records. Missing or ambiguous excerpt locations supply the complete source. A model request can expand the context to all three files once. The four-request budget includes context expansion and audits.
+`merge_conflict_context.go` supplies complete small files and contextual source excerpts from large files. Issue excerpts include complete affected records. Missing or ambiguous excerpt locations supply the complete source.
+
+Initial destination excerpts have a separate 32,768-byte budget. Larger spans supply at most 16,384 bytes per boundary, with exact Unicode text and explicit truncation flags. Omitted text remains intact in the local result. A model context request expands all three source files and both destination spans once. The four-request budget includes context expansion and audits.
 
 `merge_conflict_validation.go` checks complete assembled files before staging. Go, JSON, and YAML use their parsers. Issue trackers reject duplicate identifiers. The local checks establish syntax, source accounting, and edit scope. The semantic audit establishes the model's assessment of intent. The [conflict contract](docs/merge-conflicts.md) defines the separate test gates.
 

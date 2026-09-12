@@ -114,6 +114,7 @@ Add repository-specific technical nouns below this line.
 - `edit scope`: The source bytes that one model decision can replace.
 - `merge plan`: Exact source changes, fixed content, decision blocks, and their recorded results.
 - `read context`: Source content that the model can use as evidence without authority to replace that content.
+- `destination context`: Fixed text before and after a conflict region in the Git merge result.
 - `conflict corpus`: Fixed source inputs and acceptance criteria for conflict evaluation.
 
 ## MPR Lab Technical Verbs

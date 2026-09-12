@@ -118,7 +118,8 @@ func TestMergePlanTerminatesExplicitOutcomesAndRepeatedCandidates(t *testing.T) 
 		t.Run(fixture.name, func(t *testing.T) {
 			client := &strictSyncChatClient{responses: fixture.responses}
 			service := mergeConflictResolutionService{repositoryPath: t.TempDir()}
-			_, err := service.resolvePlannedConflictRegion(context.Background(), client, mergeConflictResolutionOptions{}, mergeConflictFile{Path: "file.txt", Base: "base\n", Ours: "ours\n", Theirs: "theirs\n"}, mergeConflictRegion{Base: "base\n", BasePresent: true, Ours: "ours\n", Theirs: "theirs\n"}, 0, 1, time.Second)
+			document := mergeConflictDocument{NonConflictingRegions: []string{"", ""}, ConflictRegions: []mergeConflictRegion{{Base: "base\n", BasePresent: true, Ours: "ours\n", Theirs: "theirs\n"}}}
+			_, err := service.resolvePlannedConflictRegion(context.Background(), client, mergeConflictResolutionOptions{}, mergeConflictFile{Path: "file.txt", Base: "base\n", Ours: "ours\n", Theirs: "theirs\n"}, document, 0, time.Second)
 			require.ErrorContains(t, err, fixture.expected)
 			require.Len(t, client.requests, fixture.calls)
 		})

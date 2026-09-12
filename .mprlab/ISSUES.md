@@ -11,6 +11,67 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B116] (P2) Bound destination context in conflict requests.
+  Evidence:
+  A two-line conflict after 1 MB of unchanged text increased the first request from 6,571 to 1,117,622 bytes.
+  A test provider with a 64 KiB input limit accepted the base and rejected the branch.
+  Requirements:
+  - Bound the initial destination context and preserve exact bytes next to each conflict.
+  - Identify each omitted outer boundary without changing the local file result.
+  - Expand destination context only after an explicit model context request.
+  - Preserve the complete Ledger resolution and transaction recovery behavior.
+  Validation:
+  - Reproduce the failure through the CLI with a capped provider.
+  - Verify large fixed spans before and after a conflict, including Unicode text.
+  - Verify context expansion during decisions and semantic review.
+  - Run the complete Ledger case with the configured live provider.
+  Resolution:
+  - Added a CLI regression that first failed with HTTP 413 from the capped provider.
+  - Initial destination context now uses at most 32,768 bytes, with exact Unicode excerpts and explicit truncation flags.
+  - An explicit context request expands both destination spans and all source stages during decisions or review.
+  - Five new CLI cases passed. Initial requests stayed below 47 KB with a 64 KiB provider limit.
+  - All 23 deterministic corpus cases and the complete Ledger CLI replay passed.
+  - The complete Ledger case passed with the live provider in 142.35 seconds.
+  - The original Ledger checkout still matches all 110 input files, index entries, status, and its source commit.
+  - Validation passed formatting, static analysis, package tests, licensing tests, and `make build`.
+  - The full CI command reached 350 seconds after 102 CLI groups completed. A bounded continuation completed the remaining 51 groups.
+  - All 151 regular CLI groups passed. The default test command skipped both live evaluators.
+
+- [x] [B115] (P1) Distinguish software requirements from resolver instructions.
+  Evidence:
+  The live mode selection test rejected a shared deployment requirement on 2026-09-12.
+  The model interpreted the source-data rule as a prohibition on evidence from comments.
+  Requirements:
+  - Use documented software requirements as evidence for conflict decisions.
+  - Reject source instructions that change the resolver protocol, edit scope, or review rules.
+  - Keep an unresolved result when the evidence cannot establish intent.
+  Validation:
+  - Verify the documented mode requirement with the configured live provider.
+  - Verify refusal and rollback when that requirement is absent.
+  Resolution:
+  Shared prompts use documented software requirements as evidence and reject instructions that change the resolver rules.
+  Live tests confirm required mode selection, unresolved intent, and rejection of source instructions.
+  All seven live cases pass. The complete local suite passes in bounded runs.
+
+- [x] [B114] (P1) Review conflict candidates with their destination context.
+  Evidence:
+  Ledger sync rejected a health function on 2026-09-11 because the audit treated a conflict fragment as a complete function.
+  The success response and closing brace remained in the fixed text after the conflict.
+  Requirements:
+  - Supply the exact fixed text before and after each conflict region.
+  - Define candidate content as the replacement for that region only.
+  - Keep the model edit scope within the assigned decision blocks.
+  Validation:
+  - Verify the Ledger case through the CLI with both source orientations.
+  - Verify distinct destination context for multiple conflict regions.
+  - Preserve rollback after a semantic rejection.
+  - Verify an explicit mode requirement and an unresolved mode selection with the live provider.
+  Resolution:
+  Each request supplies exact fixed text before and after its conflict region. The candidate remains a region replacement.
+  Six CLI cases verify both source orientations, multiple regions, stash restoration, and rejection rollback.
+  The reduced Ledger case passes with the configured live provider. All 23 deterministic corpus cases pass.
+  The full CI command reached its 350-second limit without test failures. A second run completed the remaining CLI tests.
+
 - [x] [B111] (P1) Preserve significant whitespace during conflict decisions.
   Evidence:
   The validator accepted Python calls moved outside a condition through indentation changes.
@@ -2434,6 +2495,29 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 
 ## Improvements
+
+- [x] [I022] (P1) Qualify the complete Ledger stash conflict through the CLI.
+  Goal:
+  Establish that Gix resolves the original Ledger case with complete repository inputs and the configured live provider.
+  Requirements:
+  - Preserve the original source, target, index, and pending file contents in a portable fixture.
+  - Run the actual branch switch and stash restoration through `gix sync master --stash`.
+  - Verify both conflicted files and all independent pending changes.
+  - Verify the two intent-to-add entries and the final branch and remote state.
+  - Preserve the user's Ledger checkout during test execution.
+  Validation:
+  - Run deterministic CLI coverage and the full live-provider case.
+  - Retain the completed CLI output and exact content checks as evidence.
+  Resolution:
+  - Preserved the original Git objects, all 110 input files, and the complete expected result in a permanent fixture.
+  - Added deterministic CLI coverage and the live `make test-ledger-e2e` target.
+  - Both complete live runs passed in 104.67 and 146.43 seconds.
+  - Each run verified all 112 result files, the complete index and status, and all three original stash trees.
+  - Verified both intent-to-add entries, branch references, unchanged remote references, and stash cleanup.
+  - Confirmed that the original Ledger checkout still matches all input files, index entries, status, and its source commit.
+  - The existing B114 and B115 corrections resolved the complete case without further production changes.
+  - Local validation passed formatting, static analysis, package tests, licensing tests, and `make build`.
+  - Bounded native test runs completed all 150 regular CLI groups. The two live evaluators had separate qualification.
 
 - [x] [I021] (P1) {B111,B112,B113} Resolve conflicts through explicit change decisions.
   Goal:

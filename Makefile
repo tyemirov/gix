@@ -71,3 +71,8 @@ test-docs-browser:
 test-merge-eval:
 	@test -n "$(GIX_MERGE_EVAL_CONFIG)" || (echo "Set GIX_MERGE_EVAL_CONFIG to a provider configuration file."; exit 1)
 	go test -v ./tests -run '^TestSyncResolutionPlanProviderEvaluation$$' -count=1 -timeout=60m
+
+.PHONY: test-ledger-e2e
+test-ledger-e2e:
+	@test -n "$(GIX_MERGE_EVAL_CONFIG)" || (echo "Set GIX_MERGE_EVAL_CONFIG to a provider configuration file."; exit 1)
+	go test -v ./tests -run '^TestSyncLedgerStashProviderEvaluation$$' -count=1 -timeout=6m

@@ -634,7 +634,7 @@ func (service mergeConflictResolutionService) resolveConflictFile(ctx context.Co
 		if clientErr != nil {
 			return mergeConflictFileResolution{}, clientErr
 		}
-		resolvedRegion, resolutionErr := service.resolvePlannedConflictRegion(ctx, client, options, conflictFile, region, regionIndex, len(document.ConflictRegions), timeout)
+		resolvedRegion, resolutionErr := service.resolvePlannedConflictRegion(ctx, client, options, conflictFile, document, regionIndex, timeout)
 		if resolutionErr != nil {
 			return mergeConflictFileResolution{}, resolutionErr
 		}
