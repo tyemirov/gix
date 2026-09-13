@@ -27,6 +27,8 @@ const (
 )
 
 func TestSyncExplicitMasterCommitsDirtyMasterWorktreeAndMergesRemote(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	testInstance.Helper()
 
 	expectedGeneratedBranchName := "gix/sync-dirty-work"
@@ -240,6 +242,8 @@ operations:
 }
 
 func TestSyncExplicitMasterCommitsDirtyMasterWorktreeToMaster(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	testInstance.Helper()
 
 	repositoryRoot := integrationRepositoryRoot(testInstance)
@@ -359,6 +363,8 @@ operations:
 }
 
 func TestSyncRejectsRemoteWithoutDefaultBeforeCommitting(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	testInstance.Helper()
 
 	repositoryRoot := integrationRepositoryRoot(testInstance)
@@ -415,6 +421,8 @@ func TestSyncRejectsRemoteWithoutDefaultBeforeCommitting(testInstance *testing.T
 }
 
 func TestSyncFetchesRemoteDefaultBranchForSingleBranchClone(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	const (
 		defaultBranch = "main"
 		cloneBranch   = "feature/narrow-clone"
@@ -515,6 +523,8 @@ func TestSyncFetchesRemoteDefaultBranchForSingleBranchClone(testInstance *testin
 }
 
 func TestSyncUsesRemoteDefaultWhenAuditFallsBackToCurrentBranch(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	const (
 		defaultBranch = "trunk"
 		targetBranch  = "feature/review"
@@ -617,6 +627,8 @@ func TestSyncUsesRemoteDefaultWhenAuditFallsBackToCurrentBranch(testInstance *te
 }
 
 func TestSyncExplicitNewBranchCreatesStackedPullRequestsAndCommitsDirtyWorkInClusters(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	testInstance.Helper()
 
 	const (
@@ -988,6 +1000,8 @@ operations:
 }
 
 func TestSyncExplicitMasterFromDirtyFeatureBranchCommitsToMaster(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	testInstance.Helper()
 
 	const (
@@ -1124,6 +1138,8 @@ operations:
 }
 
 func TestSyncRejectsTruncatedLongFileMergeResolutionBeforeCommitOrPush(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	testInstance.Helper()
 
 	const (
@@ -1275,6 +1291,8 @@ operations:
 }
 
 func TestSyncStopsSemanticRepairAfterProviderTimeoutAndRollsBack(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	testInstance.Helper()
 
 	const (
@@ -1439,6 +1457,8 @@ operations:
 }
 
 func TestSyncResolvesDirtyModifyDeleteWithExplicitSelection(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	testInstance.Helper()
 
 	const (
@@ -1585,6 +1605,8 @@ operations:
 }
 
 func TestSyncCommitsTrackedDirtyPathsEvenWhenMatchedByIgnoreRules(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	testInstance.Helper()
 
 	repositoryRoot := integrationRepositoryRoot(testInstance)

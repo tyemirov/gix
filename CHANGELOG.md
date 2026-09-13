@@ -22,6 +22,7 @@
 - Added explicit GHCR retention to `gix packages delete --keep <count>`, preserving the newest requested versions and deleting every older tagged or untagged version.
 
 ### Improvements ⚙️
+- Reduced CI duration with up to four sync integration tests at the same time.
 - Delegated release, publication, and Pages deployment to Gateway through the declared resources. Removed the local lifecycle scripts.
 - Showed test names, results, and durations during integration tests and CI.
 - Made release policy an explicit `gix release next` input. Removed the `.mprlab` dependency and recorded the applied policy in decision contract v2.

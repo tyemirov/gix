@@ -12,6 +12,8 @@ import (
 )
 
 func TestSyncExplicitBranchNamesHaveEqualBehavior(t *testing.T) {
+	t.Parallel()
+
 	binary := buildIntegrationBinary(t, integrationRepositoryRoot(t))
 	for _, branch := range []string{"main", "master", "qqq", "wwww", "default", "release/trunk"} {
 		for _, role := range []string{"default", "new"} {
@@ -45,6 +47,8 @@ func TestSyncExplicitBranchNamesHaveEqualBehavior(t *testing.T) {
 }
 
 func TestSyncDefaultSelectionAndWorkStates(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	binaryPath := buildIntegrationBinary(testInstance, integrationRepositoryRoot(testInstance))
 	for _, scenario := range []struct {
 		name     string
@@ -132,6 +136,8 @@ func TestSyncDefaultSelectionAndWorkStates(testInstance *testing.T) {
 }
 
 func TestSyncExplicitBranchWithoutReviewDelta(t *testing.T) {
+	t.Parallel()
+
 	binary := buildIntegrationBinary(t, integrationRepositoryRoot(t))
 	for _, state := range []string{"new", "local", "remote", "local_remote", "new_stashed"} {
 		t.Run(state, func(t *testing.T) {
@@ -166,6 +172,8 @@ func TestSyncExplicitBranchWithoutReviewDelta(t *testing.T) {
 }
 
 func TestSyncWithoutDestinationCreatesBranchOnlyForWork(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	binaryPath := buildIntegrationBinary(testInstance, integrationRepositoryRoot(testInstance))
 	for _, dirty := range []bool{false, true} {
 		testInstance.Run(fmt.Sprintf("dirty_%t", dirty), func(testInstance *testing.T) {
@@ -201,6 +209,8 @@ func TestSyncWithoutDestinationCreatesBranchOnlyForWork(testInstance *testing.T)
 }
 
 func TestSyncDefaultCreatesFreshBranchWithNarrowFetch(t *testing.T) {
+	t.Parallel()
+
 	binary := buildIntegrationBinary(t, integrationRepositoryRoot(t))
 	fixture := newSyncFixture(t, "qqq")
 	fixture.commitFile(t, "local.txt", "unpublished work\n")
@@ -223,6 +233,8 @@ func TestSyncDefaultCreatesFreshBranchWithNarrowFetch(t *testing.T) {
 }
 
 func TestSyncDefaultCreatesNewBranchOnEachInvocation(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	binaryPath := buildIntegrationBinary(testInstance, integrationRepositoryRoot(testInstance))
 	fixture := newSyncFixture(testInstance, "qqq")
 	fixture.commitFile(testInstance, "local.txt", "local work\n")
@@ -238,6 +250,8 @@ func TestSyncDefaultCreatesNewBranchOnEachInvocation(testInstance *testing.T) {
 }
 
 func TestSyncGeneratedBranchUsesConfiguredReviewMetadata(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	binaryPath := buildIntegrationBinary(testInstance, integrationRepositoryRoot(testInstance))
 	fixture := newSyncFixture(testInstance, "qqq")
 	fixture.commitFile(testInstance, "local.txt", "local work\n")
@@ -251,6 +265,8 @@ func TestSyncGeneratedBranchUsesConfiguredReviewMetadata(testInstance *testing.T
 }
 
 func TestSyncGeneratedBranchKeepsExistingReviewBase(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	binaryPath := buildIntegrationBinary(testInstance, integrationRepositoryRoot(testInstance))
 	fixture := newSyncFixture(testInstance, "qqq")
 	fixture.commitFile(testInstance, "local.txt", "local work\n")
@@ -270,6 +286,8 @@ func TestSyncGeneratedBranchKeepsExistingReviewBase(testInstance *testing.T) {
 }
 
 func TestSyncExplicitDefaultFromFeaturePreservesTargetScope(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	binaryPath := buildIntegrationBinary(testInstance, integrationRepositoryRoot(testInstance))
 	fixture := newSyncFixture(testInstance, "qqq")
 	runGit(testInstance, fixture.repository, "switch", "-c", "feature/source")

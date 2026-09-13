@@ -46,6 +46,8 @@ type syncGitOperationFixture struct {
 }
 
 func TestSyncOperatorOwnedPreflightTable(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	binaryPath := buildIntegrationBinary(testInstance, repositoryRoot)
 
@@ -195,6 +197,8 @@ func TestSyncOperatorOwnedPreflightTable(testInstance *testing.T) {
 }
 
 func TestSyncFailureRollbackTable(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	binaryPath := buildIntegrationBinary(testInstance, repositoryRoot)
 
@@ -426,6 +430,8 @@ func TestSyncFailureRollbackTable(testInstance *testing.T) {
 }
 
 func TestSyncConcurrentDirtyClusterOwnershipTable(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	binaryPath := buildIntegrationBinary(testInstance, repositoryRoot)
 
@@ -537,6 +543,8 @@ func TestSyncConcurrentDirtyClusterOwnershipTable(testInstance *testing.T) {
 }
 
 func TestSyncDirtyClusterCommitLocksTheCheckedIndex(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	binaryPath := buildIntegrationBinary(testInstance, repositoryRoot)
 	remotePath, repositoryPath := createSyncStateTransitionRepository(testInstance)
@@ -604,6 +612,8 @@ func TestSyncDirtyClusterCommitLocksTheCheckedIndex(testInstance *testing.T) {
 }
 
 func TestSyncSuccessfulFinalizationTable(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	binaryPath := buildIntegrationBinary(testInstance, repositoryRoot)
 
@@ -829,6 +839,8 @@ func TestSyncSuccessfulFinalizationTable(testInstance *testing.T) {
 }
 
 func TestSyncCreatesRemoteOnlyBranchThroughTransactionJournal(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	binaryPath := buildIntegrationBinary(testInstance, repositoryRoot)
 	remotePath, repositoryPath := createSyncStateTransitionRepository(testInstance)
@@ -873,6 +885,8 @@ func TestSyncCreatesRemoteOnlyBranchThroughTransactionJournal(testInstance *test
 }
 
 func TestSyncRejectsRemoteOnlyBranchAdvanceBeforeJournalCompletion(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	binaryPath := buildIntegrationBinary(testInstance, repositoryRoot)
 	remotePath, repositoryPath := createSyncStateTransitionRepository(testInstance)

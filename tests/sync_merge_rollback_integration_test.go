@@ -15,6 +15,8 @@ import (
 )
 
 func TestSyncRejectedTargetResolutionRestoresStartingBranchAndSiblingWorktree(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	testInstance.Helper()
 
 	const (
@@ -185,6 +187,8 @@ operations:
 }
 
 func TestSyncProviderRoundFailureStopsSemanticRepairAndRestoresTarget(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	testInstance.Helper()
 
 	const (
@@ -344,6 +348,8 @@ operations:
 }
 
 func TestSyncCancellationBeforeConflictInspectionRollsBackCleanBranch(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	testInstance.Helper()
 
 	const (

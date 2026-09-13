@@ -10,6 +10,8 @@ import (
 )
 
 func TestSyncParentRemoteStatePreservesChildWork(t *testing.T) {
+	t.Parallel()
+
 	binary := buildIntegrationBinary(t, integrationRepositoryRoot(t))
 	for _, state := range []string{"remote_only", "behind", "diverged"} {
 		for _, openReview := range []bool{false, true} {
@@ -66,6 +68,8 @@ func TestSyncParentRemoteStatePreservesChildWork(t *testing.T) {
 }
 
 func TestSyncBranchPublicationWithRejectedTag(t *testing.T) {
+	t.Parallel()
+
 	binary := buildIntegrationBinary(t, integrationRepositoryRoot(t))
 	for _, scenario := range []struct {
 		name, branch         string
@@ -118,6 +122,8 @@ func TestSyncBranchPublicationWithRejectedTag(t *testing.T) {
 }
 
 func TestSyncStackParentPublicationWithRejectedTag(t *testing.T) {
+	t.Parallel()
+
 	binary := buildIntegrationBinary(t, integrationRepositoryRoot(t))
 	fixture := newSyncFixture(t, "qqq")
 	runGit(t, fixture.repository, "switch", "-c", "parent")

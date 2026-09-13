@@ -41,6 +41,8 @@ type ledgerReplaySnapshot struct {
 }
 
 func TestSyncLedgerStashReplay(t *testing.T) {
+	t.Parallel()
+
 	runLedgerStashReplay(t, "")
 }
 

@@ -1,6 +1,7 @@
 GO_SOURCES := $(shell find . -name '*.go' -not -path "./vendor/*" -not -path "./.git/*" -not -path "*/.git/*")
 FAST_TEST_PACKAGES := $(shell go list ./... | grep -v '/tests$$')
 GO_TEST_FLAGS ?=
+INTEGRATION_TEST_PARALLELISM := 4
 STATICCHECK_MODULE := honnef.co/go/tools/cmd/staticcheck@master
 INEFFASSIGN_MODULE := github.com/gordonklaus/ineffassign@latest
 LICENSE_ROLLOUT_SCRIPT := scripts/licensing/license_rollout.py
@@ -33,11 +34,11 @@ test-licensing:
 	python3 -m unittest discover -s scripts/licensing -p 'test_*.py'
 
 test-slow:
-	go test -v $(GO_TEST_FLAGS) ./tests
+	go test -v -parallel=$(INTEGRATION_TEST_PARALLELISM) $(GO_TEST_FLAGS) ./tests
 
 .PHONY: test-sync
 test-sync:
-	go test -v $(GO_TEST_FLAGS) ./tests -run '^TestSync'
+	go test -v -parallel=$(INTEGRATION_TEST_PARALLELISM) $(GO_TEST_FLAGS) ./tests -run '^TestSync'
 
 test-unit: test-fast
 

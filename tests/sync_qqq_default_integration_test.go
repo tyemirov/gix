@@ -11,6 +11,8 @@ import (
 )
 
 func TestSyncExplicitQQQDefaultFromCheckout(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	const defaultBranch = "qqq"
 	binaryPath := buildIntegrationBinary(testInstance, integrationRepositoryRoot(testInstance))
 	for _, startingBranch := range []string{defaultBranch, "main", "master"} {

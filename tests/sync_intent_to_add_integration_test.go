@@ -12,6 +12,8 @@ import (
 )
 
 func TestSyncIntentToAdd(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	binaryPath := buildIntegrationBinary(testInstance, integrationRepositoryRoot(testInstance))
 	for _, testCase := range []struct {
 		Name       string

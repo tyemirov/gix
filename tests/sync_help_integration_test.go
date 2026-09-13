@@ -10,6 +10,8 @@ import (
 const syncHelpIntegrationTimeout = 20 * time.Second
 
 func TestSyncHelpDescribesBranchSelectionContract(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	output := runIntegrationCommand(
 		testInstance,

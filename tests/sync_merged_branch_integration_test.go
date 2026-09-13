@@ -48,6 +48,8 @@ type syncMergedBranchFixture struct {
 }
 
 func TestSyncCleanDivergentDefaultBranchMergesAndPushesBothHistories(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	workspacePath := syncHomeWorkspace(testInstance)
 	remotePath := filepath.Join(workspacePath, "remote.git")
@@ -115,6 +117,8 @@ func TestSyncCleanDivergentDefaultBranchMergesAndPushesBothHistories(testInstanc
 }
 
 func TestSyncDirtyDefaultBranchRemovesObsoleteReviewBaseAndCommits(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	workspacePath := syncHomeWorkspace(testInstance)
 	remotePath := filepath.Join(workspacePath, "remote.git")
@@ -178,6 +182,8 @@ func TestSyncDirtyDefaultBranchRemovesObsoleteReviewBaseAndCommits(testInstance 
 }
 
 func TestSyncCurrentMergedBranchPromptsAndSyncsMasterBeforeCreatingPullRequest(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	branchName := "feature/squashed-review"
 	fixture := createSyncMergedBranchFixture(testInstance, branchName)
@@ -215,6 +221,8 @@ func TestSyncCurrentMergedBranchPromptsAndSyncsMasterBeforeCreatingPullRequest(t
 }
 
 func TestSyncTransitivelyMergedBranchPromptsAndSyncsMasterWithoutRecordedReviewBase(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	branchName := "feature/stack-child"
 	middleBranchName := "feature/stack-middle"
@@ -270,6 +278,8 @@ func TestSyncTransitivelyMergedBranchPromptsAndSyncsMasterWithoutRecordedReviewB
 }
 
 func TestSyncTransitivelyMergedBranchWithUnchangedMergeTip(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	binaryPath := buildIntegrationBinary(testInstance, integrationRepositoryRoot(testInstance))
 	const childBranch = "feature/unchanged-child"
 	const middleBranch = "feature/unchanged-middle"
@@ -364,6 +374,8 @@ func TestSyncTransitivelyMergedBranchWithUnchangedMergeTip(testInstance *testing
 }
 
 func TestSyncTransitivelyMergedBranchFollowsDeletedParentFromStaleLocalTip(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	branchName := "feature/deleted-stack-child"
 	parentBranchName := "feature/deleted-stack-parent"
@@ -462,6 +474,8 @@ func TestSyncTransitivelyMergedBranchFollowsDeletedParentFromStaleLocalTip(testI
 }
 
 func TestSyncReusedMergedBranchHeadCreatesNewPullRequestInsteadOfHandoff(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	branchName := "feature/reused-stack-child"
 	middleBranchName := "feature/reused-stack-middle"
@@ -524,6 +538,8 @@ func TestSyncReusedMergedBranchHeadCreatesNewPullRequestInsteadOfHandoff(testIns
 }
 
 func TestSyncDirtyCurrentMergedBranchRejectsCommitBeforeHandoff(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	branchName := "feature/squashed-review-dirty"
 	fixture := createSyncMergedBranchFixture(testInstance, branchName)
@@ -567,6 +583,8 @@ func TestSyncDirtyCurrentMergedBranchRejectsCommitBeforeHandoff(testInstance *te
 }
 
 func TestSyncExplicitMasterReleasesMainWorktreeAndSwitchesLinkedWorktree(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	workspacePath := syncHomeWorkspace(testInstance)
 	remotePath := filepath.Join(workspacePath, "remote.git")
@@ -618,6 +636,8 @@ func TestSyncExplicitMasterReleasesMainWorktreeAndSwitchesLinkedWorktree(testIns
 }
 
 func TestSyncExistingRemoteBranchWithoutPullRequestCreatesPullRequest(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	branchName := "feature/unreviewed-remote"
 	workspacePath := syncHomeWorkspace(testInstance)
@@ -668,6 +688,8 @@ func TestSyncExistingRemoteBranchWithoutPullRequestCreatesPullRequest(testInstan
 }
 
 func TestSyncDirtyExistingRemoteBranchWithoutPullRequestCommitsAndCreatesPullRequest(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	branchName := "bugfix/transactional-remote-release-state"
 	workspacePath := syncHomeWorkspace(testInstance)
@@ -732,6 +754,8 @@ func TestSyncDirtyExistingRemoteBranchWithoutPullRequestCommitsAndCreatesPullReq
 }
 
 func TestSyncDirtyEmptyLocalBranchCommitsTrackedExampleEnvMatchedByIgnoreRule(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	branchName := "bugfix/llm-env-inventory"
 	workspacePath := syncHomeWorkspace(testInstance)
@@ -803,6 +827,8 @@ func TestSyncDirtyEmptyLocalBranchCommitsTrackedExampleEnvMatchedByIgnoreRule(te
 }
 
 func TestSyncDirtyExistingRemoteBranchStagesDeletedPathContainingSpaces(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	branchName := "gix/update-dockerignore-to-include-owned-configs-workflows"
 	workspacePath := syncHomeWorkspace(testInstance)

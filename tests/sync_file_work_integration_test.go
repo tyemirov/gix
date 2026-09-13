@@ -11,6 +11,8 @@ import (
 )
 
 func TestSyncPublishedWorkSurvivesFreshCheckout(t *testing.T) {
+	t.Parallel()
+
 	binary := buildIntegrationBinary(t, integrationRepositoryRoot(t))
 	for _, branch := range []string{"qqq", "feature/work"} {
 		t.Run(branch, func(t *testing.T) {
@@ -49,6 +51,8 @@ func TestSyncPublishedWorkSurvivesFreshCheckout(t *testing.T) {
 }
 
 func TestSyncFileWorkNoLocalWorkPullsRemote(t *testing.T) {
+	t.Parallel()
+
 	binary := buildIntegrationBinary(t, integrationRepositoryRoot(t))
 	fixture := newSyncFixture(t, "qqq")
 	upstream := filepath.Join(fixture.workspace, "upstream")
@@ -69,6 +73,8 @@ func TestSyncFileWorkNoLocalWorkPullsRemote(t *testing.T) {
 }
 
 func TestSyncFileWorkFromEmptyParent(t *testing.T) {
+	t.Parallel()
+
 	binary := buildIntegrationBinary(t, integrationRepositoryRoot(t))
 	fixture := newSyncFixture(t, "qqq")
 	output, err := fixture.run(t, binary, "sync", "parent")
@@ -83,6 +89,8 @@ func TestSyncFileWorkFromEmptyParent(t *testing.T) {
 }
 
 func TestSyncFileWorkAfterGrandparentMerges(t *testing.T) {
+	t.Parallel()
+
 	binary := buildIntegrationBinary(t, integrationRepositoryRoot(t))
 	for _, parentWork := range []bool{false, true} {
 		t.Run(fmt.Sprintf("parent_work_%t", parentWork), func(t *testing.T) {
@@ -131,6 +139,8 @@ func TestSyncFileWorkAfterGrandparentMerges(t *testing.T) {
 }
 
 func TestSyncFileWorkAfterEmptyChildParentMerges(t *testing.T) {
+	t.Parallel()
+
 	binary := buildIntegrationBinary(t, integrationRepositoryRoot(t))
 	for _, existingChild := range []bool{false, true} {
 		for _, dirty := range []bool{false, true} {
@@ -184,6 +194,8 @@ func TestSyncFileWorkAfterEmptyChildParentMerges(t *testing.T) {
 }
 
 func TestSyncFileWorkPreservedAfterParentRejection(t *testing.T) {
+	t.Parallel()
+
 	binary := buildIntegrationBinary(t, integrationRepositoryRoot(t))
 	for _, dirty := range []bool{false, true} {
 		for _, remoteParent := range []bool{false, true} {
