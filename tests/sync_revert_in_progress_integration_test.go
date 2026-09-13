@@ -14,6 +14,8 @@ import (
 )
 
 func TestSyncRejectsResolvedRevertBeforeMutatingRepository(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	testInstance.Helper()
 
 	const branchName = "bugfix/B095-app-owned-deploy-bundle"
@@ -158,6 +160,8 @@ func TestSyncRejectsResolvedRevertBeforeMutatingRepository(testInstance *testing
 }
 
 func TestSyncRejectsResolvedRevertInSiblingBeforeMutatingRepository(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	testInstance.Helper()
 
 	const branchName = "bugfix/B095-app-owned-deploy-bundle"
@@ -311,6 +315,8 @@ func TestSyncRejectsResolvedRevertInSiblingBeforeMutatingRepository(testInstance
 }
 
 func TestSyncIgnoresOrdinaryBranchNamedRevertHead(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	testInstance.Helper()
 
 	repositoryRoot := integrationRepositoryRoot(testInstance)

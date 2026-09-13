@@ -15,6 +15,8 @@ const (
 )
 
 func TestSyncPublicationExecutionFailurePreservesWork(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	binaryPath := buildIntegrationBinary(testInstance, integrationRepositoryRoot(testInstance))
 	for _, phase := range []string{"push", "pull_request"} {
 		testInstance.Run(phase, func(testInstance *testing.T) {
@@ -56,6 +58,8 @@ func TestSyncPublicationExecutionFailurePreservesWork(testInstance *testing.T) {
 }
 
 func TestSyncExplicitDefaultPushRejectionPreservesCommittedWork(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	binaryPath := buildIntegrationBinary(testInstance, integrationRepositoryRoot(testInstance))
 	const branch = "qqq"
 	fixture := newSyncFixture(testInstance, branch)
@@ -93,6 +97,8 @@ func TestSyncExplicitDefaultPushRejectionPreservesCommittedWork(testInstance *te
 }
 
 func TestSyncExplicitDefaultWithRealRemoteRejection(t *testing.T) {
+	t.Parallel()
+
 	binary := buildIntegrationBinary(t, integrationRepositoryRoot(t))
 	const branch = "qqq"
 	fixture := newSyncFixture(t, branch)
@@ -135,6 +141,8 @@ func TestSyncExplicitDefaultWithRealRemoteRejection(t *testing.T) {
 }
 
 func TestSyncExplicitNondefaultWithRemoteRejection(t *testing.T) {
+	t.Parallel()
+
 	binary := buildIntegrationBinary(t, integrationRepositoryRoot(t))
 	const branch = "work"
 	fixture := newSyncFixture(t, "trunk")
@@ -163,6 +171,8 @@ func TestSyncExplicitNondefaultWithRemoteRejection(t *testing.T) {
 }
 
 func TestSyncExplicitDefaultWithConcurrentRemotePush(t *testing.T) {
+	t.Parallel()
+
 	binary := buildIntegrationBinary(t, integrationRepositoryRoot(t))
 	fixture := newSyncFixture(t, "qqq")
 	upstream := filepath.Join(fixture.workspace, "upstream")
@@ -194,6 +204,8 @@ func TestSyncExplicitDefaultWithConcurrentRemotePush(t *testing.T) {
 }
 
 func TestSyncExplicitDefaultRejectionFromAnotherBranch(t *testing.T) {
+	t.Parallel()
+
 	binary := buildIntegrationBinary(t, integrationRepositoryRoot(t))
 	for _, source := range []string{"main", "master", "feature/source"} {
 		t.Run(source, func(t *testing.T) {
@@ -221,6 +233,8 @@ func TestSyncExplicitDefaultRejectionFromAnotherBranch(t *testing.T) {
 }
 
 func TestSyncDefaultPublicationReviewRegressions(t *testing.T) {
+	t.Parallel()
+
 	binary := buildIntegrationBinary(t, integrationRepositoryRoot(t))
 	for _, narrow := range []bool{false, true} {
 		t.Run(fmt.Sprintf("new_branch_preserves_prior_review_narrow_%t", narrow), func(t *testing.T) {

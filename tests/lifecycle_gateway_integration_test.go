@@ -3,6 +3,7 @@ package tests
 import (
 	"archive/tar"
 	"bytes"
+	"encoding/json"
 	"io"
 	"os"
 	"os/exec"
@@ -13,44 +14,78 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestLifecycleTargetsDelegateToSiblingGateway(t *testing.T) {
-	makefile, err := os.ReadFile(filepath.Join(releaseRepositoryRoot(t), "Makefile"))
+func TestLifecycleTargetsUseInstalledGateway(t *testing.T) {
+	repositoryRoot := releaseRepositoryRoot(t)
+	makefile, err := os.ReadFile(filepath.Join(repositoryRoot, "Makefile"))
 	require.NoError(t, err)
+	workspace, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
+	application := filepath.Join(workspace, "application with spaces")
+	installation := filepath.Join(workspace, "installed runtime")
+	for _, directory := range []string{application, installation} {
+		require.NoError(t, os.MkdirAll(directory, 0o755))
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(application, "Makefile"), makefile, 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(application, "go.mod"), []byte("module example.invalid/application\n\ngo 1.25.0\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(application, "main.go"), []byte("package main\nfunc main() {}\n"), 0o644))
+	initialize := exec.Command("git", "init", "-q", application)
+	output, err := initialize.CombinedOutput()
+	require.NoError(t, err, string(output))
+	probeSource := filepath.Join(workspace, "probe.go")
+	require.NoError(t, os.WriteFile(probeSource, []byte(`package main
+import ("encoding/json"; "fmt"; "os")
+func main() {
+ if err := json.NewEncoder(os.Stdout).Encode(os.Args[1:]); err != nil { panic(err) }
+ fmt.Fprintln(os.Stderr, "gateway diagnostic")
+ if os.Getenv("GATEWAY_TEST_FAIL") == "1" { os.Exit(19) }
+}
+`), 0o644))
+	executable := filepath.Join(installation, "mprlab-gateway")
+	build := exec.Command("go", "build", "-o", executable, probeSource)
+	output, err = build.CombinedOutput()
+	require.NoError(t, err, string(output))
+	environment := []string{}
+	for _, entry := range os.Environ() {
+		name, _, _ := strings.Cut(entry, "=")
+		if name != "MPRLAB_GATEWAY_EXECUTABLE" && name != "MAKEFLAGS" && name != "MFLAGS" && name != "PATH" && name != "GATEWAY_TEST_FAIL" {
+			environment = append(environment, entry)
+		}
+	}
+	environment = append(environment, "PATH="+installation+string(os.PathListSeparator)+os.Getenv("PATH"))
 	for _, phase := range []string{"release", "publish", "deploy"} {
 		t.Run(phase, func(t *testing.T) {
-			workspace, pathError := filepath.EvalSymlinks(t.TempDir())
-			require.NoError(t, pathError)
-			application := filepath.Join(workspace, "application with spaces")
-			gateway := filepath.Join(workspace, "mprlab-gateway")
-			writeReleaseFixtureFile(t, filepath.Join(application, "Makefile"), string(makefile))
-			writeReleaseFixtureFile(t, filepath.Join(application, "go.mod"), "module example.invalid/application\n\ngo 1.25.0\n")
-			writeReleaseFixtureFile(t, filepath.Join(application, "main.go"), "package main\nfunc main() {}\n")
-			runGit(t, application, "init")
-			writeReleaseFixtureFile(t, filepath.Join(gateway, "Makefile"), `.PHONY: app-release app-publish app-deploy
-app-release app-publish app-deploy:
-	@printf '%s\n' '$@' '$(MPRLAB_APP_ROOT)' > received.txt
-	@exit $(RESULT)
-`)
-			for _, exitStatus := range []string{"0", "19"} {
-				command := exec.Command("make", "--no-print-directory", phase, "RESULT="+exitStatus)
-				command.Dir = application
-				output, runError := command.CombinedOutput()
-				if exitStatus == "0" {
-					require.NoError(t, runError, string(output))
-				} else {
-					require.Error(t, runError, string(output))
+			for _, selection := range []string{"", executable} {
+				for _, failure := range []string{"0", "1"} {
+					args := []string{"--no-print-directory", phase}
+					if selection != "" {
+						args = append(args, "MPRLAB_GATEWAY_EXECUTABLE="+selection)
+					}
+					command := exec.Command("make", args...)
+					command.Dir = application
+					command.Env = append(append([]string{}, environment...), "GATEWAY_TEST_FAIL="+failure)
+					var diagnostics bytes.Buffer
+					command.Stderr = &diagnostics
+					output, err := command.Output()
+					if failure == "0" {
+						require.NoError(t, err, diagnostics.String())
+					} else {
+						require.Error(t, err)
+						require.Contains(t, diagnostics.String(), "Error 19")
+					}
+					var received []string
+					require.NoError(t, json.Unmarshal(output, &received), string(output))
+					require.Equal(t, []string{"app-" + phase, "--app-root", application}, received)
+					require.Contains(t, diagnostics.String(), "gateway diagnostic")
 				}
-				received, readError := os.ReadFile(filepath.Join(gateway, "received.txt"))
-				require.NoError(t, readError, string(output))
-				require.Equal(t, "app-"+phase+"\n"+application+"\n", string(received))
 			}
-			require.NoError(t, os.RemoveAll(gateway))
-			command := exec.Command("make", "--no-print-directory", phase)
+			missing := filepath.Join(workspace, "missing-gateway")
+			command := exec.Command("make", "--no-print-directory", phase, "MPRLAB_GATEWAY_EXECUTABLE="+missing)
 			command.Dir = application
-			output, runError := command.CombinedOutput()
-			require.Error(t, runError, string(output))
-			require.Contains(t, string(output), "mprlab-gateway")
-			require.False(t, strings.Contains(string(output), "scripts/release"), string(output))
+			command.Env = environment
+			output, err := command.CombinedOutput()
+			require.Error(t, err)
+			require.Contains(t, string(output), "Gateway runtime is unavailable: "+missing)
+			require.NotContains(t, string(output), "gateway diagnostic")
 		})
 	}
 }

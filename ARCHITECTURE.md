@@ -327,4 +327,9 @@ Package retention is supplied at the command boundary, for example `gix packages
 
 Domain packages rely on table-driven unit tests using injected fakes for Git, GitHub, and filesystem interactions. Integration coverage lives under `tests/`, where high-level flows execute through the public CLI surfaces to ensure behavior matches the documented commands. All tests are designed to run in isolated temporary directories (`t.TempDir`) without polluting the developer filesystem.
 
+The `test-slow` and `test-sync` targets run at most four tests at the same time.
+Sync test groups use separate repositories, request logs, configurations, and local provider fixtures.
+They can run at the same time. Tests that change the process environment run one after another.
+Live provider evaluation remains a separate qualification step.
+
 Documentation tests in `docs/readme_config_test.go` ensure the workflow configuration referenced above stays in sync with the executable configuration loader.

@@ -16,6 +16,8 @@ import (
 )
 
 func TestSyncConflictFidelityContracts(t *testing.T) {
+	t.Parallel()
+
 	repositoryRoot := integrationRepositoryRoot(t)
 	binaryPath := buildIntegrationBinary(t, repositoryRoot)
 	openIssue := readTextFile(t, filepath.Join(repositoryRoot, "tests/testdata/merge-fidelity/i002-open.txt"))
@@ -258,6 +260,8 @@ func TestSyncConflictFidelityContracts(t *testing.T) {
 }
 
 func TestSyncRenameConflictRequiresGitResolution(t *testing.T) {
+	t.Parallel()
+
 	root := integrationRepositoryRoot(t)
 	binary := buildIntegrationBinary(t, root)
 	for _, originalPath := range []string{"original.txt", "aaa-original.txt"} {

@@ -1,6 +1,7 @@
 GO_SOURCES := $(shell find . -name '*.go' -not -path "./vendor/*" -not -path "./.git/*" -not -path "*/.git/*")
 FAST_TEST_PACKAGES := $(shell go list ./... | grep -v '/tests$$')
 GO_TEST_FLAGS ?=
+INTEGRATION_TEST_PARALLELISM := 4
 STATICCHECK_MODULE := honnef.co/go/tools/cmd/staticcheck@master
 INEFFASSIGN_MODULE := github.com/gordonklaus/ineffassign@latest
 LICENSE_ROLLOUT_SCRIPT := scripts/licensing/license_rollout.py
@@ -33,11 +34,11 @@ test-licensing:
 	python3 -m unittest discover -s scripts/licensing -p 'test_*.py'
 
 test-slow:
-	go test -v $(GO_TEST_FLAGS) ./tests
+	go test -v -parallel=$(INTEGRATION_TEST_PARALLELISM) $(GO_TEST_FLAGS) ./tests
 
 .PHONY: test-sync
 test-sync:
-	go test -v $(GO_TEST_FLAGS) ./tests -run '^TestSync'
+	go test -v -parallel=$(INTEGRATION_TEST_PARALLELISM) $(GO_TEST_FLAGS) ./tests -run '^TestSync'
 
 test-unit: test-fast
 
@@ -55,11 +56,18 @@ license-rollout-plan:
 license-rollout-apply: build
 	timeout -k 350s -s SIGKILL 350s python3 "$(LICENSE_ROLLOUT_SCRIPT)" apply --manifest "$(LICENSE_ROLLOUT_MANIFEST)" --workflow "$(LICENSE_ROLLOUT_WORKFLOW)" --gix bin/gix
 
+MPRLAB_GATEWAY_EXECUTABLE ?= mprlab-gateway
+
+.PHONY: release publish deploy
+
 release publish deploy:
-	@set -eu; \
-	application_root="$$(git rev-parse --show-toplevel)"; \
-	gateway_root="$$(dirname "$$application_root")/mprlab-gateway"; \
-	$(MAKE) --no-print-directory -C "$$gateway_root" "app-$@" MPRLAB_APP_ROOT="$$application_root"
+	@application_root="$$(git rev-parse --show-toplevel)"; \
+	if ! command -v "$(MPRLAB_GATEWAY_EXECUTABLE)" >/dev/null 2>&1; then \
+		printf 'Gateway runtime is unavailable: %s. Install a released runtime and add its command directory to PATH.\n' \
+			"$(MPRLAB_GATEWAY_EXECUTABLE)" >&2; \
+		exit 2; \
+	fi; \
+	exec "$(MPRLAB_GATEWAY_EXECUTABLE)" "app-$@" --app-root "$${application_root}"
 
 ci: check-format lint test-fast test-slow
 

@@ -11,6 +11,30 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B117] (P1) Complete CI before the test deadline.
+  Evidence:
+  The release CI command stopped at the ten-minute Go test deadline on 2026-09-12.
+  It passed 150 test groups and skipped two live evaluators before the final group started.
+  The Ledger replay and destination context tests passed.
+  Requirements:
+  - Keep all current test scenarios and their assertions.
+  - Run sync tests with separate repositories and provider fixtures at the same time.
+  - Run at most four integration tests at the same time.
+  - Preserve the current test deadlines and plain `make ci` command.
+  Validation:
+  - Verify the final test separately before the test refactor.
+  - Run the complete CI command.
+  - Verify all regular CLI groups, including the complete Ledger replay.
+  Resolution:
+  - Enabled parallel execution for 87 sync test groups with separate fixtures.
+  - The `test-slow` and `test-sync` targets limit execution to four active tests.
+  - Preserved all test assertions, fixtures, and deadlines.
+  - The final test passed separately in 0.49 seconds before the change.
+  - Plain `make ci` passed. Its integration suite completed in 262.765 seconds.
+  - All 151 regular CLI groups passed, including the complete Ledger replay and five destination context cases.
+  - The new result contains every completed case from the failed release log and the previously unfinished final group.
+  - Five focused groups passed with shuffled execution and the race detector.
+
 - [x] [B116] (P2) Bound destination context in conflict requests.
   Evidence:
   A two-line conflict after 1 MB of unchanged text increased the first request from 6,571 to 1,117,622 bytes.

@@ -87,6 +87,8 @@ func (fixture explicitSyncFixture) assertPublished(t *testing.T, location explic
 }
 
 func TestSyncExplicitTargetDirtyFiles(t *testing.T) {
+	t.Parallel()
+
 	binary := buildIntegrationBinary(t, integrationRepositoryRoot(t))
 	dirtyCases := []struct {
 		name     string
@@ -156,6 +158,8 @@ func writeExplicitSyncFile(t *testing.T, fixture explicitSyncFixture, name, cont
 }
 
 func TestSyncExplicitTargetReviewHistory(t *testing.T) {
+	t.Parallel()
+
 	binary := buildIntegrationBinary(t, integrationRepositoryRoot(t))
 	for _, scenario := range []struct {
 		name          string
@@ -236,6 +240,8 @@ func TestSyncExplicitTargetReviewHistory(t *testing.T) {
 }
 
 func TestSyncExplicitTargetPublicationFailures(t *testing.T) {
+	t.Parallel()
+
 	binary := buildIntegrationBinary(t, integrationRepositoryRoot(t))
 	for _, scenario := range []struct {
 		name               string
@@ -306,6 +312,8 @@ func captureExplicitSyncState(t *testing.T, fixture explicitSyncFixture) map[str
 }
 
 func TestSyncExplicitTargetConflicts(t *testing.T) {
+	t.Parallel()
+
 	binary := buildIntegrationBinary(t, integrationRepositoryRoot(t))
 	for _, scenario := range []struct {
 		name, base, target, pending, expected, failure string
@@ -375,6 +383,8 @@ func TestSyncExplicitTargetConflicts(t *testing.T) {
 }
 
 func TestSyncExplicitTargetStash(t *testing.T) {
+	t.Parallel()
+
 	binary := buildIntegrationBinary(t, integrationRepositoryRoot(t))
 	for _, location := range []explicitSyncTargetLocation{explicitSyncLocalRemote, explicitSyncRemoteOnly, explicitSyncNew} {
 		t.Run(string(location), func(t *testing.T) {
@@ -404,6 +414,8 @@ func TestSyncExplicitTargetStash(t *testing.T) {
 }
 
 func TestSyncExplicitTargetProviderBoundary(t *testing.T) {
+	t.Parallel()
+
 	binary := buildIntegrationBinary(t, integrationRepositoryRoot(t))
 	for _, scenario := range []struct {
 		name    string

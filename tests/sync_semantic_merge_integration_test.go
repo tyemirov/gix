@@ -16,6 +16,8 @@ import (
 )
 
 func TestSyncValidatesLargeConcurrentDeletionAndInsertion(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	const targetBranchName = "bugfix/large-replacement-proof"
 
 	issuePrefix := "# ISSUES\n\n## Improvements\n\n"
@@ -136,6 +138,8 @@ func TestSyncValidatesLargeConcurrentDeletionAndInsertion(testInstance *testing.
 }
 
 func TestSyncAuditsLargeAdditiveIssueAndChangelogConflictsBySemanticRegion(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	testInstance.Helper()
 
 	const (
@@ -379,6 +383,8 @@ operations:
 }
 
 func TestSyncMergesOverlappingConcurrentIssueInsertionsWithoutDuplicateContent(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	const (
 		baseBranchName   = "master"
 		targetBranchName = "bugfix/B512-concurrent-deployments"
@@ -524,6 +530,8 @@ func TestSyncMergesOverlappingConcurrentIssueInsertionsWithoutDuplicateContent(t
 }
 
 func TestSyncRepairsRejectedSemanticAuditCorrectionsBeforeCommit(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	const (
 		baseBranchName        = "feature/semantic-review-base"
 		targetBranchName      = "bugfix/semantic-review-target"
@@ -686,6 +694,8 @@ operations:
 }
 
 func TestSyncDerivesReplacementAndDeletionCandidatesBeforeSemanticAudit(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	const (
 		baseBranchName   = "feature/versionless-lifecycle"
 		targetBranchName = "gix/migrate-lifecycle-manifest-to-schema-version-5"

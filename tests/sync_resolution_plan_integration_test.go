@@ -37,6 +37,8 @@ type mergeCorpusCase struct {
 }
 
 func TestSyncResolutionPlanCorpus(t *testing.T) {
+	t.Parallel()
+
 	cases := loadMergeCorpus(t)
 	padding := strings.Repeat("Historical context.\n", 2000)
 	recordStart := "- [ ] [I001] Read the complete record.\n" + strings.Repeat("  Earlier requirement.\n", 80)

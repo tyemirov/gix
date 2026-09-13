@@ -27,6 +27,8 @@ type syncWorktreeAdoptionFixture struct {
 }
 
 func TestSyncUnsupportedRemotePreservesDirtySibling(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	fixture := createSyncWorktreeAdoptionFixture(testInstance)
 
@@ -50,6 +52,8 @@ func TestSyncUnsupportedRemotePreservesDirtySibling(testInstance *testing.T) {
 }
 
 func TestSyncUnsupportedRemotePreservesUnpublishedSibling(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	fixture := createSyncWorktreeAdoptionFixture(testInstance)
 
@@ -77,6 +81,8 @@ func TestSyncUnsupportedRemotePreservesUnpublishedSibling(testInstance *testing.
 }
 
 func TestSyncExplicitMasterPrunesStaleLinkedWorktreeBeforeSwitch(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	workspacePath := testInstance.TempDir()
 	remotePath := filepath.Join(workspacePath, "remote.git")
@@ -118,6 +124,8 @@ func TestSyncExplicitMasterPrunesStaleLinkedWorktreeBeforeSwitch(testInstance *t
 }
 
 func TestSyncRepairsStaleLinkedWorktreeAfterPrimaryRepositoryMove(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	binaryPath := buildIntegrationBinary(testInstance, repositoryRoot)
 	workspacePath := testInstance.TempDir()
@@ -194,6 +202,8 @@ func TestSyncRepairsStaleLinkedWorktreeAfterPrimaryRepositoryMove(testInstance *
 }
 
 func TestSyncRejectsCopiedPrimaryWithoutTakingOverLiveLinkedWorktree(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	binaryPath := buildIntegrationBinary(testInstance, repositoryRoot)
 	workspacePath := testInstance.TempDir()
@@ -266,6 +276,8 @@ func TestSyncRejectsCopiedPrimaryWithoutTakingOverLiveLinkedWorktree(testInstanc
 }
 
 func TestSyncAdoptsSiblingWorktreeWithReadOnlyIgnoredCache(testInstance *testing.T) {
+	testInstance.Parallel()
+
 	if runtime.GOOS == "windows" {
 		testInstance.Skip("read-only directory removal requires Unix permission semantics")
 	}

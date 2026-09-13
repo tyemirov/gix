@@ -15,6 +15,8 @@ import (
 )
 
 func TestSyncBoundsDestinationContext(t *testing.T) {
+	t.Parallel()
+
 	const requestLimit = 64 * 1024
 	const placementLimit = 32 * 1024
 	const conflictPath = "settings.txt"
