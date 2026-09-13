@@ -29,7 +29,14 @@ make publish
 make deploy
 ```
 
-These three targets delegate to the physical sibling `../mprlab-gateway`. The [resource manifest](.mprlab/deploy/resources.yml) declares the release policy, five Go platforms, and the Pages site. Gateway calls `gix release next` with the declared policy. The CLI validates that policy and selects the next version without reading MPR Lab repository files.
+These three targets use the installed `mprlab-gateway` command.
+Each target supplies the application Git root through `--app-root`.
+Use `MPRLAB_GATEWAY_EXECUTABLE` to select an installed command by its absolute path.
+If the command is unavailable, the target stops with an installation error.
+Gateway inventory and private config use `MPRLAB_GATEWAY_OPERATOR_ROOT`, which defaults to `$HOME/.config/mprlab-gateway`.
+Install the runtime with the [Gateway installation procedure](https://github.com/MarcoPoloResearchLab/mprlab-gateway/blob/master/docs/runtime-installation.md).
+
+The [resource manifest](.mprlab/deploy/resources.yml) declares the release policy, five Go platforms, and the Pages site. Gateway calls `gix release next` with the declared policy. The CLI validates that policy and selects the next version without reading MPR Lab repository files.
 
 For an established SemVer sequence, the command uses an LLM to examine all committed changes after the latest SemVer tag. The evidence includes commit messages, the diff summary, range-scoped changelog changes, and a bounded diff excerpt. The model classifies each packet by its effect on a supported public contract. A second model call audits each candidate against the same evidence. Standard SemVer maps incompatible, additive, and compatible effects to `major`, `minor`, and `patch`. Commit labels and implementation changes cannot set a higher release level by themselves.
 
@@ -39,11 +46,11 @@ An artifact producer can supply different previous and candidate release output 
 
 The manifest selects SemVer with fixed major `1`. Under this policy, incompatible and additive public changes select a minor release. Compatible changes select a patch release. Other callers can select standard SemVer or CalVer.
 
-Gateway owns CI, artifact preparation, release receipts, publication, Pages activation, network retries, and verification. Both repositories must use their published default branch before the production lifecycle starts. The commands consume committed source.
+Gateway owns CI, artifact preparation, release receipts, publication, Pages activation, network retries, and verification. The application must use its published default branch before the production lifecycle starts. The commands consume committed source.
 
 `make release` runs the Gix `make ci` gate and seals the declared artifacts. Gateway stores receipts under the application Git directory in `mprlab-lifecycle`. A retry reuses the receipt for the same application commit.
 
-`make publish` publishes the sealed artifacts and records their immutable identities. `make deploy` consumes that publication receipt and verifies the declared Pages site. The commands use the sibling Gateway implementation and its prerequisites.
+`make publish` publishes the sealed artifacts and records their immutable identities. `make deploy` consumes that publication receipt and verifies the declared Pages site. The commands use one installed Gateway package and its dependencies.
 
 The Go resource produces `gix-<os>-<arch>.tar.gz` for Linux and macOS on AMD64 and ARM64, plus Windows on AMD64. Each archive contains `gix`, or `gix.exe` for Windows. Gateway embeds the selected release version through the declared `build.version_symbol`.
 
