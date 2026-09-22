@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Merged branch sync
+- Corrected merged PR traversal when remote branches already contained changes from different local commits.
+- Preserved unpublished parent work and used one confirmation for the final destination.
+
 ### Sync commit ownership
 - Protected dirty-file preparation with the canonical index lock and a private index.
 - Verified the installed index against the prepared contents instead of two reads of the live index.
