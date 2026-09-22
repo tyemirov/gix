@@ -2636,6 +2636,29 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Focused regression tests and `make ci` passed.
 
 
+- [x] [B122] (P1) Reach the final merged base when local changes are already published.
+  Evidence:
+  Smith required three `gix sync` commands to reach `master` through PRs #113, #110, and #109.
+  Both parent branches contained local commits with different IDs from the remote commits.
+  The remote branches already contained those local changes and additional files.
+  B048 and B107 stopped at each parent because local commit IDs were absent from the remote history.
+  Requirements:
+  - Compare the local merge result with the remote tree before treating local commits as unpublished work.
+  - Continue through merged parents when the merge adds no file changes to the remote tree.
+  - Keep one confirmation for the final destination.
+  - Stop at active reviews, unpublished file changes, and local merge conflicts.
+  - Report comparison failures before confirmation and preserve the original branch state.
+  Validation:
+  The new CLI regression first stopped at the middle branch instead of `master`.
+  All nine new CLI cases passed, including both parents, the starting branch, active reviews, new work, conflicts, failures, and declined confirmation.
+  Baseline and final `make ci` passed on 2026-09-22.
+  The changed prose passed the scoped language review.
+  The Governor check reported existing differences in seven unchanged files.
+  Resolution:
+  Gix compares the local merge result with the remote tree when local commit IDs differ.
+  Equivalent changes permit traversal to the final merged base with one confirmation.
+  New changes and conflicts keep the parent as the destination.
+
 ## Improvements
 
 - [x] [I022] (P1) Qualify the complete Ledger stash conflict through the CLI.

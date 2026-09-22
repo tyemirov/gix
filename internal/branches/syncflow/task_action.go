@@ -48,6 +48,10 @@ const (
 	gitMergeSubcommandConstant                   = "merge"
 	gitMergeNoEditFlagConstant                   = "--no-edit"
 	gitMergeFastForwardOnlyFlagConstant          = "--ff-only"
+	gitMergeTreeSubcommandConstant               = "merge-tree"
+	gitMergeTreeWriteTreeFlagConstant            = "--write-tree"
+	gitMergeTreeNoMessagesFlagConstant           = "--no-messages"
+	gitTreePeelSuffixConstant                    = "^{tree}"
 	gitRemoteGetURLSubcommandConstant            = "get-url"
 	gitResetSubcommandConstant                   = "reset"
 	gitResetHardFlagConstant                     = "--hard"
@@ -1316,6 +1320,14 @@ func mergedPullRequestForCurrentBranchTip(ctx context.Context, environment *work
 	if branchTipErr != nil {
 		return nil, branchTipErr
 	}
+	hasUnpublishedLocalWork := branchTip.HasLocalOnlyCommits
+	if hasUnpublishedLocalWork && len(pullRequests) > 0 {
+		published, publishedErr := strictSyncLocalWorkPublished(ctx, environment.GitExecutor, repository.Path, branchName, branchTip.CommitID)
+		if publishedErr != nil {
+			return nil, publishedErr
+		}
+		hasUnpublishedLocalWork = !published
+	}
 	matchingPullRequests := make([]githubcli.PullRequest, 0, len(pullRequests))
 	for _, pullRequest := range pullRequests {
 		if strings.TrimSpace(pullRequest.HeadRefName) != branchName {
@@ -1326,12 +1338,12 @@ func mergedPullRequestForCurrentBranchTip(ctx context.Context, environment *work
 			return nil, fmt.Errorf(strictSyncMissingPullRequestHeadOIDTemplate, branchName)
 		}
 		matchingPullRequests = append(matchingPullRequests, pullRequest)
-		if !branchTip.Exists || (!branchTip.HasLocalOnlyCommits && headRefOID == branchTip.CommitID) {
+		if !branchTip.Exists || (!hasUnpublishedLocalWork && headRefOID == branchTip.CommitID) {
 			matchedPullRequest := pullRequest
 			return &matchedPullRequest, nil
 		}
 	}
-	if branchTip.HasLocalOnlyCommits {
+	if hasUnpublishedLocalWork {
 		return nil, nil
 	}
 	for _, pullRequest := range matchingPullRequests {
@@ -1366,6 +1378,35 @@ func mergedPullRequestForCurrentBranchTip(ctx context.Context, environment *work
 		return &matchedPullRequest, nil
 	}
 	return nil, nil
+}
+
+func strictSyncLocalWorkPublished(ctx context.Context, executor shared.GitExecutor, repositoryPath string, branchName string, remoteCommit string) (bool, error) {
+	// A different local history can contain only changes already published remotely.
+	// Compare the merge result: the local tree can lack newer remote files.
+	mergedTree, mergeErr := executor.ExecuteGit(ctx, execshell.CommandDetails{
+		Arguments: []string{gitMergeTreeSubcommandConstant, gitMergeTreeWriteTreeFlagConstant, gitMergeTreeNoMessagesFlagConstant,
+			remoteCommit, fmt.Sprintf("refs/heads/%s", branchName)},
+		WorkingDirectory: repositoryPath,
+	})
+	if mergeErr != nil {
+		var commandFailure execshell.CommandFailedError
+		if errors.As(mergeErr, &commandFailure) && commandFailure.Result.ExitCode == 1 {
+			return false, nil
+		}
+		return false, fmt.Errorf("compare local branch %q with remote commit %q: %w", branchName, remoteCommit, mergeErr)
+	}
+	mergedTreeID := strings.TrimSpace(mergedTree.StandardOutput)
+	if mergedTreeID == "" {
+		return false, fmt.Errorf("compare local branch %q with remote commit %q: empty merge tree", branchName, remoteCommit)
+	}
+	remoteTree, remoteTreeExists, remoteTreeErr := strictSyncReferenceCommit(ctx, executor, repositoryPath, remoteCommit+gitTreePeelSuffixConstant)
+	if remoteTreeErr != nil {
+		return false, fmt.Errorf("read remote tree for branch %q: %w", branchName, remoteTreeErr)
+	}
+	if !remoteTreeExists {
+		return false, fmt.Errorf("read remote tree for branch %q: commit %q has no tree", branchName, remoteCommit)
+	}
+	return mergedTreeID == remoteTree, nil
 }
 
 func ensureStrictSyncPullRequestHeadCommit(ctx context.Context, executor shared.GitExecutor, repositoryPath string, remoteName string, pullRequest githubcli.PullRequest) (string, error) {
