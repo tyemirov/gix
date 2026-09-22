@@ -2518,6 +2518,34 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 
 
+- [ ] [B118] (P1) Keep temporary test repositories outside the user home directory.
+  Goal:
+  Keep test repositories in an isolated temporary directory and report removal failures.
+  Evidence:
+  - On 2026-09-20, 26 `gix-sync-merged-branch-*` directories remained directly under `/Users/tyemirov`.
+  - These directories contained synthetic repositories, local bare remotes, and test logs. Their combined allocated size was 9,440 KiB.
+  - `tests/sync_merged_branch_integration_test.go`, function `syncHomeWorkspace`, calls `os.UserHomeDir()` and `os.MkdirTemp(homeDirectory, "gix-sync-merged-branch-")`.
+  - The helper registers `testInstance.Cleanup`, but `_ = os.RemoveAll(workspacePath)` discards removal errors.
+  - Commit `ca1146e` introduced this helper. Multiple sync integration suites now call it.
+  - A separate test program used the unchanged helper with an isolated `HOME` on 2026-09-20.
+  - Normal completion returned exit code zero and removed the directory. `SIGKILL` stopped the test process and left the directory present.
+  - The reproduction proves one failure path. The cause of each historical directory remains unknown.
+  - The folder prefix comes from test code. It is not evidence that a normal `gix sync` invocation creates these directories.
+  Requirements:
+  - Create temporary repositories under a test-owned temporary root instead of the real user home directory.
+  - If a scenario requires a home directory, supply an isolated home through the child process environment.
+  - Preserve parallel test execution without changes to the parent process environment.
+  - Report directory removal errors through the test result, with the affected path and cause.
+  - Keep all current sync scenarios and repository discovery assertions.
+  - Keep any files left after an uncatchable process stop inside the temporary root.
+  - Preserve unrelated user files and repositories during removal.
+  Validation:
+  - Add regression coverage that verifies the real user home remains unchanged after the relevant test program runs.
+  - Cover normal completion, an assertion failure, and a forced stop of an isolated child test process.
+  - Verify that temporary repositories remain discoverable through the real CLI.
+  - Verify that a removal failure fails the test with an actionable error.
+  - Run the focused sync integration target, then the repository CI target.
+
 - [x] [B119] (P0) Verify the intended file changes before each sync commit.
   Goal:
   Each sync commit contains the intended file changes for its selected group.
