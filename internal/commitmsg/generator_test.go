@@ -35,7 +35,6 @@ func TestBuildRequestStagedDiff(t *testing.T) {
 	require.Zero(t, request.MaxTokens)
 
 	expectedCommands := [][]string{
-		{"status", "--short"},
 		{"diff", "--unified=3", "--cached", "--stat"},
 		{"diff", "--unified=3", "--cached"},
 	}
@@ -58,7 +57,6 @@ func TestBuildRequestWorktreeDiff(t *testing.T) {
 	require.Equal(t, 80, request.MaxTokens)
 
 	expectedCommands := [][]string{
-		{"status", "--short"},
 		{"diff", "--unified=3", "--stat"},
 		{"diff", "--unified=3"},
 	}

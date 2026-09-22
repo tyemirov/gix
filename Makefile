@@ -1,3 +1,5 @@
+GO_TOOLCHAIN_ROOT := $(shell go env GOROOT)
+GOFMT := $(GO_TOOLCHAIN_ROOT)/bin/gofmt
 GO_SOURCES := $(shell find . -name '*.go' -not -path "./vendor/*" -not -path "./.git/*" -not -path "*/.git/*")
 FAST_TEST_PACKAGES := $(shell go list ./... | grep -v '/tests$$')
 GO_TEST_FLAGS ?=
@@ -11,10 +13,10 @@ LICENSE_ROLLOUT_WORKFLOW := configs/license-rollout.yaml
 .PHONY: format check-format lint test test-unit test-integration test-fast test-slow test-licensing build license-rollout-plan license-rollout-apply release publish deploy ci
 
 format:
-	gofmt -w $(GO_SOURCES)
+	"$(GOFMT)" -w $(GO_SOURCES)
 
 check-format:
-	@formatted_files="$$(gofmt -l $(GO_SOURCES))"; \
+	@formatted_files="$$('$(GOFMT)' -l $(GO_SOURCES))" || exit $$?; \
 	if [ -n "$$formatted_files" ]; then \
 		echo "Go files require formatting:"; \
 		echo "$$formatted_files"; \

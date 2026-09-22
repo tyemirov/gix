@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Sync commit ownership
+- Protected dirty-file preparation with the canonical index lock and a private index.
+- Verified the installed index against the prepared contents instead of two reads of the live index.
+- Retained outside changes and recovery snapshots when checkout or index ownership changed.
+- Skipped commits for work already present in the destination.
+- Required changes from the selected diff source before commit-message generation and excluded unrelated status from scoped requests.
+
 ### Conflict resolution
 - Bounded initial destination excerpts and marked omitted text, with complete context available after an explicit model request.
 - Added a complete Ledger stash fixture and live CLI replay with exact file, index, branch, and stash checks.

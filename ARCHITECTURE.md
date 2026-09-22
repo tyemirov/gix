@@ -83,7 +83,23 @@ The transaction journals only refs and worktrees it changes. Each successful Git
 
 Rollback does not change unrelated refs or worktrees. An unexpected ref change stops cleanup before outside work is overwritten. Completed restoration reports `SYNC_SWITCH_ROLLBACK`. Failed restoration retains recovery objects under `SYNC_SWITCH_HANDOFF`. A GitHub push rejection does not start this rollback.
 
-Clustered dirty commits add a narrower checkpoint around every slow LLM request. After staging, `dirty_sync.go` compares the complete cached path set with the selected cluster, then records the active branch or detached checkout, `HEAD`, exact per-worktree index path, cache entries and their skip-worktree or assume-unchanged flags, intent-to-add state, and resolve-undo records. Every post-model inspection runs through a cancellation-independent bounded context. The final inspection begins only after Gix acquires the canonical per-worktree `index.lock`, so a normal Git writer either mutates first and is detected by the recheck or loses the lock and cannot enter the commit. Gix copies the validated live index into that locked path and invokes `git commit` with the copy as `GIT_INDEX_FILE`; Git creates the commit from the checked state while the live index remains untouched. Checkout or semantic index drift marks local ownership as lost before commit; the transaction skips reset/clean/rollback, preserves its recovery snapshot and the outside writer's current state, releases its lock, and emits one actionable `SYNC_SWITCH_HANDOFF`.
+Dirty commits establish checkout and index ownership before they prepare each file group.
+Gix holds the canonical index lock and prepares the selected changes in a private index.
+It records the expected index contents from that private result, then verifies that the live checkout and index remain unchanged.
+Gix replaces the live index with the prepared index and checks it against the recorded expectation.
+An outside reset, partial index change, or unrelated staged file cannot become the accepted checkpoint.
+A group whose contents already match the destination needs no commit or model request.
+
+Each model request describes only its selected diff source.
+An empty staged or worktree diff returns `ErrNoChanges`, even when unrelated pending files exist.
+The internal `all` source retains complete pending status for branch-name generation.
+Binary changes and empty-file additions remain valid changes.
+
+The checkpoint includes the active checkout, `HEAD`, index path, semantic index entries, intent-to-add state, and resolve-undo records.
+Gix verifies this checkpoint after the model request through a bounded context that remains available after cancellation.
+Before commit, Gix holds the canonical index lock, checks ownership, and commits the verified index through `GIT_INDEX_FILE`.
+Ownership loss retains outside work and transaction snapshots and emits `SYNC_SWITCH_HANDOFF`.
+Gix then stops before commit, push, reset, clean, or rollback.
 
 Strict-sync pushes request Git's porcelain status. An actual remote ref creation, update, or deletion marks the Git publication boundary. An up-to-date push does not change the remote. A GitHub push rejection preserves completed local work and does not start rollback. A malformed successful response cannot prove whether the remote changed. It enters the published handoff contract. Successful pull-request creation also marks publication.
 

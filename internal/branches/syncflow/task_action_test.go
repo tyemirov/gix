@@ -442,6 +442,14 @@ func (executor *strictSyncGitExecutor) ExecuteGitHubCLI(context.Context, execshe
 	return execshell.ExecutionResult{}, nil
 }
 
+func (executor *strictSyncGitExecutor) prepareStrictSyncDirtyCluster(ctx context.Context, repositoryPath string, cluster syncCommitCluster) (strictSyncDirtyClusterCheckpoint, bool, error) {
+	if err := stageStrictSyncDirtyCluster(ctx, executor, repositoryPath, cluster); err != nil {
+		return strictSyncDirtyClusterCheckpoint{}, false, err
+	}
+	checkpoint, err := captureStrictSyncDirtyClusterCheckpoint(ctx, executor, repositoryPath)
+	return checkpoint, true, err
+}
+
 func (executor *strictSyncGitExecutor) commitStrictSyncDirtyCluster(ctx context.Context, repositoryPath string, clusterRoot string, message string, expected strictSyncDirtyClusterCheckpoint) error {
 	if ownershipErr := validateStrictSyncDirtyClusterCheckpoint(ctx, executor, repositoryPath, clusterRoot, expected); ownershipErr != nil {
 		return ownershipErr
