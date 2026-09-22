@@ -108,16 +108,16 @@ func (generator Generator) BuildRequest(ctx context.Context, options Options) (l
 	if repositoryLabel == "." || repositoryLabel == "/" {
 		repositoryLabel = repositoryPath
 	}
+	evidence := fmt.Sprintf("Change summary:\n%s\n\nPatch:\n%s",
+		fallbackText(gitContext.summary, "No summary available."),
+		fallbackText(gitContext.patch, "No diff available."))
+	if gitContext.status != "" {
+		evidence = fmt.Sprintf("Git status:\n%s\n\n%s", gitContext.status, evidence)
+	}
 	userMessage := llm.Message{
 		Role: "user",
-		Content: fmt.Sprintf(
-			"Repository: %s\nDiff source: %s\n\nGit status:\n%s\n\nChange summary:\n%s\n\nPatch:\n%s\n\nReturn only the commit message.",
-			repositoryLabel,
-			strings.ToUpper(string(source)),
-			fallbackText(gitContext.status, "No pending changes."),
-			fallbackText(gitContext.summary, "No summary available."),
-			fallbackText(gitContext.patch, "No diff available."),
-		),
+		Content: fmt.Sprintf("Repository: %s\nDiff source: %s\n\n%s\n\nReturn only the commit message.",
+			repositoryLabel, strings.ToUpper(string(source)), evidence),
 	}
 
 	request := llm.ChatRequest{
@@ -135,13 +135,12 @@ type gitContextFragments struct {
 }
 
 func (generator Generator) collectGitContext(ctx context.Context, repositoryPath string, source DiffSource) (gitContextFragments, error) {
-	statusOutput, statusError := generator.runGit(ctx, repositoryPath, []string{"status", "--short"})
-	if statusError != nil {
-		return gitContextFragments{}, statusError
-	}
-
 	diffArguments := []string{"diff", "--unified=3"}
 	if source == DiffSourceAll {
+		statusOutput, statusError := generator.runGit(ctx, repositoryPath, []string{"status", "--short"})
+		if statusError != nil {
+			return gitContextFragments{}, statusError
+		}
 		stagedSummaryOutput, stagedSummaryError := generator.runGit(ctx, repositoryPath, []string{"diff", "--unified=3", "--cached", "--stat"})
 		if stagedSummaryError != nil {
 			return gitContextFragments{}, stagedSummaryError
@@ -196,7 +195,6 @@ func (generator Generator) collectGitContext(ctx context.Context, repositoryPath
 	}
 
 	return gitContextFragments{
-		status:  strings.TrimSpace(summaryTruncate(statusOutput, defaultPatchCharacterCap)),
 		summary: strings.TrimSpace(summaryTruncate(summaryOutput, defaultPatchCharacterCap)),
 		patch:   strings.TrimSpace(summaryTruncate(patchOutput, defaultPatchCharacterCap)),
 	}, nil

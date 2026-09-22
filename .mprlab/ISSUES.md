@@ -2518,6 +2518,96 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 
 
+- [x] [B119] (P0) Verify the intended file changes before each sync commit.
+  Goal:
+  Each sync commit contains the intended file changes for its selected group.
+  On 2026-09-22, installed Gix `v1.10.7` failed on the NameSignal `_scratch` group after four successful local commits.
+  Git reported untracked files without a change to commit. Gix reported `SYNC_SWITCH_ROLLBACK` and restored the initial checkout.
+  `validateStrictSyncDirtyClusterStagedPaths` derives both comparison lists from the current Git index in `internal/branches/syncflow/dirty_sync.go`.
+  Two empty lists pass this comparison. The comparison does not prove that all intended changes are present.
+  A temporary Git repository reproduced this result with `git add --all -- _scratch`, then `git reset` before the comparison.
+  Both comparison commands returned empty output. The subsequent commit failed with exit code 1 and untracked files.
+  This reproduction proves the validation defect. The cause of the empty index in the original run remains unknown.
+  Requirements:
+  - Derive the expected files and contents independently of the index under examination.
+  - Verify that the selected group contains the complete intended change before commit-message generation.
+  - Distinguish work already present in the destination from work absent because another process changed the index.
+  - Keep unpublished work available when validation fails.
+  - Keep Git ignore rules applicable to untracked files.
+  - Treat NameSignal scratch-file exclusion and removal as separate repository responsibilities.
+  Validation:
+  - Add compiled CLI coverage for an ordinary untracked directory, with exact file-content assertions after publication.
+  - Inject an empty index and a partially populated index before the first comparison.
+  - Verify that neither state passes as a complete selected group.
+  - Verify that an already-applied change has the documented result without an empty commit.
+  - Run the focused sync tests and `make ci` before closure.
+  Resolution on 2026-09-22:
+  Gix prepares each file group in a private index while it holds the canonical index lock.
+  The private result supplies the expected contents for subsequent ownership checks.
+  Work already present in the destination needs no commit or model request.
+  Compiled CLI tests verify exact published contents and detect empty or partially changed installed indexes.
+  Focused regression tests and `make ci` passed. The original NameSignal interference trigger remains unknown.
+
+
+- [x] [B120] (P0) Protect sync ownership before the first index checkpoint.
+  Goal:
+  Detect an outside index change between file selection, staging, and the first ownership checkpoint.
+  B047 protects the index across model requests and the final commit operation.
+  `saveDirtyWorkClusters` runs staging, path validation, and checkpoint capture as separate operations in `internal/branches/syncflow/dirty_sync.go`.
+  An outside reset before checkpoint capture can become the accepted initial state.
+  The B119 reproduction accepts this empty state and reaches a failing commit instead of an ownership handoff.
+  Source inspection establishes this unprotected interval. A compiled CLI regression remains required.
+  No evidence establishes that another process changed the index during the original NameSignal run.
+  Requirements:
+  - Establish ownership before changes to the selected group can become an accepted checkpoint.
+  - Protect the intended files, index state, active branch, and `HEAD` through checkpoint capture.
+  - On ownership loss, retain outside work and recovery snapshots and report `SYNC_SWITCH_HANDOFF`.
+  - Prevent commit, push, reset, clean, and rollback operations after ownership loss.
+  - Keep the existing B047 protections across model requests and the final commit operation.
+  Validation:
+  - Inject outside changes after staging and between path validation and checkpoint capture through the compiled CLI.
+  - Cover an index reset, a partial index change, an unrelated staged file, and a branch change.
+  - Assert exact outside file contents, index state, branch, and `HEAD` after the handoff.
+  - Verify that ordinary sync still commits and publishes every selected group.
+  - Run the focused sync tests and `make ci` before closure.
+  Resolution on 2026-09-22:
+  Gix establishes checkout and index ownership before staging and retains the index lock through preparation.
+  It verifies the original state before it installs the prepared index.
+  It compares the installed state with the private expectation instead of accepting a new live checkpoint.
+  Compiled CLI tests cover reset, partial index changes, unrelated staged files, and branch changes at three preparation boundaries.
+  These tests verify lock exclusion or handoff, exact outside contents, retained snapshots, and unchanged remote state.
+  Existing B047 regressions and `make ci` passed.
+
+
+- [x] [B121] (P0) Require changes from the selected source before commit-message generation.
+  Goal:
+  Generate a commit message only when the selected diff source contains a change.
+  `Generator.BuildRequest` returns `ErrNoChanges` only when patch, summary, and repository-wide status are all empty.
+  The implementation is in `internal/commitmsg/generator.go`.
+  With `DiffSourceStaged`, unrelated untracked files can keep status nonempty while the staged patch and summary are empty.
+  The function then builds a model request with `No diff available.` and unrelated repository status.
+  The NameSignal failure included a generated message despite the subsequent Git report that no change was available to commit.
+  Source inspection confirms the request condition. A public-entrypoint regression remains required.
+  Requirements:
+  - Determine change availability from the selected diff source.
+  - Return `ErrNoChanges` before model dispatch when that source contains no change.
+  - Keep unrelated pending files out of the evidence used to describe a staged commit.
+  - Retain valid binary changes and other changes that have no textual patch.
+  - Keep source validation independent of the B119 sync validation.
+  Validation:
+  - Run the public commit-message entry point with an empty index and unrelated untracked or unstaged files.
+  - Assert the no-change result and zero model requests.
+  - Verify that a staged change produces a message based on that change alone.
+  - Cover binary changes, additions, deletions, and the other supported diff sources.
+  - Run the focused commit-message tests and `make ci` before closure.
+  Resolution on 2026-09-22:
+  Staged and worktree message requests use only their selected diff evidence.
+  An empty selected source returns `ErrNoChanges` before model dispatch, regardless of unrelated pending files.
+  The internal `all` source retains pending status for branch-name generation.
+  Compiled CLI tests cover empty sources, unrelated files, binary changes, empty-file additions, and deletions.
+  Focused regression tests and `make ci` passed.
+
+
 ## Improvements
 
 - [x] [I022] (P1) Qualify the complete Ledger stash conflict through the CLI.

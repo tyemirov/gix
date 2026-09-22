@@ -1343,6 +1343,7 @@ if [ "$GIX_SYNC_TEST_REJECT_DEFAULT_PUSH" = "true" ] && [ "$1" = "push" ] && [ "
 fi
 exec %q "$@"
 `, realGitPath, syncMergedBranchRemoteURL, realGitPath)
+	gitStubScript = strings.Replace(gitStubScript, "if [ -n \"$GIX_SYNC_TEST_GIT_LOG\" ]; then", syncPrepareInterferenceScript()+"\nif [ -n \"$GIX_SYNC_TEST_GIT_LOG\" ]; then", 1)
 	require.NoError(testInstance, os.WriteFile(filepath.Join(stubDirectory, "git"), []byte(gitStubScript), 0o755))
 	require.NoError(testInstance, os.WriteFile(filepath.Join(stubDirectory, "gh"), []byte(syncMergedBranchGitHubStubScript()), 0o755))
 
