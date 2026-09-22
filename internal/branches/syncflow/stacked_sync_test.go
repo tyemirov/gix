@@ -455,16 +455,16 @@ func strictSyncStackTestContext(t *testing.T, gitExecutor *strictSyncGitExecutor
 	githubClient, githubClientErr := githubcli.NewClient(githubExecutor)
 	require.NoError(t, githubClientErr)
 	return &workflow.Environment{
-		GitExecutor:  gitExecutor,
-		GitHubClient: githubClient,
-	}, &workflow.RepositoryState{
-		Path: "/tmp/project",
-		Inspection: audit.RepositoryInspection{
-			LocalBranch:         "feature/parent",
-			FinalOwnerRepo:      "owner/project",
-			RemoteDefaultBranch: strictSyncTestDefaultBranch,
-		},
-	}
+			GitExecutor:  gitExecutor,
+			GitHubClient: githubClient,
+		}, &workflow.RepositoryState{
+			Path: "/tmp/project",
+			Inspection: audit.RepositoryInspection{
+				LocalBranch:         "feature/parent",
+				FinalOwnerRepo:      "owner/project",
+				RemoteDefaultBranch: strictSyncTestDefaultBranch,
+			},
+		}
 }
 
 func githubCommandOption(arguments []string, option string) string {
