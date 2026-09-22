@@ -32,6 +32,7 @@ func TestMessageCommitSelectedSourceContract(testInstance *testing.T) {
 	} {
 		testInstance.Run(scenario.name, func(testInstance *testing.T) {
 			repo := createGitRepository(testInstance, gitRepositoryOptions{DirectoryName: "source-contract", InitialBranch: "master"})
+			configureGitIdentity(testInstance, repo)
 			for _, name := range []string{"selected.txt", "outside.txt"} {
 				if scenario.addedEmpty && name == "selected.txt" {
 					continue
