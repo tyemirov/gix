@@ -13,7 +13,7 @@ Gix synchronizes Git branches. A branch argument selects the destination. Withou
 
 ## Quick Start
 
-1. Install the CLI: `go install github.com/tyemirov/gix@latest` (Go 1.25+).
+1. Install the CLI: `go install github.com/tyemirov/gix@latest` with the latest stable Go release.
 2. Create the canonical user configuration: `gix init`.
 3. Either replace the generated credential placeholders with literal values in `$HOME/.gix/config.yml`, or export `GH_TOKEN`, `GITHUB_PACKAGES_TOKEN`, and `LLM_PROXY_SECRET_KEY` before launching gix. Gix interpolates only its inherited process environment and never loads `.env` files.
 4. Attach or verify a workspace: `gix sync https://github.com/OWNER/REPO.git`.
@@ -741,7 +741,7 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
 
 ## Prerequisites
 
-- Go 1.25 or newer (matching the version pinned in CI).
+- Use the latest stable Go release locally. GitHub Actions selects `stable` with `check-latest: true`.
 - Git 2.40+ (history rewrite features rely on modern plumbing commands).
 - [`git-filter-repo`](https://github.com/newren/git-filter-repo) installed on your `PATH`. It is required for `gix files rm` and for running the repository integration tests locally (`pip install git-filter-repo` on Linux/macOS, or `brew install git-filter-repo` when using Homebrew).
 

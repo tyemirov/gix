@@ -1,8 +1,7 @@
-export GOTOOLCHAIN := go$(shell awk '$$1 == "go" { print $$2; exit }' go.mod)
-GO_TOOLCHAIN_ROOT := $(shell GOTOOLCHAIN="$(GOTOOLCHAIN)" go env GOROOT)
+GO_TOOLCHAIN_ROOT := $(shell go env GOROOT)
 GOFMT := $(GO_TOOLCHAIN_ROOT)/bin/gofmt
 GO_SOURCES := $(shell find . -name '*.go' -not -path "./vendor/*" -not -path "./.git/*" -not -path "*/.git/*")
-FAST_TEST_PACKAGES := $(shell GOTOOLCHAIN="$(GOTOOLCHAIN)" go list ./... | grep -v '/tests$$')
+FAST_TEST_PACKAGES := $(shell go list ./... | grep -v '/tests$$')
 GO_TEST_FLAGS ?=
 INTEGRATION_TEST_PARALLELISM := 4
 STATICCHECK_MODULE := honnef.co/go/tools/cmd/staticcheck@master
