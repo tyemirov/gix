@@ -1,11 +1,12 @@
+---
 mprlab_resources:
   owner: gix
   release:
     scheme: semver
     fixed_major: 1
   resources:
-    - kind: github_release_binary
-      id: command-line
+    command-line:
+      kind: github_release_binary
       repository: tyemirov/gix
       build:
         system: go
@@ -13,13 +14,13 @@ mprlab_resources:
         binary: gix
         version_symbol: github.com/tyemirov/gix/internal/version.linkedVersion
         platforms:
-          - linux/amd64
-          - linux/arm64
-          - darwin/amd64
-          - darwin/arm64
-          - windows/amd64
-    - kind: github_pages
-      id: website
+        - linux/amd64
+        - linux/arm64
+        - darwin/amd64
+        - darwin/arm64
+        - windows/amd64
+    website:
+      kind: github_pages
       repository: tyemirov/gix
       branch: gh-pages
       domain: gix.mprlab.com
