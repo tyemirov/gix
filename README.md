@@ -38,7 +38,12 @@ Install the runtime with the [Gateway installation procedure](https://github.com
 
 The [resource manifest](.mprlab/deploy/resources.yml) declares the release policy, five Go platforms, and the Pages site. Gateway calls `gix release next` with the declared policy. The CLI validates that policy and selects the next version without reading MPR Lab repository files.
 
-For an established SemVer sequence, the command uses an LLM to examine all committed changes after the latest SemVer tag. The evidence includes commit messages, the diff summary, range-scoped changelog changes, and a bounded diff excerpt. The model classifies each packet by its effect on a supported public contract. A second model call audits each candidate against the same evidence. Standard SemVer maps incompatible, additive, and compatible effects to `major`, `minor`, and `patch`. Commit labels and implementation changes cannot set a higher release level by themselves.
+For an established SemVer sequence, the command examines all committed changes after the latest SemVer tag.
+The evidence includes commit messages, diff summaries, changelog changes from the release range, and the full text diff in evidence packets with fixed limits.
+The model reviews each evidence packet against supported public contracts and can request committed source context.
+A separate semantic audit reviews each candidate with the same evidence and retrieved context.
+Standard SemVer maps incompatible, additive, and compatible effects to `major`, `minor`, and `patch`.
+Commit labels and implementation changes cannot set a higher release level by themselves.
 
 Invalid or unavailable model output stops the release before version selection. A SemVer repository without tags starts at `v1.0.0`. A CalVer repository uses the canonical UTC release timestamp.
 
@@ -62,7 +67,7 @@ Gateway owns the `gh-pages` branch activation, provider status checks, and publi
 
 Sync assumes a valid Git repository and a configured, reachable remote with an existing default branch.
 The remote is the authority for published history. The local checkout is a replaceable working copy.
-File changes are the work. Sync preserves unpublished work, including changes held in local commits, before replacing local state. The [sync policy](.mprlab/POLICY.md#sync-branch-selection) defines the contract. B099 records the explicit-destination contract. I016 defines the file-work model and no-op behavior.
+File changes are the work. Sync preserves unpublished work, including changes held in local commits, before replacing local state. The [sync contract](.mprlab/AGENTS.SYNC.md#sync-branch-selection) defines the contract. B099 records the explicit-destination contract. I016 defines the file-work model and no-op behavior.
 
 `gix sync` has three forms:
 
@@ -82,7 +87,12 @@ Default-branch status adds no other special behavior. Branch protection does not
 
 Sync pulls the latest remote changes, merges pending changes into the selected branch, commits the result, and pushes that branch. The selected branch stays active. `gix sync master`, `gix sync qqq`, and `gix sync wwww` use the same operation with different branch names.
 
-GitHub publication is secondary. If GitHub rejects the selected branch, sync keeps the local commits and selected branch. It reports that the remote did not receive the branch changes. It suggests removal of branch protection or creation of a new pull request. That rejection does not start rollback or make the command fail. Completed synchronization with only that rejection returns exit code `0`.
+GitHub publication is secondary. If GitHub rejects the selected branch, sync keeps the local commits and selected branch.
+It reports that the remote did not receive the branch changes and returns a nonzero exit code.
+It suggests removal of branch protection or creation of a new pull request.
+The rejection does not start rollback.
+Sync restores invocation-owned stashes before it reports the publication failure.
+It does not print `SYNCED` for this incomplete publication.
 
 Sync reads the push result for the selected branch separately from other refs.
 If the branch succeeds but a tag is rejected, sync reports the tag rejection and continues the branch PR operation.
@@ -95,6 +105,7 @@ Before review comparison, sync merges the parent remote ref and resolved base in
 A pull request requires file changes against that base.
 If a parent push is rejected, sync saves the child work locally and reports `SYNC_PUBLICATION_DEFERRED`.
 It defers the child push and pull request until the parent can be published.
+The child operation returns a nonzero exit code after it preserves local work and restores invocation-owned stashes.
 
 An explicit target still rejects dirty auto-commit when its current tip matches a merged pull request. The merged commits are already accounted for. Sync preserves the original checkout and pending files. The user decides how to proceed.
 
@@ -113,6 +124,9 @@ A historical merged record applies only when its head OID matches the current br
 When a linked worktree holds the target branch, sync removes stale registration and preserves sibling changes before the switch. Sibling adoption can commit locally to release the checkout. Publication occurs through the target push or pull-request creation. Before local mutation, the transaction records the caller and target sibling state. This includes commits, index contents, tracked and untracked files, stashes, and topology.
 
 The transaction journals only the refs and worktrees it changes. A local operation failure before publication restores those refs, exact files, and staged state. It restores only adopted topology and keeps unrelated branch changes. A GitHub push rejection preserves completed local work and does not start rollback. A later local failure cannot undo remote publication. Gix keeps the published checkout and recovery stash and reports `SYNC_SWITCH_HANDOFF`.
+
+If stash restoration or snapshot cleanup fails after a rejected push, Gix keeps the completed commits and recovery snapshots.
+It reports both failures through `SYNC_SWITCH_HANDOFF` and returns a nonzero exit code.
 
 Dirty-cluster commit-message requests are also ownership boundaries. Immediately after staging one cluster, Gix verifies that the complete staged path set belongs to that cluster and checkpoints the active checkout, `HEAD`, exact per-worktree index path, cache entries, skip-worktree and assume-unchanged flags, intent-to-add state, and resolve-undo records. Every post-model ownership inspection uses a cancellation-independent bounded context. For the final inspection, Gix first acquires the worktree's canonical `index.lock`, rechecks the checkpoint while normal Git index writers are excluded, copies the validated index into the private locked file, and commits from that copy through `GIT_INDEX_FILE`; the live index is never replaced by the commit. A writer that wins before the lock is detected as drift, while one that arrives after the lock cannot stage into the commit. Either ownership loss stops before commit or push without reset, clean, or restoration across outside state, retains the transaction snapshot, emits one `SYNC_SWITCH_HANDOFF`, and directs the operator to stop the other writer before retrying.
 
@@ -133,6 +147,35 @@ Before staging, Gix parses complete Go, JSON, and YAML files and checks issue id
 Each region permits four provider requests across decisions, audits, and context expansion. A provider round with no response stops semantic repair. Unresolved intent, unavailable context, exhausted requests, invalid file syntax, and local failures stop before publication. The existing transaction restores the caller state before publication. After publication, recovery preserves the published state through an explicit handoff.
 
 See [the conflict contract](docs/merge-conflicts.md) for the protocol, acceptance boundaries, and separate live-provider evaluation.
+
+## Discard local file changes
+
+```bash
+gix discard path/to/file directory/
+gix discard --all
+```
+
+`gix discard` restores selected tracked paths in the Git index and worktree to the current `HEAD` commit.
+It discards staged and unstaged changes without a commit or a push.
+The command keeps existing commits, branch references, unselected changes, and untracked files.
+The command also keeps ignored untracked files.
+Selected Git index additions absent from `HEAD`, including intent-to-add entries, are removed from the index and worktree.
+
+Use either one or more path selectors or `--all`.
+Path selectors are literal file or directory paths relative to the current directory.
+`--all` selects the complete containing repository, even from a subdirectory.
+A staged rename has separate source and destination paths.
+Select both paths to discard the complete rename.
+
+The command requires no Gix configuration or credentials.
+It stops before changes when a selector is invalid or a restore would replace untracked or unselected data.
+This check includes file aliases on filesystems that ignore letter case or normalize Unicode names.
+It also rejects Git operations in progress, index conflicts, selected sparse paths, and changed submodule entries.
+Submodule checkouts remain unchanged.
+The command rejects `--roots` and `--remote` because it acts on the current repository.
+
+`gix files rm` remains a separate command that purges paths from repository history.
+`gix sync` commits and publishes work without a separate save command.
 
 ## Other maintenance workflows
 
@@ -665,6 +708,10 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
 
  - Writes the canonical configuration to `$HOME/.gix/config.yml`, or to `/etc/gix/config.yml` with `--system`. Use `--force` to replace an existing generated config.
 
+- `gix discard <path>...` or `gix discard --all`
+
+ - Restores staged and unstaged tracked changes to `HEAD` in the current repository. The command keeps existing commits and untracked files. See [discard local file changes](#discard-local-file-changes).
+
 - `gix --web [--bind <host>] [--port <port>] [--roots <dir>...]`
 
  - Starts a local HTTP server on `127.0.0.1:8080` by default and serves the embedded browser UI plus JSON API for running gix commands in-process.
@@ -714,10 +761,38 @@ Top-level commands and their subcommands. Aliases are shown in parentheses.
 - `gix default <target-branch> [--roots <dir>...] [-y]`
  - Promotes the default branch across repositories. Gix closes a pull request only when its head repository and head branch match the target repository and branch. Gix changes the base of other pull requests. Gix fetches the remote source and target before it evaluates deletion safety. The delete request includes the verified source commit. Git rejects deletion if the source changes. After all safety gates pass, Gix deletes the local and remote source branches. Gix retains a source branch that contains changes absent from the target branch. The result reports both `safe_to_delete` and `source_deleted`.
 - `gix sync [remote-url|branch] [--remote <name>] [--title <text>] [--body <markdown>] [--stash | --commit] [--require-clean] [--roots <dir>...]` (alias `switch`)
- - Uses the [sync contract](#the-sync-flow). An explicit argument selects the branch. Without an argument on the default branch, sync creates a branch only for uncommitted changes or unpublished local commits. Otherwise, sync updates the current branch. It pulls remote changes, merges pending changes, commits the result, and pushes the selected branch. GitHub push rejection preserves completed local work and produces rejection guidance with exit code `0`. B099 records the implementation and acceptance tests.
+ - Uses the [sync contract](#the-sync-flow). An explicit argument selects the branch. Without an argument on the default branch, sync creates a branch only for uncommitted changes or unpublished local commits. Otherwise, sync updates the current branch. It pulls remote changes, merges pending changes, commits the result, and pushes the selected branch. GitHub push rejection preserves completed local work and returns a nonzero exit code with rejection guidance. I023 records this publication result.
+## Release evidence
+
+Gix examines the exact committed range for SemVer successor selection.
+It divides all commit messages, diff summaries, changelog changes, and text diffs into evidence packets.
+Each initial evidence packet contains at most 32,000 Unicode characters.
+Large diff hunks and lines continue in separate fragments with file context and exact source offsets.
+
+Each evidence packet receives a candidate decision and a separate semantic audit.
+The model can request old or new committed source lines when relationships between files remain unclear.
+The audit receives source context retrieved during the candidate decision.
+Gix selects the highest audited public contract impact after all evidence packets pass.
+A new required input that changes supported consumer behavior remains incompatible, even when the change repairs a defect.
+
+One version decision permits at most 128 model analysis calls and 24,000 Unicode characters of retrieved source context.
+Each submitted request contains at most 64,000 Unicode characters of message content.
+Connection attempts and transport retries can produce additional provider requests within one analysis call.
+Each candidate or audit permits at most two source context rounds.
+Large releases use multiple requests, so total analysis cost increases with the diff size.
+Unresolved impact, exhausted limits, unavailable context, binary changes, and provider failures stop automatic selection.
+Gix does not discard later changes to select a version within these limits.
+
+Gix automatically writes successful and failed SemVer analyses under the Git path `gix/release-decisions`.
+Each JSON record contains the source commits, evidence fragments, source character counts, model requests, reviewed findings, and final decision or failure.
+The record includes tool build information and configured model names without connection credentials.
+An evidence storage failure stops version selection.
+The command retains the `mprlab.version-decision/v2` standard output contract.
+Initial releases, CalVer selections, and same-source artifact successors do not require model analysis.
+
 ## Configuration essentials
 
-- On every launch, gix uses an explicit `--config <path>.yml` when supplied; otherwise it checks `/etc/gix/config.yml` and then `$HOME/.gix/config.yml`.
+- Commands that require configuration use an explicit `--config <path>.yml` when supplied. Otherwise, they check `/etc/gix/config.yml` and then `$HOME/.gix/config.yml`.
 - If neither discovered file exists, gix offers to create `$HOME/.gix/config.yml`. `--yes` accepts that prompt non-interactively.
 - Gix decodes `config.yml` once into the current typed YAML schema and rejects unknown fields. It does not pass a generic YAML map through a second schema decoder.
 - `gix init` writes `$HOME/.gix/config.yml`; `gix init --system` writes `/etc/gix/config.yml`. Add `--force` only when you intentionally want to replace an existing generated config.
