@@ -59,11 +59,21 @@ All rules for validation, error handling, invariants, and “confident programmi
 
 ## Tech Stack Guides
 
+Read `.mprlab/AGENTS.SYNC.md` before sync changes or sync acceptance work.
+That guide owns sync branch selection, work preservation, review metadata, and publication outcomes.
+
 Stack-specific instructions now live in dedicated files. Apply the relevant guide alongside the shared policies above.
 
 - Backend (Go): `.mprlab/AGENTS.GO.md`
 - Browser frontend: `.mprlab/AGENTS.FRONTEND.md`
 - Git and version control workflow: `.mprlab/AGENTS.GIT.md`
+
+## Go Toolchain
+
+- Use the latest stable Go release for local work and GitHub Actions.
+- Select `stable` with `check-latest: true` in GitHub Actions.
+- Use the formatter from the active Go toolchain.
+- Update the module Go requirement when you adopt a new stable release.
 
 <!-- BEGIN MPRLAB-GOVERNANCE -->
 ## MPR Lab Governance
@@ -89,6 +99,9 @@ Never examine, validate, compare, require, change, or record a file permission m
 Never use a file permission mode in acceptance, security, credential, execution, publication, deployment, or failure analysis.
 The values `0600` and `7777` have no governance meaning.
 This rule does not change service authorization or operation authority.
+
+Always reference each issue by its ID, for example `B001` or `I027`.
+Never use an `ISSUES.md` file path, line number, or `path:line` syntax as an issue reference.
 
 Do not create `.mprlab/AGENTS.md`. Scoped guidance belongs in `.mprlab/AGENTS.*.md` files.
 If guidance conflicts, obey `.mprlab/POLICY.md` first, then root `AGENTS.md`, then the applicable scoped guide.
