@@ -30,6 +30,11 @@ type discardTreeEntry struct {
 	objectID   string
 }
 
+type discardFileIdentity struct {
+	device uint64
+	inode  uint64
+}
+
 type discardGit struct {
 	executor  shared.GitExecutor
 	directory string
@@ -305,14 +310,29 @@ func (git discardGit) validateUntrackedPaths(ctx context.Context, selected []str
 		return err
 	}
 	untrackedPaths := discardFields(output)
-	for _, untracked := range untrackedPaths {
-		untracked = strings.TrimSuffix(untracked, "/")
-		for _, path := range selected {
-			if _, exists := tree[path]; !exists {
-				continue
+	restoredPaths := make(map[string]struct{}, len(selected))
+	restoredAncestors := make(map[string]string)
+	for _, path := range selected {
+		if _, exists := tree[path]; !exists {
+			continue
+		}
+		restoredPaths[path] = struct{}{}
+		for prefix := path; prefix != "."; prefix = filepath.ToSlash(filepath.Dir(prefix)) {
+			if _, exists := restoredAncestors[prefix]; exists {
+				break
 			}
-			if path == untracked || strings.HasPrefix(path, untracked+"/") || strings.HasPrefix(untracked, path+"/") {
-				return fmt.Errorf("discard: untracked path %q obstructs restoration of %q", untracked, path)
+			restoredAncestors[prefix] = path
+		}
+	}
+	for index, untracked := range untrackedPaths {
+		untracked = strings.TrimSuffix(untracked, "/")
+		untrackedPaths[index] = untracked
+		if path, exists := restoredAncestors[untracked]; exists {
+			return fmt.Errorf("discard: untracked path %q obstructs restoration of %q", untracked, path)
+		}
+		for parent := filepath.ToSlash(filepath.Dir(untracked)); parent != "."; parent = filepath.ToSlash(filepath.Dir(parent)) {
+			if _, exists := restoredPaths[parent]; exists {
+				return fmt.Errorf("discard: untracked path %q obstructs restoration of %q", untracked, parent)
 			}
 		}
 	}
@@ -324,7 +344,7 @@ func (git discardGit) validateUntrackedPaths(ctx context.Context, selected []str
 		delete(protectedPaths, path)
 	}
 	for _, path := range untrackedPaths {
-		protectedPaths[strings.TrimSuffix(path, "/")] = struct{}{}
+		protectedPaths[path] = struct{}{}
 	}
 	return git.validateFilesystemAliases(selected, protectedPaths)
 }
@@ -351,53 +371,77 @@ func discardPathspecs(selected []string) []string {
 }
 
 func (git discardGit) validateFilesystemAliases(selected []string, protectedPaths map[string]struct{}) error {
-	cache := make(map[string]os.FileInfo)
-	inspect := func(path string) (os.FileInfo, error) {
-		if info, exists := cache[path]; exists {
-			return info, nil
+	if len(protectedPaths) == 0 {
+		return nil
+	}
+	cache := make(map[string]*discardFileIdentity)
+	inspect := func(path string) (*discardFileIdentity, error) {
+		if identity, exists := cache[path]; exists {
+			return identity, nil
 		}
 		info, err := os.Lstat(filepath.Join(git.directory, filepath.FromSlash(path)))
 		if os.IsNotExist(err) || errors.Is(err, syscall.ENOTDIR) {
-			info = nil
-			err = nil
+			cache[path] = nil
+			return nil, nil
 		}
 		if err != nil {
 			return nil, fmt.Errorf("discard: inspect filesystem path %q: %w", path, err)
 		}
-		cache[path] = info
-		return info, nil
+		stat := info.Sys().(*syscall.Stat_t)
+		identity := &discardFileIdentity{device: uint64(stat.Dev), inode: uint64(stat.Ino)}
+		cache[path] = identity
+		return identity, nil
 	}
-	overlaps := func(fullPath, prefixPath string) (bool, error) {
-		fullInfo, err := inspect(fullPath)
-		if err != nil || fullInfo == nil {
-			return false, err
+	selectedIdentities := make(map[discardFileIdentity]string)
+	selectedAncestorIdentities := make(map[discardFileIdentity]string)
+	indexedPrefixes := make(map[string]struct{})
+	for _, path := range selected {
+		identity, err := inspect(path)
+		if err != nil {
+			return err
 		}
-		for prefix := prefixPath; prefix != "."; prefix = filepath.ToSlash(filepath.Dir(prefix)) {
-			prefixInfo, err := inspect(prefix)
-			if err != nil {
-				return false, err
-			}
-			if prefixInfo != nil && os.SameFile(fullInfo, prefixInfo) {
-				return true, nil
-			}
+		if identity != nil {
+			selectedIdentities[*identity] = path
 		}
-		return false, nil
-	}
-	for _, selectedPath := range selected {
-		for protectedPath := range protectedPaths {
-			overlap, err := overlaps(selectedPath, protectedPath)
+		for prefix := path; prefix != "."; prefix = filepath.ToSlash(filepath.Dir(prefix)) {
+			if _, exists := indexedPrefixes[prefix]; exists {
+				break
+			}
+			identity, err := inspect(prefix)
 			if err != nil {
 				return err
 			}
-			if !overlap {
-				overlap, err = overlaps(protectedPath, selectedPath)
-				if err != nil {
-					return err
-				}
+			if identity != nil {
+				selectedAncestorIdentities[*identity] = path
 			}
-			if overlap {
+			indexedPrefixes[prefix] = struct{}{}
+		}
+	}
+	checkedPrefixes := make(map[string]struct{})
+	for protectedPath := range protectedPaths {
+		identity, err := inspect(protectedPath)
+		if err != nil {
+			return err
+		}
+		if identity != nil {
+			if selectedPath, exists := selectedAncestorIdentities[*identity]; exists {
 				return fmt.Errorf("discard: selected path %q aliases protected path %q on this filesystem", selectedPath, protectedPath)
 			}
+		}
+		for prefix := protectedPath; prefix != "."; prefix = filepath.ToSlash(filepath.Dir(prefix)) {
+			if _, exists := checkedPrefixes[prefix]; exists {
+				break
+			}
+			identity, err := inspect(prefix)
+			if err != nil {
+				return err
+			}
+			if identity != nil {
+				if selectedPath, exists := selectedIdentities[*identity]; exists {
+					return fmt.Errorf("discard: selected path %q aliases protected path %q on this filesystem", selectedPath, protectedPath)
+				}
+			}
+			checkedPrefixes[prefix] = struct{}{}
 		}
 	}
 	return nil
