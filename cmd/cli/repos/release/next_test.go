@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +16,7 @@ import (
 
 	"github.com/tyemirov/gix/internal/execshell"
 	"github.com/tyemirov/gix/internal/llmclient"
+	"github.com/tyemirov/gix/internal/semverdecision"
 	"github.com/tyemirov/utils/llm"
 )
 
@@ -278,7 +282,8 @@ func TestNextCommandRejectsInvalidInvocationPolicy(t *testing.T) {
 
 func nextTestBuilder(executor *nextGitExecutor, client *nextChatClient) NextCommandBuilder {
 	return NextCommandBuilder{
-		GitExecutor: executor,
+		GitExecutor:      executor,
+		DecisionRecorder: func(VersionDecision, semverdecision.Result, NextConfiguration, error) error { return nil },
 		WorkingDirectoryProvider: func() (string, error) {
 			return "/repo", nil
 		},
@@ -330,14 +335,61 @@ func replaceDigest(value string) string {
 }
 
 type nextGitExecutor struct {
-	responses map[string]string
-	calls     []string
+	responses         map[string]string
+	calls             []string
+	honorCancellation bool
 }
 
-func (executor *nextGitExecutor) ExecuteGit(_ context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
+func (executor *nextGitExecutor) ExecuteGit(ctx context.Context, details execshell.CommandDetails) (execshell.ExecutionResult, error) {
+	if executor.honorCancellation && ctx.Err() != nil {
+		return execshell.ExecutionResult{}, ctx.Err()
+	}
 	key := strings.Join(details.Arguments, " ")
 	executor.calls = append(executor.calls, key)
 	return execshell.ExecutionResult{StandardOutput: executor.responses[key]}, nil
+}
+
+func TestNextCommandRetainsEvidenceAfterCancellation(t *testing.T) {
+	storage := t.TempDir()
+	executor := &nextGitExecutor{honorCancellation: true, responses: map[string]string{
+		"rev-parse --show-toplevel":                                    "/repo\n",
+		"rev-parse HEAD":                                               "abc123\n",
+		"tag --list":                                                   "v1.2.3\n",
+		"rev-parse --verify v1.2.3^{commit}":                           "base123\n",
+		"merge-base --is-ancestor base123 abc123":                      "",
+		"log --pretty=format:%s%n%b%x1e base123..abc123":               "fix command\n\x1e",
+		"diff --stat base123..abc123":                                  " command.go | 1 +\n",
+		"diff --unified=3 base123..abc123 -- . :(exclude)CHANGELOG.md": "diff --git a/command.go b/command.go\n+changed command\n",
+		"rev-parse --git-path gix/release-decisions":                   storage,
+	}}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	builder := nextTestBuilder(executor, &nextChatClient{})
+	builder.DecisionRecorder = nil
+	builder.ClientFactory = func(llmclient.Config) (llm.ChatClient, error) { return cancelDecisionClient{cancel: cancel}, nil }
+	command, err := builder.Build()
+	require.NoError(t, err)
+	output := &bytes.Buffer{}
+	command.SetOut(output)
+	command.SetErr(output)
+	command.SetContext(ctx)
+	command.SetArgs([]string{"semver", "--format", "json"})
+	require.ErrorContains(t, command.Execute(), "context canceled")
+	records, err := filepath.Glob(filepath.Join(storage, "*.json"))
+	require.NoError(t, err)
+	require.Len(t, records, 1)
+	content, err := os.ReadFile(records[0])
+	require.NoError(t, err)
+	require.True(t, json.Valid(content))
+	require.Contains(t, string(content), "context canceled")
+	require.NotContains(t, output.String(), `"next_version"`)
+}
+
+type cancelDecisionClient struct{ cancel context.CancelFunc }
+
+func (client cancelDecisionClient) Chat(ctx context.Context, _ llm.ChatRequest) (string, error) {
+	client.cancel()
+	return "", ctx.Err()
 }
 
 func (executor *nextGitExecutor) ExecuteGitHubCLI(context.Context, execshell.CommandDetails) (execshell.ExecutionResult, error) {

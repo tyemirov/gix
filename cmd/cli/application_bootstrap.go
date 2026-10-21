@@ -124,7 +124,7 @@ func NewApplication() *Application {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(command *cobra.Command, arguments []string) error {
-			if command != nil && command.Name() == configurationInitializationFlagNameConstant {
+			if command != nil && (command.Name() == configurationInitializationFlagNameConstant || command.Name() == discardCommandName) {
 				return nil
 			}
 			if initializationError := application.initializeConfiguration(command); initializationError != nil {

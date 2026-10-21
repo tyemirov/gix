@@ -22,6 +22,7 @@ import (
 )
 
 func (application *Application) registerCommands(cobraCommand *cobra.Command) {
+	cobraCommand.AddCommand(application.newDiscardCommand())
 	auditBuilder := auditcli.CommandBuilder{
 		LoggerProvider: func() *zap.Logger {
 			return application.logger
