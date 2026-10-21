@@ -14,6 +14,18 @@ import (
 const syncPushRejectedMessage = "local synchronization completed on %q; the remote rejected the push and did not receive the changes: %s. To publish the commits, remove branch protection or open a new pull request"
 const syncAdditionalRefRejectedMessage = "the remote has the changes for branch %q; the push rejected another ref: %s. Resolve the rejected ref and push it again"
 
+type strictSyncPushRejection struct {
+	branchName string
+	remoteName string
+	cause      error
+}
+
+func (rejection *strictSyncPushRejection) Error() string {
+	return fmt.Sprintf("push of branch %q to remote %q was rejected; local work is preserved: %s", rejection.branchName, rejection.remoteName, rejection.cause)
+}
+
+func (rejection *strictSyncPushRejection) Unwrap() error { return rejection.cause }
+
 // publishStrictSyncBranch distinguishes a remote refusal from an execution failure.
 // A refusal completes local sync, but must not trigger pull-request creation.
 func publishStrictSyncBranch(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, remoteName, branchName string, arguments []string) (bool, error) {
@@ -38,7 +50,14 @@ func publishStrictSyncBranch(ctx context.Context, environment *workflow.Environm
 	environment.ReportRepositoryEvent(repository, shared.EventLevelWarn, shared.EventCodeSyncPushRejected,
 		fmt.Sprintf(syncPushRejectedMessage, branchName, strings.TrimSpace(failure.Result.StandardError+"\n"+failure.Result.StandardOutput)),
 		map[string]string{"branch": branchName, "remote": remoteName, "published": "false"})
-	return false, nil
+	rejection := &strictSyncPushRejection{branchName: branchName, remoteName: remoteName, cause: pushErr}
+	if transaction, ok := strictSyncTransactionFromContext(ctx); ok {
+		if transaction.pushRejection == nil {
+			transaction.pushRejection = rejection
+		}
+		return false, nil
+	}
+	return false, rejection
 }
 
 type strictSyncPushStatus uint8

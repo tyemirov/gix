@@ -2,6 +2,19 @@
 
 This policy controls all agent work in this repository.
 
+## Temporary Task Files
+
+- Put temporary diagnostic files in `_scratch/<task-id>/`.
+- Use a unique task identifier for each directory.
+- Keep `/_scratch/` in the repository `.gitignore`.
+- Record the directory and its task in the task plan before use.
+- Keep files from an interrupted task until that task resumes or its owner authorizes removal.
+- Before task completion, preserve useful results in maintained tests, tools, or documentation.
+- Remove only the temporary directory owned by the completed task.
+- Verify that this directory is absent before reporting task completion.
+- Preserve directories owned by other tasks.
+- If removal fails, report the remaining path and keep task completion pending.
+
 ## Operator Rules
 
 - Validate only at edges: I/O, HTTP, CLI, DB adapters, browser bootstrap, imported files, and other external boundaries.
@@ -15,6 +28,21 @@ This policy controls all agent work in this repository.
 - Centralize reusable literals: paths, operation names, event names, config keys, status values, and shared messages.
 - Tests target public contracts and invariants, not defensive branches.
 - Prefer black-box integration and end-to-end tests through real entry points.
+
+## Automatic Data Updates And Persistence
+
+This is a binding product principle for every user interface.
+
+- Load current data automatically when a view opens and when its relevant data changes.
+- Update stale data automatically after reconnection and when the user returns to the view.
+- Never require or expose refresh or reload controls for data synchronization.
+- Persist valid user edits automatically. Never require or expose save controls for data persistence.
+- Show pending, saved, validation, conflict, and failure states without requiring a manual refresh or save.
+- Preserve unsaved edits during background updates, request failures, and concurrent changes.
+- Serialize writes and retain newer edits when an earlier write completes.
+- Keep explicit controls for user intent, such as creation, deletion, activation, and confirmation of consequential actions.
+- Do not use an explicit action as a substitute for automatic data persistence.
+- Verify automatic updates, persistence, error recovery, and account isolation through public interface tests.
 
 ## Test-Driven Development
 
@@ -81,74 +109,28 @@ Apply this section when the task changes or validates a selected application man
 
 - Keep the selected application manifest versionless.
 - Keep `owner`, `release`, and `resources` as the current baseline fields.
-- Each later gateway must accept every manifest that an earlier versionless gateway accepted.
-- Keep each accepted field name, type, requirement, and function.
+- Apply the current iOS baseline below before the manifest preservation rules.
+- For other manifest contracts, accept each manifest that an earlier versionless gateway accepted.
+- For those contracts, keep each accepted field name, type, requirement, and function.
 - A field added to an existing shape must be optional.
 - A field added to an existing shape must have one canonical default.
 - Normalize that default before manifest identity calculation.
 - Add a resource kind only with one closed shape.
 - Reject unknown fields and `schema_version`.
 
-## Sync Model
+### Current iOS Baseline
 
-Assumptions:
+The operator selected a fresh iOS contract on September 10, 2026.
+Previous iOS adapter acceptance does not constrain this contract.
 
-- A valid Git repository has a configured, reachable remote.
-- The remote has an existing default branch.
-- The remote is the authority for published history.
-- The local checkout is a replaceable working copy of remote data.
+- Require `build_system: local` and a repository-relative `.mjs` path in `build.ios`.
+- Build and sign iOS artifacts locally through the shared native builder.
+- Publish the sealed IPA through the shared App Store Connect adapter.
+- Reject iOS `.sh` adapters, Xcode Cloud requests, and cloud publication receipts.
+- Do not add compatibility dispatch, obsolete aliases, or migration requirements for the removed iOS contract.
+- Preserve the declared TestFlight or App Store destination and its export restriction.
 
-Work preservation:
-
-- Treat file changes as the work that sync must preserve and publish.
-- Include staged, unstaged, and untracked changes. Include unpublished work held in local commits.
-- Treat local commits, branch references, and review metadata as mechanisms for that work.
-- Replace local state only after its unpublished work is published or preserved.
-- Verify file contents and remote results. A local commit identifier alone does not prove publication.
-
-## Sync Branch Selection
-
-- Assume a valid Git repository and a configured, reachable remote with an existing default branch.
-- Resolve the default branch from the selected remote symbolic `HEAD`.
-- When the user specifies a branch, use that branch.
-- Without a destination on the default branch, create a new branch only for uncommitted changes or unpublished local commits.
-- Without local work to publish, update the default branch from the remote and keep it active.
-- Without a branch argument on another branch, use the current branch.
-- Use default-branch status only for this branch-selection rule.
-- Treat `main`, `master`, `qqq`, `wwww`, and all other branch names as identifiers with the same behavior.
-- Do not use branch protection to change the selected branch.
-- Pull the latest remote changes for the selected branch.
-- Merge pending changes into that branch and commit the result.
-- Push that branch to the selected remote and keep it active.
-- If the target still matches a merged pull request, reject dirty auto-commit even when the target is explicit.
-- Preserve pending work after this rejection. The user decides how to proceed.
-
-## Sync Review Metadata
-
-- Accept a parent branch without additional commits or a pull request.
-- Accept a parent that exists only on the remote.
-- Merge incoming parent work before parent publication. Preserve unpublished parent work and pending child files.
-- Resolve a merged parent to its current base before synchronizing an unmerged child without a pull request.
-- Before review comparison, synchronize the parent with its remote ref and resolved base.
-- Keep the child as the destination. Record its current review base.
-- Create a pull request only when the branch has file changes against its review base.
-
-## Sync GitHub Publication
-
-- Treat GitHub publication as secondary to the Git synchronization operation.
-- Determine publication from the requested branch result in Git output.
-- If GitHub rejects that branch, preserve the completed local work and the selected branch.
-- Report the rejection and state that the remote did not receive the branch changes.
-- Suggest removal of branch protection or creation of a new pull request.
-- Do not change branch protection or create a substitute branch because GitHub rejected the push.
-- Return success with exit code `0` when completed synchronization has only a GitHub push rejection.
-- Do not start rollback for that rejection.
-- If another ref is rejected after branch publication succeeds, report that rejection and continue branch review publication.
-- Record successful remote updates even when the push command returns a failure.
-- Propagate rejected parent publication to the child operation.
-- Save the child work locally and defer its push and pull request until parent publication succeeds.
-- Require integration tests to verify these results through the CLI.
-- Keep a rejected push visible in test assertions. Do not accept rollback as the required result for this case.
+This baseline does not authorize removal of stored releases, credentials, or deployment state.
 
 ## Static Website Hosting
 
@@ -163,6 +145,22 @@ Apply this section to deployment or publication work for a browser frontend.
 - Treat a container as an artifact source only when its static output goes to GitHub Pages.
 - Verify publication through the public website and `/.mprlab-release.json`.
 - Run the Governor check after each selected manifest change and before each release, publish, or deploy operation.
+
+## Gateway Lifecycle Execution
+
+Apply this section when the repository uses the selected-manifest lifecycle or owns Gateway infrastructure operations.
+
+- Use the installed `mprlab-gateway` runtime for application and infrastructure operations.
+- Preserve `make release && make publish && make deploy` as the application operator command.
+- Pass the selected application Git root through `--app-root`.
+- Use `MPRLAB_GATEWAY_EXECUTABLE` for an explicit installed command.
+- Preserve application source validation, release policy, resource ownership, private inputs, and sealed receipts.
+- Keep each operation and its child calls on one captured runtime package and dependency environment.
+- Keep Gateway inventory and private config under `MPRLAB_GATEWAY_OPERATOR_ROOT`.
+- Use `$HOME/.config/mprlab-gateway` as the default operator root.
+- Select an explicit version with `mprlab-gateway install --version <version>` to change the active runtime.
+- Use Gateway source for repository CI, release preparation, and Gateway publication.
+- Keep installation, application operations, and operator-controlled production activation as separate gates.
 
 ## Credential Discovery
 
@@ -182,16 +180,27 @@ Apply this gate when the selected task requires credentials.
 - Request new credentials only after each authorized existing input fails verification.
 - Report a credential blocker only after you complete this gate.
 
+## Issue Closure
+
+- Close an issue when its required implementation, documentation, and code validation are completed.
+- Keep release, publication, deployment, production DNS/TLS, and live acceptance outside implementation issue acceptance criteria.
+- Do not keep an implementation issue open or blocked because production operations are not completed.
+- Record pending production operations in a runbook or separate operational record.
+- Validate deployment tooling and infrastructure configuration through the required isolated integration tests.
+
+Failed or missing required code validation prevents closure.
+Production operations outside the task do not remove code validation requirements.
+
 ## Validation
 
+- Use repository-native `make` targets.
+- Do not run a pre-edit or per-issue `make ci` baseline.
 - Preserve the expected failing integration-test result as implementation evidence.
-- Use repository-native `make` targets when available.
-- Use a satisfactory CI result only when the source code, tests, config, dependencies, and build files stay the same.
-- If there is no applicable satisfactory result, run `make ci` once before you change files.
-- During the change, run the smallest repository target that validates the changed contract.
-- After the last source, test, config, dependency, or build change, run `make ci` once.
+- During the change, run the smallest public-entrypoint target that validates the changed contract.
+- After the last stack change, run `make ci` once at the documented stack completion checkpoint.
 - If this run reports an error, run the target that reports the error during the correction.
 - After the last correction, run `make ci` once.
+- Run `make verify` only when the operator explicitly selects the complete qualification lane.
 - When `make ci` includes `make fmt`, `make lint`, and `make test`, use its result for those targets.
 - During the change or error diagnosis, run the necessary component target.
 - Run a component target when `make ci` does not include the necessary check.
@@ -229,9 +238,7 @@ Apply this gate when the selected task requires credentials.
 - Use `@dataclass(frozen=True)` or Pydantic when already in use.
 - Validate in constructors or edge adapters.
 - Use type hints throughout.
-- Prefer pytest scenarios through public entry points.
-- Use focused unit tests for complex algorithms, calculations, and isolated logic when useful.
-- Require integration coverage of public behavior for product acceptance.
+- Use pytest for integration, end-to-end, and focused unit tests under the shared test-driven development rules.
 
 ### JavaScript And Frontend
 

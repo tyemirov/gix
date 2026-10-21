@@ -40,4 +40,5 @@ __pycache__/
 
 # BEGIN MPRLAB-GOVERNANCE
 /.mprlab/*-PLAN.md
+/_scratch/
 # END MPRLAB-GOVERNANCE

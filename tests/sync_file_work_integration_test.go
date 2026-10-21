@@ -214,7 +214,8 @@ func TestSyncFileWorkPreservedAfterParentRejection(t *testing.T) {
 					writeFile(t, filepath.Join(fixture.repository, "child.txt"), "pending child work\n")
 				}
 				output, err := fixture.run(t, binary, "sync", "child")
-				require.NoError(t, err, output)
+				require.Error(t, err, output)
+				require.NotContains(t, output, "SYNCED:")
 				require.Contains(t, output, "SYNC_PUSH_REJECTED")
 				require.Contains(t, output, "SYNC_PUBLICATION_DEFERRED")
 				require.NotContains(t, output, "SYNC_SWITCH_ROLLBACK")
@@ -249,4 +250,43 @@ func TestSyncFileWorkPreservedAfterParentRejection(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestSyncFileWorkPreservedAfterGrandparentRejection(t *testing.T) {
+	t.Parallel()
+	binary := buildIntegrationBinary(t, integrationRepositoryRoot(t))
+	fixture := newSyncFixture(t, "qqq")
+	runGit(t, fixture.repository, "switch", "-c", "grandparent")
+	fixture.commitFile(t, "grandparent.txt", "grandparent local bytes\n")
+	grandparentHead := strings.TrimSpace(runGit(t, fixture.repository, "rev-parse", "HEAD"))
+	runGit(t, fixture.repository, "switch", "-c", "parent")
+	fixture.commitFile(t, "parent.txt", "parent local bytes\n")
+	parentHead := strings.TrimSpace(runGit(t, fixture.repository, "rev-parse", "HEAD"))
+	runGit(t, fixture.repository, "config", "branch.parent.gix-review-base", "grandparent")
+	runGit(t, fixture.remote, "config", "receive.hideRefs", "refs/heads/grandparent")
+	writeFile(t, filepath.Join(fixture.repository, "child.txt"), "child pending bytes\n")
+	output, err := fixture.run(t, binary, "sync", "child")
+	require.Error(t, err, output)
+	require.Contains(t, output, "SYNC_PUSH_REJECTED")
+	require.Contains(t, output, "SYNC_PUBLICATION_DEFERRED")
+	require.NotContains(t, output, "SYNC_SWITCH_ROLLBACK")
+	require.NotContains(t, output, "SYNCED:")
+	require.Equal(t, "child", strings.TrimSpace(runGit(t, fixture.repository, "branch", "--show-current")))
+	require.Equal(t, grandparentHead, strings.TrimSpace(runGit(t, fixture.repository, "rev-parse", "grandparent")))
+	require.Equal(t, parentHead, strings.TrimSpace(runGit(t, fixture.repository, "rev-parse", "parent")))
+	for path, contents := range map[string]string{"grandparent.txt": "grandparent local bytes\n", "parent.txt": "parent local bytes\n", "child.txt": "child pending bytes\n"} {
+		require.Equal(t, contents, runGit(t, fixture.repository, "show", "HEAD:"+path))
+	}
+	for _, branch := range []string{"grandparent", "parent", "child"} {
+		require.Empty(t, runGit(t, fixture.remote, "for-each-ref", "--format=%(refname)", "refs/heads/"+branch))
+	}
+	require.NotContains(t, readTextFile(t, fixture.githubLog), "pr create ")
+	require.Empty(t, runGit(t, fixture.repository, "status", "--porcelain"))
+	require.Empty(t, runGit(t, fixture.repository, "stash", "list"))
+	runGit(t, fixture.remote, "config", "--unset", "receive.hideRefs")
+	output, err = fixture.run(t, binary, "sync")
+	require.NoError(t, err, output)
+	require.Equal(t, "grandparent local bytes\n", runGit(t, fixture.remote, "show", "grandparent:grandparent.txt"))
+	require.Equal(t, "parent local bytes\n", runGit(t, fixture.remote, "show", "parent:parent.txt"))
+	require.Equal(t, "child pending bytes\n", runGit(t, fixture.remote, "show", "child:child.txt"))
 }

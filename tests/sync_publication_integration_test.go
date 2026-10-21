@@ -70,8 +70,9 @@ func TestSyncExplicitDefaultPushRejectionPreservesCommittedWork(testInstance *te
 	writeFile(testInstance, filepath.Join(fixture.repository, "README.md"), "complete pending work\n")
 	writeFile(testInstance, filepath.Join(fixture.repository, "new.txt"), "untracked pending work\n")
 	output, runError := fixture.run(testInstance, binaryPath, "sync", branch)
-	require.NoError(testInstance, runError, output)
-	require.Contains(testInstance, output, "SYNCED:")
+	require.Error(testInstance, runError, output)
+	require.NotContains(testInstance, output, "SYNCED:")
+	require.NotContains(testInstance, output, "SYNCED:")
 	require.Contains(testInstance, output, "GH006: Protected branch update failed")
 	require.Contains(testInstance, output, "remove branch protection")
 	require.Contains(testInstance, output, "open a new pull request")
@@ -114,7 +115,8 @@ func TestSyncExplicitDefaultWithRealRemoteRejection(t *testing.T) {
 	runGit(t, fixture.remote, "config", "receive.hideRefs", "refs/heads/"+branch)
 	writeFile(t, filepath.Join(fixture.repository, "README.md"), "committed despite remote refusal\n")
 	output, err := fixture.run(t, binary, "sync", branch)
-	require.NoError(t, err, output)
+	require.Error(t, err, output)
+	require.NotContains(t, output, "SYNCED:")
 	require.Contains(t, output, "SYNC_PUSH_REJECTED")
 	require.Contains(t, output, "deny updating a hidden ref")
 	require.Contains(t, output, "remote rejected the push and did not receive the changes")
@@ -128,9 +130,10 @@ func TestSyncExplicitDefaultWithRealRemoteRejection(t *testing.T) {
 	require.Equal(t, remoteHead, strings.TrimSpace(runGit(t, fixture.remote, "rev-parse", branch)))
 	require.Empty(t, runGit(t, fixture.repository, "status", "--porcelain"))
 	require.Empty(t, runGit(t, fixture.repository, "stash", "list"))
-	// A clean retry must also succeed and retain the same unpublished commit.
+	// A rejected retry retains the same unpublished commit.
 	output, err = fixture.run(t, binary, "sync", branch)
-	require.NoError(t, err, output)
+	require.Error(t, err, output)
+	require.NotContains(t, output, "SYNCED:")
 	require.Contains(t, output, "SYNC_PUSH_REJECTED")
 	require.Equal(t, head, strings.TrimSpace(runGit(t, fixture.repository, "rev-parse", "HEAD")))
 	runGit(t, fixture.remote, "config", "--unset", "receive.hideRefs")
@@ -152,7 +155,8 @@ func TestSyncExplicitNondefaultWithRemoteRejection(t *testing.T) {
 	runGit(t, fixture.remote, "config", "receive.hideRefs", "refs/heads/"+branch)
 	writeFile(t, filepath.Join(fixture.repository, "README.md"), "pending work\n")
 	output, err := fixture.run(t, binary, "sync", branch)
-	require.NoError(t, err, output)
+	require.Error(t, err, output)
+	require.NotContains(t, output, "SYNCED:")
 	require.Contains(t, output, "SYNC_PUSH_REJECTED")
 	require.Contains(t, output, "remove branch protection")
 	require.Contains(t, output, "open a new pull request")
@@ -182,7 +186,8 @@ func TestSyncExplicitDefaultWithConcurrentRemotePush(t *testing.T) {
 	writeFile(t, filepath.Join(fixture.repository, "README.md"), "pending work\n")
 	fixture.environment["GIX_SYNC_TEST_ADVANCE_REMOTE_CHECKOUT"] = upstream
 	output, err := fixture.run(t, binary, "sync", "qqq")
-	require.NoError(t, err, output)
+	require.Error(t, err, output)
+	require.NotContains(t, output, "SYNCED:")
 	require.Contains(t, output, "SYNC_PUSH_REJECTED")
 	require.Contains(t, output, "[rejected]")
 	require.NotContains(t, output, "SYNC_SWITCH_ROLLBACK")
@@ -217,7 +222,8 @@ func TestSyncExplicitDefaultRejectionFromAnotherBranch(t *testing.T) {
 			writeFile(t, filepath.Join(fixture.repository, "README.md"), "pending work\n")
 			fixture.environment[syncRejectDefaultPushVariable] = "true"
 			output, err := fixture.run(t, binary, "sync", "qqq")
-			require.NoError(t, err, output)
+			require.Error(t, err, output)
+			require.NotContains(t, output, "SYNCED:")
 			require.Contains(t, output, "SYNC_PUSH_REJECTED")
 			require.NotContains(t, output, "SYNC_SWITCH_ROLLBACK")
 			require.Equal(t, "qqq", strings.TrimSpace(runGit(t, fixture.repository, "branch", "--show-current")))
@@ -375,4 +381,137 @@ func TestSyncDefaultPublicationReviewRegressions(t *testing.T) {
 			require.Equal(t, strings.TrimSpace(runGit(t, upstream, "rev-parse", current)), strings.TrimSpace(runGit(t, fixture.repository, "rev-parse", "HEAD")))
 		})
 	}
+}
+
+func TestSyncRejectedPushRestoresInvocationStash(t *testing.T) {
+	t.Parallel()
+	binary := buildIntegrationBinary(t, integrationRepositoryRoot(t))
+	for _, stacked := range []bool{false, true} {
+		t.Run(fmt.Sprintf("parent_%t", stacked), func(t *testing.T) {
+			fixture := newSyncFixture(t, "qqq")
+			branch := "work"
+			if stacked {
+				branch = "parent"
+			}
+			runGit(t, fixture.repository, "switch", "-c", branch)
+			runGit(t, fixture.repository, "push", "-u", "origin", branch)
+			remoteHead := strings.TrimSpace(runGit(t, fixture.remote, "rev-parse", branch))
+			writeFile(t, filepath.Join(fixture.repository, "saved.txt"), "existing stash bytes\n")
+			runGit(t, fixture.repository, "stash", "push", "-u", "-m", "existing operator stash")
+			existingStash := runGit(t, fixture.repository, "stash", "list", "--format=%H %s")
+			fixture.commitFile(t, "local.txt", "unpublished local commit\n")
+			localHead := strings.TrimSpace(runGit(t, fixture.repository, "rev-parse", "HEAD"))
+			writeFile(t, filepath.Join(fixture.repository, "README.md"), "staged bytes\n")
+			runGit(t, fixture.repository, "add", "README.md")
+			writeFile(t, filepath.Join(fixture.repository, "README.md"), "unstaged bytes\n")
+			writeFile(t, filepath.Join(fixture.repository, "untracked.txt"), "untracked bytes\n")
+			before := runGit(t, fixture.repository, "status", "--porcelain=v1", "-z", "--untracked-files=all")
+			runGit(t, fixture.remote, "config", "receive.hideRefs", "refs/heads/"+branch)
+			target := branch
+			if stacked {
+				target = "child"
+			}
+			output, err := fixture.run(t, binary, "sync", target, "--stash=yes")
+			require.Error(t, err, output)
+			require.Contains(t, output, "SYNC_PUSH_REJECTED")
+			require.NotContains(t, output, "SYNCED:")
+			require.NotContains(t, output, "SYNC_SWITCH_ROLLBACK")
+			require.Equal(t, target, strings.TrimSpace(runGit(t, fixture.repository, "branch", "--show-current")))
+			require.Equal(t, localHead, strings.TrimSpace(runGit(t, fixture.repository, "rev-parse", "HEAD")))
+			require.Equal(t, remoteHead, strings.TrimSpace(runGit(t, fixture.remote, "rev-parse", branch)))
+			require.Equal(t, "unpublished local commit\n", runGit(t, fixture.repository, "show", "HEAD:local.txt"))
+			require.Equal(t, "staged bytes\n", runGit(t, fixture.repository, "show", ":README.md"))
+			require.Equal(t, "unstaged bytes\n", readTextFile(t, filepath.Join(fixture.repository, "README.md")))
+			require.Equal(t, "untracked bytes\n", readTextFile(t, filepath.Join(fixture.repository, "untracked.txt")))
+			require.Equal(t, before, runGit(t, fixture.repository, "status", "--porcelain=v1", "-z", "--untracked-files=all"))
+			require.Equal(t, existingStash, runGit(t, fixture.repository, "stash", "list", "--format=%H %s"))
+			require.NotContains(t, readTextFile(t, fixture.githubLog), "pr create ")
+			if stacked {
+				require.Empty(t, runGit(t, fixture.remote, "for-each-ref", "--format=%(refname)", "refs/heads/child"))
+			}
+			runGit(t, fixture.remote, "config", "--unset", "receive.hideRefs")
+			output, err = fixture.run(t, binary, "sync", target, "--stash=yes")
+			require.NoError(t, err, output)
+			require.Equal(t, localHead, strings.TrimSpace(runGit(t, fixture.remote, "rev-parse", target)))
+			require.Equal(t, before, runGit(t, fixture.repository, "status", "--porcelain=v1", "-z", "--untracked-files=all"))
+			require.Equal(t, existingStash, runGit(t, fixture.repository, "stash", "list", "--format=%H %s"))
+		})
+	}
+}
+
+func TestSyncRejectedPushFinalizationFailurePreservesRecovery(t *testing.T) {
+	t.Parallel()
+	binary := buildIntegrationBinary(t, integrationRepositoryRoot(t))
+	for _, failure := range []struct{ name, match, occurrence string }{
+		{"invocation_stash_restore", "stash apply --index", "2"},
+		{"invocation_stash_drop", "stash drop", "1"},
+		{"snapshot_cleanup", "stash drop", "2"},
+	} {
+		t.Run(failure.name, func(t *testing.T) {
+			fixture := newSyncFixture(t, "qqq")
+			remoteHead := strings.TrimSpace(runGit(t, fixture.remote, "rev-parse", "qqq"))
+			fixture.commitFile(t, "local.txt", "preserved local commit\n")
+			localHead := strings.TrimSpace(runGit(t, fixture.repository, "rev-parse", "HEAD"))
+			writeFile(t, filepath.Join(fixture.repository, "README.md"), "staged recovery bytes\n")
+			runGit(t, fixture.repository, "add", "README.md")
+			writeFile(t, filepath.Join(fixture.repository, "README.md"), "unstaged recovery bytes\n")
+			writeFile(t, filepath.Join(fixture.repository, "untracked.txt"), "untracked recovery bytes\n")
+			runGit(t, fixture.remote, "config", "receive.hideRefs", "refs/heads/qqq")
+			fixture.environment[syncMergedBranchFailGitMatchVariable] = failure.match
+			fixture.environment[syncMergedBranchFailGitOccurrenceVariable] = failure.occurrence
+			fixture.environment[syncMergedBranchFailGitStateVariable] = filepath.Join(fixture.workspace, "finalization-failure")
+			output, err := fixture.run(t, binary, "sync", "qqq", "--stash=yes")
+			require.Error(t, err, output)
+			require.Contains(t, output, "SYNC_PUSH_REJECTED")
+			require.Contains(t, output, "simulated git failure")
+			require.Contains(t, output, "SYNC_SWITCH_HANDOFF")
+			require.Contains(t, output, "push of branch \"qqq\" to remote \"origin\" was rejected")
+			require.NotContains(t, output, "SYNC_SWITCH_ROLLBACK")
+			require.NotContains(t, output, "published remote changes")
+			require.NotContains(t, output, "SYNCED:")
+			require.Equal(t, "qqq", strings.TrimSpace(runGit(t, fixture.repository, "branch", "--show-current")))
+			require.Equal(t, localHead, strings.TrimSpace(runGit(t, fixture.repository, "rev-parse", "HEAD")))
+			require.Equal(t, remoteHead, strings.TrimSpace(runGit(t, fixture.remote, "rev-parse", "qqq")))
+			require.Equal(t, "preserved local commit\n", runGit(t, fixture.repository, "show", "HEAD:local.txt"))
+			stashes := strings.Fields(runGit(t, fixture.repository, "stash", "list", "--format=%H"))
+			require.NotEmpty(t, stashes)
+			for _, stash := range stashes {
+				require.Equal(t, "unstaged recovery bytes\n", runGit(t, fixture.repository, "show", stash+":README.md"))
+				require.Equal(t, "staged recovery bytes\n", runGit(t, fixture.repository, "show", stash+"^2:README.md"))
+				require.Equal(t, "untracked recovery bytes\n", runGit(t, fixture.repository, "show", stash+"^3:untracked.txt"))
+			}
+		})
+	}
+}
+
+func TestSyncNewBranchPushRejectionPreservesDestination(t *testing.T) {
+	t.Parallel()
+	binary := buildIntegrationBinary(t, integrationRepositoryRoot(t))
+	fixture := newSyncFixture(t, "qqq")
+	originalHead := strings.TrimSpace(runGit(t, fixture.remote, "rev-parse", "qqq"))
+	fixture.commitFile(t, "local.txt", "existing unpublished commit\n")
+	existingHead := strings.TrimSpace(runGit(t, fixture.repository, "rev-parse", "HEAD"))
+	runGit(t, fixture.remote, "config", "receive.hideRefs", "refs/heads/new-review")
+	writeFile(t, filepath.Join(fixture.repository, "README.md"), "saved new branch bytes\n")
+	output, err := fixture.run(t, binary, "sync", "new-review")
+	require.Error(t, err, output)
+	require.Contains(t, output, "SYNC_PUSH_REJECTED")
+	require.NotContains(t, output, "SYNCED:")
+	require.NotContains(t, output, "SYNC_SWITCH_ROLLBACK")
+	require.Equal(t, "new-review", strings.TrimSpace(runGit(t, fixture.repository, "branch", "--show-current")))
+	head := strings.TrimSpace(runGit(t, fixture.repository, "rev-parse", "HEAD"))
+	runGit(t, fixture.repository, "merge-base", "--is-ancestor", existingHead, head)
+	require.Equal(t, existingHead, strings.TrimSpace(runGit(t, fixture.repository, "rev-parse", "qqq")))
+	require.Equal(t, originalHead, strings.TrimSpace(runGit(t, fixture.remote, "rev-parse", "qqq")))
+	require.Empty(t, runGit(t, fixture.remote, "for-each-ref", "--format=%(refname)", "refs/heads/new-review"))
+	require.Equal(t, "saved new branch bytes\n", runGit(t, fixture.repository, "show", "HEAD:README.md"))
+	require.Equal(t, "existing unpublished commit\n", runGit(t, fixture.repository, "show", "HEAD:local.txt"))
+	require.Empty(t, runGit(t, fixture.repository, "status", "--porcelain"))
+	require.Empty(t, runGit(t, fixture.repository, "stash", "list"))
+	require.NotContains(t, readTextFile(t, fixture.githubLog), "pr create ")
+	runGit(t, fixture.remote, "config", "--unset", "receive.hideRefs")
+	output, err = fixture.run(t, binary, "sync")
+	require.NoError(t, err, output)
+	require.Equal(t, head, strings.TrimSpace(runGit(t, fixture.remote, "rev-parse", "new-review")))
+	require.Equal(t, "saved new branch bytes\n", runGit(t, fixture.remote, "show", "new-review:README.md"))
 }

@@ -14,13 +14,6 @@ This file gives backend rules for Go code. Obey root `AGENTS.md` and `.mprlab/PO
 - Return errors and wrap them with context.
 - Keep public API surface minimal.
 
-## Go Release
-
-- Use the latest stable Go release for local work and GitHub Actions.
-- Select `stable` with `check-latest: true` in GitHub Actions.
-- Use the formatter from the active Go toolchain.
-- Update the module Go requirement when you adopt a new stable release.
-
 ## Code Style
 
 - Use descriptive identifiers. No single-letter names except conventional tiny scopes where the repo already allows them.
@@ -29,6 +22,11 @@ This file gives backend rules for Go code. Obey root `AGENTS.md` and `.mprlab/PO
 - No panics in library code.
 - Use structured logging when the repo has a logger.
 - Propagate `context.Context` through effectful boundaries.
+
+## Temporary Diagnostic Programs
+
+- Put diagnostic Go programs in `_scratch/<task-id>/` with one `main` package per directory.
+- Obey [Temporary Task Files](POLICY.md#temporary-task-files) for ownership and removal.
 
 ## Testing
 

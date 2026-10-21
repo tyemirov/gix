@@ -89,6 +89,8 @@ type NextCommandBuilder struct {
 	ClientFactory                llmclient.ClientFactory
 	WorkingDirectoryProvider     func() (string, error)
 	Now                          func() time.Time
+	// DecisionRecorder supplies the evidence storage boundary for tests.
+	DecisionRecorder func(VersionDecision, semverdecision.Result, NextConfiguration, error) error
 }
 
 // Build constructs gix release next.
@@ -358,6 +360,10 @@ func (builder NextCommandBuilder) decideSemVer(command *cobra.Command, gitExecut
 	if clientError != nil {
 		return VersionDecision{}, clientError
 	}
+	recordDecision, recordError := builder.prepareSemVerRecorder(command, gitExecutor, repositoryRoot)
+	if recordError != nil {
+		return VersionDecision{}, recordError
+	}
 	semverResult, semverError := (semverdecision.Generator{
 		GitExecutor: gitExecutor,
 		Client:      client,
@@ -370,6 +376,9 @@ func (builder NextCommandBuilder) decideSemVer(command *cobra.Command, gitExecut
 		FixedMajor:      fixedMajor,
 	})
 	if semverError != nil {
+		if recordError := recordDecision(decision, semverResult, configuration, semverError); recordError != nil {
+			return VersionDecision{}, errors.Join(semverError, recordError)
+		}
 		return VersionDecision{}, semverError
 	}
 	var next string
@@ -380,6 +389,9 @@ func (builder NextCommandBuilder) decideSemVer(command *cobra.Command, gitExecut
 		next, nextError = releaseversion.NextSemVer(previous, semverResult.Bump)
 	}
 	if nextError != nil {
+		if recordError := recordDecision(decision, semverResult, configuration, nextError); recordError != nil {
+			return VersionDecision{}, errors.Join(nextError, recordError)
+		}
 		return VersionDecision{}, nextError
 	}
 	decision.NextVersion = next
@@ -387,6 +399,9 @@ func (builder NextCommandBuilder) decideSemVer(command *cobra.Command, gitExecut
 	decision.DeterministicFloor = semverResult.DeterministicFloor
 	decision.Reason = semverResult.Reason
 	decision.EvidenceSHA256 = semverResult.EvidenceSHA256
+	if recordError := recordDecision(decision, semverResult, configuration, nil); recordError != nil {
+		return VersionDecision{}, recordError
+	}
 	return decision, nil
 }
 

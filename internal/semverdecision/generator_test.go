@@ -3,6 +3,7 @@ package semverdecision
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -295,4 +296,225 @@ func requestContents(requests []llm.ChatRequest) string {
 		}
 	}
 	return strings.Join(contents, "\n")
+}
+
+func decisionOptions() Options {
+	return Options{RepositoryPath: "/tmp/repo", SinceReference: "base123", SourceReference: "source456", BoundaryLabel: "v1.2.3"}
+}
+
+func TestGenerateAccountsForUnicodeSingleLineAndLateDiff(t *testing.T) {
+	executor := newDecisionGitExecutor("fix: update behavior\n\x1e")
+	original := "diff --git a/noise.txt b/noise.txt\n@@ -1 +1 @@\n-previous\n+" + strings.Repeat("界", 90000) + "\n" + "diff --git a/z-command.txt b/z-command.txt\n@@ -1 +0,0 @@\n-LATE_CONTRACT_REMOVAL\n"
+	executor.responses["diff --unified=3 "+testRange+" -- . :(exclude)CHANGELOG.md"] = original
+	client := &decisionChatClient{responseForRequest: func(request llm.ChatRequest) string {
+		if strings.Contains(request.Messages[1].Content, "LATE_CONTRACT_REMOVAL") {
+			return `{"impact":"incompatible","public_contract":"supported command","reason":"The release removes a supported command."}`
+		}
+		return `{"impact":"compatible","public_contract":"","reason":"This fragment preserves supported behavior."}`
+	}}
+	result, err := (Generator{GitExecutor: executor, Client: client}).Generate(context.Background(), decisionOptions())
+	require.NoError(t, err)
+	require.Equal(t, BumpMajor, result.Bump)
+	require.Greater(t, len(result.Packets), 2)
+	reconstructed := ""
+	for _, packet := range result.Packets {
+		require.LessOrEqual(t, len([]rune(packet.Content)), evidencePacketRuneLimit)
+		require.Equal(t, textDigest(packet.Content), packet.SHA256)
+		for _, fragment := range packet.Fragments {
+			if fragment.Kind == "Diff excerpt" {
+				require.Equal(t, len([]rune(reconstructed)), fragment.OffsetRunes)
+				reconstructed += fragment.Content
+			}
+		}
+	}
+	require.Equal(t, original, reconstructed)
+	for _, coverage := range result.Coverage {
+		require.Equal(t, coverage.RuneCount, coverage.CoveredRunes)
+	}
+	require.Equal(t, "base123", result.SinceReference)
+	require.Equal(t, "source456", result.SourceReference)
+}
+
+func TestGenerateRetrievesCommittedCrossFileContextForCandidateAndAudit(t *testing.T) {
+	executor := newDecisionGitExecutor("fix: repair behavior\n\x1e")
+	executor.responses["ls-tree -z --name-only base123 -- docs/contract.txt"] = "docs/contract.txt\x00"
+	executor.responses["cat-file -t base123:docs/contract.txt"] = "blob\n"
+	executor.responses["show base123:docs/contract.txt"] = "Supported command accepts old_key.\nOther line.\n"
+	client := &decisionChatClient{responseForRequest: func(request llm.ChatRequest) string {
+		if strings.Contains(request.Messages[1].Content, "Supported command accepts old_key.") {
+			return `{"impact":"incompatible","public_contract":"old_key","reason":"Existing supported inputs now require migration."}`
+		}
+		return `{"impact":"unresolved","public_contract":"","reason":"The previous supported inputs need source evidence.","context_requests":[{"path":"docs/contract.txt","source":"old","start_line":1,"line_count":1}]}`
+	}}
+	result, err := (Generator{GitExecutor: executor, Client: client}).Generate(context.Background(), decisionOptions())
+	require.NoError(t, err)
+	require.Equal(t, BumpMajor, result.Bump)
+	require.Len(t, result.Requests, 3)
+	require.Len(t, result.Context, 1)
+	require.Len(t, result.Findings, 3)
+	require.Equal(t, "unresolved", result.Findings[0].Impact)
+	require.Contains(t, result.Requests[2].Messages[1].Content, "Supported command accepts old_key.")
+	require.NotContains(t, result.Requests[2].Messages[1].Content, "Other line.")
+	require.Contains(t, executor.calls, "show base123:docs/contract.txt")
+	require.Equal(t, textDigest(result.Context[0].Content), result.Context[0].SHA256)
+}
+
+func TestGenerateRejectsUnsafeAndInvalidCommittedContext(t *testing.T) {
+	for _, testCase := range []struct {
+		name, path, source string
+		start, count       int
+	}{
+		{"parent", "../outside", "old", 1, 1}, {"absolute", "/outside", "old", 1, 1},
+		{"normalized", "docs/../outside", "old", 1, 1}, {"backslash", "docs\\outside", "old", 1, 1},
+		{"source", "docs/contract.txt", "working", 1, 1}, {"negative", "docs/contract.txt", "old", 0, 1},
+		{"range", "docs/contract.txt", "old", 2, 3},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			executor := newDecisionGitExecutor("fix: repair behavior\n\x1e")
+			executor.responses["ls-tree -z --name-only base123 -- docs/contract.txt"] = "docs/contract.txt\x00"
+			executor.responses["cat-file -t base123:docs/contract.txt"] = "blob\n"
+			executor.responses["show base123:docs/contract.txt"] = "One line.\n"
+			response := fmt.Sprintf(`{"impact":"unresolved","public_contract":"","reason":"Need source context.","context_requests":[{"path":%q,"source":%q,"start_line":%d,"line_count":%d}]}`, testCase.path, testCase.source, testCase.start, testCase.count)
+			result, err := (Generator{GitExecutor: executor, Client: &decisionChatClient{response: response}}).Generate(context.Background(), decisionOptions())
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "source context")
+			require.Len(t, result.Requests, 1)
+			require.NotEmpty(t, result.Packets)
+			require.Len(t, result.EvidenceSHA256, 64)
+		})
+	}
+}
+
+func TestGenerateRecordsAbsentCommittedSource(t *testing.T) {
+	executor := newDecisionGitExecutor("fix: repair behavior\n\x1e")
+	client := &decisionChatClient{responseForRequest: func(request llm.ChatRequest) string {
+		if strings.Contains(request.Messages[1].Content, "absent=true") {
+			return `{"impact":"additive","public_contract":"new option","reason":"The new option is optional."}`
+		}
+		return `{"impact":"unresolved","public_contract":"","reason":"Check prior source.","context_requests":[{"path":"new.txt","source":"old","start_line":1,"line_count":1}]}`
+	}}
+	result, err := (Generator{GitExecutor: executor, Client: client}).Generate(context.Background(), decisionOptions())
+	require.NoError(t, err)
+	require.True(t, result.Context[0].Absent)
+	require.NotContains(t, executor.calls, "show base123:new.txt")
+}
+
+func TestGenerateFailsClosedForUnresolvedAndBinaryEvidence(t *testing.T) {
+	for _, testCase := range []struct{ name, diff, response string }{
+		{"unresolved", "", `{"impact":"unresolved","public_contract":"supported behavior","reason":"Public impact is still unclear."}`},
+		{"binary", "diff --git a/model.bin b/model.bin\nBinary files a/model.bin and b/model.bin differ\n", `{"impact":"compatible","public_contract":"","reason":"No change."}`},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			executor := newDecisionGitExecutor("fix: update behavior\n\x1e")
+			if testCase.diff != "" {
+				executor.responses["diff --unified=3 "+testRange+" -- . :(exclude)CHANGELOG.md"] = testCase.diff
+			}
+			result, err := (Generator{GitExecutor: executor, Client: &decisionChatClient{response: testCase.response}}).Generate(context.Background(), decisionOptions())
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "unresolved")
+			require.Empty(t, result.Bump)
+			require.NotEmpty(t, result.Packets)
+			require.Len(t, result.EvidenceSHA256, 64)
+		})
+	}
+}
+
+func TestGenerateRetainsPartialEvidenceOnProviderFailure(t *testing.T) {
+	result, err := (Generator{GitExecutor: newDecisionGitExecutor("fix: behavior\n\x1e"), Client: &decisionChatClient{err: errors.New("provider offline")}}).Generate(context.Background(), decisionOptions())
+	require.Error(t, err)
+	require.Len(t, result.Requests, 1)
+	require.Len(t, result.Packets, 1)
+	require.NotEmpty(t, result.Coverage)
+	require.Len(t, result.EvidenceSHA256, 64)
+	require.Empty(t, result.Bump)
+}
+
+func TestGenerateEnforcesContextRoundAndRuneBudgets(t *testing.T) {
+	for _, testCase := range []struct{ name, content, want string }{
+		{"round", "One line.\n", "round limit"},
+		{"runes", strings.Repeat("界", contextRuneLimit) + "\n", "rune limit"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			executor := newDecisionGitExecutor("fix: behavior\n\x1e")
+			executor.responses["ls-tree -z --name-only source456 -- context.txt"] = "context.txt\x00"
+			executor.responses["cat-file -t source456:context.txt"] = "blob\n"
+			executor.responses["show source456:context.txt"] = testCase.content
+			response := `{"impact":"unresolved","public_contract":"","reason":"Need context.","context_requests":[{"path":"context.txt","source":"new","start_line":1,"line_count":1}]}`
+			result, err := (Generator{GitExecutor: executor, Client: &decisionChatClient{response: response}}).Generate(context.Background(), decisionOptions())
+			require.Error(t, err)
+			require.Contains(t, err.Error(), testCase.want)
+			require.LessOrEqual(t, len(result.Requests), 3)
+			require.Empty(t, result.Bump)
+		})
+	}
+}
+
+func TestGenerateEnforcesGlobalProviderCallLimit(t *testing.T) {
+	executor := newDecisionGitExecutor("fix: behavior\n\x1e")
+	executor.responses["diff --unified=3 "+testRange+" -- . :(exclude)CHANGELOG.md"] = "diff --git a/noise.txt b/noise.txt\n@@ -1 +1 @@\n+" + strings.Repeat("x", 1500000) + "\n"
+	executor.responses["ls-tree -z --name-only source456 -- context.txt"] = "context.txt\x00"
+	executor.responses["cat-file -t source456:context.txt"] = "blob\n"
+	executor.responses["show source456:context.txt"] = "Known source.\n"
+	client := &decisionChatClient{responseForRequest: func(request llm.ChatRequest) string {
+		if strings.Contains(request.Messages[1].Content, "Known source.") {
+			return `{"impact":"compatible","public_contract":"","reason":"The supported behavior is preserved."}`
+		}
+		return `{"impact":"unresolved","public_contract":"","reason":"Need context.","context_requests":[{"path":"context.txt","source":"new","start_line":1,"line_count":1}]}`
+	}}
+	result, err := (Generator{GitExecutor: executor, Client: client}).Generate(context.Background(), decisionOptions())
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "provider call limit")
+	require.Len(t, result.Requests, providerCallLimit)
+	require.LessOrEqual(t, len(client.requests), providerCallLimit)
+}
+
+func TestGenerateRejectsOversizeCompleteEvidenceBeforeCalls(t *testing.T) {
+	executor := newDecisionGitExecutor("fix: behavior\n\x1e")
+	executor.responses["diff --unified=3 "+testRange+" -- . :(exclude)CHANGELOG.md"] = "diff --git a/noise.txt b/noise.txt\n+" + strings.Repeat("x", 2200000) + "\n"
+	client := &decisionChatClient{response: `{"impact":"compatible","public_contract":"","reason":"No change."}`}
+	result, err := (Generator{GitExecutor: executor, Client: client}).Generate(context.Background(), decisionOptions())
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "complete evidence requires")
+	require.Empty(t, client.requests)
+	require.NotEmpty(t, result.Packets)
+	require.Equal(t, result.Coverage[3].RuneCount, result.Coverage[3].CoveredRunes)
+}
+
+func TestGenerateRetainsMalformedProviderResponse(t *testing.T) {
+	raw := "not a valid decision"
+	result, err := (Generator{GitExecutor: newDecisionGitExecutor("fix: behavior\n\x1e"), Client: &decisionChatClient{response: raw}}).Generate(context.Background(), decisionOptions())
+	require.Error(t, err)
+	require.Len(t, result.Responses, 1)
+	require.Equal(t, raw, result.Responses[0].Content)
+	require.Equal(t, "candidate", result.Responses[0].Stage)
+	require.Equal(t, result.Packets[0].ID, result.Responses[0].PacketID)
+}
+
+func TestGenerateRejectsOversizeAuditWithoutTruncatingResponse(t *testing.T) {
+	response := fmt.Sprintf(`{"impact":"compatible","public_contract":"","reason":%q}`, strings.Repeat("x", 80000))
+	client := &decisionChatClient{response: response}
+	result, err := (Generator{GitExecutor: newDecisionGitExecutor("fix: behavior\n\x1e"), Client: client}).Generate(context.Background(), decisionOptions())
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "audit submitted request exceeds 64000 rune limit")
+	require.Len(t, client.requests, 1)
+	require.Len(t, result.Requests, 2)
+	require.Equal(t, response, result.Responses[0].Content)
+	require.Contains(t, result.Requests[1].Messages[1].Content, strings.Repeat("x", 80000))
+}
+
+func TestGenerateRejectsNonBlobContextWithoutReadingContent(t *testing.T) {
+	for _, objectType := range []string{"tree", "commit"} {
+		t.Run(objectType, func(t *testing.T) {
+			executor := newDecisionGitExecutor("fix: behavior\n\x1e")
+			executor.responses["ls-tree -z --name-only source456 -- docs"] = "docs\x00"
+			executor.responses["cat-file -t source456:docs"] = objectType + "\n"
+			response := `{"impact":"unresolved","public_contract":"","reason":"Need committed context.","context_requests":[{"path":"docs","source":"new","start_line":1,"line_count":1}]}`
+			result, err := (Generator{GitExecutor: executor, Client: &decisionChatClient{response: response}}).Generate(context.Background(), decisionOptions())
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "not a committed blob")
+			require.NotContains(t, executor.calls, "show source456:docs")
+			require.Len(t, result.Findings, 1)
+			require.Empty(t, result.Context)
+		})
+	}
 }

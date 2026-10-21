@@ -3,9 +3,14 @@ mprlab_resources:
   release:
     scheme: semver
     fixed_major: 1
+  ci:
+    enabled: true
+    command:
+      "0": make
+      "1": ci
   resources:
-    - kind: github_release_binary
-      id: command-line
+    command-line:
+      kind: github_release_binary
       repository: tyemirov/gix
       build:
         system: go
@@ -18,8 +23,8 @@ mprlab_resources:
           - darwin/amd64
           - darwin/arm64
           - windows/amd64
-    - kind: github_pages
-      id: website
+    website:
+      kind: github_pages
       repository: tyemirov/gix
       branch: gh-pages
       domain: gix.mprlab.com

@@ -396,8 +396,9 @@
               <p>
                 A GitHub push rejection preserves local commits and the selected
                 branch. It reports the rejection and suggests removal of branch
-                protection or creation of a new pull request. Completed
-                synchronization with only that rejection returns success.
+                protection or creation of a new pull request. Sync restores
+                invocation-owned stashes and returns a nonzero exit code.
+                The rejection does not start rollback or produce a success result.
               </p>
             </article>
             <article class="recipe">
