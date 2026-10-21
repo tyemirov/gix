@@ -31,7 +31,7 @@ func TestSyncHelpDescribesBranchSelectionContract(testInstance *testing.T) {
 		output,
 		"Branch names and default-branch status add no other special behavior. Sync pulls the latest remote changes, merges pending work into the selected branch, commits the result, and pushes that branch.",
 	)
-	require.Contains(testInstance, output, "A GitHub push rejection preserves the local commits and selected branch. Sync reports the rejection, suggests removing branch protection or opening a new pull request, and returns success with exit code 0.")
+	require.Contains(testInstance, output, "A GitHub push rejection preserves the local commits and selected branch. Sync reports the rejection, suggests removing branch protection or opening a new pull request, and returns a nonzero exit code.")
 	require.Contains(testInstance, output, "A missing explicit branch starts at the current HEAD.")
 	require.NotContains(testInstance, output, "A rejected push fails")
 	require.NotContains(testInstance, output, "a dirty current default branch keeps the generated PR rescue flow")
