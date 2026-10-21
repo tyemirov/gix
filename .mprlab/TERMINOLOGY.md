@@ -99,6 +99,17 @@ Give each term one meaning. Use the same term for the same concept in all docume
 
 Add repository-specific technical nouns below this line.
 
+- `Git index`: Git data that records the file contents prepared for the next commit.
+- `tracked path`: A file path recorded in the current commit or the Git index.
+- `untracked file`: A worktree file that has no entry in the Git index.
+- `path selector`: A literal file or directory path that selects tracked paths for an operation.
+- `file alias`: A different path name that identifies the same filesystem object.
+- `intent-to-add entry`: A Git index entry that records a new path without staged file contents.
+- `sparse checkout`: A Git checkout that includes a selected subset of tracked paths.
+- `submodule`: A Git repository recorded by its commit in a containing repository.
+- `staged change`: A file difference between the Git index and the current commit.
+- `unstaged change`: A file difference between the worktree and the Git index.
+
 - `branch protection`: GitHub requirements for changes to a branch.
 - `default branch`: The branch that the selected remote reports through its symbolic `HEAD`.
 - `fast-forward update`: A branch update that moves its reference to a descendant commit without a merge commit.
@@ -112,6 +123,9 @@ Add repository-specific technical nouns below this line.
 - `semantic audit`: A model review that approves or rejects a conflict candidate against the source evidence.
 - `SemVer`: A release version with major, minor, and patch fields.
 - `version decision`: The Gix result that selects one release version from repository evidence and policy.
+- `evidence packet`: Committed evidence with a fixed size limit for one release model review.
+- `diff hunk`: A contiguous group of source lines in a Git diff.
+- `source context`: Selected lines from a committed source file for a model review.
 
 - `change disposition`: The recorded result for one source change: retained, combined, superseded, or unresolved.
 - `decision block`: An overlap of source changes that requires a semantic decision.
@@ -154,6 +168,8 @@ Use the simple present, simple past, simple future, imperative, or infinitive fo
 ## Repository Technical Verbs
 
 Add repository-specific technical verbs below this line.
+
+- `restore`: Set selected tracked paths in the Git index and worktree to the contents recorded in a specified commit.
 
 ```text
 - `term`: Definition with one meaning and the approved verb forms.
