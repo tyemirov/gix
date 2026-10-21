@@ -3557,7 +3557,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 ## Planning
 *do not implement yet*
 
-- [ ] [P007] (P1) Select application lifecycle timeout inputs.
+- [x] [P007] (P1) Select application lifecycle timeout inputs.
   Goal:
   Define application-owned timeout values for the installed Gateway lifecycle.
   Evidence:
@@ -3569,3 +3569,16 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Requirements:
   - Keep timeout policy in the selected application manifest.
   - Validate the declared inputs through read-only lifecycle plans before a production operation.
+  Resolution:
+  The manifest now declares startup `1m`, completion `30m`, readiness `10m`, request `1m`, and shutdown `30s`.
+  Repository reads use `app_lifecycle.repository_read` with five attempts and polling intervals from `1s` to `10s`.
+  Validation:
+  The original manifest error was reproduced with the installed Gateway `v6.1.0`.
+  The changed manifest passed the release, publish, and deploy plans in a local Git fixture on 2026-10-21.
+  Each plan reported zero changed tasks and zero failures.
+  The fixture used a local Git remote for source capture.
+  An independent release plan used the exact candidate manifest with a fixture-local Git transport.
+  It passed with 66 successful tasks, zero changed tasks, and zero failures.
+  The primary checkout passed timeout validation but stopped because source changes require commit and synchronization.
+  The Governor check passed.
+  Production operations remain pending until the source changes reach `origin/master`.
