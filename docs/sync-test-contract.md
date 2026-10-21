@@ -1,6 +1,6 @@
 # Sync Acceptance Tests
 
-The [sync policy](../.mprlab/POLICY.md#sync-model) owns the product contract.
+The [sync contract](../.mprlab/AGENTS.SYNC.md#sync-model) owns the product contract.
 This document maps that contract to public tests. I017 records the test consolidation.
 
 ## Test Commands
@@ -28,9 +28,11 @@ Tests that use `go run` still invoke the real CLI through the Go toolchain.
 | Accept empty parents and reconcile merged ancestors. | `TestSyncFileWorkFromEmptyParent`, `TestSyncFileWorkAfterEmptyChildParentMerges`, `TestSyncFileWorkAfterGrandparentMerges` | Child publication and current review bases. Retained and deleted parent refs are covered. |
 | Accept parent refs that are absent locally, behind, or diverged. | `TestSyncParentRemoteStatePreservesChildWork` | Incoming and unpublished parent bytes reach the child. Pending child bytes stay out of the parent. Parents with and without PRs are covered. |
 | Create a PR only for file changes. | `TestSyncExplicitBranchWithoutReviewDelta`, `TestSyncFileWorkAfterEmptyChildParentMerges`, `TestSyncFileWorkAfterGrandparentMerges` | Branch publication succeeds without an empty PR. After a squash merge, parent review diffs exclude previously merged work. |
-| Preserve local work and report a rejected push with success. | `TestSyncExplicitDefaultPushRejectionPreservesCommittedWork`, `TestSyncExplicitDefaultWithRealRemoteRejection`, `TestSyncExplicitNondefaultWithRemoteRejection` | Exit code zero, rejection guidance, unchanged remote refs, local committed bytes, and successful retry. |
-| Defer child publication after parent rejection. | `TestSyncFileWorkPreservedAfterParentRejection` | No remote child or stale child PR. Retry publishes the parent before the child. The child diff contains only child work. |
+| Preserve local work and report a rejected push with failure. | `TestSyncExplicitDefaultPushRejectionPreservesCommittedWork`, `TestSyncExplicitDefaultWithRealRemoteRejection`, `TestSyncExplicitNondefaultWithRemoteRejection` | Nonzero exit code, rejection guidance, unchanged remote refs, local committed bytes, and successful retry. |
+| Defer child publication after parent rejection. | `TestSyncFileWorkPreservedAfterParentRejection` | Nonzero exit code. No remote child or stale child PR. Retry publishes the parent before the child. The child diff contains only child work. |
 | Keep successful branch publication when a tag is rejected. | `TestSyncBranchPublicationWithRejectedTag`, `TestSyncStackParentPublicationWithRejectedTag` | Real remote tag refusal, exact remote branch bytes, accurate warnings, and continued PR creation. A later PR failure preserves published work. |
+| Restore invocation-owned stashes before rejection failure. | `TestSyncRejectedPushRestoresInvocationStash` | Nonzero exit, exact staged and unstaged bytes, retained operator stash, selected branch, and successful retry. |
+| Preserve recovery after rejection and a finalization failure. | `TestSyncRejectedPushFinalizationFailurePreservesRecovery` | Completed commits, retained recovery snapshots, both failure causes, and no rollback or `SYNCED`. |
 | Preserve work through conflicts, failures, and concurrent edits. | `TestSyncExplicitTargetConflicts`, `TestSyncExplicitTargetPublicationFailures`, `TestSyncExplicitTargetProviderBoundary`, `TestSyncFailureRollbackTable` | Exact file and index state, publication boundaries, recovery, and outside-writer preservation. |
 
 The selection, publication, file-work, and explicit-target suites contain these primary assertions.

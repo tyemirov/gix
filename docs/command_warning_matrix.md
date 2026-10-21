@@ -6,9 +6,10 @@ This table defines fatal and non-fatal outcomes for maintenance commands. Non-fa
 | --- | --- | --- | --- |
 | sync | Select a branch | Success | Use an explicit branch. Without one on the default branch, create a branch only for uncommitted changes or unpublished local commits. Otherwise, update the current branch. |
 |  | Pull and merge remote changes, merge pending work, and commit | Fatal on local operation failure | Preserve work through the transaction recovery contract. Reject dirty work on a current merged target. |
-|  | GitHub rejects the selected branch after completed synchronization | Non-fatal | Preserve local commits and the selected branch. Report `SYNC_PUSH_REJECTED` and suggest removal of protection or a new PR. Return exit code `0`. |
+|  | GitHub rejects the selected branch after completed synchronization | Publication failure | Preserve local commits and the selected branch without rollback. Restore invocation-owned stashes. Report `SYNC_PUSH_REJECTED` with publication guidance and return a nonzero exit code without `SYNCED`. |
 |  | Branch push succeeds but another ref is rejected | Non-fatal | Report the rejected ref with `SYNC_PUSH_REJECTED`. Keep the successful branch result and continue its PR operation. |
-|  | Parent push rejected | Non-fatal | Save child work locally. Report `SYNC_PUBLICATION_DEFERRED`. Defer the child push and PR until parent publication succeeds. |
+|  | Parent push rejected | Publication failure | Save child work locally and restore invocation-owned stashes. Report `SYNC_PUBLICATION_DEFERRED`. Defer the child push and PR. Return a nonzero exit code without `SYNCED`. |
+|  | Stash restoration or snapshot cleanup fails after push rejection | Recovery failure | Keep completed commits and recovery snapshots. Report both failures through `SYNC_SWITCH_HANDOFF`. Return a nonzero exit code without rollback. |
 |  | Preview skip | Non-fatal | Explicit message and continue. |
 |  | Remote/local deletion (branch cleanup) | Non-fatal | Errors appear as warnings; remaining branches processed. |
 | default | Workflow rewrite, default branch update | Fatal | Required to guarantee correctness. |
@@ -23,4 +24,6 @@ This table defines fatal and non-fatal outcomes for maintenance commands. Non-fa
 
 > Note: Commands that operate on remote URLs or filesystem mutations (`remote update-to-canonical`, `remote update-protocol`, `folder rename`, etc.) are treated as fatal for their core steps. Their tasks either succeed or abort with the contextual error catalogue introduced in prior issues.
 
-The [sync policy](../.mprlab/POLICY.md#sync-branch-selection) controls these sync outcomes. Default-branch status adds no other special behavior. B099 records the implementation and acceptance tests.
+The [sync contract](../.mprlab/AGENTS.SYNC.md#sync-branch-selection) controls these sync outcomes.
+Default-branch status adds no other special behavior.
+B099 records branch selection. I023 records rejected publication results.
