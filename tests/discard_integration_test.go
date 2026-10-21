@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -44,6 +45,37 @@ func discardRun(t *testing.T, root string, args ...string) (string, error) {
 	require.NoFileExists(t, filepath.Join(home, ".gix", "config.yml"))
 	require.NoFileExists(t, filepath.Join(home, "gix", "config.yml"))
 	return output, err
+}
+
+func TestDiscardAllWithLargeIgnoredTree(t *testing.T) {
+	root := discardRepository(t)
+	const trackedCount = 5000
+	const ignoredCount = 40000
+	discardWrite(t, root, ".gitignore", "ignored.txt\nnode_modules/\n")
+	for index := range trackedCount {
+		discardWrite(t, root, fmt.Sprintf("src/file-%04d.txt", index), "committed\n")
+	}
+	runGit(t, root, "add", "--all")
+	runGit(t, root, "commit", "-m", "large tracked tree")
+	refs := runGit(t, root, "show-ref")
+	for index := range trackedCount {
+		discardWrite(t, root, fmt.Sprintf("src/file-%04d.txt", index), "dirty\n")
+	}
+	for index := range ignoredCount {
+		discardWrite(t, root, fmt.Sprintf("node_modules/package-%03d/lib/file-%04d.js", index/200, index), "ignored dependency\n")
+	}
+	started := time.Now()
+	output, err := discardRun(t, root, "--all")
+	t.Logf("discard with %d tracked and %d ignored files took %s", trackedCount, ignoredCount, time.Since(started))
+	require.NoError(t, err, output)
+	require.Empty(t, runGit(t, root, "diff", "HEAD", "--name-only"))
+	require.Equal(t, refs, runGit(t, root, "show-ref"))
+	for index := range trackedCount {
+		require.Equal(t, "committed\n", readTextFile(t, filepath.Join(root, fmt.Sprintf("src/file-%04d.txt", index))))
+	}
+	for index := range ignoredCount {
+		require.Equal(t, "ignored dependency\n", readTextFile(t, filepath.Join(root, fmt.Sprintf("node_modules/package-%03d/lib/file-%04d.js", index/200, index))))
+	}
 }
 
 func TestDiscardScopedLiteralPaths(t *testing.T) {
@@ -395,6 +427,50 @@ func TestDiscardPreservesIndexedFilesystemAliases(t *testing.T) {
 			}
 			require.Equal(t, "indexed alias bytes\n", readTextFile(t, filepath.Join(root, "ONE.TXT")))
 			require.Error(t, err, output)
+			require.Equal(t, before, runGit(t, root, "status", "--porcelain=v1", "-z", "--untracked-files=all"))
+		})
+	}
+}
+
+func TestDiscardPreservesHardlinkAliases(t *testing.T) {
+	for _, protected := range []string{"untracked.txt", "ignored.txt", "two.txt"} {
+		t.Run(protected, func(t *testing.T) {
+			root := discardRepository(t)
+			discardWrite(t, root, "one.txt", "shared bytes\n")
+			if protected == "two.txt" {
+				require.NoError(t, os.Remove(filepath.Join(root, protected)))
+			}
+			require.NoError(t, os.Link(filepath.Join(root, "one.txt"), filepath.Join(root, protected)))
+			before := runGit(t, root, "status", "--porcelain=v1", "-z", "--untracked-files=all")
+			output, err := discardRun(t, root, "one.txt")
+			require.Error(t, err, output)
+			require.Contains(t, output, "aliases protected path")
+			require.Equal(t, "shared bytes\n", readTextFile(t, filepath.Join(root, protected)))
+			require.Equal(t, before, runGit(t, root, "status", "--porcelain=v1", "-z", "--untracked-files=all"))
+		})
+	}
+}
+
+func TestDiscardPreservesFilesystemAliasAncestors(t *testing.T) {
+	for _, ancestor := range []bool{false, true} {
+		t.Run(map[bool]string{false: "selected_directory", true: "protected_directory"}[ancestor], func(t *testing.T) {
+			root := discardRepository(t)
+			discardRequireFilesystemAlias(t, t.TempDir(), "one.txt", "ONE.TXT")
+			protected := "ONE.TXT/untracked.txt"
+			if ancestor {
+				runGit(t, root, "rm", "-r", "dir")
+				protected = "DIR"
+			} else {
+				runGit(t, root, "rm", "one.txt")
+			}
+			discardWrite(t, root, protected, "protected bytes\n")
+			discardWrite(t, root, "two.txt", "dirty bytes\n")
+			before := runGit(t, root, "status", "--porcelain=v1", "-z", "--untracked-files=all")
+			output, err := discardRun(t, root, "--all")
+			require.Error(t, err, output)
+			require.Contains(t, output, "aliases protected path")
+			require.Equal(t, "protected bytes\n", readTextFile(t, filepath.Join(root, protected)))
+			require.Equal(t, "dirty bytes\n", readTextFile(t, filepath.Join(root, "two.txt")))
 			require.Equal(t, before, runGit(t, root, "status", "--porcelain=v1", "-z", "--untracked-files=all"))
 		})
 	}
