@@ -1,6 +1,6 @@
 // @ts-check
 
-import { Wunderbaum } from "https://cdn.jsdelivr.net/npm/wunderbaum@0/+esm";
+import { Wunderbaum } from "./vendor/wunderbaum/wunderbaum.esm.min.js";
 
 import {
   currentRepositoryLaunchMode,

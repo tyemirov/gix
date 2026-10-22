@@ -6,6 +6,7 @@ on:
       - master
     paths:
       - '**/*.go'
+      - 'cmd/cli/testdata/**'
       - 'internal/web/ui/**'
       - 'docs/**'
       - '.mprlab/deploy/resources.yml'
@@ -19,6 +20,7 @@ on:
   pull_request:
     paths:
       - '**/*.go'
+      - 'cmd/cli/testdata/**'
       - 'internal/web/ui/**'
       - 'docs/**'
       - '.mprlab/deploy/resources.yml'

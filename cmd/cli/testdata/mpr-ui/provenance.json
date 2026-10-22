@@ -1,0 +1,19 @@
+{
+  "repository": "https://github.com/MarcoPoloResearchLab/mpr-ui",
+  "revision": "768f25936497c5aabd426197d21c2100b6e5d9a1",
+  "license": "LicenseRef-MPRL-Proprietary",
+  "files": {
+    "mpr-ui.js": {
+      "source": "https://raw.githubusercontent.com/MarcoPoloResearchLab/mpr-ui/768f25936497c5aabd426197d21c2100b6e5d9a1/mpr-ui.js",
+      "sha256": "3e725dbe911470ca934cb46456369479b6ac232eee5ccba2582bf8d939259ae8"
+    },
+    "mpr-ui.css": {
+      "source": "https://raw.githubusercontent.com/MarcoPoloResearchLab/mpr-ui/768f25936497c5aabd426197d21c2100b6e5d9a1/mpr-ui.css",
+      "sha256": "351bbf6c15054528a651571d8c8bd85536eea76c3e574f9335e6cd413878923f"
+    },
+    "LICENSE": {
+      "source": "https://raw.githubusercontent.com/MarcoPoloResearchLab/mpr-ui/768f25936497c5aabd426197d21c2100b6e5d9a1/LICENSE",
+      "sha256": "dd6369e5e35e4ecdd7a5229508b956270b2c779c000a1787a3bade37a5e49bab"
+    }
+  }
+}
