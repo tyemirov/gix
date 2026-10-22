@@ -15,8 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chromedp/cdproto/cdp"
-	"github.com/chromedp/cdproto/fetch"
 	"github.com/chromedp/cdproto/input"
 	"github.com/chromedp/chromedp"
 	"github.com/chromedp/chromedp/kb"
@@ -36,30 +34,13 @@ func TestDocumentationSharedUIWorkflowAndSEO(t *testing.T) {
 			browserContext := newBrowserTestContext(t)
 			scenarioContext, cancel := context.WithTimeout(browserContext, 8*time.Second)
 			defer cancel()
-			chromedp.ListenTarget(scenarioContext, func(event interface{}) {
-				if request, ok := event.(*fetch.EventRequestPaused); ok {
-					go func() {
-						contentType := "application/javascript"
-						if strings.HasSuffix(request.Request.URL, ".css") {
-							contentType = "text/css"
-						}
-						executorContext := cdp.WithExecutor(scenarioContext, chromedp.FromContext(scenarioContext).Target)
-						requestError := fetch.FulfillRequest(request.RequestID, http.StatusOK).
-							WithResponseHeaders([]*fetch.HeaderEntry{{Name: "Content-Type", Value: contentType}}).
-							WithBody("").Do(executorContext)
-						if requestError != nil && scenarioContext.Err() == nil {
-							t.Errorf("fulfill documentation dependency: %v", requestError)
-						}
-					}()
-				}
-			})
+			dependencies := newDocumentationBrowserDependencies(t, scenarioContext, server.URL)
 			var hero, article, install string
 			var metadata map[string]string
 			var links, commands []string
 			var structuredData []json.RawMessage
 			var stylesheetLoaded, noOverflow bool
 			require.NoError(t, chromedp.Run(scenarioContext,
-				fetch.Enable().WithPatterns([]*fetch.RequestPattern{{URLPattern: "https://*"}}),
 				chromedp.EmulateViewport(width, 900),
 				chromedp.Navigate(server.URL),
 				chromedp.Evaluate(documentationStylesheetLoaded, &stylesheetLoaded),
@@ -149,6 +130,7 @@ func TestDocumentationSharedUIWorkflowAndSEO(t *testing.T) {
 				assert.True(t, focused, "keyboard focus must be visible on %s", destination)
 				assert.True(t, targetVisible, "anchor target must clear the sticky navigation: %s", destination)
 			}
+			dependencies.assertNoErrors(t)
 		})
 	}
 }
