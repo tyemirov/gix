@@ -11,6 +11,62 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B125] (P1) Remove live dependencies from audit browser startup.
+  Goal:
+  Start the audit workspace without an external network connection and make browser CI deterministic.
+  Evidence:
+  The embedded page loads Wunderbaum code and styles from a CDN.
+  The documentation browser test downloads shared assets during each run.
+  Requirements:
+  - Serve pinned tree assets from the embedded application.
+  - Preserve the third-party licenses and source identities.
+  - Use pinned fixtures for documentation browser checks.
+  - Reject unexpected external browser dependencies.
+  - Keep the existing browser deadlines and behavior assertions.
+  Deliverables:
+  The embedded workspace uses pinned Wunderbaum 0.14.1 code and styles with its license and provenance.
+  Documentation browser tests use exact shared UI fixtures and reject unexpected external requests.
+  The browser harness blocks external hostname resolution.
+  CI includes fixture changes in both event filters.
+  Validation:
+  The denied-network regression failed before the asset change and recorded both CDN requests.
+  The complete audit browser group passed without external dependencies.
+  Denied-proxy documentation checks passed, including unknown-request rejection.
+  The compiled binary served the local module, stylesheet, and license through HTTP.
+  The complete local `make ci` passed, including the 253.169-second integration suite.
+  GitHub CI passed for the parent and child source commits.
+  The Governor check, whitespace check, and changed-prose review passed.
+  Independent review found no remaining source defects.
+
+- [x] [B124] (P1) Prevent blocked output capture in CLI tests.
+  Evidence:
+  The release CI command stopped after ten minutes in `TestApplicationConfigurationCliFlagOverridesScopes`.
+  The test wrote debug output into a pipe before it read the output.
+  Requirements:
+  - Preserve the configuration selection checks.
+  - Capture debug output without a pipe capacity limit.
+  - Keep the current CI and Go test deadlines.
+  Resolution:
+  The test uses explicit input and output streams.
+  The stderr capture helper uses a temporary file with automatic cleanup.
+  Two scenarios verify root help and debug output larger than 250 KiB.
+  Validation:
+  The original test reproduced the blocked write with a 20-second diagnostic deadline.
+  The changed test reproduced the blocked write before the capture helper correction.
+  The configuration tests completed in 0.309 seconds after the correction.
+  Independent review found no implementation defects in the capture correction.
+  The complete `make ci` command failed after 230.867 seconds in the CLI package.
+  Six browser tests stopped at their navigation or visibility deadlines.
+  The documentation test could not download the pinned `mpr-ui.js` asset from GitHub.
+  The documentation check and one browser test reproduced their failures in separate commands.
+  A direct asset request also stopped before a connection was established.
+  The earlier run did not establish the browser timeout cause.
+  That Governor check could not retrieve the issue format from `issues-api.mprlab.com` because the request timed out.
+  B125 removed the live asset dependencies that caused the remaining browser timeouts.
+  The complete local `make ci` and both GitHub CI runs passed after the corrections.
+  The current Governor check passed with its required external input.
+  The correction preserves the existing CI and browser deadlines.
+
 - [x] [B123] (P0) Examine the full release diff before version selection.
   Evidence:
   Gix supplies only the first 60,000 characters of the release diff to the model.
@@ -2699,6 +2755,36 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   New changes and conflicts keep the parent as the destination.
 
 ## Improvements
+
+- [x] [I025] (P1) Align the public website with the daily Git workflow.
+  Goal:
+  Explain the agreed Gix workflow and provide accurate documentation links and search metadata.
+  Requirements:
+  - Lead with daily sync and keep fleet maintenance as a secondary capability.
+  - Describe branch selection, work preservation, review requests, conflicts, discard, and publication failures accurately.
+  - Distinguish current source behavior from published release availability.
+  - Correct broken documentation links and the footer license reference.
+  - Add a canonical URL, search description, social metadata, structured data, robots file, and sitemap.
+  Deliverables:
+  The homepage describes daily sync, recovery, credentials, and the source features absent from release v1.10.9.
+  Documentation links use verified GitHub destinations and section anchors.
+  The footer uses the repository license and excludes two destinations with confirmed TLS failures.
+  The site includes search metadata, a 1200 by 630 social image, a robots file, and a sitemap.
+  Validation:
+  Integration tests confirmed the expected failures before the website and footer changes.
+  The final `make test-docs-browser` passed at 390 and 1280 pixels in 2.205 seconds.
+  The checks cover navigation, keyboard focus, the license modal, metadata, discovery files, and image decoding.
+  Retained public navigation destinations returned HTTP 200 during separate live checks.
+  The earlier `make ci` passed formatting, `go vet`, `staticcheck`, and `ineffassign`.
+  It failed in two existing audit browser tests after their 30-second deadlines.
+  The tests were `TestWebInterfaceBrowserDirtyRowsShowCommitAndChangelogActions` and `TestWebInterfaceBrowserFiltersAuditRowsByColumnValue`.
+  B124 records comparable audit browser failures.
+  The Governor check and changed-prose checks passed.
+  Independent review approved the scoped website changes for a pull request.
+  B125 removed the live dependencies that caused the audit browser timeouts.
+  Workflow and SEO checks now use the same strict fixture helper as the footer checks.
+  The complete local `make ci` and both GitHub CI source runs passed.
+  The website remains above the CI corrections in the PR stack.
 
 - [x] [I023] (P1) Report rejected sync publication as failure.
   Goal:

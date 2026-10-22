@@ -31,13 +31,16 @@ const (
 	webIntegrationRepoTreeAssetPathConstant    = "/assets/repo_tree.js"
 	webIntegrationSharedAssetPathConstant      = "/assets/shared.js"
 	webIntegrationStylesAssetPathConstant      = "/assets/styles.css"
+	webIntegrationTreeModuleAssetPathConstant  = "/assets/vendor/wunderbaum/wunderbaum.esm.min.js"
+	webIntegrationTreeStylesAssetPathConstant  = "/assets/vendor/wunderbaum/wunderbaum.css"
+	webIntegrationTreeLicenseAssetPathConstant = "/assets/vendor/wunderbaum/LICENSE"
 	webIntegrationRepositoriesAPIPathConstant  = "/api/repos"
 	webIntegrationBindArgumentTemplateConstant = "--bind=%s"
 	webIntegrationPortArgumentTemplateConstant = "--port=%d"
 	webIntegrationWildcardHostConstant         = "0.0.0.0"
 )
 
-func TestWebBinaryEmbedsFirstPartyAssetsAndUsesCDNDependencies(testInstance *testing.T) {
+func TestWebBinaryEmbedsAllRuntimeAssets(testInstance *testing.T) {
 	repositoryRoot := integrationRepositoryRoot(testInstance)
 	binaryPath := buildIntegrationBinary(testInstance, repositoryRoot)
 	workingDirectory := testInstance.TempDir()
@@ -55,10 +58,10 @@ func TestWebBinaryEmbedsFirstPartyAssetsAndUsesCDNDependencies(testInstance *tes
 	waitForWebServerReady(testInstance, baseURL+webIntegrationIndexAssetPathConstant)
 
 	indexDocument := readHTTPBody(testInstance, baseURL+webIntegrationIndexAssetPathConstant)
-	require.Contains(testInstance, indexDocument, "https://cdn.jsdelivr.net/npm/wunderbaum@0/dist/wunderbaum.min.css")
+	require.Contains(testInstance, indexDocument, webIntegrationTreeStylesAssetPathConstant)
 	require.Contains(testInstance, indexDocument, "/assets/styles.css")
 	require.Contains(testInstance, indexDocument, "/assets/app.js")
-	require.Contains(testInstance, indexDocument, webIntegrationExternalCDNHostConstant)
+	require.NotContains(testInstance, indexDocument, webIntegrationExternalCDNHostConstant)
 
 	applicationScript := readHTTPBody(testInstance, baseURL+webIntegrationApplicationAssetPathConstant)
 	require.Contains(testInstance, applicationScript, "from \"./main.js\"")
@@ -71,7 +74,15 @@ func TestWebBinaryEmbedsFirstPartyAssetsAndUsesCDNDependencies(testInstance *tes
 	require.Contains(testInstance, auditScript, "from \"./shared.js\"")
 
 	repoTreeScript := readHTTPBody(testInstance, baseURL+webIntegrationRepoTreeAssetPathConstant)
-	require.Contains(testInstance, repoTreeScript, "from \"https://cdn.jsdelivr.net/npm/wunderbaum@0/+esm\"")
+	require.Contains(testInstance, repoTreeScript, "from \"./vendor/wunderbaum/wunderbaum.esm.min.js\"")
+	require.NotContains(testInstance, repoTreeScript, webIntegrationExternalCDNHostConstant)
+
+	treeModule := readHTTPBody(testInstance, baseURL+webIntegrationTreeModuleAssetPathConstant)
+	require.Contains(testInstance, treeModule, "Wunderbaum.version=\"v0.14.1\"")
+	treeStyles := readHTTPBody(testInstance, baseURL+webIntegrationTreeStylesAssetPathConstant)
+	require.Contains(testInstance, treeStyles, "div.wunderbaum")
+	treeLicense := readHTTPBody(testInstance, baseURL+webIntegrationTreeLicenseAssetPathConstant)
+	require.Contains(testInstance, treeLicense, "MIT License")
 
 	sharedScript := readHTTPBody(testInstance, baseURL+webIntegrationSharedAssetPathConstant)
 	require.Contains(testInstance, sharedScript, "export const state = {")

@@ -619,7 +619,7 @@ func TestWebServerServesAuditWorkspaceAndRemovesLegacyEndpoints(t *testing.T) {
 	require.Contains(t, auditScript, "from \"./repo_tree.js\"")
 
 	repositoryTreeScript := readEmbeddedAsset("/assets/repo_tree.js")
-	require.Contains(t, repositoryTreeScript, "from \"https://cdn.jsdelivr.net/npm/wunderbaum@0/+esm\"")
+	require.Contains(t, repositoryTreeScript, "from \"./vendor/wunderbaum/wunderbaum.esm.min.js\"")
 	require.Contains(t, repositoryTreeScript, "from \"./shared.js\"")
 
 	sharedScript := readEmbeddedAsset("/assets/shared.js")
