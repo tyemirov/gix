@@ -56,6 +56,8 @@ type strictSyncTransaction struct {
 	branchMutations   map[string]strictSyncBranchMutation
 	worktreeMutations map[string]struct{}
 	targetBranch      string
+	pushRejection     *strictSyncPushRejection
+	localFinalized    bool
 	published         bool
 	restoring         bool
 	ownershipLoss     error
@@ -797,4 +799,10 @@ func sortedStrictSyncMutationReferenceNames(references map[string]strictSyncBran
 	}
 	sort.Strings(names)
 	return names
+}
+
+func (transaction *strictSyncTransaction) reportRejectedPushHandoff(reason error) {
+	transaction.environment.ReportRepositoryEvent(transaction.repository, shared.EventLevelError, shared.EventCodeSyncSwitchHandoff,
+		"strict sync preserved local commits and recovery snapshots after a rejected push; finalization failed; resolve the reported failure before retrying",
+		map[string]string{"target_branch": transaction.targetBranch, "reason": strings.TrimSpace(reason.Error()), "published": fmt.Sprintf("%t", transaction.published)})
 }

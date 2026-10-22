@@ -22,6 +22,15 @@ gix is a Go 1.25 command-line application built with Cobra and a strict YAML con
 4. Domain services resolve their collaborators through `internal/repos/dependencies`, which supplies defaults for repository discovery, filesystem access, Git execution, and GitHub metadata unless tests inject fakes.
 5. Commands perform work through `internal/...` packages (for example, `internal/repos/rename.Run`), returning contextual errors that bubble back to Cobra for consistent exit handling.
 
+### Local Discard
+
+`gix discard` is a local CLI operation in `cmd/cli/discard.go`.
+The command does not load application configuration or execute a workflow.
+It uses the shared Git executor to inspect the current commit, Git index, and worktree.
+It validates every path selector before one Git restore operation.
+The restore keeps existing commits and branch references.
+The history purge operation remains separate in `internal/repos/history`.
+
 ## Workflow Execution Outcomes
 
 Workflow orchestration (`internal/workflow`) now splits planning, runner orchestration, and reporting and returns an `ExecutionOutcome` to every caller. The outcome captures:
@@ -55,7 +64,7 @@ Sync assumes a valid Git repository and a configured, reachable remote with an e
 The remote is the authority for published history. The local checkout is a replaceable working copy.
 File changes are the work. Sync preserves unpublished work, including changes held in local commits, before replacing local state.
 
-The [sync policy](.mprlab/POLICY.md#sync-branch-selection) owns branch selection and GitHub publication outcomes.
+The [sync contract](.mprlab/AGENTS.SYNC.md#sync-branch-selection) owns branch selection and GitHub publication outcomes.
 
 - When the user specifies a branch, use that branch.
 - Without a destination on the default branch, create a branch only for uncommitted changes or unpublished local commits.
@@ -63,7 +72,12 @@ The [sync policy](.mprlab/POLICY.md#sync-branch-selection) owns branch selection
 
 Default-branch status adds no other special behavior. Branch names are identifiers. Sync pulls remote changes, merges pending work, commits the result, and pushes the selected branch.
 
-GitHub publication is secondary. A rejected push preserves completed local work and the selected branch. The command reports the rejection and suggests removal of branch protection or creation of a new pull request. Completed synchronization with only that rejection returns exit code `0` without rollback. B099 records the implementation and acceptance tests.
+GitHub publication is secondary. A rejected push preserves completed local work and the selected branch.
+The command reports the rejection and suggests removal of branch protection or creation of a new pull request.
+It restores invocation-owned stashes and completes local cleanup before it returns a nonzero exit code without `SYNCED`.
+The rejection does not start rollback or count as successful remote publication.
+If restoration or cleanup fails, Gix keeps completed commits and recovery snapshots and reports both failures through `SYNC_SWITCH_HANDOFF`.
+I023 records the publication result and acceptance tests.
 
 The stack planner resolves merged review bases for children without a pull request. Empty parents remain valid Git destinations.
 Parent publication returns its outcome to the caller. A rejected prerequisite defers dependent publication while the selected child retains local work.

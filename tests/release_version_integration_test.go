@@ -154,7 +154,7 @@ func TestReleaseNextKeepsRequiredRepairInputsOnPatchLine(testInstance *testing.T
 	repositoryRoot := filepath.Dir(currentWorkingDirectory)
 	binaryPath := buildIntegrationBinary(testInstance, repositoryRoot)
 
-	const repairClassificationRule = "Treat required inputs that only enable a compatible repair as part of the repair, not as optional new functionality."
+	const repairClassificationRule = "Use compatible for fixes, restored behavior, performance work, internal refactoring, tests, documentation, and release implementation changes."
 	var requestsMutex sync.Mutex
 	requests := make([]string, 0, 2)
 	decisionServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {

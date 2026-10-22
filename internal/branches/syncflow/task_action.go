@@ -547,6 +547,14 @@ func handleStrictSyncAction(ctx context.Context, environment *workflow.Environme
 		}
 		cleanupContext, cancelCleanup := context.WithTimeout(context.WithoutCancel(ctx), mergeConflictResolutionRollbackTimeout)
 		defer cancelCleanup()
+		if transaction.pushRejection != nil {
+			if transaction.localFinalized && err == transaction.pushRejection {
+				return
+			}
+			err = errors.Join(transaction.pushRejection, err)
+			transaction.reportRejectedPushHandoff(err)
+			return
+		}
 		if transaction.published {
 			transaction.reportPublishedHandoff(err)
 			if finalizeErr := transaction.finalizeSnapshots(cleanupContext); finalizeErr != nil {
@@ -820,6 +828,10 @@ func completeStrictSync(ctx context.Context, environment *workflow.Environment, 
 	}
 	if finalizeErr := transaction.finalize(ctx); finalizeErr != nil {
 		return finalizeErr
+	}
+	transaction.localFinalized = true
+	if transaction.pushRejection != nil {
+		return transaction.pushRejection
 	}
 	reportStrictSync(repository, environment, completion.BranchName, options.ResolutionSource, completion.Created, completion.Stashed)
 	return nil

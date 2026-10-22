@@ -35,7 +35,7 @@ Folder deletion is intentionally not a generic CLI command. It is available only
 
 ## Related contracts
 
-- [Sync policy](../.mprlab/POLICY.md#sync-branch-selection) defines branch selection and GitHub rejection reporting. B099 records the implementation and acceptance tests.
+- [Sync contract](../.mprlab/AGENTS.SYNC.md#sync-branch-selection) defines branch selection and GitHub rejection reporting. B099 records the implementation and acceptance tests.
 - [README](../README.md) documents launch, the command surface, and the operator-facing audit workflow.
 - [ARCHITECTURE](../ARCHITECTURE.md) describes the ownership boundary between `cmd/cli` and `internal/web`.
 - [CHANGELOG](../CHANGELOG.md) records released behavior changes.

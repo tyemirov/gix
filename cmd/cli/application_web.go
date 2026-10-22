@@ -106,7 +106,8 @@ const (
 var webReleaseVersionPattern = regexp.MustCompile(`^(v?)(\d+)\.(\d+)\.(\d+)(?:-rc(\d+))?$`)
 
 var nonActionableCommandPaths = map[string]struct{}{
-	applicationNameConstant: {},
+	applicationNameConstant + " " + discardCommandName:                                                              {},
+	applicationNameConstant:                                                                                         {},
 	applicationNameConstant + " " + repoFolderNamespaceUseNameConstant:                                              {},
 	applicationNameConstant + " " + repoRemoteNamespaceUseNameConstant:                                              {},
 	applicationNameConstant + " " + repoPullRequestsNamespaceUseNameConstant:                                        {},

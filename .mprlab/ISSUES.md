@@ -11,6 +11,45 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B123] (P0) Examine the full release diff before version selection.
+  Evidence:
+  Gix supplies only the first 60,000 characters of the release diff to the model.
+  A public contract change after that limit is absent from the supplied diff.
+  Requirements:
+  - Include each release change in evidence requests with fixed limits.
+  - Keep file and diff context when a large change requires separate requests.
+  - Limit source context requests to the exact release commits.
+  - Stop version selection when evidence or a public contract impact remains unknown.
+  - Stop version selection when the full analysis exceeds its request limit.
+  - Select the highest public contract impact from all reviewed evidence.
+  - Write the decision, source range, evidence, and failure reason in the Git directory.
+  - Keep the current CLI version decision output contract.
+  Validation:
+  - Verify a public contract change after a large unrelated diff through the CLI.
+  - Verify bounded Unicode fragments and source context across files.
+  - Verify unresolved evidence, request limits, and provider failures.
+  - Verify evidence records for successful and failed decisions.
+  - Run the complete repository CI command.
+  Resolution:
+  Gix now includes all text diff fragments in evidence packets with fixed size limits.
+  Candidate decisions and semantic audits can retrieve source context from the exact old and new commits.
+  Unknown impact, binary evidence, invalid context, and exhausted limits stop version selection.
+  JSON records preserve evidence, responses, findings, source identities, and successful or failed decisions.
+  Evidence storage remains available after analysis cancellation.
+  The CLI output contract remains unchanged.
+
+  The large diff regression first selected a patch instead of the required major version.
+  The corrected CLI regression and focused algorithm tests passed.
+  Independent review found no remaining defects after the boundary corrections.
+  The final `make ci` command passed. Its CLI suite completed in 203.855 seconds.
+
+  Changed prose passed the language checker. Existing README findings and Governor drift remain unchanged.
+  Files:
+  - `.mprlab/ISSUES.md`, `.mprlab/TERMINOLOGY.md`, and `README.md`.
+  - `cmd/cli/repos/release/next.go`, `evidence_record.go`, and `next_test.go`.
+  - `internal/semverdecision/generator.go`, `generator_test.go`, `evidence.go`, and `context.go`.
+  - `tests/release_evidence_integration_test.go` and `tests/release_version_integration_test.go`.
+
 - [x] [B117] (P1) Complete CI before the test deadline.
   Evidence:
   The release CI command stopped at the ten-minute Go test deadline on 2026-09-12.
@@ -2661,6 +2700,61 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## Improvements
 
+- [x] [I023] (P1) Report rejected sync publication as failure.
+  Goal:
+  Return a nonzero exit code after a selected branch push is rejected without loss of completed local work.
+  Requirements:
+  - Keep completed local commits and the selected branch after push rejection.
+  - Restore invocation-owned stashes before the publication failure result.
+  - Preserve child work and return failure when a parent push prevents child publication.
+  - Keep recovery snapshots when restoration or cleanup also fails.
+  - Report rejection without rollback or a `SYNCED` success message.
+  - Preserve successful branch publication when another ref is rejected.
+  Validation:
+  - Confirm the expected nonzero-exit test failure before production changes.
+  - Verify real Git push rejection, exact file contents, selected branches, remote refs, and successful retries.
+  - Verify parent chains, stash restoration, recovery failures, and existing rollback cases.
+  - Run focused tests, the complete CI gate, and independent review.
+  Resolution:
+  Selected branch push rejection returns a nonzero exit code after local finalization.
+  Gix preserves completed commits and the selected branch, restores owned stashes, and omits the `SYNCED` message.
+  Rejected parent publication preserves child work and returns failure.
+  Restoration or cleanup failures retain recovery snapshots.
+  Validation Results:
+  The new CLI regression failed as expected before the production change.
+  Focused publication tests passed in 14.027 seconds.
+  Existing recovery tests passed in 12.844 seconds.
+  Final `make ci` passed on 2026-10-21.
+  Its integration suite passed in 313.053 seconds.
+  The local build and `git diff --check` passed.
+  Independent review found no remaining blockers.
+
+- [x] [I024] (P2) Resolve repository Governor findings.
+  Goal:
+  Make the Governor check pass without loss of repository-owned contracts.
+  Requirements:
+  - Move the sync contract into `.mprlab/AGENTS.SYNC.md` with an explicit read condition in root `AGENTS.md`.
+  - Keep the repository Go toolchain rules outside managed guide content.
+  - Update managed governance files from their authoritative sources.
+  - Use resource identity keys required by the installed Gateway manifest loader.
+  - Preserve the two resource identities, destinations, source paths, and build values.
+  - Declare the existing `make ci` gate in the manifest.
+  Validation:
+  - Verify the manifest through the installed Gateway loader.
+  - Compare declared resource values before and after the collection change.
+  - Run Governor checks, document checks, and repository CI.
+  - Record separate lifecycle readiness inputs in P007.
+  Resolution:
+  Updated the managed governance files from their current sources.
+  Preserved repository-owned sync rules in `.mprlab/AGENTS.SYNC.md` and Go toolchain rules in root `AGENTS.md`.
+  Changed manifest resources to an identity map and declared the existing `make ci` command.
+  The resource identities, destinations, source paths, and build values are unchanged.
+  Validation Results:
+  Governor reported zero findings on 2026-10-21.
+  The installed Gateway accepted the manifest shape during a read-only release plan.
+  The plan then stopped on missing lifecycle timeout inputs, recorded separately in P007.
+  Final `make ci`, changed-prose checks, `git diff --check`, and independent review passed.
+
 - [x] [I022] (P1) Qualify the complete Ledger stash conflict through the CLI.
   Goal:
   Establish that Gix resolves the original Ledger case with complete repository inputs and the configured live provider.
@@ -3429,5 +3523,62 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   `make format`, `make lint`, `make test`, `make ci`, and `git diff --check` passed on 2026-07-28.
 
 
+- [x] [F013] (P1) Discard selected tracked file changes.
+  Goal:
+  Restore selected tracked paths to the current commit without a new commit or a push.
+  Requirements:
+  - Support `gix discard <path>...` and `gix discard --all` in the current repository.
+  - Restore staged and unstaged changes in the selected tracked paths.
+  - Remove selected Git index additions absent from the current commit.
+  - Keep existing commits, branch references, unselected changes, and untracked files.
+  - Treat path selectors as literal paths relative to the current directory.
+  - Apply `--all` to the complete containing repository.
+  - Reject invalid selectors and untracked file obstructions before a change.
+  - Reject file aliases that would change untracked files or unselected tracked paths.
+  - Run without configuration creation, credentials, or a confirmation prompt.
+  - Keep `gix files rm` as a separate history operation.
+  - Use `gix sync` to commit and publish work without a separate save command.
+  Validation:
+  - Confirm the expected failure through the compiled CLI before implementation.
+  - Verify file contents, Git index contents, commits, and branch references through public CLI tests.
+  - Run focused tests, `make ci`, documentation checks, and `git diff --check`.
+  Resolution:
+  The CLI now restores selected tracked paths to the current commit with one native Git restore operation.
+  The command keeps existing commits, branch references, untracked files, and unselected changes.
+  The command also protects file aliases on filesystems that ignore letter case or normalize Unicode names.
+  The initial CLI tests failed because the command was absent.
+  Additional tests reproduced file loss through file aliases before the correction.
+  All 12 discard test groups passed after the correction.
+  The final `make ci` gate, local build, and `git diff --check` passed on 2026-10-21.
+  Independent review found no remaining blockers.
+  The changed prose has no new mechanical language findings.
+  Governor reported the same nine findings as the initial check.
+
 ## Planning
 *do not implement yet*
+
+- [x] [P007] (P1) Select application lifecycle timeout inputs.
+  Goal:
+  Define application-owned timeout values for the installed Gateway lifecycle.
+  Evidence:
+  Gateway `v6.1.0` accepted the corrected manifest shape during a read-only release plan.
+  The plan then stopped with `manifest requires effective startup timeout: resource= operation=`.
+  Open Decisions:
+  - Select effective startup, completion, readiness, request, and shutdown timeouts.
+  - Select operation-specific overrides and polling inputs when the lifecycle requires them.
+  Requirements:
+  - Keep timeout policy in the selected application manifest.
+  - Validate the declared inputs through read-only lifecycle plans before a production operation.
+  Resolution:
+  The manifest now declares startup `1m`, completion `30m`, readiness `10m`, request `1m`, and shutdown `30s`.
+  Repository reads use `app_lifecycle.repository_read` with five attempts and polling intervals from `1s` to `10s`.
+  Validation:
+  The original manifest error was reproduced with the installed Gateway `v6.1.0`.
+  The changed manifest passed the release, publish, and deploy plans in a local Git fixture on 2026-10-21.
+  Each plan reported zero changed tasks and zero failures.
+  The fixture used a local Git remote for source capture.
+  An independent release plan used the exact candidate manifest with a fixture-local Git transport.
+  It passed with 66 successful tasks, zero changed tasks, and zero failures.
+  The primary checkout passed timeout validation but stopped because source changes require commit and synchronization.
+  The Governor check passed.
+  Production operations remain pending until the source changes reach `origin/master`.
