@@ -2700,6 +2700,33 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## Improvements
 
+- [!] [I025] (P1) Align the public website with the daily Git workflow.
+  Goal:
+  Explain the agreed Gix workflow and provide accurate documentation links and search metadata.
+  Requirements:
+  - Lead with daily sync and keep fleet maintenance as a secondary capability.
+  - Describe branch selection, work preservation, review requests, conflicts, discard, and publication failures accurately.
+  - Distinguish current source behavior from published release availability.
+  - Correct broken documentation links and the footer license reference.
+  - Add a canonical URL, search description, social metadata, structured data, robots file, and sitemap.
+  Deliverables:
+  The homepage describes daily sync, recovery, credentials, and the source features absent from release v1.10.9.
+  Documentation links use verified GitHub destinations and section anchors.
+  The footer uses the repository license and excludes two destinations with confirmed TLS failures.
+  The site includes search metadata, a 1200 by 630 social image, a robots file, and a sitemap.
+  Validation:
+  Integration tests confirmed the expected failures before the website and footer changes.
+  The final `make test-docs-browser` passed at 390 and 1280 pixels in 2.205 seconds.
+  The checks cover navigation, keyboard focus, the license modal, metadata, discovery files, and image decoding.
+  Retained public navigation destinations returned HTTP 200 during separate live checks.
+  The final `make ci` passed formatting, `go vet`, `staticcheck`, and `ineffassign`.
+  It failed in two existing audit browser tests after their 30-second deadlines.
+  The tests were `TestWebInterfaceBrowserDirtyRowsShowCommitAndChangelogActions` and `TestWebInterfaceBrowserFiltersAuditRowsByColumnValue`.
+  B124 records comparable audit browser failures.
+  The Governor check and changed-prose checks passed.
+  Independent review approved the scoped website changes for a pull request.
+  Blocked: Required CI fails in the two audit browser tests. Keep this issue open until the complete CI gate passes.
+
 - [x] [I023] (P1) Report rejected sync publication as failure.
   Goal:
   Return a nonzero exit code after a selected branch push is rejected without loss of completed local work.

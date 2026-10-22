@@ -444,3 +444,39 @@ pre {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Daily workflow layout */
+html { scroll-padding-top: 6rem; }
+section[id], [id="recipes"], [id="architecture"] { scroll-margin-top: 6rem; }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 5px; border-radius: 3px; }
+.nav__inner { gap: 1.5rem; }
+.nav__brand { display: inline-flex; align-items: center; gap: 0.5rem; color: var(--text); }
+.nav__brand img { border-radius: 6px; }
+.nav__links { flex-wrap: wrap; gap: 0.6rem 1.1rem; }
+.hero__logo { border-radius: 14px; margin-bottom: 1.2rem; }
+h1 { font-size: clamp(2rem, 4vw, 3.1rem); }
+h2 { font-size: clamp(1.4rem, 3vw, 1.9rem); }
+h3 { font-size: 1.05rem; }
+main p, main li { line-height: 1.65; }
+.grid > *, .usecase-grid > *, .docs-grid > *, .hero__grid > * { min-width: 0; }
+pre { max-width: 100%; }
+pre code { padding: 0; background: transparent; font-size: 0.8rem; }
+p code, li code { overflow-wrap: anywhere; }
+.section-note { margin-top: 1.5rem; }
+.workflow-detail { margin-top: 2rem; padding: 1.5rem; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); }
+.docs-links { align-self: start; }
+.docs-links a { margin-bottom: 0.8rem; line-height: 1.5; }
+.docs-links .btn { display: inline-flex; margin: 0.5rem 0 1rem; }
+
+@media (max-width: 960px) {
+  html { scroll-padding-top: 9rem; }
+  section[id], [id="recipes"], [id="architecture"] { scroll-margin-top: 9rem; }
+  .nav__inner { gap: 0.75rem; }
+  .hero { padding: 2.5rem 0; }
+  .hero__grid { gap: 1.8rem; }
+  .section { padding: 2.5rem 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn { transition: none; }
+}

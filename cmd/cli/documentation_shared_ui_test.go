@@ -69,7 +69,7 @@ func TestDocumentationSharedUI(t *testing.T) {
 			})
 			var links [][]string
 			var stylesheetLoaded, inViewport, focused bool
-			var licenseContent string
+			var licenseContent, licenseLabel, licenseURL string
 			require.NoError(t, chromedp.Run(scenarioContext,
 				fetch.Enable().WithPatterns([]*fetch.RequestPattern{{URLPattern: "https://*"}}),
 				chromedp.EmulateViewport(width, 900),
@@ -86,9 +86,11 @@ func TestDocumentationSharedUI(t *testing.T) {
 				chromedp.Evaluate(`(()=>{const bounds=document.querySelector('mpr-footer [data-mpr-dropdown="panel"]').getBoundingClientRect();return bounds.left>=0 && bounds.right<=innerWidth;})()`, &inViewport),
 				chromedp.KeyEvent(kb.Escape),
 				chromedp.Evaluate(`(()=>{const trigger=document.querySelector('mpr-footer [data-mpr-dropdown="trigger"]');return trigger===document.activeElement && trigger.getAttribute('aria-expanded')==='false';})()`, &focused),
+				chromedp.Text(documentationLicenseLink, &licenseLabel, chromedp.ByQuery),
 				chromedp.Click(documentationLicenseLink, chromedp.ByQuery),
 				chromedp.WaitVisible(`[role="dialog"]`, chromedp.ByQuery),
 				chromedp.Text(`[data-mpr-footer="privacy-modal-content"]`, &licenseContent, chromedp.ByQuery),
+				chromedp.Evaluate(`document.querySelector('[data-mpr-footer="privacy-modal-content"] a')?.href || ''`, &licenseURL),
 				chromedp.KeyEvent(kb.Escape),
 				chromedp.Reload(),
 				chromedp.Evaluate(documentationStylesheetLoaded, &stylesheetLoaded),
@@ -101,17 +103,16 @@ func TestDocumentationSharedUI(t *testing.T) {
 				{"LoopAware", "https://loopaware.mprlab.com"},
 				{"Allergy Wheel", "https://allergy.mprlab.com"},
 				{"Social Threader", "https://threader.mprlab.com"},
-				{"RSVP", "https://rsvp.mprlab.com"},
 				{"Countdown Calendar", "https://countdown.mprlab.com"},
-				{"LLM Crossword", "https://llm-crossword.mprlab.com"},
 				{"Prompt Bubbles", "https://prompts.mprlab.com"},
 				{"Wallpapers", "https://wallpapers.mprlab.com"},
 				{"CTX", "https://ctx.mprlab.com"},
 			}, links)
 			require.True(t, inViewport)
 			require.True(t, focused)
-			require.Contains(t, licenseContent, "MIT License")
-			require.Contains(t, licenseContent, "Copyright (c) 2025")
+			require.Equal(t, "License", licenseLabel)
+			require.Contains(t, licenseContent, "PolyForm Noncommercial License 1.0.0")
+			require.Equal(t, "https://github.com/tyemirov/gix/blob/master/LICENSE", licenseURL)
 			require.GreaterOrEqual(t, sharedRequests.Load(), int64(4))
 			require.Zero(t, boundaryErrors.Load())
 		})
