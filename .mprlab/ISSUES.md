@@ -2756,7 +2756,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## Improvements
 
-- [!] [I025] (P1) Align the public website with the daily Git workflow.
+- [x] [I025] (P1) Align the public website with the daily Git workflow.
   Goal:
   Explain the agreed Gix workflow and provide accurate documentation links and search metadata.
   Requirements:
@@ -2775,13 +2775,16 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   The final `make test-docs-browser` passed at 390 and 1280 pixels in 2.205 seconds.
   The checks cover navigation, keyboard focus, the license modal, metadata, discovery files, and image decoding.
   Retained public navigation destinations returned HTTP 200 during separate live checks.
-  The final `make ci` passed formatting, `go vet`, `staticcheck`, and `ineffassign`.
+  The earlier `make ci` passed formatting, `go vet`, `staticcheck`, and `ineffassign`.
   It failed in two existing audit browser tests after their 30-second deadlines.
   The tests were `TestWebInterfaceBrowserDirtyRowsShowCommitAndChangelogActions` and `TestWebInterfaceBrowserFiltersAuditRowsByColumnValue`.
   B124 records comparable audit browser failures.
   The Governor check and changed-prose checks passed.
   Independent review approved the scoped website changes for a pull request.
-  Blocked: Required CI fails in the two audit browser tests. Keep this issue open until the complete CI gate passes.
+  B125 removed the live dependencies that caused the audit browser timeouts.
+  Workflow and SEO checks now use the same strict fixture helper as the footer checks.
+  The complete local `make ci` and both GitHub CI source runs passed.
+  The website remains above the CI corrections in the PR stack.
 
 - [x] [I023] (P1) Report rejected sync publication as failure.
   Goal:
