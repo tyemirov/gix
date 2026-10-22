@@ -11,7 +11,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
-- [-] [B125] (P1) Remove live dependencies from audit browser startup.
+- [x] [B125] (P1) Remove live dependencies from audit browser startup.
   Goal:
   Start the audit workspace without an external network connection and make browser CI deterministic.
   Evidence:
@@ -23,13 +23,22 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Use pinned fixtures for documentation browser checks.
   - Reject unexpected external browser dependencies.
   - Keep the existing browser deadlines and behavior assertions.
+  Deliverables:
+  The embedded workspace uses pinned Wunderbaum 0.14.1 code and styles with its license and provenance.
+  Documentation browser tests use exact shared UI fixtures and reject unexpected external requests.
+  The browser harness blocks external hostname resolution.
+  CI includes fixture changes in both event filters.
   Validation:
-  - Reproduce the startup failure with external browser requests denied.
-  - Verify repository selection and audit results without external assets.
-  - Verify documentation interactions with its download provider unavailable.
-  - Run the complete CI gate after the final stack change.
+  The denied-network regression failed before the asset change and recorded both CDN requests.
+  The complete audit browser group passed without external dependencies.
+  Denied-proxy documentation checks passed, including unknown-request rejection.
+  The compiled binary served the local module, stylesheet, and license through HTTP.
+  The complete local `make ci` passed, including the 253.169-second integration suite.
+  GitHub CI passed for the parent and child source commits.
+  The Governor check, whitespace check, and changed-prose review passed.
+  Independent review found no remaining source defects.
 
-- [!] [B124] (P1) Prevent blocked output capture in CLI tests.
+- [x] [B124] (P1) Prevent blocked output capture in CLI tests.
   Evidence:
   The release CI command stopped after ten minutes in `TestApplicationConfigurationCliFlagOverridesScopes`.
   The test wrote debug output into a pipe before it read the output.
@@ -51,9 +60,12 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   The documentation test could not download the pinned `mpr-ui.js` asset from GitHub.
   The documentation check and one browser test reproduced their failures in separate commands.
   A direct asset request also stopped before a connection was established.
-  The browser timeout cause remains unconfirmed.
-  The final Governor check could not retrieve the issue format from `issues-api.mprlab.com` because the request timed out.
-  Blocked: Required CI fails on the asset download and separate browser timeouts. The final Governor check also lacks its external input.
+  The earlier run did not establish the browser timeout cause.
+  That Governor check could not retrieve the issue format from `issues-api.mprlab.com` because the request timed out.
+  B125 removed the live asset dependencies that caused the remaining browser timeouts.
+  The complete local `make ci` and both GitHub CI runs passed after the corrections.
+  The current Governor check passed with its required external input.
+  The correction preserves the existing CI and browser deadlines.
 
 - [x] [B123] (P0) Examine the full release diff before version selection.
   Evidence:
