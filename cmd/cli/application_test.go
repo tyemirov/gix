@@ -503,44 +503,39 @@ func TestApplicationConfigurationCliFlagOverridesScopes(t *testing.T) {
 	cliConfigurationPath := filepath.Join(cliConfigurationDirectory, testConfigurationFileNameConstant)
 	writeConfigurationFile(t, cliConfigurationPath, buildConfigurationContentWithHeader(buildHeader("debug"), requiredCommandKeys))
 
-	originalArgs := os.Args
-	t.Cleanup(func() {
-		os.Args = originalArgs
-	})
+	largeDebugArgument := strings.Repeat("diagnostic-output-", 16*1024)
+	testCases := []struct {
+		name      string
+		arguments []string
+	}{
+		{name: "root help"},
+		{name: "large debug output", arguments: []string{"--", largeDebugArgument}},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			stderrCapture := startTestStderrCapture(t)
+			var standardOutput bytes.Buffer
+			application := cli.NewApplication()
+			executionError := application.ExecuteWithOptions(cli.ExecutionOptions{
+				Arguments:      append([]string{"--config", cliConfigurationPath}, testCase.arguments...),
+				StandardInput:  strings.NewReader(""),
+				StandardOutput: &standardOutput,
+				StandardError:  io.Discard,
+			})
+			diagnostics := stderrCapture.Stop(t)
+			require.NoError(t, executionError)
 
-	os.Args = []string{configurationInitializationApplicationNameConstant, "--config", cliConfigurationPath}
-
-	stdoutReader, stdoutWriter, stdoutPipeError := os.Pipe()
-	require.NoError(t, stdoutPipeError)
-	stderrReader, stderrWriter, stderrPipeError := os.Pipe()
-	require.NoError(t, stderrPipeError)
-
-	originalStdout := os.Stdout
-	originalStderr := os.Stderr
-	os.Stdout = stdoutWriter
-	os.Stderr = stderrWriter
-
-	application := cli.NewApplication()
-	executionError := application.Execute()
-
-	require.NoError(t, stdoutWriter.Close())
-	require.NoError(t, stderrWriter.Close())
-	os.Stdout = originalStdout
-	os.Stderr = originalStderr
-
-	_, stdoutReadError := io.ReadAll(stdoutReader)
-	require.NoError(t, stdoutReadError)
-	require.NoError(t, stdoutReader.Close())
-
-	_, stderrReadError := io.ReadAll(stderrReader)
-	require.NoError(t, stderrReadError)
-	require.NoError(t, stderrReader.Close())
-
-	require.NoError(t, executionError)
-
-	expectedConfigPath := resolveSymlinkedPath(t, cliConfigurationPath)
-	actualConfigPath := resolveSymlinkedPath(t, application.ConfigFileUsed())
-	require.Equal(t, expectedConfigPath, actualConfigPath)
+			expectedConfigPath := resolveSymlinkedPath(t, cliConfigurationPath)
+			actualConfigPath := resolveSymlinkedPath(t, application.ConfigFileUsed())
+			require.Equal(t, expectedConfigPath, actualConfigPath)
+			require.Contains(t, diagnostics, `"level":"debug"`)
+			if len(testCase.arguments) == 0 {
+				require.Contains(t, standardOutput.String(), "Usage:")
+			} else {
+				require.Contains(t, diagnostics, largeDebugArgument)
+			}
+		})
+	}
 }
 
 func TestCanonicalConfigurationTemplateProvidesCompleteCommandConfigurations(testInstance *testing.T) {
@@ -836,23 +831,25 @@ func decodeOperationOptions(testingInstance testing.TB, options map[string]any, 
 
 type testStderrCapture struct {
 	originalDescriptor *os.File
-	reader             *os.File
-	writer             *os.File
+	file               *os.File
 }
 
 func startTestStderrCapture(testingInstance testing.TB) testStderrCapture {
 	testingInstance.Helper()
 
-	reader, writer, pipeError := os.Pipe()
-	require.NoError(testingInstance, pipeError)
+	file, createError := os.CreateTemp(testingInstance.TempDir(), "stderr-*")
+	require.NoError(testingInstance, createError)
 
 	capture := testStderrCapture{
 		originalDescriptor: os.Stderr,
-		reader:             reader,
-		writer:             writer,
+		file:               file,
 	}
 
-	os.Stderr = writer
+	testingInstance.Cleanup(func() {
+		os.Stderr = capture.originalDescriptor
+		require.NoError(testingInstance, file.Close())
+	})
+	os.Stderr = file
 
 	return capture
 }
@@ -862,12 +859,11 @@ func (capture *testStderrCapture) Stop(testingInstance testing.TB) string {
 
 	os.Stderr = capture.originalDescriptor
 
-	require.NoError(testingInstance, capture.writer.Close())
+	_, seekError := capture.file.Seek(0, io.SeekStart)
+	require.NoError(testingInstance, seekError)
 
-	capturedBytes, readError := io.ReadAll(capture.reader)
+	capturedBytes, readError := io.ReadAll(capture.file)
 	require.NoError(testingInstance, readError)
-
-	require.NoError(testingInstance, capture.reader.Close())
 
 	return string(capturedBytes)
 }
