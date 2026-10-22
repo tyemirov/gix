@@ -2,26 +2,18 @@ package cli
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/base64"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
-	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/chromedp/cdproto/cdp"
-	"github.com/chromedp/cdproto/fetch"
-	cdpruntime "github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
 	"github.com/chromedp/chromedp/kb"
 	"github.com/stretchr/testify/require"
 )
 
-const documentationCandidateRevision = "768f25936497c5aabd426197d21c2100b6e5d9a1"
 const documentationMenuTrigger = `mpr-footer [data-mpr-dropdown="trigger"]`
 const documentationMenuPanel = `mpr-footer [data-mpr-dropdown="panel"]`
 const documentationLicenseLink = `mpr-footer [data-mpr-footer="privacy-link"]`
@@ -32,7 +24,6 @@ const documentationStylesheetLoaded = `(() => {
 
 func TestDocumentationSharedUI(t *testing.T) {
 	require.NotEmpty(t, locateBrowserExecutable(), "Documentation qualification requires Chrome")
-	assets := documentationCandidateAssets(t)
 	server := httptest.NewServer(http.FileServer(http.Dir(filepath.Join("..", "..", "docs"))))
 	defer server.Close()
 	for _, width := range []int64{390, 1280} {
@@ -40,38 +31,11 @@ func TestDocumentationSharedUI(t *testing.T) {
 			browserContext := newBrowserTestContext(t)
 			scenarioContext, cancel := context.WithTimeout(browserContext, 8*time.Second)
 			defer cancel()
-			var boundaryErrors atomic.Int64
-			var sharedRequests atomic.Int64
-			chromedp.ListenTarget(scenarioContext, func(event interface{}) {
-				switch current := event.(type) {
-				case *cdpruntime.EventExceptionThrown:
-					boundaryErrors.Add(1)
-				case *fetch.EventRequestPaused:
-					go func() {
-						body := []byte{}
-						contentType := "application/javascript"
-						if asset, exists := assets[current.Request.URL]; exists {
-							body = asset
-							sharedRequests.Add(1)
-							if filepath.Ext(current.Request.URL) == ".css" {
-								contentType = "text/css"
-							}
-						}
-						executorContext := cdp.WithExecutor(scenarioContext, chromedp.FromContext(scenarioContext).Target)
-						responseError := fetch.FulfillRequest(current.RequestID, http.StatusOK).
-							WithResponseHeaders([]*fetch.HeaderEntry{{Name: "Content-Type", Value: contentType}}).
-							WithBody(base64.StdEncoding.EncodeToString(body)).Do(executorContext)
-						if responseError != nil && scenarioContext.Err() == nil {
-							boundaryErrors.Add(1)
-						}
-					}()
-				}
-			})
+			dependencies := newDocumentationBrowserDependencies(t, scenarioContext, server.URL)
 			var links [][]string
 			var stylesheetLoaded, inViewport, focused bool
 			var licenseContent string
 			require.NoError(t, chromedp.Run(scenarioContext,
-				fetch.Enable().WithPatterns([]*fetch.RequestPattern{{URLPattern: "https://*"}}),
 				chromedp.EmulateViewport(width, 900),
 				chromedp.Navigate(server.URL),
 				chromedp.Evaluate(documentationStylesheetLoaded, &stylesheetLoaded),
@@ -112,29 +76,8 @@ func TestDocumentationSharedUI(t *testing.T) {
 			require.True(t, focused)
 			require.Contains(t, licenseContent, "MIT License")
 			require.Contains(t, licenseContent, "Copyright (c) 2025")
-			require.GreaterOrEqual(t, sharedRequests.Load(), int64(4))
-			require.Zero(t, boundaryErrors.Load())
+			require.GreaterOrEqual(t, dependencies.sharedRequests.Load(), int64(4))
+			dependencies.assertNoErrors(t)
 		})
 	}
-}
-
-func documentationCandidateAssets(t *testing.T) map[string][]byte {
-	t.Helper()
-	client := http.Client{Timeout: 15 * time.Second}
-	assets := map[string][]byte{}
-	for name, digest := range map[string]string{
-		"mpr-ui.js":  "3e725dbe911470ca934cb46456369479b6ac232eee5ccba2582bf8d939259ae8",
-		"mpr-ui.css": "351bbf6c15054528a651571d8c8bd85536eea76c3e574f9335e6cd413878923f",
-	} {
-		response, requestError := client.Get("https://raw.githubusercontent.com/MarcoPoloResearchLab/mpr-ui/" + documentationCandidateRevision + "/" + name)
-		require.NoError(t, requestError)
-		require.Equal(t, http.StatusOK, response.StatusCode)
-		body, readError := io.ReadAll(response.Body)
-		closeError := response.Body.Close()
-		require.NoError(t, readError)
-		require.NoError(t, closeError)
-		require.Equal(t, digest, fmt.Sprintf("%x", sha256.Sum256(body)))
-		assets["https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/"+name] = body
-	}
-	return assets
 }

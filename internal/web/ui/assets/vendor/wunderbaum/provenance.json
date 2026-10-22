@@ -1,0 +1,15 @@
+{
+  "package": "wunderbaum",
+  "version": "0.14.1",
+  "source": "https://registry.npmjs.org/wunderbaum/-/wunderbaum-0.14.1.tgz",
+  "integrity": "sha512-RCpQxfmJLs87xqHxqI6gXW3hhRCMEQOeUkVlXykBtKNuXLUG6yjU31tmE7uUy27R7WcyHs/ZiDquZTkqstEIdA==",
+  "license": "MIT",
+  "files": {
+    "LICENSE": "81b700e1f8e7c1aed5c147ccf8cc3c8d757734e34de4b38c94794443149c0de1",
+    "package.json": "16b4107171fed22499183a9dcffaddd903c8b2ad1acc5861d51ea5882827408d",
+    "wunderbaum.css": "1ae1d7d7e5a78650b49b3b4d5e0af9c3119ce06ad23a05b0ddc8931e99776ddb",
+    "wunderbaum.css.map": "bbfe56ac0c2ca717a1c6e5b51374365e0a4d996a49c52e73501b8f87457c489a",
+    "wunderbaum.esm.min.js": "36f11403bbcb062b87fb2a152567d01f79f2cf36b91c4f71ffede47931a6caeb",
+    "wunderbaum.esm.min.js.map": "828388a62d13c27623541758850aaca6f607b3ef061672c21eae805b6db09177"
+  }
+}

@@ -1475,6 +1475,7 @@ func newBrowserTestContext(testingInstance *testing.T) context.Context {
 		chromedp.Flag("no-sandbox", true),
 		chromedp.Flag("disable-dev-shm-usage", true),
 		chromedp.Flag("window-size", "1440,1100"),
+		chromedp.Flag("host-resolver-rules", "MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1"),
 	)
 
 	allocatorContext, cancelAllocator := chromedp.NewExecAllocator(context.Background(), allocatorOptions...)

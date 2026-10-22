@@ -11,6 +11,24 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [-] [B125] (P1) Remove live dependencies from audit browser startup.
+  Goal:
+  Start the audit workspace without an external network connection and make browser CI deterministic.
+  Evidence:
+  The embedded page loads Wunderbaum code and styles from a CDN.
+  The documentation browser test downloads shared assets during each run.
+  Requirements:
+  - Serve pinned tree assets from the embedded application.
+  - Preserve the third-party licenses and source identities.
+  - Use pinned fixtures for documentation browser checks.
+  - Reject unexpected external browser dependencies.
+  - Keep the existing browser deadlines and behavior assertions.
+  Validation:
+  - Reproduce the startup failure with external browser requests denied.
+  - Verify repository selection and audit results without external assets.
+  - Verify documentation interactions with its download provider unavailable.
+  - Run the complete CI gate after the final stack change.
+
 - [!] [B124] (P1) Prevent blocked output capture in CLI tests.
   Evidence:
   The release CI command stopped after ten minutes in `TestApplicationConfigurationCliFlagOverridesScopes`.
