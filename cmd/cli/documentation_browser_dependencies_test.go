@@ -22,8 +22,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const documentationCandidateRevision = "768f25936497c5aabd426197d21c2100b6e5d9a1"
-
 //go:embed testdata/mpr-ui/mpr-ui.js testdata/mpr-ui/mpr-ui.css
 var documentationSharedUIFixtures embed.FS
 
