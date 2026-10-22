@@ -11,6 +11,32 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [!] [B124] (P1) Prevent blocked output capture in CLI tests.
+  Evidence:
+  The release CI command stopped after ten minutes in `TestApplicationConfigurationCliFlagOverridesScopes`.
+  The test wrote debug output into a pipe before it read the output.
+  Requirements:
+  - Preserve the configuration selection checks.
+  - Capture debug output without a pipe capacity limit.
+  - Keep the current CI and Go test deadlines.
+  Resolution:
+  The test uses explicit input and output streams.
+  The stderr capture helper uses a temporary file with automatic cleanup.
+  Two scenarios verify root help and debug output larger than 250 KiB.
+  Validation:
+  The original test reproduced the blocked write with a 20-second diagnostic deadline.
+  The changed test reproduced the blocked write before the capture helper correction.
+  The configuration tests completed in 0.309 seconds after the correction.
+  Independent review found no implementation defects in the capture correction.
+  The complete `make ci` command failed after 230.867 seconds in the CLI package.
+  Six browser tests stopped at their navigation or visibility deadlines.
+  The documentation test could not download the pinned `mpr-ui.js` asset from GitHub.
+  The documentation check and one browser test reproduced their failures in separate commands.
+  A direct asset request also stopped before a connection was established.
+  The browser timeout cause remains unconfirmed.
+  The final Governor check could not retrieve the issue format from `issues-api.mprlab.com` because the request timed out.
+  Blocked: Required CI fails on the asset download and separate browser timeouts. The final Governor check also lacks its external input.
+
 - [x] [B123] (P0) Examine the full release diff before version selection.
   Evidence:
   Gix supplies only the first 60,000 characters of the release diff to the model.
