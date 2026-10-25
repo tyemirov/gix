@@ -18,12 +18,31 @@ mprlab_resources:
       shutdown: 30s
   operations:
     app_lifecycle.repository_read:
-      polling:
+      polling: &lifecycle_polling
         initial: 1s
         maximum: 10s
         increment: 1s
         multiplier: 2
         attempt_limit: 5
+    app-plan-release:
+      polling: *lifecycle_polling
+    app-plan-publish:
+      polling: *lifecycle_polling
+    app-plan-deploy:
+      polling: *lifecycle_polling
+    app-release:
+      polling: *lifecycle_polling
+    app-publish:
+      polling: *lifecycle_polling
+    app-deploy:
+      polling: *lifecycle_polling
+    app_deploy.pages.deployment_status_poll:
+      polling:
+        initial: 1s
+        maximum: 10s
+        increment: 0s
+        multiplier: 2
+        attempt_limit: 120
   ci:
     enabled: true
     command:
