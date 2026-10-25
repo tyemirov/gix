@@ -1,6 +1,6 @@
 module github.com/tyemirov/gix
 
-go 1.27.1
+go 1.27.3
 
 retract (
 	[v1.0.0, v1.1.26] // Superseded by the version reset at v1.2.0.
