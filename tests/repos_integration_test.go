@@ -303,7 +303,6 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 		{
 			name: reposIntegrationRemoteTildeCaseName,
 			setup: func(testInstance *testing.T) (string, string) {
-				repositoryPath, extendedPath := createStubbedRepository(testInstance)
 				homeDirectory, homeError := os.UserHomeDir()
 				require.NoError(testInstance, homeError)
 				homeRoot, homeRootError := os.MkdirTemp(homeDirectory, reposIntegrationHomeRootPatternConstant)
@@ -311,10 +310,12 @@ func TestReposCommandIntegration(testInstance *testing.T) {
 				testInstance.Cleanup(func() {
 					_ = os.RemoveAll(homeRoot)
 				})
-				destinationPath := filepath.Join(homeRoot, filepath.Base(repositoryPath))
-				renameError := os.Rename(repositoryPath, destinationPath)
-				require.NoError(testInstance, renameError)
-				return destinationPath, extendedPath
+				repositoryPath := createGitRepository(testInstance, gitRepositoryOptions{
+					Path:          filepath.Join(homeRoot, "legacy"),
+					RemoteURL:     reposIntegrationOriginURL,
+					InitialBranch: "main",
+				})
+				return repositoryPath, stubbedPathEnv
 			},
 			arguments: []string{
 				reposIntegrationRunSubcommand,

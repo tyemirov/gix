@@ -1,5 +1,11 @@
 mprlab_resources:
   owner: gix
+  environment_file: .mprlab/deploy/.env
+  inputs:
+    DEPLOY_SUDO_PASSWORD_TUTOSH: ${DEPLOY_SUDO_PASSWORD_TUTOSH}
+  hosts:
+    tutosh:
+      ansible_become_password: DEPLOY_SUDO_PASSWORD_TUTOSH
   release:
     scheme: semver
     fixed_major: 1
