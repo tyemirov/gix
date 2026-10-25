@@ -387,10 +387,12 @@ func (git discardGit) validateFilesystemAliases(selected []string, protectedPath
 		if err != nil {
 			return nil, fmt.Errorf("discard: inspect filesystem path %q: %w", path, err)
 		}
-		stat := info.Sys().(*syscall.Stat_t)
-		identity := &discardFileIdentity{device: uint64(stat.Dev), inode: uint64(stat.Ino)}
-		cache[path] = identity
-		return identity, nil
+		identity, err := discardFilesystemIdentity(filepath.Join(git.directory, filepath.FromSlash(path)), info)
+		if err != nil {
+			return nil, fmt.Errorf("discard: identify filesystem path %q: %w", path, err)
+		}
+		cache[path] = &identity
+		return &identity, nil
 	}
 	selectedIdentities := make(map[discardFileIdentity]string)
 	selectedAncestorIdentities := make(map[discardFileIdentity]string)

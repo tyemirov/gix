@@ -432,6 +432,21 @@ func TestDiscardPreservesIndexedFilesystemAliases(t *testing.T) {
 	}
 }
 
+func TestDiscardRestoresSelectedSymlinkWithoutChangingTarget(t *testing.T) {
+	root := discardRepository(t)
+	discardWrite(t, root, "two.txt", "protected staged bytes\n")
+	runGit(t, root, "add", "two.txt")
+	discardWrite(t, root, "two.txt", "protected unstaged bytes\n")
+	require.NoError(t, os.Remove(filepath.Join(root, "one.txt")))
+	require.NoError(t, os.Symlink("two.txt", filepath.Join(root, "one.txt")))
+	output, err := discardRun(t, root, "one.txt")
+	require.NoError(t, err, output)
+	require.Equal(t, "one\n", readTextFile(t, filepath.Join(root, "one.txt")))
+	require.Equal(t, "protected unstaged bytes\n", readTextFile(t, filepath.Join(root, "two.txt")))
+	require.Equal(t, "protected staged bytes\n", runGit(t, root, "show", ":two.txt"))
+	require.Equal(t, "two.txt\n", runGit(t, root, "diff", "--cached", "--name-only"))
+}
+
 func TestDiscardPreservesHardlinkAliases(t *testing.T) {
 	for _, protected := range []string{"untracked.txt", "ignored.txt", "two.txt"} {
 		t.Run(protected, func(t *testing.T) {
