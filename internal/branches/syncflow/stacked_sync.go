@@ -262,12 +262,13 @@ func ensureStrictSyncStackParentChain(ctx context.Context, environment *workflow
 	if syncErr := synchronizeStrictSyncStackParent(ctx, environment, repository, options, parentReviewBase); syncErr != nil {
 		return false, syncErr
 	}
-	return pushAndCreatePullRequest(ctx, environment, repository, repositoryIdentifier, strictPullRequestBranchOptions{
+	publication, publishErr := pushAndCreatePullRequest(ctx, environment, repository, repositoryIdentifier, strictPullRequestBranchOptions{
 		BranchName:     options.Plan.ParentBranch,
 		RemoteName:     options.RemoteName,
 		BaseBranch:     parentReviewBase,
 		CommitMessages: options.CommitMessages,
 	})
+	return publication.published(), publishErr
 }
 
 // synchronizeStrictSyncStackParent runs with pending child work held outside the checkout.
