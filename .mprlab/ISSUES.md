@@ -11,6 +11,35 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B126] (P1) Show correct pull request results after sync.
+  Evidence:
+  Gateway sync showed `(created)` for a branch with no file changes against `master`.
+  The branch contained more commits, but its files were the same as the review base.
+  GitHub had no pull request for that branch.
+  Requirements:
+  - Show a new pull request only after the GitHub command completes without an error.
+  - Show the reason when an empty review diff prevents a pull request.
+  - Record the branch publication result and the pull request result.
+  - Continue child publication after empty parent publication completes without an error.
+  - Show rejected pushes as failures.
+  Validation:
+  - Do CLI tests of new, local, remote, and equivalent branches.
+  - Do tests of sync retries, new pull requests, empty parents, and rejected pushes.
+  - Complete `make ci` and the architect review.
+  Resolution:
+  Sync records distinct results for unpublished branches, branch publication, and a new pull request.
+  The completion message identifies pull request creation only after the GitHub command completes without an error.
+  An empty review diff produces a reason after branch publication completes without an error.
+  Completed validation:
+  All seven empty-review CLI cases failed before the correction.
+  The corrected cases, sync retries, incoming duplicate work, empty parents, and rejected pushes passed.
+  The architect review found no source defects.
+
+  The complete `make ci` passed on November 3, 2026.
+  Its integration suite completed in 510.649 seconds.
+  The changed prose passed its language review.
+  The Governor check found existing differences in two unchanged guides and missing `make up` and `make down` targets.
+
 - [x] [B125] (P1) Remove live dependencies from audit browser startup.
   Goal:
   Start the audit workspace without an external network connection and make browser CI deterministic.
