@@ -36,7 +36,10 @@ func TestSyncExplicitBranchNamesHaveEqualBehavior(t *testing.T) {
 				require.NotContains(t, log, "/branches/", "sync must not query branch protection")
 				if role == "default" {
 					require.NotContains(t, log, "pr create ")
+					require.NotContains(t, output, "(pull request created)")
 				} else {
+					require.Contains(t, output, "(pull request created)")
+					require.NotContains(t, output, "pull request skipped")
 					require.Contains(t, log, "created-pr --base base --head "+branch+" ")
 					require.Equal(t, base, strings.TrimSpace(runGit(t, fixture.remote, "rev-parse", defaultBranch)))
 					require.Equal(t, "origin/"+branch, strings.TrimSpace(runGit(t, fixture.repository, "rev-parse", "--abbrev-ref", "@{upstream}")))
@@ -139,7 +142,7 @@ func TestSyncExplicitBranchWithoutReviewDelta(t *testing.T) {
 	t.Parallel()
 
 	binary := buildIntegrationBinary(t, integrationRepositoryRoot(t))
-	for _, state := range []string{"new", "local", "remote", "local_remote", "new_stashed"} {
+	for _, state := range []string{"new", "local", "remote", "local_remote", "new_stashed", "local_equivalent", "remote_equivalent"} {
 		t.Run(state, func(t *testing.T) {
 			fixture := newSyncFixture(t, "qqq")
 			initial := strings.TrimSpace(runGit(t, fixture.repository, "rev-parse", "HEAD"))
@@ -149,6 +152,15 @@ func TestSyncExplicitBranchWithoutReviewDelta(t *testing.T) {
 			if state == "remote" || state == "local_remote" {
 				runGit(t, fixture.repository, "push", "origin", "qqq:refs/heads/wwww")
 			}
+			if state == "local_equivalent" || state == "remote_equivalent" {
+				runGit(t, fixture.repository, "switch", "-c", "wwww")
+				fixture.commitFile(t, "README.md", "temporary work\n")
+				fixture.commitFile(t, "README.md", "initial\n")
+				if state == "remote_equivalent" {
+					runGit(t, fixture.repository, "push", "-u", "origin", "wwww")
+				}
+			}
+			selectedTip := strings.TrimSpace(runGit(t, fixture.repository, "rev-parse", "HEAD"))
 			args := []string{"sync", "wwww"}
 			if state == "new_stashed" {
 				writeFile(t, filepath.Join(fixture.repository, "README.md"), "stashed work\n")
@@ -157,8 +169,11 @@ func TestSyncExplicitBranchWithoutReviewDelta(t *testing.T) {
 			output, err := fixture.run(t, binary, args...)
 			require.NoError(t, err, output)
 			require.Contains(t, output, "SYNCED:")
+			require.NotContains(t, output, "(created)")
+			require.NotContains(t, output, "(pull request created)")
+			require.Contains(t, output, `pull request skipped for "wwww": no file changes against review base "qqq"`)
 			require.Equal(t, "wwww", strings.TrimSpace(runGit(t, fixture.repository, "branch", "--show-current")))
-			require.Equal(t, initial, strings.TrimSpace(runGit(t, fixture.remote, "rev-parse", "wwww")))
+			require.Equal(t, selectedTip, strings.TrimSpace(runGit(t, fixture.remote, "rev-parse", "wwww")))
 			require.Equal(t, initial, strings.TrimSpace(runGit(t, fixture.repository, "rev-parse", "qqq")))
 			require.NotContains(t, readTextFile(t, fixture.githubLog), "pr create ")
 			if state == "new_stashed" {
@@ -167,8 +182,54 @@ func TestSyncExplicitBranchWithoutReviewDelta(t *testing.T) {
 				require.Empty(t, runGit(t, fixture.repository, "status", "--porcelain"))
 			}
 			require.Empty(t, runGit(t, fixture.repository, "stash", "list"))
+			if state != "new_stashed" {
+				output, err = fixture.run(t, binary, "sync")
+				require.NoError(t, err, output)
+				require.NotContains(t, output, "(created)")
+				require.NotContains(t, output, "(pull request created)")
+				require.Contains(t, output, `pull request skipped for "wwww": no file changes against review base "qqq"`)
+				require.NotContains(t, readTextFile(t, fixture.githubLog), "pr create ")
+			}
 		})
 	}
+}
+
+func TestSyncEmptyReviewPushRejection(t *testing.T) {
+	t.Parallel()
+	binary := buildIntegrationBinary(t, integrationRepositoryRoot(t))
+	fixture := newSyncFixture(t, "qqq")
+	runGit(t, fixture.remote, "config", "receive.hideRefs", "refs/heads/empty-review")
+	output, err := fixture.run(t, binary, "sync", "empty-review")
+	require.Error(t, err, output)
+	require.Contains(t, output, "SYNC_PUSH_REJECTED")
+	require.NotContains(t, output, "pull request skipped")
+	require.NotContains(t, output, "(pull request created)")
+	require.NotContains(t, output, "SYNCED:")
+	require.NotContains(t, output, "SYNC_SWITCH_ROLLBACK")
+	require.Equal(t, "empty-review", strings.TrimSpace(runGit(t, fixture.repository, "branch", "--show-current")))
+	require.NotContains(t, readTextFile(t, fixture.githubLog), "pr create ")
+}
+
+func TestSyncDirtyWorkAlreadyInReviewBase(t *testing.T) {
+	t.Parallel()
+	binary := buildIntegrationBinary(t, integrationRepositoryRoot(t))
+	fixture := newSyncFixture(t, "qqq")
+	runGit(t, fixture.repository, "switch", "-c", "existing-review")
+	fixture.commitFile(t, "README.md", "already published work\n")
+	runGit(t, fixture.repository, "push", "origin", "HEAD:qqq")
+	runGit(t, fixture.repository, "switch", "qqq")
+	runGit(t, fixture.repository, "switch", "-c", "duplicate-review")
+	writeFile(t, filepath.Join(fixture.repository, "README.md"), "already published work\n")
+	output, err := fixture.run(t, binary, "sync")
+	require.NoError(t, err, output)
+	require.Contains(t, output, `pull request skipped for "duplicate-review": no file changes against review base "qqq"`)
+	require.NotContains(t, output, "(pull request created)")
+	require.NotContains(t, output, "(created)")
+	require.Empty(t, runGit(t, fixture.remote, "diff", "--name-only", "qqq", "duplicate-review"))
+	require.Equal(t, "already published work\n", runGit(t, fixture.remote, "show", "duplicate-review:README.md"))
+	require.Empty(t, runGit(t, fixture.repository, "status", "--porcelain"))
+	require.Equal(t, "duplicate-review", strings.TrimSpace(runGit(t, fixture.repository, "branch", "--show-current")))
+	require.NotContains(t, readTextFile(t, fixture.githubLog), "pr create ")
 }
 
 func TestSyncWithoutDestinationCreatesBranchOnlyForWork(testInstance *testing.T) {
