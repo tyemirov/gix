@@ -66,10 +66,11 @@ var (
 )
 
 type mergeConflictResolutionService struct {
-	executor       shared.GitExecutor
-	repositoryPath string
-	commitMessages worktreeAdoptionCommitMessageOptions
-	reporter       mergeConflictResolutionReporter
+	executor        shared.GitExecutor
+	repositoryPath  string
+	commitMessages  worktreeAdoptionCommitMessageOptions
+	reporter        mergeConflictResolutionReporter
+	resolvedSources map[string]mergeConflictFile
 }
 
 type mergeConflictResolutionReporter func(level shared.EventLevel, code string, message string, details map[string]string)
@@ -191,6 +192,7 @@ func (service mergeConflictResolutionService) Resolve(ctx context.Context, optio
 		return false, nil
 	}
 	service.reportConflictDetected(paths, options, timeout)
+	service.resolvedSources = make(map[string]mergeConflictFile)
 	incomingParentCommit, incomingParentErr := service.resolveIncomingParentCommit(ctx, options)
 	if incomingParentErr != nil {
 		return true, service.normalizeResolutionError(ctx, incomingParentErr)
@@ -233,6 +235,7 @@ func (service mergeConflictResolutionService) Resolve(ctx context.Context, optio
 				return true, service.normalizeResolutionError(ctx, stageErr)
 			}
 		}
+		service.resolvedSources[conflictFile.Path] = conflictFile
 	}
 
 	remainingPaths, remainingErr := service.unmergedPaths(ctx)

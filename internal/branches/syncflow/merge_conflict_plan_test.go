@@ -93,6 +93,10 @@ func TestMergeDecisionProtocolRejectsAmbiguousJSON(t *testing.T) {
 		`{"status":"approved"} {"status":"approved"}`,
 		`{"status":"unresolved"}`,
 		`{"status":"rejected","reason":""}`,
+		`{"status":"approved","paths":["schema.py"]}`,
+		`{"status":"resolved","paths":["schema.py"],"decisions":[]}`,
+		`{"status":"needs_context","reason":"Read schema.","paths":"schema.py"}`,
+		`{"status":"needs_context","reason":"Read schema.","paths":["schema.py"],"paths":["other.py"]}`,
 		"GIX_MERGE_REVIEW_APPROVED",
 		"```json\n{}\n```",
 	} {
