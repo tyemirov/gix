@@ -11,6 +11,33 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B127] (P1) Supply related source context during merge review.
+  Evidence:
+  Smith sync resolved a policy conflict, then stopped because the test review could not read that policy.
+  Full-file expansion supplied only the three versions of the test file.
+  Requirements:
+  - Accept individual tracked file paths in a `needs_context` response.
+  - Read related content from Git blobs.
+  - Supply original conflict stages and previous merge results as separate read context.
+  - Keep each previous resolution subject to review.
+  - Keep the current edit scope, semantic audit, request budget, and rollback behavior.
+  - Limit related context to eight files and 262144 content bytes per region.
+  - Reject unavailable paths, repeated requests, binary content, and context above the limits.
+  Validation:
+  The three compiled CLI cases failed before implementation because the protocol rejected `paths`.
+  The literal filename case failed before the parser correction.
+  All 28 new CLI scenarios and the existing destination-context cases passed.
+  Final `make ci` passed on November 6, 2026.
+  Its integration suite completed in 207.766 seconds.
+
+  `make build` and the local executable version command passed.
+  The changed prose has no mechanical language findings.
+  Resolution:
+  Both model phases can request individual tracked files as read context.
+  The resolver supplies Git blob versions and previous conflict stages without access to untracked files or symbolic link targets.
+  The resolver preserves the edit scope, semantic audit, request budget, and rollback contract.
+  Related context has a limit of eight files and 262144 content bytes per region.
+
 - [x] [B126] (P1) Show correct pull request results after sync.
   Evidence:
   Gateway sync showed `(created)` for a branch with no file changes against `master`.

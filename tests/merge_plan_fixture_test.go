@@ -13,12 +13,18 @@ const (
 )
 
 type mergePlanInputForTest struct {
-	Phase     string                                     `json:"phase"`
-	Path      string                                     `json:"path"`
-	Blocks    []struct{ ID, Base, Ours, Theirs string }  `json:"blocks"`
-	Candidate *struct{ Content string }                  `json:"candidate"`
-	Placement mergePlanPlacementForTest                  `json:"placement"`
-	Context   struct{ Scope, Base, Ours, Theirs string } `json:"context"`
+	Phase        string                                     `json:"phase"`
+	Path         string                                     `json:"path"`
+	Blocks       []struct{ ID, Base, Ours, Theirs string }  `json:"blocks"`
+	Candidate    *struct{ Content string }                  `json:"candidate"`
+	Placement    mergePlanPlacementForTest                  `json:"placement"`
+	Context      struct{ Scope, Base, Ours, Theirs string } `json:"context"`
+	RelatedFiles []struct {
+		Path     string                             `json:"path"`
+		Resolved bool                               `json:"resolved"`
+		Deleted  bool                               `json:"deleted"`
+		Versions []struct{ Source, Content string } `json:"versions"`
+	} `json:"related_files"`
 }
 
 type mergePlanPlacementForTest struct {

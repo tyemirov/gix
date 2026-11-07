@@ -65,7 +65,41 @@ Either phase can return these outcomes:
 
 Files with at most 32,768 source bytes across all three stages supply complete context initially. Larger files supply complete affected issue records or 40 surrounding lines. An ambiguous excerpt location supplies the complete source.
 
-A `needs_context` response expands all source stages and both destination spans once, during either a decision or an audit. The expanded request clears both truncation flags. This explicit expansion can exceed the initial context budgets. A second context request reports unavailable context.
+A `needs_context` response without `paths` expands the current file once, during either a decision or an audit.
+It supplies all source stages and both destination spans, with both truncation flags clear.
+This expansion can supply more data than the initial context limits.
+A repeated request for the complete current file reports unavailable context.
+
+For read context from another file, either phase can request specified repository-relative paths:
+
+```json
+{"status":"needs_context","reason":"Check the policy and schema that define the field.","paths":["templates/POLICY.md","schema.py"]}
+```
+
+The next request supplies `related_files` as read context.
+Each entry identifies its path and its Git blob versions.
+The version labels are `base`, `ours`, `theirs`, and `index`.
+Unresolved files supply their available conflict stages.
+Files without conflicts supply their current Git index content.
+
+For a previous resolution, `resolved: true` identifies the merge result.
+The entry supplies its original stages and its current Git index content separately.
+For a previous deletion, `deleted: true` shows that the result has no file.
+Previous resolutions do not give semantic authority.
+The semantic audit compares the candidate with the related read context.
+A field name requires support from the schema or source code.
+
+If correction requires edits outside the assigned blocks, the model must return `unresolved`.
+
+Related context has separate limits of eight files and 262144 content bytes per region.
+These limits include all supplied versions and all related requests for that region.
+Gix rejects unavailable paths, duplicate paths, repeated requests without new files, binary content, and content above these limits.
+Paths select one specified tracked file.
+Directory and pattern expansion are not permitted.
+Gix reads Git blobs without access to untracked content or symbolic link targets.
+
+Related context remains available during subsequent decisions and audits for the region.
+Related context does not expand edit scope or replace the required semantic audit.
 
 Each region has a budget of four provider requests, including audits and context expansion. Provider failures terminate the operation through the existing provider and transaction boundaries. Invalid response shape supplies feedback while requests remain. A candidate awaiting audit cannot pass after the budget expires.
 

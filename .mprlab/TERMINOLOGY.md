@@ -134,6 +134,9 @@ Add repository-specific technical nouns below this line.
 - `read context`: Source content that the model can use as evidence without authority to replace that content.
 - `destination context`: Fixed text before and after a conflict region in the Git merge result.
 - `conflict corpus`: Fixed source inputs and acceptance criteria for conflict evaluation.
+- `Git blob`: A Git object that contains file content.
+- `related context`: Read context from other tracked files for one conflict region.
+- `symbolic link`: A file that refers to another filesystem path.
 
 ## MPR Lab Technical Verbs
 

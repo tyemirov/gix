@@ -78,6 +78,7 @@ type mergeModelResponse struct {
 	Status    mergeModelStatus     `json:"status"`
 	Decisions []mergeBlockDecision `json:"decisions,omitempty"`
 	Reason    string               `json:"reason,omitempty"`
+	Paths     []string             `json:"paths,omitempty"`
 }
 
 type mergePlanCandidate struct {
@@ -99,6 +100,9 @@ func decodeMergeModelResponse(response string) (mergeModelResponse, error) {
 	var trailing any
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		return result, errors.New("merge decision must contain exactly one JSON object")
+	}
+	if len(result.Paths) != 0 && result.Status != mergeStatusNeedsContext {
+		return result, errors.New("only needs_context can request repository paths")
 	}
 	switch result.Status {
 	case mergeStatusResolved:
@@ -390,7 +394,7 @@ func validateMergeJSONKeys(decoder *json.Decoder) error {
 			}
 			key := token.(string)
 			switch key {
-			case "status", "decisions", "reason", "id", "action", "content":
+			case "status", "decisions", "reason", "id", "action", "content", "paths":
 			default:
 				return fmt.Errorf("unknown JSON field %q", key)
 			}
