@@ -11,6 +11,25 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B129] (P1) Use the Gateway v9 manifest contract.
+  Evidence:
+  Gateway v9 rejected the Gix manifest before deployment.
+  The manifest used the obsolete root fields `resources`, `ci`, `defaults`, `operations`, `environment_file`, `inputs`, and `hosts`.
+  B128 corrected only the lifecycle command names.
+  Requirements:
+  - Declare artifacts, publications, targets, and lifecycle policy through the current contract.
+  - Preserve the release policy, five binary platforms, Pages destination, private inputs, and timeout values.
+  - Validate the manifest through the installed Gateway decoder.
+  Validation:
+  All three lifecycle plan tests reproduced the reported rejection before the correction.
+  All three plans execute the injected Ansible runner through Gateway v9 after the correction.
+  The runner stops before production operations.
+  CI supplies the specified Gateway v9 package for these tests.
+  Full local `make ci` passed on November 8, 2026.
+  Its integration suite completed in 281.219 seconds.
+  The changed prose has no mechanical language findings.
+  Governor accepted the manifest structure but reported guide differences and absent local `up` and `down` targets.
+
 - [x] [B128] (P1) Use the current Gateway lifecycle commands.
   Evidence:
   `make deploy` called `mprlab-gateway app-deploy`.

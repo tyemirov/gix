@@ -57,6 +57,19 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
+      - name: Set up Gateway contract tests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gateway_directory="$RUNNER_TEMP/gix-gateway-v9"
+          mkdir -p "$gateway_directory"
+          gh release download v9.0.0 --repo MarcoPoloResearchLab/mprlab-gateway \
+            --pattern mprlab-gateway-v9.0.0-linux-amd64.tar.gz --dir "$gateway_directory"
+          cd "$gateway_directory"
+          echo '1c9a6def1fe0200cd051239bb3f04ec5bce95abd19b64ff178ac932e520695d1  mprlab-gateway-v9.0.0-linux-amd64.tar.gz' | sha256sum --check
+          tar -xzf mprlab-gateway-v9.0.0-linux-amd64.tar.gz
+          echo "$gateway_directory/bin" >> "$GITHUB_PATH"
+
       - name: Install git-filter-repo
         run: |
           python3 -m pip install --user git-filter-repo

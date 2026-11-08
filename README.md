@@ -40,6 +40,10 @@ Install the runtime with the [Gateway installation procedure](https://github.com
 
 The [resource manifest](.mprlab/deploy/resources.yml) declares the release policy, five Go platforms, and the Pages site. Gateway calls `gix release next` with the declared policy. The CLI validates that policy and selects the next version without reading MPR Lab repository files.
 
+The Gateway v9 manifest separates artifacts, publications, targets, and lifecycle policy.
+The binary and website artifacts have explicit publication destinations.
+The Pages target refers to its publication.
+
 For an established SemVer sequence, the command examines all committed changes after the latest SemVer tag.
 The evidence includes commit messages, diff summaries, changelog changes from the release range, and the full text diff in evidence packets with fixed limits.
 The model reviews each evidence packet against supported public contracts and can request committed source context.
@@ -828,6 +832,7 @@ Initial releases, CalVer selections, and same-source artifact successors do not 
 - Repository services accept domain types from `internal/repos/shared` (paths, owners, remotes, branches); CLI edges construct them so executors run without defensive validation.
 - Executor errors surface via the contextual catalog in `internal/repos/errors`, which prints `PLAN-*`, `*-DONE`, and `*-SKIP` banners through the shared reporter.
 - Confirmation prompts respect the `[a/N/y]` contract everywhere (uppercase `N` remains the default decline); passing `--yes` (or setting `assume_yes: true` in workflows) flips the shared confirmation policy to auto-accept, and selecting `a`/`all` at a prompt upgrades the remainder of the run to behave as if `--yes` had been provided (uppercase responses continue to work as well).
+- Install Gateway v9 before the integration tests. Use `MPRLAB_GATEWAY_EXECUTABLE` to select its executable.
 - Run `make ci` before submitting patches; it enforces formatting plus `go vet`, `staticcheck`, `ineffassign`, and the unit/integration test suites. At minimum, run `go run honnef.co/go/tools/cmd/staticcheck@master ./...` so lint blocks (SA1006, etc.) surface before you commit.
     - `mode: append-if-missing` preserves existing content and appends each missing line from `content`, making it ideal for `.gitignore` enforcement.
 

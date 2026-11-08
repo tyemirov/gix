@@ -1,76 +1,96 @@
 mprlab_resources:
   owner: gix
-  environment_file: .mprlab/deploy/.env
-  inputs:
-    DEPLOY_SUDO_PASSWORD_TUTOSH: ${DEPLOY_SUDO_PASSWORD_TUTOSH}
-  hosts:
-    tutosh:
-      ansible_become_password: DEPLOY_SUDO_PASSWORD_TUTOSH
   release:
     scheme: semver
     fixed_major: 1
-  defaults:
-    timeouts:
-      startup: 1m
-      completion: 30m
-      readiness: 10m
-      request: 1m
-      shutdown: 30s
-  operations:
-    app_lifecycle.repository_read:
-      polling: &lifecycle_polling
-        initial: 1s
-        maximum: 10s
-        increment: 1s
-        multiplier: 2
-        attempt_limit: 5
-    app-plan-release:
-      polling: *lifecycle_polling
-    app-plan-publish:
-      polling: *lifecycle_polling
-    app-plan-deploy:
-      polling: *lifecycle_polling
-    app-release:
-      polling: *lifecycle_polling
-    app-publish:
-      polling: *lifecycle_polling
-    app-deploy:
-      polling: *lifecycle_polling
-    app_deploy.pages.deployment_status_poll:
-      polling:
-        initial: 1s
-        maximum: 10s
-        increment: 0s
-        multiplier: 2
-        attempt_limit: 120
-  ci:
-    enabled: true
-    command:
-      "0": make
-      "1": ci
-  resources:
-    command-line:
-      kind: github_release_binary
-      repository: tyemirov/gix
-      build:
-        system: go
-        package: .
-        binary: gix
-        version_symbol: github.com/tyemirov/gix/internal/version.linkedVersion
-        platforms:
-          - linux/amd64
-          - linux/arm64
-          - darwin/amd64
-          - darwin/arm64
-          - windows/amd64
-    website:
-      kind: github_pages
-      repository: tyemirov/gix
-      branch: gh-pages
-      domain: gix.mprlab.com
-      url: https://gix.mprlab.com/
-      source:
-        kind: directory
-        path: docs
-      verification:
-        path: /.mprlab-release.json
+  environment:
+    source: .mprlab/deploy/.env
+    private_inputs:
+      - id: deploy-sudo-password-tutosh
+        variable: DEPLOY_SUDO_PASSWORD_TUTOSH
+  lifecycle:
+    ci:
+      enabled: true
+      command:
+        - make
+        - ci
+    defaults:
+      timeouts:
+        startup: 1m
+        completion: 30m
+        readiness: 10m
+        request: 1m
+        shutdown: 30s
+    operations:
+      - name: app_lifecycle.repository_read
+        polling: &lifecycle_polling
+          initial: 1s
+          maximum: 10s
+          increment: 1s
+          multiplier: 2
+          attempt_limit: 5
+      - name: app-plan-release
+        polling: *lifecycle_polling
+      - name: app-plan-publish
+        polling: *lifecycle_polling
+      - name: app-plan-deploy
+        polling: *lifecycle_polling
+      - name: app-release
+        polling: *lifecycle_polling
+      - name: app-publish
+        polling: *lifecycle_polling
+      - name: app-deploy
+        polling: *lifecycle_polling
+      - name: app_deploy.pages.deployment_status_poll
+        polling:
+          initial: 1s
+          maximum: 10s
+          increment: 0s
+          multiplier: 2
+          attempt_limit: 120
+  artifacts:
+    binaries:
+      - id: gix-binary
+        build:
+          system: go
+          package: .
+          binary: gix
+          version_symbol: github.com/tyemirov/gix/internal/version.linkedVersion
+          platforms:
+            - linux/amd64
+            - linux/arm64
+            - darwin/amd64
+            - darwin/arm64
+            - windows/amd64
+    web_bundles:
+      - id: website-content
+        format: directory
+        source:
+          kind: directory
+          path: docs
+  publications:
+    github_releases:
+      binaries:
+        - id: command-line
+          artifact: gix-binary
+          repository: tyemirov/gix
+    github_pages:
+      sites:
+        - id: website-pages
+          artifact: website-content
+          repository: tyemirov/gix
+          branch: gh-pages
+          domain: gix.mprlab.com
+          marker:
+            path: /.mprlab-release.json
+  targets:
+    access:
+      hosts:
+        - host: tutosh
+          elevation_password:
+            input: deploy-sudo-password-tutosh
+    github_pages:
+      sites:
+        - id: website
+          publication: website-pages
+          url: https://gix.mprlab.com/
