@@ -27,6 +27,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   CI supplies the specified Gateway v9 package for these tests.
   Full local `make ci` passed on November 8, 2026.
   Its integration suite completed in 281.219 seconds.
+
   The changed prose has no mechanical language findings.
   Governor accepted the manifest structure but reported guide differences and absent local `up` and `down` targets.
 
