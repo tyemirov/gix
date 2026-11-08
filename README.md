@@ -21,15 +21,36 @@ Gix synchronizes Git branches. A branch argument selects the destination. Withou
 6. Commit pending work to `feature/my-change` with `gix sync feature/my-change`.
 7. Use plain `gix sync` to update the current branch. On the default branch, uncommitted changes or unpublished local commits select a new branch.
 
+## Local Application
+
+Run `make up` to start the local Gix web interface at `http://127.0.0.1:8080/`.
+The command waits for the application HTTP response before it returns.
+Run `make down` to stop that instance.
+Both commands preserve repository files and configuration.
+
+Use these Make variables to select another local instance:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `GIX_LOCAL_PORT` | `8080` | Application port on `127.0.0.1`. |
+| `GIX_LOCAL_ROOT` | Current repository directory | Repository scope for the web interface. |
+| `GIX_LOCAL_CONFIG` | Normal Gix configuration selection | Explicit Gix configuration file. |
+| `GIX_LOCAL_STATE_DIR` | `.git/gix-local` | Runtime directory for this instance. |
+
+The commands use the runtime directory to identify the instance.
+Repeated calls to `make up` use the same instance when its settings match.
+Different settings require `make down` before another start.
+An occupied port causes an error without changes to the existing server.
+The runtime directory retains diagnostics in `server.log`.
+
 ## Release, Publish, Deploy
 
 ```bash
-make release
-make publish
 make deploy
 ```
 
-These three targets use the installed `mprlab-gateway` command.
+`make deploy` uses the installed `mprlab-gateway` command for CI, artifact preparation, publication, and deployment.
+The optional `release` and `publish` targets stop after their selected phase.
 Each target calls the Gateway v9 command with the same name: `release`, `publish`, or `deploy`.
 Each target supplies the application Git root through `--app-root`.
 
@@ -61,7 +82,9 @@ Gateway owns CI, artifact preparation, release receipts, publication, Pages acti
 
 `make release` runs the Gix `make ci` gate and seals the declared artifacts. Gateway stores receipts under the application Git directory in `mprlab-lifecycle`. A retry reuses the receipt for the same application commit.
 
-`make publish` publishes the sealed artifacts and records their immutable identities. `make deploy` consumes that publication receipt and verifies the declared Pages site. The commands use one installed Gateway package and its dependencies.
+`make publish` publishes the sealed artifacts and records their immutable identities.
+`make deploy` completes all lifecycle phases and verifies the declared Pages site.
+Each invocation uses one installed Gateway package and its dependencies.
 
 The Go resource produces `gix-<os>-<arch>.tar.gz` for Linux and macOS on AMD64 and ARM64, plus Windows on AMD64. Each archive contains `gix`, or `gix.exe` for Windows. Gateway embeds the selected release version through the declared `build.version_symbol`.
 
