@@ -34,7 +34,7 @@ Obey the binding [automatic data updates and persistence](POLICY.md#automatic-da
 ## Production Hosting
 
 - Use GitHub Pages as the production host for each deployable browser frontend.
-- Declare the browser frontend with a `github_pages` resource in `.mprlab/deploy/resources.yml`.
+- Declare the browser frontend in `targets.github_pages.sites[]` in the selected manifest.
 - Use `gh-pages` as the publication branch.
 - The GitHub Pages repository can differ from the application repository.
 - Keep API and service routes on hostnames that differ from the website hostname.

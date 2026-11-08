@@ -2855,6 +2855,25 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## Improvements
 
+- [x] [I026] (P1) Normalize governance and supply local runtime commands.
+  Goal:
+  Resolve the Governor findings for managed documents and local application commands.
+  Requirements:
+  - Use the current managed policy and agent guides.
+  - Start the existing Gix web interface through `make up`.
+  - Stop only the selected local instance through `make down`.
+  - Preserve repository data, configuration, and unrelated servers.
+  - Preserve startup errors through the Make targets.
+  Validation:
+  The initial integration test failed because the local Make targets were absent.
+  The integration tests passed for startup, repeated calls, restart, instance isolation, and data preservation.
+  Invalid ports, occupied ports, and missing configuration files returned failures.
+  Governor reports no findings after the document and command corrections.
+
+  Full local `make ci` passed on November 8, 2026.
+  Its integration suite completed in 283.286 seconds.
+  The changed prose review has no mechanical findings.
+
 - [x] [I025] (P1) Align the public website with the daily Git workflow.
   Goal:
   Explain the agreed Gix workflow and provide accurate documentation links and search metadata.
