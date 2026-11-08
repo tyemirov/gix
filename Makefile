@@ -9,6 +9,10 @@ INEFFASSIGN_MODULE := github.com/gordonklaus/ineffassign@latest
 LICENSE_ROLLOUT_SCRIPT := scripts/licensing/license_rollout.py
 LICENSE_ROLLOUT_MANIFEST := configs/licensing/fleet.json
 LICENSE_ROLLOUT_WORKFLOW := configs/license-rollout.yaml
+GIX_LOCAL_ROOT ?= $(CURDIR)
+GIX_LOCAL_STATE_DIR ?= $(CURDIR)/.git/gix-local
+GIX_LOCAL_CONFIG ?=
+GIX_LOCAL_PORT ?= 8080
 
 .PHONY: format check-format lint test test-unit test-integration test-fast test-slow test-licensing build license-rollout-plan license-rollout-apply release publish deploy ci
 
@@ -55,6 +59,10 @@ test: test-fast test-slow
 build:
 	mkdir -p bin
 	go build -o bin/gix .
+
+.PHONY: up down
+up down:
+	go run ./local $@ --root "$(GIX_LOCAL_ROOT)" --state-dir "$(GIX_LOCAL_STATE_DIR)" --config "$(GIX_LOCAL_CONFIG)" --port "$(GIX_LOCAL_PORT)"
 
 license-rollout-plan:
 	timeout -k 350s -s SIGKILL 350s python3 "$(LICENSE_ROLLOUT_SCRIPT)" plan --manifest "$(LICENSE_ROLLOUT_MANIFEST)"
