@@ -38,6 +38,10 @@ test-licensing:
 test-slow:
 	go test -v -parallel=$(INTEGRATION_TEST_PARALLELISM) $(GO_TEST_FLAGS) ./tests
 
+.PHONY: test-gateway
+test-gateway:
+	MPRLAB_GATEWAY_EXECUTABLE="$(MPRLAB_GATEWAY_EXECUTABLE)" go test -v -tags=gateway $(GO_TEST_FLAGS) ./tests -run '^TestLifecycleManifestUsesInstalledGateway$$'
+
 .PHONY: test-sync
 test-sync:
 	go test -v -parallel=$(INTEGRATION_TEST_PARALLELISM) $(GO_TEST_FLAGS) ./tests -run '^TestSync'
