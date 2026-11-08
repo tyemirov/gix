@@ -11,6 +11,28 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B128] (P1) Use the current Gateway lifecycle commands.
+  Evidence:
+  `make deploy` called `mprlab-gateway app-deploy`.
+  Installed Gateway v9.0.0 rejected that command before deployment.
+  Requirements:
+  - Call Gateway `release`, `publish`, and `deploy` from the corresponding Make targets.
+  - Preserve application root selection, executable selection, diagnostics, and command failures.
+  - Reject the retired `app-*` command names in the integration fixture.
+  Validation:
+  All three lifecycle target tests failed with the reported command error before the Makefile correction.
+  All three target groups and the Pages archive test passed after the correction.
+  The tests verify executable selection, paths with spaces, diagnostics, and failure propagation.
+  The deployment dry run selected `mprlab-gateway deploy --app-root`.
+  Final `make ci` passed on November 7, 2026.
+  Its integration suite completed in 199.617 seconds.
+
+  The changed prose has no mechanical language findings.
+  No production lifecycle operation ran.
+  Resolution:
+  Each lifecycle Make target now calls the Gateway v9 command with the same name.
+  The fixture rejects the retired `app-*` command names.
+
 - [x] [B127] (P1) Supply related source context during merge review.
   Evidence:
   Smith sync resolved a policy conflict, then stopped because the test review could not read that policy.

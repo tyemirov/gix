@@ -35,6 +35,11 @@ func TestLifecycleTargetsUseInstalledGateway(t *testing.T) {
 	require.NoError(t, os.WriteFile(probeSource, []byte(`package main
 import ("encoding/json"; "fmt"; "os")
 func main() {
+ if len(os.Args) < 2 { fmt.Fprintln(os.Stderr, "missing Gateway command"); os.Exit(2) }
+ switch os.Args[1] {
+ case "release", "publish", "deploy":
+ default: fmt.Fprintf(os.Stderr, "unknown command %q for mprlab-gateway\n", os.Args[1]); os.Exit(2)
+ }
  if err := json.NewEncoder(os.Stdout).Encode(os.Args[1:]); err != nil { panic(err) }
  fmt.Fprintln(os.Stderr, "gateway diagnostic")
  if os.Getenv("GATEWAY_TEST_FAIL") == "1" { os.Exit(19) }
@@ -74,7 +79,7 @@ func main() {
 					}
 					var received []string
 					require.NoError(t, json.Unmarshal(output, &received), string(output))
-					require.Equal(t, []string{"app-" + phase, "--app-root", application}, received)
+					require.Equal(t, []string{phase, "--app-root", application}, received)
 					require.Contains(t, diagnostics.String(), "gateway diagnostic")
 				}
 			}

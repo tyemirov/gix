@@ -30,7 +30,9 @@ make deploy
 ```
 
 These three targets use the installed `mprlab-gateway` command.
+Each target calls the Gateway v9 command with the same name: `release`, `publish`, or `deploy`.
 Each target supplies the application Git root through `--app-root`.
+
 Use `MPRLAB_GATEWAY_EXECUTABLE` to select an installed command by its absolute path.
 If the command is unavailable, the target stops with an installation error.
 Gateway inventory and private config use `MPRLAB_GATEWAY_OPERATOR_ROOT`, which defaults to `$HOME/.config/mprlab-gateway`.
