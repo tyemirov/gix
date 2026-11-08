@@ -2,6 +2,18 @@
 
 This policy controls all agent work in this repository.
 
+## Repository Policy Sections
+
+Governor generates this file from its shared template and optional `.mprlab/POLICY.REPOSITORY.md` source.
+A repository source section replaces the shared section with the same level-2 heading.
+Other repository sections extend this policy.
+The repository source requires the title `# Repository Policy Sections` and unique level-2 headings.
+
+- Put repository-specific requirements in the repository source.
+- Run the normalizer after a source change.
+- Read the generated `.mprlab/POLICY.md` as the complete policy.
+- Keep deployment specification and execution policy in the selected application manifest.
+
 ## Temporary Task Files
 
 - Put temporary diagnostic files in `_scratch/<task-id>/`.
@@ -28,6 +40,37 @@ This policy controls all agent work in this repository.
 - Centralize reusable literals: paths, operation names, event names, config keys, status values, and shared messages.
 - Tests target public contracts and invariants, not defensive branches.
 - Prefer black-box integration and end-to-end tests through real entry points.
+
+## Application Onboarding
+
+These requirements apply to every owned application runtime, including native, browser, service, and container applications.
+They are mandatory onboarding requirements.
+Governance files alone do not complete application onboarding.
+
+- Read root `AGENTS.md`, this policy, and every applicable guide before the corresponding action.
+- Obey their requirements throughout implementation, tests, documentation, and delivery preparation.
+- Require working root Make targets for `up`, `down`, and `deploy`.
+- Make `up` prepare and start the current local application.
+- Make `down` stop only that local application and its owned resources.
+- Make an already stopped application a successful `down` result.
+- Preserve user data during ordinary start and stop operations.
+- Implement repository-owned deployment wiring through inline recipes or repository-owned scripts.
+- Require `.mprlab/deploy/resources.yml` and the installed Gateway lifecycle contract.
+- Keep local start and stop separate from release, publication, and deployment.
+- Reject missing commands, empty targets, placeholder recipes, and deployment wiring that cannot be verified.
+- Preserve command failures through each wrapper and public Make target.
+- Verify start, stop, isolation, and lifecycle routing through headless integration tests.
+- Inject external operation boundaries when actual operations require separate authorization.
+- Keep visible applications, desktop input, and production operations outside onboarding validation.
+- Run every applicable policy check and record the command and result.
+- Resolve failed checks before reporting application onboarding as complete.
+- Report remaining requirements as blockers, including their exact owning boundary.
+
+The normalizer checks structural requirements without executing Makefiles or application scripts.
+A structural pass does not prove command behavior, policy compliance, or deployment success.
+Application ownership requires source review beyond broad language and stack profiles.
+For libraries, documentation, or tools without an application runtime, record the source evidence for that scope decision.
+Do not create placeholder runtime commands to satisfy an inapplicable application contract.
 
 ## Automatic Data Updates And Persistence
 
@@ -108,15 +151,19 @@ This is a binding product principle for every user interface.
 Apply this section when the task changes or validates a selected application manifest.
 
 - Keep the selected application manifest versionless.
-- Keep `owner`, `release`, and `resources` as the current baseline fields.
+- Keep `owner`, `release`, and `lifecycle` as the required baseline fields.
+- Use the fixed manifest catalogs `artifacts`, `publications`, and `targets`.
+- Use the typed `resources` catalog for independently managed provider objects.
+- Keep resource definitions separate from their consumers and use typed references.
+- Use explicit identity lists and ordered command lists.
 - Apply the current iOS baseline below before the manifest preservation rules.
-- For other manifest contracts, accept each manifest that an earlier versionless gateway accepted.
-- For those contracts, keep each accepted field name, type, requirement, and function.
+- Apply the approved source cutover before the manifest preservation rules.
+- After the cutover, keep each accepted field name, type, requirement, and function.
 - A field added to an existing shape must be optional.
 - A field added to an existing shape must have one canonical default.
 - Normalize that default before manifest identity calculation.
-- Add a resource kind only with one closed shape.
-- Reject unknown fields and `schema_version`.
+- Add a manifest declaration kind only with one closed shape.
+- Reject obsolete root collection shapes, unknown fields, and `schema_version`.
 
 ### Current iOS Baseline
 
@@ -137,7 +184,9 @@ This baseline does not authorize removal of stored releases, credentials, or dep
 Apply this section to deployment or publication work for a browser frontend.
 
 - Use GitHub Pages as the production host for each deployable browser frontend.
-- Declare the browser frontend with a `github_pages` resource in `.mprlab/deploy/resources.yml`.
+- Declare the browser frontend in `targets.github_pages.sites[]` in the selected manifest.
+- Declare its publication in `publications.github_pages.sites[]`.
+- Declare its build output in `artifacts.web_bundles[]`.
 - Use `gh-pages` as the publication branch.
 - The GitHub Pages repository can differ from the application repository.
 - Keep API and service routes on hostnames that differ from the website hostname.
@@ -151,7 +200,10 @@ Apply this section to deployment or publication work for a browser frontend.
 Apply this section when the repository uses the selected-manifest lifecycle or owns Gateway infrastructure operations.
 
 - Use the installed `mprlab-gateway` runtime for application and infrastructure operations.
-- Preserve `make release && make publish && make deploy` as the application operator command.
+- Use `make deploy` as the full application operator command.
+- Delegate it to Gateway v9 `deploy --app-root` for CI, preparation, publication, and deployment.
+- When optional `release` or `publish` targets exist, delegate each target to the Gateway command with the same name.
+- Keep `app-release`, `app-publish`, and `app-deploy` as internal manifest policy identifiers.
 - Pass the selected application Git root through `--app-root`.
 - Use `MPRLAB_GATEWAY_EXECUTABLE` for an explicit installed command.
 - Preserve application source validation, release policy, resource ownership, private inputs, and sealed receipts.
@@ -168,12 +220,12 @@ Use this contract for Gateway lifecycle operations that use a selected manifest.
 Manifest processing is the only boundary that reads environment values for Gateway configuration.
 
 - Let manifest values include environment variable references.
-- Use the optional `environment_file` field for a relative or absolute environment file path specified in the manifest.
+- Use the optional `environment.source` field for a relative or absolute environment file path specified in the manifest.
 - Use the selected consuming repository as the root for relative paths.
-- When the manifest has no `environment_file` field, use only process values.
+- When the manifest has no `environment.source` field, use only process values.
 - Reject a selected file that is missing or that you cannot read, even when process values are available.
 - When the two sources have a value for a variable, use its process value.
-- Use only the path specified by `environment_file` for an environment file.
+- Use only the path specified by `environment.source` for an environment file.
 - Do not use a default path or examine other paths for environment files.
 - Do not make an environment file necessary because of a resource kind or lifecycle phase.
 - Read environment values one time at the manifest boundary.
@@ -223,15 +275,36 @@ Use this gate when credentials are necessary for the selected task.
 Failed or missing required code validation prevents closure.
 Production operations outside the task do not remove code validation requirements.
 
+## Native Preparation Authority
+
+The operator selected this contract on October 26, 2026.
+
+- Let CocoaPods and Gradle own dependency resolution and native metadata.
+- Use ordinary `pod install` for native dependency preparation.
+- Keep preparation records limited to application identity, configuration, dependency versions, toolchain versions, and completed command results.
+- Do not use file hashes, fingerprints, whole-file comparisons, or lock restoration as readiness gates.
+- Verify required native files and their selected application configuration.
+- Permit native metadata changes that retain the required configuration.
+- Keep asset and plugin freshness outside configuration verification claims.
+- Preserve native command failures, signing checks, application versions, build numbers, and provider results.
+
 ## Validation
 
 - Use repository-native `make` targets.
 - Do not run a pre-edit or per-issue `make ci` baseline.
 - Preserve the expected failing integration-test result as implementation evidence.
 - During the change, run the smallest public-entrypoint target that validates the changed contract.
-- After the last stack change, run `make ci` once at the documented stack completion checkpoint.
-- If this run reports an error, run the target that reports the error during the correction.
-- After the last correction, run `make ci` once.
+- Run full CI once at the end of the change.
+- Use successful full CI from the pull request when its workflow supplies all required checks.
+- Open the pull request after focused local checks pass. Let its workflow supply the final full CI result.
+- Wait for that result before merge or completion.
+- When no pull request supplies full CI, run `make ci` locally after the final change.
+- Use focused checks to correct failures.
+- Repeat the selected full CI gate only at the next final checkpoint after corrections.
+- Reuse successful CI results while the validated code remains unchanged.
+- Use equivalent CI results across local validation, pull requests, and release.
+- Keep separate release checks for additional artifact, signing, or platform coverage.
+- Record the selected CI command, its result, and any required checks outside its coverage.
 - Run `make verify` only when the operator explicitly selects the complete qualification lane.
 - When `make ci` includes `make fmt`, `make lint`, and `make test`, use its result for those targets.
 - During the change or error diagnosis, run the necessary component target.
@@ -250,7 +323,8 @@ Production operations outside the task do not remove code validation requirement
 - Apply this rule to PRDs, architecture documents, issues, plans, policies, ADRs, READMEs, runbooks, and API documents.
 - Do not change technical meaning to make the language simpler.
 - Run the skill `prepare-ste-reference` script to retrieve and verify the official Issue 9 PDF.
-- Run the skill `check-ste` script on each technical document that you change.
+- Run the shared `ste.py review` command on changed technical prose.
+- Use its dictionary references and findings for the producing agent review.
 - The producing agent must review Part 1 writing rules and the Part 2 dictionary.
 - Do not assign the reference retrieval or language review to the end user.
 - If the official reference is not available, report a blocker and do not claim compliance.
