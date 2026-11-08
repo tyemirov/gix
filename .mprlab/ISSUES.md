@@ -11,7 +11,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
-- [-] [B129] (P1) Use the Gateway v9 manifest contract.
+- [x] [B129] (P1) Use the Gateway v9 manifest contract.
   Evidence:
   Gateway v9 rejected the Gix manifest before deployment.
   The manifest used the obsolete root fields `resources`, `ci`, `defaults`, `operations`, `environment_file`, `inputs`, and `hosts`.
@@ -28,7 +28,8 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   The GitHub CI token cannot read the private Gateway release repository.
   The standard CI suite does not require that private package.
 
-  Full repository validation is not completed after the test target correction.
+  GitHub CI passed after the test target correction on November 8, 2026.
+  The changed prose has no mechanical language findings.
   Governor accepted the manifest structure but reported guide differences and absent local `up` and `down` targets.
 
 - [x] [B128] (P1) Use the current Gateway lifecycle commands.
