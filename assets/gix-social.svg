@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+<title>gix — A simpler Git workflow</title>
+<rect width="1200" height="630" fill="#020617"/>
+<rect x="32" y="32" width="1136" height="566" rx="24" fill="#0b1120" stroke="#223047" stroke-width="2"/>
+<rect x="80" y="90" width="56" height="5" rx="2" fill="#22d3ee"/>
+<g font-family="Arial, sans-serif" fill="#e5e7eb">
+<text x="80" y="170" font-size="48" font-weight="bold">gix</text>
+<text x="80" y="275" font-size="62" font-weight="bold">A simpler</text>
+<text x="80" y="350" font-size="62" font-weight="bold">Git workflow.</text>
+<text x="80" y="422" font-size="28" fill="#9ca3af">Pull, commit, and publish.</text>
+<text x="80" y="510" font-size="30" fill="#22d3ee">$ gix sync</text>
+<text x="80" y="561" font-size="20" fill="#9ca3af">gix.mprlab.com</text>
+</g>
+<!-- Geometry from gix-mark.svg, with the counters cut into this solid background. -->
+<g transform="translate(820 150) scale(0.4545454545) translate(-314 -275)">
+  <g fill="#ffd369">
+    <path d="M750 426V747C750 812 704 860 641 860C593 860 557 836 540 801" fill="none" stroke="#ffd369" stroke-width="56"/>
+    <circle cx="750" cy="379" r="61"/>
+    <circle cx="619" cy="584" r="147"/>
+    <circle cx="521" cy="764" r="49"/>
+  </g>
+  <g fill="#0b1120">
+    <circle cx="750" cy="379" r="35"/>
+    <circle cx="619" cy="584" r="116"/>
+    <circle cx="521" cy="764" r="28"/>
+  </g>
+</g>
+</svg>

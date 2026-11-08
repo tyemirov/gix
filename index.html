@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-JNXM3KYJQ9"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+
+      gtag('config', 'G-JNXM3KYJQ9');
+    </script>
+    <script
+      defer
+      src="https://www.loopaware.com/pixel.js?site_id=64026286-27e2-4b89-9ec5-956878d731d2"
+    ></script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>gix — A simpler Git workflow</title>
+    <meta name="description" content="Simplify your daily Git workflow with gix sync. Pull remote changes, keep local work, commit files, and publish branches to GitHub from one CLI." />
+    <link rel="canonical" href="https://gix.mprlab.com/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="gix — A simpler Git workflow" />
+    <meta property="og:description" content="Simplify your daily Git workflow with gix sync. Pull remote changes, keep local work, commit files, and publish branches to GitHub from one CLI." />
+    <meta property="og:url" content="https://gix.mprlab.com/" />
+    <meta property="og:image" content="https://gix.mprlab.com/assets/gix-social.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="gix — A simpler Git workflow. Pull, commit, and publish with gix sync." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="gix — A simpler Git workflow" />
+    <meta name="twitter:description" content="Simplify your daily Git workflow with gix sync. Pull remote changes, keep local work, commit files, and publish branches to GitHub from one CLI." />
+    <meta name="twitter:image" content="https://gix.mprlab.com/assets/gix-social.png" />
+    <meta name="twitter:image:alt" content="gix — A simpler Git workflow. Pull, commit, and publish with gix sync." />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "gix",
+        "url": "https://gix.mprlab.com/",
+        "description": "Simplify your daily Git workflow with gix sync. Pull remote changes, keep local work, commit files, and publish branches to GitHub from one CLI.",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "macOS, Linux, Windows",
+        "license": "https://github.com/tyemirov/gix/blob/master/LICENSE"
+      }
+    </script>
+    <link rel="stylesheet" href="styles.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.css"
+    />
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.js"
+    ></script>
+  <link rel="icon" href="assets/gix-icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+</head>
+  <body class="site">
+    <header class="nav">
+      <div class="container nav__inner">
+        <a class="nav__brand" href="#top"><img src="assets/gix-icon.svg" alt="" width="32" height="32">gix</a>
+        <nav class="nav__links" aria-label="Main navigation">
+          <a href="#features">Daily workflow</a>
+          <a href="#usecases">Work and recovery</a>
+          <a href="#docs">Install</a>
+          <a href="#workflows">Fleet tools</a>
+          <a href="#learning">Documentation</a>
+          <a href="https://github.com/tyemirov/gix">GitHub</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero" id="top">
+        <div class="container hero__grid">
+          <div class="hero__copy">
+            <img class="hero__logo" src="assets/gix-icon.svg" alt="gix logo" width="80" height="80">
+            <p class="hero__eyebrow">Your daily Git workflow</p>
+            <h1>A simpler Git workflow with gix sync.</h1>
+            <p class="hero__lede">Pull remote changes, keep your local work, commit pending files, and publish the selected branch with one command.</p>
+            <div class="hero__actions">
+              <a class="btn btn--primary" href="#docs">Install gix</a>
+              <a class="btn btn--ghost" href="#features">Learn the sync flow</a>
+            </div>
+            <p class="hero__meta">Git underneath. A prescribed daily workflow for GitHub. Fleet maintenance is included.</p>
+          </div>
+          <div class="hero__panel">
+            <div class="code-panel">
+              <div class="code-panel__header"><span class="dot dot--red"></span><span class="dot dot--amber"></span><span class="dot dot--green"></span><span class="code-panel__title">daily sync</span></div>
+              <pre><code># Select a branch explicitly
+gix sync feature/my-change
+
+# Update the current branch
+gix sync
+
+# Select a configured remote
+gix sync qqq --remote origin</code></pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="features">
+        <div class="container">
+          <h2>One sync flow. An explicit destination.</h2>
+          <p>Sync uses a valid Git repository with a configured, reachable remote and an existing default branch.</p>
+          <div class="grid">
+            <article class="card">
+              <h3>Select the branch</h3>
+              <p><code>gix sync qqq</code> selects <code>qqq</code>. An explicit branch selects that destination, including the default branch.</p>
+              <p>If the explicitly named branch does not exist, sync creates it at the current <code>HEAD</code>. This permits stacked branches from your current work.</p>
+            </article>
+            <article class="card">
+              <h3>Use the current context</h3>
+              <p>Without an argument on the default branch, sync creates a new branch only for uncommitted changes or unpublished local commits.</p>
+              <p>Without local work, sync updates the default branch and keeps it active. On another branch, plain <code>gix sync</code> uses that branch.</p>
+            </article>
+            <article class="card">
+              <h3>Publish work for review</h3>
+              <p>Sync pulls remote changes, merges pending work, commits the result, and pushes the selected branch. That branch stays active.</p>
+              <p>A pull request requires file changes against its review base. Sync does not create an empty pull request.</p>
+            </article>
+          </div>
+          <p class="section-note">The remote symbolic <code>HEAD</code> defines the default branch. Branch names and branch protection do not change an explicit destination.</p>
+        </div>
+      </section>
+
+      <section class="section alt" id="usecases">
+        <div class="container">
+          <h2>Your work, conflicts, and publication results</h2>
+          <div class="usecase-grid">
+            <article class="card">
+              <h3>Keep unpublished work</h3>
+              <p>Sync keeps staged, unstaged, and untracked changes, plus unpublished work held in local commits, before it replaces local state.</p>
+              <p>Dirty work uses auto-commit by default. <code>--stash</code> carries pending files without auto-commit and restores the index after sync.</p>
+              <p>If the target still matches a merged pull request, sync rejects dirty auto-commit, even for an explicit target. Pending work remains available.</p>
+            </article>
+            <article class="card">
+              <h3>Bound conflict resolution</h3>
+              <p>The configured LLM client supplies commit messages and repairs eligible text conflicts. Repair has bounded requests and a separate semantic audit.</p>
+              <p>Unresolved intent, invalid syntax, or exhausted requests stop publication. Before publication, sync restores your work when it can safely roll back its own changes. If another process changes that state, sync keeps recovery snapshots and reports the next steps.</p>
+              <p>Binary conflicts, rename conflicts, and unfinished Git operations can need manual action. Recovery keeps published work and gives explicit recovery instructions.</p>
+            </article>
+            <article class="card">
+              <h3>See push failures clearly</h3>
+              <p>A rejected branch push returns a nonzero exit code. The remote did not receive the branch changes.</p>
+              <p>Sync keeps completed local commits and the selected branch, and restores its temporary stashes. Push rejection does not start rollback or report success.</p>
+              <p>If parent publication fails, sync keeps child work locally and defers its push and pull request.</p>
+            </article>
+          </div>
+          <p class="section-note"><a href="https://github.com/tyemirov/gix/blob/master/.mprlab/AGENTS.SYNC.md">Read the detailed sync contract</a> for work preservation and publication rules.</p>
+          <article class="workflow-detail" id="recipes">
+            <h3>Discard selected file changes separately</h3>
+            <pre><code>gix discard path/to/file directory/
+gix discard --all</code></pre>
+            <p><code>gix discard</code> restores selected tracked paths in the Git index and worktree to <code>HEAD</code>, without a commit or push.</p>
+            <p>It keeps existing commits, unselected changes, and untracked files. Selected staged additions absent from <code>HEAD</code> are removed from the index and worktree.</p>
+            <p><a href="https://github.com/tyemirov/gix/blob/master/README.md#discard-local-file-changes">Read the discard scope and restrictions</a> before use.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" id="docs">
+        <div class="container docs-grid">
+          <div>
+            <h2>Install and configure gix</h2>
+            <p>Use the latest stable Go toolchain, Git, and the <a href="https://cli.github.com/">GitHub CLI (<code>gh</code>)</a>.</p>
+            <pre><code>go install github.com/tyemirov/gix@latest
+gix init</code></pre>
+            <p>This website describes current source behavior. The latest published release can precede these source changes.</p>
+            <p>Release v1.10.9 predates <code>gix discard</code> and the nonzero exit status for rejected pushes.</p>
+            <p><code>@latest</code> installs the published release. Compare the <a href="https://github.com/tyemirov/gix/releases/latest">release notes</a> with the <a href="https://github.com/tyemirov/gix/blob/master/README.md">current source README</a> for availability.</p>
+            <p><code>gix init</code> creates <code>~/.gix/config.yml</code>. Configure your roots, remote, and LLM connection profiles before sync.</p>
+            <p>Configure <code>github.credential</code> in <code>~/.gix/config.yml</code>. The generated config uses <code>${GH_TOKEN}</code> from the process environment. You can also supply a literal credential.</p>
+            <p>The LLM client uses <code>llm.llm_proxy</code> or <code>llm.openai</code> with credentials from the process environment. Gix does not load dotenv files.</p>
+            <p><a href="https://github.com/tyemirov/gix/blob/master/README.md#configuration-essentials">Read the configuration reference</a> for provider order, models, and environment variables.</p>
+            <h3>Attach or verify a workspace</h3>
+            <pre><code>gix sync https://github.com/tyemirov/gix</code></pre>
+            <p>In an empty directory, the URL form clones the repository. In an existing workspace, it verifies that the remote matches.</p>
+          </div>
+          <aside class="docs-links" aria-label="Source documentation">
+            <h3>Current source documentation</h3>
+            <a href="https://github.com/tyemirov/gix/blob/master/README.md">README — commands and configuration</a>
+            <a href="https://github.com/tyemirov/gix/blob/master/.mprlab/AGENTS.SYNC.md">Sync contract — branch and publication rules</a>
+            <a href="https://github.com/tyemirov/gix/blob/master/docs/merge-conflicts.md">Conflict resolution — decisions and audits</a>
+            <a href="https://github.com/tyemirov/gix/blob/master/docs/web-audit-workspace.md">Web audit workspace — review queued changes</a>
+            <a href="https://github.com/tyemirov/gix/blob/master/ARCHITECTURE.md">Architecture — components and boundaries</a>
+            <a href="https://github.com/tyemirov/gix/releases">Published releases and release notes</a>
+          </aside>
+        </div>
+      </section>
+
+      <section class="section alt" id="workflows">
+        <div class="container">
+          <h2>Maintain a fleet when you need to</h2>
+          <p>The same CLI also audits repositories, aligns remotes, and runs declarative workflows across workspace roots.</p>
+          <div class="usecase-grid">
+            <article class="card"><h3>Audit repositories</h3><pre><code>gix audit --roots ~/Development
+gix --web --roots ~/Development</code></pre><p>Inspect audit results in the terminal or local browser workspace. Queue changes and apply the reviewed batch.</p></article>
+            <article class="card"><h3>Normalize folders and remotes</h3><pre><code>gix folder rename --roots ~/Fleet --owner --yes
+gix remote update-to-canonical --roots ~/Fleet</code></pre><p>Align repository directories and canonical GitHub remotes across the selected roots.</p></article>
+            <article class="card"><h3>Run a declared workflow</h3><pre><code>gix workflow configs/maintenance.yaml \
+  --roots ~/Fleet --yes</code></pre><p>Combine repository operations in YAML. Use the command reference to select workflow inputs and confirmation options.</p></article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="learning">
+        <div class="container docs-grid" id="architecture">
+          <div>
+            <h2>Understand the workflow</h2>
+            <p>Commands share repository discovery, configuration, and the workflow engine.</p>
+            <p>The <a href="https://github.com/tyemirov/gix/blob/master/ARCHITECTURE.md">architecture reference</a> explains component ownership and execution.</p>
+            <p>The <a href="https://github.com/tyemirov/gix/blob/master/docs/sync-test-contract.md">sync acceptance map</a> connects the contract to CLI scenarios.</p>
+          </div>
+          <div class="docs-links">
+            <h3>Start with your next change</h3>
+            <p>Configure gix, select your branch, and run the daily sync flow.</p>
+            <a class="btn btn--primary" href="#docs">Install gix</a>
+            <a href="https://github.com/tyemirov/gix">View the source on GitHub</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <mpr-footer
+      menu='{"label":"Built by Marco Polo Research Lab","placement":"top","sections":[{"id":"products","label":"Built by Marco Polo Research Lab","mode":"static","links":[{"label":"Marco Polo Research Lab","href":"https://mprlab.com"},{"label":"Gravity Notes","href":"https://gravity.mprlab.com"},{"label":"LoopAware","href":"https://loopaware.mprlab.com"},{"label":"Allergy Wheel","href":"https://allergy.mprlab.com"},{"label":"Social Threader","href":"https://threader.mprlab.com"},{"label":"Countdown Calendar","href":"https://countdown.mprlab.com"},{"label":"Prompt Bubbles","href":"https://prompts.mprlab.com"},{"label":"Wallpapers","href":"https://wallpapers.mprlab.com"},{"label":"CTX","href":"https://ctx.mprlab.com"}]}]}'
+      privacy-link-label="License"
+      privacy-modal-content='&lt;h1&gt;PolyForm Noncommercial License 1.0.0&lt;/h1&gt;&lt;p&gt;&lt;a href="https://github.com/tyemirov/gix/blob/master/LICENSE"&gt;Read the repository license&lt;/a&gt;&lt;/p&gt;&lt;p&gt;&lt;a href="https://github.com/tyemirov/gix/blob/master/COMMERCIAL_LICENSE.md"&gt;Commercial license&lt;/a&gt;&lt;/p&gt;'
+      sticky="false"
+    ></mpr-footer>
+  </body>
+</html>
