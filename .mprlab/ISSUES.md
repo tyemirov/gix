@@ -11,6 +11,30 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B131] (P2) Keep Git index data during stash restoration.
+  Evidence:
+  The review of B130 found two restoration errors and a slow path scan.
+  The Git index did not keep `skip-worktree` flags after an untracked file became a tracked path.
+  With `diff.context=0`, a staged change between unchanged lines caused rollback.
+  Requirements:
+  - Keep sparse checkout data during Git index restoration.
+  - Use fixed context for the patch.
+  - Replace the Cartesian path scan with indexed prefix checks.
+  Validation:
+  Three new CLI cases reproduced the restoration errors before the code changes.
+  The tests verify ordinary sparse checkout, a sparse index, and `diff.context=0`.
+  The isolated benchmark uses 5,000 tracked paths and 40,000 untracked paths without collisions.
+  The benchmark time decreased from 2.89 seconds to 4.1 milliseconds after the scan change.
+
+  All 18 collision CLI cases and the focused path tests passed.
+  `make ci` and `git diff --check` passed on November 11, 2026.
+  The full CLI suite passed in 214.805 seconds.
+  Governor and changed-prose checks passed.
+  Resolution:
+  `git read-tree -m` keeps sparse checkout data during Git index restoration.
+  Stash patches use `--unified=3`.
+  Path ancestors use a hash map. A sorted path list supplies prefix checks.
+
 - [x] [B130] (P1) Restore untracked files that the destination tracks.
   Evidence:
   Hecate rejected `gix sync master --stash` because `master` contained three tracked paths with the same names as local untracked files.
