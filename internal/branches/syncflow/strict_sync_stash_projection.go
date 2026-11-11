@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/tyemirov/gix/internal/execshell"
@@ -67,18 +68,13 @@ func projectStrictSyncStash(ctx context.Context, executor shared.GitExecutor, st
 	if err != nil {
 		return projection, err
 	}
-	trackedSet := make(map[string]struct{}, len(tracked))
-	for _, path := range tracked {
-		trackedSet[path] = struct{}{}
-	}
+	trackedPaths := newStrictSyncTrackedPaths(tracked)
 	var collisions []string
 	for _, path := range untracked {
-		for _, trackedPath := range tracked {
-			if strings.HasPrefix(path, trackedPath+"/") || strings.HasPrefix(trackedPath, path+"/") {
-				return projection, fmt.Errorf("untracked path %q conflicts with destination tracked path %q", path, trackedPath)
-			}
+		if trackedPath := trackedPaths.prefixConflict(path); trackedPath != "" {
+			return projection, fmt.Errorf("untracked path %q conflicts with destination tracked path %q", path, trackedPath)
 		}
-		if _, exists := trackedSet[path]; exists {
+		if _, exists := trackedPaths.exact[path]; exists {
 			collisions = append(collisions, path)
 		} else {
 			projection.remaining = append(projection.remaining, path)
@@ -99,7 +95,7 @@ func projectStrictSyncStash(ctx context.Context, executor shared.GitExecutor, st
 		return projection, err
 	}
 	patch, err := command.run(gitDiffSubcommandConstant, "--binary", "--no-textconv", "--no-ext-diff", "--no-color",
-		"--src-prefix=a/", "--dst-prefix=b/", "--no-relative", gitDiffNoRenamesFlagConstant,
+		"--src-prefix=a/", "--dst-prefix=b/", "--no-relative", "--unified=3", gitDiffNoRenamesFlagConstant,
 		parents[0], parents[1], gitPathspecSeparatorConstant)
 	if err != nil {
 		return projection, err
@@ -141,6 +137,36 @@ func projectStrictSyncStash(ctx context.Context, executor shared.GitExecutor, st
 		gitCommitParentFlag, parents[0], gitCommitParentFlag, parents[1], gitCommitParentFlag, remainingCommit,
 		gitCommitMessageFlagConstant, strictSyncStashProjectionMessage)
 	return projection, err
+}
+
+type strictSyncTrackedPaths struct {
+	exact  map[string]struct{}
+	sorted []string
+}
+
+func newStrictSyncTrackedPaths(paths []string) strictSyncTrackedPaths {
+	sort.Strings(paths)
+	indexed := strictSyncTrackedPaths{exact: make(map[string]struct{}, len(paths)), sorted: paths}
+	for _, path := range paths {
+		indexed.exact[path] = struct{}{}
+	}
+	return indexed
+}
+
+func (paths strictSyncTrackedPaths) prefixConflict(path string) string {
+	for index := range path {
+		if path[index] == '/' {
+			if _, exists := paths.exact[path[:index]]; exists {
+				return path[:index]
+			}
+		}
+	}
+	prefix := path + "/"
+	index := sort.SearchStrings(paths.sorted, prefix)
+	if index < len(paths.sorted) && strings.HasPrefix(paths.sorted[index], prefix) {
+		return paths.sorted[index]
+	}
+	return ""
 }
 
 func (projection strictSyncStashProjection) rejectSymbolicLinkConflicts(ctx context.Context, service mergeConflictResolutionService) error {
@@ -186,7 +212,8 @@ func (projection strictSyncStashProjection) restoreIndex(ctx context.Context, ex
 		}
 	}
 	command.environment = nil
-	_, err := command.run(gitReadTreeSubcommand, projection.indexTree)
+	// Merge the saved tree into the index to retain skip-worktree metadata.
+	_, err := command.run(gitReadTreeSubcommand, "-m", projection.indexTree)
 	return err
 }
 
