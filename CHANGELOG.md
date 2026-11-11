@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Git stash restoration
+- Restored untracked files at destination tracked paths and kept staged and unstaged changes.
+
 ### Merged branch sync
 - Corrected merged PR traversal when remote branches already contained changes from different local commits.
 - Preserved unpublished parent work and used one confirmation for the final destination.
