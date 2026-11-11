@@ -225,18 +225,28 @@ func dropStrictSyncStash(ctx context.Context, executor shared.GitExecutor, stash
 }
 
 func restoreStrictSyncStash(ctx context.Context, executor shared.GitExecutor, stash strictSyncStash, service mergeConflictResolutionService, options mergeConflictResolutionOptions) error {
-	applyErr := applyStrictSyncStash(ctx, executor, stash)
-	if applyErr == nil {
-		return dropStrictSyncStash(ctx, executor, stash)
+	projection, projectionErr := projectStrictSyncStash(ctx, executor, stash)
+	if projectionErr != nil {
+		return projectionErr
 	}
-
-	options.Completion = mergeConflictCompletionPreserveIndex
-	conflictObserved, resolveErr := service.Resolve(ctx, options)
-	if resolveErr != nil {
-		return errors.Join(applyErr, fmt.Errorf(strictSyncStashResolveFailureTemplate, stash.Path, resolveErr))
+	options.SourceReference = projection.stash.CommitID
+	applicationStash := projection.stash
+	applicationStash.IntentPaths = nil
+	if applyErr := applyStrictSyncStash(ctx, executor, applicationStash); applyErr != nil {
+		if typeErr := projection.rejectSymbolicLinkConflicts(ctx, service); typeErr != nil {
+			return errors.Join(applyErr, typeErr)
+		}
+		options.Completion = mergeConflictCompletionPreserveIndex
+		conflictObserved, resolveErr := service.Resolve(ctx, options)
+		if resolveErr != nil {
+			return errors.Join(applyErr, fmt.Errorf(strictSyncStashResolveFailureTemplate, stash.Path, resolveErr))
+		}
+		if !conflictObserved {
+			return errors.Join(applyErr, errors.New(strictSyncStashUnmergedStateMessage))
+		}
 	}
-	if !conflictObserved {
-		return errors.Join(applyErr, errors.New(strictSyncStashUnmergedStateMessage))
+	if indexErr := projection.restoreIndex(ctx, executor); indexErr != nil {
+		return fmt.Errorf(strictSyncStashIndexFailureTemplate, stash.Path, indexErr)
 	}
 	if intentErr := restoreStrictSyncIntentToAdd(ctx, executor, stash); intentErr != nil {
 		return intentErr

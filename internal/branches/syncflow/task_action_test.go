@@ -313,6 +313,9 @@ func (executor *strictSyncGitExecutor) ExecuteGit(_ context.Context, details exe
 			return execshell.ExecutionResult{}, executor.mergeError
 		}
 	case "show":
+		if commandHasArgument(details.Arguments, "--format=%P") {
+			return execshell.ExecutionResult{StandardOutput: strictSyncGitTestCommit + " " + strictSyncGitTestCommit + "\n"}, nil
+		}
 		return execshell.ExecutionResult{StandardOutput: executor.showOutputs[strings.Join(details.Arguments[1:], " ")]}, nil
 	case "add":
 		executor.stagedPaths = strictSyncTestAddedPaths(details.Arguments, executor.statusOutput)
