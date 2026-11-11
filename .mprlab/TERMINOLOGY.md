@@ -100,6 +100,7 @@ Give each term one meaning. Use the same term for the same concept in all docume
 Add repository-specific technical nouns below this line.
 
 - `Git index`: Git data that records the file contents prepared for the next commit.
+- `Git stash`: A Git record of pending tracked and untracked file changes.
 - `tracked path`: A file path recorded in the current commit or the Git index.
 - `untracked file`: A worktree file that has no entry in the Git index.
 - `path selector`: A literal file or directory path that selects tracked paths for an operation.
@@ -159,6 +160,7 @@ Add repository-specific technical nouns below this line.
 - `regenerate`: Create a generated artifact again from its canonical source.
 - `redistribute`: Provide a third-party reference outside its approved distribution method.
 - `render`: Convert source data into a visible or machine-readable output.
+- `restore`: Return file contents and Git index entries to a recorded state.
 - `retrieve`: Get an official reference from its approved source.
 - `review`: Examine an artifact against its requirements and record the result.
 - `scan`: Use an automated process to find specified source patterns.

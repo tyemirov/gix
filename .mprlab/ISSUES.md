@@ -11,6 +11,32 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B130] (P1) Restore untracked files that the destination tracks.
+  Evidence:
+  Hecate rejected `gix sync master --stash` because `master` contained three tracked paths with the same names as local untracked files.
+  Git returned `already exists, no checkout` without an unmerged index.
+  Requirements:
+  - Merge these file contents through the existing conflict resolver.
+  - Keep staged changes, unstaged changes, intent-to-add entries, and unrelated untracked files.
+  - Keep the initial Git stash available until restoration succeeds.
+  - Reject file and directory conflicts before restoration.
+  Validation:
+  The compiled CLI test first reproduced the reported error.
+  All 15 new scenarios passed with the required file contents and unchanged remote references.
+  The Ledger replay and existing intent-to-add tests passed.
+  The focused Go tests and licensing tests passed.
+  The separate code review found no remaining blockers.
+
+  Final `make ci`, `make build`, and `git diff --check` passed on November 11, 2026.
+  The complete CLI suite passed in 262.109 seconds.
+  Governor and changed-prose checks passed.
+  Resolution:
+  `--stash` uses temporary Git objects to merge untracked files at destination tracked paths.
+  The Git index keeps staged and unstaged changes separate.
+  File and directory conflicts fail before file restoration.
+  Symbolic link conflicts require an explicit Git resolution before the text resolver reads file contents.
+  The event contracts for `SYNCED`, `SYNC_SWITCH_ROLLBACK`, and `SYNC_SWITCH_HANDOFF` are unchanged.
+
 - [x] [B129] (P1) Use the Gateway v9 manifest contract.
   Evidence:
   Gateway v9 rejected the Gix manifest before deployment.
