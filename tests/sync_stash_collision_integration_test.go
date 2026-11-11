@@ -24,6 +24,7 @@ func TestSyncStashUntrackedDestinationCollisions(t *testing.T) {
 		prefixCollision                          string
 		transformedDiff, links                   bool
 		removeResidual                           bool
+		sparse, sparseIndex, zeroContext         bool
 	}{
 		{name: "identical", path: "docs/ci.md", local: "shared\n", incoming: "shared\n", expected: "shared\n"},
 		{name: "different", path: "docs/ci.md", local: "local requirement\n", incoming: "remote requirement\n", expected: "remote requirement\nlocal requirement\n"},
@@ -37,6 +38,9 @@ func TestSyncStashUntrackedDestinationCollisions(t *testing.T) {
 		{name: "directory into file", path: "docs/ci.md", local: "local requirement\n", incoming: "remote requirement\n", failure: true, prefixCollision: "nested"},
 		{name: "file into directory", path: "docs/ci.md", local: "local requirement\n", incoming: "remote requirement\n", failure: true, prefixCollision: "nested/child.txt"},
 		{name: "configured diff transforms", path: "docs/ci.md", local: "local requirement\n", incoming: "remote requirement\n", expected: "remote requirement\nlocal requirement\n", transformedDiff: true},
+		{name: "zero diff context", path: "docs/ci.md", local: "shared\n", incoming: "shared\n", expected: "shared\n", zeroContext: true},
+		{name: "sparse checkout", path: "docs/ci.md", local: "local requirement\n", incoming: "remote requirement\n", expected: "remote requirement\nlocal requirement\n", sparse: true},
+		{name: "sparse index identical collision", path: "docs/ci.md", local: "shared\n", incoming: "shared\n", expected: "shared\n", sparse: true, sparseIndex: true},
 		{name: "identical links", path: "link.txt", links: true},
 		{name: "different links", path: "link.txt", links: true, failure: true},
 		{name: "residual restoration failure", path: "docs/ci.md", local: "local requirement\n", incoming: "remote requirement\n", expected: "remote requirement\nlocal requirement\n", failure: true, removeResidual: true},
@@ -82,7 +86,23 @@ func TestSyncStashUntrackedDestinationCollisions(t *testing.T) {
 				}
 				return readTextFile(t, filepath.Join(repository, scenario.path))
 			}
+			baseREADME := "initial\n"
+			stagedREADME := "staged requirement\n"
+			if scenario.zeroContext {
+				baseREADME = "before\ninitial\nafter\n"
+				stagedREADME = "before\nstaged requirement\nafter\n"
+				write("README.md", baseREADME)
+				runGit(t, repository, "add", "README.md")
+				runGit(t, repository, "commit", "-m", "add patch context")
+				runGit(t, repository, "config", "diff.context", "0")
+			}
 			runGit(t, repository, "switch", "master")
+			write("README.md", baseREADME)
+			runGit(t, repository, "add", "README.md")
+			if scenario.sparse {
+				write("outside/hidden", "excluded destination contents\n")
+				runGit(t, repository, "add", "outside/hidden")
+			}
 			writeCollision(scenario.incoming)
 			if scenario.prefixCollision != "" {
 				write(scenario.prefixCollision, "remote path\n")
@@ -94,13 +114,20 @@ func TestSyncStashUntrackedDestinationCollisions(t *testing.T) {
 			targetCommit := strings.TrimSpace(runGit(t, repository, "rev-parse", "HEAD"))
 			runGit(t, repository, "switch", sourceBranch)
 			sourceCommit := strings.TrimSpace(runGit(t, repository, "rev-parse", "HEAD"))
+			if scenario.sparse {
+				if scenario.sparseIndex {
+					runGit(t, repository, "config", "advice.sparseIndexExpanded", "false")
+					runGit(t, repository, "sparse-checkout", "init", "--sparse-index")
+				}
+				runGit(t, repository, "sparse-checkout", "set", "docs")
+			}
 			write("operator.txt", "existing operator stash\n")
 			runGit(t, repository, "stash", "push", "-u", "-m", "operator stash")
 			existingStashes := runGit(t, repository, "stash", "list", "--format=%H")
 			writeCollision(scenario.local)
-			write("README.md", "staged requirement\n")
+			write("README.md", stagedREADME)
 			runGit(t, repository, "add", "README.md")
-			write("README.md", "staged requirement\nunstaged requirement\n")
+			write("README.md", stagedREADME+"unstaged requirement\n")
 			write("intent.txt", "intent requirement\n")
 			runGit(t, repository, "add", "-N", "intent.txt")
 			if !scenario.allCollisions {
@@ -176,8 +203,8 @@ func TestSyncStashUntrackedDestinationCollisions(t *testing.T) {
 			}
 			require.Equal(t, remoteBefore, runGit(t, fixture.RemotePath, "for-each-ref", "--format=%(refname) %(objectname)"))
 			require.Equal(t, sourceCommit, strings.TrimSpace(runGit(t, repository, "rev-parse", sourceBranch)))
-			require.Equal(t, "staged requirement\nunstaged requirement\n", readTextFile(t, filepath.Join(repository, "README.md")))
-			require.Equal(t, "staged requirement\n", runGit(t, repository, "show", ":README.md"))
+			require.Equal(t, stagedREADME+"unstaged requirement\n", readTextFile(t, filepath.Join(repository, "README.md")))
+			require.Equal(t, stagedREADME, runGit(t, repository, "show", ":README.md"))
 			require.Equal(t, "intent requirement\n", readTextFile(t, filepath.Join(repository, "intent.txt")))
 			require.Contains(t, runGit(t, repository, "diff", "--cached", "--name-only", "--ita-visible-in-index"), "intent.txt")
 			require.NotContains(t, runGit(t, repository, "diff", "--cached", "--name-only", "--ita-invisible-in-index"), "intent.txt")
@@ -218,6 +245,12 @@ func TestSyncStashUntrackedDestinationCollisions(t *testing.T) {
 				require.Equal(t, targetCommit, strings.TrimSpace(runGit(t, repository, "rev-parse", "HEAD")))
 				require.Equal(t, scenario.expected, readCollision())
 				require.Equal(t, scenario.incoming, runGit(t, repository, "show", ":"+scenario.path))
+				if scenario.sparse {
+					require.Equal(t, "S outside/hidden\n", runGit(t, repository, "ls-files", "-t", "--", "outside/hidden"))
+					require.NotContains(t, runGit(t, repository, "diff", "--name-only"), "outside/hidden")
+					require.NoFileExists(t, filepath.Join(repository, "outside/hidden"))
+					require.Equal(t, "excluded destination contents\n", runGit(t, repository, "show", ":outside/hidden"))
+				}
 				require.Equal(t, existingStashes, runGit(t, repository, "stash", "list", "--format=%H"))
 				expectedUntracked := "pending-link\npending.txt\n"
 				if scenario.allCollisions {
