@@ -11,6 +11,8 @@ import (
 	"github.com/tyemirov/utils/llm"
 )
 
+const absentSourceContent = "File is absent from this committed source."
+
 // ContextRequest identifies a range in one committed source file.
 type ContextRequest struct {
 	Path      string `json:"path"`
@@ -44,19 +46,24 @@ type Finding struct {
 	ContextRequests []ContextRequest `json:"context_requests,omitempty"`
 }
 
-func (generator Generator) analyzeStage(ctx context.Context, options Options, initial llm.ChatRequest, packetID, stage string, packetContext *[]ContextEvidence, result *Result) (decisionPayload, error) {
+func (generator Generator) analyzeStage(ctx context.Context, options Options, initial llm.ChatRequest, packetID, stage string, result *Result) (decisionPayload, error) {
 	for round := 0; ; round++ {
 		request := initial
 		request.Messages = append([]llm.Message(nil), initial.Messages...)
-		if len(*packetContext) > 0 {
+		if len(result.Context) > 0 {
 			request.Messages[1].Content += "\nCommitted source context:\n"
-			for _, evidence := range *packetContext {
+			for _, evidence := range result.Context {
 				request.Messages[1].Content += formatContext(evidence)
 			}
 		}
 		if len(result.Requests) >= providerCallLimit {
 			return decisionPayload{}, fmt.Errorf("provider call limit %d exhausted; complete evidence remains unresolved", providerCallLimit)
 		}
+		usedRunes := 0
+		for _, evidence := range result.Context {
+			usedRunes += len([]rune(formatContext(evidence)))
+		}
+		request.Messages[1].Content += fmt.Sprintf("\nCurrent global allowances: context_runes_used=%d context_runes_remaining=%d context_runes_limit=%d; context_rounds_used=%d context_rounds_remaining=%d context_rounds_limit=%d (this stage); model_calls_used=%d model_calls_remaining=%d model_calls_limit=%d (including this request). Submitted request limit=%d runes, including metadata and reused context.\n", usedRunes, contextRuneLimit-usedRunes, contextRuneLimit, round, contextRoundLimit-round, contextRoundLimit, len(result.Requests), providerCallLimit-len(result.Requests), providerCallLimit, submittedRequestRuneLimit)
 		result.Requests = append(result.Requests, request)
 		requestRunes := 0
 		for _, message := range request.Messages {
@@ -97,7 +104,6 @@ func (generator Generator) analyzeStage(ctx context.Context, options Options, in
 				return decisionPayload{}, fmt.Errorf("source context exceeds global %d rune limit", contextRuneLimit)
 			}
 			result.Context = append(result.Context, evidence)
-			*packetContext = append(*packetContext, evidence)
 		}
 	}
 }
@@ -106,46 +112,54 @@ func (generator Generator) retrieveContext(ctx context.Context, options Options,
 	if err := validateContextRequest(request); err != nil {
 		return ContextEvidence{}, err
 	}
-	reference := options.SinceReference
-	if request.Source == "new" {
-		reference = options.SourceReference
-	}
-	names, err := generator.runGit(ctx, options.RepositoryPath, []string{"ls-tree", "-z", "--name-only", reference, "--", request.Path})
+	content, present, err := generator.committedSource(ctx, options, request)
 	if err != nil {
-		return ContextEvidence{}, fmt.Errorf("locate %s:%s: %w", reference, request.Path, err)
+		return ContextEvidence{}, err
 	}
-	if names == "" {
-		evidence := ContextEvidence{ContextRequest: request, Absent: true, Content: "File is absent from this committed source."}
+	if !present {
+		evidence := ContextEvidence{ContextRequest: request, Absent: true, Content: absentSourceContent}
 		evidence.SHA256 = textDigest(evidence.Content)
 		return evidence, nil
 	}
-	if strings.TrimSuffix(names, "\x00") != request.Path {
-		return ContextEvidence{}, fmt.Errorf("context path %q is not one committed file", request.Path)
-	}
-	objectType, err := generator.runGit(ctx, options.RepositoryPath, []string{"cat-file", "-t", reference + ":" + request.Path})
-	if err != nil {
-		return ContextEvidence{}, fmt.Errorf("identify %s:%s: %w", reference, request.Path, err)
-	}
-	if strings.TrimSpace(objectType) != "blob" {
-		return ContextEvidence{}, fmt.Errorf("context path %q is not a committed blob", request.Path)
-	}
-	content, err := generator.runGit(ctx, options.RepositoryPath, []string{"show", reference + ":" + request.Path})
-	if err != nil {
-		return ContextEvidence{}, fmt.Errorf("read %s:%s: %w", reference, request.Path, err)
-	}
-	if strings.ContainsRune(content, '\x00') {
-		return ContextEvidence{}, fmt.Errorf("context path %q contains unsupported binary source", request.Path)
-	}
-	lines := strings.SplitAfter(content, "\n")
-	if lines[len(lines)-1] == "" {
-		lines = lines[:len(lines)-1]
-	}
+	lines := sourceLines(content)
 	start := request.StartLine - 1
 	if start >= len(lines) || request.LineCount > len(lines)-start {
 		return ContextEvidence{}, fmt.Errorf("context range for %q exceeds committed file lines", request.Path)
 	}
 	selected := strings.Join(lines[start:start+request.LineCount], "")
 	return ContextEvidence{ContextRequest: request, Content: selected, SHA256: textDigest(selected)}, nil
+}
+
+func (generator Generator) committedSource(ctx context.Context, options Options, request ContextRequest) (string, bool, error) {
+	reference := options.SinceReference
+	if request.Source == "new" {
+		reference = options.SourceReference
+	}
+	names, err := generator.runGit(ctx, options.RepositoryPath, []string{"ls-tree", "-z", "--name-only", reference, "--", request.Path})
+	if err != nil {
+		return "", false, fmt.Errorf("locate %s:%s: %w", reference, request.Path, err)
+	}
+	if names == "" {
+		return "", false, nil
+	}
+	if strings.TrimSuffix(names, "\x00") != request.Path {
+		return "", false, fmt.Errorf("context path %q is not one committed file", request.Path)
+	}
+	objectType, err := generator.runGit(ctx, options.RepositoryPath, []string{"cat-file", "-t", reference + ":" + request.Path})
+	if err != nil {
+		return "", false, fmt.Errorf("identify %s:%s: %w", reference, request.Path, err)
+	}
+	if strings.TrimSpace(objectType) != "blob" {
+		return "", false, fmt.Errorf("context path %q is not a committed blob", request.Path)
+	}
+	content, err := generator.runGit(ctx, options.RepositoryPath, []string{"cat-file", "blob", reference + ":" + request.Path})
+	if err != nil {
+		return "", false, fmt.Errorf("read %s:%s: %w", reference, request.Path, err)
+	}
+	if strings.ContainsRune(content, '\x00') {
+		return "", false, fmt.Errorf("context path %q contains unsupported binary source; public impact remains unresolved", request.Path)
+	}
+	return content, true, nil
 }
 
 func validateContextRequest(request ContextRequest) error {

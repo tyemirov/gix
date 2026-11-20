@@ -85,6 +85,7 @@ type repositoryEvidence struct {
 	diffSummary      string
 	diffExcerpt      string
 	changelogChanges string
+	sourceCatalog    string
 }
 
 // Generate asks the configured LLM for candidate and audit decisions for each
@@ -119,8 +120,7 @@ func (generator Generator) Generate(ctx context.Context, options Options) (resul
 		}
 	}
 	for index, request := range requests {
-		packetContext := []ContextEvidence{}
-		candidate, stageError := generator.analyzeStage(ctx, options, request, packets[index].ID, "candidate", &packetContext, &result)
+		candidate, stageError := generator.analyzeStage(ctx, options, request, packets[index].ID, "candidate", &result)
 		if stageError != nil {
 			return result, fmt.Errorf("semver decision evidence packet %d/%d %w", index+1, len(requests), stageError)
 		}
@@ -128,7 +128,7 @@ func (generator Generator) Generate(ctx context.Context, options Options) (resul
 		if auditError != nil {
 			return result, auditError
 		}
-		audited, stageError := generator.analyzeStage(ctx, options, auditRequest, packets[index].ID, "audit", &packetContext, &result)
+		audited, stageError := generator.analyzeStage(ctx, options, auditRequest, packets[index].ID, "audit", &result)
 		if stageError != nil {
 			return result, fmt.Errorf("semver decision evidence packet %d/%d %w", index+1, len(requests), stageError)
 		}
@@ -162,6 +162,10 @@ func (generator Generator) buildRequests(ctx context.Context, options Options) (
 		return nil, "", nil, nil, errors.New("semver decision source is required")
 	}
 	evidence, err := generator.collectEvidence(ctx, options.RepositoryPath, options.SinceReference, options.SourceReference)
+	if err != nil {
+		return nil, "", nil, nil, err
+	}
+	evidence.sourceCatalog, err = generator.changedSourceCatalog(ctx, options)
 	if err != nil {
 		return nil, "", nil, nil, err
 	}
@@ -270,6 +274,10 @@ func decisionSystemContent(audit bool, fixedMajor int) string {
 		"Classify only the effect on supported public contracts from the previous release.",
 		"Return exactly one JSON object with string fields impact, public_contract, and reason; optional context_requests is an array of source requests.",
 		"A context request has path (repository-relative), source (old or new), start_line (one-based), and line_count (positive). Request only committed source relevant to an unresolved public behavior.",
+		"Ranges are exact: start_line + line_count - 1 must not exceed the committed line_count. Empty present files have no valid positive range. Never estimate an EOF range or request a larger window to be clamped.",
+		"The changed-file source catalog supplies authoritative old/new bounds; related unchanged files remain requestable but their unknown bounds are not permission to overshoot EOF. For an absent snapshot request start_line=1 and line_count=1.",
+		"Already retrieved immutable committed source context is available throughout the release decision. Reuse supplied context when it answers the question; each explicit retrieval is charged again even when it duplicates an earlier range.",
+		"Before requesting context, sum the cost of every range across both sources and all files. A conservative present-range cost is line_count * max_line_runes + format_overhead_runes from its catalog row. For an absent snapshot, format_overhead_runes includes the diagnostic text for a 1/1 request. All formatted headers, content, and separators count; every range in the response must fit the remaining global context allowance together. No invalid range or exhausted allowance triggers a corrective model call.",
 		"impact must be exactly incompatible, additive, compatible, or unresolved.",
 		"Use unresolved when material evidence is incomplete, a fragment needs related source, or public impact cannot be established. Request bounded context rather than assume compatibility.",
 		"Use incompatible only when a previously supported external use stops working or requires user migration.",

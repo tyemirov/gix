@@ -38,6 +38,7 @@ func buildEvidencePackets(evidence repositoryEvidence, options Options) ([]Evide
 		boundary = options.SinceReference
 	}
 	prefix := fmt.Sprintf("Release range: %s..%s\nDeterministic minimum: patch\n", boundary, options.SourceReference)
+	prefix += evidence.sourceCatalog
 	sources := []evidenceSource{
 		{"Commit messages", evidence.commitLog},
 		{"Diff summary", evidence.diffSummary},
@@ -46,7 +47,7 @@ func buildEvidencePackets(evidence repositoryEvidence, options Options) ([]Evide
 	}
 	capacity := evidencePacketRuneLimit - len([]rune(prefix)) - 200
 	if capacity < 1000 {
-		return nil, nil, fmt.Errorf("semver decision release labels exceed evidence packet limit")
+		return nil, nil, fmt.Errorf("semver decision complete changed-file source catalog and release labels exceed evidence packet limit")
 	}
 	packets := []EvidencePacket{}
 	coverage := []EvidenceCoverage{}
