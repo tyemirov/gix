@@ -156,6 +156,86 @@ func TestReleaseNextUsesAuthoritativeChangedFileBounds(testInstance *testing.T) 
 	}
 }
 
+func TestReleaseNextDiscoversUnchangedFileBounds(testInstance *testing.T) {
+	workingDirectory, err := os.Getwd()
+	require.NoError(testInstance, err)
+	binary := buildIntegrationBinary(testInstance, filepath.Dir(workingDirectory))
+	repository := releaseEvidenceRepository(testInstance)
+	var readme strings.Builder
+	for line := 1; line <= 197; line++ {
+		fmt.Fprintf(&readme, "UNCHANGED_README_LINE_%03d: supported documentation.\n", line)
+	}
+	require.NoError(testInstance, os.WriteFile(filepath.Join(repository, "README.md"), []byte(readme.String()), 0o644))
+	runGit(testInstance, repository, "add", ".")
+	runGit(testInstance, repository, "commit", "-m", "unchanged documentation baseline")
+	runGit(testInstance, repository, "tag", "-f", "v1.2.3")
+	require.NoError(testInstance, os.WriteFile(filepath.Join(repository, "noise.txt"), []byte(strings.Repeat("Internal maintenance preserves supported behavior.\n", 1600)), 0o644))
+	runGit(testInstance, repository, "add", ".")
+	runGit(testInstance, repository, "commit", "-m", "repair internal implementation")
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		body, readError := io.ReadAll(request.Body)
+		require.NoError(testInstance, readError)
+		switch calls.Add(1) {
+		case 1:
+			count := 1600
+			if strings.Contains(string(body), "For an uncatalogued related file, first request exactly start_line=1 and line_count=1") {
+				count = 1
+			}
+			_, _ = fmt.Fprintf(writer, `{"impact":"unresolved","public_contract":"","reason":"Discover related documentation bounds.","context_requests":[{"path":"README.md","source":"new","start_line":1,"line_count":%d}]}`, count)
+		case 2:
+			start, count := 1, 1600
+			if strings.Contains(string(body), "whole_file_bounds=[true,197,") {
+				start, count = 180, 18
+			}
+			_, _ = fmt.Fprintf(writer, `{"impact":"unresolved","public_contract":"","reason":"Read the exact final documentation range.","context_requests":[{"path":"README.md","source":"new","start_line":%d,"line_count":%d}]}`, start, count)
+		default:
+			_, _ = io.WriteString(writer, releaseCompatibleDecision)
+		}
+	}))
+	defer server.Close()
+	output, runError := runBinaryIntegrationCommand(testInstance, binary, repository, map[string]string{}, time.Minute,
+		[]string{"--config", releaseEvidenceConfiguration(testInstance, server.URL), "release", "next", "semver", "--format", "json"})
+	require.NoError(testInstance, runError, output)
+	require.Contains(testInstance, output, `"next_version":"v1.2.4"`)
+	analysis := releaseRecordedAnalysis(testInstance, repository)
+	require.Greater(testInstance, len(analysis.Packets), 1)
+	for _, packet := range analysis.Packets {
+		for _, row := range releasePacketCatalog(testInstance, packet.Content) {
+			require.NotEqual(testInstance, "README.md", row.Path)
+		}
+	}
+	require.Len(testInstance, analysis.Context, 2)
+	require.Equal(testInstance, 1, analysis.Context[0].StartLine)
+	require.Equal(testInstance, 1, analysis.Context[0].LineCount)
+	require.Equal(testInstance, 180, analysis.Context[1].StartLine)
+	require.Equal(testInstance, 18, analysis.Context[1].LineCount)
+	require.Contains(testInstance, analysis.Context[1].Content, "UNCHANGED_README_LINE_180")
+	require.Contains(testInstance, analysis.Context[1].Content, "UNCHANGED_README_LINE_197")
+	var retained []struct {
+		Bounds releaseSourceBounds `json:"bounds"`
+	}
+	encoded, err := json.Marshal(analysis.Context)
+	require.NoError(testInstance, err)
+	require.NoError(testInstance, json.Unmarshal(encoded, &retained))
+	for _, context := range retained {
+		require.True(testInstance, context.Bounds.Present)
+		require.Equal(testInstance, 197, context.Bounds.LineCount)
+		require.Equal(testInstance, utf8.RuneCountInString(readme.String()), context.Bounds.RuneCount)
+		require.Positive(testInstance, context.Bounds.MaxLineRunes)
+		require.Positive(testInstance, context.Bounds.FormatOverheadRunes)
+	}
+	require.Equal(testInstance, len(analysis.Packets)*2+2, int(calls.Load()))
+	for index, request := range analysis.Requests {
+		if index >= 1 {
+			require.Contains(testInstance, request.Messages[1].Content, "whole_file_bounds=[true,197,")
+		}
+		if index >= 2 {
+			require.Contains(testInstance, request.Messages[1].Content, "UNCHANGED_README_LINE_197")
+		}
+	}
+}
+
 func TestReleaseNextReadsLongCommittedBasename(testInstance *testing.T) {
 	workingDirectory, err := os.Getwd()
 	require.NoError(testInstance, err)
