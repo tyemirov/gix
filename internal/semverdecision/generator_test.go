@@ -524,3 +524,23 @@ func TestGenerateRejectsNonBlobContextWithoutReadingContent(t *testing.T) {
 		})
 	}
 }
+
+func TestContextBoundsIncludeOwnFormattingCost(t *testing.T) {
+	for _, snapshot := range []struct {
+		content string
+		present bool
+	}{{"界🙂\nfinal", true}, {"", false}, {"", true}} {
+		request := ContextRequest{Path: "docs/contract.txt", Source: "new", StartLine: 1, LineCount: 1}
+		bounds := committedSourceBounds(request, snapshot.content, snapshot.present)
+		require.Equal(t, snapshot.present, bounds.Present)
+		require.Equal(t, len([]rune(snapshot.content)), bounds.RuneCount)
+		request.StartLine, request.LineCount = max(1, bounds.LineCount), max(1, bounds.LineCount)
+		evidence := ContextEvidence{ContextRequest: request, Absent: !snapshot.present, Bounds: bounds}
+		if !snapshot.present {
+			evidence.Content = absentSourceContent
+		}
+		formatted := formatContext(evidence)
+		require.Contains(t, formatted, "whole_file_bounds="+formatSourceTuple(bounds))
+		require.GreaterOrEqual(t, bounds.FormatOverheadRunes, len([]rune(formatted)))
+	}
+}

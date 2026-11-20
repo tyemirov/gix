@@ -9,7 +9,7 @@ import (
 	"unicode/utf8"
 )
 
-// sourceBounds describes one complete committed snapshot of a changed path.
+// sourceBounds describes one complete committed source snapshot.
 type sourceBounds struct {
 	Path                string `json:"path"`
 	Source              string `json:"source"`
@@ -41,19 +41,7 @@ func (generator Generator) changedSourceCatalog(ctx context.Context, options Opt
 			if err != nil {
 				return "", fmt.Errorf("changed source catalog %s %q: %w", source, path, err)
 			}
-			lines := sourceLines(content)
-			bounds := sourceBounds{Path: path, Source: source, Present: present, LineCount: len(lines), RuneCount: utf8.RuneCountInString(content)}
-			for _, line := range lines {
-				bounds.MaxLineRunes = max(bounds.MaxLineRunes, utf8.RuneCountInString(line))
-			}
-			// Valid present ranges cannot have a start or count larger than the
-			// complete file. Use both maxima to bound the formatted header cost.
-			request.StartLine, request.LineCount = max(1, len(lines)), max(1, len(lines))
-			formatted := ContextEvidence{ContextRequest: request, Absent: !present}
-			if !present {
-				formatted.Content = absentSourceContent
-			}
-			bounds.FormatOverheadRunes = utf8.RuneCountInString(formatContext(formatted))
+			bounds := committedSourceBounds(request, content, present)
 			snapshots[sourceIndex] = bounds
 		}
 		encodedPath, err := json.Marshal(path)
@@ -63,6 +51,24 @@ func (generator Generator) changedSourceCatalog(ctx context.Context, options Opt
 		fmt.Fprintf(&catalog, "[%s,%s,%s]\n", encodedPath, formatSourceTuple(snapshots[0]), formatSourceTuple(snapshots[1]))
 	}
 	return catalog.String(), nil
+}
+
+func committedSourceBounds(request ContextRequest, content string, present bool) sourceBounds {
+	lines := sourceLines(content)
+	bounds := sourceBounds{Path: request.Path, Source: request.Source, Present: present, LineCount: len(lines), RuneCount: utf8.RuneCountInString(content)}
+	for _, line := range lines {
+		bounds.MaxLineRunes = max(bounds.MaxLineRunes, utf8.RuneCountInString(line))
+	}
+	// The largest integer width bounds this field's own formatted contribution
+	// without a recursive size calculation. Actual source ranges use fewer digits.
+	bounds.FormatOverheadRunes = int(^uint(0) >> 1)
+	request.StartLine, request.LineCount = max(1, len(lines)), max(1, len(lines))
+	formatted := ContextEvidence{ContextRequest: request, Absent: !present, Bounds: bounds}
+	if !present {
+		formatted.Content = absentSourceContent
+	}
+	bounds.FormatOverheadRunes = utf8.RuneCountInString(formatContext(formatted))
+	return bounds
 }
 
 func formatSourceTuple(bounds sourceBounds) string {

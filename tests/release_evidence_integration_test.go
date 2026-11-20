@@ -283,7 +283,9 @@ func TestReleaseNextReadsLongCommittedBasename(testInstance *testing.T) {
 			maxLine = max(maxLine, utf8.RuneCountInString(line))
 		}
 		require.Equal(testInstance, maxLine, row.MaxLineRunes)
-		formatted := fmt.Sprintf("Source %s, path %s, lines %d count %d, absent=false:\n\n", source, path, row.LineCount, row.LineCount)
+		bounds := row
+		bounds.FormatOverheadRunes = int(^uint(0) >> 1)
+		formatted := bounds.formatContext(row.LineCount, row.LineCount, "")
 		require.Equal(testInstance, utf8.RuneCountInString(formatted), row.FormatOverheadRunes)
 		evidence := analysis.Context[index]
 		require.Equal(testInstance, path, evidence.Path)
@@ -365,7 +367,9 @@ func TestReleaseNextCatalogsCompleteCommittedSnapshots(testInstance *testing.T) 
 				headerContent = "File is absent from this committed source."
 			}
 			maxRange := max(1, len(lines))
-			formatted := fmt.Sprintf("Source %s, path %s, lines %d count %d, absent=%t:\n%s\n", source, path, maxRange, maxRange, !present, headerContent)
+			bounds := row
+			bounds.FormatOverheadRunes = int(^uint(0) >> 1)
+			formatted := bounds.formatContext(maxRange, maxRange, headerContent)
 			require.Equal(testInstance, utf8.RuneCountInString(formatted), row.FormatOverheadRunes)
 		}
 	}
@@ -512,6 +516,10 @@ type releaseSourceBounds struct {
 	FormatOverheadRunes int    `json:"format_overhead_runes"`
 }
 
+func (bounds releaseSourceBounds) formatContext(startLine, lineCount int, content string) string {
+	return fmt.Sprintf("Source %s, path %s, lines %d count %d, absent=%t, whole_file_bounds=[%t,%d,%d,%d,%d]:\n%s\n", bounds.Source, bounds.Path, startLine, lineCount, !bounds.Present, bounds.Present, bounds.LineCount, bounds.RuneCount, bounds.MaxLineRunes, bounds.FormatOverheadRunes, content)
+}
+
 func releasePacketCatalog(testInstance *testing.T, content string) []releaseSourceBounds {
 	testInstance.Helper()
 	require.Contains(testInstance, content, "JSONL rows [path,old,new]; snapshot tuple [present,line_count,rune_count,max_line_runes,format_overhead_runes]\n")
@@ -591,7 +599,7 @@ func TestReleaseNextDisclosesFreshGlobalAllowances(testInstance *testing.T) {
 		if index == 1 || index == 2 || index == 4 {
 			contextIndex := map[int]int{1: 0, 2: 1, 4: 2}[index]
 			evidence := analysis.Context[contextIndex]
-			formatted := fmt.Sprintf("Source %s, path %s, lines %d count %d, absent=%t:\n%s\n", evidence.Source, evidence.Path, evidence.StartLine, evidence.LineCount, evidence.Absent, evidence.Content)
+			formatted := releaseSourceBounds(evidence.Bounds).formatContext(evidence.StartLine, evidence.LineCount, evidence.Content)
 			used += utf8.RuneCountInString(formatted)
 		}
 		content := request.Messages[1].Content
@@ -670,7 +678,7 @@ func TestReleaseNextReusesGlobalCommittedContext(testInstance *testing.T) {
 			formatted := make([]string, 2)
 			for index, evidence := range analysis.Context {
 				require.Equal(testInstance, []string{candidateContent, auditContent}[index], evidence.Content)
-				formatted[index] = fmt.Sprintf("Source %s, path %s, lines %d count %d, absent=%t:\n%s\n", evidence.Source, evidence.Path, evidence.StartLine, evidence.LineCount, evidence.Absent, evidence.Content)
+				formatted[index] = releaseSourceBounds(evidence.Bounds).formatContext(evidence.StartLine, evidence.LineCount, evidence.Content)
 			}
 			usedRunes := 0
 			for index, request := range analysis.Requests {
@@ -719,7 +727,10 @@ func TestReleaseNextRejectsExactInvalidContextWithoutRetry(testInstance *testing
 			repository := releaseEvidenceRepository(testInstance)
 			path := "publication-guide.txt"
 			guide := func(source string, cost int) string {
-				header := fmt.Sprintf("Source %s, path %s, lines 1 count 200, absent=false:\n\n", source, path)
+				bounds := releaseSourceBounds{Path: path, Source: source, Present: true, LineCount: 200, RuneCount: cost, MaxLineRunes: cost, FormatOverheadRunes: int(^uint(0) >> 1)}
+				bounds.FormatOverheadRunes = utf8.RuneCountInString(bounds.formatContext(200, 200, ""))
+				// Subtracting this header preserves the decimal widths of both fixture sizes.
+				header := bounds.formatContext(1, 200, "")
 				return strings.Repeat("x", cost-utf8.RuneCountInString(header)-200) + strings.Repeat("\n", 200)
 			}
 			require.NoError(testInstance, os.WriteFile(filepath.Join(repository, path), []byte(guide("old", 11788)), 0o644))
@@ -753,9 +764,12 @@ func TestReleaseNextRejectsExactInvalidContextWithoutRetry(testInstance *testing
 				require.Contains(testInstance, output, "global 24000 rune limit")
 				require.Len(testInstance, analysis.Context, 1)
 				cost := 0
+				catalog := releasePacketCatalog(testInstance, analysis.Packets[0].Content)
 				for index, source := range []string{"old", "new"} {
 					expected := []int{11788, 12828}[index]
-					formatted := fmt.Sprintf("Source %s, path %s, lines 1 count 200, absent=false:\n%s\n", source, path, guide(source, expected))
+					require.Equal(testInstance, source, catalog[index].Source)
+					require.Equal(testInstance, path, catalog[index].Path)
+					formatted := catalog[index].formatContext(1, 200, guide(source, expected))
 					require.Equal(testInstance, expected, utf8.RuneCountInString(formatted))
 					cost += utf8.RuneCountInString(formatted)
 				}

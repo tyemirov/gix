@@ -24,9 +24,10 @@ type ContextRequest struct {
 // ContextEvidence records the source supplied for one context request.
 type ContextEvidence struct {
 	ContextRequest
-	Content string `json:"content"`
-	SHA256  string `json:"sha256"`
-	Absent  bool   `json:"absent"`
+	Content string       `json:"content"`
+	SHA256  string       `json:"sha256"`
+	Absent  bool         `json:"absent"`
+	Bounds  sourceBounds `json:"bounds"`
 }
 
 // ProviderResponse records a model response before JSON validation.
@@ -116,8 +117,9 @@ func (generator Generator) retrieveContext(ctx context.Context, options Options,
 	if err != nil {
 		return ContextEvidence{}, err
 	}
+	bounds := committedSourceBounds(request, content, present)
 	if !present {
-		evidence := ContextEvidence{ContextRequest: request, Absent: true, Content: absentSourceContent}
+		evidence := ContextEvidence{ContextRequest: request, Absent: true, Content: absentSourceContent, Bounds: bounds}
 		evidence.SHA256 = textDigest(evidence.Content)
 		return evidence, nil
 	}
@@ -127,7 +129,7 @@ func (generator Generator) retrieveContext(ctx context.Context, options Options,
 		return ContextEvidence{}, fmt.Errorf("context range for %q exceeds committed file lines", request.Path)
 	}
 	selected := strings.Join(lines[start:start+request.LineCount], "")
-	return ContextEvidence{ContextRequest: request, Content: selected, SHA256: textDigest(selected)}, nil
+	return ContextEvidence{ContextRequest: request, Content: selected, SHA256: textDigest(selected), Bounds: bounds}, nil
 }
 
 func (generator Generator) committedSource(ctx context.Context, options Options, request ContextRequest) (string, bool, error) {
@@ -181,5 +183,5 @@ func validateContextRequest(request ContextRequest) error {
 }
 
 func formatContext(evidence ContextEvidence) string {
-	return fmt.Sprintf("Source %s, path %s, lines %d count %d, absent=%t:\n%s\n", evidence.Source, evidence.Path, evidence.StartLine, evidence.LineCount, evidence.Absent, evidence.Content)
+	return fmt.Sprintf("Source %s, path %s, lines %d count %d, absent=%t, whole_file_bounds=%s:\n%s\n", evidence.Source, evidence.Path, evidence.StartLine, evidence.LineCount, evidence.Absent, formatSourceTuple(evidence.Bounds), evidence.Content)
 }
