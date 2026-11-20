@@ -797,10 +797,15 @@ Gix examines the exact committed range for SemVer successor selection.
 It divides all commit messages, diff summaries, changelog changes, and text diffs into evidence packets.
 Each initial evidence packet contains at most 32,000 Unicode characters.
 Large diff hunks and lines continue in separate fragments with file context and exact source offsets.
+Every packet includes the complete catalog of changed paths, including both sides of renames.
+For each old and new committed file, the catalog gives presence, line count, Unicode character count, and a conservative maximum size per line.
+The catalog shares the packet's size limit; Gix stops if the complete metadata cannot fit.
 
 Each evidence packet receives a candidate decision and a separate semantic audit.
 The model can request old or new committed source lines when relationships between files remain unclear.
-The audit receives source context retrieved during the candidate decision.
+Requested ranges must fit within the file and collectively fit the remaining context allowance, including formatting overhead.
+Paths outside the changed-file catalog can still supply related committed context; omission from the catalog does not establish absence.
+Every candidate, audit, and continuation receives all committed source context already retrieved for this release range.
 Gix selects the highest audited public contract impact after all evidence packets pass.
 A new required input that changes supported consumer behavior remains incompatible, even when the change repairs a defect.
 
@@ -808,6 +813,8 @@ One version decision permits at most 128 model analysis calls and 24,000 Unicode
 Each submitted request contains at most 64,000 Unicode characters of message content.
 Connection attempts and transport retries can produce additional provider requests within one analysis call.
 Each candidate or audit permits at most two source context rounds.
+Every request states the current used and remaining context allowance, remaining context rounds, and remaining analysis calls.
+Repeated context in a continuation or audit counts toward the request size but does not consume the context allowance again.
 Large releases use multiple requests, so total analysis cost increases with the diff size.
 Unresolved impact, exhausted limits, unavailable context, binary changes, and provider failures stop automatic selection.
 Gix does not discard later changes to select a version within these limits.
