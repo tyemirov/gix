@@ -2903,6 +2903,37 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Equivalent changes permit traversal to the final merged base with one confirmation.
   New changes and conflicts keep the parent as the destination.
 
+- [-] [B132] (P0) Supply source and budget bounds for release context requests.
+  Goal:
+  Let the release model request valid committed source within the existing limits.
+  Evidence:
+  Gateway preparation requested 160 lines from source snapshots with 18 and 46 lines.
+  One reviewed retry requested context with a combined cost of 24,616 runes against the 24,000-rune limit.
+  The model received neither file lengths nor the remaining context allowance.
+  Requirements:
+  - Include complete changed-file bounds in each evidence packet.
+  - Supply current context, round, and model-call allowances to each request.
+  - Keep exact range validation, complete evidence coverage, and all current limits.
+  - Keep related unchanged-file context available through the current contract.
+  Validation:
+  The public CLI regression reproduced the missing 18/46-line bounds before the correction.
+  All 16 release test parents and seven subcases passed in 12.111 seconds.
+  The tests cover changing allowances, complete metadata, Unicode, rename paths, valid decisions, immediate EOF rejection, and the 24,616-rune rejection.
+  Compact catalog coverage and a valid 239-character basename pass through the public CLI.
+  Explicit Git blob reads preserve the existing path, type, binary, and range guards.
+  Actual-range local protocol qualification covered all 681,802 evidence runes in 47 packets with 94 calls and 34 calls remaining.
+  The capacity fixture does not supply a semantic release decision.
+  The release model stopped on packet seven after earlier source context consumed its allowance but was omitted from later requests.
+  A public regression now verifies shared context in later candidates and audits, unchanged retrieval charges, and the submitted-request size limit.
+  Focused semantic decision and release tests and 16 licensing checks passed.
+  Independent plan and implementation reviews accepted the correction.
+  Live model qualification passed on November 20, 2026, with `gpt-6.1-sol` at `high` reasoning effort.
+  All 47 packets and 681,802 evidence runes received accepted candidate and audit results.
+  The run used 99 calls and 15,176 context runes without a limit change.
+  The accepted decision was `major` for Gateway source `b208880ff10869a275195934621aaaf3328975be`.
+  The native evidence record has SHA-256 `f5680644580e4f021f5d7804ab46aa81d9dd394379728f980868a09457494d5e`.
+  Required final CI remains pending.
+
 ## Improvements
 
 - [x] [I026] (P1) Normalize governance and supply local runtime commands.
