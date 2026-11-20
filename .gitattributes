@@ -1,0 +1,4 @@
+/.gitattributes export-ignore
+/GX-412-refactor-plan.md export-ignore
+/policy_refactor_plan.md export-ignore
+/readme_config_test.go export-ignore

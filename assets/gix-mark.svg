@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+<defs>
+<linearGradient id="brand-field" x2="0" y2="1"><stop stop-color="#0063b9"/><stop offset="1" stop-color="#009bd5"/></linearGradient>
+<filter id="brand-ink" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feFlood flood-color="#ffd369"/><feComposite in2="SourceGraphic" operator="in"/></filter>
+</defs>
+
+<g filter="url(#brand-ink)"><svg width="512" height="512" xmlns="http://www.w3.org/2000/svg" viewBox="314 275 660 660" role="img" aria-labelledby="title">
+  <title id="title">gix logo</title>
+  <defs>
+    <mask id="gix-counters" maskUnits="userSpaceOnUse" x="314" y="275" width="660" height="660">
+      <rect x="314" y="275" width="660" height="660" fill="#fff"/>
+      <circle cx="750" cy="379" r="35" fill="#000"/>
+      <circle cx="619" cy="584" r="116" fill="#000"/>
+      <circle cx="521" cy="764" r="28" fill="#000"/>
+    </mask>
+  </defs>
+  <g fill="#000" mask="url(#gix-counters)">
+    <path d="M750 426V747C750 812 704 860 641 860C593 860 557 836 540 801" fill="none" stroke="#000" stroke-width="56"/>
+    <circle cx="750" cy="379" r="61"/>
+    <circle cx="619" cy="584" r="147"/>
+    <circle cx="521" cy="764" r="49"/>
+  </g>
+</svg>
+</g>
+</svg>
