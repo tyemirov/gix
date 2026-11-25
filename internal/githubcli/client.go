@@ -46,7 +46,7 @@ const (
 	requiredValueMessageConstant               = "value required"
 	executorNotConfiguredMessageConstant       = "github cli executor not configured"
 	pullRequestLimitDefaultValueConstant       = 100
-	pullRequestJSONFieldsConstant              = "number,title,headRefName,headRefOid,headRepository,baseRefName"
+	pullRequestJSONFieldsConstant              = "number,title,headRefName,headRefOid,headRepository,baseRefName,isCrossRepository"
 	repoViewJSONFieldsConstant                 = "defaultBranchRef,nameWithOwner,description,isInOrganization"
 	operationErrorMessageTemplateConstant      = "%s operation failed"
 	operationErrorWithCauseTemplateConstant    = "%s operation failed: %s"
@@ -69,7 +69,7 @@ const (
 	closePullRequestOperationNameConstant      = OperationName("ClosePullRequest")
 	checkBranchProtectionOperationNameConstant = OperationName("CheckBranchProtection")
 	createPullRequestOperationNameConstant     = OperationName("CreatePullRequest")
-	pullRequestCreateInternalErrorPrefix       = "pull request create failed: GraphQL: Something went wrong while executing your query"
+	pullRequestCreateInternalErrorDiagnostic   = "GraphQL: Something went wrong while executing your query"
 	pullRequestListNullMessage                 = "pull request list is null"
 	pullRequestIdentityMissingMessage          = "incomplete pull request identity"
 	pullRequestSearchLimitMessage              = "pull request list reached the result limit before confirming absence"
@@ -113,6 +113,7 @@ type PullRequest struct {
 	HeadRefOID                  string
 	HeadRepositoryNameWithOwner string
 	BaseRefName                 string
+	isCrossRepository           *bool
 }
 
 // PullRequestListOptions configures ListPullRequests queries.
@@ -301,17 +302,24 @@ func (client *Client) FindOpenPullRequest(executionContext context.Context, repo
 	if listErr != nil {
 		return nil, listErr
 	}
+	incompleteCandidate := false
 	for _, pullRequest := range pullRequests {
-		headOwner, headRepository, _ := strings.Cut(pullRequest.HeadRepositoryNameWithOwner, "/")
-		if pullRequest.Number <= 0 || strings.TrimSpace(pullRequest.HeadRefName) == "" ||
-			strings.TrimSpace(pullRequest.BaseRefName) == "" || strings.TrimSpace(headOwner) == "" ||
-			strings.TrimSpace(headRepository) == "" || strings.Contains(headRepository, "/") {
-			return nil, ResponseDecodingError{Operation: listPullRequestsOperationNameConstant, Cause: errors.New(pullRequestIdentityMissingMessage)}
+		if pullRequest.isCrossRepository != nil && *pullRequest.isCrossRepository {
+			continue
 		}
-		if pullRequest.HeadRefName == headBranch && pullRequest.BaseRefName == baseBranch &&
-			strings.EqualFold(pullRequest.HeadRepositoryNameWithOwner, repository) {
-			return &pullRequest, nil
+		headMissing := strings.TrimSpace(pullRequest.HeadRefName) == ""
+		baseMissing := strings.TrimSpace(pullRequest.BaseRefName) == ""
+		if (!headMissing && pullRequest.HeadRefName != headBranch) || (!baseMissing && pullRequest.BaseRefName != baseBranch) {
+			continue
 		}
+		if headMissing || baseMissing || pullRequest.Number <= 0 || pullRequest.isCrossRepository == nil {
+			incompleteCandidate = true
+			continue
+		}
+		return &pullRequest, nil
+	}
+	if incompleteCandidate {
+		return nil, ResponseDecodingError{Operation: listPullRequestsOperationNameConstant, Cause: errors.New(pullRequestIdentityMissingMessage)}
 	}
 	if len(pullRequests) >= pullRequestLimitDefaultValueConstant {
 		return nil, OperationError{Operation: listPullRequestsOperationNameConstant, Cause: errors.New(pullRequestSearchLimitMessage)}
@@ -375,7 +383,8 @@ func (client *Client) listPullRequests(executionContext context.Context, reposit
 		HeadRepository struct {
 			NameWithOwner string `json:"nameWithOwner"`
 		} `json:"headRepository"`
-		BaseRefName string `json:"baseRefName"`
+		BaseRefName       string `json:"baseRefName"`
+		IsCrossRepository *bool  `json:"isCrossRepository"`
 	}
 
 	decodingError := json.Unmarshal([]byte(executionResult.StandardOutput), &response)
@@ -395,6 +404,7 @@ func (client *Client) listPullRequests(executionContext context.Context, reposit
 			HeadRefOID:                  pullRequestEntry.HeadRefOID,
 			HeadRepositoryNameWithOwner: pullRequestEntry.HeadRepository.NameWithOwner,
 			BaseRefName:                 pullRequestEntry.BaseRefName,
+			isCrossRepository:           pullRequestEntry.IsCrossRepository,
 		})
 	}
 
@@ -466,12 +476,7 @@ func IsPullRequestCreateInternalError(err error) bool {
 		!errors.As(operationError.Cause, &commandError) {
 		return false
 	}
-	for line := range strings.Lines(commandError.Result.StandardError) {
-		if strings.HasPrefix(strings.TrimSpace(line), pullRequestCreateInternalErrorPrefix) {
-			return true
-		}
-	}
-	return false
+	return strings.Contains(commandError.Result.StandardError, pullRequestCreateInternalErrorDiagnostic)
 }
 
 // UpdatePagesConfig updates the GitHub Pages configuration using gh api.
