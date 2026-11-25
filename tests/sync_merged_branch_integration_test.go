@@ -1282,6 +1282,15 @@ if [ "$1" = "pr" ] && [ "$2" = "list" ]; then
     esac
     shift
   done
+  if [ "$state" = "open" ] && [ -n "$base" ] && [ -n "$head" ] &&
+     [ -n "$GIX_SYNC_TEST_PR_READBACK" ] && grep -q '^pr create ' "$GIX_SYNC_TEST_GH_LOG"; then
+    if [ "$GIX_SYNC_TEST_PR_READBACK" = "error" ]; then
+      printf 'simulated pull request lookup failure\n' >&2
+      exit 1
+    fi
+    printf '%s\n' "$GIX_SYNC_TEST_PR_READBACK"
+    exit 0
+  fi
   if [ -z "$head" ]; then
     awk -v state="$state" -v base="$base" '
       $1 == "created-pr" || $1 == "merged-pr" {
@@ -1319,7 +1328,9 @@ if [ "$1" = "pr" ] && [ "$2" = "list" ]; then
     created_pull_request="$(find_pull_request_marker "created-pr" "$head" "$base")"
     if [ -n "$created_pull_request" ]; then
       base="$(printf '%s\n' "$created_pull_request" | sed -n 's/.*--base \([^ ]*\) --head.*/\1/p')"
-      printf '[{"number":10,"title":"Open","headRefName":"%s","baseRefName":"%s"}]\n' "$head" "$base"
+      head_oid="$(printf '%s\n' "$created_pull_request" | sed -n 's/.*--oid \([^ ]*\).*/\1/p')"
+      head_repo="$(printf '%s\n' "$created_pull_request" | sed -n 's/.*--repo \([^ ]*\).*/\1/p')"
+      printf '[{"number":10,"title":"Open","headRefName":"%s","headRefOid":"%s","baseRefName":"%s","headRepository":{"nameWithOwner":"%s"},"isCrossRepository":false}]\n' "$head" "$head_oid" "$base" "$head_repo"
       exit 0
     fi
     printf '%s\n' '[]'
@@ -1370,11 +1381,35 @@ if [ "$1" = "pr" ] && [ "$2" = "create" ]; then
     printf 'simulated pull request creation failure for %s\n' "$head" >&2
     exit 1
   fi
+  outcome=""
+  if [ -n "$GIX_SYNC_TEST_FIRST_PR_OUTCOME" ]; then
+    attempt="$(awk '/^pr create / { count++ } END { print count }' "$GIX_SYNC_TEST_GH_LOG")"
+    outcome="$GIX_SYNC_TEST_FIRST_PR_OUTCOME"
+    if [ "$attempt" -gt 1 ]; then
+      outcome="$GIX_SYNC_TEST_SECOND_PR_OUTCOME"
+    fi
+  fi
   head_oid=""
   if [ -n "$GIX_SYNC_TEST_REPOSITORY" ]; then
     head_oid="$(git -C "$GIX_SYNC_TEST_REPOSITORY" rev-parse "refs/heads/$head")"
   fi
-  printf 'created-pr --base %s --head %s --oid %s --repo %s\n' "$base" "$head" "$head_oid" "$repo" >>"$GIX_SYNC_TEST_GH_LOG"
+  if [ "$outcome" != "internal_error" ] && [ "$outcome" != "preflight_internal_error" ]; then
+    printf 'created-pr --base %s --head %s --oid %s --repo %s\n' "$base" "$head" "$head_oid" "$repo" >>"$GIX_SYNC_TEST_GH_LOG"
+  fi
+  case "$outcome" in
+    internal_error|created_with_internal_error|preflight_internal_error)
+      error_subject="pull request create failed"
+      if [ "$outcome" = "preflight_internal_error" ]; then
+        error_subject="error checking for existing pull request"
+      fi
+      printf '%s: GraphQL: Something went wrong while executing your query on 2026-11-25T15:57:21Z. Please include TEST-REQUEST-%s when reporting this issue.\n' "$error_subject" "$attempt" >&2
+      exit 1
+      ;;
+    concurrent_duplicate)
+      printf 'pull request create failed: GraphQL: A pull request already exists for this head and base\n' >&2
+      exit 1
+      ;;
+  esac
   if [ -n "$GIX_SYNC_TEST_OPERATION_LOG" ]; then
     printf 'gh-created --base %s --head %s\n' "$base" "$head" >>"$GIX_SYNC_TEST_OPERATION_LOG"
   fi

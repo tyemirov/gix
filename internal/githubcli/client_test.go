@@ -195,7 +195,7 @@ func TestListPullRequests(testInstance *testing.T) {
 				require.Contains(testInstance, executor.recordedDetails[0].Arguments, testBaseBranchConstant)
 				require.Contains(testInstance, executor.recordedDetails[0].Arguments, "--head")
 				require.Contains(testInstance, executor.recordedDetails[0].Arguments, testPullRequestHeadConstant)
-				require.Contains(testInstance, executor.recordedDetails[0].Arguments, "number,title,headRefName,headRefOid,headRepository,baseRefName")
+				require.Contains(testInstance, executor.recordedDetails[0].Arguments, "number,title,headRefName,headRefOid,headRepository,baseRefName,isCrossRepository")
 			},
 		},
 		{

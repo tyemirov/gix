@@ -883,20 +883,13 @@ type strictSyncBranchTip struct {
 	HasLocalOnlyCommits bool
 }
 
-type strictPullRequestCreateOptions struct {
-	RepositoryIdentifier string
-	BaseBranch           string
-	BranchName           string
-	Title                string
-	Body                 string
-}
-
 type strictSyncReviewPublication uint8
 
 const (
 	strictSyncReviewUnpublished strictSyncReviewPublication = iota
 	strictSyncBranchPublished
 	strictSyncPullRequestCreated
+	strictSyncPullRequestConfirmed
 	strictSyncPullRequestCreatedSuffix = " (pull request created)"
 	strictSyncEmptyReviewMessage       = "pull request skipped for %q: no file changes against review base %q"
 )
@@ -1213,16 +1206,13 @@ func pushAndCreatePullRequest(ctx context.Context, environment *workflow.Environ
 	if pushErr != nil || !published {
 		return strictSyncReviewUnpublished, pushErr
 	}
-	if createErr := createPullRequest(ctx, environment, strictPullRequestCreateOptions{
-		RepositoryIdentifier: repositoryIdentifier,
-		BaseBranch:           options.BaseBranch,
-		BranchName:           options.BranchName,
-		Title:                pullRequestMetadata.Title,
-		Body:                 pullRequestMetadata.Body,
-	}); createErr != nil {
-		return strictSyncBranchPublished, createErr
-	}
-	return strictSyncPullRequestCreated, nil
+	return createPullRequest(ctx, environment, repository, githubcli.PullRequestCreateOptions{
+		Repository: repositoryIdentifier,
+		Base:       options.BaseBranch,
+		Head:       options.BranchName,
+		Title:      pullRequestMetadata.Title,
+		Body:       pullRequestMetadata.Body,
+	})
 }
 
 func switchToLocalOrRemoteBranch(ctx context.Context, executor shared.GitExecutor, repositoryPath string, remoteName string, branchName string) error {
@@ -1551,23 +1541,6 @@ func confirmSyncBaseAfterMergedPullRequest(environment *workflow.Environment, br
 		return false, confirmErr
 	}
 	return confirmation.Confirmed, nil
-}
-
-func createPullRequest(ctx context.Context, environment *workflow.Environment, options strictPullRequestCreateOptions) error {
-	if environment.GitHubClient == nil {
-		return errors.New(strictSyncMissingGitHubClientMessage)
-	}
-	if createErr := environment.GitHubClient.CreatePullRequest(ctx, githubcli.PullRequestCreateOptions{
-		Repository: options.RepositoryIdentifier,
-		Title:      options.Title,
-		Body:       options.Body,
-		Base:       options.BaseBranch,
-		Head:       options.BranchName,
-	}); createErr != nil {
-		return createErr
-	}
-	markStrictSyncPublished(ctx)
-	return nil
 }
 
 func strictSyncRepositoryIdentifier(ctx context.Context, environment *workflow.Environment, repository *workflow.RepositoryState, remoteName string) (string, error) {

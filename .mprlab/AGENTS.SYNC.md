@@ -63,6 +63,10 @@ Work preservation:
 - Do not start rollback for that rejection.
 - If another ref is rejected after branch publication succeeds, report that rejection and continue branch review publication.
 - Record successful remote updates even when the push command returns a failure.
+- After GitHub reports an internal GraphQL error during pull request creation, use the creation credential to look up the exact head repository, head branch, and base branch.
+- Report a matching open pull request as confirmed. Report creation after a successful create command.
+- Retry creation once when the lookup confirms absence. If the retry fails, check the pull request again before returning the creation errors.
+- Stop recovery when the lookup fails. Keep the transaction's publication boundary for rollback and handoff.
 - Propagate rejected parent publication to the child operation.
 - Save the child work locally and defer its push and pull request until parent publication succeeds.
 - Return a nonzero exit code for this deferred child publication.

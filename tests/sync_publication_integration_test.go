@@ -57,6 +57,123 @@ func TestSyncPublicationExecutionFailurePreservesWork(testInstance *testing.T) {
 	}
 }
 
+func TestSyncPullRequestCreateRecovery(t *testing.T) {
+	t.Parallel()
+
+	binary := buildIntegrationBinary(t, integrationRepositoryRoot(t))
+	const baseBranch = "qqq"
+	const reviewBranch = "review/recover"
+	const matchingPullRequest = `{"number":10,"headRefName":"review/recover","baseRefName":"qqq","headRepository":{"nameWithOwner":"owner/project"},"isCrossRepository":false}`
+	const renamedPullRequest = `{"number":10,"headRefName":"review/recover","baseRefName":"qqq","headRepository":{"nameWithOwner":"owner/renamed-project"},"isCrossRepository":false}`
+	const sameRepositoryWithoutHeadMetadata = `{"number":10,"headRefName":"review/recover","baseRefName":"qqq","headRepository":null,"isCrossRepository":false}`
+	const incompletePullRequest = `{"number":14,"headRefName":"review/recover","baseRefName":"qqq","headRepository":null,"isCrossRepository":null}`
+	const unrelatedPullRequests = `[
+		{"number":11,"headRefName":"review/recover","baseRefName":"qqq","headRepository":{"nameWithOwner":"fork/project"},"isCrossRepository":true},
+		{"number":12,"headRefName":"review/Recover","baseRefName":"qqq","headRepository":{"nameWithOwner":"owner/project"},"isCrossRepository":false},
+		{"number":13,"headRefName":"review/recover","baseRefName":"other-base","headRepository":{"nameWithOwner":"owner/project"},"isCrossRepository":false},
+		{"number":15,"headRefName":"review/recover","baseRefName":"qqq","headRepository":null,"isCrossRepository":true},
+		{"number":16,"headRefName":"different-head","baseRefName":"qqq","headRepository":null}
+	]`
+
+	for _, scenario := range []struct {
+		name             string
+		firstOutcome     string
+		secondOutcome    string
+		readback         string
+		expectedAttempts int
+		expectedReads    int
+		expectedError    string
+		confirmed        bool
+		stash            bool
+	}{
+		{name: "retry_after_absence", firstOutcome: "internal_error", expectedAttempts: 2, expectedReads: 1},
+		{name: "preflight_internal_error", firstOutcome: "preflight_internal_error", expectedAttempts: 2, expectedReads: 1},
+		{name: "first_attempt_created", firstOutcome: "created_with_internal_error", expectedAttempts: 1, expectedReads: 1, confirmed: true, stash: true},
+		{name: "renamed_repository", firstOutcome: "created_with_internal_error", readback: "[" + renamedPullRequest + "]", expectedAttempts: 1, expectedReads: 1, confirmed: true},
+		{name: "exact_match_after_incomplete", firstOutcome: "created_with_internal_error", readback: "[" + incompletePullRequest + "," + matchingPullRequest + "]", expectedAttempts: 1, expectedReads: 1, confirmed: true},
+		{name: "same_repository_without_head_metadata", firstOutcome: "created_with_internal_error", readback: "[" + sameRepositoryWithoutHeadMetadata + "]", expectedAttempts: 1, expectedReads: 1, confirmed: true},
+		{name: "retry_created", firstOutcome: "internal_error", secondOutcome: "created_with_internal_error", expectedAttempts: 2, expectedReads: 2, confirmed: true},
+		{name: "concurrent_create", firstOutcome: "internal_error", secondOutcome: "concurrent_duplicate", expectedAttempts: 2, expectedReads: 2, confirmed: true},
+		{name: "ignore_unrelated_pull_requests", firstOutcome: "internal_error", readback: unrelatedPullRequests, expectedAttempts: 2, expectedReads: 1},
+		{name: "retry_exhausted", firstOutcome: "internal_error", secondOutcome: "internal_error", expectedAttempts: 2, expectedReads: 2, expectedError: "TEST-REQUEST-2"},
+		{name: "lookup_failed", firstOutcome: "internal_error", readback: "error", expectedAttempts: 1, expectedReads: 1, expectedError: "simulated pull request lookup failure"},
+		{name: "lookup_returned_null", firstOutcome: "internal_error", readback: "null", expectedAttempts: 1, expectedReads: 1, expectedError: "pull request list is null"},
+		{name: "lookup_incomplete_identity", firstOutcome: "internal_error", readback: "[" + incompletePullRequest + "]", expectedAttempts: 1, expectedReads: 1, expectedError: "incomplete pull request identity"},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			t.Parallel()
+
+			fixture := newSyncFixture(t, baseBranch)
+			runGit(t, fixture.repository, "switch", "-c", reviewBranch)
+			fixture.commitFile(t, "review.txt", "published review work\n")
+			reviewTip := strings.TrimSpace(runGit(t, fixture.repository, "rev-parse", "HEAD"))
+			runGit(t, fixture.repository, "push", "-u", "origin", reviewBranch)
+			runGit(t, fixture.repository, "switch", baseBranch)
+			fixture.environment["GIX_SYNC_TEST_FIRST_PR_OUTCOME"] = scenario.firstOutcome
+			fixture.environment["GIX_SYNC_TEST_SECOND_PR_OUTCOME"] = scenario.secondOutcome
+			fixture.environment["GIX_SYNC_TEST_PR_READBACK"] = scenario.readback
+
+			arguments := []string{"--log-level", "info", "sync", reviewBranch, "--title", "Review work", "--body", "Published files."}
+			if scenario.stash {
+				writeFile(t, filepath.Join(fixture.repository, "pending.txt"), "staged work\n")
+				runGit(t, fixture.repository, "add", "pending.txt")
+				writeFile(t, filepath.Join(fixture.repository, "pending.txt"), "unstaged work\n")
+				arguments = append(arguments, "--stash")
+			}
+			output, runError := fixture.run(t, binary, arguments...)
+			log := readTextFile(t, fixture.githubLog)
+			var createCommands []string
+			var readbackCommands []string
+			const readbackCommand = "pr list --repo owner/project --state open --base " + baseBranch + " --head " + reviewBranch + " "
+			for _, line := range strings.Split(log, "\n") {
+				if strings.HasPrefix(line, "pr create ") {
+					createCommands = append(createCommands, line)
+				} else if len(createCommands) > 0 && strings.HasPrefix(line, readbackCommand) {
+					readbackCommands = append(readbackCommands, line)
+				}
+			}
+			require.Len(t, createCommands, scenario.expectedAttempts, output)
+			require.Len(t, readbackCommands, scenario.expectedReads, log)
+			for _, command := range readbackCommands {
+				require.Contains(t, command, "isCrossRepository")
+			}
+			if len(createCommands) == 2 {
+				require.Equal(t, createCommands[0], createCommands[1])
+			}
+			require.Equal(t, reviewTip, strings.TrimSpace(runGit(t, fixture.remote, "rev-parse", reviewBranch)))
+			require.Equal(t, reviewTip, strings.TrimSpace(runGit(t, fixture.repository, "rev-parse", reviewBranch)))
+			require.Empty(t, runGit(t, fixture.repository, "stash", "list"))
+
+			if scenario.expectedError != "" {
+				require.Error(t, runError, output)
+				require.Contains(t, output, "TEST-REQUEST-1")
+				require.Contains(t, output, scenario.expectedError)
+				require.Contains(t, output, "SYNC_SWITCH_ROLLBACK")
+				require.NotContains(t, output, "SYNCED:")
+				require.Equal(t, baseBranch, strings.TrimSpace(runGit(t, fixture.repository, "branch", "--show-current")))
+				require.NotContains(t, log, "created-pr ")
+				return
+			}
+
+			require.NoError(t, runError, output)
+			require.NotContains(t, output, "SYNC_SWITCH_ROLLBACK")
+			require.Contains(t, output, "SYNCED:")
+			require.Equal(t, reviewBranch, strings.TrimSpace(runGit(t, fixture.repository, "branch", "--show-current")))
+			require.Equal(t, 1, strings.Count(log, "created-pr "))
+			if scenario.confirmed {
+				require.Contains(t, output, "confirmed open pull request #10")
+				require.NotContains(t, output, "(pull request created)")
+			} else {
+				require.Contains(t, output, "(pull request created)")
+			}
+			if scenario.stash {
+				require.Equal(t, "staged work\n", runGit(t, fixture.repository, "show", ":pending.txt"))
+				require.Equal(t, "unstaged work\n", readTextFile(t, filepath.Join(fixture.repository, "pending.txt")))
+			}
+		})
+	}
+}
+
 func TestSyncExplicitDefaultPushRejectionPreservesCommittedWork(testInstance *testing.T) {
 	testInstance.Parallel()
 

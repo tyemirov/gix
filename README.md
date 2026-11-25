@@ -126,6 +126,8 @@ It does not print `SYNCED` for this incomplete publication.
 Sync reads the push result for the selected branch separately from other refs.
 If the branch succeeds but a tag is rejected, sync reports the tag rejection and continues the branch PR operation.
 If a later operation fails, sync preserves the published state and reports `SYNC_SWITCH_HANDOFF`.
+If GitHub returns an internal GraphQL error during pull request creation, sync checks for a matching open pull request.
+Sync reports an existing match. It retries creation once if GitHub confirms that the pull request is absent.
 
 A parent branch does not need separate commits or a pull request before it can receive child work.
 A parent can exist only on the remote. Sync merges incoming parent work and preserves unpublished parent commits and pending child files.
