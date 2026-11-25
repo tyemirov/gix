@@ -2523,15 +2523,16 @@ func TestCreatePullRequestMarksStrictSyncPublished(testInstance *testing.T) {
 	ctx := withStrictSyncTransaction(context.Background(), transaction)
 	environment := &workflow.Environment{GitHubClient: githubClient}
 
-	createErr := createPullRequest(ctx, environment, strictPullRequestCreateOptions{
-		RepositoryIdentifier: "owner/repository",
-		BaseBranch:           strictSyncTestDefaultBranch,
-		BranchName:           "feature/review",
-		Title:                "Review",
-		Body:                 "Body",
+	publication, createErr := createPullRequest(ctx, environment, nil, githubcli.PullRequestCreateOptions{
+		Repository: "owner/repository",
+		Base:       strictSyncTestDefaultBranch,
+		Head:       "feature/review",
+		Title:      "Review",
+		Body:       "Body",
 	})
 
 	require.NoError(testInstance, createErr)
+	require.Equal(testInstance, strictSyncPullRequestCreated, publication)
 	require.True(testInstance, transaction.published)
 	require.Len(testInstance, githubExecutor.commands, 1)
 }

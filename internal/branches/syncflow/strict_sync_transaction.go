@@ -35,7 +35,7 @@ const (
 	strictSyncRestoreWorktreeFailureTemplate  = "failed to restore adopted worktree %s: %w"
 	strictSyncRestoreTopologyChangedTemplate  = "cannot restore adopted worktree %s because it now holds branch %q"
 	strictSyncDetachedCommitMissingMessage    = "detached worktree commit is missing"
-	strictSyncRollbackMessage                 = "failed sync restored the starting checkout, local state, and adopted worktree topology; gix did not leave the target branch active"
+	strictSyncRollbackMessage                 = "failed sync restored the starting checkout, local state, and adopted worktree topology"
 	strictSyncHandoffMessage                  = "failed sync could not restore the starting checkout, local state, and adopted worktree topology"
 	strictSyncOwnershipHandoffMessage         = "strict sync detected a concurrent checkout or index change; gix preserved the current state and transaction snapshots for manual recovery; stop the other writer before retrying"
 	strictSyncPublishedHandoffMessage         = "strict sync published remote changes but finalization failed; gix preserved the invocation-owned recovery state and did not report SYNCED"

@@ -9,6 +9,8 @@ const (
 	EventCodeSyncSwitchHandoff        = "SYNC_SWITCH_HANDOFF"
 	EventCodeSyncPushRejected         = "SYNC_PUSH_REJECTED"
 	EventCodeSyncPublicationDeferred  = "SYNC_PUBLICATION_DEFERRED"
+	EventCodeSyncPullRequestRetry     = "SYNC_PULL_REQUEST_RETRY"
+	EventCodeSyncPullRequestConfirmed = "SYNC_PULL_REQUEST_CONFIRMED"
 	EventCodeMergeConflict            = "MERGE_CONFLICT"
 	EventCodeAIMergeResolution        = "AI_MERGE_RESOLUTION"
 	EventCodeAIMergeValidation        = "AI_MERGE_VALIDATION"

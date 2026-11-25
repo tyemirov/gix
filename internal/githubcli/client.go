@@ -69,6 +69,10 @@ const (
 	closePullRequestOperationNameConstant      = OperationName("ClosePullRequest")
 	checkBranchProtectionOperationNameConstant = OperationName("CheckBranchProtection")
 	createPullRequestOperationNameConstant     = OperationName("CreatePullRequest")
+	pullRequestCreateInternalErrorPrefix       = "pull request create failed: GraphQL: Something went wrong while executing your query"
+	pullRequestListNullMessage                 = "pull request list is null"
+	pullRequestIdentityMissingMessage          = "incomplete pull request identity"
+	pullRequestSearchLimitMessage              = "pull request list reached the result limit before confirming absence"
 	httpNotFoundIndicatorConstant              = "http 404"
 	statusNotFoundIndicatorConstant            = "status 404"
 	pagesResponseEmptyMessageConstant          = "pages response is empty"
@@ -284,6 +288,38 @@ func (client *Client) ResolveRepoMetadata(executionContext context.Context, repo
 
 // ListPullRequests enumerates pull requests using gh pr list.
 func (client *Client) ListPullRequests(executionContext context.Context, repository string, options PullRequestListOptions) ([]PullRequest, error) {
+	return client.listPullRequests(executionContext, repository, options, githubauth.TokenOptional)
+}
+
+// FindOpenPullRequest verifies an exact same-repository head and base with the creation credential.
+func (client *Client) FindOpenPullRequest(executionContext context.Context, repository, baseBranch, headBranch string) (*PullRequest, error) {
+	pullRequests, listErr := client.listPullRequests(executionContext, repository, PullRequestListOptions{
+		State:      PullRequestStateOpen,
+		BaseBranch: baseBranch,
+		HeadBranch: headBranch,
+	}, githubauth.TokenRequired)
+	if listErr != nil {
+		return nil, listErr
+	}
+	for _, pullRequest := range pullRequests {
+		headOwner, headRepository, _ := strings.Cut(pullRequest.HeadRepositoryNameWithOwner, "/")
+		if pullRequest.Number <= 0 || strings.TrimSpace(pullRequest.HeadRefName) == "" ||
+			strings.TrimSpace(pullRequest.BaseRefName) == "" || strings.TrimSpace(headOwner) == "" ||
+			strings.TrimSpace(headRepository) == "" || strings.Contains(headRepository, "/") {
+			return nil, ResponseDecodingError{Operation: listPullRequestsOperationNameConstant, Cause: errors.New(pullRequestIdentityMissingMessage)}
+		}
+		if pullRequest.HeadRefName == headBranch && pullRequest.BaseRefName == baseBranch &&
+			strings.EqualFold(pullRequest.HeadRepositoryNameWithOwner, repository) {
+			return &pullRequest, nil
+		}
+	}
+	if len(pullRequests) >= pullRequestLimitDefaultValueConstant {
+		return nil, OperationError{Operation: listPullRequestsOperationNameConstant, Cause: errors.New(pullRequestSearchLimitMessage)}
+	}
+	return nil, nil
+}
+
+func (client *Client) listPullRequests(executionContext context.Context, repository string, options PullRequestListOptions, tokenRequirement githubauth.TokenRequirement) ([]PullRequest, error) {
 	repositoryIdentifier := strings.TrimSpace(repository)
 	if len(repositoryIdentifier) == 0 {
 		return nil, InvalidInputError{FieldName: repositoryFieldNameConstant, Message: requiredValueMessageConstant}
@@ -323,7 +359,7 @@ func (client *Client) ListPullRequests(executionContext context.Context, reposit
 
 	commandDetails := execshell.CommandDetails{
 		Arguments:              commandArguments,
-		GitHubTokenRequirement: githubauth.TokenOptional,
+		GitHubTokenRequirement: tokenRequirement,
 	}
 
 	executionResult, executionError := client.executor.ExecuteGitHubCLI(executionContext, commandDetails)
@@ -345,6 +381,9 @@ func (client *Client) ListPullRequests(executionContext context.Context, reposit
 	decodingError := json.Unmarshal([]byte(executionResult.StandardOutput), &response)
 	if decodingError != nil {
 		return nil, ResponseDecodingError{Operation: listPullRequestsOperationNameConstant, Cause: decodingError}
+	}
+	if response == nil {
+		return nil, ResponseDecodingError{Operation: listPullRequestsOperationNameConstant, Cause: errors.New(pullRequestListNullMessage)}
 	}
 
 	pullRequests := make([]PullRequest, 0, len(response))
@@ -417,6 +456,22 @@ func (client *Client) CreatePullRequest(executionContext context.Context, option
 	}
 
 	return nil
+}
+
+// IsPullRequestCreateInternalError identifies the GitHub GraphQL response with an uncertain create outcome.
+func IsPullRequestCreateInternalError(err error) bool {
+	var operationError OperationError
+	var commandError execshell.CommandFailedError
+	if !errors.As(err, &operationError) || operationError.Operation != createPullRequestOperationNameConstant ||
+		!errors.As(operationError.Cause, &commandError) {
+		return false
+	}
+	for line := range strings.Lines(commandError.Result.StandardError) {
+		if strings.HasPrefix(strings.TrimSpace(line), pullRequestCreateInternalErrorPrefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // UpdatePagesConfig updates the GitHub Pages configuration using gh api.
