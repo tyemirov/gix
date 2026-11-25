@@ -63,10 +63,16 @@ func TestSyncPullRequestCreateRecovery(t *testing.T) {
 	binary := buildIntegrationBinary(t, integrationRepositoryRoot(t))
 	const baseBranch = "qqq"
 	const reviewBranch = "review/recover"
+	const matchingPullRequest = `{"number":10,"headRefName":"review/recover","baseRefName":"qqq","headRepository":{"nameWithOwner":"owner/project"},"isCrossRepository":false}`
+	const renamedPullRequest = `{"number":10,"headRefName":"review/recover","baseRefName":"qqq","headRepository":{"nameWithOwner":"owner/renamed-project"},"isCrossRepository":false}`
+	const sameRepositoryWithoutHeadMetadata = `{"number":10,"headRefName":"review/recover","baseRefName":"qqq","headRepository":null,"isCrossRepository":false}`
+	const incompletePullRequest = `{"number":14,"headRefName":"review/recover","baseRefName":"qqq","headRepository":null,"isCrossRepository":null}`
 	const unrelatedPullRequests = `[
-		{"number":11,"headRefName":"review/recover","baseRefName":"qqq","headRepository":{"nameWithOwner":"fork/project"}},
-		{"number":12,"headRefName":"review/Recover","baseRefName":"qqq","headRepository":{"nameWithOwner":"owner/project"}},
-		{"number":13,"headRefName":"review/recover","baseRefName":"other-base","headRepository":{"nameWithOwner":"owner/project"}}
+		{"number":11,"headRefName":"review/recover","baseRefName":"qqq","headRepository":{"nameWithOwner":"fork/project"},"isCrossRepository":true},
+		{"number":12,"headRefName":"review/Recover","baseRefName":"qqq","headRepository":{"nameWithOwner":"owner/project"},"isCrossRepository":false},
+		{"number":13,"headRefName":"review/recover","baseRefName":"other-base","headRepository":{"nameWithOwner":"owner/project"},"isCrossRepository":false},
+		{"number":15,"headRefName":"review/recover","baseRefName":"qqq","headRepository":null,"isCrossRepository":true},
+		{"number":16,"headRefName":"different-head","baseRefName":"qqq","headRepository":null}
 	]`
 
 	for _, scenario := range []struct {
@@ -81,14 +87,18 @@ func TestSyncPullRequestCreateRecovery(t *testing.T) {
 		stash            bool
 	}{
 		{name: "retry_after_absence", firstOutcome: "internal_error", expectedAttempts: 2, expectedReads: 1},
+		{name: "preflight_internal_error", firstOutcome: "preflight_internal_error", expectedAttempts: 2, expectedReads: 1},
 		{name: "first_attempt_created", firstOutcome: "created_with_internal_error", expectedAttempts: 1, expectedReads: 1, confirmed: true, stash: true},
+		{name: "renamed_repository", firstOutcome: "created_with_internal_error", readback: "[" + renamedPullRequest + "]", expectedAttempts: 1, expectedReads: 1, confirmed: true},
+		{name: "exact_match_after_incomplete", firstOutcome: "created_with_internal_error", readback: "[" + incompletePullRequest + "," + matchingPullRequest + "]", expectedAttempts: 1, expectedReads: 1, confirmed: true},
+		{name: "same_repository_without_head_metadata", firstOutcome: "created_with_internal_error", readback: "[" + sameRepositoryWithoutHeadMetadata + "]", expectedAttempts: 1, expectedReads: 1, confirmed: true},
 		{name: "retry_created", firstOutcome: "internal_error", secondOutcome: "created_with_internal_error", expectedAttempts: 2, expectedReads: 2, confirmed: true},
 		{name: "concurrent_create", firstOutcome: "internal_error", secondOutcome: "concurrent_duplicate", expectedAttempts: 2, expectedReads: 2, confirmed: true},
 		{name: "ignore_unrelated_pull_requests", firstOutcome: "internal_error", readback: unrelatedPullRequests, expectedAttempts: 2, expectedReads: 1},
 		{name: "retry_exhausted", firstOutcome: "internal_error", secondOutcome: "internal_error", expectedAttempts: 2, expectedReads: 2, expectedError: "TEST-REQUEST-2"},
 		{name: "lookup_failed", firstOutcome: "internal_error", readback: "error", expectedAttempts: 1, expectedReads: 1, expectedError: "simulated pull request lookup failure"},
 		{name: "lookup_returned_null", firstOutcome: "internal_error", readback: "null", expectedAttempts: 1, expectedReads: 1, expectedError: "pull request list is null"},
-		{name: "lookup_missing_head_repository", firstOutcome: "internal_error", readback: `[{"number":10,"headRefName":"review/recover","baseRefName":"qqq","headRepository":null}]`, expectedAttempts: 1, expectedReads: 1, expectedError: "incomplete pull request identity"},
+		{name: "lookup_incomplete_identity", firstOutcome: "internal_error", readback: "[" + incompletePullRequest + "]", expectedAttempts: 1, expectedReads: 1, expectedError: "incomplete pull request identity"},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			t.Parallel()
@@ -113,17 +123,20 @@ func TestSyncPullRequestCreateRecovery(t *testing.T) {
 			output, runError := fixture.run(t, binary, arguments...)
 			log := readTextFile(t, fixture.githubLog)
 			var createCommands []string
-			readbackCount := 0
+			var readbackCommands []string
 			const readbackCommand = "pr list --repo owner/project --state open --base " + baseBranch + " --head " + reviewBranch + " "
 			for _, line := range strings.Split(log, "\n") {
 				if strings.HasPrefix(line, "pr create ") {
 					createCommands = append(createCommands, line)
 				} else if len(createCommands) > 0 && strings.HasPrefix(line, readbackCommand) {
-					readbackCount++
+					readbackCommands = append(readbackCommands, line)
 				}
 			}
 			require.Len(t, createCommands, scenario.expectedAttempts, output)
-			require.Equal(t, scenario.expectedReads, readbackCount, log)
+			require.Len(t, readbackCommands, scenario.expectedReads, log)
+			for _, command := range readbackCommands {
+				require.Contains(t, command, "isCrossRepository")
+			}
 			if len(createCommands) == 2 {
 				require.Equal(t, createCommands[0], createCommands[1])
 			}

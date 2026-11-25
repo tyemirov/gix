@@ -1330,7 +1330,7 @@ if [ "$1" = "pr" ] && [ "$2" = "list" ]; then
       base="$(printf '%s\n' "$created_pull_request" | sed -n 's/.*--base \([^ ]*\) --head.*/\1/p')"
       head_oid="$(printf '%s\n' "$created_pull_request" | sed -n 's/.*--oid \([^ ]*\).*/\1/p')"
       head_repo="$(printf '%s\n' "$created_pull_request" | sed -n 's/.*--repo \([^ ]*\).*/\1/p')"
-      printf '[{"number":10,"title":"Open","headRefName":"%s","headRefOid":"%s","baseRefName":"%s","headRepository":{"nameWithOwner":"%s"}}]\n' "$head" "$head_oid" "$base" "$head_repo"
+      printf '[{"number":10,"title":"Open","headRefName":"%s","headRefOid":"%s","baseRefName":"%s","headRepository":{"nameWithOwner":"%s"},"isCrossRepository":false}]\n' "$head" "$head_oid" "$base" "$head_repo"
       exit 0
     fi
     printf '%s\n' '[]'
@@ -1393,12 +1393,16 @@ if [ "$1" = "pr" ] && [ "$2" = "create" ]; then
   if [ -n "$GIX_SYNC_TEST_REPOSITORY" ]; then
     head_oid="$(git -C "$GIX_SYNC_TEST_REPOSITORY" rev-parse "refs/heads/$head")"
   fi
-  if [ "$outcome" != "internal_error" ]; then
+  if [ "$outcome" != "internal_error" ] && [ "$outcome" != "preflight_internal_error" ]; then
     printf 'created-pr --base %s --head %s --oid %s --repo %s\n' "$base" "$head" "$head_oid" "$repo" >>"$GIX_SYNC_TEST_GH_LOG"
   fi
   case "$outcome" in
-    internal_error|created_with_internal_error)
-      printf 'pull request create failed: GraphQL: Something went wrong while executing your query on 2026-11-25T15:57:21Z. Please include TEST-REQUEST-%s when reporting this issue.\n' "$attempt" >&2
+    internal_error|created_with_internal_error|preflight_internal_error)
+      error_subject="pull request create failed"
+      if [ "$outcome" = "preflight_internal_error" ]; then
+        error_subject="error checking for existing pull request"
+      fi
+      printf '%s: GraphQL: Something went wrong while executing your query on 2026-11-25T15:57:21Z. Please include TEST-REQUEST-%s when reporting this issue.\n' "$error_subject" "$attempt" >&2
       exit 1
       ;;
     concurrent_duplicate)
